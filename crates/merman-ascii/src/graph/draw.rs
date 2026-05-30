@@ -107,7 +107,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         for group in &graph_layout.groups {
             draw_group_title(&mut canvas, group);
         }
-        return Ok(canvas.finish());
+        return Ok(canvas.finish_with_options(options));
     }
 
     let mut canvas = output_transform.transform_canvas(canvas.finish(), width, height);
@@ -128,7 +128,7 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         draw_transformed_group_title(&mut canvas, group, output_transform, width, height);
     }
 
-    Ok(canvas.finish())
+    Ok(canvas.finish_with_options(options))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

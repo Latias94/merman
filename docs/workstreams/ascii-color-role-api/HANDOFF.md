@@ -6,17 +6,19 @@ Last updated: 2026-05-30
 ## Current State
 
 The workstream is active. ADR 0067 accepted the public color role API shape and the
-`AsciiRenderOptions` migration. No renderer code has changed yet.
+`AsciiRenderOptions` migration. ACR-030 implemented the shared foreground-color substrate:
+public color types, color options, role-aware `Canvas` storage, and forced ANSI/HTML finalizers.
+Default plain output remains unchanged.
 
 ## Active Task
 
-- Task ID: ACR-030
+- Task ID: ACR-040
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/color.rs`, `crates/merman-ascii/src/options.rs`,
-  `crates/merman-ascii/src/canvas.rs`, `crates/merman-ascii/src/lib.rs`
-- Validation: `cargo nextest run -p merman-ascii color canvas`; `cargo fmt --all --check`
+- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/tests/flowchart_model.rs`
+- Validation: `cargo nextest run -p merman-ascii flowchart_color`;
+  `cargo nextest run -p merman-ascii flowchart`
 - Status: TODO
-- Review: no diagram renderer should receive color-specific layout logic
+- Review: plain flowchart snapshots must remain unchanged
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -29,11 +31,18 @@ The workstream is active. ADR 0067 accepted the public color role API shape and 
 - Mermaid style mapping should not be bundled with the first role-canvas slice.
 - ADR 0067 accepts a pre-1.0 `AsciiRenderOptions` migration: add color fields, keep `Copy`, add
   builder methods, and mark the struct `#[non_exhaustive]`.
+- ACR-030 keeps diagram layout role-agnostic. The graph renderer now uses `Canvas::finish_with_options`
+  only at final output boundaries, while transformed intermediate canvases still use plain
+  finalization.
+- `set_role` and `write_text_role` exist for the next slice but no renderer assigns semantic roles
+  yet.
 
 ## Blockers
 
-- None. Implementation should stay inside ACR-030's infrastructure scope.
+- None.
 
 ## Next Recommended Action
 
-- Implement the role-aware canvas and forced encoders before assigning roles to any diagram family.
+- Assign flowchart roles for node text, node/group borders, edge lines, labels, arrowheads, and
+  junctions using the role-aware canvas. Keep Mermaid style/class/linkStyle mapping deferred unless
+  ACR-050 explicitly starts it.

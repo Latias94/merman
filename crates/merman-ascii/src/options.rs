@@ -1,3 +1,4 @@
+use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
 use std::borrow::Cow;
 
@@ -26,9 +27,12 @@ impl Default for AsciiDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AsciiRenderOptions {
     pub charset: AsciiCharset,
     pub fallback_direction: AsciiDirection,
+    pub color_mode: AsciiColorMode,
+    pub color_theme: AsciiColorTheme,
     pub box_border_padding: usize,
     pub graph_padding_x: usize,
     pub graph_padding_y: usize,
@@ -43,6 +47,8 @@ impl Default for AsciiRenderOptions {
         Self {
             charset: AsciiCharset::Unicode,
             fallback_direction: AsciiDirection::LeftRight,
+            color_mode: AsciiColorMode::Plain,
+            color_theme: AsciiColorTheme::default_light(),
             box_border_padding: 1,
             graph_padding_x: 5,
             graph_padding_y: 5,
@@ -64,6 +70,16 @@ impl AsciiRenderOptions {
 
     pub fn unicode() -> Self {
         Self::default()
+    }
+
+    pub fn with_color_mode(mut self, color_mode: AsciiColorMode) -> Self {
+        self.color_mode = color_mode;
+        self
+    }
+
+    pub fn with_color_theme(mut self, color_theme: AsciiColorTheme) -> Self {
+        self.color_theme = color_theme;
+        self
     }
 
     pub fn validate(&self) -> Result<()> {

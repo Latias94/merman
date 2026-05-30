@@ -40,6 +40,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | --- | --- | --- | --- |
 | 2026-05-30 | ACR-010 | Drafted the color role API workstream and public API sketch. | Lane is draft; implementation waits on ADR/public API decision. |
 | 2026-05-30 | ACR-020 | Accepted ADR 0067 for the color role API and options migration. | Lane is active; implementation can start with role-aware canvas and encoders. |
+| 2026-05-30 | ACR-030 | Added public color types, color options, role-aware canvas storage, and forced ANSI/HTML encoders. | M1 infrastructure is complete; ACR-040 can assign flowchart roles. |
 
 ## Verification Log
 
@@ -49,3 +50,8 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-010 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Draft docs did not disturb Rust formatting. |
 | 2026-05-30 | ACR-020 | `git diff --check -- docs/adr/0067-ascii-color-role-api.md docs/workstreams/ascii-color-role-api` | ADR and workstream docs | PASS | ADR/workstream update has no whitespace errors. |
 | 2026-05-30 | ACR-020 | `cargo fmt --all --check` | Workspace formatting gate | PASS | ADR-only task did not disturb Rust formatting. |
+| 2026-05-30 | ACR-030 | `cargo nextest run -p merman-ascii color canvas` | Color API and canvas encoder slice | PASS | Plain, truecolor, ANSI 256, ANSI 16, and HTML encoder tests pass. |
+| 2026-05-30 | ACR-030 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after implementation. |
+| 2026-05-30 | ACR-030 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Default diagram snapshots still pass after graph finalization uses color-aware output. |
+| 2026-05-30 | ACR-030 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACR-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | New public color API and canvas encoder code are warning-free under clippy. |

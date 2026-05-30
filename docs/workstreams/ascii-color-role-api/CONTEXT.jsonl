@@ -10,3 +10,8 @@
 {"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/options.rs","note":"AsciiRenderOptions is a public Copy struct with public fields; color fields require a public API decision."}
 {"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/canvas.rs","note":"Canvas currently stores only chars and finalizes plain text rows."}
 {"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/lib.rs","note":"Public render entry points validate options before dispatching to diagram renderers."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/color.rs","note":"ACR-030 added public color mode, RGB, semantic role, and private-field theme types re-exported by merman-ascii."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/options.rs","note":"ACR-030 added Plain-default color_mode/color_theme fields, builder methods, and marked AsciiRenderOptions non_exhaustive."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/canvas.rs","note":"ACR-030 added parallel role storage plus forced Plain, ANSI16, ANSI256, TrueColor, and HTML finalizers."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/graph/draw.rs","note":"Graph final output now uses Canvas::finish_with_options; transformed intermediate canvases still use plain finalization."}
+{"date":"2026-05-30","kind":"verification","path":"docs/workstreams/ascii-color-role-api/EVIDENCE_AND_GATES.md","note":"ACR-030 passed cargo nextest run -p merman-ascii color canvas, cargo fmt --all --check, cargo nextest run -p merman-ascii, git diff --check, and cargo clippy -p merman-ascii --all-targets -- -D warnings."}

@@ -66,6 +66,11 @@
       "date": "2026-05-30",
       "task": "ACR-020",
       "result": "accepted ADR 0067 for the public color role API and options migration"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-030",
+      "result": "implemented public color types, color options, role-aware canvas storage, and forced ANSI/HTML encoders"
     }
   ],
   "adr_refs": [
@@ -83,7 +88,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-030",
-    "notes": "ADR accepted. Continue with role-aware canvas and forced encoders before assigning roles to diagram renderers."
+    "next_task": "ACR-040",
+    "notes": "Color infrastructure is in place. Continue by assigning flowchart semantic roles while keeping plain snapshots unchanged."
   }
 }

@@ -7,6 +7,7 @@
 
 mod canvas;
 mod class;
+mod color;
 mod er;
 mod error;
 mod graph;
@@ -16,6 +17,7 @@ mod sequence;
 mod text;
 mod xychart;
 
+pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb};
 pub use error::{AsciiError, Result};
 pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 
@@ -157,12 +159,37 @@ mod tests {
         let options = AsciiRenderOptions::default();
         assert_eq!(options.charset, AsciiCharset::Unicode);
         assert_eq!(options.fallback_direction, AsciiDirection::LeftRight);
+        assert_eq!(options.color_mode, AsciiColorMode::Plain);
+        assert_eq!(options.color_theme, AsciiColorTheme::default_light());
         assert_eq!(options.box_border_padding, 1);
         assert_eq!(options.graph_padding_x, 5);
         assert_eq!(options.graph_padding_y, 5);
         assert_eq!(options.sequence_participant_spacing, 5);
         assert_eq!(options.sequence_message_spacing, 1);
         assert_eq!(options.sequence_self_message_width, 4);
+    }
+
+    #[test]
+    fn options_builder_sets_color_mode_and_theme() {
+        let edge_arrow = AsciiRgb::from_hex24(0x7aa2f7);
+        let theme =
+            AsciiColorTheme::default_dark().with_role(AsciiColorRole::EdgeArrow, edge_arrow);
+
+        let options = AsciiRenderOptions::unicode()
+            .with_color_mode(AsciiColorMode::TrueColor)
+            .with_color_theme(theme);
+
+        assert_eq!(options.color_mode, AsciiColorMode::TrueColor);
+        assert_eq!(
+            options.color_theme.color_for(AsciiColorRole::EdgeArrow),
+            edge_arrow
+        );
+        assert_eq!(
+            options
+                .color_theme
+                .color_for(AsciiColorRole::ChartSeries(9)),
+            AsciiColorTheme::default_dark().color_for(AsciiColorRole::ChartSeries(1))
+        );
     }
 
     #[test]

@@ -21,13 +21,13 @@ Last updated: 2026-05-30
 
 ## M1 - First Color Infrastructure Slice
 
-- [ ] ACR-030 [owner=unassigned] [deps=ACR-020] [scope=crates/merman-ascii/src/color.rs,crates/merman-ascii/src/options.rs,crates/merman-ascii/src/canvas.rs]
+- [x] ACR-030 [owner=codex] [deps=ACR-020] [scope=crates/merman-ascii/src/color.rs,crates/merman-ascii/src/options.rs,crates/merman-ascii/src/canvas.rs]
   Goal: Add public color types, role-aware canvas storage, and forced ANSI/HTML encoders without
   changing default output.
   Validation: `cargo nextest run -p merman-ascii color canvas`; `cargo fmt --all --check`
   Review: No diagram renderer should receive color-specific layout logic.
   Evidence: Unit tests for plain, truecolor, ansi256, ansi16, and HTML span encoding.
-  Handoff: Flowchart can become the first semantic role writer after the encoder is stable.
+  Handoff: DONE. Flowchart can become the first semantic role writer after the encoder is stable.
 
 ## M2 - First Diagram Vertical Slice
 
