@@ -1,0 +1,45 @@
+# Workspace Release Versioning — Milestones
+
+Status: Active
+Last updated: 2026-05-30
+
+## M0 — Package Graph Frozen
+
+Exit criteria:
+
+- Package blockers are recorded with exact commands.
+- The lane explicitly treats FFI/UniFFI ABI work as complete.
+
+Status: complete. Current blockers are crates.io dependency availability and immutable `0.6.0`
+versions, not missing FFI ABI work.
+
+## M1 — Publish Order And Version Decision
+
+Exit criteria:
+
+- The next workspace version is selected.
+- Publish order is documented in dependency order.
+- The doc distinguishes publish preparation from actual `cargo publish`.
+
+## M2 — Version Alignment
+
+Exit criteria:
+
+- Workspace version and internal dependency version requirements agree.
+- Binding crates still compile after version alignment.
+
+## M3 — Package Gate Matrix
+
+Exit criteria:
+
+- Package file-list checks are recorded.
+- Full package verification results are recorded where possible.
+- Remaining crates.io-only blockers are explicit.
+
+## M4 — Closeout
+
+Exit criteria:
+
+- Focused checks pass.
+- Release blockers are closed or split.
+- Platform lanes can proceed from a documented baseline.

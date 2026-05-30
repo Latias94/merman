@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "slug": "workspace-release-versioning",
+  "title": "Workspace Release Versioning",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Binding crates are implemented but full cargo package verification is blocked by crates.io dependency availability and immutable 0.6.0 package versions.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/workspace-release-versioning/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/workspace-release-versioning/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/workspace-release-versioning/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/workspace-release-versioning/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/workspace-release-versioning/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/workspace-release-versioning/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/workspace-release-versioning/CONTEXT.jsonl",
+  "gates": [
+    "cargo check -p merman-ffi",
+    "cargo check -p merman-uniffi",
+    "cargo package -p merman-render --allow-dirty",
+    "cargo package -p merman-bindings-core --allow-dirty --list",
+    "cargo package -p merman-ffi --allow-dirty --list",
+    "cargo package -p merman-uniffi --allow-dirty --list",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/workspace-release-versioning/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "docs/workstreams/ffi-release-hardening/HANDOFF.md",
+    "docs/workstreams/uniffi-bindings/HANDOFF.md"
+  ],
+  "capability_tags": [
+    "release",
+    "packaging",
+    "ffi",
+    "bindings"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "WRV-020",
+    "notes": "Package graph is frozen. Continue by documenting publish order and selecting the next workspace version."
+  }
+}

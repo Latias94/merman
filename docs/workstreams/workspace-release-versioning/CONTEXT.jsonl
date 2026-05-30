@@ -1,0 +1,6 @@
+{"role":"root_manifest","path":"Cargo.toml","reason":"Workspace version and internal dependency versions."}
+{"role":"prior_workstream","path":"docs/workstreams/ffi-release-hardening/HANDOFF.md","reason":"First package concern and FFI package file-list evidence."}
+{"role":"prior_workstream","path":"docs/workstreams/uniffi-bindings/HANDOFF.md","reason":"Binding crates now depend on merman-bindings-core and need a release baseline."}
+{"role":"binding_crate","path":"crates/merman-bindings-core/Cargo.toml","reason":"New shared binding facade crate and feature requirements."}
+{"role":"binding_crate","path":"crates/merman-ffi/Cargo.toml","reason":"C ABI package depends on merman-bindings-core."}
+{"role":"binding_crate","path":"crates/merman-uniffi/Cargo.toml","reason":"UniFFI package depends on merman-bindings-core."}
