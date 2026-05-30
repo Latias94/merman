@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -116,3 +116,5 @@ This lane can close when:
 - support docs and the ASCII gap registry reflect the shipped state;
 - redundant implementations are removed where the new module supersedes them;
 - final gates are recorded in `EVIDENCE_AND_GATES.md`.
+
+Closed on 2026-05-30 after all five target concepts landed and final gates passed.

@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
@@ -13,7 +13,7 @@ The lane has been opened to execute five architecture deepening targets for `mer
 - sequence event plan seam,
 - ASCII gap registry.
 
-AAD-010 through AAD-060 are complete. The next task is AAD-070.
+AAD-010 through AAD-070 are complete. The lane is closed.
 
 ## Active Task
 
@@ -22,9 +22,9 @@ AAD-010 through AAD-060 are complete. The next task is AAD-070.
 - Files: `docs/workstreams/ascii-architecture-deepening`
 - Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
-- Status: NEEDS_CONTEXT
-- Review: Pending final review.
-- Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, closeout journal note
+- Status: DONE
+- Review: No blocking findings.
+- Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, `JOURNAL/2026-05-30-closeout.md`
 
 ## Decisions Since Last Update
 
@@ -53,12 +53,13 @@ AAD-010 through AAD-060 are complete. The next task is AAD-070.
   and control-frame ordering state to the event plan before row painting.
 - AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
 - The ASCII README links to the registry from the current status section.
+- AAD-070 final gates passed and the lane was closed.
 
 ## Blockers
 
-- None.
+- None. Follow-on feature gaps are tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
 
 ## Next Recommended Action
 
-- Commit AAD-060, then run final AAD-070 gates, update closeout docs, and close this lane if gates
-  remain green.
+- Start a new workstream from `crates/merman-ascii/ASCII_GAP_REGISTRY.md` when prioritizing the next
+  ASCII feature or route-planning expansion.

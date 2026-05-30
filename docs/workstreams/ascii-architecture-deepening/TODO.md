@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Scope And Evidence Freeze
@@ -77,11 +77,12 @@ Last updated: 2026-05-30
 
 ## M6 — Final Verification And Closeout
 
-- [ ] AAD-070 [owner=planner] [deps=AAD-060] [scope=docs/workstreams/ascii-architecture-deepening]
+- [x] AAD-070 [owner=planner] [deps=AAD-060] [scope=docs/workstreams/ascii-architecture-deepening]
   Goal: Run final gates, record evidence, close or split any unfinished target, and update handoff.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
   Review: Run workstream review before closing.
   Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, closeout journal note.
   Context: this workstream context manifest.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, or split follow-on.
+  Handoff: DONE on 2026-05-30. Final gates passed; no blocking review findings remain. Follow-on
+  feature gaps are tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.

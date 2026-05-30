@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -110,3 +110,8 @@ and residual risks in this file or a journal note.
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
 - 2026-05-30 — AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md` and linked it from the
   ASCII README. Passed `git diff --check -- crates/merman-ascii docs/workstreams/ascii-architecture-deepening`.
+- 2026-05-30 — AAD-070 final verification passed `cargo nextest run -p merman-ascii` with 163
+  tests, `cargo fmt --all --check`, `cargo clippy -p merman-ascii --all-targets -- -D warnings`,
+  and `git diff --check`.
+- 2026-05-30 — AAD-070 review found no blocking workstream compliance or code-quality findings.
+  Residual route/feature expansion risk is intentionally tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.

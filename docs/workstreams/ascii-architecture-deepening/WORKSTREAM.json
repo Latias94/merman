@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-architecture-deepening",
   "title": "ASCII Architecture Deepening",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "merman-ascii has shipped multiple diagram-family subsets, but text styling, graph routing, relation rendering, sequence event state, and gap tracking are still spread across shallow internal modules.",
@@ -116,6 +116,16 @@
       "date": "2026-05-30",
       "task": "AAD-060",
       "result": "passed git diff --check for crates/merman-ascii and this workstream"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-070",
+      "result": "passed final package, format, clippy, and diff-check gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-070",
+      "result": "closed the workstream with no blocking review findings"
     }
   ],
   "adr_refs": [
@@ -132,8 +142,8 @@
   ],
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
-    "default_action": "continue_next_task",
-    "next_task": "AAD-070",
-    "notes": "Run final verification gates and close the workstream if they remain green."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Closed. Use crates/merman-ascii/ASCII_GAP_REGISTRY.md to open the next ASCII feature or route-planning lane."
   }
 }
