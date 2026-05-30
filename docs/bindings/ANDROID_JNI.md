@@ -47,9 +47,10 @@ Combined platform gate:
 .\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
 ```
 
-To verify the standalone Android library module with Gradle 9.x:
+To verify the standalone Android library module with native slices and Gradle 9.x:
 
 ```powershell
+.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
 & "<gradle-install-dir>\bin\gradle.bat" -p platforms/android assembleRelease
 ```
 
@@ -65,5 +66,5 @@ set `MERMAN_GRADLE` instead of passing the parameter.
 ## Follow-On Packaging
 
 - Build every supported Android ABI in CI.
-- Package an AAR with generated `src/main/jniLibs`.
+- Add AAR publishing metadata once the release repository target is chosen.
 - Add emulator/device smoke once an Android CI target is available.

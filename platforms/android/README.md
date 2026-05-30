@@ -26,9 +26,10 @@ rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 ```
 
-Standalone Gradle verification, using Gradle 9.x:
+Standalone Gradle verification with native slices and Gradle 9.x:
 
 ```powershell
+.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
 & "<gradle-install-dir>\bin\gradle.bat" -p platforms/android assembleRelease
 # or, when gradle is already on PATH:
 gradle -p platforms/android assembleRelease
