@@ -952,7 +952,8 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   participant, message, and note formulas render without leaving raw message delimiters.
 - [x] Add a reproducible RaTeX/KaTeX dimension audit helper.
   Evidence: `cargo run -p merman-render --features ratex-math --example ratex_math_audit` emits the
-  Flowchart and Sequence markdown tables recorded in `RATEX_MATH_AUDIT.md`.
+  Flowchart and Sequence markdown tables recorded in `RATEX_MATH_AUDIT.md`, including the current
+  Flowchart docs math formulas and mixed prose/math composition probes.
 - [x] Render Flowchart single-formula prose/math labels through RaTeX.
   Evidence: Flowchart HTML-label metrics now compose prose fragments with measured math fragments
   when the selected backend can render the mixed label. `flowchart_svg_test` covers a mixed node

@@ -28,6 +28,16 @@ Flowchart samples use Mermaid's flowchart HTML-label shell at 16px:
 | `\pi r^2` | 29.875 | 18.65625 | 23.75 | 13.828125 |
 | `\alpha` | 11 | 9 | 10.296875 | 6.890625 |
 | `\sqrt{2+2}=\sqrt{4}=2` | 122.265625 | 18.9375 | 120.890625 | 17.3125 |
+| `\overbrace{a+b+c}^{\text{note}}` | 68.71875 | 34.53125 | 61.359375 | 32.90625 |
+| `x(t)=c_1\begin{bmatrix}-\cos{t}+\sin{t}\\ 2\cos{t} \end{bmatrix}e^{2t}` | 267.484375 | 25.15625 | 235.734375 | 19.421875 |
+
+Flowchart mixed prose/math samples compose text fragments with measured math fragments:
+
+| Label | KaTeX probe width | KaTeX probe height | RaTeX composed width | RaTeX composed height |
+| --- | ---: | ---: | ---: | ---: |
+| `Solve $$x^2$$` | 57.4375 | 24 | 57.9375 | 24 |
+| `Use $$\sqrt{x+3}$$ now` | 104.484375 | 24 | 114.5 | 24 |
+| `Matrix $$x(t)=c_1\begin{bmatrix}-\cos{t}+\sin{t}\\ 2\cos{t} \end{bmatrix}e^{2t}$$ state` | 348.6875 | 25.15625 | 326.609375 | 24 |
 
 Sequence samples use Mermaid's `width: fit-content` math shell:
 
@@ -39,15 +49,27 @@ Sequence samples use Mermaid's `width: fit-content` math shell:
 | `\pi r^2` | 25.6875 | 15.15625 | 24 | 19 |
 | `\alpha` | 10 | 7 | 10 | 19 |
 | `\sqrt{2+2}=\sqrt{4}=2` | 101.5 | 16.78125 | 121 | 19 |
+| `\overbrace{a+b+c}^{\text{note}}` | 57.25 | 29.25 | 61 | 35 |
+| `x(t)=c_1\begin{bmatrix}-\cos{t}+\sin{t}\\ 2\cos{t} \end{bmatrix}e^{2t}` | 220.34375 | 20.65625 | 236 | 21 |
 
 ## Findings
 
 - A single global RaTeX scale factor is not defensible. Width and height deltas change by formula
   and by diagram shell. For example, `\sqrt{x+3}` is almost width-identical in Flowchart but much
-  wider in Sequence, while `\frac{1}{2}` is slightly wider/taller in RaTeX for Flowchart.
+  wider in Sequence, while `\frac{1}{2}` is slightly wider/taller in RaTeX for Flowchart. The
+  matrix sample flips direction by shell too: RaTeX is narrower than the current Flowchart KaTeX
+  probe but wider than the Sequence `width: fit-content` probe.
 - RaTeX can render the current Flowchart docs math fixture formulas, including fractions,
   radicals, `\text`, cases, matrices, and `\overbrace`. Flowchart also supports single-formula
   prose/math labels by composing text fragments with measured math fragments.
+- The current `upstream_docs_math_flowcharts_001` root residual is not a useful RaTeX scale target.
+  A focused `compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter
+  upstream_docs_math_flowcharts_001 --report-root-all` reports the committed Mermaid baseline root
+  at `640.391x186.648` and the current local Node/KaTeX browser probe root at `621.953x178.5`.
+  The exported baseline's math foreignObject widths are larger for `\sqrt{x+3}`, `\overbrace`,
+  and the matrix formula than this machine's current browser-shell probe, so the strict policy
+  should keep treating that fixture as exact accepted browser MathML drift until a stable upstream
+  metric source is available.
 - Sequence can render pure math participant and note labels through RaTeX. It now also renders
   single-formula prose/math messages such as `Solve: $$\sqrt{2+2}$$` by using a Sequence-specific
   render hook plus layout-side text/math metric composition.
@@ -75,7 +97,5 @@ renderer path plus documentation.
 
 ## Follow-ups
 
-- Extend `examples/ratex_math_audit.rs` with mixed prose/math probes if Flowchart or Sequence
-  calibration needs to compare composed text/math labels directly.
 - Revisit multiple formulas on one line separately; Mermaid's current greedy `$$...$$` replacement
   treats that case differently from a non-greedy fragment parser.

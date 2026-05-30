@@ -3,6 +3,13 @@
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
+## 2026-05-30
+
+- Extended the RaTeX/KaTeX audit helper with Flowchart docs-formula samples and mixed prose/math
+  probes. `RATEX_MATH_AUDIT.md` now records that the current
+  `upstream_docs_math_flowcharts_001` residual is browser MathML metric drift in the Node/KaTeX
+  shell, not evidence for a single RaTeX calibration scale.
+
 ## 2026-05-19
 
 - Recorded the current strict root parity residuals for the Flowchart math fixture plus the
