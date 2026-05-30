@@ -91,7 +91,6 @@ pub struct RatexMathRenderer;
 #[cfg(feature = "ratex-math")]
 #[derive(Debug, Clone)]
 struct RatexRenderedMath {
-    html: String,
     width_em: f64,
     height_em: f64,
     line_count: usize,
@@ -172,29 +171,23 @@ impl RatexMathRenderer {
 
     fn render_math_only_label(text: &str) -> Option<RatexRenderedMath> {
         let formulas = Self::math_only_lines(text)?;
-        let mut html = String::new();
         let mut width_em: f64 = 0.0;
         let mut height_em: f64 = 0.0;
         let mut line_count = 0usize;
         for formula in formulas {
-            let (svg, line_width_em, line_height_em) = Self::render_formula_svg_em(&formula)?;
+            let (_svg, line_width_em, line_height_em) = Self::render_formula_svg_em(&formula)?;
             width_em = width_em.max(line_width_em);
             height_em += line_height_em;
             line_count += 1;
-            let _ = write!(
-                &mut html,
-                r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{svg}</div>"#
-            );
         }
         Some(RatexRenderedMath {
-            html,
             width_em,
             height_em,
             line_count: line_count.max(1),
         })
     }
 
-    fn render_sequence_line_html(line: &str) -> Option<String> {
+    fn render_katex_like_line_html(line: &str) -> Option<String> {
         if !line.contains("$$") {
             return Some(line.to_string());
         }
@@ -216,7 +209,7 @@ impl RatexMathRenderer {
         Some(html)
     }
 
-    fn render_sequence_label(text: &str) -> Option<String> {
+    fn render_katex_like_label(text: &str) -> Option<String> {
         let normalized = Self::normalized_text(text);
         if !normalized.contains("$$") {
             return None;
@@ -227,7 +220,7 @@ impl RatexMathRenderer {
         for line in split_html_br_lines(&normalized) {
             if line.contains("$$") {
                 saw_math = true;
-                let rendered_line = Self::render_sequence_line_html(line)?;
+                let rendered_line = Self::render_katex_like_line_html(line)?;
                 let _ = write!(
                     &mut html,
                     r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{rendered_line}</div>"#
@@ -266,11 +259,11 @@ impl MathRenderer for RatexMathRenderer {
         if !text.contains("$$") {
             return None;
         }
-        Some(Self::render_math_only_label(text)?.html)
+        Self::render_katex_like_label(text)
     }
 
     fn render_sequence_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
-        Self::render_sequence_label(text)
+        Self::render_katex_like_label(text)
     }
 
     fn measure_html_label(
@@ -700,11 +693,16 @@ mod tests {
             sanitized.contains("<svg") && sanitized.contains("<path"),
             "sanitizer should preserve RaTeX inline SVG: {sanitized}"
         );
+        let mixed_html = renderer
+            .render_html_label("value: $$x^2$$", &config)
+            .expect("RaTeX HTML rendering should support prose plus math");
         assert!(
-            renderer
-                .render_html_label("value: $$x^2$$", &config)
-                .is_none(),
-            "Flowchart RaTeX labels stay math-only until their DOM metrics are modeled"
+            mixed_html.contains("value: ") && mixed_html.contains("<svg"),
+            "unexpected mixed math HTML: {mixed_html}"
+        );
+        assert!(
+            !mixed_html.contains("$$"),
+            "mixed math HTML should replace source delimiters: {mixed_html}"
         );
 
         let mixed_sequence = renderer

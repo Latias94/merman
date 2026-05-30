@@ -1,6 +1,6 @@
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode, round_to_1_64_px};
 use merman_core::MermaidConfig;
 
 pub(crate) struct FlowchartLabelMetricsRequest<'a> {
@@ -14,6 +14,94 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(crate) preserve_string_whitespace_height: bool,
     pub(crate) whole_label_font_style: Option<&'a str>,
+}
+
+fn measure_flowchart_text_fragment(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+) -> TextMetrics {
+    measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+}
+
+fn measure_flowchart_mixed_math_line(
+    measurer: &dyn TextMeasurer,
+    line: &str,
+    style: &TextStyle,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<(f64, f64)> {
+    let start = line.find("$$")?;
+    let content_start = start + 2;
+    let end_start = line[content_start..].rfind("$$")? + content_start;
+    if end_start < content_start {
+        return None;
+    }
+    let formula = &line[content_start..end_start];
+    if formula.contains("$$") {
+        return None;
+    }
+
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    for text in [&line[..start], &line[end_start + 2..]] {
+        if text.is_empty() {
+            continue;
+        }
+        let metrics = measure_flowchart_text_fragment(measurer, text, style);
+        width += metrics.width.max(0.0);
+        height = height.max(metrics.height.max(0.0));
+    }
+
+    let chunk = &line[start..end_start + 2];
+    let math_metrics = math_renderer.measure_html_label(
+        chunk,
+        config,
+        style,
+        Some(10_000.0),
+        WrapMode::HtmlLike,
+    )?;
+    width += math_metrics.width.max(0.0);
+    height = height.max(math_metrics.height.max(0.0));
+
+    Some((width, height.max(1.0)))
+}
+
+fn flowchart_mixed_math_label_metrics(
+    measurer: &dyn TextMeasurer,
+    raw_label: &str,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    config: &MermaidConfig,
+    math_renderer: &(dyn MathRenderer + Send + Sync),
+) -> Option<TextMetrics> {
+    if !raw_label.contains("$$") {
+        return None;
+    }
+    math_renderer.render_html_label(raw_label, config)?;
+
+    let mut saw_math = false;
+    let mut width = 0.0_f64;
+    let mut height = 0.0_f64;
+    let mut line_count = 0usize;
+    for line in crate::text::split_html_br_lines(raw_label) {
+        line_count += 1;
+        let (line_width, line_height) = if line.contains("$$") {
+            saw_math = true;
+            measure_flowchart_mixed_math_line(measurer, line, style, config, math_renderer)?
+        } else {
+            let metrics = measurer.measure_wrapped(line, style, max_width_px, WrapMode::HtmlLike);
+            (metrics.width.max(0.0), metrics.height.max(0.0))
+        };
+        width = width.max(line_width);
+        height += line_height;
+    }
+
+    saw_math.then_some(TextMetrics {
+        width: round_to_1_64_px(width),
+        height: round_to_1_64_px(height.max(1.0)),
+        line_count: line_count.max(1),
+    })
 }
 
 pub(crate) fn flowchart_label_metrics_for_layout(
@@ -35,8 +123,19 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
         // Upstream Mermaid measures KaTeX-rendered HTML labels via DOM. Keep pure-Rust as the
         // default behavior, but allow an optional backend to override label metrics.
-        math_renderer
-            .and_then(|r| r.measure_html_label(raw_label, config, style, max_width_px, wrap_mode))
+        math_renderer.and_then(|r| {
+            r.measure_html_label(raw_label, config, style, max_width_px, wrap_mode)
+                .or_else(|| {
+                    flowchart_mixed_math_label_metrics(
+                        measurer,
+                        raw_label,
+                        style,
+                        max_width_px,
+                        config,
+                        r,
+                    )
+                })
+        })
     } else {
         None
     };

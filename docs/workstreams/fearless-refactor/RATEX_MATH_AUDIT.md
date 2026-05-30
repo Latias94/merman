@@ -10,6 +10,7 @@ This note records the first RaTeX-vs-Mermaid/KaTeX audit for merman's optional
 - Backend under review: `merman_render::math::RatexMathRenderer`.
 - Mermaid reference path: local `NodeKatexMathRenderer` probe using the pinned
   `tools/mermaid-cli` dependencies.
+- Repro helper: `cargo run -p merman-render --features ratex-math --example ratex_math_audit`.
 - Diagram paths checked: Flowchart HTML labels and Sequence math labels.
 - RaTeX source reference: `repo-ref/RaTeX`; its README documents broad typical math support and
   command-level KaTeX gaps for DOM/trust extensions such as `\includegraphics`, `\htmlClass`,
@@ -45,18 +46,19 @@ Sequence samples use Mermaid's `width: fit-content` math shell:
   and by diagram shell. For example, `\sqrt{x+3}` is almost width-identical in Flowchart but much
   wider in Sequence, while `\frac{1}{2}` is slightly wider/taller in RaTeX for Flowchart.
 - RaTeX can render the current Flowchart docs math fixture formulas, including fractions,
-  radicals, `\text`, cases, matrices, and `\overbrace`. The fixture now has feature-gated SVG
-  coverage.
+  radicals, `\text`, cases, matrices, and `\overbrace`. Flowchart also supports single-formula
+  prose/math labels by composing text fragments with measured math fragments.
 - Sequence can render pure math participant and note labels through RaTeX. It now also renders
   single-formula prose/math messages such as `Solve: $$\sqrt{2+2}$$` by using a Sequence-specific
   render hook plus layout-side text/math metric composition.
 
 ## Decision
 
-Do not add ad hoc RaTeX calibration constants yet. Sequence mixed prose/math support should stay
-model-based: prose fragments are measured with the existing Sequence text measurer, while pure math
-fragments are measured by the selected math backend. Flowchart mixed prose/math remains out of scope
-until its HTML-label DOM metrics are modeled or calibrated with clear provenance.
+Do not add ad hoc RaTeX calibration constants yet. Mixed prose/math support should stay model-based:
+prose fragments are measured with the owning diagram's text measurer, while pure math fragments are
+measured by the selected math backend. Flowchart and Sequence now support one formula per line;
+multiple formulas on one line are still intentionally left to a separate parser decision because
+Mermaid's current `$$...$$` replacement is greedy.
 
 ## Verification
 
@@ -65,6 +67,7 @@ Fresh validation on 2026-05-30:
 - `cargo fmt --check`
 - `cargo nextest run -p merman-render --features ratex-math --test flowchart_svg_test --test sequence_svg_test ratex`
 - `cargo nextest run -p merman-render --features ratex-math --lib ratex_math_renderer`
+- `cargo run -p merman-render --features ratex-math --example ratex_math_audit`
 - `cargo check -p merman-cli --features ratex-math`
 
 The no-feature CLI gate was not rerun because this change only affects the feature-gated RaTeX
@@ -72,9 +75,7 @@ renderer path plus documentation.
 
 ## Follow-ups
 
-- Add a small audit helper that emits the RaTeX/KaTeX dimension table from local probes instead of
-  relying on manually captured command output.
-- Extend Flowchart math measurement only after deciding whether mixed prose/math HTML labels should
-  target visual ink parity, DOM bbox parity, or stable pure-Rust deterministic output.
+- Extend `examples/ratex_math_audit.rs` with mixed prose/math probes if Flowchart or Sequence
+  calibration needs to compare composed text/math labels directly.
 - Revisit multiple formulas on one line separately; Mermaid's current greedy `$$...$$` replacement
   treats that case differently from a non-greedy fragment parser.

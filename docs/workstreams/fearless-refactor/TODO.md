@@ -950,6 +950,13 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: Sequence now has a dedicated math render hook and a layout-side mixed-label metric
   path that composes text fragments with measured math fragments. The docs fixture verifies
   participant, message, and note formulas render without leaving raw message delimiters.
+- [x] Add a reproducible RaTeX/KaTeX dimension audit helper.
+  Evidence: `cargo run -p merman-render --features ratex-math --example ratex_math_audit` emits the
+  Flowchart and Sequence markdown tables recorded in `RATEX_MATH_AUDIT.md`.
+- [x] Render Flowchart single-formula prose/math labels through RaTeX.
+  Evidence: Flowchart HTML-label metrics now compose prose fragments with measured math fragments
+  when the selected backend can render the mixed label. `flowchart_svg_test` covers a mixed node
+  label and a mixed edge label end to end.
 
 ## P3: Documentation Cleanup
 
