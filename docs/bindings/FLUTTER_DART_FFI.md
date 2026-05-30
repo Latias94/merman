@@ -29,6 +29,12 @@ flutter analyze
 dart run example/smoke.dart ../../target/debug/merman_ffi.dll
 ```
 
+Android packaging smoke:
+
+```powershell
+.\platforms\flutter\tool\android-smoke.ps1
+```
+
 Use `../../target/debug/libmerman_ffi.so` on Linux and
 `../../target/debug/libmerman_ffi.dylib` on macOS.
 

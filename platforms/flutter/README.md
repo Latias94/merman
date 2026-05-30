@@ -57,3 +57,9 @@ platforms/android/src/main/jniLibs
 ```
 
 `jniLibs` is generated output and is not committed.
+
+To verify plugin packaging through a temporary Android app:
+
+```powershell
+.\platforms\flutter\tool\android-smoke.ps1
+```
