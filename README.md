@@ -16,6 +16,8 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
   ASCII/Unicode text).
 - Want a library? Use [`merman`](crates/merman) (`render` for SVG; `ascii` for text;
   `raster` for PNG/JPG/PDF).
+- Embedding from C, C++, Swift, Kotlin, Dart FFI, or other native hosts? Use
+  [`merman-ffi`](crates/merman-ffi) and [`docs/bindings/FFI_PROTOCOL.md`](docs/bindings/FFI_PROTOCOL.md).
 - Only need parsing / semantic JSON? Use [`merman-core`](crates/merman-core).
 - Quality gate: `cargo run -p xtask -- verify` (fmt + nextest + DOM parity sweep).
 
@@ -25,6 +27,7 @@ changes that affect semantics, layout, or rendering are caught and reviewed.
 - [Install](#install)
 - [Quickstart (CLI)](#quickstart-cli)
 - [Quickstart (library)](#quickstart-library)
+- [Quickstart (C ABI)](#quickstart-c-abi)
 - [Showcase](#showcase)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
@@ -78,6 +81,15 @@ cargo add merman --features ascii
 # Library (SVG + PNG/JPG/PDF)
 cargo add merman --features raster
 ```
+
+For the C ABI:
+
+```sh
+cargo build -p merman-ffi --release
+```
+
+Use [`crates/merman-ffi/include/merman.h`](crates/merman-ffi/include/merman.h) and link the
+platform-specific library artifact from `target/release`.
 
 MSRV is `rust-version = 1.87`.
 
@@ -231,6 +243,28 @@ Runnable example:
 ```bash
 cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
 ```
+
+## Quickstart (C ABI)
+
+The [`merman-ffi`](crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The first
+release candidate supports SVG rendering, semantic JSON, layout JSON, and explicit Rust-owned
+buffer release.
+
+```c
+#include "merman.h"
+
+static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
+
+MermanResult result = merman_render_svg(source, sizeof(source) - 1, NULL, 0);
+if (result.code == MERMAN_OK) {
+    /* result.data contains UTF-8 SVG bytes. */
+}
+merman_buffer_free(result.data);
+```
+
+Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_free`. See
+[`docs/bindings/FFI_PROTOCOL.md`](docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
+threading, and compatibility rules.
 
 ### Math Labels
 
@@ -492,6 +526,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 
 - Headless parsing: [`merman-core`](crates/merman-core)
 - Convenience API: [`merman`](crates/merman) (enable `render` for layout + SVG)
+- C ABI bindings: [`merman-ffi`](crates/merman-ffi)
 - Rendering + layout stack: [`merman-render`](crates/merman-render)
 - Layout ports:
   - [`dugong`](crates/dugong): Dagre-compatible layout (port of `dagrejs/dagre`)

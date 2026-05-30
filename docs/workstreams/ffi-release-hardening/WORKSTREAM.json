@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "slug": "ffi-release-hardening",
+  "title": "FFI Release Hardening",
+  "status": "closed",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "The first C ABI release candidate needs package validation, realistic C consumer coverage, and a visible documentation entry point before higher-level bindings build on it.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/ffi-release-hardening/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ffi-release-hardening/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ffi-release-hardening/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ffi-release-hardening/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ffi-release-hardening/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ffi-release-hardening/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ffi-release-hardening/CONTEXT.jsonl",
+  "gates": [
+    "cargo nextest run -p merman-ffi c_consumer_smoke",
+    "cargo package -p merman-ffi --allow-dirty --list",
+    "cargo nextest run -p merman-ffi",
+    "cargo fmt -p merman-ffi -- --check",
+    "cargo clippy -p merman-ffi --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    "docs/workstreams/ffi-release-hardening/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md",
+    "docs/adr/0050-release-quality-gates.md"
+  ],
+  "architecture_refs": [
+    "docs/workstreams/ffi-api/HANDOFF.md",
+    "docs/bindings/FFI_PROTOCOL.md"
+  ],
+  "capability_tags": [
+    "ffi",
+    "bindings",
+    "release-hardening",
+    "public-api"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed with one package verification concern: full cargo package for merman-ffi is blocked until a newer workspace dependency version containing merman-render/ratex-math is published. Continue with uniffi-bindings or a workspace release-versioning lane."
+  }
+}

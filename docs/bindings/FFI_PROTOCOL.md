@@ -12,6 +12,28 @@ Authoritative code:
 - `docs/adr/0066-ffi-binding-strategy.md`
 - `docs/workstreams/ffi-api/DESIGN.md`
 
+## Build And Link
+
+Build the C ABI artifacts from the workspace:
+
+```sh
+cargo build -p merman-ffi --release
+```
+
+`merman-ffi` is configured as `cdylib`, `staticlib`, and `rlib`. C and C-compatible hosts should
+include `crates/merman-ffi/include/merman.h` and link the platform-specific artifact from
+`target/release`.
+
+Feature examples:
+
+```sh
+cargo build -p merman-ffi --release --features ratex-math
+cargo build -p merman-ffi --release --features raster,ratex-math
+```
+
+The current C ABI exposes SVG, semantic JSON, and layout JSON. Raster byte outputs are not part of
+this protocol version even though the Rust crate has a reserved `raster` feature gate.
+
 ## Stability
 
 The protocol is pre-1.0. Hosts should still treat these rules as the compatibility baseline for the

@@ -397,8 +397,8 @@ fn build_renderer(options: &FfiOptions) -> Result<(HeadlessRenderer, PipelineKin
             "ratex" => {
                 #[cfg(feature = "ratex-math")]
                 {
-                    renderer =
-                        renderer.with_math_renderer(Arc::new(merman::render::RatexMathRenderer));
+                    renderer = renderer
+                        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
                 }
                 #[cfg(not(feature = "ratex-math"))]
                 {

@@ -1,0 +1,4 @@
+{"role":"adr","path":"docs/adr/0066-ffi-binding-strategy.md","reason":"Canonical binding strategy and C ABI ownership decision."}
+{"role":"prior_workstream","path":"docs/workstreams/ffi-api/HANDOFF.md","reason":"Closed first FFI lane with follow-on recommendations."}
+{"role":"protocol","path":"docs/bindings/FFI_PROTOCOL.md","reason":"Current public C ABI contract."}
+{"role":"gate_policy","path":"docs/adr/0050-release-quality-gates.md","reason":"Release gate expectations and scope boundaries."}
