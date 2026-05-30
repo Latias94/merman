@@ -33,30 +33,6 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
     }
 }
 
-pub(super) fn push_label_on_canvas_lines(
-    labels: &mut Vec<EdgeLabel>,
-    lines: &[Vec<CanvasCoord>],
-    label: Option<&str>,
-) {
-    let Some(label) = label else {
-        return;
-    };
-    let Some(line) = lines.iter().max_by_key(|line| line.len()) else {
-        return;
-    };
-    push_label_on_canvas_line(labels, line, label);
-}
-
-fn push_label_on_canvas_line(labels: &mut Vec<EdgeLabel>, line: &[CanvasCoord], label: &str) {
-    let Some(first) = line.first().copied() else {
-        return;
-    };
-    let Some(last) = line.last().copied() else {
-        return;
-    };
-    push_label(labels, first, last, Some(label));
-}
-
 pub(super) fn push_label_on_horizontal_line(
     labels: &mut Vec<EdgeLabel>,
     start_x: usize,

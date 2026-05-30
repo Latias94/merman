@@ -1,5 +1,5 @@
 use super::charset::GraphCharset;
-use super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
+use super::layout::{CanvasCoord, GraphLayout, NodeLayout};
 use super::model::{
     AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStyle, GraphNodeShape,
 };
@@ -15,12 +15,10 @@ mod plan;
 pub(super) use cell::RouteCells;
 use cell::{edge_line_char, set_edge_arrow, set_edge_line, set_route_cell};
 pub(super) use label::{EdgeLabel, draw_routed_label};
-use label::{
-    push_label_on_canvas_lines, push_label_on_horizontal_line, push_label_on_vertical_line,
-};
-use path::{Port, StepDirection, merge_grid_path, route_grid_path, step_direction};
+use label::{push_label_on_horizontal_line, push_label_on_vertical_line};
 use plan::{
-    PlannedRouteCellKind, RoutePlan, plan_left_right_direct_route, plan_top_down_direct_route,
+    PlannedRouteCellKind, RoutePlan, plan_left_right_direct_route, plan_left_right_grid_path_route,
+    plan_top_down_direct_route,
 };
 
 pub(super) struct RouteDrawing<'a> {
@@ -261,237 +259,11 @@ fn draw_left_right_grid_path_edge(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> bool {
-    let Some((path, start_port, end_port)) = route_grid_path(&graph_layout.nodes, from, to) else {
+    let Some(plan) = plan_left_right_grid_path_route(graph_layout, from, to, edge, charset) else {
         return false;
     };
-    if path.len() < 2 {
-        return false;
-    }
-
-    let path = merge_grid_path(path);
-    let (lines_drawn, line_dirs) = draw_grid_path(
-        drawing.canvas,
-        drawing.route_cells,
-        graph_layout,
-        &path,
-        edge,
-        charset,
-    );
-    if lines_drawn.is_empty() || line_dirs.is_empty() {
-        return false;
-    }
-    draw_grid_corners(
-        drawing.canvas,
-        drawing.route_cells,
-        graph_layout,
-        &path,
-        charset,
-    );
-    draw_grid_box_start(
-        drawing.canvas,
-        lines_drawn[0].as_slice(),
-        start_port,
-        charset,
-    );
-    draw_grid_arrow_head(
-        drawing.canvas,
-        lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
-        *line_dirs.last().unwrap_or(&end_port.step_fallback()),
-        edge,
-        charset,
-    );
-    push_label_on_canvas_lines(drawing.labels, &lines_drawn, edge.label.as_deref());
+    paint_route_plan(drawing, &plan);
     true
-}
-
-fn draw_grid_path(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    graph_layout: &GraphLayout,
-    path: &[GridCoord],
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> (Vec<Vec<CanvasCoord>>, Vec<StepDirection>) {
-    let mut lines_drawn = Vec::new();
-    let mut line_dirs = Vec::new();
-
-    for segment in path.windows(2) {
-        let direction = step_direction(segment[0], segment[1]);
-        let line = draw_grid_line(
-            canvas,
-            route_cells,
-            graph_layout.grid_to_canvas(segment[0]),
-            graph_layout.grid_to_canvas(segment[1]),
-            direction,
-            edge,
-            charset,
-        );
-        if !line.is_empty() {
-            lines_drawn.push(line);
-            line_dirs.push(direction);
-        }
-    }
-
-    (lines_drawn, line_dirs)
-}
-
-fn draw_grid_line(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    from: CanvasCoord,
-    to: CanvasCoord,
-    direction: StepDirection,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> Vec<CanvasCoord> {
-    let mut drawn = Vec::new();
-    match direction {
-        StepDirection::Right => {
-            let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
-            for x in (from.x + 1)..to.x {
-                set_route_cell(canvas, route_cells, x, from.y, line);
-                drawn.push(CanvasCoord { x, y: from.y });
-            }
-        }
-        StepDirection::Left => {
-            let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
-            for x in ((to.x + 1)..from.x).rev() {
-                set_route_cell(canvas, route_cells, x, from.y, line);
-                drawn.push(CanvasCoord { x, y: from.y });
-            }
-        }
-        StepDirection::Down => {
-            let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-            for y in (from.y + 1)..to.y {
-                set_route_cell(canvas, route_cells, from.x, y, line);
-                drawn.push(CanvasCoord { x: from.x, y });
-            }
-        }
-        StepDirection::Up => {
-            let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-            for y in ((to.y + 1)..from.y).rev() {
-                set_route_cell(canvas, route_cells, from.x, y, line);
-                drawn.push(CanvasCoord { x: from.x, y });
-            }
-        }
-    }
-    drawn
-}
-
-fn draw_grid_corners(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    graph_layout: &GraphLayout,
-    path: &[GridCoord],
-    charset: &GraphCharset,
-) {
-    for index in 1..path.len().saturating_sub(1) {
-        let previous = step_direction(path[index - 1], path[index]);
-        let next = step_direction(path[index], path[index + 1]);
-        let coord = graph_layout.grid_to_canvas(path[index]);
-        set_route_cell(
-            canvas,
-            route_cells,
-            coord.x,
-            coord.y,
-            grid_corner_char(previous, next, charset),
-        );
-    }
-}
-
-fn grid_corner_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {
-    if !charset.unicode {
-        return '+';
-    }
-
-    match (previous, next) {
-        (StepDirection::Right, StepDirection::Down) | (StepDirection::Up, StepDirection::Left) => {
-            charset.top_right
-        }
-        (StepDirection::Right, StepDirection::Up) | (StepDirection::Down, StepDirection::Left) => {
-            charset.corner_right_up
-        }
-        (StepDirection::Left, StepDirection::Down) | (StepDirection::Up, StepDirection::Right) => {
-            charset.top_left
-        }
-        (StepDirection::Left, StepDirection::Up) | (StepDirection::Down, StepDirection::Right) => {
-            charset.corner_down_right
-        }
-        _ => '+',
-    }
-}
-
-fn draw_grid_box_start(
-    canvas: &mut Canvas,
-    first_line: &[CanvasCoord],
-    start_port: Port,
-    charset: &GraphCharset,
-) {
-    if !charset.unicode {
-        return;
-    }
-    let Some(from) = first_line.first().copied() else {
-        return;
-    };
-
-    match start_port.step_fallback() {
-        StepDirection::Up => set_edge_line(canvas, from.x, from.y + 1, charset.up_connector),
-        StepDirection::Down => set_edge_line(
-            canvas,
-            from.x,
-            from.y.saturating_sub(1),
-            charset.down_connector,
-        ),
-        StepDirection::Left => set_edge_line(canvas, from.x + 1, from.y, charset.left_connector),
-        StepDirection::Right => set_edge_line(
-            canvas,
-            from.x.saturating_sub(1),
-            from.y,
-            charset.right_connector,
-        ),
-    }
-}
-
-fn draw_grid_arrow_head(
-    canvas: &mut Canvas,
-    last_line: &[CanvasCoord],
-    fallback: StepDirection,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    if edge.arrow == GraphEdgeArrow::Open {
-        return;
-    }
-    let Some(last) = last_line.last().copied() else {
-        return;
-    };
-    let direction = last_line
-        .first()
-        .and_then(|first| canvas_line_direction(*first, last))
-        .unwrap_or(fallback);
-    let ch = match direction {
-        StepDirection::Up => charset.arrow_up,
-        StepDirection::Down => charset.arrow_down,
-        StepDirection::Left => charset.arrow_left,
-        StepDirection::Right => charset.arrow_right,
-    };
-    set_edge_arrow(canvas, last.x, last.y, ch);
-}
-
-fn canvas_line_direction(from: CanvasCoord, to: CanvasCoord) -> Option<StepDirection> {
-    if from.x == to.x {
-        if from.y < to.y {
-            Some(StepDirection::Down)
-        } else if from.y > to.y {
-            Some(StepDirection::Up)
-        } else {
-            None
-        }
-    } else if from.x < to.x {
-        Some(StepDirection::Right)
-    } else {
-        Some(StepDirection::Left)
-    }
 }
 
 fn apply_edge_style_delta(canvas: &mut Canvas, before: &Canvas, style: GraphEdgeStyle) {
