@@ -1,0 +1,30 @@
+[package]
+name = "merman-uniffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "UniFFI bindings for merman headless Mermaid rendering."
+documentation = "https://docs.rs/merman-uniffi"
+keywords = ["mermaid", "diagrams", "uniffi", "svg", "headless"]
+categories = ["api-bindings", "visualization"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["render"]
+render = ["merman-bindings-core/render"]
+ratex-math = ["render", "merman-bindings-core/ratex-math"]
+raster = ["merman-bindings-core/raster"]
+
+[dependencies]
+merman-bindings-core.workspace = true
+thiserror.workspace = true
+uniffi.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

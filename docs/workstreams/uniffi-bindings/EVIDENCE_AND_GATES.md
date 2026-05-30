@@ -98,3 +98,15 @@ Use a narrower closeout gate if the workspace is too large, and explain why.
   passed.
 - 2026-05-30: `cargo fmt -p merman-bindings-core -p merman-ffi -- --check` passed.
 - 2026-05-30: `git diff --check` passed.
+- 2026-05-30: `UBI-030` added `crates/merman-uniffi` with a `MermanEngine` object and structured
+  `MermanError` over `merman-bindings-core`.
+- 2026-05-30: `cargo check -p merman-uniffi` passed.
+- 2026-05-30: `cargo test -p merman-uniffi` passed (`5` unit tests plus doc-tests).
+- 2026-05-30: `cargo nextest run -p merman-uniffi` passed (`5` tests).
+- 2026-05-30: `cargo check -p merman-uniffi --features ratex-math` passed.
+- 2026-05-30: `cargo check -p merman-uniffi --features raster,ratex-math` passed.
+- 2026-05-30: `cargo clippy -p merman-uniffi --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo clippy -p merman-uniffi --features ratex-math --all-targets -- -D warnings`
+  passed.
+- 2026-05-30: `cargo fmt -p merman-uniffi -- --check` passed.
+- 2026-05-30: `git diff --check` passed after `UBI-030`.

@@ -27,13 +27,15 @@ Last updated: 2026-05-30
 
 ## M2 — Minimal UniFFI Crate
 
-- [ ] UBI-030 [owner=codex] [deps=UBI-020] [scope=crates/merman-uniffi]
+- [x] UBI-030 [owner=codex] [deps=UBI-020] [scope=crates/merman-uniffi]
   Goal: Add a minimal UniFFI crate exposing `render_svg`, `parse_json`, and `layout_json` over the shared facade.
   Validation: cargo check -p merman-uniffi && cargo test -p merman-uniffi
   Review: UniFFI API should be idiomatic but must not redefine the canonical C ABI protocol.
   Evidence: UniFFI crate tests and generated scaffolding build output.
   Context: docs/workstreams/uniffi-bindings/CONTEXT.jsonl
-  Handoff: Keep platform packaging out of this task.
+  Handoff: DONE. Added `crates/merman-uniffi` with a `MermanEngine` UniFFI object, `render_svg`,
+  `parse_json`, and `layout_json` methods over `merman-bindings-core`, and a rich `MermanError`
+  carrying `code`, `code_name`, and `message`.
 
 ## M3 — Generated Binding Smoke
 

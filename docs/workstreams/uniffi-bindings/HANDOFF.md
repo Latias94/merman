@@ -5,8 +5,8 @@ Last updated: 2026-05-30
 
 ## Current State
 
-`UBI-020` is complete. `crates/merman-bindings-core` is now the shared safe facade used by external
-binding crates.
+`UBI-020` and `UBI-030` are complete. `crates/merman-bindings-core` is now the shared safe facade,
+and `crates/merman-uniffi` exposes the minimal UniFFI object surface.
 
 Confirmed dependency context:
 
@@ -22,17 +22,18 @@ Completed facade shape:
 - owns renderer setup, options parsing, pipeline selection, and feature-gated RaTeX selection
 - keeps unsafe pointer and buffer ownership inside `merman-ffi`
 
+Completed UniFFI shape:
+
+- `MermanEngine::new()`
+- `MermanEngine::render_svg(source, options_json)`
+- `MermanEngine::parse_json(source, options_json)`
+- `MermanEngine::layout_json(source, options_json)`
+- `MermanError::Binding { code, code_name, message }`
+
 ## Next Task
 
-`UBI-030`: add `crates/merman-uniffi` exposing `render_svg`, `parse_json`, and `layout_json` over
-`merman-bindings-core`.
-
-Recommended shape:
-
-- use UniFFI 0.31.1
-- expose a small `MermanEngine` object or equivalent free functions
-- map `BindingError` into UniFFI-compatible structured errors
-- keep generated platform packages out of this task
+`UBI-040`: run a generated binding smoke into a temporary output directory. Do not commit generated
+Swift/Kotlin/Python/Ruby artifacts unless a packaging lane explicitly decides to track them.
 
 ## Guardrails
 

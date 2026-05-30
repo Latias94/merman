@@ -30,6 +30,9 @@ Exit criteria:
 - The crate exposes minimal render/parse/layout methods.
 - Errors are mapped consistently with the shared facade.
 
+Status: complete. `merman-uniffi` exposes `MermanEngine` methods for SVG, semantic JSON, and layout
+JSON, with structured error mapping from `BindingError`.
+
 ## M3 — Generated Binding Smoke
 
 Exit criteria:

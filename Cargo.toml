@@ -8,6 +8,7 @@ members = [
   "crates/merman-cli",
   "crates/merman-ffi",
   "crates/merman-render",
+  "crates/merman-uniffi",
   "crates/dugong",
   "crates/dugong-graphlib",
   "crates/manatee",
@@ -53,6 +54,7 @@ serde_yaml = "0.9.34"
 json5 = "0.4.1"
 thiserror = "2.0.11"
 tracing = "0.1.41"
+uniffi = "0.31.1"
 futures = "0.3.31"
 hashbrown = "0.16.1"
 lol_html = "2.7.1"
@@ -74,6 +76,7 @@ merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.6.0"
 merman-core = { path = "crates/merman-core", version = "0.6.0" }
 merman-ffi = { path = "crates/merman-ffi", version = "0.6.0" }
 merman-render = { path = "crates/merman-render", version = "0.6.0" }
+merman-uniffi = { path = "crates/merman-uniffi", version = "0.6.0" }
 merman-cli = { path = "crates/merman-cli", version = "0.6.0" }
 dugong = { path = "crates/dugong", version = "0.6.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.6.0" }
