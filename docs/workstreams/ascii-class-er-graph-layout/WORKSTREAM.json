@@ -66,6 +66,11 @@
       "date": "2026-05-30",
       "task": "ACEG-040",
       "result": "implemented layered classDiagram chain and star multi-relationship ASCII rendering with explicit crossing-layout diagnostics"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEG-050",
+      "result": "implemented layered erDiagram chain and star multi-relationship ASCII rendering with explicit crossing-layout diagnostics"
     }
   ],
   "adr_refs": [
@@ -74,7 +79,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACEG-050",
-    "notes": "Implement ER multi-relationship rendering next on top of the shared terminal placement seam. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
+    "next_task": "ACEG-060",
+    "notes": "Run broad public ASCII gates, update final support docs, review whether shared layered placement duplication should be split into a follow-on, then close or split remaining dense-topology gaps. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
   }
 }

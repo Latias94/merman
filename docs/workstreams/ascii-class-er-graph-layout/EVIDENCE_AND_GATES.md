@@ -13,9 +13,10 @@ single relationship. Current executable capabilities and diagnostics:
   `class relationship layouts with unrelated classes`.
 - `classDiagram` rejects crossing class relationship layouts with
   `crossing class relationship layouts`.
-- `erDiagram` rejects multiple relationships with `multiple ER relationships`.
+- `erDiagram` renders layered relationship chains and simple relationship stars.
 - `erDiagram` rejects unrelated-entity relationship layouts with
   `ER relationship layouts with unrelated entities`.
+- `erDiagram` rejects crossing relationship layouts with `crossing ER relationship layouts`.
 
 Relevant files:
 
@@ -84,6 +85,7 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-020 | Added parser-backed tracer tests in `crates/merman-ascii/tests/class_model.rs` and `crates/merman-ascii/tests/er_model.rs`. | Current unsupported diagnostics are locked for class multiple relationships and ER unrelated-entity relationship layouts before layout refactoring starts. |
 | 2026-05-30 | ACEG-030 | Added `crates/merman-ascii/src/relation_graph.rs` and routed class/ER single-relationship rendering through it. | Terminal placement is shared while class/ER adapters still own relationship semantics; focused snapshots stayed stable. |
 | 2026-05-30 | ACEG-040 | Added layered class relationship layout for parser-backed extension stars and chains, with explicit crossing-layout diagnostics and support-doc updates. | Class multi-relationship output now shows every supported relation without silently dropping edges. |
+| 2026-05-30 | ACEG-050 | Added layered ER relationship layout for parser-backed chains and stars, with explicit crossing-layout diagnostics and support-doc updates. | ER multi-relationship output now preserves cardinality, line style, and labels for supported layouts without silently dropping relationships. |
 
 ## Verification Log
 
@@ -101,3 +103,7 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-040 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation and support docs are formatted. |
 | 2026-05-30 | ACEG-040 | `git diff --check` | Whitespace hygiene | PASS | Implementation and ledger updates have no whitespace errors. |
 | 2026-05-30 | ACEG-040 | `cargo nextest run -p merman-ascii er` | Shared seam regression check | PASS, 79 tests | ER output still passes after extending shared `relation_graph` box geometry helpers for class layout. |
+| 2026-05-30 | ACEG-050 | `cargo nextest run -p merman-ascii er` | Focused ER/filter gate | PASS, 81 tests | ER chain and star layouts render through the public parser-backed path; crossing layouts stay explicit diagnostics. |
+| 2026-05-30 | ACEG-050 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | New layered ER layout code is warning-free under the package lint gate. |
+| 2026-05-30 | ACEG-050 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation and support docs are formatted. |
+| 2026-05-30 | ACEG-050 | `git diff --check` | Whitespace hygiene | PASS | Implementation and ledger updates have no whitespace errors. |

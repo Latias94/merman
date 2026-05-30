@@ -104,18 +104,61 @@ fn er_parser_zero_or_one_cardinality_renders_marker() {
 }
 
 #[test]
-fn er_parser_multiple_relationship_layouts_are_explicitly_unsupported() {
-    let err = render_er(
+fn er_parser_relationship_chain_renders_each_cardinality_and_label() {
+    let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nB ||--|| C : owns",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("multiple ER relationship layout needs a graph layout pass");
+    .expect("ER should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "| A |\n", "+---+\n", " ||\n", "owns\n", "  |\n", " ||\n", "+---+\n",
+            "| B |\n", "+---+\n", " ||\n", "owns\n", "  |\n", " ||\n", "+---+\n", "| C |\n",
+            "+---+\n",
+        )
+    );
+}
+
+#[test]
+fn er_parser_relationship_star_renders_each_label_and_leaf_cardinality() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : owns\nA ||--|| C : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("ER should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            "      ||\n",
+            "  owns owns\n",
+            "  +----+---+\n",
+            " ||       ||\n",
+            "+---+    +---+\n",
+            "| B |    | C |\n",
+            "+---+    +---+\n",
+        )
+    );
+}
+
+#[test]
+fn er_parser_crossing_relationship_layouts_are_explicitly_unsupported() {
+    let err = render_er(
+        "erDiagram\nA ||--|| D : owns\nB ||--|| C : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("crossing ER relationships must not be rendered ambiguously");
 
     assert_eq!(
         err,
         AsciiError::UnsupportedFeature {
             diagram_type: "er",
-            feature: "multiple ER relationships",
+            feature: "crossing ER relationship layouts",
         }
     );
 }

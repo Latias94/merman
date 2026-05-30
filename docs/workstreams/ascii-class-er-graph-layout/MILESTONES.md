@@ -79,6 +79,13 @@ Primary gate:
 
 - `cargo nextest run -p merman-ascii er`
 
+Primary evidence:
+
+- `er_parser_relationship_chain_renders_each_cardinality_and_label`
+- `er_parser_relationship_star_renders_each_label_and_leaf_cardinality`
+- `er_parser_crossing_relationship_layouts_are_explicitly_unsupported`
+- `crates/merman-ascii/README.md`
+
 ## M5 - Public Gates And Closeout
 
 Exit criteria:

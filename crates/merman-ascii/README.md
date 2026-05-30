@@ -22,8 +22,9 @@ labels, single relationship layouts, and layered chain/star multi-relationship l
 extension, dependency, aggregation, and composition through `render_class` or `render_model`;
 crossing, cyclic, parallel, and unrelated-class graph shapes remain explicit diagnostics. The ER
 slice can render entity boxes, attributes, relationship labels, identifying and non-identifying
-lines, and common cardinality markers through `render_er` or `render_model`; broader
-multi-relationship ER graph layout is tracked as follow-on work. The XYChart slice can
+lines, common cardinality markers, and layered chain/star multi-relationship layouts through
+`render_er` or `render_model`; crossing, cyclic, parallel, and unrelated-entity graph shapes remain
+explicit diagnostics. The XYChart slice can
 render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays, horizontal
 bars, inferred numeric x labels, and ASCII/Unicode chart characters through `render_xychart` or
 `render_model`; richer legends, color, and full terminal graph layout remain follow-on work.
@@ -41,7 +42,7 @@ See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support mat
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, LR/TD layouts, and titled/nested subgraphs. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, and core control blocks. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, and layered chain/star multi-relationship layouts for extension, dependency, aggregation, and composition. |
-| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, and common cardinality markers. |
+| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, and layered chain/star multi-relationship layouts. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, and inferred numeric labels. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the

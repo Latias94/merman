@@ -55,13 +55,16 @@ Last updated: 2026-05-30
 
 ## M4 - ER Multi-Relationship Rendering
 
-- [ ] ACEG-050 [owner=unassigned] [deps=ACEG-030] [scope=crates/merman-ascii/src/er,crates/merman-ascii/tests/er_model.rs]
+- [x] ACEG-050 [owner=codex] [deps=ACEG-030] [scope=crates/merman-ascii/src/er,crates/merman-ascii/tests/er_model.rs]
   Goal: Render useful erDiagram multi-relationship topologies with cardinality markers,
   identifying/non-identifying line style, and relationship labels.
   Validation: `cargo nextest run -p merman-ascii er`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Cardinality direction must remain typed-model-driven and visually honest.
-  Evidence: ER snapshots and support-doc updates.
-  Handoff: ACEG-060 runs broad public gates and closes or splits remaining topology gaps.
+  Evidence: `er_parser_relationship_chain_renders_each_cardinality_and_label`,
+  `er_parser_relationship_star_renders_each_label_and_leaf_cardinality`, and
+  `er_parser_crossing_relationship_layouts_are_explicitly_unsupported`; support docs updated in
+  `crates/merman-ascii/README.md`.
+  Handoff: DONE. ACEG-060 runs broad public gates and closes or splits remaining topology gaps.
 
 ## M5 - Public Gates And Closeout
 
