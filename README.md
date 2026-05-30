@@ -2,7 +2,14 @@
 
 Mermaid, but headless, in Rust.
 
-![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman)
+[![Documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman.svg)](https://crates.io/crates/merman)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 

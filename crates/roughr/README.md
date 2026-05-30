@@ -1,5 +1,12 @@
 # roughr-merman
 
+[![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
+[![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman)
+[![Crates.io Downloads](https://img.shields.io/crates/d/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
 parity stable and deterministic across platforms.
 
@@ -14,10 +21,6 @@ If you want to use it under the crate name `roughr`, depend on it like this:
 [dependencies]
 roughr = { package = "roughr-merman", version = "0.12.0" }
 ```
-
-[![Crates.io](https://img.shields.io/crates/v/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
-[![Documentation](https://docs.rs/roughr-merman/badge.svg)](https://docs.rs/roughr-merman)
-[![License](https://img.shields.io/crates/l/roughr-merman.svg)](https://crates.io/crates/roughr-merman)
 
 <!-- cargo-sync-readme start -->
 

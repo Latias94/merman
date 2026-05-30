@@ -1,5 +1,13 @@
 # merman-ffi
 
+[![Crates.io](https://img.shields.io/crates/v/merman-ffi.svg)](https://crates.io/crates/merman-ffi)
+[![Documentation](https://docs.rs/merman-ffi/badge.svg)](https://docs.rs/merman-ffi)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman-ffi.svg)](https://crates.io/crates/merman-ffi)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 C ABI bindings for embedding `merman` in non-Rust hosts.
 
 This crate exposes the low-level stable boundary described by

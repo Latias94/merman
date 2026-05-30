@@ -1,5 +1,13 @@
 # merman-ascii
 
+[![Crates.io](https://img.shields.io/crates/v/merman-ascii.svg)](https://crates.io/crates/merman-ascii)
+[![Documentation](https://docs.rs/merman-ascii/badge.svg)](https://docs.rs/merman-ascii)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman-ascii.svg)](https://crates.io/crates/merman-ascii)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 `merman-ascii` is the terminal/text rendering crate for
 [merman](https://github.com/Latias94/merman). It renders Mermaid typed models as stable ASCII or
 Unicode text output for terminals, logs, documentation pipelines, and environments where SVG is not
