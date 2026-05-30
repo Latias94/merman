@@ -65,14 +65,15 @@ Last updated: 2026-05-30
 
 ## M5 — ASCII Gap Registry
 
-- [ ] AAD-060 [owner=unassigned] [deps=AAD-030,AAD-040,AAD-050] [scope=crates/merman-ascii,docs/workstreams/ascii-architecture-deepening]
+- [x] AAD-060 [owner=codex] [deps=AAD-030,AAD-040,AAD-050] [scope=crates/merman-ascii/ASCII_GAP_REGISTRY.md,crates/merman-ascii/README.md,docs/workstreams/ascii-architecture-deepening]
   Goal: Create a single ASCII gap registry that maps remaining feature gaps to owning modules,
   dependencies, and validation gates.
   Validation: `git diff --check -- crates/merman-ascii docs/workstreams/ascii-architecture-deepening`
   Review: Registry entries should be actionable and not duplicate support matrices verbatim.
   Evidence: new or updated registry document linked from `crates/merman-ascii/README.md`.
   Context: flowchart, sequence, graph fixture gap, and sequence fixture gap docs.
-  Handoff: Use the registry as the first context file for future ASCII workstreams.
+  Handoff: DONE on 2026-05-30. `ASCII_GAP_REGISTRY.md` maps follow-on gaps to modules,
+  dependencies, gates, and support-doc sources; README links to it.
 
 ## M6 — Final Verification And Closeout
 

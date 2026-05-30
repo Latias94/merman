@@ -13,17 +13,18 @@ The lane has been opened to execute five architecture deepening targets for `mer
 - sequence event plan seam,
 - ASCII gap registry.
 
-AAD-010 through AAD-050 are complete. The next task is AAD-060.
+AAD-010 through AAD-060 are complete. The next task is AAD-070.
 
 ## Active Task
 
-- Task ID: AAD-060
-- Owner: unassigned
-- Files: `crates/merman-ascii`, `docs/workstreams/ascii-architecture-deepening`
-- Validation: `git diff --check -- crates/merman-ascii docs/workstreams/ascii-architecture-deepening`
+- Task ID: AAD-070
+- Owner: planner
+- Files: `docs/workstreams/ascii-architecture-deepening`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`;
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
 - Status: NEEDS_CONTEXT
-- Review: Pending implementation.
-- Evidence: new or updated registry document linked from `crates/merman-ascii/README.md`
+- Review: Pending final review.
+- Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, closeout journal note
 
 ## Decisions Since Last Update
 
@@ -50,6 +51,8 @@ AAD-010 through AAD-050 are complete. The next task is AAD-060.
 - AAD-050 added `SequenceEventPlan` in `crates/merman-ascii/src/sequence/plan.rs`.
 - The sequence render loop now delegates activation counts, actor visibility, lifecycle transitions,
   and control-frame ordering state to the event plan before row painting.
+- AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+- The ASCII README links to the registry from the current status section.
 
 ## Blockers
 
@@ -57,5 +60,5 @@ AAD-010 through AAD-050 are complete. The next task is AAD-060.
 
 ## Next Recommended Action
 
-- Commit AAD-050, then start AAD-060 by creating the ASCII gap registry and linking it from the
-  ASCII README. Check the README first because users may edit documentation in parallel.
+- Commit AAD-060, then run final AAD-070 gates, update closeout docs, and close this lane if gates
+  remain green.

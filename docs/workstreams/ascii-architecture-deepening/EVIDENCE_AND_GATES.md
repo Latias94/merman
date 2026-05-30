@@ -108,3 +108,5 @@ and residual risks in this file or a journal note.
   `cargo nextest run -p merman-ascii event_plan`, `cargo nextest run -p merman-ascii sequence`,
   `cargo nextest run -p merman-ascii`, `cargo fmt --all --check`, and
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md` and linked it from the
+  ASCII README. Passed `git diff --check -- crates/merman-ascii docs/workstreams/ascii-architecture-deepening`.

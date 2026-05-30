@@ -106,6 +106,16 @@
       "date": "2026-05-30",
       "task": "AAD-050",
       "result": "passed event_plan, sequence, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-060",
+      "result": "added ASCII_GAP_REGISTRY.md and linked it from the ASCII README"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-060",
+      "result": "passed git diff --check for crates/merman-ascii and this workstream"
     }
   ],
   "adr_refs": [
@@ -123,7 +133,7 @@
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
     "default_action": "continue_next_task",
-    "next_task": "AAD-060",
-    "notes": "Start AAD-060 by creating the ASCII gap registry and linking it from the ASCII README."
+    "next_task": "AAD-070",
+    "notes": "Run final verification gates and close the workstream if they remain green."
   }
 }
