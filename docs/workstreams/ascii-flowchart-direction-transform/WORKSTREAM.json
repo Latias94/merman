@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-flowchart-direction-transform",
+  "title": "ASCII Flowchart Direction Transform",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "The ASCII flowchart renderer still rejects BT and RL root directions instead of transforming the rendered output honestly.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ascii-flowchart-direction-transform/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ascii-flowchart-direction-transform/CONTEXT.jsonl",
+  "gates": [
+    "git diff --check",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "AFDT-010",
+      "result": "opened the flowchart BT/RL direction-transform lane from the support-matrix gap"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "flowchart",
+    "direction-transform",
+    "BT",
+    "RL"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "AFDT-020",
+    "notes": "Start with parser-backed BT/RL tests. Keep subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of this lane."
+  }
+}
