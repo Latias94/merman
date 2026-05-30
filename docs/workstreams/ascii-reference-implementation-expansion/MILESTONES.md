@@ -1,6 +1,6 @@
 # ASCII Reference Implementation Expansion — Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## M0 — Reference Intake And Provenance
@@ -80,8 +80,8 @@ Current state:
 
 - ARI-070 completed public dispatch/docs integration for flowchart/graph, sequenceDiagram,
   classDiagram, erDiagram, and xychart.
-- ARI-080 remains responsible for deciding whether to close the lane or split deferred diagram
-  families and richer terminal layouts into follow-on workstreams.
+- ARI-080 closed the lane on 2026-05-30. Deferred diagram families and richer terminal layouts are
+  follow-on candidates, not hidden work inside this lane.
 
 Primary gates:
 
@@ -89,4 +89,6 @@ Primary gates:
 - `cargo nextest run -p merman-ascii`
 - `cargo nextest run -p merman --features ascii`
 - `cargo nextest run -p merman-cli --features ascii`
+- `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`
+- `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`
 - `git diff --check`

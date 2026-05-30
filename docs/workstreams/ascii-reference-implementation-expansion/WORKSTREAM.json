@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-reference-implementation-expansion",
   "title": "ASCII Reference Implementation Expansion",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-30",
   "scope_kind": "execution",
   "problem": "merman-ascii needs a tracked plan for learning from mermaid-ascii and beautiful-mermaid while preserving its model-driven Rust boundary.",
@@ -80,6 +80,11 @@
       "date": "2026-05-30",
       "task": "ARI-070",
       "result": "wired shipped ASCII diagram families through merman public re-exports and CLI/library public-path tests, and documented the flowchart, sequence, class, ER, and XYChart support matrix"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ARI-080",
+      "result": "closed the reference implementation expansion lane with final gate evidence and explicit follow-on candidates for deferred ASCII diagram/layout work"
     }
   ],
   "adr_refs": [
@@ -87,8 +92,8 @@
     "docs/adr/0065-ascii-output-boundary.md"
   ],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "ARI-080",
-    "notes": "Continue with lane closeout or follow-on splitting. True BT/RL graph direction transforms, subgraph direction overrides, color/style roles, state graph rendering, class/ER multi-relationship graph layout, and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane complete. It shipped tracked MIT provenance, model-driven class/ER/XYChart ASCII slices, beautiful-mermaid graph delta triage with typed thick-edge support, and public merman/CLI integration. True BT/RL graph direction transforms, subgraph direction overrides, color/style roles, state graph rendering, class/ER multi-relationship graph layout, and richer XYChart legends/color/full-size plot layout should be split as follow-ons if prioritized. Do not port parsers from reference repositories."
   }
 }

@@ -1,6 +1,6 @@
 # ASCII Reference Implementation Expansion — Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## Current State
@@ -14,30 +14,25 @@ horizontal bars, and Unicode/ASCII chart characters from `RenderSemanticModel::X
 delta triage against `beautiful-mermaid` is recorded, and thick edges now render from the typed
 flowchart stroke model. Public integration is also wired: `merman::ascii` re-exports the shipped
 typed helpers, `HeadlessAsciiRenderer`/`render_ascii_sync` render class, ER, and XYChart through the
-typed `render_model` path, and CLI ASCII smoke coverage exercises those shipped families.
+typed `render_model` path, and CLI ASCII smoke coverage exercises those shipped families. This lane
+is closed as of ARI-080.
 
-## Active Task
+## Closeout Task
 
-- Task ID: ARI-070
+- Task ID: ARI-080
 - Owner: codex
 - Files:
-  - `crates/merman/src/ascii.rs`
-  - `crates/merman/tests/ascii_api.rs`
-  - `crates/merman-cli/tests/ascii_smoke.rs`
-  - `crates/merman-cli/README.md`
-  - `crates/merman-ascii/README.md`
-  - `README.md`
   - `docs/workstreams/ascii-reference-implementation-expansion/*`
 - Validation: `cargo nextest run -p merman-ascii`;
   `cargo nextest run -p merman --features ascii`;
   `cargo nextest run -p merman-cli --features ascii`;
-  `cargo fmt -p merman-ascii -p merman -p merman-cli --check`;
+  `cargo fmt --all --check`;
   `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings`;
   `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`;
   `git diff --check`
 - Status: DONE
-- Review: self-review found no blocking findings. Full `cargo fmt --all --check` was attempted but
-  failed only on unrelated dirty `merman-render` worktree changes that were not staged for ARI-070.
+- Review: closeout review found no blocking findings. Deferred behavior is listed as follow-on
+  candidates instead of hidden work in this lane.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -78,11 +73,19 @@ typed `render_model` path, and CLI ASCII smoke coverage exercises those shipped 
 
 ## Blockers
 
-- None for ARI-060.
+- None.
 
-## Next Recommended Action
+## Follow-Ons
 
-Continue with ARI-080 for lane closeout or follow-on splitting. Likely follow-ons are class/ER
-multi-relationship graph layout, true BT/RL graph transforms, subgraph direction overrides,
-color/style roles, state graph text rendering, uncommon flowchart shapes, and richer XYChart
-terminal layout.
+This lane is closed. Split future work into narrower lanes when product priority is clear:
+
+- Class/ER multi-relationship graph layout and placement for unrelated classes/entities.
+- True BT/RL graph transforms with arrow/corner remapping.
+- Subgraph direction overrides and multiline subgraph labels.
+- ANSI/HTML color and class/style role rendering for terminal output.
+- State diagram graph text rendering if typed state models preserve enough semantics.
+- Additional uncommon flowchart shape approximations.
+- Richer XYChart legends, color, multi-series spacing, and full-size terminal plotting.
+
+Reference-source obligations remain unchanged: do not port parsers from `repo-ref/`, keep derived
+source/fixtures attributed with tracked MIT notices, and treat Mermaid upstream as the spec.

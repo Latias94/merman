@@ -1,6 +1,6 @@
 # ASCII Reference Implementation Expansion — Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -8,7 +8,8 @@ Last updated: 2026-05-30
 `merman-ascii` now has bounded class, ER, and xychart renderers in addition to the existing
 flowchart and sequence renderers. The graph delta triage against `beautiful-mermaid` is recorded in
 `FLOWCHART_SUPPORT.md`; shipped renderer public integration is wired through `merman::ascii` and
-`merman-cli`, with final lane closeout remaining.
+`merman-cli`. The reference expansion lane is closed; remaining work is split as follow-on
+candidates rather than kept in this lane.
 
 Relevant interface:
 
@@ -93,6 +94,7 @@ gates, and residual risks here or link to the review note.
 | 2026-05-29 | ARI-050 | Added `RenderSemanticModel::XyChart` dispatch, `render_xychart`, `crates/merman-ascii/src/xychart/`, `crates/merman-ascii/tests/xychart_model.rs`, and the README scaling contract. | XYChart ASCII/Unicode slice implemented: compact vertical bars, stair-step lines, mixed overlays, horizontal bars, title/axis text, inferred numeric x labels, and empty-chart handling. |
 | 2026-05-29 | ARI-060 | Compared `crates/merman-ascii` graph support with `repo-ref/beautiful-mermaid/src/ascii/` and updated `crates/merman-ascii/FLOWCHART_SUPPORT.md`. | Delta matrix recorded: thick edges ported; `BT`, true `RL`, subgraph direction overrides, multiline subgraph labels, color/style roles, state graph rendering, and uncommon shapes deferred or rejected with rationale. |
 | 2026-05-30 | ARI-070 | Re-exported `render_class`, `render_er`, and `render_xychart` from `merman::ascii`; added `merman` and CLI public-path tests for classDiagram, erDiagram, and xychart; updated README support text and the `merman-ascii` shipped diagram matrix. | Public APIs and CLI text output now advertise and test the shipped flowchart, sequence, class, ER, and XYChart ASCII/Unicode families without changing feature gates. |
+| 2026-05-30 | ARI-080 | Reviewed the closeout condition, marked the workstream complete, and recorded remaining work as follow-on candidates instead of extending this reference-expansion lane. | Lane closed with model-driven boundary intact, reference-source obligations recorded, public support docs current, and final verification gates passing. |
 
 ## Verification Log
 
@@ -134,6 +136,13 @@ gates, and residual risks here or link to the review note.
 | 2026-05-30 | ARI-070 | `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` | ASCII library lint gate | PASS | `merman-ascii` and the top-level `merman` ASCII API compile cleanly under deny-warnings clippy. |
 | 2026-05-30 | ARI-070 | `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` | CLI ASCII lint gate | PASS | CLI ASCII integration compiles cleanly under deny-warnings clippy with its existing raster dependency stack. |
 | 2026-05-30 | ARI-070 | `git diff --check` | Patch hygiene | PASS | No whitespace errors in current dirty worktree diffs. |
+| 2026-05-30 | ARI-080 | `cargo nextest run -p merman-ascii` | Final `merman-ascii` package gate | PASS, 107 tests | The closed lane's underlying flowchart, sequence, class, ER, XYChart, fixture, and graph behavior remains green. |
+| 2026-05-30 | ARI-080 | `cargo nextest run -p merman --features ascii` | Final public library ASCII feature gate | PASS, 6 tests | `merman::ascii` public API integration remains green after closeout. |
+| 2026-05-30 | ARI-080 | `cargo nextest run -p merman-cli --features ascii` | Final CLI ASCII feature gate | PASS, 11 tests | CLI ASCII integration remains green alongside existing raster smoke tests. |
+| 2026-05-30 | ARI-080 | `cargo fmt --all --check` | Workspace formatting | PASS | Workspace rustfmt check is clean after concurrent `merman-render` fixes. |
+| 2026-05-30 | ARI-080 | `cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings` | ASCII library lint gate | PASS | `merman-ascii` and top-level `merman` ASCII APIs remain clean under deny-warnings clippy. |
+| 2026-05-30 | ARI-080 | `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` | CLI ASCII lint gate | PASS | CLI ASCII/raster dependency stack compiles cleanly under deny-warnings clippy. |
+| 2026-05-30 | ARI-080 | `git diff --check` | Patch hygiene | PASS | Current worktree diffs have no whitespace errors. |
 
 Broader public feature gates (`cargo nextest run -p merman --features ascii`,
 `cargo nextest run -p merman-cli --features ascii`) were not run for ARI-020 because the existing
@@ -148,6 +157,13 @@ reason: the task only changes `merman-ascii` XYChart behavior and docs; no `merm
 integration files changed.
 
 ARI-070 reran the broader public feature gates after updating `merman::ascii` re-exports, public API
-tests, CLI smoke coverage, and support documentation.
+tests, CLI smoke coverage, and support documentation. ARI-080 reran the final closeout gates and
+closed the lane.
 
-Fresh final verification is required before ARI-080 lane closeout.
+## Review And Closeout
+
+Closeout review on 2026-05-30 found no blocking findings. The target state from `DESIGN.md` is met:
+provenance is tracked, new ASCII renderers consume `merman-core` typed models, class/ER/XYChart
+slices shipped with tests, useful `beautiful-mermaid` deltas were either ported or classified, and
+public docs reflect shipped support. Remaining work is outside this lane's boundary and should start
+as smaller follow-ons when prioritized.

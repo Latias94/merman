@@ -1,7 +1,7 @@
 # ASCII Reference Implementation Expansion
 
-Status: Active
-Last updated: 2026-05-29
+Status: Complete
+Last updated: 2026-05-30
 
 ## Why This Lane Exists
 
@@ -102,3 +102,11 @@ This lane can close when:
 - `merman-ascii` support docs reflect the shipped behavior,
 - focused `merman-ascii` gates and broad ASCII feature gates pass,
 - and any deferred behavior has a clear owner or non-goal.
+
+Closeout status: satisfied on 2026-05-30. The lane shipped tracked MIT provenance for
+`mermaid-ascii` and `beautiful-mermaid`, model-driven class, ER, and XYChart ASCII slices, graph
+delta triage with typed thick-edge support, and public `merman`/CLI integration for the shipped
+terminal-text families. Remaining work is explicitly deferred to follow-on candidates: class/ER
+multi-relationship graph layout, true BT/RL graph transforms, subgraph direction overrides,
+style/color roles, state graph text rendering, uncommon flowchart shapes, and richer XYChart
+terminal layout.

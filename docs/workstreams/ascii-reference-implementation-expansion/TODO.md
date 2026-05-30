@@ -1,6 +1,6 @@
 # ASCII Reference Implementation Expansion — TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## M0 — Reference Intake And Provenance
@@ -99,9 +99,12 @@ Last updated: 2026-05-30
   placement, true BT/RL flowchart transforms, style/color roles, and richer XYChart terminal layout
   should be split as follow-on lanes during ARI-080 closeout.
 
-- [ ] ARI-080 [owner=planner] [deps=ARI-070] [scope=docs/workstreams/ascii-reference-implementation-expansion]
+- [x] ARI-080 [owner=codex] [deps=ARI-070] [scope=docs/workstreams/ascii-reference-implementation-expansion]
   Goal: Close the lane or split remaining work into narrower follow-ons.
   Validation: `verify-rust-workstream` records fresh final gate evidence.
-  Review: `review-workstream` has no blocking findings.
-  Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, `HANDOFF.md`
-  Handoff: Summarize remaining risks and reference-source obligations.
+  Review: Closeout review found the target state satisfied. Remaining work is deferred as follow-on
+  candidates instead of kept in this reference-implementation lane.
+  Evidence: `DESIGN.md`, `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, `HANDOFF.md`
+  Handoff: DONE. Lane closed. Future work should open narrower follow-ons for class/ER graph
+  layout, true BT/RL graph transforms, style/color roles, state text rendering, uncommon shapes, or
+  richer XYChart terminal layout.
