@@ -1,13 +1,13 @@
 # ASCII Class ER Graph Layout - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
 
-This lane is a follow-on from the closed
+This lane was a follow-on from the closed
 `docs/workstreams/ascii-reference-implementation-expansion/` lane. It exists because class and ER
-ASCII rendering are now useful but still intentionally reject multi-relationship layouts.
+ASCII rendering had useful first slices but still intentionally rejected multi-relationship layouts.
 
 Current class support renders boxes, members, methods, labels, single-relationship layouts, and
 layered extension chains/stars for extension, dependency, aggregation, and composition. Current ER
@@ -15,32 +15,38 @@ support renders entity boxes, attributes, labels, identifying/non-identifying re
 cardinality markers, and layered relationship chains/stars. Crossing, cyclic, parallel, and
 unrelated graph shapes remain explicit diagnostics for both families.
 
-## Active Task
+ACEG-060 verified the public package, library, and CLI gates and updated public support docs. The
+lane is closed.
 
-- Task ID: ACEG-050
+## Final Task
+
+- Task ID: ACEG-060
 - Owner: codex
 - Files:
-  - `crates/merman-ascii/src/er/render.rs`
-  - `crates/merman-ascii/tests/er_model.rs`
+  - `README.md`
+  - `crates/merman-cli/README.md`
   - `crates/merman-ascii/README.md`
+  - `crates/merman-render/src/math.rs`
   - `docs/workstreams/ascii-class-er-graph-layout/*`
-- Validation: `cargo nextest run -p merman-ascii er`;
-  `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `cargo fmt --all --check`;
+- Validation: `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman --features ascii`;
+  `cargo nextest run -p merman-cli --features ascii`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`;
+  `cargo clippy -p merman --features ascii --all-targets -- -D warnings`;
+  `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`;
+  `cargo clippy -p merman-render --all-targets -- -D warnings`; `cargo fmt --all --check`;
   `git diff --check`
 - Status: DONE
-- Review: ER multi-relationship rendering is limited to layered DAG shapes where every supported
-  relationship can be shown while preserving typed cardinality, line style, and labels.
+- Review: Broad gates pass. Layered class/ER planner duplication is acceptable for this lane because
+  shared code remains terminal-layout-only and typed relationship semantics stay in adapters.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
-## Next Recommended Action
+## Follow-Ons
 
-Run ACEG-060:
-
-- Run broad public gates for `merman-ascii`, `merman --features ascii`, and
-  `merman-cli --features ascii`.
-- Review whether class/ER layered placement duplication should be split into a follow-on refactor
-  or closed as acceptable for this lane.
-- Update public support docs and close or split remaining dense-topology gaps.
+- Extract a shared terminal-layout-only layered planner from the class and ER adapters if the next
+  class/ER topology slice needs the same level assignment, ordering, and crossing detection.
+- Add a separate dense/crossing topology routing lane for classDiagram and erDiagram. It should keep
+  explicit diagnostics until every relationship can be shown honestly.
+- Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout in their
+  existing or future dedicated lanes.
 
 ## Constraints
 

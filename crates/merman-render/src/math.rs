@@ -7,7 +7,9 @@
 //! The default implementation is a no-op. For parity work, a Node.js-backed KaTeX renderer is
 //! provided, and the `ratex-math` feature enables a pure-Rust RaTeX renderer for supported labels.
 
-use crate::text::{TextMetrics, TextStyle, WrapMode, split_html_br_lines};
+#[cfg(feature = "ratex-math")]
+use crate::text::split_html_br_lines;
+use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

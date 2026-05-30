@@ -1,6 +1,6 @@
 # ASCII Class ER Graph Layout
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -126,3 +126,19 @@ This lane can close when:
 - unsupported topologies have structured diagnostics,
 - docs describe the shipped subset,
 - and `merman-ascii`, `merman --features ascii`, and `merman-cli --features ascii` gates pass.
+
+## Closeout Summary
+
+Closed on 2026-05-30. ClassDiagram and erDiagram ASCII/Unicode output now render parser-backed
+layered chain and star relationship layouts through the public typed helpers, `render_model`,
+`merman::ascii::render_ascii_sync`, and CLI `--format ascii|unicode`.
+
+The shared `relation_graph` module owns terminal box identity, stacking, geometry, and simple
+single-relationship line assembly. Class and ER still keep layered relationship planning and drawing
+inside their adapters so marker, cardinality, label, and diagnostic semantics remain typed-model
+owned. That duplication is acceptable for this lane and should be extracted only as a narrower
+follow-on once the next layout shape is known.
+
+Remaining dense, crossing, cyclic, parallel, spanning-level, and unrelated graph shapes are explicit
+diagnostics. The next useful lanes are a terminal-layout-only shared layered planner extraction and a
+separate dense/crossing topology routing lane.

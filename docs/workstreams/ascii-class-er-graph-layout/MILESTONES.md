@@ -1,6 +1,6 @@
 # ASCII Class ER Graph Layout - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -101,3 +101,14 @@ Primary gates:
 - `cargo nextest run -p merman-cli --features ascii`
 - `cargo fmt --all --check`
 - `cargo clippy -p merman-ascii --all-targets -- -D warnings`
+- `cargo clippy -p merman --features ascii --all-targets -- -D warnings`
+- `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings`
+
+Primary evidence:
+
+- Public README and CLI README describe the shipped class/ER layered chain/star relationship
+  subset.
+- `EVIDENCE_AND_GATES.md` records broad package, public API, CLI, formatting, whitespace, and lint
+  gates.
+- Remaining dense/crossing topology routing and shared layered planner extraction are split into
+  follow-ons rather than kept inside this lane.

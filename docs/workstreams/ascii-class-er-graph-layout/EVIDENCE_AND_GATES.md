@@ -1,6 +1,6 @@
 # ASCII Class ER Graph Layout - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -61,8 +61,9 @@ Run public gates when public behavior or docs change.
 
 ```bash
 cargo clippy -p merman-ascii --all-targets -- -D warnings
-cargo clippy -p merman-ascii -p merman --features ascii --all-targets -- -D warnings
+cargo clippy -p merman --features ascii --all-targets -- -D warnings
 cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings
+cargo clippy -p merman-render --all-targets -- -D warnings
 ```
 
 Use package clippy for implementation tasks; use broader clippy before closeout.
@@ -73,6 +74,8 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 - `docs/workstreams/ascii-class-er-graph-layout/TODO.md`
 - `docs/workstreams/ascii-class-er-graph-layout/MILESTONES.md`
 - `docs/workstreams/ascii-reference-implementation-expansion/`
+- `README.md`
+- `crates/merman-cli/README.md`
 - `crates/merman-ascii/README.md`
 - `crates/merman-ascii/tests/class_model.rs`
 - `crates/merman-ascii/tests/er_model.rs`
@@ -86,6 +89,7 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-030 | Added `crates/merman-ascii/src/relation_graph.rs` and routed class/ER single-relationship rendering through it. | Terminal placement is shared while class/ER adapters still own relationship semantics; focused snapshots stayed stable. |
 | 2026-05-30 | ACEG-040 | Added layered class relationship layout for parser-backed extension stars and chains, with explicit crossing-layout diagnostics and support-doc updates. | Class multi-relationship output now shows every supported relation without silently dropping edges. |
 | 2026-05-30 | ACEG-050 | Added layered ER relationship layout for parser-backed chains and stars, with explicit crossing-layout diagnostics and support-doc updates. | ER multi-relationship output now preserves cardinality, line style, and labels for supported layouts without silently dropping relationships. |
+| 2026-05-30 | ACEG-060 | Ran broad public API, CLI, formatting, whitespace, and lint gates; updated public support docs and final handoff. | Lane closes with class/ER layered chain/star support shipped and dense/crossing routing plus shared layered planner extraction split into follow-ons. |
 
 ## Verification Log
 
@@ -107,3 +111,19 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-050 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | New layered ER layout code is warning-free under the package lint gate. |
 | 2026-05-30 | ACEG-050 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation and support docs are formatted. |
 | 2026-05-30 | ACEG-050 | `git diff --check` | Whitespace hygiene | PASS | Implementation and ledger updates have no whitespace errors. |
+| 2026-05-30 | ACEG-060 | `cargo nextest run -p merman-ascii` | Full ASCII package gate | PASS, 113 tests | Class/ER graph layout changes remain compatible with the full terminal renderer package. |
+| 2026-05-30 | ACEG-060 | `cargo nextest run -p merman --features ascii` | Public library ASCII feature gate | PASS, 6 tests | Public `merman::ascii` APIs still expose the shipped renderers. |
+| 2026-05-30 | ACEG-060 | `cargo nextest run -p merman-cli --features ascii` | CLI ASCII feature gate | PASS, 12 tests | CLI `render --format ascii|unicode` remains wired to the public ASCII renderer. |
+| 2026-05-30 | ACEG-060 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | ASCII package remains warning-free. |
+| 2026-05-30 | ACEG-060 | `cargo clippy -p merman --features ascii --all-targets -- -D warnings` | Public library ASCII lint gate | PASS | Public library feature wiring remains warning-free. |
+| 2026-05-30 | ACEG-060 | `cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings` | CLI ASCII lint gate | PASS | CLI ASCII feature wiring is warning-free after feature-gating a `ratex-math`-only import in `merman-render`. |
+| 2026-05-30 | ACEG-060 | `cargo clippy -p merman-render --all-targets -- -D warnings` | Import cleanup regression check | PASS | Default `merman-render` builds no longer see the `ratex-math`-only import. |
+| 2026-05-30 | ACEG-060 | `cargo fmt --all --check` | Workspace formatting check | PASS | Closeout code and docs are formatted. |
+| 2026-05-30 | ACEG-060 | `git diff --check` | Whitespace hygiene | PASS | Closeout code and ledger updates have no whitespace errors. |
+
+## Closeout Review
+
+No blocking findings remain for the lane's target state. The intentional residual risk is that
+class and ER each still own a small layered relationship planner in their adapters. That duplication
+preserves typed semantics and avoids prematurely generalizing the terminal graph seam; extract it in
+a narrower follow-on if the next topology slice needs the same planner shape.

@@ -1,6 +1,6 @@
 # ASCII Class ER Graph Layout - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -68,11 +68,14 @@ Last updated: 2026-05-30
 
 ## M5 - Public Gates And Closeout
 
-- [ ] ACEG-060 [owner=unassigned] [deps=ACEG-040,ACEG-050] [scope=crates/merman-ascii,crates/merman,crates/merman-cli,docs]
+- [x] ACEG-060 [owner=codex] [deps=ACEG-040,ACEG-050] [scope=crates/merman-ascii,crates/merman,crates/merman-cli,docs]
   Goal: Verify public APIs and CLI still expose the shipped class/ER graph layouts, update docs,
   and close or split remaining dense-topology work.
   Validation: `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman --features ascii`;
   `cargo nextest run -p merman-cli --features ascii`; `cargo fmt --all --check`; relevant clippy gates.
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
-  Evidence: `EVIDENCE_AND_GATES.md`, README/support docs, and final handoff.
-  Handoff: Lane closes or names narrower follow-ons.
+  Evidence: Public README and CLI README now describe layered class/ER relationship support;
+  `EVIDENCE_AND_GATES.md` records broad public gates and lint checks. The CLI clippy gate also
+  required moving a `ratex-math`-only `merman-render` import behind the matching feature.
+  Handoff: DONE. Lane closes with follow-ons split for shared layered planner extraction and
+  denser/crossing class/ER relationship routing.

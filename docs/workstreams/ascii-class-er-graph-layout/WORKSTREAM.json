@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "ascii-class-er-graph-layout",
   "title": "ASCII Class ER Graph Layout",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
-  "problem": "Class and ER ASCII renderers are useful but still reject common multi-relationship layouts because their layout model is single-relation-only.",
+  "problem": "Class and ER ASCII renderers previously rejected common multi-relationship layouts because their layout model was single-relation-only.",
   "authoritative_docs": [
     {
       "role": "adr",
@@ -44,7 +44,10 @@
     "cargo nextest run -p merman-ascii",
     "cargo nextest run -p merman --features ascii",
     "cargo nextest run -p merman-cli --features ascii",
-    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings",
+    "cargo clippy -p merman --features ascii --all-targets -- -D warnings",
+    "cargo clippy -p merman-cli --features ascii --all-targets -- -D warnings",
+    "cargo clippy -p merman-render --all-targets -- -D warnings"
   ],
   "evidence": [
     {
@@ -71,6 +74,11 @@
       "date": "2026-05-30",
       "task": "ACEG-050",
       "result": "implemented layered erDiagram chain and star multi-relationship ASCII rendering with explicit crossing-layout diagnostics"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEG-060",
+      "result": "verified public ASCII API and CLI gates, updated support docs, and closed the lane with dense topology and shared planner extraction follow-ons"
     }
   ],
   "adr_refs": [
@@ -78,8 +86,8 @@
     "docs/adr/0014-upstream-parity-policy.md"
   ],
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "ACEG-060",
-    "notes": "Run broad public ASCII gates, update final support docs, review whether shared layered placement duplication should be split into a follow-on, then close or split remaining dense-topology gaps. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane is closed. If continuing class/ER ASCII graph layout, open a narrower follow-on for terminal-layout-only shared layered planner extraction or dense/crossing topology routing. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
   }
 }
