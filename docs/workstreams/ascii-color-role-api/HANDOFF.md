@@ -1,11 +1,11 @@
 # ASCII Color Role API - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
 
-The workstream is active. ADR 0067 accepted the public color role API shape and the
+The workstream is closed. ADR 0067 accepted the public color role API shape and the
 `AsciiRenderOptions` migration. ACR-030 implemented the shared foreground-color substrate:
 public color types, color options, role-aware `Canvas` storage, and forced ANSI/HTML finalizers.
 ACR-040 assigned flowchart semantic roles for nodes, groups, edges, labels, arrowheads, and routed
@@ -18,7 +18,7 @@ lifelines, activations, messages, notes, boxes, and control frames. ACR-060 adde
 foreground style-mapping subset for `classDef`, `class`, inline `style`, and `linkStyle`.
 Default plain output remains unchanged.
 
-## Active Task
+## Final Task State
 
 - Task ID: ACR-060
 - Owner: codex
@@ -68,5 +68,5 @@ Default plain output remains unchanged.
 
 ## Next Recommended Action
 
-- Review and close the workstream, or split a dedicated background/fill styling lane if that becomes
-  a product goal.
+- Split a dedicated background/fill styling lane if that becomes a product goal. No further work is
+  required inside `ascii-color-role-api`.

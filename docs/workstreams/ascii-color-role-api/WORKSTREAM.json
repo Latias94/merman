@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-color-role-api",
   "title": "ASCII Color Role API",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "merman-ascii needs an opt-in color role API before ANSI/HTML output or Mermaid style/class rendering can be implemented safely.",
@@ -126,8 +126,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "review-or-closeout",
-    "notes": "Family role adoption and the flowchart foreground style-mapping subset are complete. Review and close the workstream or split a separate fill/background lane if that becomes a product goal."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Closed. Public color roles, shipped-family role adoption, and flowchart foreground style mapping are complete. Split a separate fill/background lane if that becomes a product goal."
   }
 }

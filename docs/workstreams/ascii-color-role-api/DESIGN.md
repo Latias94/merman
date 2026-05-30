@@ -1,6 +1,6 @@
 # ASCII Color Role API
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -39,6 +39,13 @@ Callers can opt into colored ASCII/Unicode output through `AsciiRenderOptions`, 
 the default. Renderers write characters with semantic color roles into a role-aware canvas. The final
 encoder converts runs of equal roles into ANSI 16-color, ANSI 256-color, truecolor, or HTML `<span>`
 output after layout is complete.
+
+## Closeout Outcome
+
+Closed on 2026-05-30. The public color API, role/direct-color canvas substrate, renderer-owned
+roles for shipped diagram families, and the flowchart foreground `classDef`/`class`/`style`/
+`linkStyle` mapping subset are implemented and verified. Fill/background color remains outside this
+workstream and should be split into a new lane if prioritized.
 
 ## Public API Sketch
 

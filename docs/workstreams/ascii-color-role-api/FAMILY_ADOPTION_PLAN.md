@@ -51,10 +51,9 @@ snapshot failures hard to localize.
    - Keep Mermaid `rect`/box fill color interpretation deferred because background/fill remains out
      of scope for the foreground-only API.
 
-5. ACR-060 remains the flowchart Mermaid style/class/linkStyle mapping lane.
-   - It can be prioritized after ACR-040 if style parity matters more than broader family adoption.
-   - It should not block family role adoption because style mapping depends on direct Mermaid style
-     semantics rather than renderer-owned semantic roles.
+5. ACR-060: DONE. Flowchart Mermaid foreground style/class/linkStyle mapping.
+   - `classDef`, `class`, inline `style`, and `linkStyle` now map safe foreground semantics.
+   - Fill/background interpretation remains a separate product decision.
 
 ## Validation Strategy
 

@@ -1,6 +1,6 @@
 # ASCII Color Role API - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Design Evidence

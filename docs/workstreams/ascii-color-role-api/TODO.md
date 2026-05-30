@@ -1,6 +1,6 @@
 # ASCII Color Role API - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - API Design And Decision Point
