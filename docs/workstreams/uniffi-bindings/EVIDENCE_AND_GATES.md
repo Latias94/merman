@@ -79,3 +79,22 @@ Use a narrower closeout gate if the workspace is too large, and explain why.
 - 2026-05-30: `cargo info uniffi@0.31.1` confirmed the crate metadata and features including
   `bindgen`, `build`, `cli`, and `scaffolding-ffi-buffer-fns`.
 - 2026-05-30: `UBI-010` opened the lane around a shared safe facade plus minimal UniFFI crate.
+- 2026-05-30: `UBI-020` added `crates/merman-bindings-core` and refactored `merman-ffi` to
+  delegate render SVG, parse JSON, layout JSON, status codes, and JSON error payloads to the safe
+  facade.
+- 2026-05-30: `cargo check -p merman-bindings-core` passed.
+- 2026-05-30: `cargo nextest run -p merman-bindings-core` passed (`10` tests).
+- 2026-05-30: `cargo nextest run -p merman-bindings-core --features ratex-math` passed (`10`
+  tests).
+- 2026-05-30: `cargo nextest run -p merman-ffi` passed (`14` tests).
+- 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed (`14` tests).
+- 2026-05-30: `cargo check -p merman-bindings-core --features raster,ratex-math` passed.
+- 2026-05-30: `cargo nextest run -p merman-ffi --features raster,ratex-math` passed (`14` tests).
+- 2026-05-30: `cargo clippy -p merman-bindings-core --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo clippy -p merman-bindings-core --features ratex-math --all-targets -- -D
+  warnings` passed.
+- 2026-05-30: `cargo clippy -p merman-ffi --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo clippy -p merman-ffi --features ratex-math --all-targets -- -D warnings`
+  passed.
+- 2026-05-30: `cargo fmt -p merman-bindings-core -p merman-ffi -- --check` passed.
+- 2026-05-30: `git diff --check` passed.

@@ -1710,6 +1710,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-bindings-core"
+version = "0.6.0"
+dependencies = [
+ "merman",
+ "merman-render",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "merman-cli"
 version = "0.6.0"
 dependencies = [
@@ -1753,9 +1763,7 @@ version = "0.6.0"
 dependencies = [
  "cc",
  "libloading",
- "merman",
- "merman-render",
- "serde",
+ "merman-bindings-core",
  "serde_json",
 ]
 

@@ -19,6 +19,9 @@ Exit criteria:
 - Options JSON parsing and error mapping move out of unsafe FFI code.
 - `merman-ffi` tests still pass without C ABI drift.
 
+Status: complete. `crates/merman-bindings-core` now owns the safe binding behavior and
+`merman-ffi` delegates to it while preserving public symbols and buffer ownership.
+
 ## M2 — Minimal UniFFI Surface
 
 Exit criteria:

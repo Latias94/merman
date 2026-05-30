@@ -14,13 +14,16 @@ Last updated: 2026-05-30
 
 ## M1 — Shared Binding Facade
 
-- [ ] UBI-020 [owner=codex] [deps=UBI-010] [scope=crates/merman-bindings-core,crates/merman-ffi]
+- [x] UBI-020 [owner=codex] [deps=UBI-010] [scope=crates/merman-bindings-core,crates/merman-ffi]
   Goal: Extract options parsing, renderer setup, byte outputs, result codes, and error mapping into a safe shared facade.
   Validation: cargo nextest run -p merman-ffi && cargo check -p merman-bindings-core
   Review: `merman-ffi` public C symbols, result codes, and buffer ownership must not drift.
   Evidence: facade unit tests plus unchanged/passing FFI tests.
   Context: docs/workstreams/uniffi-bindings/CONTEXT.jsonl
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Added `crates/merman-bindings-core` with safe render/parse/layout byte APIs,
+  shared status/error payload mapping, options parsing, renderer setup, and RaTeX feature gating.
+  Refactored `merman-ffi` to keep only raw pointer validation, panic containment, owned buffer
+  transfer, and exported C symbols.
 
 ## M2 — Minimal UniFFI Crate
 

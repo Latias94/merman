@@ -4,6 +4,7 @@ members = [
   "crates/merman",
   "crates/merman-core",
   "crates/merman-ascii",
+  "crates/merman-bindings-core",
   "crates/merman-cli",
   "crates/merman-ffi",
   "crates/merman-render",
@@ -69,6 +70,7 @@ unicode-width = "0.2.2"
 # duplicating version requirements across crates.
 merman = { path = "crates/merman", version = "0.6.0" }
 merman-ascii = { path = "crates/merman-ascii", version = "0.6.0" }
+merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.6.0", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.6.0" }
 merman-ffi = { path = "crates/merman-ffi", version = "0.6.0" }
 merman-render = { path = "crates/merman-render", version = "0.6.0" }

@@ -68,7 +68,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "UBI-020",
-    "notes": "Start by extracting a safe shared facade. Do not add UniFFI directly on top of unsafe C ABI functions."
+    "next_task": "UBI-030",
+    "notes": "Shared safe facade is in place. Continue with the minimal merman-uniffi crate over merman-bindings-core."
   }
 }

@@ -5,8 +5,8 @@ Last updated: 2026-05-30
 
 ## Current State
 
-This lane is open and ready for implementation. The first task is not to add UniFFI macros; it is to
-extract a safe shared binding facade so C ABI and UniFFI call the same behavior.
+`UBI-020` is complete. `crates/merman-bindings-core` is now the shared safe facade used by external
+binding crates.
 
 Confirmed dependency context:
 
@@ -14,17 +14,25 @@ Confirmed dependency context:
 - `cargo info uniffi@0.31.1` reports features including `bindgen`, `build`, `cli`, and
   `scaffolding-ffi-buffer-fns`.
 
-## Next Task
-
-`UBI-020`: add `crates/merman-bindings-core` or an equivalent safe facade and refactor
-`merman-ffi` to delegate to it without changing public C symbols.
-
-Recommended shape:
+Completed facade shape:
 
 - safe facade accepts `&[u8]` source and `&[u8]` options JSON
 - returns `Vec<u8>` on success
-- exposes structured binding errors with the existing result codes/code names
-- owns renderer setup, options parsing, and feature-gated RaTeX selection
+- exposes `BindingStatus`, `BindingError`, and JSON error payload serialization
+- owns renderer setup, options parsing, pipeline selection, and feature-gated RaTeX selection
+- keeps unsafe pointer and buffer ownership inside `merman-ffi`
+
+## Next Task
+
+`UBI-030`: add `crates/merman-uniffi` exposing `render_svg`, `parse_json`, and `layout_json` over
+`merman-bindings-core`.
+
+Recommended shape:
+
+- use UniFFI 0.31.1
+- expose a small `MermanEngine` object or equivalent free functions
+- map `BindingError` into UniFFI-compatible structured errors
+- keep generated platform packages out of this task
 
 ## Guardrails
 

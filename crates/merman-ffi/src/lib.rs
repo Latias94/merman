@@ -3,15 +3,11 @@
 //! C ABI exports for embedding `merman` in non-Rust hosts.
 //!
 //! This crate is the only place where the public FFI boundary owns unsafe code. The core
-//! parser/render crates remain safe Rust APIs.
+//! parser/render crates and shared binding facade remain safe Rust APIs.
 
-use merman::render::{
-    DeterministicTextMeasurer, HeadlessRenderer, LayoutOptions, VendoredFontMetricsTextMeasurer,
-};
-use serde::{Deserialize, Serialize};
+use merman_bindings_core::{BindingError, BindingStatus, error_payload_json_bytes};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
-use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -34,108 +30,6 @@ impl MermanBuffer {
 pub struct MermanResult {
     pub code: i32,
     pub data: MermanBuffer,
-}
-
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MermanStatus {
-    Ok = 0,
-    InvalidArgument = 1,
-    Utf8Error = 2,
-    OptionsJsonError = 3,
-    NoDiagram = 4,
-    ParseError = 5,
-    RenderError = 6,
-    #[allow(dead_code)]
-    UnsupportedFormat = 7,
-    Panic = 8,
-    InternalError = 9,
-}
-
-impl MermanStatus {
-    const fn code(self) -> i32 {
-        self as i32
-    }
-
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Ok => "MERMAN_OK",
-            Self::InvalidArgument => "MERMAN_INVALID_ARGUMENT",
-            Self::Utf8Error => "MERMAN_UTF8_ERROR",
-            Self::OptionsJsonError => "MERMAN_OPTIONS_JSON_ERROR",
-            Self::NoDiagram => "MERMAN_NO_DIAGRAM",
-            Self::ParseError => "MERMAN_PARSE_ERROR",
-            Self::RenderError => "MERMAN_RENDER_ERROR",
-            Self::UnsupportedFormat => "MERMAN_UNSUPPORTED_FORMAT",
-            Self::Panic => "MERMAN_PANIC",
-            Self::InternalError => "MERMAN_INTERNAL_ERROR",
-        }
-    }
-}
-
-#[derive(Debug)]
-struct FfiError {
-    status: MermanStatus,
-    message: String,
-}
-
-impl FfiError {
-    fn new(status: MermanStatus, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            message: message.into(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorPayload<'a> {
-    version: u32,
-    ok: bool,
-    code: i32,
-    code_name: &'a str,
-    message: &'a str,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct FfiOptions {
-    #[allow(dead_code)]
-    version: Option<u32>,
-    parse: Option<ParseOptionsJson>,
-    layout: Option<LayoutOptionsJson>,
-    svg: Option<SvgOptionsJson>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct ParseOptionsJson {
-    suppress_errors: Option<bool>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct LayoutOptionsJson {
-    viewport_width: Option<f64>,
-    viewport_height: Option<f64>,
-    text_measurer: Option<String>,
-    math_renderer: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct SvgOptionsJson {
-    diagram_id: Option<String>,
-    pipeline: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PipelineKind {
-    Parity,
-    Readable,
-    ResvgSafe,
-}
-
-impl Default for PipelineKind {
-    fn default() -> Self {
-        Self::Parity
-    }
 }
 
 /// Render Mermaid source to SVG bytes.
@@ -213,15 +107,15 @@ pub unsafe extern "C" fn merman_buffer_free(buffer: MermanBuffer) {
 
 fn ffi_result<F>(f: F) -> MermanResult
 where
-    F: FnOnce() -> Result<Vec<u8>, FfiError>,
+    F: FnOnce() -> Result<Vec<u8>, BindingError>,
 {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(bytes)) => MermanResult {
-            code: MermanStatus::Ok.code(),
+            code: BindingStatus::Ok.code(),
             data: buffer_from_vec(bytes),
         },
-        Ok(Err(err)) => error_result(err.status, &err.message),
-        Err(_) => error_result(MermanStatus::Panic, "panic caught at merman FFI boundary"),
+        Ok(Err(err)) => error_result(err.status(), err.message()),
+        Err(_) => error_result(BindingStatus::Panic, "panic caught at merman FFI boundary"),
     }
 }
 
@@ -230,27 +124,10 @@ unsafe fn render_svg_impl(
     source_len: usize,
     options_json: *const u8,
     options_len: usize,
-) -> Result<Vec<u8>, FfiError> {
+) -> Result<Vec<u8>, BindingError> {
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    let source = source_text(source_bytes)?;
-    let options = parse_options(options_bytes)?;
-    let (renderer, pipeline) = build_renderer(&options)?;
-
-    let svg = match pipeline {
-        PipelineKind::Parity => renderer.render_svg_sync(source),
-        PipelineKind::Readable => renderer.render_svg_readable_sync(source),
-        PipelineKind::ResvgSafe => renderer.render_svg_resvg_safe_sync(source),
-    }
-    .map_err(classify_render_error)?;
-
-    match svg {
-        Some(svg) => Ok(svg.into_bytes()),
-        None => Err(FfiError::new(
-            MermanStatus::NoDiagram,
-            "no Mermaid diagram detected",
-        )),
-    }
+    merman_bindings_core::render_svg(source_bytes, options_bytes)
 }
 
 unsafe fn parse_json_impl(
@@ -258,19 +135,10 @@ unsafe fn parse_json_impl(
     source_len: usize,
     options_json: *const u8,
     options_len: usize,
-) -> Result<Vec<u8>, FfiError> {
+) -> Result<Vec<u8>, BindingError> {
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    let source = source_text(source_bytes)?;
-    let options = parse_options(options_bytes)?;
-    let (renderer, _pipeline) = build_renderer(&options)?;
-
-    let parsed = renderer
-        .parse_diagram_sync(source)
-        .map_err(classify_render_error)?
-        .ok_or_else(no_diagram_error)?;
-
-    serde_json::to_vec(&parsed.model).map_err(internal_json_error)
+    merman_bindings_core::parse_json(source_bytes, options_bytes)
 }
 
 unsafe fn layout_json_impl(
@@ -278,32 +146,23 @@ unsafe fn layout_json_impl(
     source_len: usize,
     options_json: *const u8,
     options_len: usize,
-) -> Result<Vec<u8>, FfiError> {
+) -> Result<Vec<u8>, BindingError> {
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    let source = source_text(source_bytes)?;
-    let options = parse_options(options_bytes)?;
-    let (renderer, _pipeline) = build_renderer(&options)?;
-
-    let layouted = renderer
-        .layout_diagram_sync(source)
-        .map_err(classify_render_error)?
-        .ok_or_else(no_diagram_error)?;
-
-    serde_json::to_vec(&layouted).map_err(internal_json_error)
+    merman_bindings_core::layout_json(source_bytes, options_bytes)
 }
 
 unsafe fn raw_bytes<'a>(
     data: *const u8,
     len: usize,
     name: &'static str,
-) -> Result<&'a [u8], FfiError> {
+) -> Result<&'a [u8], BindingError> {
     if data.is_null() {
         if len == 0 {
             return Ok(&[]);
         }
-        return Err(FfiError::new(
-            MermanStatus::InvalidArgument,
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
             format!("{name} pointer is null but length is {len}"),
         ));
     }
@@ -313,168 +172,6 @@ unsafe fn raw_bytes<'a>(
     }
 
     Ok(unsafe { std::slice::from_raw_parts(data, len) })
-}
-
-fn parse_options(bytes: &[u8]) -> Result<FfiOptions, FfiError> {
-    if bytes.is_empty() {
-        return Ok(FfiOptions::default());
-    }
-    let text = std::str::from_utf8(bytes).map_err(|err| {
-        FfiError::new(
-            MermanStatus::Utf8Error,
-            format!("invalid options_json UTF-8: {err}"),
-        )
-    })?;
-    serde_json::from_str(text).map_err(|err| {
-        FfiError::new(
-            MermanStatus::OptionsJsonError,
-            format!("invalid options_json: {err}"),
-        )
-    })
-}
-
-fn source_text(bytes: &[u8]) -> Result<&str, FfiError> {
-    let source = std::str::from_utf8(bytes).map_err(|err| {
-        FfiError::new(
-            MermanStatus::Utf8Error,
-            format!("invalid source UTF-8: {err}"),
-        )
-    })?;
-    if source.trim().is_empty() {
-        return Err(no_diagram_error());
-    }
-    Ok(source)
-}
-
-fn build_renderer(options: &FfiOptions) -> Result<(HeadlessRenderer, PipelineKind), FfiError> {
-    let mut renderer = HeadlessRenderer::new();
-
-    if options
-        .parse
-        .as_ref()
-        .and_then(|parse| parse.suppress_errors)
-        .unwrap_or(false)
-    {
-        renderer = renderer.with_lenient_parsing();
-    } else {
-        renderer = renderer.with_strict_parsing();
-    }
-
-    let mut layout = LayoutOptions::headless_svg_defaults();
-    if let Some(layout_json) = options.layout.as_ref() {
-        if let Some(width) = layout_json.viewport_width {
-            layout.viewport_width = finite_positive(width, "layout.viewport_width")?;
-        }
-        if let Some(height) = layout_json.viewport_height {
-            layout.viewport_height = finite_positive(height, "layout.viewport_height")?;
-        }
-        if let Some(kind) = layout_json.text_measurer.as_deref() {
-            match normalize_option(kind).as_str() {
-                "vendored" => {
-                    layout.text_measurer = Arc::new(VendoredFontMetricsTextMeasurer::default());
-                }
-                "deterministic" => {
-                    layout.text_measurer = Arc::new(DeterministicTextMeasurer::default());
-                }
-                other => {
-                    return Err(FfiError::new(
-                        MermanStatus::InvalidArgument,
-                        format!("unsupported layout.text_measurer: {other}"),
-                    ));
-                }
-            }
-        }
-    }
-    renderer = renderer.with_layout_options(layout);
-
-    if let Some(math_renderer) = options
-        .layout
-        .as_ref()
-        .and_then(|layout| layout.math_renderer.as_deref())
-    {
-        match normalize_option(math_renderer).as_str() {
-            "none" => {}
-            "ratex" => {
-                #[cfg(feature = "ratex-math")]
-                {
-                    renderer = renderer
-                        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
-                }
-                #[cfg(not(feature = "ratex-math"))]
-                {
-                    return Err(FfiError::new(
-                        MermanStatus::UnsupportedFormat,
-                        "layout.math_renderer=ratex requires the ratex-math feature",
-                    ));
-                }
-            }
-            other => {
-                return Err(FfiError::new(
-                    MermanStatus::InvalidArgument,
-                    format!("unsupported layout.math_renderer: {other}"),
-                ));
-            }
-        }
-    }
-
-    let mut pipeline = PipelineKind::default();
-    if let Some(svg) = options.svg.as_ref() {
-        if let Some(diagram_id) = svg.diagram_id.as_deref() {
-            renderer = renderer.with_diagram_id(diagram_id);
-        }
-        if let Some(raw_pipeline) = svg.pipeline.as_deref() {
-            pipeline = match normalize_option(raw_pipeline).as_str() {
-                "parity" => PipelineKind::Parity,
-                "readable" => PipelineKind::Readable,
-                "resvg-safe" | "resvg_safe" => PipelineKind::ResvgSafe,
-                other => {
-                    return Err(FfiError::new(
-                        MermanStatus::InvalidArgument,
-                        format!("unsupported svg.pipeline: {other}"),
-                    ));
-                }
-            };
-        }
-    }
-
-    Ok((renderer, pipeline))
-}
-
-fn classify_render_error(err: merman::render::HeadlessError) -> FfiError {
-    match err {
-        merman::render::HeadlessError::Parse(err) => {
-            FfiError::new(MermanStatus::ParseError, err.to_string())
-        }
-        merman::render::HeadlessError::Render(err) => {
-            FfiError::new(MermanStatus::RenderError, err.to_string())
-        }
-    }
-}
-
-fn no_diagram_error() -> FfiError {
-    FfiError::new(MermanStatus::NoDiagram, "no Mermaid diagram detected")
-}
-
-fn internal_json_error(err: serde_json::Error) -> FfiError {
-    FfiError::new(
-        MermanStatus::InternalError,
-        format!("failed to serialize JSON output: {err}"),
-    )
-}
-
-fn finite_positive(value: f64, name: &'static str) -> Result<f64, FfiError> {
-    if value.is_finite() && value > 0.0 {
-        Ok(value)
-    } else {
-        Err(FfiError::new(
-            MermanStatus::InvalidArgument,
-            format!("{name} must be a finite positive number"),
-        ))
-    }
-}
-
-fn normalize_option(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
 }
 
 fn buffer_from_vec(bytes: Vec<u8>) -> MermanBuffer {
@@ -490,25 +187,10 @@ fn buffer_from_vec(bytes: Vec<u8>) -> MermanBuffer {
     buffer
 }
 
-fn error_result(status: MermanStatus, message: &str) -> MermanResult {
-    let payload = ErrorPayload {
-        version: 1,
-        ok: false,
-        code: status.code(),
-        code_name: status.name(),
-        message,
-    };
-    let bytes = serde_json::to_vec(&payload).unwrap_or_else(|_| {
-        format!(
-            r#"{{"version":1,"ok":false,"code":{},"code_name":"{}","message":"internal error payload serialization failed"}}"#,
-            MermanStatus::InternalError.code(),
-            MermanStatus::InternalError.name()
-        )
-        .into_bytes()
-    });
+fn error_result(status: BindingStatus, message: &str) -> MermanResult {
     MermanResult {
         code: status.code(),
-        data: buffer_from_vec(bytes),
+        data: buffer_from_vec(error_payload_json_bytes(status, message)),
     }
 }
 
@@ -571,7 +253,7 @@ mod tests {
     fn render_svg_returns_svg_for_flowchart() {
         let result = call_render(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, MermanStatus::Ok.code());
+        assert_eq!(result.code, BindingStatus::Ok.code());
         let svg = take_text(result.data);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Hello"));
@@ -586,7 +268,7 @@ mod tests {
         }"#;
         let result = call_render(b"flowchart TD\nA[Hello]", options);
 
-        assert_eq!(result.code, MermanStatus::Ok.code());
+        assert_eq!(result.code, BindingStatus::Ok.code());
         let svg = take_text(result.data);
         assert!(svg.contains("id=\"ffi-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
@@ -596,7 +278,7 @@ mod tests {
     fn parse_json_returns_semantic_model() {
         let result = call_parse(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, MermanStatus::Ok.code());
+        assert_eq!(result.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
         assert!(json.is_object());
         assert_eq!(
@@ -611,7 +293,7 @@ mod tests {
     fn layout_json_returns_layouted_diagram() {
         let result = call_layout(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, MermanStatus::Ok.code());
+        assert_eq!(result.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
@@ -621,45 +303,51 @@ mod tests {
     fn parse_json_uses_same_error_payload() {
         let result = call_parse(&[0xff], b"");
 
-        assert_eq!(result.code, MermanStatus::Utf8Error.code());
+        assert_eq!(result.code, BindingStatus::Utf8Error.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::Utf8Error.name());
+        assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
     }
 
     #[test]
     fn null_source_with_nonzero_len_returns_invalid_argument() {
         let result = unsafe { merman_render_svg(ptr::null(), 1, ptr::null(), 0) };
 
-        assert_eq!(result.code, MermanStatus::InvalidArgument.code());
+        assert_eq!(result.code, BindingStatus::InvalidArgument.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::InvalidArgument.name());
+        assert_eq!(
+            error["code_name"],
+            BindingStatus::InvalidArgument.code_name()
+        );
     }
 
     #[test]
     fn invalid_source_utf8_returns_utf8_error() {
         let result = call_render(&[0xff], b"");
 
-        assert_eq!(result.code, MermanStatus::Utf8Error.code());
+        assert_eq!(result.code, BindingStatus::Utf8Error.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::Utf8Error.name());
+        assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
     }
 
     #[test]
     fn empty_source_returns_no_diagram() {
         let result = unsafe { merman_render_svg(ptr::null(), 0, ptr::null(), 0) };
 
-        assert_eq!(result.code, MermanStatus::NoDiagram.code());
+        assert_eq!(result.code, BindingStatus::NoDiagram.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::NoDiagram.name());
+        assert_eq!(error["code_name"], BindingStatus::NoDiagram.code_name());
     }
 
     #[test]
     fn invalid_options_json_returns_options_json_error() {
         let result = call_render(b"flowchart TD\nA", b"{");
 
-        assert_eq!(result.code, MermanStatus::OptionsJsonError.code());
+        assert_eq!(result.code, BindingStatus::OptionsJsonError.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::OptionsJsonError.name());
+        assert_eq!(
+            error["code_name"],
+            BindingStatus::OptionsJsonError.code_name()
+        );
     }
 
     #[test]
@@ -670,12 +358,15 @@ mod tests {
         );
 
         if cfg!(feature = "ratex-math") {
-            assert_eq!(result.code, MermanStatus::Ok.code());
+            assert_eq!(result.code, BindingStatus::Ok.code());
             unsafe { merman_buffer_free(result.data) };
         } else {
-            assert_eq!(result.code, MermanStatus::UnsupportedFormat.code());
+            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
             let error = take_error(result);
-            assert_eq!(error["code_name"], MermanStatus::UnsupportedFormat.name());
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::UnsupportedFormat.code_name()
+            );
         }
     }
 
@@ -686,10 +377,10 @@ mod tests {
 
     #[test]
     fn ffi_result_catches_panic() {
-        let result = ffi_result(|| -> Result<Vec<u8>, FfiError> { panic!("boom") });
+        let result = ffi_result(|| -> Result<Vec<u8>, BindingError> { panic!("boom") });
 
-        assert_eq!(result.code, MermanStatus::Panic.code());
+        assert_eq!(result.code, BindingStatus::Panic.code());
         let error = take_error(result);
-        assert_eq!(error["code_name"], MermanStatus::Panic.name());
+        assert_eq!(error["code_name"], BindingStatus::Panic.code_name());
     }
 }
