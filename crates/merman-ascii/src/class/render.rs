@@ -140,22 +140,63 @@ pub(crate) fn render_class_diagram(
         .map(|relation| relation_layout(model, relation))
         .collect::<Result<Vec<_>>>()?;
 
-    if layouts.len() == 1 && model.classes.len() != 2 {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "class relationship layouts with unrelated classes",
-        });
-    }
+    render_class_components(&boxes, &layouts, options, charset)
+}
 
+fn render_class_component(
+    boxes: &[RenderedClassBox],
+    layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> Result<String> {
+    if layouts.is_empty() {
+        return Ok(relation_graph::render_stacked_boxes(boxes));
+    }
     if layouts.len() == 1 {
         let layout = layouts[0];
-        let top = find_box(&boxes, layout.top_id)?;
-        let bottom = find_box(&boxes, layout.bottom_id)?;
+        let top = find_box(boxes, layout.top_id)?;
+        let bottom = find_box(boxes, layout.bottom_id)?;
 
         return Ok(render_vertical_relation(top, bottom, layout, charset));
     }
 
-    render_layered_relations(&boxes, &layouts, options, charset)
+    render_layered_relations(boxes, layouts, options, charset)
+}
+
+fn render_class_components(
+    boxes: &[RenderedClassBox],
+    layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
+    charset: ClassCharset,
+) -> Result<String> {
+    let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
+    let components =
+        relation_graph::relation_components(boxes, &edges).map_err(class_layered_error)?;
+    if components.len() == 1 {
+        return render_class_component(boxes, layouts, options, charset);
+    }
+
+    let mut rendered = Vec::new();
+    for component in components {
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        let component_layouts = component
+            .edge_indices()
+            .iter()
+            .map(|index| layouts[*index])
+            .collect::<Vec<_>>();
+        rendered.push(render_class_component(
+            &component_boxes,
+            &component_layouts,
+            options,
+            charset,
+        )?);
+    }
+
+    Ok(rendered.join("\n"))
 }
 
 fn render_class_box(

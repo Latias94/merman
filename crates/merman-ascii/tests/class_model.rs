@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
 
 fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -96,19 +96,29 @@ fn class_parser_extension_relation_renders_label() {
 }
 
 #[test]
-fn class_parser_relationship_layouts_with_unrelated_classes_are_explicitly_unsupported() {
-    let err = render_class(
+fn class_parser_relationship_layouts_render_unrelated_classes_as_components() {
+    let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("unrelated classes must not be silently omitted");
+    .expect("unrelated classes should render as separate components");
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "class relationship layouts with unrelated classes",
-        }
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+            "\n",
+            "+-----+\n",
+            "| Cat |\n",
+            "+-----+\n",
+        )
     );
 }
 

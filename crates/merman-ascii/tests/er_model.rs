@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
 
 fn render_er(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -172,18 +172,18 @@ fn er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge() {
 }
 
 #[test]
-fn er_parser_relationship_layouts_with_unrelated_entities_are_explicitly_unsupported() {
-    let err = render_er(
+fn er_parser_relationship_layouts_render_unrelated_entities_as_components() {
+    let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nC",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("unrelated ER entities need a graph layout pass");
+    .expect("unrelated ER entities should render as separate components");
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "er",
-            feature: "ER relationship layouts with unrelated entities",
-        }
+        rendered,
+        concat!(
+            "+---+\n", "| A |\n", "+---+\n", " ||\n", "owns\n", "  |\n", " ||\n", "+---+\n",
+            "| B |\n", "+---+\n", "\n", "+---+\n", "| C |\n", "+---+\n",
+        )
     );
 }

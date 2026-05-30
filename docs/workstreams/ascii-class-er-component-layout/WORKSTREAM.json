@@ -49,6 +49,16 @@
       "date": "2026-05-30",
       "task": "ACECL-010",
       "result": "opened follow-on lane for disconnected class/ER component layout"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACECL-020",
+      "result": "added red/green parser-backed class and ER tests for unrelated standalone components"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACECL-030",
+      "result": "shared relation component helper now keeps relationship-bearing boxes together and splits isolated boxes"
     }
   ],
   "adr_refs": [
@@ -65,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACECL-020",
-    "notes": "Start with parser-backed disconnected component tests. Keep parallel, cyclic, spanning-level, dense, color/style, and flowchart routing work out of this lane."
+    "next_task": "ACECL-040",
+    "notes": "Update support docs, run full merman-ascii gates, and close the lane. Keep parallel, cyclic, spanning-level, dense, color/style, and flowchart routing work out of this lane."
   }
 }

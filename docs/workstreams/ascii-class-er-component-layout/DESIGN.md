@@ -35,8 +35,9 @@ rendered independently and stacked with a blank separator without implying missi
 
 - Class and ER parser-backed fixtures with a related pair plus an unrelated standalone node render
   every component.
-- Shared relation-graph helpers can partition boxes and edges into deterministic connected
-  components without learning class or ER semantics.
+- Shared relation-graph helpers can partition relationship-bearing boxes from isolated standalone
+  boxes without learning class or ER semantics. Relationship-bearing boxes stay in one layered
+  planning domain so existing crossing and reordering behavior remains stable.
 - Component renderers reuse existing single-edge, layered, and no-edge rendering paths.
 - Parallel, cyclic, spanning-level, and dense routing remain explicit diagnostics inside each
   component.

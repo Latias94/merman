@@ -87,22 +87,66 @@ pub(crate) fn render_er_diagram(
         return Ok(relation_graph::render_stacked_boxes(&boxes));
     }
 
-    if model.relationships.len() == 1 && model.entities.len() != 2 {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "er",
-            feature: "ER relationship layouts with unrelated entities",
-        });
-    }
+    render_er_components(&boxes, &model.relationships, options, charset)
+}
 
-    if model.relationships.len() == 1 {
-        let relationship = &model.relationships[0];
-        let top = find_box(&boxes, &relationship.entity_a)?;
-        let bottom = find_box(&boxes, &relationship.entity_b)?;
+fn render_er_component(
+    boxes: &[RenderedEntityBox],
+    relationships: &[ErRelationshipRenderModel],
+    options: &AsciiRenderOptions,
+    charset: ErCharset,
+) -> Result<String> {
+    if relationships.is_empty() {
+        return Ok(relation_graph::render_stacked_boxes(boxes));
+    }
+    if relationships.len() == 1 {
+        let relationship = &relationships[0];
+        let top = find_box(boxes, &relationship.entity_a)?;
+        let bottom = find_box(boxes, &relationship.entity_b)?;
 
         return render_vertical_relationship(top, bottom, relationship, charset);
     }
 
-    render_layered_relationships(&boxes, &model.relationships, options, charset)
+    render_layered_relationships(boxes, relationships, options, charset)
+}
+
+fn render_er_components(
+    boxes: &[RenderedEntityBox],
+    relationships: &[ErRelationshipRenderModel],
+    options: &AsciiRenderOptions,
+    charset: ErCharset,
+) -> Result<String> {
+    let edges = relationships
+        .iter()
+        .map(er_layered_edge)
+        .collect::<Vec<_>>();
+    let components =
+        relation_graph::relation_components(boxes, &edges).map_err(er_layered_error)?;
+    if components.len() == 1 {
+        return render_er_component(boxes, relationships, options, charset);
+    }
+
+    let mut rendered = Vec::new();
+    for component in components {
+        let component_boxes = component
+            .boxes()
+            .iter()
+            .map(|relation_box| (*relation_box).clone())
+            .collect::<Vec<_>>();
+        let component_relationships = component
+            .edge_indices()
+            .iter()
+            .map(|index| relationships[*index].clone())
+            .collect::<Vec<_>>();
+        rendered.push(render_er_component(
+            &component_boxes,
+            &component_relationships,
+            options,
+            charset,
+        )?);
+    }
+
+    Ok(rendered.join("\n"))
 }
 
 fn render_entity_box(

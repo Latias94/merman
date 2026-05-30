@@ -108,6 +108,22 @@ impl<'a> LayeredRelationPlan<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RelationGraphComponent<'a> {
+    boxes: Vec<&'a RelationGraphBox>,
+    edge_indices: Vec<usize>,
+}
+
+impl<'a> RelationGraphComponent<'a> {
+    pub(crate) fn boxes(&self) -> &[&'a RelationGraphBox] {
+        &self.boxes
+    }
+
+    pub(crate) fn edge_indices(&self) -> &[usize] {
+        &self.edge_indices
+    }
+}
+
 impl RelationGraphBox {
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
         Self { id, lines, width }
@@ -183,6 +199,49 @@ pub(crate) fn centered_text_line(text: &str, center: usize) -> String {
     line.extend(std::iter::repeat_n(' ', center.saturating_sub(half_width)));
     line.push_str(text);
     line
+}
+
+pub(crate) fn relation_components<'a>(
+    boxes: &'a [RelationGraphBox],
+    edges: &[LayeredRelationEdge<'_>],
+) -> std::result::Result<Vec<RelationGraphComponent<'a>>, LayeredRelationError> {
+    // Keep every related box in one planning domain so layer reordering can still solve
+    // disjoint adjacent-layer crossings; only truly isolated boxes become standalone components.
+    let mut incident_ids = HashSet::new();
+    for edge in edges {
+        if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
+            return Err(LayeredRelationError::MissingEndpoint);
+        }
+
+        incident_ids.insert(edge.top_id);
+        incident_ids.insert(edge.bottom_id);
+    }
+
+    let mut components = Vec::new();
+
+    if !edges.is_empty() {
+        let relation_boxes = boxes
+            .iter()
+            .filter(|relation_box| incident_ids.contains(relation_box.id()))
+            .collect::<Vec<_>>();
+
+        components.push(RelationGraphComponent {
+            boxes: relation_boxes,
+            edge_indices: (0..edges.len()).collect(),
+        });
+    }
+
+    components.extend(
+        boxes
+            .iter()
+            .filter(|relation_box| !incident_ids.contains(relation_box.id()))
+            .map(|relation_box| RelationGraphComponent {
+                boxes: vec![relation_box],
+                edge_indices: Vec::new(),
+            }),
+    );
+
+    Ok(components)
 }
 
 pub(crate) fn plan_layered_relation_boxes<'a>(

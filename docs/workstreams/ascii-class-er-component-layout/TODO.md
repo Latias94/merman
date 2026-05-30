@@ -14,24 +14,25 @@ Last updated: 2026-05-30
 
 ## M1 - Component Contract Tests
 
-- [ ] ACECL-020 [owner=unassigned] [deps=ACECL-010] [scope=crates/merman-ascii/tests]
+- [x] ACECL-020 [owner=codex] [deps=ACECL-010] [scope=crates/merman-ascii/tests]
   Goal: Add class and ER parser-backed tests for rendering a related component plus an unrelated
   standalone node.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
   Review: Tests assert public output and fail red before implementation.
   Evidence: class/ER unrelated component tests.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Parser-backed class and ER tests now assert unrelated standalone components.
 
 ## M2 - Shared Component Partition
 
-- [ ] ACECL-030 [owner=unassigned] [deps=ACECL-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
-  Goal: Partition relation graphs into deterministic components and render each component through
-  existing class/ER paths.
+- [x] ACECL-030 [owner=codex] [deps=ACECL-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
+  Goal: Partition relationship-bearing boxes from isolated standalone boxes and render each output
+  component through existing class/ER paths.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Component partitioning stays terminal-layout-only; adapters keep semantics.
   Evidence: Component tests pass and existing crossing/chain/star diagnostics remain stable.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Relation-bearing boxes stay in one layered planner domain; isolated boxes render
+  as standalone components.
 
 ## M3 - Docs And Closeout
 
