@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "slug": "ffi-api",
+  "title": "FFI API",
+  "status": "draft",
+  "updated": "2026-05-30",
+  "scope_kind": "architecture",
+  "problem": "Downstream hosts need a stable in-process ABI for parsing, layout, SVG rendering, and later raster outputs without moving unsafe code into the safe Rust crates.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0066-ffi-binding-strategy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ffi-api/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ffi-api/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ffi-api/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ffi-api/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ffi-api/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "git diff --check -- docs/adr/0066-ffi-binding-strategy.md docs/workstreams/ffi-api",
+    "cargo fmt -p merman-ffi -- --check",
+    "cargo nextest run -p merman-ffi",
+    "cargo nextest run -p merman-ffi header_smoke",
+    "cargo fmt --check",
+    "cargo nextest run --workspace",
+    "cargo clippy --workspace --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/ffi-api/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "crates/merman/src/render/mod.rs",
+    "repo-ref/RaTeX/crates/ratex-ffi",
+    "repo-ref/RaTeX/docs/binding-architecture.md"
+  ],
+  "capability_tags": [
+    "ffi",
+    "bindings",
+    "render",
+    "public-api"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "FFI-010",
+    "notes": "Keep this lane draft until result-code names, buffer ownership rules, and the first C ABI symbol names are reviewed. Start implementation with FFI-020 after FFI-010 is checked off."
+  }
+}
