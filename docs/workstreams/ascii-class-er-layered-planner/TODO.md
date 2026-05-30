@@ -1,6 +1,6 @@
 # ASCII Class ER Layered Planner - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -42,10 +42,10 @@ Last updated: 2026-05-30
 
 ## M3 - Closeout
 
-- [ ] ACELP-040 [owner=unassigned] [deps=ACELP-030] [scope=crates/merman-ascii,docs]
+- [x] ACELP-040 [owner=codex] [deps=ACELP-030] [scope=crates/merman-ascii,docs]
   Goal: Run final ASCII package gates, update evidence, and close or split any residual planner
   work.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
-  Evidence: `EVIDENCE_AND_GATES.md`, `HANDOFF.md`, and journal notes.
-  Handoff: Lane closes or names a narrower follow-on.
+  Evidence: `EVIDENCE_AND_GATES.md`, `HANDOFF.md`, and `JOURNAL/2026-05-30-acelp-040.md`.
+  Handoff: DONE. Lane closes; dense/crossing topology support remains a separate follow-on.

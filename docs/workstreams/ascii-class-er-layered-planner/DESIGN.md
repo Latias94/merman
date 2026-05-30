@@ -1,6 +1,6 @@
 # ASCII Class ER Layered Planner
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -99,3 +99,13 @@ This lane can close when:
 - `cargo clippy -p merman-ascii --all-targets -- -D warnings` passes,
 - docs record any residual duplication,
 - and dense/crossing topology support remains split into its own lane.
+
+## Closeout Summary
+
+Closed on 2026-05-30. ClassDiagram and erDiagram layered relationship rendering now share
+`relation_graph::plan_layered_relation_boxes` for level assignment, structural validation, label-aware
+vertical gaps, row grouping, centering, and placed box coordinates.
+
+Class and ER adapters still own relationship semantics, labels, marker/cardinality drawing, line
+style, and user-facing diagnostics. Dense/crossing topology support remains a separate lane because
+this extraction was behavior-preserving.

@@ -1,6 +1,6 @@
 # ASCII Class ER Layered Planner - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -56,3 +56,9 @@ Primary gates:
 - `cargo nextest run -p merman-ascii`
 - `cargo fmt --all --check`
 - `git diff --check`
+
+Primary evidence:
+
+- Both class and ER layered renderers consume `relation_graph::plan_layered_relation_boxes`.
+- Full `merman-ascii` package and lint gates pass.
+- Dense/crossing topology support is explicitly deferred to a separate lane.

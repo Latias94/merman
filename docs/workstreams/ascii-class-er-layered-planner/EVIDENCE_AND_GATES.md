@@ -1,6 +1,6 @@
 # ASCII Class ER Layered Planner - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -52,6 +52,7 @@ git diff --check
 | 2026-05-30 | ACELP-010 | Opened follow-on lane from `ascii-class-er-graph-layout` closeout. | Scope is limited to behavior-preserving shared layered planner extraction. |
 | 2026-05-30 | ACELP-020 | Added `relation_graph::plan_layered_relation_boxes` and routed classDiagram layered layout through it. | Class semantics and diagnostics remain in `class/render.rs`; class chain/star/crossing public tests stayed green. |
 | 2026-05-30 | ACELP-030 | Routed erDiagram layered layout through `relation_graph::plan_layered_relation_boxes`. | ER cardinality, label, line-style, and diagnostics remain in `er/render.rs`; ER and class public tests stayed green. |
+| 2026-05-30 | ACELP-040 | Ran final package, lint, formatting, and whitespace gates. | Lane closes with class and ER sharing the layered planner and no new topology scope added. |
 
 ## Verification Log
 
@@ -67,3 +68,13 @@ git diff --check
 | 2026-05-30 | ACELP-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | ER adapter extraction is warning-free. |
 | 2026-05-30 | ACELP-030 | `cargo fmt --all --check` | Workspace formatting check | PASS | Refactor formatting is stable. |
 | 2026-05-30 | ACELP-030 | `git diff --check -- crates/merman-ascii/src/er/render.rs crates/merman-ascii/src/relation_graph.rs docs/workstreams/ascii-class-er-layered-planner` | Scoped whitespace hygiene | PASS | ACELP-030 files have no whitespace errors. |
+| 2026-05-30 | ACELP-040 | `cargo nextest run -p merman-ascii` | Full ASCII package gate | PASS, 113 tests | Planner extraction remains compatible with the full terminal renderer package. |
+| 2026-05-30 | ACELP-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | Final shared planner state is warning-free. |
+| 2026-05-30 | ACELP-040 | `cargo fmt --all --check` | Workspace formatting check | PASS | Final lane state is formatted. |
+| 2026-05-30 | ACELP-040 | `git diff --check` | Workspace whitespace hygiene | PASS | Final lane state has no whitespace errors. |
+
+## Closeout Review
+
+No blocking findings remain. `relation_graph` owns only generic terminal placement and structural
+validation; class and ER adapters still own typed relationship semantics and diagnostic wording.
+Dense/crossing topology support is intentionally deferred.
