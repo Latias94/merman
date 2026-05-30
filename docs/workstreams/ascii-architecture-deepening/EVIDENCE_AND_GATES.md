@@ -1,0 +1,91 @@
+# ASCII Architecture Deepening — Evidence And Gates
+
+Status: Active
+Last updated: 2026-05-30
+
+## Smallest Current Repro
+
+```bash
+cargo nextest run -p merman-ascii canvas color
+```
+
+This is the first gate because the styled text/cell module should preserve role-aware rendering
+before higher-level families migrate to it.
+
+## Gate Set
+
+### Workstream Document Gate
+
+```bash
+git diff --check -- docs/workstreams/ascii-architecture-deepening
+```
+
+Proves the lane docs are syntactically clean before implementation starts.
+
+### Styled Text/Cell Gate
+
+```bash
+cargo nextest run -p merman-ascii canvas color
+```
+
+Proves shared role-aware text behavior, trimming, and ANSI/HTML finalization.
+
+### Graph Gate
+
+```bash
+cargo nextest run -p merman-ascii flowchart
+```
+
+Proves graph route planning and painting preserve supported flowchart behavior.
+
+### Relation Graph Gate
+
+```bash
+cargo nextest run -p merman-ascii class er
+```
+
+Proves class and ER relation adapters preserve current rendering behavior.
+
+### Sequence Gate
+
+```bash
+cargo nextest run -p merman-ascii sequence
+```
+
+Proves event planning preserves lifecycle, activation, visibility, and control-frame behavior.
+
+### Package Gate
+
+```bash
+cargo nextest run -p merman-ascii
+```
+
+Proves all ASCII family regressions still pass after the architectural seams are introduced.
+
+### Closeout Gates
+
+```bash
+cargo fmt --all --check
+cargo clippy -p merman-ascii --all-targets -- -D warnings
+git diff --check
+```
+
+Proves formatting, lint cleanliness, and whitespace hygiene.
+
+### Review Gate
+
+Run `review-workstream` before accepting lane completion. Record blocking findings, missing gates,
+and residual risks in this file or a journal note.
+
+## Evidence Anchors
+
+- `docs/workstreams/ascii-architecture-deepening/DESIGN.md`
+- `docs/workstreams/ascii-architecture-deepening/TODO.md`
+- `docs/workstreams/ascii-architecture-deepening/MILESTONES.md`
+- `docs/workstreams/ascii-architecture-deepening/HANDOFF.md`
+- `docs/workstreams/ascii-architecture-deepening/WORKSTREAM.json`
+
+## Evidence Log
+
+- 2026-05-30 — AAD-010 started. Workstream opened for the five ASCII architecture deepening targets.
+- 2026-05-30 — AAD-010 passed `git diff --check -- docs/workstreams/ascii-architecture-deepening`.
