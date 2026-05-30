@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-color-role-api",
+  "title": "ASCII Color Role API",
+  "status": "draft",
+  "updated": "2026-05-30",
+  "scope_kind": "architecture",
+  "problem": "merman-ascii needs an opt-in color role API before ANSI/HTML output or Mermaid style/class rendering can be implemented safely.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-color-role-api/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-color-role-api/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-color-role-api/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-color-role-api/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-color-role-api/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ascii-color-role-api/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ascii-color-role-api/CONTEXT.jsonl",
+  "gates": [
+    "git diff --check -- docs/workstreams/ascii-color-role-api",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii color",
+    "cargo nextest run -p merman-ascii canvas",
+    "cargo nextest run -p merman-ascii flowchart_color",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii",
+    "git diff --check",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "ACR-010",
+      "result": "drafted the ASCII color role API workstream and public API sketch"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "color",
+    "terminal",
+    "api"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "design",
+    "next_task": "ACR-020",
+    "notes": "Write an ADR for the public API shape and AsciiRenderOptions migration before implementation. Keep the workstream draft until that decision is accepted."
+  }
+}

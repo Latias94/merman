@@ -1,0 +1,11 @@
+{"date":"2026-05-30","kind":"authority","path":"docs/adr/0065-ascii-output-boundary.md","note":"ASCII output is a first-class text target, independent from SVG layout, with explicit unsupported-feature diagnostics."}
+{"date":"2026-05-30","kind":"authority","path":"docs/adr/0014-upstream-parity-policy.md","note":"Mermaid upstream remains the spec; incremental supported subsets must be documented as such."}
+{"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/FLOWCHART_SUPPORT.md","note":"Color roles, classDef, class, and inline style rendering are currently deferred."}
+{"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/SEQUENCE_SUPPORT.md","note":"Sequence boxes preserve color/style labels but do not emit colored terminal output today."}
+{"date":"2026-05-30","kind":"workstream","path":"docs/workstreams/ascii-reference-implementation-expansion/HANDOFF.md","note":"Closed reference lane lists ANSI/HTML color and style roles as follow-on scope."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/beautiful-mermaid/src/ascii/types.ts","note":"Reference role list, AsciiTheme shape, ColorMode names, and role canvas type."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/beautiful-mermaid/src/ascii/ansi.ts","note":"Reference ANSI/HTML encoder and theme derivation from diagram colors."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/beautiful-mermaid/src/ascii/canvas.ts","note":"Reference parallel role canvas and colorization after layout."}
+{"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/options.rs","note":"AsciiRenderOptions is a public Copy struct with public fields; color fields require a public API decision."}
+{"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/canvas.rs","note":"Canvas currently stores only chars and finalizes plain text rows."}
+{"date":"2026-05-30","kind":"code_context","path":"crates/merman-ascii/src/lib.rs","note":"Public render entry points validate options before dispatching to diagram renderers."}
