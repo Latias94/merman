@@ -1,7 +1,7 @@
 # Python UniFFI Package - Evidence And Gates
 
 Status: Active
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 ## Smallest Current Repro
 
@@ -68,3 +68,15 @@ parallel user edits.
 - 2026-05-30: `git diff --check` passed.
 - 2026-05-30: `cargo package -p merman-uniffi --allow-dirty --list` passed and includes
   `examples/generate_python_package.rs`.
+- 2026-05-31: Renamed the Python distribution and public import package to `merman` after PyPI
+  lookup showed no existing `merman` project.
+- 2026-05-31: `python3 -m py_compile scripts/build-python-uniffi-wheel.py
+  bindings/python/merman-uniffi/examples/smoke.py platforms/flutter/tool/android-smoke.py` passed.
+- 2026-05-31: `cargo fmt -p merman-uniffi -- --check` passed.
+- 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test
+  bindgen_smoke` passed (`2` tests): source generation and staged `import merman` smoke.
+- 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed and produced
+  `merman-0.7.0-py3-none-macosx_26_0_arm64.whl`.
+- 2026-05-31: `PYTHONPATH=bindings/python/merman-uniffi/src python3
+  bindings/python/merman-uniffi/examples/smoke.py` passed.
+- 2026-05-31: `git diff --check` passed.

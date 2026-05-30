@@ -1,0 +1,76 @@
+name: Release Crates (crates.io)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::Run this workflow from a v* tag."
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Verify Cargo workspace version matches tag
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
+          if [ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish crates in dependency order
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          crates=(
+            dugong-graphlib
+            dugong
+            manatee
+            merman-core
+            merman-render
+            merman-ascii
+            merman
+            merman-bindings-core
+            merman-ffi
+            merman-uniffi
+            merman-cli
+          )
+
+          for crate in "${crates[@]}"; do
+            echo "Publishing $crate"
+            for attempt in 1 2 3; do
+              if cargo publish -p "$crate" --locked --token "$CARGO_REGISTRY_TOKEN"; then
+                break
+              fi
+              if [ "$attempt" = 3 ]; then
+                exit 1
+              fi
+              sleep $((attempt * 30))
+            done
+          done

@@ -69,11 +69,11 @@ try {
     Invoke-Native $Python @("-m", "pip", "wheel", $packagePath, "--no-deps", "--wheel-dir", $wheelPath)
 
     if ($RunSmoke) {
-        $wheel = Get-ChildItem -LiteralPath $wheelPath -Filter "merman_uniffi-*.whl" |
+        $wheel = Get-ChildItem -LiteralPath $wheelPath -Filter "merman-*.whl" |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
         if (-not $wheel) {
-            throw "No merman_uniffi wheel found under $wheelPath"
+            throw "No merman wheel found under $wheelPath"
         }
 
         $venvDir = Join-Path $repoRoot "target\python-wheel-smoke"
@@ -85,7 +85,7 @@ try {
         Invoke-Native $venvPython @("-m", "pip", "install", "--no-deps", $wheel.FullName)
         Invoke-Native $venvPython @(
             "-c",
-            "import merman_uniffi; e = merman_uniffi.MermanEngine(); assert e.render_svg('flowchart TD\nA[Hello]', None).startswith('<svg')"
+            "import merman; e = merman.MermanEngine(); assert e.render_svg('flowchart TD\nA[Hello]', None).startswith('<svg')"
         )
     }
 }

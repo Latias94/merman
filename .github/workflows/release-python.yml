@@ -1,0 +1,92 @@
+name: Release Python Wheels
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-15
+          - windows-2025
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::Run this workflow from a v* tag."
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify Python package version matches tag
+        run: |
+          PACKAGE_VERSION=$(python - <<'PY'
+          import tomllib
+          with open("bindings/python/merman-uniffi/pyproject.toml", "rb") as f:
+              print(tomllib.load(f)["project"]["version"])
+          PY
+          )
+          if [ "$PACKAGE_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Python package version '$PACKAGE_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build and smoke wheel
+        run: python scripts/build-python-uniffi-wheel.py --run-smoke
+
+      - name: Run Python example
+        run: PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-wheel-${{ runner.os }}-${{ runner.arch }}
+          path: target/python-wheels/*.whl
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: python-wheel-*
+          path: wheels
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: wheels/*.whl

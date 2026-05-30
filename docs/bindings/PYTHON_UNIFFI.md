@@ -7,7 +7,7 @@ The Python binding is generated from the `merman-uniffi` cdylib with UniFFI. The
 ```text
 bindings/python/merman-uniffi/
   pyproject.toml
-  src/merman_uniffi/
+  src/merman/
     __init__.py
     merman_uniffi.py            generated, not committed
     merman_uniffi.dll           generated/copy on Windows, not committed
@@ -38,9 +38,9 @@ cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_pa
 The package re-exports the generated UniFFI API:
 
 ```python
-import merman_uniffi
+import merman
 
-engine = merman_uniffi.MermanEngine()
+engine = merman.MermanEngine()
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
@@ -57,19 +57,27 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
-it, imports `merman_uniffi` with Python, then calls `MermanEngine.render_svg`,
+it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.parse_json`, `MermanEngine.layout_json`, and checks `MermanError.Binding` fields for
 invalid options JSON.
 
 ## Build A Local Wheel
 
-```powershell
-.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```bash
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 The script builds `merman-uniffi`, stages generated UniFFI Python files into
 `bindings/python/merman-uniffi`, builds a platform wheel under `target/python-wheels`, then
 optionally installs it into a temporary venv and calls `MermanEngine.render_svg`.
+
+## Example
+
+After generation, run:
+
+```bash
+PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+```
 
 ## Not Yet Done
 

@@ -64,11 +64,7 @@ typedef _MermanCallC = NativeMermanResult Function(
   UintPtr,
 );
 typedef _MermanCallDart = NativeMermanResult Function(
-  Pointer<Uint8>,
-  int,
-  Pointer<Uint8>,
-  int,
-);
+    Pointer<Uint8>, int, Pointer<Uint8>, int);
 
 typedef _BufferFreeC = Void Function(NativeMermanBuffer);
 typedef _BufferFreeDart = void Function(NativeMermanBuffer);
@@ -120,12 +116,14 @@ class Merman {
 
   String renderSvg(String source, {String? optionsJson}) {
     return _decodeText(
-        _bindings.call(_bindings.renderSvg, source, optionsJson));
+      _bindings.call(_bindings.renderSvg, source, optionsJson),
+    );
   }
 
   String parseJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
-        _bindings.call(_bindings.parseJson, source, optionsJson));
+      _bindings.call(_bindings.parseJson, source, optionsJson),
+    );
   }
 
   Map<String, Object?> parseJson(String source, {String? optionsJson}) {
@@ -134,7 +132,8 @@ class Merman {
 
   String layoutJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
-        _bindings.call(_bindings.layoutJson, source, optionsJson));
+      _bindings.call(_bindings.layoutJson, source, optionsJson),
+    );
   }
 
   Map<String, Object?> layoutJson(String source, {String? optionsJson}) {

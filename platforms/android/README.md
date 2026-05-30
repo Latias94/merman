@@ -18,9 +18,15 @@ val layoutJson = MermanEngine.layoutJson("flowchart TD\nA[Hello] --> B[World]")
 
 Native errors are thrown as `MermanException` with the C ABI JSON error payload as the message.
 
+## Example
+
+[`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
+sequence. Use it from an Android app or instrumentation test after packaging
+`libmerman_ffi.so` into the app.
+
 ## Local Verification
 
-```powershell
+```bash
 kotlinc src/main/kotlin/io/merman/MermanException.kt src/main/kotlin/io/merman/MermanEngine.kt -d ../../target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
@@ -28,23 +34,30 @@ cargo check -p merman-ffi --target aarch64-linux-android
 
 Standalone Gradle verification with native slices and Gradle 9.x:
 
+```bash
+python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+gradle -p platforms/android assembleRelease
+# or, with an explicit Gradle install:
+"<gradle-install-dir>/bin/gradle" -p platforms/android assembleRelease
+```
+
+On Windows, the existing PowerShell entry point remains available:
+
 ```powershell
 .\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
-& "<gradle-install-dir>\bin\gradle.bat" -p platforms/android assembleRelease
-# or, when gradle is already on PATH:
 gradle -p platforms/android assembleRelease
 ```
 
 Full platform gate with Android native slices and AAR assembly:
 
-```powershell
-.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices -RunAndroidGradleBuild -GradlePath "<gradle-install-dir>\bin\gradle.bat"
+```bash
+python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build --gradle-path "<gradle-install-dir>/bin/gradle"
 ```
 
 ## Build Native Slices
 
-```powershell
-.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
+```bash
+python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 ```
 
 This copies libraries into:

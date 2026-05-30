@@ -52,6 +52,23 @@ merman_buffer_free(result.data);
 Every non-empty `MermanResult.data` buffer must be freed exactly once with `merman_buffer_free`.
 Do not use `free`, `delete`, or a host runtime allocator for buffers returned by Rust.
 
+## Example
+
+[`examples/render_svg.c`](examples/render_svg.c) is a small C consumer that renders a flowchart to
+SVG through the C ABI.
+
+On macOS or Linux:
+
+```sh
+cargo build -p merman-ffi --release
+cc -I crates/merman-ffi/include \
+  crates/merman-ffi/examples/render_svg.c \
+  -L target/release -lmerman_ffi \
+  -Wl,-rpath,"$PWD/target/release" \
+  -o target/merman-ffi-render-svg
+target/merman-ffi-render-svg
+```
+
 ## Entry Points
 
 - `merman_abi_version`

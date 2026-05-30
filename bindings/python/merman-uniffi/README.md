@@ -1,4 +1,4 @@
-# merman-uniffi Python Package
+# merman Python Package
 
 Experimental Python package scaffold for UniFFI-generated merman bindings.
 
@@ -13,10 +13,10 @@ cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_pa
 
 The generator writes:
 
-- `src/merman_uniffi/merman_uniffi.py`
-- `src/merman_uniffi/merman_uniffi.dll` on Windows
-- `src/merman_uniffi/libmerman_uniffi.so` on Linux
-- `src/merman_uniffi/libmerman_uniffi.dylib` on macOS
+- `src/merman/merman_uniffi.py`
+- `src/merman/merman_uniffi.dll` on Windows
+- `src/merman/libmerman_uniffi.so` on Linux
+- `src/merman/libmerman_uniffi.dylib` on macOS
 
 The native library must sit beside the generated module because UniFFI's Python loader resolves the
 library relative to the generated file.
@@ -24,13 +24,19 @@ library relative to the generated file.
 After generation, a local smoke can import the package by putting `src` on `PYTHONPATH`:
 
 ```bash
-PYTHONPATH=bindings/python/merman-uniffi/src python -c "import merman_uniffi; print(merman_uniffi.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
+PYTHONPATH=bindings/python/merman-uniffi/src python -c "import merman; print(merman.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
+```
+
+Or run the example script:
+
+```bash
+PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
 ```
 
 Build a local platform wheel and run an install smoke:
 
-```powershell
-.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```bash
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 PyPI publishing is follow-on work; this scaffold is the package staging shape used by the Rust smoke

@@ -1,0 +1,107 @@
+name: Release Apple (SwiftPM)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::Run this workflow from a v* tag."
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Verify Cargo workspace version matches tag
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
+          if [ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Apple XCFramework
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh
+
+      - name: Validate Swift package
+        run: |
+          swift package describe
+          swift build
+          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+
+      - name: Package XCFramework
+        run: |
+          cd platforms/apple
+          ARCHIVE="Merman.xcframework-${GITHUB_REF_NAME}.zip"
+          ditto -c -k --sequesterRsrc --keepParent Merman.xcframework "$ARCHIVE"
+          echo "APPLE_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "CHECKSUM=$(swift package compute-checksum "$ARCHIVE")" >> "$GITHUB_ENV"
+          echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      - name: Patch Package.swift for release tag
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["TAG"]
+          checksum = os.environ["CHECKSUM"]
+          archive = os.environ["APPLE_ARCHIVE"]
+          repo = "${{ github.repository }}"
+          url = f"https://github.com/{repo}/releases/download/{tag}/{archive}"
+          path = Path("Package.swift")
+          src = path.read_text()
+          old = r'\.binaryTarget\(\s*name:\s*"MermanFFI",\s*path:\s*"platforms/apple/Merman\.xcframework"\s*\)'
+          new = (
+              '.binaryTarget(\n'
+              '            name: "MermanFFI",\n'
+              f'            url: "{url}",\n'
+              f'            checksum: "{checksum}"\n'
+              '        )'
+          )
+          patched, count = re.subn(old, new, src, flags=re.DOTALL)
+          if count != 1:
+              raise SystemExit("failed to patch Package.swift binaryTarget")
+          path.write_text(patched)
+          PY
+
+      - name: Commit patched Package.swift to release tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "chore: update Package.swift for release ${TAG}"
+          git tag -f "${TAG}"
+          git push origin "refs/tags/${TAG}" --force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: platforms/apple/Merman.xcframework-*.zip

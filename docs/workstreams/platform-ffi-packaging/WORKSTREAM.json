@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "slug": "platform-ffi-packaging",
+  "title": "Platform FFI Packaging",
+  "status": "closed",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Platform wrappers exist, but verification entry points are partly PowerShell-only and Apple iOS/macOS packaging needs fresh local evidence on macOS.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/platform-ffi-packaging/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/platform-ffi-packaging/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/platform-ffi-packaging/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/platform-ffi-packaging/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/platform-ffi-packaging/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "python3 -m py_compile scripts/verify-platform-bindings.py scripts/build-python-uniffi-wheel.py platforms/android/build-android.py platforms/flutter/tool/android-smoke.py",
+    "bash scripts/build-apple-xcframework.sh",
+    "swift package describe",
+    "cargo nextest run -p merman-ffi",
+    "cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke",
+    "git diff --check -- scripts platforms bindings docs README.md Package.swift"
+  ],
+  "evidence": [
+    "docs/workstreams/platform-ffi-packaging/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "docs/bindings/FFI_PROTOCOL.md",
+    "docs/workstreams/ffi-api/HANDOFF.md",
+    "docs/workstreams/uniffi-bindings/HANDOFF.md",
+    "repo-ref/RaTeX/docs/binding-architecture.md"
+  ],
+  "capability_tags": [
+    "ffi",
+    "bindings",
+    "platforms",
+    "apple",
+    "android",
+    "flutter",
+    "python"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed after adding Python platform script entry points, updating docs, verifying Apple XCFramework generation on macOS, and passing focused FFI/UniFFI gates. Follow-ons are CI matrix and publication packaging."
+  }
+}

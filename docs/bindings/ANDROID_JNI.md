@@ -31,37 +31,43 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
 initialization.
 
+## Example
+
+`platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, semantic
+JSON, and layout JSON from Android/Kotlin.
+
 ## Verification
 
-```powershell
+```bash
 kotlinc platforms/android/src/main/kotlin/io/merman/MermanException.kt platforms/android/src/main/kotlin/io/merman/MermanEngine.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings
-.\platforms\android\build-android.ps1 -Targets aarch64-linux-android
+python3 platforms/android/build-android.py --targets aarch64-linux-android
 ```
 
 Combined platform gate:
 
-```powershell
-.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
+```bash
+python3 scripts/verify-platform-bindings.py --build-android-slices
 ```
 
 To verify the standalone Android library module with native slices and Gradle 9.x:
 
-```powershell
-.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
-& "<gradle-install-dir>\bin\gradle.bat" -p platforms/android assembleRelease
+```bash
+python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+"<gradle-install-dir>/bin/gradle" -p platforms/android assembleRelease
 ```
 
 The platform gate can run the same AAR packaging check after building native slices:
 
-```powershell
-.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices -RunAndroidGradleBuild -GradlePath "<gradle-install-dir>\bin\gradle.bat"
+```bash
+python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build --gradle-path "<gradle-install-dir>/bin/gradle"
 ```
 
-`-GradlePath` accepts either the Gradle executable path or the Gradle `bin` directory. You can also
-set `MERMAN_GRADLE` instead of passing the parameter.
+`--gradle-path` accepts either the Gradle executable path or the Gradle `bin` directory. You can
+also set `MERMAN_GRADLE` instead of passing the parameter. Windows users can still run the existing
+PowerShell scripts if that is more convenient.
 
 ## Follow-On Packaging
 

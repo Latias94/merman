@@ -80,14 +80,14 @@ target/<profile>/merman_uniffi.{dll,so,dylib}
 UniFFI bindgen example
         |
         v
-bindings/python/merman-uniffi/src/merman_uniffi/
+bindings/python/merman-uniffi/src/merman/
   __init__.py                 stable package shim
   merman_uniffi.py            generated UniFFI module
   merman_uniffi.{dll,so,dylib} native library beside generated module
 ```
 
 The stable `__init__.py` should re-export the generated API and fail with a clear message if the
-generated files have not been staged. This gives Python users a normal `import merman_uniffi` entry
+generated files have not been staged. This gives Python users a normal `import merman` entry
 point while keeping generated files out of source control.
 
 ## Closeout Condition

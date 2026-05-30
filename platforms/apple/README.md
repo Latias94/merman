@@ -37,3 +37,15 @@ let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
 1. Build `platforms/apple/Merman.xcframework`.
 2. Add this repository as a local Swift Package in Xcode.
 3. Link product `Merman`.
+
+## Smoke Example
+
+After building the XCFramework, run the local SwiftPM smoke example:
+
+```bash
+bash scripts/build-apple-xcframework.sh
+swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+```
+
+The example lives in `platforms/apple/examples/smoke` and exercises SVG, semantic JSON, and layout
+JSON through the Swift wrapper.
