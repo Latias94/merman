@@ -16,24 +16,28 @@ Last updated: 2026-05-30
 
 ## M1 - Crossing Contract Tests
 
-- [ ] ACETR-020 [owner=unassigned] [deps=ACETR-010] [scope=crates/merman-ascii/tests]
+- [x] ACETR-020 [owner=codex] [deps=ACETR-010] [scope=crates/merman-ascii/tests]
   Goal: Convert or add parser-backed class and ER crossing tests that describe readable rendered
   output instead of unsupported diagnostics.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
   Review: Tests must assert public output through `render_model`, not planner internals.
-  Evidence: class and ER crossing tests fail red before implementation.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Evidence: `class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` and
+  `er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` failed red against the
+  previous crossing unsupported diagnostics.
+  Handoff: DONE. ACETR-030 implements the planner change.
 
 ## M2 - Shared Crossing Planner
 
-- [ ] ACETR-030 [owner=unassigned] [deps=ACETR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
+- [x] ACETR-030 [owner=codex] [deps=ACETR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
   Goal: Allow adjacent-layer crossing relationships when every edge remains drawable and keep other
   unsupported topology diagnostics unchanged.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Shared planner remains terminal-layout-only; class/ER semantics stay in adapters.
-  Evidence: Crossing tests pass; unrelated/cyclic/parallel/spanning diagnostics remain explicit.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Evidence: Shared planner now reorders each layer by previous-layer parent order before crossing
+  validation. Crossing class and ER tests pass while unrelated diagnostics remain covered by focused
+  gates.
+  Handoff: DONE. ACETR-040 updates support docs and closes or splits remaining dense topology work.
 
 ## M3 - Docs And Closeout
 

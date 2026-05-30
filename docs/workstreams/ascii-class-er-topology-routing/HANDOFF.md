@@ -11,15 +11,15 @@ unsupported diagnostics.
 
 ## Active Task
 
-- Task ID: ACETR-020
+- Task ID: ACETR-040
 - Owner: unassigned
 - Files:
-  - `crates/merman-ascii/tests/class_model.rs`
-  - `crates/merman-ascii/tests/er_model.rs`
-- Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
+  - `crates/merman-ascii/README.md`
+  - `docs/workstreams/ascii-class-er-topology-routing/*`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
 - Status: READY
-- Review: Tests must exercise public parser-backed `render_model` behavior and should fail red
-  before implementation.
+- Review: Confirm public support docs mention crossing adjacent-layer support and remaining dense
+  topology diagnostics.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Constraints

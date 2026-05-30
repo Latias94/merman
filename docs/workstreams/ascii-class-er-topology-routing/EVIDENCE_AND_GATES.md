@@ -49,9 +49,20 @@ git diff --check
 | Date | Task | Evidence | Result |
 | --- | --- | --- | --- |
 | 2026-05-30 | ACETR-010 | Opened follow-on lane from `ascii-class-er-layered-planner` closeout. | Scope is limited to crossing-first class/ER topology routing. |
+| 2026-05-30 | ACETR-020 | Added parser-backed class and ER crossing output tests. | Both tests failed red on the previous explicit unsupported diagnostics. |
+| 2026-05-30 | ACETR-030 | Shared planner now reorders child layers by previous-layer parent order before crossing validation. | Adjacent-layer crossing class/ER relationships render every edge by producing a non-crossing layer order. |
 
 ## Verification Log
 
 | Date | Task | Command | Scope | Result | Proves |
 | --- | --- | --- | --- | --- | --- |
 | 2026-05-30 | ACETR-010 | `git diff --check -- docs/workstreams/ascii-class-er-topology-routing` | Workstream opening docs | PASS | Opening docs have no whitespace errors. |
+| 2026-05-30 | ACETR-020 | `cargo nextest run -p merman-ascii class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` | Class crossing tracer | FAIL, expected red | Existing behavior rejected crossing class relationships. |
+| 2026-05-30 | ACETR-020 | `cargo nextest run -p merman-ascii er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` | ER crossing tracer | FAIL, expected red | Existing behavior rejected crossing ER relationships. |
+| 2026-05-30 | ACETR-030 | `cargo nextest run -p merman-ascii class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` | Class crossing tracer | PASS, 1 test | Class crossing relationships render by reordering the lower layer. |
+| 2026-05-30 | ACETR-030 | `cargo nextest run -p merman-ascii er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge` | ER crossing tracer | PASS, 1 test | ER crossing relationships render by reordering the lower layer. |
+| 2026-05-30 | ACETR-030 | `cargo nextest run -p merman-ascii class` | Focused class ASCII tests | PASS, 14 tests | Existing class behavior and unrelated diagnostics remain stable. |
+| 2026-05-30 | ACETR-030 | `cargo nextest run -p merman-ascii er` | Focused ER/filter gate | PASS, 81 tests | Existing ER behavior and unrelated diagnostics remain stable. |
+| 2026-05-30 | ACETR-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | Planner crossing support is warning-free. |
+| 2026-05-30 | ACETR-030 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation formatting is stable. |
+| 2026-05-30 | ACETR-030 | `git diff --check -- crates/merman-ascii/src/relation_graph.rs crates/merman-ascii/tests/class_model.rs crates/merman-ascii/tests/er_model.rs docs/workstreams/ascii-class-er-topology-routing` | Scoped whitespace hygiene | PASS | ACETR-030 files have no whitespace errors. |

@@ -147,19 +147,27 @@ fn er_parser_relationship_star_renders_each_label_and_leaf_cardinality() {
 }
 
 #[test]
-fn er_parser_crossing_relationship_layouts_are_explicitly_unsupported() {
-    let err = render_er(
+fn er_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge() {
+    let rendered = render_er(
         "erDiagram\nA ||--|| D : owns\nB ||--|| C : owns",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("crossing ER relationships must not be rendered ambiguously");
+    .expect("crossing ER relationships should render by reordering the lower layer");
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "er",
-            feature: "crossing ER relationship layouts",
-        }
+        rendered,
+        concat!(
+            "+---+    +---+\n",
+            "| A |    | B |\n",
+            "+---+    +---+\n",
+            " ||       ||\n",
+            "owns     owns\n",
+            "  |        |\n",
+            " ||       ||\n",
+            "+---+    +---+\n",
+            "| D |    | C |\n",
+            "+---+    +---+\n",
+        )
     );
 }
 

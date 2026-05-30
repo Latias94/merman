@@ -191,8 +191,9 @@ pub(crate) fn plan_layered_relation_boxes<'a>(
     horizontal_gap: usize,
 ) -> std::result::Result<LayeredRelationPlan<'a>, LayeredRelationError> {
     let levels = layered_relation_levels(boxes, edges)?;
-    reject_crossing_layered_relations(boxes, edges, &levels)?;
-    let placed = place_layered_boxes(boxes, edges, &levels, horizontal_gap);
+    let level_groups = ordered_layered_groups(boxes, edges, &levels);
+    reject_crossing_layered_relations(edges, &levels, &level_groups)?;
+    let placed = place_layered_boxes(&level_groups, edges, &levels, horizontal_gap);
 
     Ok(LayeredRelationPlan { placed })
 }
@@ -289,19 +290,14 @@ fn layered_relation_levels(
 }
 
 fn reject_crossing_layered_relations(
-    boxes: &[RelationGraphBox],
     edges: &[LayeredRelationEdge<'_>],
     levels: &HashMap<String, usize>,
+    level_groups: &[Vec<&RelationGraphBox>],
 ) -> std::result::Result<(), LayeredRelationError> {
     let mut order_by_id = HashMap::new();
-    let max_level = levels.values().copied().max().unwrap_or(0);
-    for level in 0..=max_level {
-        let mut index = 0;
-        for relation_box in boxes {
-            if levels.get(relation_box.id()).copied() == Some(level) {
-                order_by_id.insert(relation_box.id().to_string(), index);
-                index += 1;
-            }
+    for group in level_groups {
+        for (index, relation_box) in group.iter().enumerate() {
+            order_by_id.insert(relation_box.id().to_string(), index);
         }
     }
 
@@ -333,12 +329,11 @@ fn reject_crossing_layered_relations(
     Ok(())
 }
 
-fn place_layered_boxes<'a>(
+fn ordered_layered_groups<'a>(
     boxes: &'a [RelationGraphBox],
     edges: &[LayeredRelationEdge<'_>],
     levels: &HashMap<String, usize>,
-    horizontal_gap: usize,
-) -> Vec<PlacedRelationGraphBox<'a>> {
+) -> Vec<Vec<&'a RelationGraphBox>> {
     let max_level = levels.values().copied().max().unwrap_or(0);
     let mut level_groups = vec![Vec::<&RelationGraphBox>::new(); max_level + 1];
     for relation_box in boxes {
@@ -346,6 +341,47 @@ fn place_layered_boxes<'a>(
             level_groups[level].push(relation_box);
         }
     }
+
+    for level in 1..=max_level {
+        let previous_order = level_groups[level - 1]
+            .iter()
+            .enumerate()
+            .map(|(index, relation_box)| (relation_box.id(), index))
+            .collect::<HashMap<_, _>>();
+        let original_order = level_groups[level]
+            .iter()
+            .enumerate()
+            .map(|(index, relation_box)| (relation_box.id(), index))
+            .collect::<HashMap<_, _>>();
+
+        level_groups[level].sort_by_key(|relation_box| {
+            let parent_order = edges
+                .iter()
+                .filter(|edge| {
+                    edge.bottom_id == relation_box.id()
+                        && levels.get(edge.top_id).copied() == Some(level - 1)
+                })
+                .filter_map(|edge| previous_order.get(edge.top_id).copied())
+                .min()
+                .unwrap_or(usize::MAX);
+            let original_order = original_order
+                .get(relation_box.id())
+                .copied()
+                .unwrap_or(usize::MAX);
+            (parent_order, original_order)
+        });
+    }
+
+    level_groups
+}
+
+fn place_layered_boxes<'a>(
+    level_groups: &[Vec<&'a RelationGraphBox>],
+    edges: &[LayeredRelationEdge<'_>],
+    levels: &HashMap<String, usize>,
+    horizontal_gap: usize,
+) -> Vec<PlacedRelationGraphBox<'a>> {
+    let max_level = level_groups.len().saturating_sub(1);
 
     let group_widths = level_groups
         .iter()

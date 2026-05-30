@@ -167,19 +167,26 @@ fn class_parser_extension_chain_renders_each_relationship() {
 }
 
 #[test]
-fn class_parser_crossing_relationship_layouts_are_explicitly_unsupported() {
-    let err = render_class(
+fn class_parser_crossing_relationship_layout_reorders_layer_to_render_each_edge() {
+    let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nclass D\nA <|-- D\nB <|-- C",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("crossing class relationships must not be rendered ambiguously");
+    .expect("crossing class relationships should render by reordering the lower layer");
 
     assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "crossing class relationship layouts",
-        }
+        rendered,
+        concat!(
+            "+---+    +---+\n",
+            "| A |    | B |\n",
+            "+---+    +---+\n",
+            "  ^        ^\n",
+            "  |        |\n",
+            "  |        |\n",
+            "+---+    +---+\n",
+            "| D |    | C |\n",
+            "+---+    +---+\n",
+        )
     );
 }
 

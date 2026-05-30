@@ -49,6 +49,16 @@
       "date": "2026-05-30",
       "task": "ACETR-010",
       "result": "opened follow-on lane for crossing-first class/ER topology routing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACETR-020",
+      "result": "added parser-backed class and ER crossing tests that failed red against the old unsupported diagnostics"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACETR-030",
+      "result": "implemented adjacent-layer crossing support by reordering lower layers by parent order in the shared planner"
     }
   ],
   "adr_refs": [
@@ -66,7 +76,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACETR-020",
-    "notes": "Start with parser-backed crossing tests. Keep dense, parallel, cyclic, spanning-level, unrelated component, color/style, and flowchart routing work out of this lane."
+    "next_task": "ACETR-040",
+    "notes": "Update support docs, run final merman-ascii package gates, and close or split remaining dense topology work. Keep parallel, cyclic, spanning-level, unrelated component, color/style, and flowchart routing work out of this lane."
   }
 }
