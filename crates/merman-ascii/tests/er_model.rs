@@ -119,3 +119,20 @@ fn er_parser_multiple_relationship_layouts_are_explicitly_unsupported() {
         }
     );
 }
+
+#[test]
+fn er_parser_relationship_layouts_with_unrelated_entities_are_explicitly_unsupported() {
+    let err = render_er(
+        "erDiagram\nA ||--|| B : owns\nC",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("unrelated ER entities need a graph layout pass");
+
+    assert_eq!(
+        err,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "er",
+            feature: "ER relationship layouts with unrelated entities",
+        }
+    );
+}

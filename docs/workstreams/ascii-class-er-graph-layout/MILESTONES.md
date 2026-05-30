@@ -25,7 +25,8 @@ Exit criteria:
 
 Primary gate:
 
-- `cargo nextest run -p merman-ascii class er`
+- `cargo nextest run -p merman-ascii class`
+- `cargo nextest run -p merman-ascii er`
 
 ## M2 - Shared Layout Boundary
 
@@ -37,7 +38,8 @@ Exit criteria:
 
 Primary gates:
 
-- `cargo nextest run -p merman-ascii class er`
+- `cargo nextest run -p merman-ascii class`
+- `cargo nextest run -p merman-ascii er`
 - `cargo fmt --all --check`
 
 ## M3 - Class Multi-Relationship Rendering

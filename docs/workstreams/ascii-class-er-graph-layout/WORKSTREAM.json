@@ -51,6 +51,11 @@
       "date": "2026-05-30",
       "task": "ACEG-010",
       "result": "opened follow-on lane for class/ER multi-relationship terminal graph layout"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEG-020",
+      "result": "added parser-backed tracer tests for class multiple relationships and ER unrelated-entity relationship layouts"
     }
   ],
   "adr_refs": [
@@ -59,7 +64,7 @@
   ],
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACEG-020",
-    "notes": "Start with parser-backed tracer tests for class and ER multi-relationship diagrams before introducing a shared layout boundary. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
+    "next_task": "ACEG-030",
+    "notes": "Implement the shared terminal relationship-graph placement boundary next. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
   }
 }

@@ -15,23 +15,25 @@ attributes, labels, identifying/non-identifying relationships, and common cardin
 
 ## Active Task
 
-- Task ID: ACEG-010
+- Task ID: ACEG-020
 - Owner: codex
 - Files:
+  - `crates/merman-ascii/tests/class_model.rs`
+  - `crates/merman-ascii/tests/er_model.rs`
   - `docs/workstreams/ascii-class-er-graph-layout/*`
-- Validation: `git diff --check`
-- Status: DONE once the opening docs are committed.
-- Review: Check that this lane does not absorb color/style, state, flowchart direction, or XYChart
-  layout work.
+- Validation: `cargo nextest run -p merman-ascii class`;
+  `cargo nextest run -p merman-ascii er`
+- Status: DONE
+- Review: Public parser-backed diagnostics are now locked; no layout internals were added.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Next Recommended Action
 
-Run ACEG-020:
+Run ACEG-030:
 
-- Add parser-backed tests that capture currently unsupported class and ER multi-relationship cases.
-- Keep production code unchanged until the test contract is explicit.
-- Do not add a shared layout abstraction before both class and ER tests justify it.
+- Introduce the smallest shared terminal relationship-graph placement boundary.
+- Route existing single-relationship class/ER outputs through it without broad snapshot drift.
+- Keep class and ER relationship semantics in their own adapters.
 
 ## Constraints
 

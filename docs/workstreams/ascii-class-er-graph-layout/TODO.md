@@ -16,21 +16,24 @@ Last updated: 2026-05-30
 
 ## M1 - Contract Tracer Tests
 
-- [ ] ACEG-020 [owner=unassigned] [deps=ACEG-010] [scope=crates/merman-ascii/tests]
+- [x] ACEG-020 [owner=codex] [deps=ACEG-010] [scope=crates/merman-ascii/tests]
   Goal: Add parser-backed tracer tests for class and ER multi-relationship diagrams that currently
   return explicit unsupported diagnostics.
-  Validation: `cargo nextest run -p merman-ascii class er`
-  Review: Tests should prove public behavior through `render_model`; do not add layout internals
-  yet.
-  Evidence: failing or expectation-updated tests in `class_model.rs` and `er_model.rs`.
-  Handoff: ACEG-030 implements the shared placement seam.
+  Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
+  Review: Tests prove public behavior through parser-backed `render_model` helpers and do not add
+  layout internals.
+  Evidence: `class_parser_multiple_relationships_are_explicitly_unsupported` and
+  `er_parser_relationship_layouts_with_unrelated_entities_are_explicitly_unsupported`; gates
+  recorded in `EVIDENCE_AND_GATES.md`.
+  Handoff: DONE. ACEG-030 implements the shared placement seam.
 
 ## M2 - Shared Relationship Layout Boundary
 
 - [ ] ACEG-030 [owner=unassigned] [deps=ACEG-020] [scope=crates/merman-ascii/src]
   Goal: Introduce a small terminal relationship-graph placement boundary and route existing
   single-relationship class/ER outputs through it without broad behavior drift.
-  Validation: `cargo nextest run -p merman-ascii class er`; `cargo fmt --all --check`
+  Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
+  `cargo fmt --all --check`
   Review: Shared code must be terminal-layout-only; class/ER semantics stay in their adapters.
   Evidence: new internal module plus unchanged or documented snapshots.
   Handoff: ACEG-040 can add class multi-relationship rendering.

@@ -113,6 +113,23 @@ fn class_parser_relationship_layouts_with_unrelated_classes_are_explicitly_unsup
 }
 
 #[test]
+fn class_parser_multiple_relationships_are_explicitly_unsupported() {
+    let err = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("multiple class relationship layout needs a graph layout pass");
+
+    assert_eq!(
+        err,
+        AsciiError::UnsupportedFeature {
+            diagram_type: "class",
+            feature: "multiple class relationships",
+        }
+    );
+}
+
+#[test]
 fn class_parser_reverse_extension_orients_marker_toward_parent() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nDog --|> Animal",

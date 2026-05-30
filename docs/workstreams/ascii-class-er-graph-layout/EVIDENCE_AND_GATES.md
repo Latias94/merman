@@ -38,11 +38,11 @@ cargo fmt --all --check
 ```bash
 cargo nextest run -p merman-ascii class
 cargo nextest run -p merman-ascii er
-cargo nextest run -p merman-ascii class er
 ```
 
 Use the smallest focused gate for the active task. The combined filter is useful when touching the
-shared placement boundary.
+shared placement boundary; run both class and ER focused commands when a single change affects both
+diagram families.
 
 ### Package And Public Gates
 
@@ -79,9 +79,12 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | Date | Task | Evidence | Result |
 | --- | --- | --- | --- |
 | 2026-05-30 | ACEG-010 | Opened follow-on lane from `ascii-reference-implementation-expansion` closeout. | Lane scope is limited to class/ER multi-relationship terminal graph layout. |
+| 2026-05-30 | ACEG-020 | Added parser-backed tracer tests in `crates/merman-ascii/tests/class_model.rs` and `crates/merman-ascii/tests/er_model.rs`. | Current unsupported diagnostics are locked for class multiple relationships and ER unrelated-entity relationship layouts before layout refactoring starts. |
 
 ## Verification Log
 
 | Date | Task | Command | Scope | Result | Proves |
 | --- | --- | --- | --- | --- | --- |
 | 2026-05-30 | ACEG-010 | `git diff --check -- docs/workstreams/ascii-class-er-graph-layout` | Workstream opening docs | PASS | Opening docs have no whitespace errors. |
+| 2026-05-30 | ACEG-020 | `cargo nextest run -p merman-ascii class` | Focused class ASCII tests | PASS, 12 tests | Class multiple-relationship behavior is explicitly unsupported through the public parser-backed render path. |
+| 2026-05-30 | ACEG-020 | `cargo nextest run -p merman-ascii er` | Focused ER/filter gate | PASS, 77 tests | ER unrelated-entity relationship layout remains an explicit diagnostic through the public parser-backed render path; existing ER and substring-matched tests stay green. |
