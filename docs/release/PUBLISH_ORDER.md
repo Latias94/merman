@@ -18,7 +18,7 @@ Rationale:
 - A minor bump is clearer than a patch bump for a pre-1.0 release that adds public package
   capabilities.
 
-`WRV-030` should align manifests to this version before package verification.
+Manifests were aligned to `0.7.0` in `WRV-030` before package verification.
 
 ## Publish Order
 

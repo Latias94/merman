@@ -31,6 +31,9 @@ Exit criteria:
 - Workspace version and internal dependency version requirements agree.
 - Binding crates still compile after version alignment.
 
+Status: complete. Workspace package version, workspace dependency entries, and explicit binding
+facade dependencies are aligned to `0.7.0`; `merman-ffi` and `merman-uniffi` both compile.
+
 ## M3 — Package Gate Matrix
 
 Exit criteria:

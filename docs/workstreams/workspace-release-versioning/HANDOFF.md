@@ -5,8 +5,8 @@ Last updated: 2026-05-30
 
 ## Current State
 
-`WRV-010` and `WRV-020` are complete. The binding ABI work is not the blocker; release packaging
-is.
+`WRV-010`, `WRV-020`, and `WRV-030` are complete. The binding ABI work is not the blocker; release
+packaging is.
 
 Confirmed:
 
@@ -19,15 +19,17 @@ Confirmed:
 - Since crates.io versions are immutable, the next publishable workspace release needs a version
   newer than `0.6.0`.
 - `docs/release/PUBLISH_ORDER.md` selects `0.7.0` as the next release target.
+- Workspace package version and internal dependency requirements are aligned to `0.7.0`.
 
 ## Next Task
 
-`WRV-030`: align workspace package version and internal dependency version requirements to `0.7.0`.
+`WRV-040`: record the package gate matrix in dependency order.
 
 Recommended direction:
 
-- Update explicit `0.6.0` internal dependency requirements as well as `[workspace.package]`.
-- Re-run `cargo check -p merman-ffi` and `cargo check -p merman-uniffi`.
+- Run package file-list checks for binding crates.
+- Run full package verification where crates.io dependency availability allows it.
+- Record blocked checks without weakening manifests.
 - Do not run `cargo publish` in this lane without an explicit release command.
 
 ## Guardrails

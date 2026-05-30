@@ -29,13 +29,15 @@ Last updated: 2026-05-30
 
 ## M2 — Version Alignment
 
-- [ ] WRV-030 [owner=codex] [deps=WRV-020] [scope=Cargo.toml,Cargo.lock,crates/*/Cargo.toml]
+- [x] WRV-030 [owner=codex] [deps=WRV-020] [scope=Cargo.toml,Cargo.lock,crates/*/Cargo.toml]
   Goal: Align workspace package version and internal dependency version requirements to the chosen release version.
   Validation: cargo check -p merman-ffi && cargo check -p merman-uniffi
   Review: Do not weaken feature gates or path dependencies to force package verification.
   Evidence: version diff and cargo check output.
   Context: docs/workstreams/workspace-release-versioning/CONTEXT.jsonl
-  Handoff: Include explicit versions in crates that do not consume workspace dependency entries.
+  Handoff: DONE. Updated workspace package version and internal workspace dependency requirements to
+  `0.7.0`, including explicit `merman` and `merman-render` requirements in
+  `merman-bindings-core`.
 
 ## M3 — Package Gate Matrix
 

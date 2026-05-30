@@ -61,7 +61,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "WRV-030",
-    "notes": "Publish order is documented and 0.7.0 is selected. Continue by aligning workspace and internal dependency versions."
+    "next_task": "WRV-040",
+    "notes": "Workspace and internal dependency versions are aligned to 0.7.0. Continue with package gate matrix evidence."
   }
 }

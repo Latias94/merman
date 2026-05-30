@@ -71,3 +71,9 @@ Use narrower formatting checks if this lane only edits release docs and manifest
 - 2026-05-30: `cargo package -p merman-bindings-core --allow-dirty --list` passed.
 - 2026-05-30: `WRV-020` added `docs/release/PUBLISH_ORDER.md` and selected `0.7.0` as the next
   release target.
+- 2026-05-30: `WRV-030` aligned workspace package version and internal dependency versions to
+  `0.7.0`.
+- 2026-05-30: `cargo check -p merman-ffi` passed after version alignment.
+- 2026-05-30: `cargo check -p merman-uniffi` passed after version alignment.
+- 2026-05-30: `rg '0\.6\.0' Cargo.toml Cargo.lock crates -g Cargo.toml` found no remaining
+  manifest or lockfile references.

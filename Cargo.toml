@@ -21,7 +21,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 authors = ["Mingzhen Zhuang <superfrankie621@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -70,17 +70,17 @@ unicode-width = "0.2.2"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
-merman = { path = "crates/merman", version = "0.6.0" }
-merman-ascii = { path = "crates/merman-ascii", version = "0.6.0" }
-merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.6.0", default-features = false }
-merman-core = { path = "crates/merman-core", version = "0.6.0" }
-merman-ffi = { path = "crates/merman-ffi", version = "0.6.0" }
-merman-render = { path = "crates/merman-render", version = "0.6.0" }
-merman-uniffi = { path = "crates/merman-uniffi", version = "0.6.0" }
-merman-cli = { path = "crates/merman-cli", version = "0.6.0" }
-dugong = { path = "crates/dugong", version = "0.6.0" }
-dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.6.0" }
-manatee = { path = "crates/manatee", version = "0.6.0" }
+merman = { path = "crates/merman", version = "0.7.0" }
+merman-ascii = { path = "crates/merman-ascii", version = "0.7.0" }
+merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.7.0", default-features = false }
+merman-core = { path = "crates/merman-core", version = "0.7.0" }
+merman-ffi = { path = "crates/merman-ffi", version = "0.7.0" }
+merman-render = { path = "crates/merman-render", version = "0.7.0" }
+merman-uniffi = { path = "crates/merman-uniffi", version = "0.7.0" }
+merman-cli = { path = "crates/merman-cli", version = "0.7.0" }
+dugong = { path = "crates/dugong", version = "0.7.0" }
+dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.7.0" }
+manatee = { path = "crates/manatee", version = "0.7.0" }
 
 # The profile that 'dist' will build with
 [profile.dist]
