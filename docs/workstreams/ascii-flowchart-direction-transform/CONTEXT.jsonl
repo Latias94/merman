@@ -1,1 +1,2 @@
 {"date":"2026-05-30","kind":"scope_freeze","workstream":"ascii-flowchart-direction-transform","note":"Opened from FLOWCHART_SUPPORT gap triage. Scope is root-direction BT/RL transform only."}
+{"date":"2026-05-30","kind":"task_evidence","task":"AFDT-020","note":"Added parser-backed BT/RL ASCII output tests in flowchart_model.rs. Both fail red on current non-LR/TD unsupported-direction diagnostic."}

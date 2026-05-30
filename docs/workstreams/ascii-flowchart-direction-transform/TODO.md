@@ -15,14 +15,14 @@ Last updated: 2026-05-30
 
 ## M1 - Direction Contract Tests
 
-- [ ] AFDT-020 [owner=unassigned] [deps=AFDT-010] [scope=crates/merman-ascii/tests]
+- [x] AFDT-020 [owner=codex] [deps=AFDT-010] [scope=crates/merman-ascii/tests]
   Goal: Add parser-backed flowchart tests that describe BT and RL root-direction output instead of
   the current unsupported-feature diagnostic.
   Validation: `cargo nextest run -p merman-ascii flowchart`
   Review: Tests must exercise public `render_model` behavior and fail red on the old
   non-LR/TD-direction diagnostic.
   Evidence: BT/RL flowchart direction tests.
-  Handoff: AFDT-030 implements the transform.
+  Handoff: DONE. BT/RL parser-backed tests now fail red on the current non-LR/TD diagnostic.
 
 ## M2 - Root Direction Transform
 

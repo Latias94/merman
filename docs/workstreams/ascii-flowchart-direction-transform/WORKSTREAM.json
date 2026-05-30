@@ -53,6 +53,11 @@
       "date": "2026-05-30",
       "task": "AFDT-010",
       "result": "opened the flowchart BT/RL direction-transform lane from the support-matrix gap"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFDT-020",
+      "result": "added parser-backed BT/RL direction tests that fail red on the existing non-LR/TD diagnostic"
     }
   ],
   "adr_refs": [
@@ -70,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "AFDT-020",
-    "notes": "Start with parser-backed BT/RL tests. Keep subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of this lane."
+    "next_task": "AFDT-030",
+    "notes": "Make the BT/RL parser-backed tests green and update the old unsupported-direction test. Keep subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of this lane."
   }
 }

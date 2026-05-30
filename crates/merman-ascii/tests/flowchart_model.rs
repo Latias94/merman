@@ -65,6 +65,37 @@ fn flowchart_parser_tb_chain_matches_upstream_ascii_golden() {
 }
 
 #[test]
+fn flowchart_parser_bt_root_direction_renders_with_vertical_flip() {
+    let rendered = render_flowchart("flowchart BT\nA --> B", &AsciiRenderOptions::ascii())
+        .expect("BT flowchart direction should render as a vertical flip of TD");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n", "  ^  \n", "  |  \n", "  |  \n",
+            "  |  \n", "  |  \n", "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_rl_root_direction_renders_with_horizontal_mirror() {
+    let rendered = render_flowchart("flowchart RL\nA --> B", &AsciiRenderOptions::ascii())
+        .expect("RL flowchart direction should render as a horizontal mirror of LR");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| B |<----| A |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+        )
+    );
+}
+
+#[test]
 fn flowchart_parser_lr_edge_label_renders_on_edge_line() {
     let rendered = render_flowchart(
         "flowchart LR\nA -- hello --> B",
