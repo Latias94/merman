@@ -41,12 +41,41 @@ Last updated: 2026-05-30
 
 ## M3 - Follow-On Adoption Plan
 
-- [ ] ACR-050 [owner=unassigned] [deps=ACR-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/src/xychart]
+- [x] ACR-050 [owner=codex] [deps=ACR-040] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/src/xychart]
   Goal: Decide whether to adopt roles across all shipped diagram families or split smaller lanes.
-  Validation: family-specific nextest filters for each adopted renderer.
+  Validation: `git diff --check -- docs/workstreams/ascii-color-role-api crates/merman-ascii/FLOWCHART_SUPPORT.md crates/merman-ascii/README.md`
   Review: Sequence/class/ER/XYChart roles should preserve their current plain snapshots.
-  Evidence: Updated support docs and per-family color tests.
-  Handoff: Open narrower lanes if adoption would be too broad for one task.
+  Evidence: `FAMILY_ADOPTION_PLAN.md` and updated support docs.
+  Handoff: DONE. Broader adoption is split; start ACR-051 before family-specific role writers.
+
+- [ ] ACR-051 [owner=unassigned] [deps=ACR-050] [scope=crates/merman-ascii/src/canvas.rs,crates/merman-ascii/src/relation_graph.rs]
+  Goal: Add a shared role-aware text/trim substrate for non-flowchart renderers.
+  Validation: `cargo nextest run -p merman-ascii color canvas relation_graph`; `cargo fmt --all --check`
+  Review: Trimming trailing spaces must stay byte-for-byte compatible in plain output.
+  Evidence: Unit tests for trimmed plain, truecolor, and HTML finalization.
+  Handoff: Class and ER should adopt the substrate first because they share relation graph boxes.
+
+- [ ] ACR-052 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/tests]
+  Goal: Adopt color roles for class and ER diagrams through the shared relation graph substrate.
+  Validation: `cargo nextest run -p merman-ascii class_color er_color`; `cargo nextest run -p merman-ascii class er`
+  Review: Existing class and ER plain snapshots must remain unchanged.
+  Evidence: Forced truecolor and HTML parser-backed snapshots for class and ER.
+  Handoff: Relationship markers, labels, and junctions should be role-aware before moving to charts.
+
+- [ ] ACR-053 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/xychart,crates/merman-ascii/tests]
+  Goal: Adopt color roles for XYChart axes, text, bars, and line series.
+  Validation: `cargo nextest run -p merman-ascii xychart_color`; `cargo nextest run -p merman-ascii xychart`
+  Review: `ChartSeries(index)` should be used for plotted data and wrap by theme series length.
+  Evidence: Forced truecolor and HTML parser-backed snapshots for bar and line charts.
+  Handoff: Series role behavior should be stable before Mermaid style mapping uses direct colors.
+
+- [ ] ACR-054 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests]
+  Goal: Adopt color roles for sequence participants, lifelines, activations, messages, notes, boxes,
+  and control frames.
+  Validation: `cargo nextest run -p merman-ascii sequence_color`; `cargo nextest run -p merman-ascii sequence`
+  Review: Sequence plain golden comparisons must remain unchanged.
+  Evidence: Forced truecolor and HTML parser-backed snapshots for messages, notes, and frames.
+  Handoff: Background/fill interpretation for Mermaid `rect` and boxes remains deferred.
 
 - [ ] ACR-060 [owner=unassigned] [deps=ACR-040] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Design or implement Mermaid style mapping for flowchart `classDef`, `style`, and

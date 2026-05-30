@@ -40,6 +40,10 @@
       "path": "docs/workstreams/ascii-color-role-api/HANDOFF.md"
     },
     {
+      "role": "adoption_plan",
+      "path": "docs/workstreams/ascii-color-role-api/FAMILY_ADOPTION_PLAN.md"
+    },
+    {
       "role": "context_manifest",
       "path": "docs/workstreams/ascii-color-role-api/CONTEXT.jsonl"
     }
@@ -76,6 +80,11 @@
       "date": "2026-05-30",
       "task": "ACR-040",
       "result": "assigned flowchart semantic roles with forced TrueColor and HTML coverage while preserving plain snapshots"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-050",
+      "result": "split broader family adoption into substrate, class/ER, XYChart, and sequence lanes"
     }
   ],
   "adr_refs": [
@@ -93,7 +102,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-050",
-    "notes": "Flowchart roles are in place. Decide broader diagram-family adoption or split family-specific role lanes before style/class/linkStyle mapping."
+    "next_task": "ACR-051",
+    "notes": "Family adoption is split. Start with a shared role-aware text/trim substrate before class/ER, XYChart, and sequence role writers."
   }
 }

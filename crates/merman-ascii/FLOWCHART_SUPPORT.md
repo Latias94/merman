@@ -17,6 +17,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, external nodes, and subgraph edge crossings covered by copied `mermaid-ascii` graph fixtures. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
+| Color roles | Supported subset | Opt-in `AsciiColorMode` can emit ANSI or HTML foreground spans for renderer-owned flowchart roles. Mermaid style/class/linkStyle mapping remains deferred. |
 | Safety limit | Supported | `AsciiRenderOptions::max_grid_cells` prevents unexpectedly large character grids. |
 
 ## V1.1 Compatibility Plan
@@ -66,8 +67,8 @@ reference implementation is only an implementation aid.
 | `RL` root direction | Ported with true inversion | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics; `merman-ascii` implements a true horizontal mirror instead. | Covered by `flowchart_parser_rl_root_direction_renders_with_horizontal_mirror`, `flowchart_parser_rl_multi_character_node_labels_stay_readable`, `flowchart_parser_rl_edge_labels_stay_readable`, and `flowchart_parser_rl_chain_mirrors_unicode_connectors`. |
 | Subgraph direction overrides | Defer | `FlowSubgraph.dir` is typed, but current graph layout is global; local subgraph layout needs a deeper layout pass. | Split with nested subgraph and cross-boundary edge fixtures. |
 | Multiline and wrapped subgraph labels | Ported | The title text can be represented, and group layout now reserves multiple centered title rows using the shared graph label splitter and display-width wrapper. | Covered by `flowchart_parser_multiline_subgraph_title_renders_centered_rows`, `render_flowchart_renders_model_multiline_subgraph_titles`, and `flowchart_parser_long_subgraph_title_wraps_to_multiple_rows`. |
-| ANSI/HTML color roles | Defer | The current public options intentionally produce plain ASCII/Unicode text and have no role canvas or color mode. | Design an opt-in color API before emitting escape sequences or HTML spans. |
-| `classDef`, `class`, and inline node styles | Defer | Style data exists in the typed model, but rendering it depends on the color-role API decision. | Revisit together with ANSI/HTML color roles. |
+| ANSI/HTML color roles | Ported | ADR 0067 added an opt-in foreground color API, and flowchart now assigns semantic roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
+| `classDef`, `class`, and inline node styles | Defer | Style data exists in the typed model, but mapping Mermaid CSS-like declarations is separate from renderer-owned semantic roles. | Revisit in ACR-060. |
 | State diagram graph rendering | Defer/split | `stateDiagram` uses a different typed model, not `FlowchartV2Model`; adapting it through graph rendering needs a state-to-graph semantic adapter. | Open a state ASCII workstream if prioritized. |
 | Additional uncommon flowchart shapes | Defer | `beautiful-mermaid` has more shape renderers; current `merman-ascii` intentionally supports the high-frequency terminal approximations first. | Add one shape family at a time with public `render_model` snapshots. |
 
@@ -83,7 +84,8 @@ reference implementation is only an implementation aid.
   long titles inside the current group box width.
 - Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
   directives by ASCII render entry points; they are not Mermaid flowchart syntax.
-- Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.
+- Mermaid classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not
+  rendered. Opt-in renderer-owned color roles are supported, but Mermaid style mapping is deferred.
 - CJK/emoji width is measured for box sizing, but full multi-cell text placement needs dedicated
   follow-up coverage before being listed as supported.
 
