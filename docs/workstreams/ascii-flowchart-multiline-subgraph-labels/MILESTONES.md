@@ -1,7 +1,13 @@
 # ASCII Flowchart Multiline Subgraph Labels - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
+
+## Closeout Summary
+
+All milestones are complete. Multiline subgraph titles now reuse `GraphLabel` for layout and
+drawing. Subgraph direction overrides, style/color roles, state diagram graph rendering, uncommon
+shapes, and automatic long-title wrapping remain deferred follow-ons.
 
 ## M0 - Scope And Evidence Freeze
 

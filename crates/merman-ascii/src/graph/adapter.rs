@@ -105,12 +105,14 @@ fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
 }
 
 fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
-    if model.subgraphs.iter().any(|subgraph| {
-        subgraph.title.contains('\n') || subgraph.nodes.iter().any(|node| node.contains('\n'))
-    }) {
+    if model
+        .subgraphs
+        .iter()
+        .any(|subgraph| subgraph.nodes.iter().any(|node| node.contains('\n')))
+    {
         return Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
-            feature: "multiline subgraph labels",
+            feature: "subgraph member ids with line breaks",
         });
     }
 

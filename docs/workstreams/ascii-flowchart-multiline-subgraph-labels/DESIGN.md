@@ -1,7 +1,13 @@
 # ASCII Flowchart Multiline Subgraph Labels
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
+
+## Closeout
+
+Closed on 2026-05-30. Multiline flowchart subgraph titles render through parser-backed and
+direct-model ASCII tests, support docs describe the shipped explicit line-break behavior, and
+automatic browser-style title wrapping remains deferred.
 
 ## Why This Lane Exists
 

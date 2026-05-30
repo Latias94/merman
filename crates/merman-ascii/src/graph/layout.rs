@@ -702,12 +702,13 @@ fn raw_group_bounds(
     }
 
     let member_bounds = member_bounds?;
-    let title_space = GraphLabel::new(&group.title).content_height() + 3;
+    let title = GraphLabel::new(&group.title);
+    let title_space = title.content_height() + 3;
     let x = member_bounds.x - 2;
     let y = member_bounds.y - title_space as isize;
     let right = member_bounds.right + 2;
     let bottom = member_bounds.bottom + 2;
-    let min_width = display_width(&group.title) as isize + 2;
+    let min_width = title.width() as isize + 2;
     let width = right - x + 1;
 
     Some(RawBounds {
@@ -763,11 +764,12 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
             .max()
             .unwrap_or(0);
         let x = min_x.saturating_sub(2);
-        let title_space = GraphLabel::new(&group.title).content_height() + 3;
+        let title = GraphLabel::new(&group.title);
+        let title_space = title.content_height() + 3;
         let y = min_y.saturating_sub(title_space);
         let right = max_right + 2;
         let bottom = max_bottom + 2;
-        let min_width = display_width(&group.title) + 2;
+        let min_width = title.width() + 2;
         let width = (right - x + 1).max(min_width);
         let height = bottom - y + 1;
 

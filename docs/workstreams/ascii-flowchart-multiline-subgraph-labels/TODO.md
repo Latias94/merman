@@ -1,6 +1,6 @@
 # ASCII Flowchart Multiline Subgraph Labels - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Scope And Evidence Freeze
@@ -24,18 +24,18 @@ Last updated: 2026-05-30
 
 ## M2 - Layout And Drawing
 
-- [ ] AFMS-030 [owner=unassigned] [deps=AFMS-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/src/lib.rs,crates/merman-ascii/tests]
+- [x] AFMS-030 [owner=codex] [deps=AFMS-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/src/lib.rs,crates/merman-ascii/tests]
   Goal: Render multiline subgraph titles as centered title rows inside the group box.
   Validation: `cargo nextest run -p merman-ascii flowchart`; `cargo nextest run -p merman-ascii graph_fixture`
   Review: Existing single-line subgraph fixtures must stay stable.
   Evidence: Multiline title snapshots and subgraph fixture gate.
-  Handoff: AFMS-040 updates support docs and closes or splits remaining title work.
+  Handoff: DONE. Multiline title tests and existing subgraph fixtures are green.
 
 ## M3 - Docs And Closeout
 
-- [ ] AFMS-040 [owner=planner] [deps=AFMS-030] [scope=docs/workstreams/ascii-flowchart-multiline-subgraph-labels,crates/merman-ascii/FLOWCHART_SUPPORT.md,crates/merman-ascii/README.md]
+- [x] AFMS-040 [owner=codex] [deps=AFMS-030] [scope=docs/workstreams/ascii-flowchart-multiline-subgraph-labels,crates/merman-ascii/FLOWCHART_SUPPORT.md,crates/merman-ascii/README.md]
   Goal: Update support docs, run final gates, and close or split follow-ons.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
   Evidence: Support docs and final handoff.
-  Handoff: Lane closes or names narrower follow-ons.
+  Handoff: DONE. Lane closed; automatic long-title wrapping remains a follow-on.

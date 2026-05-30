@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "ascii-flowchart-multiline-subgraph-labels",
   "title": "ASCII Flowchart Multiline Subgraph Labels",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
-  "problem": "The ASCII flowchart renderer does not yet render multiline subgraph titles as multiple centered title rows.",
+  "problem": "Closed: the ASCII flowchart renderer now renders explicit line breaks in subgraph titles as centered title rows.",
   "authoritative_docs": [
     {
       "role": "adr",
@@ -58,6 +58,16 @@
       "date": "2026-05-30",
       "task": "AFMS-020",
       "result": "added red parser-backed and direct-model multiline subgraph title contracts"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFMS-030",
+      "result": "implemented multiline subgraph title layout and drawing with GraphLabel"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFMS-040",
+      "result": "updated support docs and closed the multiline subgraph title workstream"
     }
   ],
   "adr_refs": [
@@ -73,8 +83,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "AFMS-030",
-    "notes": "Make multiline subgraph title tests green by reusing GraphLabel in layout/drawing and relaxing only the direct-model title newline rejection. Keep parser/core, subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of scope."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane complete. Follow-ons are automatic browser-style long-title wrapping, subgraph direction overrides, color/style roles, state diagram graph rendering, and uncommon shape families."
   }
 }

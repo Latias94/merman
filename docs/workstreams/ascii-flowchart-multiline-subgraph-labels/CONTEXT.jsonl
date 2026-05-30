@@ -1,2 +1,4 @@
 {"date":"2026-05-30","kind":"scope_freeze","workstream":"ascii-flowchart-multiline-subgraph-labels","note":"Opened from FLOWCHART_SUPPORT multiline subgraph-label gap. Scope is flowchart subgraph title line breaks in merman-ascii only."}
 {"date":"2026-05-30","kind":"task_evidence","task":"AFMS-020","note":"Added parser-backed <br> and direct-model newline subgraph title tests. They fail red on raw title rendering and the current multiline subgraph labels diagnostic."}
+{"date":"2026-05-30","kind":"task_evidence","task":"AFMS-030","note":"Multiline subgraph titles now reuse GraphLabel for group title width/height and drawing. Parser-backed <br> and direct-model newline tests pass; graph_fixture remains stable."}
+{"date":"2026-05-30","kind":"closeout","task":"AFMS-040","note":"FLOWCHART_SUPPORT and merman-ascii README now describe explicit line-break subgraph titles as supported. Workstream closed; automatic long-title wrapping remains deferred."}
