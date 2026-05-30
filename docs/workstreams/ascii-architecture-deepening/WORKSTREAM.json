@@ -76,6 +76,16 @@
       "date": "2026-05-30",
       "task": "AAD-020",
       "result": "passed targeted text, sequence, XYChart, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-030",
+      "result": "introduced a route-plan seam for top-down direct graph routes"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-030",
+      "result": "passed top_down_direct, flowchart, package, fmt, and clippy gates"
     }
   ],
   "adr_refs": [
@@ -93,7 +103,7 @@
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
     "default_action": "continue_next_task",
-    "next_task": "AAD-030",
-    "notes": "Start AAD-030 by extracting a route-planning seam for one important graph route family."
+    "next_task": "AAD-040",
+    "notes": "Start AAD-040 by deepening relation graph adapters for class and ER."
   }
 }

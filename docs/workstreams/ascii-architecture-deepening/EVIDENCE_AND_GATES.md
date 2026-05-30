@@ -94,3 +94,7 @@ and residual risks in this file or a journal note.
   `cargo nextest run -p merman-ascii text`, `cargo nextest run -p merman-ascii sequence`,
   `cargo nextest run -p merman-ascii xychart`, `cargo nextest run -p merman-ascii`,
   `cargo fmt --all --check`, and `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-030 introduced a graph route-plan seam for top-down direct routes. Passed
+  `cargo nextest run -p merman-ascii top_down_direct`, `cargo nextest run -p merman-ascii flowchart`,
+  `cargo nextest run -p merman-ascii`, `cargo fmt --all --check`, and
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`.

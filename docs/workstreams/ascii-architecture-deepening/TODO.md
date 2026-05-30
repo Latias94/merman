@@ -27,14 +27,15 @@ Last updated: 2026-05-30
 
 ## M2 — Graph Route Planning And Painting Seam
 
-- [ ] AAD-030 [owner=unassigned] [deps=AAD-020] [scope=crates/merman-ascii/src/graph/routing.rs,crates/merman-ascii/src/graph]
+- [x] AAD-030 [owner=codex] [deps=AAD-020] [scope=crates/merman-ascii/src/graph/routing.rs,crates/merman-ascii/src/graph/routing/plan.rs]
   Goal: Split a testable graph route-planning seam from canvas painting for at least one important
   route family, then extend if the seam proves useful.
   Validation: `cargo nextest run -p merman-ascii flowchart`
   Review: Verify route tests exercise planning without requiring whole-diagram snapshots.
   Evidence: graph routing tests and unchanged or intentionally updated flowchart snapshots.
   Context: `docs/adr/0065-ascii-output-boundary.md`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`.
-  Handoff: Document any route families deliberately left in the old path.
+  Handoff: DONE on 2026-05-30. Top-down direct routes now plan connector, route cells, arrow, and
+  label anchors before painting. Other route families remain on the old drawing path.
 
 ## M3 — Relation Graph Adapter Deepening
 

@@ -13,17 +13,17 @@ The lane has been opened to execute five architecture deepening targets for `mer
 - sequence event plan seam,
 - ASCII gap registry.
 
-AAD-010 and AAD-020 are complete. The next task is AAD-030.
+AAD-010, AAD-020, and AAD-030 are complete. The next task is AAD-040.
 
 ## Active Task
 
-- Task ID: AAD-030
+- Task ID: AAD-040
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/graph/routing.rs`, `crates/merman-ascii/src/graph`
-- Validation: `cargo nextest run -p merman-ascii flowchart`
+- Files: `crates/merman-ascii/src/relation_graph.rs`, `crates/merman-ascii/src/class`, `crates/merman-ascii/src/er`
+- Validation: `cargo nextest run -p merman-ascii class er`
 - Status: NEEDS_CONTEXT
 - Review: Pending implementation.
-- Evidence: graph routing tests and unchanged or intentionally updated flowchart snapshots
+- Evidence: class and ER regression tests covering relation routing and color roles
 
 ## Decisions Since Last Update
 
@@ -37,6 +37,11 @@ AAD-010 and AAD-020 are complete. The next task is AAD-030.
   substrate without changing plain output.
 - Relation graph line migration is intentionally left for AAD-040, where relation graph adapters
   will be deepened.
+- AAD-030 added `crates/merman-ascii/src/graph/routing/plan.rs`.
+- AAD-030 moved top-down direct route connector, route cells, arrow endpoint, and label anchors into
+  a route plan before painting.
+- Other graph route families intentionally remain on the old drawing path until a future graph
+  routing expansion.
 
 ## Blockers
 
@@ -44,5 +49,5 @@ AAD-010 and AAD-020 are complete. The next task is AAD-030.
 
 ## Next Recommended Action
 
-- Commit AAD-020, then start AAD-030 by finding the smallest graph route family that can be planned
-  before painting.
+- Commit AAD-030, then start AAD-040 by moving relation graph line behavior onto the shared styled
+  substrate and reducing class/ER relation-rendering duplication where the seam has enough depth.
