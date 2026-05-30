@@ -86,6 +86,16 @@
       "date": "2026-05-30",
       "task": "AAD-030",
       "result": "passed top_down_direct, flowchart, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-040",
+      "result": "migrated RelationGraphLine to StyledLine and centralized relation graph box row construction, relation line merging, and centered text writing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-040",
+      "result": "passed relation_graph, class er, package, fmt, and clippy gates"
     }
   ],
   "adr_refs": [
@@ -103,7 +113,7 @@
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
     "default_action": "continue_next_task",
-    "next_task": "AAD-040",
-    "notes": "Start AAD-040 by deepening relation graph adapters for class and ER."
+    "next_task": "AAD-050",
+    "notes": "Start AAD-050 by extracting the smallest useful sequence event-plan seam."
   }
 }

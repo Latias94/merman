@@ -39,14 +39,16 @@ Last updated: 2026-05-30
 
 ## M3 — Relation Graph Adapter Deepening
 
-- [ ] AAD-040 [owner=unassigned] [deps=AAD-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
+- [x] AAD-040 [owner=codex] [deps=AAD-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class/render.rs,crates/merman-ascii/src/er/render.rs,crates/merman-ascii/src/text.rs]
   Goal: Deepen the relation graph module so class and ER provide family vocabulary while shared
   placement and painting behavior moves behind the relation graph seam.
   Validation: `cargo nextest run -p merman-ascii class er`
   Review: Confirm duplicated class/ER rendering code is deleted or justified.
   Evidence: class and ER regression tests covering relation routing and color roles.
   Context: this workstream context manifest plus class/ER support tests.
-  Handoff: Record dense/cyclic/multi-relation follow-ons separately.
+  Handoff: DONE on 2026-05-30. `RelationGraphLine` now uses the shared styled substrate; relation
+  graph owns box row construction, relation line merging, and centered relation text writing.
+  Class/ER still own diagram-specific relation semantics and charset selection.
 
 ## M4 — Sequence Event Plan Seam
 
