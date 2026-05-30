@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "slug": "uniffi-bindings",
+  "title": "UniFFI Bindings",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "architecture",
+  "problem": "Swift, Kotlin, Python, and Ruby consumers need idiomatic generated bindings without duplicating C ABI logic or weakening the canonical C boundary.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0066-ffi-binding-strategy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/uniffi-bindings/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/uniffi-bindings/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/uniffi-bindings/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/uniffi-bindings/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/uniffi-bindings/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/uniffi-bindings/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/uniffi-bindings/CONTEXT.jsonl",
+  "gates": [
+    "cargo check -p merman-bindings-core",
+    "cargo nextest run -p merman-ffi",
+    "cargo check -p merman-uniffi",
+    "cargo test -p merman-uniffi",
+    "cargo nextest run -p merman-ffi --features ratex-math",
+    "cargo check -p merman-uniffi --features ratex-math",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/uniffi-bindings/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "docs/bindings/FFI_PROTOCOL.md",
+    "docs/workstreams/ffi-api/HANDOFF.md",
+    "docs/workstreams/ffi-release-hardening/HANDOFF.md",
+    "repo-ref/RaTeX/docs/binding-architecture.md"
+  ],
+  "capability_tags": [
+    "ffi",
+    "bindings",
+    "uniffi",
+    "public-api"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "UBI-020",
+    "notes": "Start by extracting a safe shared facade. Do not add UniFFI directly on top of unsafe C ABI functions."
+  }
+}

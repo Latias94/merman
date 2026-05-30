@@ -1,0 +1,5 @@
+{"role":"adr","path":"docs/adr/0066-ffi-binding-strategy.md","reason":"Canonical C ABI plus optional UniFFI decision."}
+{"role":"prior_workstream","path":"docs/workstreams/ffi-api/HANDOFF.md","reason":"First FFI lane scope and UniFFI follow-on guardrails."}
+{"role":"prior_workstream","path":"docs/workstreams/ffi-release-hardening/HANDOFF.md","reason":"Current C ABI hardening state and package concern."}
+{"role":"protocol","path":"docs/bindings/FFI_PROTOCOL.md","reason":"Behavior that shared facade and UniFFI must preserve."}
+{"role":"reference","path":"repo-ref/RaTeX/docs/binding-architecture.md","reason":"Local reference for C ABI/platform layering, with UniFFI intentionally treated as a separate convenience layer for merman."}
