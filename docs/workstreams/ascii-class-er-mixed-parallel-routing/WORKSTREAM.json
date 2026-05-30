@@ -49,6 +49,16 @@
       "date": "2026-05-30",
       "task": "ACEMPR-010",
       "result": "opened follow-on lane for mixed class/ER parallel relationship routing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEMPR-020",
+      "result": "added red/green parser-backed class and ER tests for mixed-parallel relationship components"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEMPR-030",
+      "result": "layered drawing now offsets duplicate endpoint-pair lanes in mixed class/ER relationship components"
     }
   ],
   "adr_refs": [
@@ -65,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACEMPR-020",
-    "notes": "Start with parser-backed mixed-parallel tests. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
+    "next_task": "ACEMPR-040",
+    "notes": "Update support docs, run full merman-ascii gates, and close the lane. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
   }
 }

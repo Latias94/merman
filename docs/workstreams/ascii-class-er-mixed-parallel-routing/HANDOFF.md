@@ -6,20 +6,21 @@ Last updated: 2026-05-30
 ## Current State
 
 This lane follows the closed same-endpoint parallel lane. Class and ER can render a component where
-all relationships share one endpoint pair, but a parallel pair mixed with another ordinary edge still
-falls back to the layered planner's parallel diagnostic.
+a duplicate endpoint pair is mixed with another ordinary edge.
 
 ## Active Task
 
-- Task ID: ACEMPR-020
+- Task ID: ACEMPR-040
 - Owner: unassigned
 - Files:
-  - `crates/merman-ascii/tests/class_model.rs`
-  - `crates/merman-ascii/tests/er_model.rs`
-- Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
+  - `README.md`
+  - `crates/merman-cli/README.md`
+  - `crates/merman-ascii/README.md`
+  - `docs/workstreams/ascii-class-er-mixed-parallel-routing/`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `cargo fmt --all --check`; `git diff --check`
 - Status: READY
-- Review: Tests must exercise public parser-backed `render_model` behavior and fail red before
-  implementation.
+- Review: Support docs should describe mixed-parallel support without claiming cyclic,
+  spanning-level, or dense collision routing.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Constraints

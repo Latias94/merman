@@ -545,11 +545,36 @@ fn render_layered_relations(
         .iter()
         .map(|placed_box| (placed_box.id(), placed_box))
         .collect::<HashMap<_, _>>();
-    for layout in layouts {
-        draw_layered_relation(&mut canvas, &placed_by_id, layout, charset);
+    let mut draw_order = layouts
+        .iter()
+        .zip(parallel_lane_offsets(layouts))
+        .enumerate()
+        .collect::<Vec<_>>();
+    draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
+    for (_, (layout, lane_offset)) in draw_order {
+        draw_layered_relation(&mut canvas, &placed_by_id, layout, lane_offset, charset);
     }
 
     Ok(finish_trimmed_canvas(&canvas, width, height))
+}
+
+fn parallel_lane_offsets(layouts: &[RelationLayout<'_>]) -> Vec<isize> {
+    let mut counts = HashMap::<(&str, &str), usize>::new();
+    for layout in layouts {
+        *counts.entry((layout.top_id, layout.bottom_id)).or_insert(0) += 1;
+    }
+
+    let mut seen = HashMap::<(&str, &str), usize>::new();
+    layouts
+        .iter()
+        .map(|layout| {
+            let key = (layout.top_id, layout.bottom_id);
+            let index = seen.entry(key).or_insert(0);
+            let offset = relation_graph::parallel_lane_offset(*index, counts[&key]);
+            *index += 1;
+            offset
+        })
+        .collect()
 }
 
 fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a> {
@@ -567,7 +592,6 @@ fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a
 fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint classes",
-        LayeredRelationError::ParallelEdges => "parallel class relationship layouts",
         LayeredRelationError::UnrelatedBoxes => "class relationship layouts with unrelated classes",
         LayeredRelationError::Cyclic => "cyclic class relationship layouts",
         LayeredRelationError::SpanningLevels => {
@@ -585,6 +609,7 @@ fn draw_layered_relation(
     canvas: &mut Canvas,
     placed_by_id: &HashMap<&str, &PlacedClassBox<'_>>,
     layout: &RelationLayout<'_>,
+    lane_offset: isize,
     charset: ClassCharset,
 ) {
     let Some(top) = placed_by_id.get(layout.top_id) else {
@@ -593,9 +618,9 @@ fn draw_layered_relation(
     let Some(bottom) = placed_by_id.get(layout.bottom_id) else {
         return;
     };
-    let from_x = top.center_x();
+    let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
     let from_y = top.bottom();
-    let to_x = bottom.center_x();
+    let to_x = relation_graph::offset_center(bottom.center_x(), lane_offset);
     let to_y = bottom.y();
     if to_y <= from_y + 1 {
         return;

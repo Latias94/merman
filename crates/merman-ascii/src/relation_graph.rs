@@ -36,7 +36,6 @@ impl<'a> LayeredRelationEdge<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LayeredRelationError {
     MissingEndpoint,
-    ParallelEdges,
     UnrelatedBoxes,
     Cyclic,
     SpanningLevels,
@@ -229,6 +228,21 @@ pub(crate) fn render_parallel_vertical_stack(
     render_vertical_stack(top, bottom, center, relation_lines)
 }
 
+pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
+    if count <= 1 {
+        return 0;
+    }
+    (index as isize * 2 - (count as isize - 1)) * 3
+}
+
+pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
+    if offset < 0 {
+        center.saturating_sub(offset.unsigned_abs())
+    } else {
+        center.saturating_add(offset as usize)
+    }
+}
+
 pub(crate) fn marker_line(marker: char, center: usize) -> String {
     let mut line = String::new();
     line.extend(std::iter::repeat_n(' ', center));
@@ -310,15 +324,10 @@ fn layered_relation_levels(
         .map(|relation_box| (relation_box.id().to_string(), 0usize))
         .collect::<HashMap<_, _>>();
     let mut outgoing = HashMap::<String, Vec<String>>::new();
-    let mut edge_pairs = HashSet::new();
 
     for edge in edges {
         if find_box(boxes, edge.top_id).is_none() || find_box(boxes, edge.bottom_id).is_none() {
             return Err(LayeredRelationError::MissingEndpoint);
-        }
-
-        if !edge_pairs.insert((edge.top_id.to_string(), edge.bottom_id.to_string())) {
-            return Err(LayeredRelationError::ParallelEdges);
         }
 
         incident.insert(edge.top_id.to_string());

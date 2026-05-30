@@ -400,11 +400,50 @@ fn render_layered_relationships(
         .iter()
         .map(|placed_box| (placed_box.id(), placed_box))
         .collect::<HashMap<_, _>>();
-    for relationship in relationships {
-        draw_layered_relationship(&mut canvas, &placed_by_id, relationship, charset)?;
+    let mut draw_order = relationships
+        .iter()
+        .zip(parallel_lane_offsets(relationships))
+        .enumerate()
+        .collect::<Vec<_>>();
+    draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
+    for (_, (relationship, lane_offset)) in draw_order {
+        draw_layered_relationship(
+            &mut canvas,
+            &placed_by_id,
+            relationship,
+            lane_offset,
+            charset,
+        )?;
     }
 
     Ok(finish_trimmed_canvas(&canvas, width, height))
+}
+
+fn parallel_lane_offsets(relationships: &[ErRelationshipRenderModel]) -> Vec<isize> {
+    let mut counts = HashMap::<(&str, &str), usize>::new();
+    for relationship in relationships {
+        *counts
+            .entry((
+                relationship.entity_a.as_str(),
+                relationship.entity_b.as_str(),
+            ))
+            .or_insert(0) += 1;
+    }
+
+    let mut seen = HashMap::<(&str, &str), usize>::new();
+    relationships
+        .iter()
+        .map(|relationship| {
+            let key = (
+                relationship.entity_a.as_str(),
+                relationship.entity_b.as_str(),
+            );
+            let index = seen.entry(key).or_insert(0);
+            let offset = relation_graph::parallel_lane_offset(*index, counts[&key]);
+            *index += 1;
+            offset
+        })
+        .collect()
 }
 
 fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationEdge<'_> {
@@ -420,7 +459,6 @@ fn er_layered_edge(relationship: &ErRelationshipRenderModel) -> LayeredRelationE
 fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint entities",
-        LayeredRelationError::ParallelEdges => "parallel ER relationship layouts",
         LayeredRelationError::UnrelatedBoxes => "ER relationship layouts with unrelated entities",
         LayeredRelationError::Cyclic => "cyclic ER relationship layouts",
         LayeredRelationError::SpanningLevels => "ER relationships spanning multiple layout levels",
@@ -436,6 +474,7 @@ fn draw_layered_relationship(
     canvas: &mut Canvas,
     placed_by_id: &HashMap<&str, &PlacedEntityBox<'_>>,
     relationship: &ErRelationshipRenderModel,
+    lane_offset: isize,
     charset: ErCharset,
 ) -> Result<()> {
     let Some(top) = placed_by_id.get(relationship.entity_a.as_str()) else {
@@ -450,9 +489,9 @@ fn draw_layered_relationship(
     let horizontal = relationship_horizontal_line(&relationship.rel_spec.rel_type, charset)?;
     let label = relationship.role_a.trim();
 
-    let from_x = top.center_x();
+    let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
     let from_y = top.bottom();
-    let to_x = bottom.center_x();
+    let to_x = relation_graph::offset_center(bottom.center_x(), lane_offset);
     let to_y = bottom.y();
     if to_y <= from_y + 2 {
         return Ok(());

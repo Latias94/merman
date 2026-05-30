@@ -14,24 +14,25 @@ Last updated: 2026-05-30
 
 ## M1 - Mixed Parallel Contract Tests
 
-- [ ] ACEMPR-020 [owner=unassigned] [deps=ACEMPR-010] [scope=crates/merman-ascii/tests]
+- [x] ACEMPR-020 [owner=codex] [deps=ACEMPR-010] [scope=crates/merman-ascii/tests]
   Goal: Add class and ER parser-backed tests for a parallel endpoint pair plus another edge in the
   same relationship component.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
   Review: Tests assert public output and fail red on the old parallel diagnostics.
   Evidence: class/ER mixed-parallel tests.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Parser-backed class and ER tests now assert mixed-parallel output.
 
 ## M2 - Layered Parallel Lane Offsets
 
-- [ ] ACEMPR-030 [owner=unassigned] [deps=ACEMPR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
+- [x] ACEMPR-030 [owner=codex] [deps=ACEMPR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
   Goal: Allow duplicate edge pairs in layered planning and offset their rendered lanes.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: No relationship may be omitted or overwritten; dense collisions remain follow-ons.
   Evidence: Mixed-parallel tests pass and existing parallel/component/crossing behavior stays
   stable.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Layered planning accepts duplicate endpoint pairs and drawing offsets duplicate
+  lanes.
 
 ## M3 - Docs And Closeout
 

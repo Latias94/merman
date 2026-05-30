@@ -212,3 +212,28 @@ fn er_parser_parallel_relationship_layout_renders_each_lane() {
         )
     );
 }
+
+#[test]
+fn er_parser_mixed_parallel_relationship_layout_renders_each_lane() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : a\nA ||..o{ B : b\nA ||--|| C : c",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("mixed parallel ER relationships should render every lane");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            "   || || ||\n",
+            "  a |  b c:\n",
+            "+---++.+++++\n",
+            "||  o{    ||\n",
+            "+---+    +---+\n",
+            "| B |    | C |\n",
+            "+---+    +---+\n",
+        )
+    );
+}
