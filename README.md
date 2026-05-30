@@ -257,9 +257,10 @@ primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`
 and `critical`.
 
 Class, ER, and XYChart text output intentionally ship bounded terminal-native subsets: class and ER
-support boxes, labels, single relationships, and layered chain/star multi-relationship layouts with
-clear diagnostics for denser, crossing, cyclic, parallel, or unrelated graph placement; XYChart
-renders deterministic compact bars, lines, mixed plots, titles, and axes instead of SVG coordinates.
+support boxes, labels, single relationships, layered chain/star multi-relationship layouts, and
+adjacent-layer crossing layouts resolved by layer reordering, with clear diagnostics for denser,
+cyclic, parallel, spanning-level, or unrelated graph placement; XYChart renders deterministic
+compact bars, lines, mixed plots, titles, and axes instead of SVG coordinates.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

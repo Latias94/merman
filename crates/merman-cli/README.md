@@ -61,9 +61,10 @@ sequenceDiagram, classDiagram, erDiagram, and xychart. Other diagram families re
 SVG/raster rendering but return an unsupported-diagram error for `--format ascii|unicode` until a
 typed text renderer is added.
 
-ClassDiagram and erDiagram text output include class/entity boxes plus layered chain/star
-relationship layouts. Denser, crossing, cyclic, parallel, or unrelated relationship graphs return
-explicit diagnostics instead of silently dropping edges.
+ClassDiagram and erDiagram text output include class/entity boxes, layered chain/star relationship
+layouts, and adjacent-layer crossing layouts resolved by layer reordering. Denser, cyclic, parallel,
+spanning-level, or unrelated relationship graphs return explicit diagnostics instead of silently
+dropping edges.
 
 RaTeX math rendering is also feature-gated:
 

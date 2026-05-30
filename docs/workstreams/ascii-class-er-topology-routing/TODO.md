@@ -1,6 +1,6 @@
 # ASCII Class ER Topology Routing - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -41,9 +41,10 @@ Last updated: 2026-05-30
 
 ## M3 - Docs And Closeout
 
-- [ ] ACETR-040 [owner=unassigned] [deps=ACETR-030] [scope=crates/merman-ascii,docs]
+- [x] ACETR-040 [owner=codex] [deps=ACETR-030] [scope=crates/merman-ascii,docs]
   Goal: Update support docs, run final gates, and close or split remaining dense topology work.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
-  Evidence: `EVIDENCE_AND_GATES.md`, README/support docs, and final handoff.
-  Handoff: Lane closes or names narrower follow-ons.
+  Evidence: `README.md`, `crates/merman-cli/README.md`, `crates/merman-ascii/README.md`,
+  `EVIDENCE_AND_GATES.md`, and `JOURNAL/2026-05-30-acetr-040.md`.
+  Handoff: DONE. Lane closes; remaining dense topology work is split to future lanes.

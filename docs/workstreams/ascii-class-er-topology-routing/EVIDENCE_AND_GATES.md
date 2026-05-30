@@ -1,6 +1,6 @@
 # ASCII Class ER Topology Routing - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -51,6 +51,7 @@ git diff --check
 | 2026-05-30 | ACETR-010 | Opened follow-on lane from `ascii-class-er-layered-planner` closeout. | Scope is limited to crossing-first class/ER topology routing. |
 | 2026-05-30 | ACETR-020 | Added parser-backed class and ER crossing output tests. | Both tests failed red on the previous explicit unsupported diagnostics. |
 | 2026-05-30 | ACETR-030 | Shared planner now reorders child layers by previous-layer parent order before crossing validation. | Adjacent-layer crossing class/ER relationships render every edge by producing a non-crossing layer order. |
+| 2026-05-30 | ACETR-040 | Updated public support docs and ran final package, lint, formatting, and whitespace gates. | Lane closes with adjacent-layer crossing support shipped and remaining dense topology work deferred. |
 
 ## Verification Log
 
@@ -66,3 +67,14 @@ git diff --check
 | 2026-05-30 | ACETR-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | Planner crossing support is warning-free. |
 | 2026-05-30 | ACETR-030 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation formatting is stable. |
 | 2026-05-30 | ACETR-030 | `git diff --check -- crates/merman-ascii/src/relation_graph.rs crates/merman-ascii/tests/class_model.rs crates/merman-ascii/tests/er_model.rs docs/workstreams/ascii-class-er-topology-routing` | Scoped whitespace hygiene | PASS | ACETR-030 files have no whitespace errors. |
+| 2026-05-30 | ACETR-040 | `cargo nextest run -p merman-ascii` | Full ASCII package gate | PASS, 113 tests | Planner crossing support remains compatible with the full terminal renderer package. |
+| 2026-05-30 | ACETR-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | Final shared planner state is warning-free. |
+| 2026-05-30 | ACETR-040 | `cargo fmt --all --check` | Workspace formatting check | PASS | Final lane state is formatted. |
+| 2026-05-30 | ACETR-040 | `git diff --check` | Workspace whitespace hygiene | PASS | Final lane state has no whitespace errors. |
+
+## Closeout Review
+
+No blocking findings remain for the crossing-first target state. The shipped support is intentionally
+limited to adjacent-layer crossing layouts resolvable by layer reordering. Dense, parallel, cyclic,
+spanning-level, unrelated-component, and unresolved crossing topology routing should remain separate
+workstreams.

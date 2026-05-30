@@ -1,6 +1,6 @@
 # ASCII Class ER Topology Routing - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -55,3 +55,9 @@ Primary gates:
 - `cargo nextest run -p merman-ascii`
 - `cargo fmt --all --check`
 - `git diff --check`
+
+Primary evidence:
+
+- Public docs describe adjacent-layer crossing support by layer reordering.
+- Full `merman-ascii` package and lint gates pass.
+- Remaining dense topology work is deferred.

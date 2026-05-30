@@ -1,6 +1,6 @@
 # ASCII Class ER Topology Routing
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -95,3 +95,13 @@ This lane can close when:
 - full `merman-ascii` package and lint gates pass,
 - docs describe the new crossing subset and remaining diagnostics,
 - and any denser topology work is split or explicitly deferred.
+
+## Closeout Summary
+
+Closed on 2026-05-30. ClassDiagram and erDiagram ASCII/Unicode output now render adjacent-layer
+crossing relationship layouts that can be resolved by layer reordering. The shared planner orders
+each non-root layer by previous-layer parent order, then keeps structural crossing validation for
+topologies that remain unreadable.
+
+Dense, parallel, cyclic, spanning-level, unrelated-component, and unresolved crossing topologies
+remain explicit diagnostics. They should move in separate lanes with parser-backed tests.
