@@ -15,14 +15,16 @@ Last updated: 2026-05-30
 
 ## M1 - Class Adapter Extraction
 
-- [ ] ACELP-020 [owner=unassigned] [deps=ACELP-010] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class/render.rs]
+- [x] ACELP-020 [owner=codex] [deps=ACELP-010] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class/render.rs]
   Goal: Add the shared layered planner and route classDiagram layered relationship placement through
   it without changing public output.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Shared planner must stay terminal-layout-only; class semantics and diagnostics stay in
   `class/render.rs`.
-  Evidence: Existing class chain/star/crossing parser-backed tests stay green.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Evidence: `relation_graph::plan_layered_relation_boxes` now owns generic level assignment,
+  crossing rejection, relation gaps, and box placement; class adapter maps generic structural errors
+  back to existing class diagnostics. Class parser-backed tests stayed green.
+  Handoff: DONE. ACELP-030 can route ER through the same planner.
 
 ## M2 - ER Adapter Extraction
 

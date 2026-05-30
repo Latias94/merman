@@ -4,9 +4,10 @@ use crate::canvas::Canvas;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
+use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError};
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 
 const CLASS_LEVEL_HORIZONTAL_GAP: usize = 4;
 
@@ -430,31 +431,7 @@ fn render_vertical_relation(
     relation_graph::render_vertical_stack(top, bottom, center, relation_lines)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PlacedClassBox<'a> {
-    id: &'a str,
-    class_box: &'a RenderedClassBox,
-    x: usize,
-    y: usize,
-}
-
-impl PlacedClassBox<'_> {
-    fn width(&self) -> usize {
-        self.class_box.width()
-    }
-
-    fn height(&self) -> usize {
-        self.class_box.height()
-    }
-
-    fn center_x(&self) -> usize {
-        self.x + self.width() / 2
-    }
-
-    fn bottom(&self) -> usize {
-        self.y + self.height().saturating_sub(1)
-    }
-}
+type PlacedClassBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
 
 fn render_layered_relations(
     boxes: &[RenderedClassBox],
@@ -462,18 +439,12 @@ fn render_layered_relations(
     options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
-    let levels = class_relation_levels(boxes, layouts)?;
-    let placed = place_class_boxes(boxes, layouts, &levels);
-    let width = placed
-        .iter()
-        .map(|class_box| class_box.x + class_box.width())
-        .max()
-        .unwrap_or(0);
-    let height = placed
-        .iter()
-        .map(|class_box| class_box.y + class_box.height())
-        .max()
-        .unwrap_or(0);
+    let edges = layouts.iter().map(class_layered_edge).collect::<Vec<_>>();
+    let plan =
+        relation_graph::plan_layered_relation_boxes(boxes, &edges, CLASS_LEVEL_HORIZONTAL_GAP)
+            .map_err(class_layered_error)?;
+    let width = plan.width();
+    let height = plan.height();
     let actual_cells = width.saturating_mul(height);
     if actual_cells > options.max_grid_cells {
         return Err(AsciiError::RenderLimitExceeded {
@@ -483,15 +454,14 @@ fn render_layered_relations(
     }
 
     let mut canvas = Canvas::new(width, height);
-    for placed_box in &placed {
-        placed_box
-            .class_box
-            .draw_at(&mut canvas, placed_box.x, placed_box.y);
+    for placed_box in plan.placed_boxes() {
+        placed_box.draw_at(&mut canvas);
     }
 
-    let placed_by_id = placed
+    let placed_by_id = plan
+        .placed_boxes()
         .iter()
-        .map(|placed_box| (placed_box.id, placed_box))
+        .map(|placed_box| (placed_box.id(), placed_box))
         .collect::<HashMap<_, _>>();
     for layout in layouts {
         draw_layered_relation(&mut canvas, &placed_by_id, layout, charset);
@@ -500,246 +470,33 @@ fn render_layered_relations(
     Ok(finish_trimmed_canvas(&canvas, width, height))
 }
 
-fn class_relation_levels(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-) -> Result<HashMap<String, usize>> {
-    let mut incident = HashSet::new();
-    let mut incoming_count = boxes
-        .iter()
-        .map(|class_box| (class_box.id().to_string(), 0usize))
-        .collect::<HashMap<_, _>>();
-    let mut outgoing = HashMap::<String, Vec<String>>::new();
-    let mut relation_pairs = HashSet::new();
-
-    for layout in layouts {
-        find_box(boxes, layout.top_id)?;
-        find_box(boxes, layout.bottom_id)?;
-
-        if !relation_pairs.insert((layout.top_id.to_string(), layout.bottom_id.to_string())) {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "class",
-                feature: "parallel class relationship layouts",
-            });
-        }
-
-        incident.insert(layout.top_id.to_string());
-        incident.insert(layout.bottom_id.to_string());
-        *incoming_count
-            .entry(layout.bottom_id.to_string())
-            .or_insert(0) += 1;
-        outgoing
-            .entry(layout.top_id.to_string())
-            .or_default()
-            .push(layout.bottom_id.to_string());
-    }
-
-    if incident.len() != boxes.len() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "class relationship layouts with unrelated classes",
-        });
-    }
-
-    let mut levels = HashMap::<String, usize>::new();
-    let mut queue = boxes
-        .iter()
-        .filter(|class_box| incoming_count.get(class_box.id()).copied().unwrap_or(0) == 0)
-        .map(|class_box| class_box.id().to_string())
-        .collect::<VecDeque<_>>();
-
-    if queue.is_empty() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "cyclic class relationship layouts",
-        });
-    }
-
-    for id in &queue {
-        levels.insert(id.clone(), 0);
-    }
-
-    let level_cap = boxes.len().saturating_sub(1);
-    while let Some(id) = queue.pop_front() {
-        let current_level = levels.get(&id).copied().unwrap_or(0);
-        let Some(children) = outgoing.get(&id) else {
-            continue;
-        };
-        for child_id in children {
-            let next_level = current_level + 1;
-            if next_level > level_cap {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "class",
-                    feature: "cyclic class relationship layouts",
-                });
-            }
-            let should_update = match levels.get(child_id) {
-                Some(existing_level) => *existing_level < next_level,
-                None => true,
-            };
-            if should_update {
-                levels.insert(child_id.clone(), next_level);
-                queue.push_back(child_id.clone());
-            }
-        }
-    }
-
-    if levels.len() != boxes.len() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "cyclic class relationship layouts",
-        });
-    }
-
-    for layout in layouts {
-        let top_level = levels.get(layout.top_id).copied().unwrap_or(0);
-        let bottom_level = levels.get(layout.bottom_id).copied().unwrap_or(0);
-        if bottom_level <= top_level {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "class",
-                feature: "cyclic class relationship layouts",
-            });
-        }
-        if bottom_level != top_level + 1 {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "class",
-                feature: "class relationships spanning multiple layout levels",
-            });
-        }
-    }
-
-    reject_crossing_class_relationships(boxes, layouts, &levels)?;
-
-    Ok(levels)
+fn class_layered_edge<'a>(layout: &RelationLayout<'a>) -> LayeredRelationEdge<'a> {
+    LayeredRelationEdge::new(
+        layout.top_id,
+        layout.bottom_id,
+        layout.label.is_some(),
+        layout
+            .label
+            .map(|label| display_width(label) / 2)
+            .unwrap_or(0),
+    )
 }
 
-fn reject_crossing_class_relationships(
-    boxes: &[RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    levels: &HashMap<String, usize>,
-) -> Result<()> {
-    let mut order_by_id = HashMap::new();
-    let max_level = levels.values().copied().max().unwrap_or(0);
-    for level in 0..=max_level {
-        let mut index = 0;
-        for class_box in boxes {
-            if levels.get(class_box.id()).copied() == Some(level) {
-                order_by_id.insert(class_box.id().to_string(), index);
-                index += 1;
-            }
+fn class_layered_error(error: LayeredRelationError) -> AsciiError {
+    let feature = match error {
+        LayeredRelationError::MissingEndpoint => "relationships with missing endpoint classes",
+        LayeredRelationError::ParallelEdges => "parallel class relationship layouts",
+        LayeredRelationError::UnrelatedBoxes => "class relationship layouts with unrelated classes",
+        LayeredRelationError::Cyclic => "cyclic class relationship layouts",
+        LayeredRelationError::SpanningLevels => {
+            "class relationships spanning multiple layout levels"
         }
+        LayeredRelationError::Crossing => "crossing class relationship layouts",
+    };
+    AsciiError::UnsupportedFeature {
+        diagram_type: "class",
+        feature,
     }
-
-    for (left_index, left) in layouts.iter().enumerate() {
-        let left_top_level = levels.get(left.top_id).copied().unwrap_or(0);
-        let left_bottom_level = levels.get(left.bottom_id).copied().unwrap_or(0);
-        for right in layouts.iter().skip(left_index + 1) {
-            if levels.get(right.top_id).copied().unwrap_or(0) != left_top_level
-                || levels.get(right.bottom_id).copied().unwrap_or(0) != left_bottom_level
-            {
-                continue;
-            }
-
-            let left_top_order = order_by_id.get(left.top_id).copied().unwrap_or(0);
-            let left_bottom_order = order_by_id.get(left.bottom_id).copied().unwrap_or(0);
-            let right_top_order = order_by_id.get(right.top_id).copied().unwrap_or(0);
-            let right_bottom_order = order_by_id.get(right.bottom_id).copied().unwrap_or(0);
-
-            let crosses_left_to_right =
-                left_top_order < right_top_order && left_bottom_order > right_bottom_order;
-            let crosses_right_to_left =
-                left_top_order > right_top_order && left_bottom_order < right_bottom_order;
-            if crosses_left_to_right || crosses_right_to_left {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "class",
-                    feature: "crossing class relationship layouts",
-                });
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn place_class_boxes<'a>(
-    boxes: &'a [RenderedClassBox],
-    layouts: &[RelationLayout<'_>],
-    levels: &HashMap<String, usize>,
-) -> Vec<PlacedClassBox<'a>> {
-    let max_level = levels.values().copied().max().unwrap_or(0);
-    let mut level_groups = vec![Vec::<&RenderedClassBox>::new(); max_level + 1];
-    for class_box in boxes {
-        if let Some(level) = levels.get(class_box.id()).copied() {
-            level_groups[level].push(class_box);
-        }
-    }
-
-    let group_widths = level_groups
-        .iter()
-        .map(|group| {
-            let boxes_width = group
-                .iter()
-                .map(|class_box| class_box.width())
-                .sum::<usize>();
-            let gaps_width =
-                CLASS_LEVEL_HORIZONTAL_GAP.saturating_mul(group.len().saturating_sub(1));
-            boxes_width + gaps_width
-        })
-        .collect::<Vec<_>>();
-    let max_label_half_width = layouts
-        .iter()
-        .filter_map(|layout| layout.label)
-        .map(|label| display_width(label) / 2)
-        .max()
-        .unwrap_or(0);
-    let content_width = group_widths
-        .iter()
-        .copied()
-        .max()
-        .unwrap_or(0)
-        .max(max_label_half_width.saturating_mul(2).saturating_add(1));
-    let global_center = content_width / 2;
-
-    let mut placed = Vec::new();
-    let mut y = 0;
-    for (level, group) in level_groups.iter().enumerate() {
-        let group_width = group_widths[level];
-        let mut x = global_center.saturating_sub(group_width / 2);
-        for class_box in group {
-            placed.push(PlacedClassBox {
-                id: class_box.id(),
-                class_box,
-                x,
-                y,
-            });
-            x += class_box.width() + CLASS_LEVEL_HORIZONTAL_GAP;
-        }
-
-        let row_height = group
-            .iter()
-            .map(|class_box| class_box.height())
-            .max()
-            .unwrap_or(0);
-        y += row_height;
-        if level < max_level {
-            y += relation_gap_height(layouts, levels, level);
-        }
-    }
-
-    placed
-}
-
-fn relation_gap_height(
-    layouts: &[RelationLayout<'_>],
-    levels: &HashMap<String, usize>,
-    level: usize,
-) -> usize {
-    let has_label = layouts.iter().any(|layout| {
-        levels.get(layout.top_id).copied() == Some(level)
-            && levels.get(layout.bottom_id).copied() == Some(level + 1)
-            && layout.label.is_some()
-    });
-    if has_label { 4 } else { 3 }
 }
 
 fn draw_layered_relation(
@@ -757,7 +514,7 @@ fn draw_layered_relation(
     let from_x = top.center_x();
     let from_y = top.bottom();
     let to_x = bottom.center_x();
-    let to_y = bottom.y;
+    let to_y = bottom.y();
     if to_y <= from_y + 1 {
         return;
     }

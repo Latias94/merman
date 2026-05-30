@@ -50,9 +50,14 @@ git diff --check
 | Date | Task | Evidence | Result |
 | --- | --- | --- | --- |
 | 2026-05-30 | ACELP-010 | Opened follow-on lane from `ascii-class-er-graph-layout` closeout. | Scope is limited to behavior-preserving shared layered planner extraction. |
+| 2026-05-30 | ACELP-020 | Added `relation_graph::plan_layered_relation_boxes` and routed classDiagram layered layout through it. | Class semantics and diagnostics remain in `class/render.rs`; class chain/star/crossing public tests stayed green. |
 
 ## Verification Log
 
 | Date | Task | Command | Scope | Result | Proves |
 | --- | --- | --- | --- | --- | --- |
 | 2026-05-30 | ACELP-010 | `git diff --check -- docs/workstreams/ascii-class-er-layered-planner` | Workstream opening docs | PASS | Opening docs have no whitespace errors. |
+| 2026-05-30 | ACELP-020 | `cargo nextest run -p merman-ascii class` | Focused class ASCII tests | PASS, 14 tests | Class layered rendering consumes the shared planner without public output drift. |
+| 2026-05-30 | ACELP-020 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | Shared planner and class adapter extraction are warning-free. |
+| 2026-05-30 | ACELP-020 | `cargo fmt --all --check` | Workspace formatting check | PASS | Refactor formatting is stable. |
+| 2026-05-30 | ACELP-020 | `git diff --check -- crates/merman-ascii/src/class/render.rs crates/merman-ascii/src/relation_graph.rs docs/workstreams/ascii-class-er-layered-planner` | Scoped whitespace hygiene | PASS | ACELP-020 files have no whitespace errors. |

@@ -11,16 +11,16 @@ layered planning into `relation_graph` without changing public behavior.
 
 ## Active Task
 
-- Task ID: ACELP-020
+- Task ID: ACELP-030
 - Owner: unassigned
 - Files:
   - `crates/merman-ascii/src/relation_graph.rs`
-  - `crates/merman-ascii/src/class/render.rs`
-- Validation: `cargo nextest run -p merman-ascii class`;
+  - `crates/merman-ascii/src/er/render.rs`
+- Validation: `cargo nextest run -p merman-ascii er`; `cargo nextest run -p merman-ascii class`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
 - Status: READY
-- Review: Shared planner stays terminal-layout-only; class semantics and diagnostics stay in the
-  class adapter.
+- Review: ER cardinality, line style, labels, and diagnostics stay in the ER adapter while the
+  shared planner owns only terminal-level placement.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Constraints
