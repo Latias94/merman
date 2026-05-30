@@ -1,6 +1,6 @@
 # ASCII Class ER Spanning Level Routing
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -59,3 +59,10 @@ This lane can close when:
 - focused and full `merman-ascii` gates pass,
 - support docs describe the shipped spanning-level subset,
 - and remaining dense/cyclic topology work remains split or deferred.
+
+Closeout result:
+
+- Class and ER parser-backed tests now cover a simple three-node spanning-level relationship.
+- The shared planner accepts non-cyclic spanning-level edges and reserves side-lane width.
+- Class and ER drawing route simple spanning-level relationships around intermediate boxes.
+- Cyclic layouts and dense label/marker collision routing remain outside this lane.

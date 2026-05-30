@@ -1,6 +1,6 @@
 # ASCII Class ER Spanning Level Routing - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -49,3 +49,10 @@ Primary gates:
 - `cargo nextest run -p merman-ascii`
 - `cargo fmt --all --check`
 - `git diff --check`
+
+Closeout result:
+
+- Public support docs now describe simple spanning-level class/ER side lanes.
+- Full `merman-ascii` package tests, lint, fmt, and whitespace gates passed on 2026-05-30.
+- Remaining topology work stays outside this lane: cyclic layouts and dense label/marker collision
+  routing.

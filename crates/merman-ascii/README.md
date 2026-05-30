@@ -21,15 +21,16 @@ markers, visible autonumber, and sequence control blocks can render through `ren
 labels, single relationship layouts, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
 aggregation, and composition through `render_class` or `render_model`; same-endpoint and simple
-mixed-parallel relationships render as distinct lanes. Cyclic, spanning-level, and unresolved dense
-graph shapes remain explicit diagnostics. Unrelated standalone classes render as separate components
-beside the relationship layout. The ER slice can render entity boxes, attributes, relationship
-labels, identifying and non-identifying lines, common cardinality markers, layered chain/star
+mixed-parallel relationships render as distinct lanes, and simple spanning-level relationships route
+through side lanes. Cyclic and unresolved dense graph shapes remain explicit diagnostics. Unrelated
+standalone classes render as separate components beside the relationship layout. The ER slice can
+render entity boxes, attributes, relationship labels, identifying and non-identifying lines, common
+cardinality markers, layered chain/star
 multi-relationship layouts, and adjacent-layer crossing layouts resolved by layer reordering through
 `render_er` or `render_model`; same-endpoint and simple mixed-parallel relationships render as
-distinct lanes. Cyclic, spanning-level, and unresolved dense graph shapes remain explicit
-diagnostics. Unrelated standalone entities render as separate components beside the relationship
-layout. The XYChart slice can
+distinct lanes, and simple spanning-level relationships route through side lanes. Cyclic and
+unresolved dense graph shapes remain explicit diagnostics. Unrelated standalone entities render as
+separate components beside the relationship layout. The XYChart slice can
 render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays, horizontal
 bars, inferred numeric x labels, and ASCII/Unicode chart characters through `render_xychart` or
 `render_model`; richer legends, color, and full terminal graph layout remain follow-on work.
@@ -46,8 +47,8 @@ See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support mat
 | --- | --- | --- |
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, LR/TD layouts, and titled/nested subgraphs. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, and core control blocks. |
-| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and simple mixed-parallel relationship lanes, and unrelated standalone class components. |
-| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and simple mixed-parallel relationship lanes, and unrelated standalone entity components. |
+| classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, and unrelated standalone class components. |
+| erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, and unrelated standalone entity components. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, and inferred numeric labels. |
 
 Diagram families not listed here currently return `AsciiError::UnsupportedDiagram` through the

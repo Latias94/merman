@@ -63,9 +63,9 @@ typed text renderer is added.
 
 ClassDiagram and erDiagram text output include class/entity boxes, layered chain/star relationship
 layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and simple
-mixed-parallel relationship lanes, and unrelated standalone class/entity components. Cyclic,
-spanning-level, or denser relationship graphs return explicit diagnostics instead of silently
-dropping edges.
+mixed-parallel relationship lanes, simple spanning-level side lanes, and unrelated standalone
+class/entity components. Cyclic or denser relationship graphs return explicit diagnostics instead
+of silently dropping edges.
 
 RaTeX math rendering is also feature-gated:
 
