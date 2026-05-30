@@ -1,6 +1,6 @@
 # ASCII Color Role API
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -13,6 +13,7 @@ individual renderers.
 ## Relevant Authority
 
 - `docs/adr/0065-ascii-output-boundary.md`
+- `docs/adr/0067-ascii-color-role-api.md`
 - `docs/adr/0014-upstream-parity-policy.md`
 - `crates/merman-ascii/FLOWCHART_SUPPORT.md`
 - `crates/merman-ascii/SEQUENCE_SUPPORT.md`
@@ -42,6 +43,7 @@ output after layout is complete.
 ## Public API Sketch
 
 ```rust
+#[non_exhaustive]
 pub enum AsciiColorMode {
     Plain,
     Auto,
@@ -59,7 +61,8 @@ pub struct AsciiRgb {
 }
 
 impl AsciiRgb {
-    pub const fn hex(rgb: u32) -> Self;
+    pub const fn new(r: u8, g: u8, b: u8) -> Self;
+    pub const fn from_hex24(rgb: u32) -> Self;
 }
 
 #[non_exhaustive]
@@ -104,7 +107,7 @@ let options = AsciiRenderOptions::unicode()
     .with_color_mode(AsciiColorMode::TrueColor)
     .with_color_theme(
         AsciiColorTheme::default_dark()
-            .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::hex(0x7aa2f7)),
+            .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x7aa2f7)),
     );
 ```
 
@@ -118,9 +121,9 @@ let options = AsciiRenderOptions::unicode()
 4. `AsciiColorRole` is non-exhaustive. Diagram families will need new roles over time.
 5. `AsciiColorTheme` should keep private fields and builder methods. Avoid another public struct
    whose future fields become breaking changes.
-6. Adding fields to `AsciiRenderOptions` is still a public API change because the struct currently
-   has public fields. Before implementation, write an ADR that either accepts the 0.x breaking
-   change or introduces an alternate options builder surface.
+6. ADR 0067 accepts one pre-1.0 `AsciiRenderOptions` migration: add `color_mode` and `color_theme`,
+   keep the struct `Copy`, add builder methods, and mark the struct `#[non_exhaustive]` during the
+   same change.
 
 ## Internal Architecture Direction
 
@@ -178,10 +181,9 @@ semantics. Then add style mapping as a follow-on:
 
 ## Closeout Condition
 
-This design lane can move from draft to active when:
+This lane can close when:
 
-- an ADR accepts the public API shape and `AsciiRenderOptions` migration strategy;
-- the first implementation task is narrowed to role-aware canvas plus forced truecolor/HTML encoder
-  tests;
-- flowchart role coverage is selected as the first vertical slice;
-- default plain output compatibility gates are listed.
+- role-aware canvas and forced encoders are implemented without changing default output;
+- flowchart role coverage ships as the first vertical slice;
+- support docs describe the opt-in color boundary;
+- and Mermaid style/class/linkStyle mapping is either implemented or split into a follow-on.

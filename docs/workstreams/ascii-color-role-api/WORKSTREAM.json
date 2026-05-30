@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-color-role-api",
   "title": "ASCII Color Role API",
-  "status": "draft",
+  "status": "active",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "merman-ascii needs an opt-in color role API before ANSI/HTML output or Mermaid style/class rendering can be implemented safely.",
@@ -10,6 +10,10 @@
     {
       "role": "adr",
       "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0067-ascii-color-role-api.md"
     },
     {
       "role": "adr",
@@ -57,10 +61,16 @@
       "date": "2026-05-30",
       "task": "ACR-010",
       "result": "drafted the ASCII color role API workstream and public API sketch"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-020",
+      "result": "accepted ADR 0067 for the public color role API and options migration"
     }
   ],
   "adr_refs": [
     "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0067-ascii-color-role-api.md",
     "docs/adr/0014-upstream-parity-policy.md"
   ],
   "architecture_refs": [],
@@ -72,8 +82,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "design",
-    "next_task": "ACR-020",
-    "notes": "Write an ADR for the public API shape and AsciiRenderOptions migration before implementation. Keep the workstream draft until that decision is accepted."
+    "default_action": "continue",
+    "next_task": "ACR-030",
+    "notes": "ADR accepted. Continue with role-aware canvas and forced encoders before assigning roles to diagram renderers."
   }
 }

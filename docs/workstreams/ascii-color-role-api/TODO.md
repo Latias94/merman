@@ -1,6 +1,6 @@
 # ASCII Color Role API - TODO
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## M0 - API Design And Decision Point
@@ -12,12 +12,12 @@ Last updated: 2026-05-30
   Evidence: `DESIGN.md`
   Handoff: DONE. The next task should decide the public API migration path before code changes.
 
-- [ ] ACR-020 [owner=unassigned] [deps=ACR-010] [scope=docs/adr,crates/merman-ascii/src/options.rs,crates/merman-ascii/src/lib.rs]
+- [x] ACR-020 [owner=codex] [deps=ACR-010] [scope=docs/adr,docs/workstreams/ascii-color-role-api]
   Goal: Write an ADR for the color role API and the `AsciiRenderOptions` public-field migration.
-  Validation: ADR accepted or workstream remains draft.
+  Validation: `git diff --check -- docs/adr/0067-ascii-color-role-api.md docs/workstreams/ascii-color-role-api`
   Review: Public API change must be reviewed before implementation.
-  Evidence: New ADR plus updated `DESIGN.md` if the accepted API differs.
-  Handoff: Do not implement color fields until this decision is made.
+  Evidence: `docs/adr/0067-ascii-color-role-api.md`
+  Handoff: DONE. The workstream is active; ACR-030 can add the role-aware canvas and encoders.
 
 ## M1 - First Color Infrastructure Slice
 

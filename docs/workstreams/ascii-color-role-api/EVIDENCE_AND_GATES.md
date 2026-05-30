@@ -1,11 +1,12 @@
 # ASCII Color Role API - Evidence And Gates
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## Design Evidence
 
 - `crates/merman-ascii/src/options.rs`: current public `AsciiRenderOptions` fields and validation.
+- `docs/adr/0067-ascii-color-role-api.md`: accepted public API and options migration decision.
 - `crates/merman-ascii/src/canvas.rs`: current character-only canvas and final string assembly.
 - `crates/merman-ascii/src/lib.rs`: public render entry points and option validation.
 - `crates/merman-ascii/FLOWCHART_SUPPORT.md`: existing deferred color/style row.
@@ -38,6 +39,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | Date | Task | Evidence | Result |
 | --- | --- | --- | --- |
 | 2026-05-30 | ACR-010 | Drafted the color role API workstream and public API sketch. | Lane is draft; implementation waits on ADR/public API decision. |
+| 2026-05-30 | ACR-020 | Accepted ADR 0067 for the color role API and options migration. | Lane is active; implementation can start with role-aware canvas and encoders. |
 
 ## Verification Log
 
@@ -45,3 +47,5 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | --- | --- | --- | --- | --- | --- |
 | 2026-05-30 | ACR-010 | `git diff --check -- docs/workstreams/ascii-color-role-api` | Workstream docs | PASS | Opening docs have no whitespace errors. |
 | 2026-05-30 | ACR-010 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Draft docs did not disturb Rust formatting. |
+| 2026-05-30 | ACR-020 | `git diff --check -- docs/adr/0067-ascii-color-role-api.md docs/workstreams/ascii-color-role-api` | ADR and workstream docs | PASS | ADR/workstream update has no whitespace errors. |
+| 2026-05-30 | ACR-020 | `cargo fmt --all --check` | Workspace formatting gate | PASS | ADR-only task did not disturb Rust formatting. |

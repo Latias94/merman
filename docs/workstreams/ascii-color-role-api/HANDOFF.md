@@ -1,22 +1,23 @@
 # ASCII Color Role API - Handoff
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## Current State
 
-The workstream is opened as a design draft. No renderer code has changed. The proposed direction is
-plain-by-default color roles with centralized ANSI/HTML finalization and no layout involvement.
+The workstream is active. ADR 0067 accepted the public color role API shape and the
+`AsciiRenderOptions` migration. No renderer code has changed yet.
 
 ## Active Task
 
-- Task ID: ACR-020
+- Task ID: ACR-030
 - Owner: unassigned
-- Files: `docs/adr`, `crates/merman-ascii/src/options.rs`, `crates/merman-ascii/src/lib.rs`
-- Validation: accepted ADR or this workstream remains draft
+- Files: `crates/merman-ascii/src/color.rs`, `crates/merman-ascii/src/options.rs`,
+  `crates/merman-ascii/src/canvas.rs`, `crates/merman-ascii/src/lib.rs`
+- Validation: `cargo nextest run -p merman-ascii color canvas`; `cargo fmt --all --check`
 - Status: TODO
-- Review: public API decision review
-- Evidence: `DESIGN.md`, new ADR
+- Review: no diagram renderer should receive color-specific layout logic
+- Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
 
@@ -26,12 +27,13 @@ plain-by-default color roles with centralized ANSI/HTML finalization and no layo
 - `AsciiColorRole` should be non-exhaustive.
 - `AsciiColorTheme` should have private fields and builder methods.
 - Mermaid style mapping should not be bundled with the first role-canvas slice.
+- ADR 0067 accepts a pre-1.0 `AsciiRenderOptions` migration: add color fields, keep `Copy`, add
+  builder methods, and mark the struct `#[non_exhaustive]`.
 
 ## Blockers
 
-- Public API migration strategy for `AsciiRenderOptions` is undecided.
+- None. Implementation should stay inside ACR-030's infrastructure scope.
 
 ## Next Recommended Action
 
-- Write the ADR for `AsciiColorMode`, `AsciiColorRole`, `AsciiColorTheme`, and the
-  `AsciiRenderOptions` migration before editing renderer code.
+- Implement the role-aware canvas and forced encoders before assigning roles to any diagram family.

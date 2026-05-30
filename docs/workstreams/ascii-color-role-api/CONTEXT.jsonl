@@ -1,4 +1,5 @@
 {"date":"2026-05-30","kind":"authority","path":"docs/adr/0065-ascii-output-boundary.md","note":"ASCII output is a first-class text target, independent from SVG layout, with explicit unsupported-feature diagnostics."}
+{"date":"2026-05-30","kind":"authority","path":"docs/adr/0067-ascii-color-role-api.md","note":"Accepted API shape for ASCII color roles and the AsciiRenderOptions migration."}
 {"date":"2026-05-30","kind":"authority","path":"docs/adr/0014-upstream-parity-policy.md","note":"Mermaid upstream remains the spec; incremental supported subsets must be documented as such."}
 {"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/FLOWCHART_SUPPORT.md","note":"Color roles, classDef, class, and inline style rendering are currently deferred."}
 {"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/SEQUENCE_SUPPORT.md","note":"Sequence boxes preserve color/style labels but do not emit colored terminal output today."}
