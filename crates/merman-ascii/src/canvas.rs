@@ -45,6 +45,7 @@ impl Canvas {
         self.index(x, y).and_then(|index| self.roles[index])
     }
 
+    #[allow(dead_code)]
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         for (offset, ch) in text.chars().enumerate() {
             self.set(x + offset, y, ch);

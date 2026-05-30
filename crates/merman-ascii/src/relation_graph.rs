@@ -1,5 +1,6 @@
 use crate::canvas::Canvas;
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -133,7 +134,6 @@ impl<'a> RelationGraphComponent<'a> {
 }
 
 impl RelationGraphLine {
-    #[allow(dead_code)]
     pub(crate) fn new(text: String, roles: Vec<Option<AsciiColorRole>>) -> Self {
         assert_eq!(text.chars().count(), roles.len());
         Self { text, roles }
@@ -144,7 +144,6 @@ impl RelationGraphLine {
         Self { text, roles }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn with_role(text: String, role: AsciiColorRole) -> Self {
         let roles = vec![Some(role); text.chars().count()];
         Self { text, roles }
@@ -171,6 +170,7 @@ impl RelationGraphLine {
 }
 
 impl RelationGraphBox {
+    #[allow(dead_code)]
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
         Self {
             id,
@@ -179,7 +179,6 @@ impl RelationGraphBox {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn new_with_lines(id: String, lines: Vec<RelationGraphLine>, width: usize) -> Self {
         Self { id, lines, width }
     }
@@ -205,6 +204,25 @@ impl RelationGraphBox {
 
 pub(crate) fn render_stacked_boxes(boxes: &[RelationGraphBox]) -> String {
     boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
+}
+
+pub(crate) fn render_stacked_boxes_with_options(
+    boxes: &[RelationGraphBox],
+    options: &AsciiRenderOptions,
+) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        return render_stacked_boxes(boxes);
+    }
+
+    let mut lines = Vec::new();
+    for (index, relation_box) in boxes.iter().enumerate() {
+        if index > 0 {
+            lines.push(RelationGraphLine::plain(String::new()));
+        }
+        lines.extend(relation_box.lines.iter().cloned());
+    }
+
+    render_lines_with_options(&lines, options)
 }
 
 pub(crate) fn find_box<'a>(
@@ -239,6 +257,33 @@ pub(crate) fn render_vertical_stack(
     let mut rendered = lines.join("\n");
     rendered.push('\n');
     rendered
+}
+
+pub(crate) fn render_vertical_stack_with_options(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    center: usize,
+    relation_lines: Vec<RelationGraphLine>,
+    options: &AsciiRenderOptions,
+) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        return render_vertical_stack(
+            top,
+            bottom,
+            center,
+            relation_lines
+                .into_iter()
+                .map(|line| line.text().to_string())
+                .collect(),
+        );
+    }
+
+    let mut lines = Vec::new();
+    lines.extend(align_box_lines(top, center));
+    lines.extend(relation_lines);
+    lines.extend(align_box_lines(bottom, center));
+
+    render_lines_with_options(&lines, options)
 }
 
 pub(crate) fn render_parallel_vertical_stack(
@@ -284,6 +329,62 @@ pub(crate) fn render_parallel_vertical_stack(
     render_vertical_stack(top, bottom, center, relation_lines)
 }
 
+pub(crate) fn render_parallel_vertical_stack_with_options(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    lanes: &[Vec<RelationGraphLine>],
+    lane_gap: usize,
+    options: &AsciiRenderOptions,
+) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        let plain_lanes = lanes
+            .iter()
+            .map(|lane| {
+                lane.iter()
+                    .map(|line| line.text().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        return render_parallel_vertical_stack(top, bottom, &plain_lanes, lane_gap);
+    }
+
+    let lane_widths = lanes
+        .iter()
+        .map(|lane| {
+            lane.iter()
+                .map(|line| display_width(line.text()))
+                .max()
+                .unwrap_or(1)
+                .max(1)
+        })
+        .collect::<Vec<_>>();
+    let lanes_width = lane_widths.iter().sum::<usize>()
+        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
+    let lane_center = lanes_width / 2;
+    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
+    let lane_left = center.saturating_sub(lane_center);
+    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
+
+    let mut relation_lines = Vec::new();
+    for row_index in 0..row_count {
+        let mut parts = Vec::new();
+        parts.push(RelationGraphLine::plain(" ".repeat(lane_left)));
+        for (lane_index, lane) in lanes.iter().enumerate() {
+            if lane_index > 0 {
+                parts.push(RelationGraphLine::plain(" ".repeat(lane_gap)));
+            }
+            let cell = lane
+                .get(row_index)
+                .cloned()
+                .unwrap_or_else(|| RelationGraphLine::plain(String::new()));
+            parts.push(centered_cell_line(&cell, lane_widths[lane_index]));
+        }
+        relation_lines.push(concat_relation_lines(parts));
+    }
+
+    render_vertical_stack_with_options(top, bottom, center, relation_lines, options)
+}
+
 pub(crate) fn parallel_lane_offset(index: usize, count: usize) -> isize {
     if count <= 1 {
         return 0;
@@ -303,19 +404,33 @@ pub(crate) fn spanning_lane_offset(top_width: usize, bottom_width: usize) -> isi
     (top_width.max(bottom_width) / 2).saturating_add(3) as isize
 }
 
-pub(crate) fn marker_line(marker: char, center: usize) -> String {
+pub(crate) fn marker_line_with_role(
+    marker: char,
+    center: usize,
+    role: AsciiColorRole,
+) -> RelationGraphLine {
     let mut line = String::new();
     line.extend(std::iter::repeat_n(' ', center));
     line.push(marker);
-    line
+    let mut roles = vec![None; center];
+    roles.push(Some(role));
+    RelationGraphLine::new(line, roles)
 }
 
-pub(crate) fn centered_text_line(text: &str, center: usize) -> String {
+pub(crate) fn centered_text_line_with_role(
+    text: &str,
+    center: usize,
+    role: AsciiColorRole,
+) -> RelationGraphLine {
     let mut line = String::new();
     let half_width = display_width(text) / 2;
-    line.extend(std::iter::repeat_n(' ', center.saturating_sub(half_width)));
+    let left_padding = center.saturating_sub(half_width);
+    line.extend(std::iter::repeat_n(' ', left_padding));
     line.push_str(text);
-    line
+
+    let mut roles = vec![None; left_padding];
+    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
+    RelationGraphLine::new(line, roles)
 }
 
 pub(crate) fn relation_components<'a>(
@@ -652,6 +767,28 @@ fn render_box(relation_box: &RelationGraphBox) -> String {
     rendered
 }
 
+fn render_lines_with_options(lines: &[RelationGraphLine], options: &AsciiRenderOptions) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let width = lines.iter().map(line_char_width).max().unwrap_or(0);
+    if width == 0 {
+        return "\n".repeat(lines.len());
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        line.draw_at(&mut canvas, 0, y);
+    }
+
+    canvas.finish_trimmed_with_options(options)
+}
+
+fn line_char_width(line: &RelationGraphLine) -> usize {
+    line.text().chars().count()
+}
+
 fn centered_cell(text: &str, width: usize) -> String {
     let text_width = display_width(text);
     let left_padding = width.saturating_sub(text_width) / 2;
@@ -663,6 +800,13 @@ fn centered_cell(text: &str, width: usize) -> String {
     cell
 }
 
+fn centered_cell_line(line: &RelationGraphLine, width: usize) -> RelationGraphLine {
+    let text_width = display_width(line.text());
+    let left_padding = width.saturating_sub(text_width) / 2;
+    let right_padding = width.saturating_sub(text_width + left_padding);
+    padded_line(line, left_padding, right_padding)
+}
+
 fn align_box(relation_box: &RelationGraphBox, center: usize) -> Vec<String> {
     let left_padding = center.saturating_sub(relation_box.width / 2);
     let padding = " ".repeat(left_padding);
@@ -671,6 +815,38 @@ fn align_box(relation_box: &RelationGraphBox, center: usize) -> Vec<String> {
         .iter()
         .map(|line| format!("{padding}{}", line.text()))
         .collect()
+}
+
+fn align_box_lines(relation_box: &RelationGraphBox, center: usize) -> Vec<RelationGraphLine> {
+    let left_padding = center.saturating_sub(relation_box.width / 2);
+    relation_box
+        .lines
+        .iter()
+        .map(|line| padded_line(line, left_padding, 0))
+        .collect()
+}
+
+fn padded_line(line: &RelationGraphLine, left: usize, right: usize) -> RelationGraphLine {
+    let mut text = String::new();
+    text.extend(std::iter::repeat_n(' ', left));
+    text.push_str(line.text());
+    text.extend(std::iter::repeat_n(' ', right));
+
+    let mut roles = vec![None; left];
+    roles.extend(line.roles.iter().copied());
+    roles.extend(std::iter::repeat_n(None, right));
+
+    RelationGraphLine::new(text, roles)
+}
+
+fn concat_relation_lines(parts: Vec<RelationGraphLine>) -> RelationGraphLine {
+    let mut text = String::new();
+    let mut roles = Vec::new();
+    for part in parts {
+        text.push_str(part.text());
+        roles.extend(part.roles);
+    }
+    RelationGraphLine::new(text, roles)
 }
 
 #[cfg(test)]

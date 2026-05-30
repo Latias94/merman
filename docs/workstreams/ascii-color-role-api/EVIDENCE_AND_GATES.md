@@ -70,3 +70,9 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-051 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after the shared substrate slice. |
 | 2026-05-30 | ACR-051 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Shared trim substrate and relation graph line types are warning-free under clippy. |
 | 2026-05-30 | ACR-051 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACR-052 | `cargo nextest run -p merman-ascii class_color er_color` | Class and ER forced-color role coverage | PASS | Parser-backed TrueColor and HTML snapshots cover box text/borders, relation lines, markers, labels, and junctions. |
+| 2026-05-30 | ACR-052 | `cargo nextest run -p merman-ascii class er` | Class and ER regression suite | PASS | Existing plain class and ER snapshots remain unchanged. |
+| 2026-05-30 | ACR-052 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Class/ER role adoption does not regress other ascii families. |
+| 2026-05-30 | ACR-052 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after class/ER role adoption. |
+| 2026-05-30 | ACR-052 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Relation graph, class, ER, and color tests are warning-free under clippy. |
+| 2026-05-30 | ACR-052 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

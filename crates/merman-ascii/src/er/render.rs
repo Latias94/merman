@@ -1,8 +1,9 @@
 use crate::canvas::Canvas;
+use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
-use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError};
+use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError, RelationGraphLine};
 use crate::text::display_width;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -84,7 +85,9 @@ pub(crate) fn render_er_diagram(
         .collect::<Vec<_>>();
 
     if model.relationships.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes(&boxes));
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            &boxes, options,
+        ));
     }
 
     render_er_components(&boxes, &model.relationships, options, charset)
@@ -97,17 +100,19 @@ fn render_er_component(
     charset: ErCharset,
 ) -> Result<String> {
     if relationships.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes(boxes));
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            boxes, options,
+        ));
     }
     if is_same_endpoint_parallel_relationship(relationships) {
-        return render_parallel_vertical_relationships(boxes, relationships, charset);
+        return render_parallel_vertical_relationships(boxes, relationships, options, charset);
     }
     if relationships.len() == 1 {
         let relationship = &relationships[0];
         let top = find_box(boxes, &relationship.entity_a)?;
         let bottom = find_box(boxes, &relationship.entity_b)?;
 
-        return render_vertical_relationship(top, bottom, relationship, charset);
+        return render_vertical_relationship(top, bottom, relationship, options, charset);
     }
 
     render_layered_relationships(boxes, relationships, options, charset)
@@ -192,7 +197,7 @@ fn render_entity_box(
         content_width,
     ));
 
-    RenderedEntityBox::new(entity.id.clone(), out, content_width + 2)
+    RenderedEntityBox::new_with_lines(entity.id.clone(), out, content_width + 2)
 }
 
 fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
@@ -251,25 +256,76 @@ fn content_width(sections: &[Vec<String>], padding: usize) -> usize {
     max_line_width + padding.saturating_mul(2)
 }
 
-fn border_line(left: char, right: char, horizontal: char, content_width: usize) -> String {
+fn border_line(
+    left: char,
+    right: char,
+    horizontal: char,
+    content_width: usize,
+) -> RelationGraphLine {
     let mut line = String::new();
     line.push(left);
     line.extend(std::iter::repeat_n(horizontal, content_width));
     line.push(right);
-    line
+    RelationGraphLine::with_role(line, AsciiColorRole::NodeBorder)
 }
 
-fn content_line(text: &str, content_width: usize, padding: usize, charset: ErCharset) -> String {
+fn content_line(
+    text: &str,
+    content_width: usize,
+    padding: usize,
+    charset: ErCharset,
+) -> RelationGraphLine {
     let text_width = display_width(text);
     let trailing = content_width.saturating_sub(padding + text_width);
 
     let mut line = String::new();
-    line.push(charset.vertical);
-    line.extend(std::iter::repeat_n(' ', padding));
+    let mut roles = Vec::new();
+    push_role_char(
+        &mut line,
+        &mut roles,
+        charset.vertical,
+        AsciiColorRole::NodeBorder,
+    );
+    push_plain_chars(&mut line, &mut roles, ' ', padding);
+    push_role_text(&mut line, &mut roles, text, AsciiColorRole::Text);
+    push_plain_chars(&mut line, &mut roles, ' ', trailing);
+    push_role_char(
+        &mut line,
+        &mut roles,
+        charset.vertical,
+        AsciiColorRole::NodeBorder,
+    );
+    RelationGraphLine::new(line, roles)
+}
+
+fn push_role_char(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    ch: char,
+    role: AsciiColorRole,
+) {
+    line.push(ch);
+    roles.push(Some(role));
+}
+
+fn push_plain_chars(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    ch: char,
+    count: usize,
+) {
+    line.extend(std::iter::repeat_n(ch, count));
+    roles.extend(std::iter::repeat_n(None, count));
+}
+
+fn push_role_text(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    text: &str,
+    role: AsciiColorRole,
+) {
     line.push_str(text);
-    line.extend(std::iter::repeat_n(' ', trailing));
-    line.push(charset.vertical);
-    line
+    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
 }
 
 fn find_box<'a>(boxes: &'a [RenderedEntityBox], id: &str) -> Result<&'a RenderedEntityBox> {
@@ -283,6 +339,7 @@ fn render_vertical_relationship(
     top: &RenderedEntityBox,
     bottom: &RenderedEntityBox,
     relationship: &ErRelationshipRenderModel,
+    options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
@@ -305,21 +362,35 @@ fn render_vertical_relationship(
     );
 
     let mut relation_lines = Vec::new();
-    relation_lines.push(relation_graph::centered_text_line(top_cardinality, center));
+    relation_lines.push(relation_graph::centered_text_line_with_role(
+        top_cardinality,
+        center,
+        AsciiColorRole::EdgeArrow,
+    ));
     if !label.is_empty() {
-        relation_lines.push(relation_graph::centered_text_line(label, center));
+        relation_lines.push(relation_graph::centered_text_line_with_role(
+            label,
+            center,
+            AsciiColorRole::EdgeLabel,
+        ));
     }
-    relation_lines.push(relation_graph::marker_line(line, center));
-    relation_lines.push(relation_graph::centered_text_line(
+    relation_lines.push(relation_graph::marker_line_with_role(
+        line,
+        center,
+        AsciiColorRole::EdgeLine,
+    ));
+    relation_lines.push(relation_graph::centered_text_line_with_role(
         bottom_cardinality,
         center,
+        AsciiColorRole::EdgeArrow,
     ));
 
-    Ok(relation_graph::render_vertical_stack(
+    Ok(relation_graph::render_vertical_stack_with_options(
         top,
         bottom,
         center,
         relation_lines,
+        options,
     ))
 }
 
@@ -338,6 +409,7 @@ fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderM
 fn render_parallel_vertical_relationships(
     boxes: &[RenderedEntityBox],
     relationships: &[ErRelationshipRenderModel],
+    options: &AsciiRenderOptions,
     charset: ErCharset,
 ) -> Result<String> {
     let first = &relationships[0];
@@ -348,23 +420,26 @@ fn render_parallel_vertical_relationships(
         .map(|relationship| parallel_er_lane_rows(relationship, charset))
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(relation_graph::render_parallel_vertical_stack(
-        top, bottom, &lanes, 2,
+    Ok(relation_graph::render_parallel_vertical_stack_with_options(
+        top, bottom, &lanes, 2, options,
     ))
 }
 
 fn parallel_er_lane_rows(
     relationship: &ErRelationshipRenderModel,
     charset: ErCharset,
-) -> Result<Vec<String>> {
+) -> Result<Vec<RelationGraphLine>> {
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
     Ok(vec![
-        top_cardinality.to_string(),
-        relationship.role_a.trim().to_string(),
-        line.to_string(),
-        bottom_cardinality.to_string(),
+        RelationGraphLine::with_role(top_cardinality.to_string(), AsciiColorRole::EdgeArrow),
+        RelationGraphLine::with_role(
+            relationship.role_a.trim().to_string(),
+            AsciiColorRole::EdgeLabel,
+        ),
+        RelationGraphLine::with_role(line.to_string(), AsciiColorRole::EdgeLine),
+        RelationGraphLine::with_role(bottom_cardinality.to_string(), AsciiColorRole::EdgeArrow),
     ])
 }
 
@@ -417,7 +492,7 @@ fn render_layered_relationships(
         )?;
     }
 
-    Ok(finish_trimmed_canvas(&canvas, width, height))
+    Ok(canvas.finish_trimmed_with_options(options))
 }
 
 fn parallel_lane_offsets(relationships: &[ErRelationshipRenderModel]) -> Vec<isize> {
@@ -519,12 +594,30 @@ fn draw_layered_relationship(
         put_relation_char(canvas, to_x, y, vertical, charset);
     }
 
-    write_centered_relation_text(canvas, from_x, from_y + 1, top_cardinality);
+    write_centered_relation_text(
+        canvas,
+        from_x,
+        from_y + 1,
+        top_cardinality,
+        AsciiColorRole::EdgeArrow,
+    );
     if !label.is_empty() {
         let label_y = (from_y + 2).min(route_y);
-        write_centered_relation_text(canvas, (from_x + to_x) / 2, label_y, label);
+        write_centered_relation_text(
+            canvas,
+            (from_x + to_x) / 2,
+            label_y,
+            label,
+            AsciiColorRole::EdgeLabel,
+        );
     }
-    write_centered_relation_text(canvas, to_x, to_y - 1, bottom_cardinality);
+    write_centered_relation_text(
+        canvas,
+        to_x,
+        to_y - 1,
+        bottom_cardinality,
+        AsciiColorRole::EdgeArrow,
+    );
 
     Ok(())
 }
@@ -584,7 +677,12 @@ fn put_relation_char(canvas: &mut Canvas, x: usize, y: usize, ch: char, charset:
         }
         _ => ch,
     };
-    canvas.set(x, y, next);
+    let role = if next == charset.relation_junction {
+        AsciiColorRole::Junction
+    } else {
+        AsciiColorRole::EdgeLine
+    };
+    canvas.set_role(x, y, next, role);
 }
 
 fn is_relation_line_char(ch: char, charset: ErCharset) -> bool {
@@ -598,22 +696,13 @@ fn is_relation_line_char(ch: char, charset: ErCharset) -> bool {
     )
 }
 
-fn write_centered_relation_text(canvas: &mut Canvas, center_x: usize, y: usize, text: &str) {
+fn write_centered_relation_text(
+    canvas: &mut Canvas,
+    center_x: usize,
+    y: usize,
+    text: &str,
+    role: AsciiColorRole,
+) {
     let text_half_width = display_width(text) / 2;
-    canvas.write_text(center_x.saturating_sub(text_half_width), y, text);
-}
-
-fn finish_trimmed_canvas(canvas: &Canvas, width: usize, height: usize) -> String {
-    let mut rendered = String::new();
-    for y in 0..height {
-        let mut line = (0..width)
-            .map(|x| canvas.get(x, y).unwrap_or(' '))
-            .collect::<String>();
-        while line.ends_with(' ') {
-            line.pop();
-        }
-        rendered.push_str(&line);
-        rendered.push('\n');
-    }
-    rendered
+    canvas.write_text_role(center_x.saturating_sub(text_half_width), y, text, role);
 }

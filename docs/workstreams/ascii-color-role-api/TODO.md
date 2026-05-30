@@ -55,7 +55,7 @@ Last updated: 2026-05-30
   Evidence: Unit tests for trimmed plain, truecolor, and HTML finalization plus a role-aware relation_graph box draw test.
   Handoff: Class and ER should adopt the substrate first because they share relation graph boxes.
 
-- [ ] ACR-052 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/tests]
+- [x] ACR-052 [owner=codex] [deps=ACR-051] [scope=crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/tests]
   Goal: Adopt color roles for class and ER diagrams through the shared relation graph substrate.
   Validation: `cargo nextest run -p merman-ascii class_color er_color`; `cargo nextest run -p merman-ascii class er`
   Review: Existing class and ER plain snapshots must remain unchanged.

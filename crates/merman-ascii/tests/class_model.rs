@@ -1,4 +1,6 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_ascii::{
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+};
 use merman_core::{Engine, ParseOptions};
 
 fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -8,6 +10,186 @@ fn render_class(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Resu
         .expect("class diagram should be detected");
 
     render_model(&parsed.model, options)
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn strip_html_spans(input: &str) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let rest = &input[index..];
+        if rest.starts_with("<span ") {
+            index += rest.find('>').expect("span start tag should be closed") + 1;
+            continue;
+        }
+        if rest.starts_with("</span>") {
+            index += "</span>".len();
+            continue;
+        }
+        let ch = rest
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+    output
+}
+
+#[test]
+fn class_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::new(1, 1, 1))
+        .with_role(AsciiColorRole::Text, AsciiRgb::new(2, 2, 2))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::new(3, 3, 3))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::new(4, 4, 4))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::new(5, 5, 5));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : extends",
+        &options,
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "  extends\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+        )
+    );
+    for expected_code in [
+        "\u{1b}[38;2;1;1;1m",
+        "\u{1b}[38;2;2;2;2m",
+        "\u{1b}[38;2;3;3;3m",
+        "\u{1b}[38;2;4;4;4m",
+        "\u{1b}[38;2;5;5;5m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn class_color_html_wraps_layered_relation_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x404040))
+        .with_role(AsciiColorRole::Junction, AsciiRgb::from_hex24(0x505050));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",
+        &options,
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        concat!(
+            "    +--------+\n",
+            "    | Animal |\n",
+            "    +--------+\n",
+            "         ^\n",
+            "         |\n",
+            "   +-----+----+\n",
+            "+-----+    +-----+\n",
+            "| Dog |    | Cat |\n",
+            "+-----+    +-----+\n",
+        )
+    );
+    for expected_fragment in [
+        "<span style=\"color:#101010\">+--------+</span>",
+        "<span style=\"color:#202020\">Animal</span>",
+        "<span style=\"color:#303030\">|</span>",
+        "<span style=\"color:#404040\">^</span>",
+        "<span style=\"color:#505050\">+</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn class_color_html_wraps_parallel_relation_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x404040))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x505050));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : parent\nAnimal <|-- Dog : base",
+        &options,
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        concat!(
+            " +--------+\n",
+            " | Animal |\n",
+            " +--------+\n",
+            "  ^      ^\n",
+            "parent  base\n",
+            "  |      |\n",
+            "   +-----+\n",
+            "   | Dog |\n",
+            "   +-----+\n",
+        )
+    );
+    for expected_fragment in [
+        "<span style=\"color:#101010\">+--------+</span>",
+        "<span style=\"color:#202020\">Animal</span>",
+        "<span style=\"color:#303030\">|</span>",
+        "<span style=\"color:#404040\">^</span>",
+        "<span style=\"color:#505050\">parent</span>",
+        "<span style=\"color:#505050\">base</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]

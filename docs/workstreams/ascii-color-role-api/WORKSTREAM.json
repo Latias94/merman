@@ -90,6 +90,11 @@
       "date": "2026-05-30",
       "task": "ACR-051",
       "result": "added a shared role-aware trim substrate in Canvas and relation graph lines with trimmed plain, TrueColor, HTML, and plain class/ER regression coverage"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-052",
+      "result": "adopted semantic color roles for class and ER diagrams through relation graph lines and trimmed Canvas finalization"
     }
   ],
   "adr_refs": [
@@ -107,7 +112,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-052",
-    "notes": "The shared substrate is in place. Class/ER should adopt it first before XYChart and sequence role writers."
+    "next_task": "ACR-053",
+    "notes": "Class/ER role adoption is complete. XYChart should adopt ChartAxis and ChartSeries(index) roles next."
   }
 }

@@ -1,10 +1,11 @@
 use crate::AsciiError;
 use crate::Result;
 use crate::canvas::Canvas;
+use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
-use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError};
+use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError, RelationGraphLine};
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
 use std::collections::HashMap;
@@ -131,7 +132,9 @@ pub(crate) fn render_class_diagram(
         .collect::<Vec<_>>();
 
     if model.relations.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes(&boxes));
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            &boxes, options,
+        ));
     }
 
     let layouts = model
@@ -150,17 +153,21 @@ fn render_class_component(
     charset: ClassCharset,
 ) -> Result<String> {
     if layouts.is_empty() {
-        return Ok(relation_graph::render_stacked_boxes(boxes));
+        return Ok(relation_graph::render_stacked_boxes_with_options(
+            boxes, options,
+        ));
     }
     if is_same_endpoint_parallel_layout(layouts) {
-        return render_parallel_vertical_relations(boxes, layouts, charset);
+        return render_parallel_vertical_relations(boxes, layouts, options, charset);
     }
     if layouts.len() == 1 {
         let layout = layouts[0];
         let top = find_box(boxes, layout.top_id)?;
         let bottom = find_box(boxes, layout.bottom_id)?;
 
-        return Ok(render_vertical_relation(top, bottom, layout, charset));
+        return Ok(render_vertical_relation(
+            top, bottom, layout, options, charset,
+        ));
     }
 
     render_layered_relations(boxes, layouts, options, charset)
@@ -243,7 +250,7 @@ fn render_class_box(
     ));
 
     let width = content_width + 2;
-    RenderedClassBox::new(class.id.clone(), out, width)
+    RenderedClassBox::new_with_lines(class.id.clone(), out, width)
 }
 
 fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
@@ -297,25 +304,76 @@ fn content_width(sections: &[Vec<String>], padding: usize) -> usize {
     max_line_width + padding.saturating_mul(2)
 }
 
-fn border_line(left: char, right: char, horizontal: char, content_width: usize) -> String {
+fn border_line(
+    left: char,
+    right: char,
+    horizontal: char,
+    content_width: usize,
+) -> RelationGraphLine {
     let mut line = String::new();
     line.push(left);
     line.extend(std::iter::repeat_n(horizontal, content_width));
     line.push(right);
-    line
+    RelationGraphLine::with_role(line, AsciiColorRole::NodeBorder)
 }
 
-fn content_line(text: &str, content_width: usize, padding: usize, charset: ClassCharset) -> String {
+fn content_line(
+    text: &str,
+    content_width: usize,
+    padding: usize,
+    charset: ClassCharset,
+) -> RelationGraphLine {
     let text_width = display_width(text);
     let trailing = content_width.saturating_sub(padding + text_width);
 
     let mut line = String::new();
-    line.push(charset.vertical);
-    line.extend(std::iter::repeat_n(' ', padding));
+    let mut roles = Vec::new();
+    push_role_char(
+        &mut line,
+        &mut roles,
+        charset.vertical,
+        AsciiColorRole::NodeBorder,
+    );
+    push_plain_chars(&mut line, &mut roles, ' ', padding);
+    push_role_text(&mut line, &mut roles, text, AsciiColorRole::Text);
+    push_plain_chars(&mut line, &mut roles, ' ', trailing);
+    push_role_char(
+        &mut line,
+        &mut roles,
+        charset.vertical,
+        AsciiColorRole::NodeBorder,
+    );
+    RelationGraphLine::new(line, roles)
+}
+
+fn push_role_char(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    ch: char,
+    role: AsciiColorRole,
+) {
+    line.push(ch);
+    roles.push(Some(role));
+}
+
+fn push_plain_chars(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    ch: char,
+    count: usize,
+) {
+    line.extend(std::iter::repeat_n(ch, count));
+    roles.extend(std::iter::repeat_n(None, count));
+}
+
+fn push_role_text(
+    line: &mut String,
+    roles: &mut Vec<Option<AsciiColorRole>>,
+    text: &str,
+    role: AsciiColorRole,
+) {
     line.push_str(text);
-    line.extend(std::iter::repeat_n(' ', trailing));
-    line.push(charset.vertical);
-    line
+    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
 }
 
 fn relation_layout<'a>(
@@ -434,6 +492,7 @@ fn render_vertical_relation(
     top: &RenderedClassBox,
     bottom: &RenderedClassBox,
     layout: RelationLayout<'_>,
+    options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> String {
     let label_half_width = layout
@@ -445,34 +504,46 @@ fn render_vertical_relation(
 
     match layout.marker_side {
         MarkerSide::Top => {
-            relation_lines.push(relation_graph::marker_line(
+            relation_lines.push(relation_graph::marker_line_with_role(
                 marker_char(layout.marker, MarkerSide::Top, charset),
                 center,
+                AsciiColorRole::EdgeArrow,
             ));
             if let Some(label) = layout.label {
-                relation_lines.push(relation_graph::centered_text_line(label, center));
+                relation_lines.push(relation_graph::centered_text_line_with_role(
+                    label,
+                    center,
+                    AsciiColorRole::EdgeLabel,
+                ));
             }
-            relation_lines.push(relation_graph::marker_line(
+            relation_lines.push(relation_graph::marker_line_with_role(
                 line_char(layout.line, charset),
                 center,
+                AsciiColorRole::EdgeLine,
             ));
         }
         MarkerSide::Bottom => {
-            relation_lines.push(relation_graph::marker_line(
+            relation_lines.push(relation_graph::marker_line_with_role(
                 line_char(layout.line, charset),
                 center,
+                AsciiColorRole::EdgeLine,
             ));
             if let Some(label) = layout.label {
-                relation_lines.push(relation_graph::centered_text_line(label, center));
+                relation_lines.push(relation_graph::centered_text_line_with_role(
+                    label,
+                    center,
+                    AsciiColorRole::EdgeLabel,
+                ));
             }
-            relation_lines.push(relation_graph::marker_line(
+            relation_lines.push(relation_graph::marker_line_with_role(
                 marker_char(layout.marker, MarkerSide::Bottom, charset),
                 center,
+                AsciiColorRole::EdgeArrow,
             ));
         }
     }
 
-    relation_graph::render_vertical_stack(top, bottom, center, relation_lines)
+    relation_graph::render_vertical_stack_with_options(top, bottom, center, relation_lines, options)
 }
 
 type PlacedClassBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
@@ -490,6 +561,7 @@ fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
 fn render_parallel_vertical_relations(
     boxes: &[RenderedClassBox],
     layouts: &[RelationLayout<'_>],
+    options: &AsciiRenderOptions,
     charset: ClassCharset,
 ) -> Result<String> {
     let first = layouts[0];
@@ -500,15 +572,27 @@ fn render_parallel_vertical_relations(
         .map(|layout| parallel_class_lane_rows(*layout, charset))
         .collect::<Vec<_>>();
 
-    Ok(relation_graph::render_parallel_vertical_stack(
-        top, bottom, &lanes, 2,
+    Ok(relation_graph::render_parallel_vertical_stack_with_options(
+        top, bottom, &lanes, 2, options,
     ))
 }
 
-fn parallel_class_lane_rows(layout: RelationLayout<'_>, charset: ClassCharset) -> Vec<String> {
-    let marker = marker_char(layout.marker, layout.marker_side, charset).to_string();
-    let line = line_char(layout.line, charset).to_string();
-    let label = layout.label.unwrap_or("").to_string();
+fn parallel_class_lane_rows(
+    layout: RelationLayout<'_>,
+    charset: ClassCharset,
+) -> Vec<RelationGraphLine> {
+    let marker = RelationGraphLine::with_role(
+        marker_char(layout.marker, layout.marker_side, charset).to_string(),
+        AsciiColorRole::EdgeArrow,
+    );
+    let line = RelationGraphLine::with_role(
+        line_char(layout.line, charset).to_string(),
+        AsciiColorRole::EdgeLine,
+    );
+    let label = RelationGraphLine::with_role(
+        layout.label.unwrap_or("").to_string(),
+        AsciiColorRole::EdgeLabel,
+    );
     match layout.marker_side {
         MarkerSide::Top => vec![marker, label, line],
         MarkerSide::Bottom => vec![line, label, marker],
@@ -562,7 +646,7 @@ fn render_layered_relations(
         );
     }
 
-    Ok(finish_trimmed_canvas(&canvas, width, height))
+    Ok(canvas.finish_trimmed_with_options(options))
 }
 
 fn parallel_lane_offsets(layouts: &[RelationLayout<'_>]) -> Vec<isize> {
@@ -660,15 +744,17 @@ fn draw_layered_relation(
     }
 
     match layout.marker_side {
-        MarkerSide::Top => canvas.set(
+        MarkerSide::Top => canvas.set_role(
             from_x,
             from_y + 1,
             marker_char(layout.marker, MarkerSide::Top, charset),
+            AsciiColorRole::EdgeArrow,
         ),
-        MarkerSide::Bottom => canvas.set(
+        MarkerSide::Bottom => canvas.set_role(
             to_x,
             to_y - 1,
             marker_char(layout.marker, MarkerSide::Bottom, charset),
+            AsciiColorRole::EdgeArrow,
         ),
     }
 }
@@ -722,7 +808,12 @@ fn put_relation_char(canvas: &mut Canvas, x: usize, y: usize, ch: char, charset:
         }
         _ => ch,
     };
-    canvas.set(x, y, next);
+    let role = if next == charset.relation_junction {
+        AsciiColorRole::Junction
+    } else {
+        AsciiColorRole::EdgeLine
+    };
+    canvas.set_role(x, y, next, role);
 }
 
 fn is_relation_line_char(ch: char, charset: ClassCharset) -> bool {
@@ -738,20 +829,10 @@ fn is_relation_line_char(ch: char, charset: ClassCharset) -> bool {
 
 fn write_centered_relation_text(canvas: &mut Canvas, center_x: usize, y: usize, text: &str) {
     let text_half_width = display_width(text) / 2;
-    canvas.write_text(center_x.saturating_sub(text_half_width), y, text);
-}
-
-fn finish_trimmed_canvas(canvas: &Canvas, width: usize, height: usize) -> String {
-    let mut rendered = String::new();
-    for y in 0..height {
-        let mut line = (0..width)
-            .map(|x| canvas.get(x, y).unwrap_or(' '))
-            .collect::<String>();
-        while line.ends_with(' ') {
-            line.pop();
-        }
-        rendered.push_str(&line);
-        rendered.push('\n');
-    }
-    rendered
+    canvas.write_text_role(
+        center_x.saturating_sub(text_half_width),
+        y,
+        text,
+        AsciiColorRole::EdgeLabel,
+    );
 }

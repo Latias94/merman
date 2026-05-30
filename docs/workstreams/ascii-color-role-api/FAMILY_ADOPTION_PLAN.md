@@ -24,8 +24,8 @@ snapshot failures hard to localize.
 | Family | Current output shape | Role adoption risk | Decision |
 | --- | --- | --- | --- |
 | Flowchart | `Canvas` with role-aware finalization | Low after ACR-030 | DONE in ACR-040. |
-| Class | `RelationGraphBox` strings plus layered `Canvas` routes | Medium; boxes and routes use different paths | Split with ER after a shared relation/text substrate. |
-| ER | Same relation graph substrate as class | Medium; cardinalities add relationship text roles | Split with class after a shared relation/text substrate. |
+| Class | `RelationGraphBox` role lines plus layered `Canvas` routes | Medium; boxes and routes use different paths | DONE in ACR-052. |
+| ER | Same relation graph substrate as class | Medium; cardinalities add relationship text roles | DONE in ACR-052. |
 | XYChart | Local `Vec<Vec<char>>` plot grid and trimmed lines | Medium; needs `ChartAxis` and `ChartSeries(index)` cells | Separate chart-focused lane. |
 | Sequence | Plain `String` rows with overlays, frames, notes, lifelines, activations | High; many row builders and lifecycle overlays | Separate final lane after the substrate proves out. |
 
@@ -36,7 +36,7 @@ snapshot failures hard to localize.
    - Support trimming trailing unstyled spaces before ANSI/HTML finalization.
    - Decide whether `RelationGraphBox` should become role-aware or be drawn into `Canvas` earlier.
 
-2. ACR-052: Adopt roles for class and ER together.
+2. ACR-052: DONE. Adopt roles for class and ER together.
    - They share relation graph layout primitives and relationship routing semantics.
    - Roles should cover entity/class text, box borders, relation lines, markers, labels, and
      junctions.

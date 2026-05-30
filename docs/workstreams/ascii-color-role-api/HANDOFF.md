@@ -11,17 +11,18 @@ public color types, color options, role-aware `Canvas` storage, and forced ANSI/
 ACR-040 assigned flowchart semantic roles for nodes, groups, edges, labels, arrowheads, and routed
 junctions. ACR-050 split broader family adoption into smaller lanes in `FAMILY_ADOPTION_PLAN.md`.
 ACR-051 added the shared role-aware trim substrate in `Canvas` plus role-bearing relation graph
-lines. Default plain output remains unchanged.
+lines. ACR-052 adopted semantic roles for class and ER boxes, relation lines, markers, labels, and
+junctions. Default plain output remains unchanged.
 
 ## Active Task
 
-- Task ID: ACR-052
+- Task ID: ACR-053
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/class`, `crates/merman-ascii/src/er`, `crates/merman-ascii/tests`
-- Validation: `cargo nextest run -p merman-ascii class_color er_color`;
-  `cargo nextest run -p merman-ascii class er`
+- Files: `crates/merman-ascii/src/xychart`, `crates/merman-ascii/tests`
+- Validation: `cargo nextest run -p merman-ascii xychart_color`;
+  `cargo nextest run -p merman-ascii xychart`
 - Status: TODO
-- Review: existing class and ER plain snapshots must remain unchanged
+- Review: `ChartSeries(index)` should be used for plotted data and wrap by theme series length
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -44,7 +45,8 @@ lines. Default plain output remains unchanged.
 - ACR-050 decided to split broader family adoption. Class and ER share relation graph string boxes
   and layered `Canvas` routing; sequence and XYChart use different string/char-grid output paths.
 - The next substrate now exists in `Canvas::finish_trimmed_with_options` and
-  `RelationGraphLine`; class and ER should adopt it before XYChart and sequence.
+  `RelationGraphLine`; class and ER now use it for colored output while preserving the old plain
+  rendering path.
 
 ## Blockers
 
@@ -52,5 +54,6 @@ lines. Default plain output remains unchanged.
 
 ## Next Recommended Action
 
-- Start ACR-052. Adopt the shared substrate in class and ER before moving to XYChart and sequence.
-  Keep ACR-060 style/class/linkStyle mapping separate unless the planner explicitly prioritizes it.
+- Start ACR-053. Adopt roles for XYChart axes, labels, bars, and line series with
+  `ChartSeries(index)`. Keep ACR-060 style/class/linkStyle mapping separate unless the planner
+  explicitly prioritizes it.
