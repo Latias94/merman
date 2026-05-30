@@ -258,9 +258,10 @@ and `critical`.
 
 Class, ER, and XYChart text output intentionally ship bounded terminal-native subsets: class and ER
 support boxes, labels, single relationships, layered chain/star multi-relationship layouts, and
-adjacent-layer crossing layouts resolved by layer reordering, with clear diagnostics for denser,
-cyclic, parallel, spanning-level, or unrelated graph placement; XYChart renders deterministic
-compact bars, lines, mixed plots, titles, and axes instead of SVG coordinates.
+adjacent-layer crossing layouts resolved by layer reordering. Isolated unrelated classes/entities
+render as standalone components beside the relationship layout, while denser, cyclic, parallel, and
+spanning-level graph shapes still return clear diagnostics. XYChart renders deterministic compact
+bars, lines, mixed plots, titles, and axes instead of SVG coordinates.
 
 ```rust
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};

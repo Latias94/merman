@@ -1,6 +1,6 @@
 # ASCII Class ER Component Layout
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -65,3 +65,7 @@ This lane can close when:
 - full `merman-ascii` package and lint gates pass,
 - support docs describe disconnected component support,
 - and remaining topology work is split or deferred.
+
+Closed on 2026-05-30. The shipped behavior covers relationship layouts with unrelated standalone
+class/entity components. Parallel, cyclic, spanning-level, and dense routing remain explicit
+follow-on topology work.

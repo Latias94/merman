@@ -1,6 +1,6 @@
 # ASCII Class ER Component Layout - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -36,9 +36,10 @@ Last updated: 2026-05-30
 
 ## M3 - Docs And Closeout
 
-- [ ] ACECL-040 [owner=unassigned] [deps=ACECL-030] [scope=crates/merman-ascii,docs]
+- [x] ACECL-040 [owner=codex] [deps=ACECL-030] [scope=crates/merman-ascii,docs]
   Goal: Update support docs, run final gates, and close or split remaining topology work.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
   Evidence: README/support docs and final handoff.
-  Handoff: Lane closes or names narrower follow-ons.
+  Handoff: DONE. Support docs now describe unrelated standalone components, full package gates
+  pass, and broader topology work remains deferred outside this lane.

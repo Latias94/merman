@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "ascii-class-er-component-layout",
   "title": "ASCII Class ER Component Layout",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
-  "problem": "Class and ER ASCII renderers still reject whole diagrams that contain renderable disconnected components.",
+  "problem": "Class and ER ASCII renderers needed to render diagrams that contain a relationship layout plus unrelated standalone components.",
   "authoritative_docs": [
     {
       "role": "adr",
@@ -59,6 +59,11 @@
       "date": "2026-05-30",
       "task": "ACECL-030",
       "result": "shared relation component helper now keeps relationship-bearing boxes together and splits isolated boxes"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACECL-040",
+      "result": "updated support docs, passed full merman-ascii gates, and closed the lane"
     }
   ],
   "adr_refs": [
@@ -74,8 +79,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "ACECL-040",
-    "notes": "Update support docs, run full merman-ascii gates, and close the lane. Keep parallel, cyclic, spanning-level, dense, color/style, and flowchart routing work out of this lane."
+    "default_action": "none",
+    "next_task": null,
+    "notes": "Lane closed. Remaining topology work is follow-on scope: parallel, cyclic, spanning-level, dense, color/style, and broader graph routing."
   }
 }
