@@ -743,6 +743,11 @@ fn compute_node_label_metrics_for_intersection(
         &flow_node.classes,
         &flow_node.styles,
     );
+    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+        ctx.class_defs,
+        &flow_node.classes,
+        &flow_node.styles,
+    );
     let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
@@ -754,6 +759,7 @@ fn compute_node_label_metrics_for_intersection(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
             preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+            whole_label_font_style: node_font_style.as_deref(),
         },
     );
 
@@ -928,6 +934,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &flow_node.classes,
             &flow_node.styles,
         );
+        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+            ctx.class_defs,
+            &flow_node.classes,
+            &flow_node.styles,
+        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
@@ -939,6 +950,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
                 preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                whole_label_font_style: node_font_style.as_deref(),
             },
         );
 
@@ -1035,6 +1047,11 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &flow_node.classes,
             &flow_node.styles,
         );
+        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+            ctx.class_defs,
+            &flow_node.classes,
+            &flow_node.styles,
+        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
@@ -1046,6 +1063,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
                 preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                whole_label_font_style: node_font_style.as_deref(),
             },
         );
 

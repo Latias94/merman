@@ -23,6 +23,7 @@ pub mod journey;
 mod json;
 pub mod kanban;
 pub mod math;
+mod mermaid_style;
 pub mod mindmap;
 pub mod model;
 pub mod packet;

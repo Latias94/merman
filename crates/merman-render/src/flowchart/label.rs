@@ -13,6 +13,7 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) config: &'a MermaidConfig,
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     pub(crate) preserve_string_whitespace_height: bool,
+    pub(crate) whole_label_font_style: Option<&'a str>,
 }
 
 pub(crate) fn flowchart_label_metrics_for_layout(
@@ -28,6 +29,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         config,
         math_renderer,
         preserve_string_whitespace_height,
+        whole_label_font_style,
     } = req;
 
     let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
@@ -323,6 +325,19 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         );
     }
 
+    if flowchart_whole_label_font_style_requests_italic(whole_label_font_style) {
+        let label_for_metrics = flowchart_label_plain_text_for_layout(
+            raw_label,
+            label_type,
+            wrap_mode == WrapMode::HtmlLike,
+        );
+        let italic_delta =
+            crate::text::mermaid_default_italic_width_delta_px(&label_for_metrics, style);
+        if italic_delta > 0.0 {
+            metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
+        }
+    }
+
     // Fixture-derived micro-overrides for Flowchart root viewBox parity.
     //
     // These are intentionally scoped to the Flowchart diagram layer so other diagrams do not
@@ -458,6 +473,14 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     }
 
     metrics
+}
+
+pub(crate) fn flowchart_whole_label_font_style_requests_italic(font_style: Option<&str>) -> bool {
+    let Some(font_style) = font_style else {
+        return false;
+    };
+    let lower = font_style.trim().to_ascii_lowercase();
+    lower == "italic" || lower.starts_with("italic ") || lower.starts_with("oblique")
 }
 
 pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {

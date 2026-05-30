@@ -31,6 +31,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
         let x = -width / 2.0;
         let y = -height / 2.0;
 
+        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+            ctx.class_defs,
+            common.node_classes,
+            common.node_styles,
+        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
@@ -46,6 +51,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
                 preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                whole_label_font_style: node_font_style.as_deref(),
             },
         );
         if !has_label {

@@ -1334,3 +1334,89 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
     );
     assert!((cluster.title_label.height - wrapped.height).abs() < 1e-6);
 }
+
+#[test]
+fn flowchart_relative_font_size_class_affects_node_label_layout() {
+    let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
+flowchart LR
+A[Same label]:::small
+B[Same label]
+classDef small font-size:50%;
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    let small = node("A");
+    let normal = node("B");
+
+    assert!(
+        small.width + 10.0 < normal.width,
+        "expected font-size:50% to reduce label-driven node width: small={}, normal={}",
+        small.width,
+        normal.width
+    );
+    assert!(
+        small.height < normal.height,
+        "expected font-size:50% to reduce label-driven node height: small={}, normal={}",
+        small.height,
+        normal.height
+    );
+}
+
+#[test]
+fn flowchart_whole_label_font_style_italic_affects_node_label_layout() {
+    let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
+flowchart LR
+A[Moving]:::italic
+B[Moving]
+classDef italic font-style:italic;
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    let italic = node("A");
+    let normal = node("B");
+
+    assert!(
+        italic.width > normal.width + 0.5,
+        "expected whole-label font-style:italic to widen label-driven node width: italic={}, normal={}",
+        italic.width,
+        normal.width
+    );
+    assert!(
+        (italic.height - normal.height).abs() < 1e-6,
+        "italic font-style should not change single-line node height: italic={}, normal={}",
+        italic.height,
+        normal.height
+    );
+}

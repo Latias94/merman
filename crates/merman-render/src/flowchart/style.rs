@@ -30,15 +30,6 @@ fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
     Some((k, v))
 }
 
-fn parse_css_px_f64(v: &str) -> Option<f64> {
-    let v = v.trim().trim_end_matches(';').trim();
-    let v = v.trim_end_matches("px").trim();
-    if v.is_empty() {
-        return None;
-    }
-    v.parse::<f64>().ok()
-}
-
 fn normalize_css_font_family(font_family: &str) -> String {
     font_family.trim().trim_end_matches(';').trim().to_string()
 }
@@ -77,9 +68,10 @@ fn split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
 }
 
 fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str, value: &str) {
-    match key {
+    match key.trim().to_ascii_lowercase().as_str() {
         "font-size" => {
-            if let Some(px) = parse_css_px_f64(value) {
+            let inherited_px = style.as_ref().font_size;
+            if let Some(px) = crate::mermaid_style::parse_css_font_size_px(value, inherited_px) {
                 style.to_mut().font_size = px;
             }
         }
@@ -90,6 +82,12 @@ fn apply_text_style_decl(style: &mut std::borrow::Cow<'_, TextStyle>, key: &str,
             style.to_mut().font_weight = Some(value.trim().to_string());
         }
         _ => {}
+    }
+}
+
+fn apply_font_style_decl(font_style: &mut Option<String>, key: &str, value: &str) {
+    if key.trim().eq_ignore_ascii_case("font-style") {
+        *font_style = Some(value.trim().to_string());
     }
 }
 
@@ -125,6 +123,39 @@ fn flowchart_effective_text_style_for_class_names<'a>(
     }
 
     style
+}
+
+fn flowchart_effective_font_style_for_class_names<'a>(
+    class_defs: &IndexMap<String, Vec<String>>,
+    class_names: impl IntoIterator<Item = &'a str>,
+    inline_styles: &[String],
+) -> Option<String> {
+    let mut font_style = None;
+
+    for class in class_names {
+        let Some(decls) = class_defs.get(class) else {
+            continue;
+        };
+        for d in decls {
+            for d in split_mermaid_style_decls(d) {
+                let Some((k, v)) = parse_style_decl(d) else {
+                    continue;
+                };
+                apply_font_style_decl(&mut font_style, k, v);
+            }
+        }
+    }
+
+    for d in inline_styles {
+        for d in split_mermaid_style_decls(d) {
+            let Some((k, v)) = parse_style_decl(d) else {
+                continue;
+            };
+            apply_font_style_decl(&mut font_style, k, v);
+        }
+    }
+
+    font_style
 }
 
 pub(crate) fn flowchart_effective_node_class_names<'a>(
@@ -177,6 +208,18 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     )
 }
 
+pub(crate) fn flowchart_effective_font_style_for_node_classes<'a>(
+    class_defs: &'a IndexMap<String, Vec<String>>,
+    classes: &'a [String],
+    inline_styles: &[String],
+) -> Option<String> {
+    let effective_classes = flowchart_effective_node_class_names(class_defs, classes);
+    if effective_classes.is_empty() && inline_styles.is_empty() {
+        return None;
+    }
+    flowchart_effective_font_style_for_class_names(class_defs, effective_classes, inline_styles)
+}
+
 pub(crate) fn flowchart_html_label_measurement_base_style(
     render_style: &TextStyle,
     effective_config: &serde_json::Value,
@@ -194,7 +237,7 @@ pub(crate) fn flowchart_html_label_measurement_base_style(
             if !raw.to_ascii_lowercase().ends_with("px") {
                 return None;
             }
-            parse_css_px_f64(raw)
+            crate::mermaid_style::parse_css_font_size_px(raw, render_style.font_size)
         })
         .unwrap_or(16.0);
     style
@@ -212,6 +255,22 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
 
     flowchart_effective_text_style_for_class_names(
         base,
+        class_defs,
+        classes.iter().map(|class| class.as_str()),
+        inline_styles,
+    )
+}
+
+pub(crate) fn flowchart_effective_font_style_for_classes(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> Option<String> {
+    if classes.is_empty() && inline_styles.is_empty() {
+        return None;
+    }
+
+    flowchart_effective_font_style_for_class_names(
         class_defs,
         classes.iter().map(|class| class.as_str()),
         inline_styles,

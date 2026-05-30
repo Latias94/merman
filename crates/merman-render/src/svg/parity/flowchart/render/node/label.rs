@@ -33,6 +33,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         common.node_classes,
         common.node_styles,
     );
+    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+        ctx.class_defs,
+        common.node_classes,
+        common.node_styles,
+    );
     let is_markdown_label = label.label_type == "markdown";
     let has_literal_backticks = !is_markdown_label && label.text.contains('`');
     let has_markdown_marker = label.text.contains("**")
@@ -96,6 +101,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
                 preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                whole_label_font_style: node_font_style.as_deref(),
             },
         );
         let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
@@ -192,63 +198,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             false
         };
 
-        fn parse_hex_rgb_u8(v: &str) -> Option<(u8, u8, u8)> {
-            let v = v.trim();
-            let hex = v.strip_prefix('#')?;
-            match hex.len() {
-                6 => {
-                    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-                    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-                    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-                    Some((r, g, b))
-                }
-                3 => {
-                    let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-                    let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-                    let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-                    Some((r, g, b))
-                }
-                _ => None,
-            }
-        }
-
-        let mut div_style = String::new();
-        if let Some(color) = compiled_styles.label_color.as_deref() {
-            let color = color.trim();
-            if !color.is_empty() {
-                if let Some((r, g, b)) = parse_hex_rgb_u8(color) {
-                    let _ = write!(&mut div_style, "color: rgb({r}, {g}, {b}) !important; ");
-                } else {
-                    div_style.push_str("color: ");
-                    div_style.push_str(&color.to_ascii_lowercase());
-                    div_style.push_str(" !important; ");
-                }
-            }
-        }
-        if let Some(v) = compiled_styles.label_font_size.as_deref() {
-            let v = v.trim();
-            if !v.is_empty() {
-                let _ = write!(&mut div_style, "font-size: {v} !important; ");
-            }
-        }
-        if let Some(v) = compiled_styles.label_font_weight.as_deref() {
-            let v = v.trim();
-            if !v.is_empty() {
-                let _ = write!(&mut div_style, "font-weight: {v} !important; ");
-            }
-        }
-        if let Some(v) = compiled_styles.label_font_family.as_deref() {
-            let v = v.trim();
-            if !v.is_empty() {
-                let _ = write!(&mut div_style, "font-family: {v} !important; ");
-            }
-        }
-        if let Some(v) = compiled_styles.label_opacity.as_deref() {
-            let v = v.trim();
-            if !v.is_empty() {
-                let _ = write!(&mut div_style, "opacity: {v} !important; ");
-            }
-        }
+        let mut div_style = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
+            compiled_styles,
+            true,
+        );
         if needs_wrap {
             let _ = write!(
                 &mut div_style,

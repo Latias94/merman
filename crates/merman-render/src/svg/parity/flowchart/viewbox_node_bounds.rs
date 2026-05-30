@@ -64,6 +64,11 @@ fn measure_flowchart_layout_node_label(
         &flow_node.classes,
         &flow_node.styles,
     );
+    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+        ctx.class_defs,
+        &flow_node.classes,
+        &flow_node.styles,
+    );
     Some(crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
@@ -75,6 +80,7 @@ fn measure_flowchart_layout_node_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
             preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+            whole_label_font_style: node_font_style.as_deref(),
         },
     ))
 }

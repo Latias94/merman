@@ -334,3 +334,65 @@ fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
         "expected crossed-circle aliases to share RoughJS bbox asymmetry: {svg}"
     );
 }
+
+#[test]
+fn flowchart_label_styles_follow_mermaid_label_style_whitelist() {
+    let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
+flowchart LR
+A[Styled node] -->|Styled edge| B[Plain]
+style A fill:#eee,stroke:#111,font-style:italic,text-decoration:underline,letter-spacing:1px,white-space:break-spaces,text-align:left,line-height:2
+linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color:#123456
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains("font-style:italic !important"),
+        "expected font-style to be routed to label styles: {svg}"
+    );
+    assert!(
+        svg.contains("text-decoration:underline !important"),
+        "expected text-decoration to be routed to label styles: {svg}"
+    );
+    assert!(
+        svg.contains("letter-spacing:1px !important"),
+        "expected letter-spacing to be routed to label styles: {svg}"
+    );
+    assert!(
+        svg.contains("white-space:break-spaces !important"),
+        "expected white-space to be preserved on the label span/group style: {svg}"
+    );
+    assert!(
+        svg.contains(r#"style="fill:#eee !important;stroke:#111 !important""#),
+        "expected shape styles to stay on the node shape: {svg}"
+    );
+    assert!(
+        !svg.contains("fill:#eee !important;stroke:#111 !important;font-style"),
+        "expected text-only styles not to be mixed into node shape style: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="edgeLabel" style="font-style:italic !important;text-decoration:underline !important;letter-spacing:1px !important;color:#123456 !important""#),
+        "expected edge label span to receive Mermaid label styles: {svg}"
+    );
+}

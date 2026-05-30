@@ -323,6 +323,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
+    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
+        ctx.class_defs,
+        node_classes,
+        node_styles,
+    );
     let mut metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
@@ -342,6 +347,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
                     preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                    whole_label_font_style: node_font_style.as_deref(),
                 },
             );
 
@@ -370,6 +376,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
                 preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
+                whole_label_font_style: node_font_style.as_deref(),
             },
         );
 

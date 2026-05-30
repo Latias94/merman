@@ -15,10 +15,12 @@ use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_effective_html_labels,
+    FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
+    flowchart_effective_font_style_for_node_classes, flowchart_effective_html_labels,
     flowchart_effective_node_html_labels, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_html_label_measurement_base_style,
-    flowchart_label_metrics_for_layout, flowchart_node_has_span_css_height_parity,
+    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
+    flowchart_node_has_span_css_height_parity, flowchart_whole_label_font_style_requests_italic,
 };
 
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
@@ -942,6 +944,11 @@ fn layout_flowchart_v2_with_model(
             &n.classes,
             &n.styles,
         );
+        let node_font_style = flowchart_effective_font_style_for_node_classes(
+            &model.class_defs,
+            &n.classes,
+            &n.styles,
+        );
         let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label,
@@ -952,6 +959,7 @@ fn layout_flowchart_v2_with_model(
             config: effective_config,
             math_renderer,
             preserve_string_whitespace_height: node_html_label_css_parity,
+            whole_label_font_style: node_font_style.as_deref(),
         });
         let span_css_height_parity =
             flowchart_node_has_span_css_height_parity(&model.class_defs, &n.classes);
@@ -1012,8 +1020,10 @@ fn layout_flowchart_v2_with_model(
             cluster_label_base_style,
             &model.class_defs,
             &sg.classes,
-            &[],
+            &sg.styles,
         );
+        let sg_font_style =
+            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
@@ -1024,6 +1034,7 @@ fn layout_flowchart_v2_with_model(
             config: effective_config,
             math_renderer,
             preserve_string_whitespace_height: node_html_label_css_parity,
+            whole_label_font_style: sg_font_style.as_deref(),
         });
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
@@ -1185,14 +1196,31 @@ fn layout_flowchart_v2_with_model(
                 &e.classes,
                 &e.style,
             );
+            let edge_font_style =
+                flowchart_effective_font_style_for_classes(&model.class_defs, &e.classes, &e.style);
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
-                crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+                let mut metrics = crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
                     measurer,
                     label_text,
                     edge_text_style.as_ref(),
                     Some(edge_label_wrapping_width),
                     edge_wrap_mode,
-                )
+                );
+                if flowchart_whole_label_font_style_requests_italic(edge_font_style.as_deref()) {
+                    let plain = flowchart_label_plain_text_for_layout(
+                        label_text,
+                        label_type,
+                        edge_wrap_mode == WrapMode::HtmlLike,
+                    );
+                    let italic_delta = crate::text::mermaid_default_italic_width_delta_px(
+                        &plain,
+                        edge_text_style.as_ref(),
+                    );
+                    if italic_delta > 0.0 {
+                        metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
+                    }
+                }
+                metrics
             } else {
                 flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                     measurer,
@@ -1204,6 +1232,7 @@ fn layout_flowchart_v2_with_model(
                     config: effective_config,
                     math_renderer,
                     preserve_string_whitespace_height: false,
+                    whole_label_font_style: edge_font_style.as_deref(),
                 })
             };
             let (label_width, label_height) = if edge_html_labels {
@@ -1303,6 +1332,7 @@ fn layout_flowchart_v2_with_model(
 
     struct ClusterTitleMetricsContext<'a> {
         subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
+        class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
         html_label_text_style: &'a TextStyle,
@@ -1318,6 +1348,8 @@ fn layout_flowchart_v2_with_model(
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
         let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let title_font_style =
+            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: &sg.title,
@@ -1332,6 +1364,7 @@ fn layout_flowchart_v2_with_model(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
             preserve_string_whitespace_height: false,
+            whole_label_font_style: title_font_style.as_deref(),
         });
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
     }
@@ -1598,6 +1631,7 @@ fn layout_flowchart_v2_with_model(
     {
         let title_metrics_ctx = ClusterTitleMetricsContext {
             subgraphs_by_id: &subgraphs_by_id,
+            class_defs: &model.class_defs,
             measurer,
             text_style: &text_style,
             html_label_text_style: &html_label_text_style,
@@ -2050,6 +2084,7 @@ fn layout_flowchart_v2_with_model(
 
     struct ClusterRectContext<'a> {
         subgraphs_by_id: &'a std::collections::HashMap<String, FlowSubgraph>,
+        class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         leaf_rects: &'a std::collections::HashMap<String, Rect>,
         extra_children: &'a std::collections::HashMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
@@ -2127,6 +2162,8 @@ fn layout_flowchart_v2_with_model(
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = Some(ctx.title_wrapping_width);
+        let title_font_style =
+            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
         let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: &sg.title,
@@ -2141,6 +2178,7 @@ fn layout_flowchart_v2_with_model(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
             preserve_string_whitespace_height: false,
+            whole_label_font_style: title_font_style.as_deref(),
         });
         let mut rect = if let Some(r) = content {
             r
@@ -2189,6 +2227,7 @@ fn layout_flowchart_v2_with_model(
     }
 
     struct ClusterTitleAdjustContext<'a> {
+        class_defs: &'a indexmap::IndexMap<String, Vec<String>>,
         measurer: &'a dyn TextMeasurer,
         text_style: &'a TextStyle,
         html_label_text_style: &'a TextStyle,
@@ -2202,12 +2241,15 @@ fn layout_flowchart_v2_with_model(
 
     fn adjust_cluster_rect_for_title(
         mut rect: Rect,
+        sg: &FlowSubgraph,
         title: &str,
         label_type: &str,
         add_title_total_margin: bool,
         ctx: &ClusterTitleAdjustContext<'_>,
     ) -> Rect {
         let title_width_limit = Some(ctx.title_wrapping_width);
+        let title_font_style =
+            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
         let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: title,
@@ -2222,6 +2264,7 @@ fn layout_flowchart_v2_with_model(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
             preserve_string_whitespace_height: false,
+            whole_label_font_style: title_font_style.as_deref(),
         });
         let title_w = title_metrics.width.max(1.0);
         let title_h = title_metrics.height.max(1.0);
@@ -2252,6 +2295,7 @@ fn layout_flowchart_v2_with_model(
 
     let cluster_rect_ctx = ClusterRectContext {
         subgraphs_by_id: &subgraphs_by_id,
+        class_defs: &model.class_defs,
         leaf_rects: &leaf_rects,
         extra_children: &extra_children,
         measurer,
@@ -2270,6 +2314,7 @@ fn layout_flowchart_v2_with_model(
         visiting: &mut visiting,
     };
     let title_adjust_ctx = ClusterTitleAdjustContext {
+        class_defs: &model.class_defs,
         measurer,
         text_style: &text_style,
         html_label_text_style: &html_label_text_style,
@@ -2304,6 +2349,7 @@ fn layout_flowchart_v2_with_model(
                 .unwrap_or_else(|| rect.width());
             let rect = adjust_cluster_rect_for_title(
                 rect,
+                sg,
                 &sg.title,
                 sg.label_type.as_deref().unwrap_or("text"),
                 false,
@@ -2314,6 +2360,7 @@ fn layout_flowchart_v2_with_model(
             let base_width = r.width();
             let rect = adjust_cluster_rect_for_title(
                 r,
+                sg,
                 &sg.title,
                 sg.label_type.as_deref().unwrap_or("text"),
                 true,
@@ -2327,6 +2374,8 @@ fn layout_flowchart_v2_with_model(
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = Some(cluster_title_wrapping_width);
+        let title_font_style =
+            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
         let mut title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
@@ -2341,6 +2390,7 @@ fn layout_flowchart_v2_with_model(
             config: effective_config,
             math_renderer,
             preserve_string_whitespace_height: false,
+            whole_label_font_style: title_font_style.as_deref(),
         });
         if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type != "markdown" {
             // Mermaid's flowchart cluster titles rendered as plain SVG `<text>` are measured via

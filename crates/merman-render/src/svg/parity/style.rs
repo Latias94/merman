@@ -28,8 +28,5 @@ pub(super) fn is_rect_style_key(key: &str) -> bool {
 }
 
 pub(super) fn is_text_style_key(key: &str) -> bool {
-    matches!(
-        key,
-        "color" | "font-family" | "font-size" | "font-weight" | "opacity"
-    )
+    crate::mermaid_style::is_label_style_key(key)
 }

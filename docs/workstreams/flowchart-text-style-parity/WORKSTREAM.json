@@ -1,0 +1,13 @@
+{
+  "slug": "flowchart-text-style-parity",
+  "title": "Flowchart Text Style Parity",
+  "status": "active",
+  "created": "2026-05-30",
+  "phase": "measurement-completeness-in-progress",
+  "active_tasks": [],
+  "validation": [
+    "cargo fmt --check",
+    "cargo nextest run -p merman-render --test flowchart_layout_test --test flowchart_svg_test",
+    "cargo nextest run -p merman-render --lib -- --skip math::tests::node_katex_math_renderer_measures_sanitized_flowchart_browser_shell"
+  ]
+}

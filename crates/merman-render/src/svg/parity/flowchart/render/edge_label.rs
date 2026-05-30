@@ -26,20 +26,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         &edge.style,
     );
     let span_style_attr = OptionalStyleXmlAttr(compiled_label_styles.label_style.as_str());
-    let div_color_prefix = if let Some(color) = compiled_label_styles.label_color.as_deref() {
-        let color = color.trim();
-        if color.is_empty() {
-            String::new()
-        } else {
-            let mut out = String::with_capacity(color.len() + 24);
-            out.push_str("color: ");
-            out.push_str(&color.to_ascii_lowercase());
-            out.push_str(" !important; ");
-            out
-        }
-    } else {
-        String::new()
-    };
+    let div_style_prefix = crate::svg::parity::flowchart::style::flowchart_label_div_style_prefix(
+        &compiled_label_styles,
+        false,
+    );
 
     fn js_round(v: f64, decimals: i32) -> f64 {
         if !v.is_finite() {
@@ -471,10 +461,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
             };
-            let div_style = if div_color_prefix.is_empty() {
+            let div_style = if div_style_prefix.is_empty() {
                 wrapped_style
             } else {
-                format!("{div_color_prefix}{wrapped_style}")
+                format!("{div_style_prefix}{wrapped_style}")
             };
             let _ = write!(
                 out,
@@ -536,10 +526,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
             };
-            let div_style = if div_color_prefix.is_empty() {
+            let div_style = if div_style_prefix.is_empty() {
                 wrapped_style
             } else {
-                format!("{div_color_prefix}{wrapped_style}")
+                format!("{div_style_prefix}{wrapped_style}")
             };
             let _ = write!(
                 out,
@@ -563,7 +553,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
         escape_xml_display(&edge.id),
-        escape_xml_display(&div_color_prefix),
+        escape_xml_display(&div_style_prefix),
         span_style_attr
     );
 }
