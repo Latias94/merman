@@ -79,8 +79,10 @@ Sequence samples use Mermaid's `width: fit-content` math shell:
 Do not add ad hoc RaTeX calibration constants yet. Mixed prose/math support should stay model-based:
 prose fragments are measured with the owning diagram's text measurer, while pure math fragments are
 measured by the selected math backend. Flowchart and Sequence now support one formula per line;
-multiple formulas on one line are still intentionally left to a separate parser decision because
-Mermaid's current `$$...$$` replacement is greedy.
+multiple formulas on one line are intentionally unsupported because Mermaid's current `$$...$$`
+replacement is greedy. A local Node/KaTeX probe with Mermaid's regex shows `a $$x$$ b $$y$$ c`
+parses as one invalid formula body (`x$$ b $$y`) and throws a KaTeX parse error, so RaTeX should
+not implement a non-greedy multi-formula extension under Mermaid-parity mode.
 
 ## Verification
 
@@ -97,5 +99,5 @@ renderer path plus documentation.
 
 ## Follow-ups
 
-- Revisit multiple formulas on one line separately; Mermaid's current greedy `$$...$$` replacement
-  treats that case differently from a non-greedy fragment parser.
+- Revisit same-line multiple formulas only if upstream Mermaid changes the greedy `$$...$$`
+  replacement semantics.

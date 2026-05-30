@@ -722,6 +722,32 @@ mod tests {
 
     #[cfg(feature = "ratex-math")]
     #[test]
+    fn ratex_math_renderer_rejects_multiple_formulas_on_one_line() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let label = "a $$x$$ b $$y$$ c";
+
+        assert!(
+            renderer.render_html_label(label, &config).is_none(),
+            "Mermaid's greedy $$...$$ regex treats same-line multiple formulas as one invalid formula, so RaTeX should not render them non-greedily"
+        );
+        assert!(
+            renderer
+                .measure_html_label(label, &config, &style, Some(200.0), WrapMode::HtmlLike)
+                .is_none(),
+            "same-line multiple formulas should remain unsupported in measurement too"
+        );
+        assert!(
+            renderer
+                .measure_sequence_html_label(label, &config)
+                .is_none(),
+            "Sequence should keep the same delimiter policy"
+        );
+    }
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
     fn ratex_math_renderer_measures_flowchart_and_sequence_math_labels() {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();

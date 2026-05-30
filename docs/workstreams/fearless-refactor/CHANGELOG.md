@@ -9,6 +9,9 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
   probes. `RATEX_MATH_AUDIT.md` now records that the current
   `upstream_docs_math_flowcharts_001` residual is browser MathML metric drift in the Node/KaTeX
   shell, not evidence for a single RaTeX calibration scale.
+- Locked the same-line multiple `$$...$$` decision to Mermaid parity: local KaTeX probes confirm
+  Mermaid's greedy regex makes `a $$x$$ b $$y$$ c` an invalid single formula, and RaTeX now has a
+  regression test that rejects non-greedy multi-formula rendering.
 
 ## 2026-05-19
 
