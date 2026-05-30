@@ -1,0 +1,6 @@
+{"role":"root_manifest","path":"Cargo.toml","reason":"Workspace package/version baseline and internal dependency policy."}
+{"role":"adr","path":"docs/adr/0066-ffi-binding-strategy.md","reason":"Canonical FFI and UniFFI strategy."}
+{"role":"prior_workstream","path":"docs/workstreams/uniffi-bindings/HANDOFF.md","reason":"Safe binding facade and minimal UniFFI API are already closed."}
+{"role":"prior_workstream","path":"docs/workstreams/workspace-release-versioning/HANDOFF.md","reason":"Release baseline and package order for binding crates."}
+{"role":"binding_doc","path":"docs/bindings/UNIFFI.md","reason":"Current UniFFI surface and generated binding smoke notes."}
+{"role":"reference","path":"repo-ref/RaTeX/docs/binding-architecture.md","reason":"Local reference for core FFI plus platform wrapper separation."}

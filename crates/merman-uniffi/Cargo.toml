@@ -15,6 +15,10 @@ categories = ["api-bindings", "visualization"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[[example]]
+name = "generate_python_package"
+required-features = ["bindgen-smoke"]
+
 [features]
 default = ["render"]
 render = ["merman-bindings-core/render"]

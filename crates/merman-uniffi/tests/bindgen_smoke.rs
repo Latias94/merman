@@ -13,17 +13,7 @@ fn generates_python_binding_from_cdylib_metadata() {
     let cdylib = build_cdylib(&workspace_root);
     let out_dir = tempfile::tempdir().expect("create bindgen smoke tempdir");
 
-    uniffi::generate(uniffi::GenerateOptions {
-        languages: vec![uniffi::TargetLanguage::Python],
-        source: utf8_path(&cdylib).into(),
-        out_dir: utf8_path(out_dir.path()).into(),
-        config_override: None,
-        format: false,
-        crate_filter: Some("merman_uniffi".to_string()),
-        metadata_no_deps: false,
-    })
-    .expect("generate Python bindings from merman-uniffi cdylib metadata");
-
+    generate_python_bindings(&cdylib, out_dir.path());
     let python_files = generated_files_with_extension(out_dir.path(), "py");
     assert_eq!(
         python_files.len(),
@@ -45,6 +35,94 @@ fn generates_python_binding_from_cdylib_metadata() {
         generated.contains("class MermanError"),
         "generated binding should expose structured MermanError"
     );
+}
+
+#[test]
+fn staged_python_package_imports_and_calls_rust_engine() {
+    let Some(python) = python_executable() else {
+        eprintln!("skipping Python package smoke because no Python executable was found");
+        return;
+    };
+
+    let workspace_root = workspace_root();
+    let cdylib = build_cdylib(&workspace_root);
+    let package_dir = tempfile::tempdir().expect("create Python package smoke tempdir");
+    let module_dir = package_dir.path().join("src").join("merman_uniffi");
+    fs::create_dir_all(&module_dir).expect("create staged Python module directory");
+    fs::write(
+        module_dir.join("__init__.py"),
+        "from .merman_uniffi import MermanEngine, MermanError\n__all__ = ['MermanEngine', 'MermanError']\n",
+    )
+    .expect("write staged Python package shim");
+
+    generate_python_bindings(&cdylib, &module_dir);
+    copy_cdylib_next_to_generated_module(&cdylib, &module_dir);
+
+    let smoke_script = package_dir.path().join("python_package_smoke.py");
+    fs::write(&smoke_script, PYTHON_PACKAGE_SMOKE).expect("write Python package smoke script");
+
+    let output = Command::new(python)
+        .env("PYTHONPATH", package_dir.path().join("src"))
+        .env("PYTHONUTF8", "1")
+        .arg(&smoke_script)
+        .output()
+        .expect("run Python package smoke");
+
+    assert!(
+        output.status.success(),
+        "Python package smoke failed with status {:?}\nstdout:\n{}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+const PYTHON_PACKAGE_SMOKE: &str = r#"
+import json
+
+import merman_uniffi
+
+engine = merman_uniffi.MermanEngine()
+source = "flowchart TD\nA[Hello] --> B[World]"
+
+svg = engine.render_svg(source, None)
+assert "<svg" in svg
+assert "Hello" in svg
+assert "World" in svg
+
+parsed = json.loads(engine.parse_json(source, None))
+assert parsed["type"] == "flowchart-v2"
+
+print("python package smoke passed")
+"#;
+
+fn generate_python_bindings(cdylib: &Path, out_dir: &Path) {
+    uniffi::generate(uniffi::GenerateOptions {
+        languages: vec![uniffi::TargetLanguage::Python],
+        source: utf8_path(cdylib).into(),
+        out_dir: utf8_path(out_dir).into(),
+        config_override: None,
+        format: false,
+        crate_filter: Some("merman_uniffi".to_string()),
+        metadata_no_deps: false,
+    })
+    .expect("generate Python bindings from merman-uniffi cdylib metadata");
+}
+
+fn copy_cdylib_next_to_generated_module(cdylib: &Path, module_dir: &Path) {
+    let file_name = cdylib
+        .file_name()
+        .unwrap_or_else(|| panic!("cdylib path has no file name: {}", cdylib.display()));
+    fs::copy(cdylib, module_dir.join(file_name)).expect("copy cdylib into staged Python package");
+}
+
+fn python_executable() -> Option<&'static str> {
+    ["python3", "python", "py"].into_iter().find(|candidate| {
+        match Command::new(candidate).arg("--version").output() {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
+    })
 }
 
 fn workspace_root() -> PathBuf {

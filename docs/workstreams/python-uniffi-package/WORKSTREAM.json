@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "slug": "python-uniffi-package",
+  "title": "Python UniFFI Package",
+  "status": "closed",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Python UniFFI generation is source-only today; it does not prove an importable package with the native library placed where the generated loader expects it.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/python-uniffi-package/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/python-uniffi-package/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/python-uniffi-package/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/python-uniffi-package/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/python-uniffi-package/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/python-uniffi-package/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/python-uniffi-package/CONTEXT.jsonl",
+  "gates": [
+    "cargo check -p merman-uniffi --features bindgen-smoke --examples",
+    "cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke",
+    "cargo fmt -p merman-uniffi -- --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/python-uniffi-package/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "docs/workstreams/uniffi-bindings/HANDOFF.md",
+    "docs/workstreams/workspace-release-versioning/HANDOFF.md"
+  ],
+  "capability_tags": [
+    "ffi",
+    "bindings",
+    "python",
+    "uniffi",
+    "packaging"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed. Follow-on work is PyPI/wheel matrix packaging or other platform wrappers."
+  }
+}

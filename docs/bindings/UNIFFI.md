@@ -18,12 +18,18 @@ Swift, Kotlin, Python, and Ruby package lanes.
 Run:
 
 ```bash
-cargo test -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
+cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 This test builds the `merman-uniffi` cdylib, generates Python bindings from the embedded UniFFI
-metadata into a temporary directory, and asserts that the generated source exposes `MermanEngine`,
-`render_svg`, and `MermanError`.
+metadata into a temporary package, copies the native library beside the generated module, imports
+the package with Python, and calls `MermanEngine.render_svg` plus `MermanEngine.parse_json`.
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.
+
+## Python Package Scaffold
+
+See `docs/bindings/PYTHON_UNIFFI.md` for the current Python package layout and local generation
+command. The package scaffold lives under `bindings/python/merman-uniffi`; generated Python source
+and native libraries are ignored.
