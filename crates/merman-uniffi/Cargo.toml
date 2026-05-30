@@ -20,6 +20,7 @@ default = ["render"]
 render = ["merman-bindings-core/render"]
 ratex-math = ["render", "merman-bindings-core/ratex-math"]
 raster = ["merman-bindings-core/raster"]
+bindgen-smoke = ["uniffi/bindgen"]
 
 [dependencies]
 merman-bindings-core.workspace = true
@@ -28,3 +29,4 @@ uniffi.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+tempfile = "3.14.0"

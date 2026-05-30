@@ -32,8 +32,12 @@ This proves the generated-binding crate compiles and its Rust-side smoke tests p
 
 ### Binding Generation Gate
 
-Record the exact UniFFI bindgen command after `merman-uniffi` exists. The gate should generate into
-a temp directory unless generated source is intentionally committed.
+```bash
+cargo test -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
+```
+
+This builds the `merman-uniffi` cdylib, generates Python bindings from embedded UniFFI metadata into
+a temp directory, and asserts that generated source exposes the expected object, method, and error.
 
 ### Feature Gate
 
@@ -110,3 +114,16 @@ Use a narrower closeout gate if the workspace is too large, and explain why.
   passed.
 - 2026-05-30: `cargo fmt -p merman-uniffi -- --check` passed.
 - 2026-05-30: `git diff --check` passed after `UBI-030`.
+- 2026-05-30: `UBI-040` added `crates/merman-uniffi/tests/bindgen_smoke.rs` and
+  `docs/bindings/UNIFFI.md`; generated Python binding output remains temporary and uncommitted.
+- 2026-05-30: `cargo test -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
+  passed (`1` test). This proved bindgen can generate Python bindings from
+  `merman_uniffi.dll` metadata and expose `MermanEngine`, `render_svg`, and `MermanError`.
+- 2026-05-30: `cargo check -p merman-uniffi --features bindgen-smoke` passed.
+- 2026-05-30: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
+  passed (`1` test).
+- 2026-05-30: `cargo nextest run -p merman-uniffi` passed (`5` tests).
+- 2026-05-30: `cargo clippy -p merman-uniffi --features bindgen-smoke --all-targets -- -D
+  warnings` passed.
+- 2026-05-30: `cargo fmt -p merman-uniffi -- --check` passed after `UBI-040`.
+- 2026-05-30: `git diff --check` passed after `UBI-040`.

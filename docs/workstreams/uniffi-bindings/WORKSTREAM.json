@@ -68,7 +68,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "UBI-040",
-    "notes": "Minimal merman-uniffi crate is in place. Continue with generated binding smoke into a temporary output directory."
+    "next_task": "UBI-050",
+    "notes": "Generated Python binding smoke is in place. Continue with lane closeout and platform/package follow-on split."
   }
 }

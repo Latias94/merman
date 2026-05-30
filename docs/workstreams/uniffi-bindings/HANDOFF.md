@@ -5,8 +5,9 @@ Last updated: 2026-05-30
 
 ## Current State
 
-`UBI-020` and `UBI-030` are complete. `crates/merman-bindings-core` is now the shared safe facade,
-and `crates/merman-uniffi` exposes the minimal UniFFI object surface.
+`UBI-020`, `UBI-030`, and `UBI-040` are complete. `crates/merman-bindings-core` is now the shared
+safe facade, `crates/merman-uniffi` exposes the minimal UniFFI object surface, and a generated
+Python binding smoke test proves the cdylib metadata path.
 
 Confirmed dependency context:
 
@@ -30,10 +31,17 @@ Completed UniFFI shape:
 - `MermanEngine::layout_json(source, options_json)`
 - `MermanError::Binding { code, code_name, message }`
 
+Completed bindgen smoke:
+
+- `bindgen-smoke` feature enables `uniffi/bindgen` only for the smoke path
+- `cargo test -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
+- the smoke test builds the cdylib, generates Python bindings into a temporary directory, and
+  checks for `MermanEngine`, `render_svg`, and `MermanError`
+- `docs/bindings/UNIFFI.md` documents the command and generated-artifact policy
+
 ## Next Task
 
-`UBI-040`: run a generated binding smoke into a temporary output directory. Do not commit generated
-Swift/Kotlin/Python/Ruby artifacts unless a packaging lane explicitly decides to track them.
+`UBI-050`: verify the lane and close or split platform/package follow-ons.
 
 ## Guardrails
 

@@ -39,13 +39,15 @@ Last updated: 2026-05-30
 
 ## M3 — Generated Binding Smoke
 
-- [ ] UBI-040 [owner=codex] [deps=UBI-030] [scope=crates/merman-uniffi,docs/bindings]
+- [x] UBI-040 [owner=codex] [deps=UBI-030] [scope=crates/merman-uniffi,docs/bindings]
   Goal: Prove at least one generated binding path, or document the exact missing toolchain blocker.
   Validation: uniffi bindgen smoke command chosen by the implementer and recorded in EVIDENCE_AND_GATES.md.
   Review: Generated artifacts should not be committed unless they are intended package source.
   Evidence: command output and binding smoke notes.
   Context: docs/workstreams/uniffi-bindings/CONTEXT.jsonl
-  Handoff: Split iOS/Android/Python packaging into platform lanes.
+  Handoff: DONE. Added `bindgen-smoke` for `merman-uniffi`; the smoke test builds the cdylib,
+  generates Python bindings into a temporary directory, and asserts that generated source exposes
+  `MermanEngine`, `render_svg`, and `MermanError`. Platform packaging remains split out.
 
 ## M4 — Closeout
 

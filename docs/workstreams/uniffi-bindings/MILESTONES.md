@@ -40,6 +40,10 @@ Exit criteria:
 - At least one UniFFI bindgen smoke path is proven, or a precise blocker is documented.
 - Generated files are either ignored or intentionally committed with rationale.
 
+Status: complete. `cargo test -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
+builds the cdylib and proves Python binding generation into a temporary directory without committed
+generated artifacts.
+
 ## M4 — Closeout
 
 Exit criteria:
