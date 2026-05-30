@@ -62,7 +62,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "FFI-050",
-    "notes": "FFI-010 through FFI-040 are complete. Start FFI-050 by deciding whether raster output belongs in the first FFI release or should split into a follow-on; keep UniFFI for FFI-060 or a separate packaging lane."
+    "next_task": "FFI-060",
+    "notes": "FFI-010 through FFI-050 are complete. Raster FFI functions are deferred until a concrete downstream host needs them. Start FFI-060 only if we want a minimal UniFFI facade now; otherwise split UniFFI/package generation into a follow-on lane."
   }
 }

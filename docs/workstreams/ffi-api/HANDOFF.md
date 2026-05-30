@@ -47,14 +47,21 @@ null buffer free, and panic containment.
   `merman_render_svg`.
 - The public header and protocol document include the new functions.
 
+`FFI-050` is complete with concerns:
+
+- RaTeX math is already available through `layout.math_renderer = "ratex"` when the `ratex-math`
+  feature is enabled.
+- `raster,ratex-math` feature gates pass.
+- PNG/JPEG/PDF FFI functions are intentionally deferred. They should be split into a narrower
+  follow-on when a downstream host actually needs raster bytes from the native library.
+
 ## Next Task
 
-Start with `FFI-050`:
+Start with `FFI-060` only if we want to validate UniFFI now:
 
-- decide whether raster output belongs in the first FFI release or should split into a follow-on
-- if kept here, add feature-gated PNG/JPEG/PDF functions behind `raster`
-- keep RaTeX math behavior as an option-gated path; core SVG/math feature compile gates already
-  pass
+- prototype `crates/merman-uniffi` over the same safe facade, or
+- split UniFFI into a separate packaging workstream if generated Swift/Kotlin/Python artifacts become
+  larger than a proof
 
 ## Guardrails
 
@@ -66,9 +73,10 @@ Start with `FFI-050`:
 
 ## Suggested Next Implementation Slice
 
-Implement only:
+For `FFI-060`, implement only:
 
-- either a documented split decision for raster/UniFFI, or the smallest feature-gated raster proof
-- no platform packaging yet
+- a minimal UniFFI facade exposing `render_svg`, `parse_json`, and `layout_json`, or a documented
+  split decision explaining why UniFFI should be a follow-on package lane
+- no iOS/Android/Flutter packaging yet
 
 Leave UniFFI for `FFI-060` or a follow-on if packaging expands.

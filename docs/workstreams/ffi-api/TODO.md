@@ -42,14 +42,16 @@ Last updated: 2026-05-30
 
 ## M3 — Optional Feature Surfaces
 
-- [ ] FFI-050 [owner=unassigned] [deps=FFI-040] [scope=crates/merman-ffi]
+- [x] FFI-050 [owner=codex] [deps=FFI-040] [scope=crates/merman-ffi]
   Goal: Add feature-gated RaTeX math and raster output options if required by downstream hosts.
   Validation: cargo nextest run -p merman-ffi --features raster,ratex-math
   Review: Confirm default library size and feature matrix stay intentional.
   Evidence: feature-gated tests and size/build notes.
-  Handoff: Split raster into a follow-on if the first ABI release should remain SVG-only.
+  Handoff: DONE_WITH_CONCERNS. RaTeX math is already exposed as a feature-gated SVG option.
+  `raster,ratex-math` feature gates pass, but PNG/JPEG/PDF functions are intentionally split out
+  until a real downstream host asks for first-release raster ABI.
 
-- [ ] FFI-060 [owner=unassigned] [deps=FFI-040] [scope=crates/merman-uniffi,docs/bindings]
+- [ ] FFI-060 [owner=unassigned] [deps=FFI-050] [scope=crates/merman-uniffi,docs/bindings]
   Goal: Prototype a UniFFI facade over the safe binding API.
   Validation: cargo check -p merman-uniffi and generated binding smoke tests where available.
   Review: Keep UniFFI optional; do not let generated APIs redefine the canonical C ABI.

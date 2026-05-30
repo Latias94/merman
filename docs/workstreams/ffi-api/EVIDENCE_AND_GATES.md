@@ -38,6 +38,11 @@ Last updated: 2026-05-30
   passed.
 - 2026-05-30: `git diff --check -- crates/merman-ffi docs/bindings docs/workstreams/ffi-api`
   passed.
+- 2026-05-30: `FFI-050` completed as a split decision: keep SVG/parse/layout in the first ABI;
+  defer PNG/JPEG/PDF functions until there is a concrete downstream raster host.
+- 2026-05-30: `cargo nextest run -p merman-ffi --features raster,ratex-math` passed (`13` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --features raster,ratex-math --all-targets -- -D warnings`
+  passed.
 
 ## Gate Set
 
