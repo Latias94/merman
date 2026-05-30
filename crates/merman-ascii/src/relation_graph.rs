@@ -38,7 +38,6 @@ pub(crate) enum LayeredRelationError {
     MissingEndpoint,
     UnrelatedBoxes,
     Cyclic,
-    SpanningLevels,
     Crossing,
 }
 
@@ -83,6 +82,7 @@ impl PlacedRelationGraphBox<'_> {
 #[derive(Debug, Clone)]
 pub(crate) struct LayeredRelationPlan<'a> {
     placed: Vec<PlacedRelationGraphBox<'a>>,
+    width: usize,
 }
 
 impl<'a> LayeredRelationPlan<'a> {
@@ -91,11 +91,13 @@ impl<'a> LayeredRelationPlan<'a> {
     }
 
     pub(crate) fn width(&self) -> usize {
-        self.placed
-            .iter()
-            .map(|relation_box| relation_box.x + relation_box.width())
-            .max()
-            .unwrap_or(0)
+        self.width.max(
+            self.placed
+                .iter()
+                .map(|relation_box| relation_box.x + relation_box.width())
+                .max()
+                .unwrap_or(0),
+        )
     }
 
     pub(crate) fn height(&self) -> usize {
@@ -243,6 +245,10 @@ pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
     }
 }
 
+pub(crate) fn spanning_lane_offset(top_width: usize, bottom_width: usize) -> isize {
+    (top_width.max(bottom_width) / 2).saturating_add(3) as isize
+}
+
 pub(crate) fn marker_line(marker: char, center: usize) -> String {
     let mut line = String::new();
     line.extend(std::iter::repeat_n(' ', center));
@@ -309,9 +315,9 @@ pub(crate) fn plan_layered_relation_boxes<'a>(
     let levels = layered_relation_levels(boxes, edges)?;
     let level_groups = ordered_layered_groups(boxes, edges, &levels);
     reject_crossing_layered_relations(edges, &levels, &level_groups)?;
-    let placed = place_layered_boxes(&level_groups, edges, &levels, horizontal_gap);
+    let (placed, width) = place_layered_boxes(&level_groups, edges, &levels, horizontal_gap);
 
-    Ok(LayeredRelationPlan { placed })
+    Ok(LayeredRelationPlan { placed, width })
 }
 
 fn layered_relation_levels(
@@ -391,9 +397,6 @@ fn layered_relation_levels(
         let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
         if bottom_level <= top_level {
             return Err(LayeredRelationError::Cyclic);
-        }
-        if bottom_level != top_level + 1 {
-            return Err(LayeredRelationError::SpanningLevels);
         }
     }
 
@@ -491,7 +494,7 @@ fn place_layered_boxes<'a>(
     edges: &[LayeredRelationEdge<'_>],
     levels: &HashMap<String, usize>,
     horizontal_gap: usize,
-) -> Vec<PlacedRelationGraphBox<'a>> {
+) -> (Vec<PlacedRelationGraphBox<'a>>, usize) {
     let max_level = level_groups.len().saturating_sub(1);
 
     let group_widths = level_groups
@@ -515,7 +518,8 @@ fn place_layered_boxes<'a>(
         .copied()
         .max()
         .unwrap_or(0)
-        .max(max_label_half_width.saturating_mul(2).saturating_add(1));
+        .max(max_label_half_width.saturating_mul(2).saturating_add(1))
+        .saturating_add(spanning_lane_margin(level_groups, edges, levels).saturating_mul(2));
     let global_center = content_width / 2;
 
     let mut placed = Vec::new();
@@ -544,7 +548,30 @@ fn place_layered_boxes<'a>(
         }
     }
 
-    placed
+    (placed, content_width)
+}
+
+fn spanning_lane_margin(
+    level_groups: &[Vec<&RelationGraphBox>],
+    edges: &[LayeredRelationEdge<'_>],
+    levels: &HashMap<String, usize>,
+) -> usize {
+    let has_spanning_edge = edges.iter().any(|edge| {
+        let top_level = levels.get(edge.top_id).copied().unwrap_or(0);
+        let bottom_level = levels.get(edge.bottom_id).copied().unwrap_or(0);
+        bottom_level > top_level + 1
+    });
+    if !has_spanning_edge {
+        return 0;
+    }
+
+    level_groups
+        .iter()
+        .flatten()
+        .map(|relation_box| relation_box.width() / 2)
+        .max()
+        .unwrap_or(0)
+        .saturating_add(3)
 }
 
 fn layered_relation_gap_height(

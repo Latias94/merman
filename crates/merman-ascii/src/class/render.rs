@@ -552,7 +552,14 @@ fn render_layered_relations(
         .collect::<Vec<_>>();
     draw_order.sort_by_key(|(index, (_, lane_offset))| (lane_offset.unsigned_abs(), *index));
     for (_, (layout, lane_offset)) in draw_order {
-        draw_layered_relation(&mut canvas, &placed_by_id, layout, lane_offset, charset);
+        draw_layered_relation(
+            &mut canvas,
+            plan.placed_boxes(),
+            &placed_by_id,
+            layout,
+            lane_offset,
+            charset,
+        );
     }
 
     Ok(finish_trimmed_canvas(&canvas, width, height))
@@ -594,9 +601,6 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint classes",
         LayeredRelationError::UnrelatedBoxes => "class relationship layouts with unrelated classes",
         LayeredRelationError::Cyclic => "cyclic class relationship layouts",
-        LayeredRelationError::SpanningLevels => {
-            "class relationships spanning multiple layout levels"
-        }
         LayeredRelationError::Crossing => "crossing class relationship layouts",
     };
     AsciiError::UnsupportedFeature {
@@ -607,6 +611,7 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
 
 fn draw_layered_relation(
     canvas: &mut Canvas,
+    placed_boxes: &[PlacedClassBox<'_>],
     placed_by_id: &HashMap<&str, &PlacedClassBox<'_>>,
     layout: &RelationLayout<'_>,
     lane_offset: isize,
@@ -617,6 +622,11 @@ fn draw_layered_relation(
     };
     let Some(bottom) = placed_by_id.get(layout.bottom_id) else {
         return;
+    };
+    let lane_offset = if spans_intermediate_box(placed_boxes, top, bottom) {
+        lane_offset + relation_graph::spanning_lane_offset(top.width(), bottom.width())
+    } else {
+        lane_offset
     };
     let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
     let from_y = top.bottom();
@@ -661,6 +671,16 @@ fn draw_layered_relation(
             marker_char(layout.marker, MarkerSide::Bottom, charset),
         ),
     }
+}
+
+fn spans_intermediate_box(
+    placed_boxes: &[PlacedClassBox<'_>],
+    top: &PlacedClassBox<'_>,
+    bottom: &PlacedClassBox<'_>,
+) -> bool {
+    placed_boxes
+        .iter()
+        .any(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
 }
 
 fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) -> char {

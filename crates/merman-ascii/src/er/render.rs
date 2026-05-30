@@ -409,6 +409,7 @@ fn render_layered_relationships(
     for (_, (relationship, lane_offset)) in draw_order {
         draw_layered_relationship(
             &mut canvas,
+            plan.placed_boxes(),
             &placed_by_id,
             relationship,
             lane_offset,
@@ -461,7 +462,6 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint entities",
         LayeredRelationError::UnrelatedBoxes => "ER relationship layouts with unrelated entities",
         LayeredRelationError::Cyclic => "cyclic ER relationship layouts",
-        LayeredRelationError::SpanningLevels => "ER relationships spanning multiple layout levels",
         LayeredRelationError::Crossing => "crossing ER relationship layouts",
     };
     AsciiError::UnsupportedFeature {
@@ -472,6 +472,7 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
 
 fn draw_layered_relationship(
     canvas: &mut Canvas,
+    placed_boxes: &[PlacedEntityBox<'_>],
     placed_by_id: &HashMap<&str, &PlacedEntityBox<'_>>,
     relationship: &ErRelationshipRenderModel,
     lane_offset: isize,
@@ -482,6 +483,11 @@ fn draw_layered_relationship(
     };
     let Some(bottom) = placed_by_id.get(relationship.entity_b.as_str()) else {
         return Ok(());
+    };
+    let lane_offset = if spans_intermediate_box(placed_boxes, top, bottom) {
+        lane_offset + relation_graph::spanning_lane_offset(top.width(), bottom.width())
+    } else {
+        lane_offset
     };
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
@@ -521,6 +527,16 @@ fn draw_layered_relationship(
     write_centered_relation_text(canvas, to_x, to_y - 1, bottom_cardinality);
 
     Ok(())
+}
+
+fn spans_intermediate_box(
+    placed_boxes: &[PlacedEntityBox<'_>],
+    top: &PlacedEntityBox<'_>,
+    bottom: &PlacedEntityBox<'_>,
+) -> bool {
+    placed_boxes
+        .iter()
+        .any(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {

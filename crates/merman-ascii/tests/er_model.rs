@@ -237,3 +237,35 @@ fn er_parser_mixed_parallel_relationship_layout_renders_each_lane() {
         )
     );
 }
+
+#[test]
+fn er_parser_spanning_level_relationship_layout_routes_around_intermediate_entity() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : a\nB ||--|| C : b\nA ||--|| C : c",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("spanning-level ER relationship should route around the intermediate entity");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            "      ||   ||\n",
+            "       a    c\n",
+            "       |    |\n",
+            "      ||    |\n",
+            "     +---+  |\n",
+            "     | B |  |\n",
+            "     +---+  |\n",
+            "      ||    |\n",
+            "       b    |\n",
+            "       |    |\n",
+            "      ||   ||\n",
+            "     +---+\n",
+            "     | C |\n",
+            "     +---+\n",
+        )
+    );
+}

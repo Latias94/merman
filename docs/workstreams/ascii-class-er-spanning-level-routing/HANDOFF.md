@@ -6,20 +6,23 @@ Last updated: 2026-05-30
 ## Current State
 
 This lane follows the closed mixed-parallel lane. Class and ER can render useful layered,
-crossing-by-reorder, component, and parallel layouts, but a non-cyclic edge that skips an
-intermediate level still returns a spanning-level diagnostic.
+crossing-by-reorder, component, parallel, and simple spanning-level layouts. A non-cyclic edge that
+skips one intermediate level now routes through a reserved side lane instead of crossing the
+intermediate box.
 
 ## Active Task
 
-- Task ID: ACESLR-020
+- Task ID: ACESLR-040
 - Owner: unassigned
 - Files:
-  - `crates/merman-ascii/tests/class_model.rs`
-  - `crates/merman-ascii/tests/er_model.rs`
-- Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
+  - `README.md`
+  - `crates/merman-cli/README.md`
+  - `crates/merman-ascii/README.md`
+  - `docs/workstreams/ascii-class-er-spanning-level-routing`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `cargo fmt --all --check`; `git diff --check`
 - Status: READY
-- Review: Tests must exercise public parser-backed `render_model` behavior and fail red before
-  implementation.
+- Review: Public docs should describe simple spanning-level side-lane support without claiming
+  cyclic, dense, color/style, or flowchart routing support.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Constraints

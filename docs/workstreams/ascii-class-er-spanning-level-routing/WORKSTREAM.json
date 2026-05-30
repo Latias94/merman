@@ -49,6 +49,16 @@
       "date": "2026-05-30",
       "task": "ACESLR-010",
       "result": "opened follow-on lane for non-cyclic class/ER spanning-level relationship routing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACESLR-020",
+      "result": "added parser-backed class and ER spanning-level relationship tests with red diagnostics captured"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACESLR-030",
+      "result": "implemented side-lane routing for simple non-cyclic class/ER spanning-level relationships"
     }
   ],
   "adr_refs": [
@@ -65,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACESLR-020",
-    "notes": "Start with parser-backed spanning-level tests. Keep cyclic, dense, color/style, and flowchart routing out of this lane."
+    "next_task": "ACESLR-040",
+    "notes": "Update public support docs, run final package gates, then close or split remaining topology work. Keep cyclic, dense, color/style, and flowchart routing out of this lane."
   }
 }
