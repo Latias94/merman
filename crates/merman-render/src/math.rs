@@ -4,8 +4,9 @@
 //! browser DOM. merman is headless and pure-Rust by default, so math rendering is modeled as an
 //! optional, pluggable backend.
 //!
-//! The default implementation is a no-op. For parity work, an optional Node.js-backed KaTeX
-//! renderer is also provided.
+//! The default implementation is a no-op. For parity work, a Node.js-backed KaTeX renderer is
+//! provided, and the `ratex-math` feature enables a pure-Rust RaTeX renderer for supported math-only
+//! labels.
 
 use crate::text::{TextMetrics, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
@@ -68,6 +69,181 @@ pub struct NoopMathRenderer;
 impl MathRenderer for NoopMathRenderer {
     fn render_html_label(&self, _text: &str, _config: &MermaidConfig) -> Option<String> {
         None
+    }
+}
+
+/// Pure-Rust math renderer backed by RaTeX.
+///
+/// The first supported surface is intentionally narrow: labels where each non-empty line is a
+/// single `$$...$$` formula. Mixed prose/math labels are declined so callers can fall back to the
+/// existing text path or another math backend.
+#[cfg(feature = "ratex-math")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RatexMathRenderer;
+
+#[cfg(feature = "ratex-math")]
+#[derive(Debug, Clone)]
+struct RatexRenderedMath {
+    html: String,
+    width_em: f64,
+    height_em: f64,
+    line_count: usize,
+}
+
+#[cfg(feature = "ratex-math")]
+impl RatexMathRenderer {
+    fn normalized_text(text: &str) -> String {
+        text.replace("\\\\", "\\")
+    }
+
+    fn math_only_lines(text: &str) -> Option<Vec<String>> {
+        static LINE_BREAK_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let line_break_re =
+            LINE_BREAK_RE.get_or_init(|| regex::Regex::new(r"(?i)<br\s*/?>").unwrap());
+        let normalized = Self::normalized_text(text);
+        let mut formulas = Vec::new();
+        for raw_line in line_break_re.split(&normalized) {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let inner = line.strip_prefix("$$")?.strip_suffix("$$")?;
+            if inner.contains("$$") {
+                return None;
+            }
+            formulas.push(inner.to_string());
+        }
+        if formulas.is_empty() {
+            None
+        } else {
+            Some(formulas)
+        }
+    }
+
+    fn render_formula_svg_em(latex: &str) -> Option<(String, f64, f64)> {
+        let ast = ratex_parser::parse(latex).ok()?;
+        let layout_options = ratex_layout::LayoutOptions::default()
+            .with_style(ratex_types::MathStyle::Display)
+            .with_color(ratex_types::Color::BLACK);
+        let layout_box = ratex_layout::layout(&ast, &layout_options);
+        let display_list = ratex_layout::to_display_list(&layout_box);
+        let width_em = display_list.width.max(0.0);
+        let height_em = display_list.total_height().max(0.0);
+        let svg = ratex_svg::render_to_svg(
+            &display_list,
+            &ratex_svg::SvgOptions {
+                font_size: 1.0,
+                padding: 0.0,
+                stroke_width: 0.04,
+                embed_glyphs: true,
+                font_dir: String::new(),
+            },
+        );
+        Some((
+            Self::svg_with_em_size(svg, width_em, height_em),
+            width_em,
+            height_em,
+        ))
+    }
+
+    fn svg_with_em_size(svg: String, width_em: f64, height_em: f64) -> String {
+        let Some(open_end) = svg.find('>') else {
+            return svg;
+        };
+        let Some(body_with_close) = svg.get(open_end + 1..) else {
+            return svg;
+        };
+        let Some(body) = body_with_close.strip_suffix("</svg>") else {
+            return svg;
+        };
+        let width = Self::fmt_num(width_em);
+        let height = Self::fmt_num(height_em);
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}em" height="{height}em">{body}</svg>"#
+        )
+    }
+
+    fn render_math_only_label(text: &str) -> Option<RatexRenderedMath> {
+        let formulas = Self::math_only_lines(text)?;
+        let mut html = String::new();
+        let mut width_em: f64 = 0.0;
+        let mut height_em: f64 = 0.0;
+        let mut line_count = 0usize;
+        for formula in formulas {
+            let (svg, line_width_em, line_height_em) = Self::render_formula_svg_em(&formula)?;
+            width_em = width_em.max(line_width_em);
+            height_em += line_height_em;
+            line_count += 1;
+            let _ = write!(
+                &mut html,
+                r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{svg}</div>"#
+            );
+        }
+        Some(RatexRenderedMath {
+            html,
+            width_em,
+            height_em,
+            line_count: line_count.max(1),
+        })
+    }
+
+    fn metrics_from_em(rendered: &RatexRenderedMath, font_size: f64) -> TextMetrics {
+        let font_size = font_size.max(1.0);
+        TextMetrics {
+            width: crate::text::round_to_1_64_px(rendered.width_em * font_size),
+            height: crate::text::round_to_1_64_px(rendered.height_em * font_size),
+            line_count: rendered.line_count,
+        }
+    }
+
+    fn fmt_num(n: f64) -> String {
+        let s = format!("{n:.6}");
+        let s = s.trim_end_matches('0').trim_end_matches('.');
+        if s.is_empty() || s == "-" {
+            "0".to_string()
+        } else {
+            s.to_string()
+        }
+    }
+}
+
+#[cfg(feature = "ratex-math")]
+impl MathRenderer for RatexMathRenderer {
+    fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+        if !text.contains("$$") {
+            return None;
+        }
+        Some(Self::render_math_only_label(text)?.html)
+    }
+
+    fn measure_html_label(
+        &self,
+        text: &str,
+        _config: &MermaidConfig,
+        style: &TextStyle,
+        _max_width_px: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> Option<TextMetrics> {
+        if wrap_mode != WrapMode::HtmlLike || !text.contains("$$") {
+            return None;
+        }
+        let rendered = Self::render_math_only_label(text)?;
+        Some(Self::metrics_from_em(&rendered, style.font_size))
+    }
+
+    fn measure_sequence_html_label(
+        &self,
+        text: &str,
+        _config: &MermaidConfig,
+    ) -> Option<TextMetrics> {
+        if !text.contains("$$") {
+            return None;
+        }
+        let rendered = Self::render_math_only_label(text)?;
+        Some(Self::metrics_from_em(
+            &rendered,
+            TextStyle::default().font_size,
+        ))
     }
 }
 
@@ -442,6 +618,77 @@ impl MathRenderer for NodeKatexMathRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
+    fn ratex_math_renderer_renders_pure_math_label_as_inline_svg() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+
+        let html = renderer
+            .render_html_label("$$x^2$$", &config)
+            .expect("ratex should render pure math labels");
+
+        assert!(html.contains("<svg"), "expected inline SVG: {html}");
+        assert!(
+            html.contains("<path"),
+            "expected outlined glyph paths: {html}"
+        );
+        assert!(
+            html.contains(r#"width="0.97153em""#),
+            "unexpected SVG size: {html}"
+        );
+        let sanitized = merman_core::sanitize::sanitize_text(&html, &config);
+        assert!(
+            sanitized.contains("<svg") && sanitized.contains("<path"),
+            "sanitizer should preserve RaTeX inline SVG: {sanitized}"
+        );
+        assert!(
+            renderer
+                .render_html_label("value: $$x^2$$", &config)
+                .is_none(),
+            "mixed prose/math labels should fall back for the first RaTeX slice"
+        );
+    }
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
+    fn ratex_math_renderer_measures_flowchart_and_sequence_math_labels() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+
+        let flowchart = renderer
+            .measure_html_label("$$x^2$$", &config, &style, Some(200.0), WrapMode::HtmlLike)
+            .expect("ratex should measure pure flowchart math labels");
+        assert_eq!(flowchart.width, 15.546875);
+        assert_eq!(flowchart.height, 13.828125);
+        assert_eq!(flowchart.line_count, 1);
+
+        let sequence = renderer
+            .measure_sequence_html_label("$$x^2$$", &config)
+            .expect("ratex should measure pure sequence math labels");
+        assert_eq!(sequence.width, flowchart.width);
+        assert_eq!(sequence.height, flowchart.height);
+        assert_eq!(sequence.line_count, 1);
+
+        let flowchart_request = crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &crate::text::DeterministicTextMeasurer::default(),
+            raw_label: "$$x^2$$",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: Some(&renderer),
+            preserve_string_whitespace_height: false,
+            whole_label_font_style: None,
+        };
+        let through_flowchart =
+            crate::flowchart::flowchart_label_metrics_for_layout(flowchart_request);
+        assert_eq!(through_flowchart.width, flowchart.width);
+        assert_eq!(through_flowchart.height, flowchart.height);
+    }
 
     #[test]
     fn node_katex_math_renderer_smoke() {

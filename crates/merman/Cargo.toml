@@ -20,6 +20,7 @@ features = ["render", "ascii"]
 default = []
 render = ["dep:merman-render", "dep:thiserror"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
+ratex-math = ["render", "merman-render/ratex-math"]
 raster = [
     "render",
     "dep:image",

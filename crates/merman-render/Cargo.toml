@@ -13,6 +13,17 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
 categories = ["visualization"]
 
+[features]
+default = []
+ratex-math = [
+  "dep:ratex-layout",
+  "dep:ratex-parser",
+  "dep:ratex-svg",
+  "dep:ratex-types",
+  "ratex-svg/embed-fonts",
+  "ratex-svg/standalone",
+]
+
 [dependencies]
 base64.workspace = true
 chrono.workspace = true
@@ -21,6 +32,10 @@ indexmap.workspace = true
 manatee.workspace = true
 merman-core.workspace = true
 pulldown-cmark.workspace = true
+ratex-layout = { workspace = true, optional = true }
+ratex-parser = { workspace = true, optional = true }
+ratex-svg = { workspace = true, optional = true }
+ratex-types = { workspace = true, optional = true }
 regex.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

@@ -1,3 +1,5 @@
+#[cfg(feature = "ratex-math")]
+pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::model::LayoutedDiagram;
 pub use merman_render::svg::{

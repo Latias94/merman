@@ -36,6 +36,10 @@ lalrpop-util = "0.20.2"
 logos = "0.14.4"
 nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
 pulldown-cmark = "0.12.2"
+ratex-layout = "0.1.10"
+ratex-parser = "0.1.10"
+ratex-svg = { version = "0.1.10", default-features = false }
+ratex-types = "0.1.10"
 regex = "1.11.1"
 roxmltree = "0.20.0"
 rustc-hash = "2.1.1"
