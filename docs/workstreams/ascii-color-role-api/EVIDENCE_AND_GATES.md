@@ -43,6 +43,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-030 | Added public color types, color options, role-aware canvas storage, and forced ANSI/HTML encoders. | M1 infrastructure is complete; ACR-040 can assign flowchart roles. |
 | 2026-05-30 | ACR-040 | Assigned flowchart semantic roles for node text/borders, group borders/titles, edge lines, labels, arrowheads, and routed junctions. | M2 vertical slice is complete; broader diagram-family adoption can be planned. |
 | 2026-05-30 | ACR-050 | Accepted a split family adoption plan for class/ER, XYChart, and sequence. | M3 is decomposed into ACR-051 through ACR-054; ACR-060 remains style mapping. |
+| 2026-05-30 | ACR-053 | Adopted semantic color roles for XYChart titles/text, axes, bars, and line plots. | XYChart role adoption is complete; sequence remains the final family role lane. |
 
 ## Verification Log
 
@@ -76,3 +77,9 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-052 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after class/ER role adoption. |
 | 2026-05-30 | ACR-052 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Relation graph, class, ER, and color tests are warning-free under clippy. |
 | 2026-05-30 | ACR-052 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACR-053 | `cargo nextest run -p merman-ascii xychart_color` | XYChart forced-color role coverage | PASS | Parser-backed TrueColor and HTML snapshots cover chart text, axes, bars, and line series. |
+| 2026-05-30 | ACR-053 | `cargo nextest run -p merman-ascii xychart` | XYChart regression suite | PASS | Existing plain XYChart snapshots remain unchanged. |
+| 2026-05-30 | ACR-053 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | XYChart role adoption does not regress other ascii families. |
+| 2026-05-30 | ACR-053 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after XYChart role adoption. |
+| 2026-05-30 | ACR-053 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | XYChart role line/cell buffers and tests are warning-free under clippy. |
+| 2026-05-30 | ACR-053 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

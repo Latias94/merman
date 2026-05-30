@@ -95,6 +95,11 @@
       "date": "2026-05-30",
       "task": "ACR-052",
       "result": "adopted semantic color roles for class and ER diagrams through relation graph lines and trimmed Canvas finalization"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-053",
+      "result": "adopted semantic color roles for XYChart titles, labels, axes, bars, and line series through role-aware chart lines and cells"
     }
   ],
   "adr_refs": [
@@ -112,7 +117,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-053",
-    "notes": "Class/ER role adoption is complete. XYChart should adopt ChartAxis and ChartSeries(index) roles next."
+    "next_task": "ACR-054",
+    "notes": "XYChart role adoption is complete. Sequence should adopt participant, lifeline, activation, message, note, box, and control-frame roles next."
   }
 }

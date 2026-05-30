@@ -1,4 +1,6 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_ascii::{
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+};
 use merman_core::{Engine, ParseOptions};
 
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -8,6 +10,148 @@ fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Re
         .expect("xychart should be detected");
 
     render_model(&parsed.model, options)
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn strip_html_spans(input: &str) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let rest = &input[index..];
+        if rest.starts_with("<span ") {
+            index += rest.find('>').expect("span start tag should be closed") + 1;
+            continue;
+        }
+        if rest.starts_with("</span>") {
+            index += "</span>".len();
+            continue;
+        }
+        let ch = rest
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+    output
+}
+
+#[test]
+fn xychart_color_truecolor_emits_axis_text_and_series_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 1, 1))
+        .with_role(AsciiColorRole::ChartAxis, AsciiRgb::new(2, 2, 2))
+        .with_role(AsciiColorRole::ChartSeries(0), AsciiRgb::new(3, 3, 3));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_xychart(
+        r#"xychart
+title "Sales"
+x-axis "Month" [Jan, Feb, Mar]
+y-axis "Revenue" 0 --> 10
+bar [2, 5, 8]
+"#,
+        &options,
+    )
+    .expect("xychart should render");
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "Sales\n",
+            "y: Revenue\n",
+            "10 |\n",
+            " 8 |        ###\n",
+            " 6 |    ### ###\n",
+            " 4 |    ### ###\n",
+            " 2 |### ### ###\n",
+            " 0 +-----------\n",
+            "    Jan Feb Mar\n",
+            "x: Month\n",
+        )
+    );
+    for expected_code in [
+        "\u{1b}[38;2;1;1;1m",
+        "\u{1b}[38;2;2;2;2m",
+        "\u{1b}[38;2;3;3;3m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn xychart_color_html_wraps_bar_and_line_series_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::ChartAxis, AsciiRgb::from_hex24(0x202020))
+        .with_role(
+            AsciiColorRole::ChartSeries(0),
+            AsciiRgb::from_hex24(0x303030),
+        )
+        .with_role(
+            AsciiColorRole::ChartSeries(1),
+            AsciiRgb::from_hex24(0x404040),
+        );
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_xychart(
+        r#"xychart
+x-axis [A, B]
+y-axis 0 --> 10
+bar [2, 8]
+line [8, 2]
+"#,
+        &options,
+    )
+    .expect("mixed xychart should render");
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        concat!(
+            "10 |\n",
+            " 8 | ***###\n",
+            " 6 |   *###\n",
+            " 4 |   *###\n",
+            " 2 |###***#\n",
+            " 0 +-------\n",
+            "     A   B\n",
+        )
+    );
+    for expected_fragment in [
+        "<span style=\"color:#202020\">|</span>",
+        "<span style=\"color:#202020\">+-------</span>",
+        "<span style=\"color:#303030\">###</span>",
+        "<span style=\"color:#404040\">***</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]

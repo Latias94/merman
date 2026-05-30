@@ -62,12 +62,12 @@ Last updated: 2026-05-30
   Evidence: Forced truecolor and HTML parser-backed snapshots for class and ER.
   Handoff: Relationship markers, labels, and junctions should be role-aware before moving to charts.
 
-- [ ] ACR-053 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/xychart,crates/merman-ascii/tests]
+- [x] ACR-053 [owner=codex] [deps=ACR-051] [scope=crates/merman-ascii/src/xychart,crates/merman-ascii/tests]
   Goal: Adopt color roles for XYChart axes, text, bars, and line series.
   Validation: `cargo nextest run -p merman-ascii xychart_color`; `cargo nextest run -p merman-ascii xychart`
   Review: `ChartSeries(index)` should be used for plotted data and wrap by theme series length.
   Evidence: Forced truecolor and HTML parser-backed snapshots for bar and line charts.
-  Handoff: Series role behavior should be stable before Mermaid style mapping uses direct colors.
+  Handoff: DONE. Series role behavior is stable; sequence remains the final family adoption lane.
 
 - [ ] ACR-054 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests]
   Goal: Adopt color roles for sequence participants, lifelines, activations, messages, notes, boxes,

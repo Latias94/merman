@@ -12,17 +12,18 @@ ACR-040 assigned flowchart semantic roles for nodes, groups, edges, labels, arro
 junctions. ACR-050 split broader family adoption into smaller lanes in `FAMILY_ADOPTION_PLAN.md`.
 ACR-051 added the shared role-aware trim substrate in `Canvas` plus role-bearing relation graph
 lines. ACR-052 adopted semantic roles for class and ER boxes, relation lines, markers, labels, and
-junctions. Default plain output remains unchanged.
+junctions. ACR-053 adopted semantic roles for XYChart titles/text, axes, bars, and line plots using
+`ChartSeries(index)` for plotted data. Default plain output remains unchanged.
 
 ## Active Task
 
-- Task ID: ACR-053
+- Task ID: ACR-054
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/xychart`, `crates/merman-ascii/tests`
-- Validation: `cargo nextest run -p merman-ascii xychart_color`;
-  `cargo nextest run -p merman-ascii xychart`
+- Files: `crates/merman-ascii/src/sequence`, `crates/merman-ascii/tests`
+- Validation: `cargo nextest run -p merman-ascii sequence_color`;
+  `cargo nextest run -p merman-ascii sequence`
 - Status: TODO
-- Review: `ChartSeries(index)` should be used for plotted data and wrap by theme series length
+- Review: Sequence plain golden comparisons must remain unchanged
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -47,6 +48,8 @@ junctions. Default plain output remains unchanged.
 - The next substrate now exists in `Canvas::finish_trimmed_with_options` and
   `RelationGraphLine`; class and ER now use it for colored output while preserving the old plain
   rendering path.
+- XYChart now uses role-aware chart lines and cells. Titles, tick labels, category labels, and value
+  suffixes use `Text`; axis glyphs use `ChartAxis`; bars and line plots use `ChartSeries(index)`.
 
 ## Blockers
 
@@ -54,6 +57,6 @@ junctions. Default plain output remains unchanged.
 
 ## Next Recommended Action
 
-- Start ACR-053. Adopt roles for XYChart axes, labels, bars, and line series with
-  `ChartSeries(index)`. Keep ACR-060 style/class/linkStyle mapping separate unless the planner
+- Start ACR-054. Adopt roles for sequence participants, lifelines, activations, messages, notes,
+  boxes, and control frames. Keep ACR-060 style/class/linkStyle mapping separate unless the planner
   explicitly prioritizes it.

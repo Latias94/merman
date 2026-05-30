@@ -26,7 +26,7 @@ snapshot failures hard to localize.
 | Flowchart | `Canvas` with role-aware finalization | Low after ACR-030 | DONE in ACR-040. |
 | Class | `RelationGraphBox` role lines plus layered `Canvas` routes | Medium; boxes and routes use different paths | DONE in ACR-052. |
 | ER | Same relation graph substrate as class | Medium; cardinalities add relationship text roles | DONE in ACR-052. |
-| XYChart | Local `Vec<Vec<char>>` plot grid and trimmed lines | Medium; needs `ChartAxis` and `ChartSeries(index)` cells | Separate chart-focused lane. |
+| XYChart | Local role-aware chart line/cell buffers finalized through `Canvas` | Medium; series overlays must keep role ownership stable | DONE in ACR-053. |
 | Sequence | Plain `String` rows with overlays, frames, notes, lifelines, activations | High; many row builders and lifecycle overlays | Separate final lane after the substrate proves out. |
 
 ## Lane Order
@@ -41,7 +41,7 @@ snapshot failures hard to localize.
    - Roles should cover entity/class text, box borders, relation lines, markers, labels, and
      junctions.
 
-3. ACR-053: Adopt roles for XYChart.
+3. ACR-053: DONE. Adopt roles for XYChart.
    - Roles should cover chart titles/text, axes, and `ChartSeries(index)` for bars and line plots.
    - This validates the series-index API from ADR 0067.
 

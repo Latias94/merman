@@ -1,3 +1,5 @@
+use crate::canvas::Canvas;
+use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::{AsciiCharset, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -65,6 +67,110 @@ impl ValueRange {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ChartCell {
+    ch: char,
+    role: Option<AsciiColorRole>,
+}
+
+impl ChartCell {
+    fn blank() -> Self {
+        Self {
+            ch: ' ',
+            role: None,
+        }
+    }
+
+    fn with_role(ch: char, role: AsciiColorRole) -> Self {
+        Self {
+            ch,
+            role: Some(role),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ChartLine {
+    chars: Vec<char>,
+    roles: Vec<Option<AsciiColorRole>>,
+}
+
+impl ChartLine {
+    fn new() -> Self {
+        Self {
+            chars: Vec::new(),
+            roles: Vec::new(),
+        }
+    }
+
+    fn role_text(text: &str, role: AsciiColorRole) -> Self {
+        let mut line = Self::new();
+        line.push_role_text(text, role);
+        line
+    }
+
+    fn push_plain_char(&mut self, ch: char) {
+        self.chars.push(ch);
+        self.roles.push(None);
+    }
+
+    fn push_spaces(&mut self, count: usize) {
+        for _ in 0..count {
+            self.push_plain_char(' ');
+        }
+    }
+
+    fn push_role_char(&mut self, ch: char, role: AsciiColorRole) {
+        self.chars.push(ch);
+        self.roles.push(Some(role));
+    }
+
+    fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
+        for ch in text.chars() {
+            self.push_role_char(ch, role);
+        }
+    }
+
+    fn push_role_text_with_unstyled_trailing_spaces(&mut self, text: &str, role: AsciiColorRole) {
+        let trimmed = text.trim_end_matches(' ');
+        self.push_role_text(trimmed, role);
+        self.push_spaces(text.chars().count() - trimmed.chars().count());
+    }
+
+    fn push_role_repeat(&mut self, ch: char, count: usize, role: AsciiColorRole) {
+        for _ in 0..count {
+            self.push_role_char(ch, role);
+        }
+    }
+
+    fn push_right_aligned_role_text(&mut self, text: &str, width: usize, role: AsciiColorRole) {
+        let len = text.chars().count();
+        self.push_spaces(width.saturating_sub(len));
+        self.push_role_text(text, role);
+    }
+
+    fn push_cells(&mut self, cells: &[ChartCell]) {
+        for cell in cells {
+            self.chars.push(cell.ch);
+            self.roles.push(cell.role);
+        }
+    }
+
+    fn text(&self) -> String {
+        self.chars.iter().collect()
+    }
+
+    fn write_to(&self, canvas: &mut Canvas, y: usize) {
+        for (x, (&ch, &role)) in self.chars.iter().zip(self.roles.iter()).enumerate() {
+            if let Some(role) = role {
+                canvas.set_role(x, y, ch, role);
+            } else {
+                canvas.set(x, y, ch);
+            }
+        }
+    }
+}
+
 pub(crate) fn render_xychart_diagram(
     model: &XyChartDiagramRenderModel,
     options: &AsciiRenderOptions,
@@ -81,10 +187,16 @@ pub(crate) fn render_xychart_diagram(
 
     let y_range = y_value_range(model);
     if model.orientation.eq_ignore_ascii_case("horizontal") {
-        return Ok(render_horizontal(model, &categories, y_range, chars));
+        return Ok(render_horizontal(
+            model,
+            &categories,
+            y_range,
+            chars,
+            options,
+        ));
     }
 
-    Ok(render_vertical(model, &categories, y_range, chars))
+    Ok(render_vertical(model, &categories, y_range, chars, options))
 }
 
 fn render_vertical(
@@ -92,19 +204,20 @@ fn render_vertical(
     categories: &[String],
     y_range: ValueRange,
     chars: ChartChars,
+    options: &AsciiRenderOptions,
 ) -> String {
     let plot_width = vertical_plot_width(categories.len());
-    let mut rows = vec![vec![' '; plot_width]; VERTICAL_PLOT_HEIGHT];
+    let mut rows = vec![vec![ChartCell::blank(); plot_width]; VERTICAL_PLOT_HEIGHT];
 
-    for plot in &model.plots {
+    for (series_index, plot) in model.plots.iter().enumerate() {
         if plot.plot_type == XyChartPlotType::Bar {
-            draw_vertical_bar_plot(&mut rows, plot, y_range, chars);
+            draw_vertical_bar_plot(&mut rows, plot, series_index, y_range, chars);
         }
     }
 
-    for plot in &model.plots {
+    for (series_index, plot) in model.plots.iter().enumerate() {
         if plot.plot_type == XyChartPlotType::Line {
-            draw_vertical_line_plot(&mut rows, plot, y_range, chars);
+            draw_vertical_line_plot(&mut rows, plot, series_index, y_range, chars);
         }
     }
 
@@ -122,29 +235,37 @@ fn render_vertical(
 
     for (idx, row) in rows.into_iter().enumerate() {
         let label = &tick_labels[idx];
-        out.push(format!(
-            "{label:>gutter$} {}{}",
-            chars.vertical_axis,
-            chars_to_string(&row)
-        ));
+        let mut line = ChartLine::new();
+        line.push_right_aligned_role_text(label, gutter, AsciiColorRole::Text);
+        line.push_plain_char(' ');
+        line.push_role_char(chars.vertical_axis, AsciiColorRole::ChartAxis);
+        line.push_cells(&row);
+        out.push(line);
     }
 
-    out.push(format!(
-        "{min_label:>gutter$} {}{}",
-        chars.origin,
-        chars.horizontal_axis.to_string().repeat(plot_width)
-    ));
-    out.push(format!(
-        "{}{}",
-        " ".repeat(gutter + 2),
-        category_axis_labels(categories)
-    ));
+    let mut axis_line = ChartLine::new();
+    axis_line.push_right_aligned_role_text(&min_label, gutter, AsciiColorRole::Text);
+    axis_line.push_plain_char(' ');
+    axis_line.push_role_char(chars.origin, AsciiColorRole::ChartAxis);
+    axis_line.push_role_repeat(chars.horizontal_axis, plot_width, AsciiColorRole::ChartAxis);
+    out.push(axis_line);
+
+    let mut category_line = ChartLine::new();
+    category_line.push_spaces(gutter + 2);
+    category_line.push_role_text_with_unstyled_trailing_spaces(
+        &category_axis_labels(categories),
+        AsciiColorRole::Text,
+    );
+    out.push(category_line);
 
     if let Some(title) = x_axis_title(model) {
-        out.push(format!("x: {title}"));
+        let mut line = ChartLine::new();
+        line.push_role_text("x: ", AsciiColorRole::Text);
+        line.push_role_text(title, AsciiColorRole::Text);
+        out.push(line);
     }
 
-    finish_lines(out)
+    finish_chart_lines(out, options)
 }
 
 fn render_horizontal(
@@ -152,6 +273,7 @@ fn render_horizontal(
     categories: &[String],
     y_range: ValueRange,
     chars: ChartChars,
+    options: &AsciiRenderOptions,
 ) -> String {
     let mut out = Vec::new();
     push_title_lines(&mut out, model);
@@ -163,70 +285,76 @@ fn render_horizontal(
         .unwrap_or(1);
 
     for (idx, category) in categories.iter().enumerate() {
-        let mut row = vec![' '; HORIZONTAL_PLOT_WIDTH];
+        let mut row = vec![ChartCell::blank(); HORIZONTAL_PLOT_WIDTH];
         let mut values = Vec::new();
 
-        for plot in &model.plots {
+        for (series_index, plot) in model.plots.iter().enumerate() {
             let Some(value) = plot.values.get(idx).copied() else {
                 continue;
             };
             values.push(format_number(value));
 
             match plot.plot_type {
-                XyChartPlotType::Bar => draw_horizontal_bar_value(&mut row, value, y_range, chars),
+                XyChartPlotType::Bar => {
+                    draw_horizontal_bar_value(&mut row, value, series_index, y_range, chars)
+                }
                 XyChartPlotType::Line => {
-                    draw_horizontal_line_value(&mut row, value, y_range, chars)
+                    draw_horizontal_line_value(&mut row, value, series_index, y_range, chars)
                 }
             }
         }
 
-        let value_suffix = if values.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", values.join("/"))
-        };
-        out.push(format!(
-            "{category:>gutter$} {}{}{}",
-            chars.vertical_axis,
-            chars_to_string(&row),
-            value_suffix
-        ));
+        let mut line = ChartLine::new();
+        line.push_right_aligned_role_text(category, gutter, AsciiColorRole::Text);
+        line.push_plain_char(' ');
+        line.push_role_char(chars.vertical_axis, AsciiColorRole::ChartAxis);
+        line.push_cells(&row);
+        if !values.is_empty() {
+            line.push_plain_char(' ');
+            line.push_role_text(&values.join("/"), AsciiColorRole::Text);
+        }
+        out.push(line);
     }
 
-    out.push(format!(
-        "{}{}{}",
-        " ".repeat(gutter + 1),
-        chars.origin,
-        chars
-            .horizontal_axis
-            .to_string()
-            .repeat(HORIZONTAL_PLOT_WIDTH)
-    ));
-    out.push(format!(
-        "{}{}",
-        " ".repeat(gutter + 2),
-        horizontal_tick_labels(y_range)
-    ));
+    let mut axis_line = ChartLine::new();
+    axis_line.push_spaces(gutter + 1);
+    axis_line.push_role_char(chars.origin, AsciiColorRole::ChartAxis);
+    axis_line.push_role_repeat(
+        chars.horizontal_axis,
+        HORIZONTAL_PLOT_WIDTH,
+        AsciiColorRole::ChartAxis,
+    );
+    out.push(axis_line);
 
-    finish_lines(out)
+    let mut tick_line = ChartLine::new();
+    tick_line.push_spaces(gutter + 2);
+    tick_line.push_role_text(&horizontal_tick_labels(y_range), AsciiColorRole::Text);
+    out.push(tick_line);
+
+    finish_chart_lines(out, options)
 }
 
-fn push_title_lines(out: &mut Vec<String>, model: &XyChartDiagramRenderModel) {
+fn push_title_lines(out: &mut Vec<ChartLine>, model: &XyChartDiagramRenderModel) {
     if let Some(title) = model.title.as_deref().filter(|t| !t.trim().is_empty()) {
-        out.push(title.to_string());
+        out.push(ChartLine::role_text(title, AsciiColorRole::Text));
     }
 
     if let Some(title) = y_axis_title(model) {
-        out.push(format!("y: {title}"));
+        let mut line = ChartLine::new();
+        line.push_role_text("y: ", AsciiColorRole::Text);
+        line.push_role_text(title, AsciiColorRole::Text);
+        out.push(line);
     }
 }
 
 fn draw_vertical_bar_plot(
-    rows: &mut [Vec<char>],
+    rows: &mut [Vec<ChartCell>],
     plot: &XyChartPlotRenderModel,
+    series_index: usize,
     y_range: ValueRange,
     chars: ChartChars,
 ) {
+    let role = AsciiColorRole::ChartSeries(series_index);
     for (idx, value) in plot.values.iter().copied().enumerate() {
         let height = bar_height(value, y_range, VERTICAL_PLOT_HEIGHT);
         if height == 0 {
@@ -237,18 +365,20 @@ fn draw_vertical_bar_plot(
         for level in 1..=height {
             let row_idx = VERTICAL_PLOT_HEIGHT - level;
             if let Some(row) = rows.get_mut(row_idx) {
-                fill_band(row, band_start, chars.bar);
+                fill_band(row, band_start, chars.bar, role);
             }
         }
     }
 }
 
 fn draw_vertical_line_plot(
-    rows: &mut [Vec<char>],
+    rows: &mut [Vec<ChartCell>],
     plot: &XyChartPlotRenderModel,
+    series_index: usize,
     y_range: ValueRange,
     chars: ChartChars,
 ) {
+    let role = AsciiColorRole::ChartSeries(series_index);
     let points = plot
         .values
         .iter()
@@ -265,87 +395,131 @@ fn draw_vertical_line_plot(
     for pair in points.windows(2) {
         let (from_row, from_col) = pair[0];
         let (to_row, to_col) = pair[1];
-        draw_vertical_line_segment(rows, from_row, from_col, to_row, to_col, chars);
+        draw_vertical_line_segment(rows, from_row, from_col, to_row, to_col, chars, role);
     }
 
     for (row, col) in points {
-        set_cell(rows, row, col, chars.line_point);
+        set_cell(rows, row, col, chars.line_point, role);
     }
 }
 
 fn draw_vertical_line_segment(
-    rows: &mut [Vec<char>],
+    rows: &mut [Vec<ChartCell>],
     from_row: usize,
     from_col: usize,
     to_row: usize,
     to_col: usize,
     chars: ChartChars,
+    role: AsciiColorRole,
 ) {
     if from_col == to_col {
-        draw_column(rows, from_col, from_row, to_row, chars.line_vertical);
+        draw_column(rows, from_col, from_row, to_row, chars.line_vertical, role);
         return;
     }
 
     if from_row == to_row {
-        draw_row(rows, from_row, from_col, to_col, chars.line_horizontal);
+        draw_row(
+            rows,
+            from_row,
+            from_col,
+            to_col,
+            chars.line_horizontal,
+            role,
+        );
         return;
     }
 
     let mid_col = (from_col + to_col) / 2;
-    draw_row(rows, from_row, from_col, mid_col, chars.line_horizontal);
-    draw_column(rows, mid_col, from_row, to_row, chars.line_vertical);
-    draw_row(rows, to_row, mid_col, to_col, chars.line_horizontal);
+    draw_row(
+        rows,
+        from_row,
+        from_col,
+        mid_col,
+        chars.line_horizontal,
+        role,
+    );
+    draw_column(rows, mid_col, from_row, to_row, chars.line_vertical, role);
+    draw_row(rows, to_row, mid_col, to_col, chars.line_horizontal, role);
 }
 
-fn draw_horizontal_bar_value(row: &mut [char], value: f64, y_range: ValueRange, chars: ChartChars) {
+fn draw_horizontal_bar_value(
+    row: &mut [ChartCell],
+    value: f64,
+    series_index: usize,
+    y_range: ValueRange,
+    chars: ChartChars,
+) {
+    let role = AsciiColorRole::ChartSeries(series_index);
     let width = bar_height(value, y_range, HORIZONTAL_PLOT_WIDTH);
     for cell in row.iter_mut().take(width) {
-        *cell = chars.bar;
+        *cell = ChartCell::with_role(chars.bar, role);
     }
 }
 
 fn draw_horizontal_line_value(
-    row: &mut [char],
+    row: &mut [ChartCell],
     value: f64,
+    series_index: usize,
     y_range: ValueRange,
     chars: ChartChars,
 ) {
+    let role = AsciiColorRole::ChartSeries(series_index);
     let col = line_level(value, y_range, HORIZONTAL_PLOT_WIDTH).saturating_sub(1);
     if let Some(cell) = row.get_mut(col) {
-        *cell = chars.line_point;
+        *cell = ChartCell::with_role(chars.line_point, role);
     }
 }
 
-fn draw_row(rows: &mut [Vec<char>], row_idx: usize, from_col: usize, to_col: usize, value: char) {
+fn draw_row(
+    rows: &mut [Vec<ChartCell>],
+    row_idx: usize,
+    from_col: usize,
+    to_col: usize,
+    value: char,
+    role: AsciiColorRole,
+) {
     let start = from_col.min(to_col);
     let end = from_col.max(to_col);
     if let Some(row) = rows.get_mut(row_idx) {
         for col in start..=end {
             if let Some(cell) = row.get_mut(col) {
-                *cell = value;
+                *cell = ChartCell::with_role(value, role);
             }
         }
     }
 }
 
-fn draw_column(rows: &mut [Vec<char>], col: usize, from_row: usize, to_row: usize, value: char) {
+fn draw_column(
+    rows: &mut [Vec<ChartCell>],
+    col: usize,
+    from_row: usize,
+    to_row: usize,
+    value: char,
+    role: AsciiColorRole,
+) {
     let start = from_row.min(to_row);
     let end = from_row.max(to_row);
     for row_idx in start..=end {
-        set_cell(rows, row_idx, col, value);
+        set_cell(rows, row_idx, col, value, role);
     }
 }
 
-fn set_cell(rows: &mut [Vec<char>], row: usize, col: usize, value: char) {
+fn set_cell(
+    rows: &mut [Vec<ChartCell>],
+    row: usize,
+    col: usize,
+    value: char,
+    role: AsciiColorRole,
+) {
     if let Some(cell) = rows.get_mut(row).and_then(|r| r.get_mut(col)) {
-        *cell = value;
+        *cell = ChartCell::with_role(value, role);
     }
 }
 
-fn fill_band(row: &mut [char], band_start: usize, value: char) {
+fn fill_band(row: &mut [ChartCell], band_start: usize, value: char, role: AsciiColorRole) {
     for offset in 0..BAND_WIDTH {
         if let Some(cell) = row.get_mut(band_start + offset) {
-            *cell = value;
+            *cell = ChartCell::with_role(value, role);
         }
     }
 }
@@ -533,6 +707,28 @@ fn format_number(value: f64) -> String {
         out.pop();
     }
     out
+}
+
+fn finish_chart_lines(lines: Vec<ChartLine>, options: &AsciiRenderOptions) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        return finish_lines(lines.into_iter().map(|line| line.text()).collect());
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let width = lines.iter().map(|line| line.chars.len()).max().unwrap_or(0);
+    if width == 0 {
+        return "\n".repeat(lines.len());
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        line.write_to(&mut canvas, y);
+    }
+
+    canvas.finish_trimmed_with_options(options)
 }
 
 fn finish_lines(lines: Vec<String>) -> String {
