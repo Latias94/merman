@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ffi-api",
   "title": "FFI API",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "Downstream hosts need a stable in-process ABI for parsing, layout, SVG rendering, and later raster outputs without moving unsafe code into the safe Rust crates.",
@@ -61,8 +61,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "FFI-060",
-    "notes": "FFI-010 through FFI-050 are complete. Raster FFI functions are deferred until a concrete downstream host needs them. Start FFI-060 only if we want a minimal UniFFI facade now; otherwise split UniFFI/package generation into a follow-on lane."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "First FFI lane is complete for SVG, parse JSON, layout JSON, public C header, protocol docs, and header smoke coverage. Split raster output and UniFFI/generated packaging into follow-on workstreams when concrete host demand exists."
   }
 }

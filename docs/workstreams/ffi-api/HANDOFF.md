@@ -1,6 +1,6 @@
 # FFI API — Handoff
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## Current State
@@ -55,13 +55,33 @@ null buffer free, and panic containment.
 - PNG/JPEG/PDF FFI functions are intentionally deferred. They should be split into a narrower
   follow-on when a downstream host actually needs raster bytes from the native library.
 
-## Next Task
+`FFI-060` is complete with concerns:
 
-Start with `FFI-060` only if we want to validate UniFFI now:
+- Current `uniffi` is `0.31.1`.
+- UniFFI is suitable for generated Swift/Kotlin/Python/Ruby bindings, but it should not redefine the
+  canonical C ABI.
+- A proper UniFFI lane should first extract or formalize a shared safe bindings facade so options
+  parsing, renderer setup, and error mapping are not duplicated.
+- No UniFFI crate was added in this lane.
 
-- prototype `crates/merman-uniffi` over the same safe facade, or
-- split UniFFI into a separate packaging workstream if generated Swift/Kotlin/Python artifacts become
-  larger than a proof
+`FFI-070` is complete. The first FFI release candidate scope is:
+
+- `merman_render_svg`
+- `merman_parse_json`
+- `merman_layout_json`
+- `merman_buffer_free`
+- public C header
+- protocol doc
+- C header smoke test
+
+## Follow-ons
+
+Open separate workstreams when needed:
+
+- `ffi-raster-output`: add feature-gated PNG/JPEG/PDF functions and raster byte protocol.
+- `uniffi-bindings`: extract/formalize a shared safe bindings facade, then add a minimal UniFFI
+  crate and generated binding smoke tests.
+- platform package lanes: iOS XCFramework, Android/JNI or Kotlin, Flutter/Dart FFI, Node.
 
 ## Guardrails
 
@@ -73,10 +93,10 @@ Start with `FFI-060` only if we want to validate UniFFI now:
 
 ## Suggested Next Implementation Slice
 
-For `FFI-060`, implement only:
+For `uniffi-bindings`, implement only:
 
 - a minimal UniFFI facade exposing `render_svg`, `parse_json`, and `layout_json`, or a documented
   split decision explaining why UniFFI should be a follow-on package lane
 - no iOS/Android/Flutter packaging yet
 
-Leave UniFFI for `FFI-060` or a follow-on if packaging expands.
+For `ffi-raster-output`, implement only one raster format first, preferably PNG.

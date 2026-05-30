@@ -1,6 +1,6 @@
 # FFI API
 
-Status: Draft
+Status: Complete
 Last updated: 2026-05-30
 
 ## Why This Lane Exists

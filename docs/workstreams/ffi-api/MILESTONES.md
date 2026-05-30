@@ -1,6 +1,6 @@
 # FFI API — Milestones
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## M0 — Architecture Decision And Scope

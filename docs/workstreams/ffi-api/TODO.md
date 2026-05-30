@@ -1,6 +1,6 @@
 # FFI API — TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## M0 — Scope And Protocol Freeze
@@ -51,18 +51,21 @@ Last updated: 2026-05-30
   `raster,ratex-math` feature gates pass, but PNG/JPEG/PDF functions are intentionally split out
   until a real downstream host asks for first-release raster ABI.
 
-- [ ] FFI-060 [owner=unassigned] [deps=FFI-050] [scope=crates/merman-uniffi,docs/bindings]
+- [x] FFI-060 [owner=codex] [deps=FFI-050] [scope=crates/merman-uniffi,docs/bindings]
   Goal: Prototype a UniFFI facade over the safe binding API.
   Validation: cargo check -p merman-uniffi and generated binding smoke tests where available.
   Review: Keep UniFFI optional; do not let generated APIs redefine the canonical C ABI.
   Evidence: UniFFI smoke docs and generated binding notes.
-  Handoff: This task may split into a separate workstream if packaging becomes platform-heavy.
+  Handoff: DONE_WITH_CONCERNS. Split UniFFI into a follow-on package lane. UniFFI 0.31.1 is
+  available and production-used, but it is pre-1.0 and would require a shared safe bindings facade
+  or duplicated options/error plumbing before it is worth adding.
 
 ## M4 — Closeout
 
-- [ ] FFI-070 [owner=planner] [deps=FFI-050,FFI-060] [scope=docs/workstreams/ffi-api]
+- [x] FFI-070 [owner=planner] [deps=FFI-050,FFI-060] [scope=docs/workstreams/ffi-api]
   Goal: Close or split the lane after the first ABI release candidate is verified.
   Validation: verify-rust-workstream records fresh gate evidence.
   Review: review-workstream has no blocking findings.
   Evidence: EVIDENCE_AND_GATES.md, WORKSTREAM.json, HANDOFF.md.
-  Handoff: Record remaining platform wrappers as follow-on workstreams.
+  Handoff: DONE_WITH_CONCERNS. First C ABI release candidate is in place for SVG, parse JSON, and
+  layout JSON. Raster and UniFFI are explicit follow-ons.

@@ -1,6 +1,6 @@
 # FFI API — Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-05-30
 
 ## Current Evidence
@@ -43,6 +43,10 @@ Last updated: 2026-05-30
 - 2026-05-30: `cargo nextest run -p merman-ffi --features raster,ratex-math` passed (`13` tests).
 - 2026-05-30: `cargo clippy -p merman-ffi --features raster,ratex-math --all-targets -- -D warnings`
   passed.
+- 2026-05-30: `FFI-060` completed as a split decision after checking current UniFFI availability
+  (`uniffi = 0.31.1`). UniFFI should be a follow-on lane after a shared safe bindings facade exists.
+- 2026-05-30: `FFI-070` closed the first FFI lane with SVG/parse/layout C ABI as the release
+  candidate scope.
 
 ## Gate Set
 
