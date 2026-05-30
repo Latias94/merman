@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-class-er-mixed-parallel-routing",
+  "title": "ASCII Class ER Mixed Parallel Routing",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Class and ER ASCII renderers still reject a relationship component when one endpoint pair is parallel and another ordinary edge is present.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "parent",
+      "path": "docs/workstreams/ascii-class-er-parallel-routing/"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-class-er-mixed-parallel-routing/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-class-er-mixed-parallel-routing/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-class-er-mixed-parallel-routing/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-class-er-mixed-parallel-routing/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-class-er-mixed-parallel-routing/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "git diff --check",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii class",
+    "cargo nextest run -p merman-ascii er",
+    "cargo nextest run -p merman-ascii",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "ACEMPR-010",
+      "result": "opened follow-on lane for mixed class/ER parallel relationship routing"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "classDiagram",
+    "erDiagram",
+    "mixed-parallel-routing"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "ACEMPR-020",
+    "notes": "Start with parser-backed mixed-parallel tests. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
+  }
+}
