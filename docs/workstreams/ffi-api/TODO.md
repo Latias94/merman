@@ -32,12 +32,13 @@ Last updated: 2026-05-30
 
 ## M2 — JSON Surfaces
 
-- [ ] FFI-040 [owner=unassigned] [deps=FFI-030] [scope=crates/merman-ffi]
+- [x] FFI-040 [owner=codex] [deps=FFI-030] [scope=crates/merman-ffi]
   Goal: Expose `parse_json` and `layout_json` through the same ABI pattern.
   Validation: cargo nextest run -p merman-ffi parse_json layout_json
   Review: Ensure output schema is documented as versioned/tolerant rather than byte-stable.
   Evidence: parse/layout C ABI tests.
-  Handoff: Do not add raster until SVG/JSON behavior is stable.
+  Handoff: DONE. Added `merman_parse_json`, `merman_layout_json`, header/protocol docs, and ABI
+  tests for semantic JSON, layout JSON, and shared error payloads.
 
 ## M3 — Optional Feature Surfaces
 

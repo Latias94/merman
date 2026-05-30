@@ -136,6 +136,34 @@ Supported `svg.pipeline` values:
 - `resvg_safe`
 - `resvg-safe`
 
+## Parse JSON
+
+```c
+MermanResult merman_parse_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+```
+
+On success, `data` contains UTF-8 semantic model JSON. The current payload mirrors
+`merman-cli parse` without `--meta`.
+
+## Layout JSON
+
+```c
+MermanResult merman_layout_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+```
+
+On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` shape as
+`merman-cli layout`.
+
 ## Threading
 
 The first ABI is stateless. Calls may be made concurrently as long as callers obey buffer ownership

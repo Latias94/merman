@@ -17,6 +17,14 @@ fn header_smoke() {
 int merman_header_smoke(void) {
     MermanBuffer buffer = {0};
     MermanResult result = {MERMAN_OK, buffer};
+    MermanResult (*render_svg)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_svg;
+    MermanResult (*parse_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_parse_json;
+    MermanResult (*layout_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_layout_json;
+    void (*free_buffer)(MermanBuffer) = &merman_buffer_free;
+    (void)render_svg;
+    (void)parse_json;
+    (void)layout_json;
+    (void)free_buffer;
     return result.code + (int)result.data.len;
 }
 "#,

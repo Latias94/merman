@@ -29,6 +29,15 @@ Last updated: 2026-05-30
 - 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed (`10` tests).
 - 2026-05-30: `cargo clippy -p merman-ffi --features ratex-math --all-targets -- -D warnings`
   passed.
+- 2026-05-30: `FFI-040` completed `merman_parse_json` and `merman_layout_json`.
+- 2026-05-30: `cargo fmt -p merman-ffi -- --check` passed after parse/layout changes.
+- 2026-05-30: `cargo nextest run -p merman-ffi` passed (`13` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed (`13` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --features ratex-math --all-targets -- -D warnings`
+  passed.
+- 2026-05-30: `git diff --check -- crates/merman-ffi docs/bindings docs/workstreams/ffi-api`
+  passed.
 
 ## Gate Set
 

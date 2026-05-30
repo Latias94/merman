@@ -39,14 +39,22 @@ null buffer free, and panic containment.
   options.
 - `crates/merman-ffi/tests/header_smoke.rs` compiles a small C consumer against the header.
 
+`FFI-040` is complete:
+
+- `merman_parse_json` returns semantic model JSON.
+- `merman_layout_json` returns `LayoutedDiagram` JSON.
+- Both functions use the same buffer ownership and structured error JSON policy as
+  `merman_render_svg`.
+- The public header and protocol document include the new functions.
+
 ## Next Task
 
-Start with `FFI-040`:
+Start with `FFI-050`:
 
-- add `merman_parse_json`
-- add `merman_layout_json`
-- extend `include/merman.h` and `docs/bindings/FFI_PROTOCOL.md`
-- add ABI tests for parse/layout JSON success and error behavior
+- decide whether raster output belongs in the first FFI release or should split into a follow-on
+- if kept here, add feature-gated PNG/JPEG/PDF functions behind `raster`
+- keep RaTeX math behavior as an option-gated path; core SVG/math feature compile gates already
+  pass
 
 ## Guardrails
 
@@ -60,8 +68,7 @@ Start with `FFI-040`:
 
 Implement only:
 
-- `merman_parse_json`
-- `merman_layout_json`
-- parse/layout JSON tests through the C ABI
+- either a documented split decision for raster/UniFFI, or the smallest feature-gated raster proof
+- no platform packaging yet
 
-Leave raster and UniFFI for later slices.
+Leave UniFFI for `FFI-060` or a follow-on if packaging expands.

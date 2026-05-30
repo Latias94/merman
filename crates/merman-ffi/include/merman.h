@@ -64,6 +64,30 @@ MermanResult merman_render_svg(
 );
 
 /*
+ * Parse Mermaid source to semantic JSON.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ */
+MermanResult merman_parse_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+/*
+ * Layout Mermaid source to layout JSON.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ */
+MermanResult merman_layout_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+/*
  * Free a buffer returned by merman.
  *
  * Passing {NULL, 0} is a no-op. Passing the same non-null buffer twice is caller misuse.

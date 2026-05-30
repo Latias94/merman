@@ -156,6 +156,42 @@ pub unsafe extern "C" fn merman_render_svg(
     ffi_result(|| unsafe { render_svg_impl(source, source_len, options_json, options_len) })
 }
 
+/// Parse Mermaid source to semantic JSON bytes.
+///
+/// # Safety
+///
+/// - `source` may be null only when `source_len == 0`.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_parse_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe { parse_json_impl(source, source_len, options_json, options_len) })
+}
+
+/// Layout Mermaid source to layout JSON bytes.
+///
+/// # Safety
+///
+/// - `source` may be null only when `source_len == 0`.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_layout_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe { layout_json_impl(source, source_len, options_json, options_len) })
+}
+
 /// Free a buffer returned by this crate.
 ///
 /// Passing a null buffer is a no-op.
@@ -197,22 +233,9 @@ unsafe fn render_svg_impl(
 ) -> Result<Vec<u8>, FfiError> {
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-
-    let source = std::str::from_utf8(source_bytes).map_err(|err| {
-        FfiError::new(
-            MermanStatus::Utf8Error,
-            format!("invalid source UTF-8: {err}"),
-        )
-    })?;
-    if source.trim().is_empty() {
-        return Err(FfiError::new(
-            MermanStatus::NoDiagram,
-            "no Mermaid diagram detected",
-        ));
-    }
-
+    let source = source_text(source_bytes)?;
     let options = parse_options(options_bytes)?;
-    let (renderer, pipeline) = build_renderer(options)?;
+    let (renderer, pipeline) = build_renderer(&options)?;
 
     let svg = match pipeline {
         PipelineKind::Parity => renderer.render_svg_sync(source),
@@ -228,6 +251,46 @@ unsafe fn render_svg_impl(
             "no Mermaid diagram detected",
         )),
     }
+}
+
+unsafe fn parse_json_impl(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> Result<Vec<u8>, FfiError> {
+    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+    let source = source_text(source_bytes)?;
+    let options = parse_options(options_bytes)?;
+    let (renderer, _pipeline) = build_renderer(&options)?;
+
+    let parsed = renderer
+        .parse_diagram_sync(source)
+        .map_err(classify_render_error)?
+        .ok_or_else(no_diagram_error)?;
+
+    serde_json::to_vec(&parsed.model).map_err(internal_json_error)
+}
+
+unsafe fn layout_json_impl(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> Result<Vec<u8>, FfiError> {
+    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+    let source = source_text(source_bytes)?;
+    let options = parse_options(options_bytes)?;
+    let (renderer, _pipeline) = build_renderer(&options)?;
+
+    let layouted = renderer
+        .layout_diagram_sync(source)
+        .map_err(classify_render_error)?
+        .ok_or_else(no_diagram_error)?;
+
+    serde_json::to_vec(&layouted).map_err(internal_json_error)
 }
 
 unsafe fn raw_bytes<'a>(
@@ -270,7 +333,20 @@ fn parse_options(bytes: &[u8]) -> Result<FfiOptions, FfiError> {
     })
 }
 
-fn build_renderer(options: FfiOptions) -> Result<(HeadlessRenderer, PipelineKind), FfiError> {
+fn source_text(bytes: &[u8]) -> Result<&str, FfiError> {
+    let source = std::str::from_utf8(bytes).map_err(|err| {
+        FfiError::new(
+            MermanStatus::Utf8Error,
+            format!("invalid source UTF-8: {err}"),
+        )
+    })?;
+    if source.trim().is_empty() {
+        return Err(no_diagram_error());
+    }
+    Ok(source)
+}
+
+fn build_renderer(options: &FfiOptions) -> Result<(HeadlessRenderer, PipelineKind), FfiError> {
     let mut renderer = HeadlessRenderer::new();
 
     if options
@@ -375,6 +451,17 @@ fn classify_render_error(err: merman::render::HeadlessError) -> FfiError {
     }
 }
 
+fn no_diagram_error() -> FfiError {
+    FfiError::new(MermanStatus::NoDiagram, "no Mermaid diagram detected")
+}
+
+fn internal_json_error(err: serde_json::Error) -> FfiError {
+    FfiError::new(
+        MermanStatus::InternalError,
+        format!("failed to serialize JSON output: {err}"),
+    )
+}
+
 fn finite_positive(value: f64, name: &'static str) -> Result<f64, FfiError> {
     if value.is_finite() && value > 0.0 {
         Ok(value)
@@ -441,6 +528,28 @@ mod tests {
         }
     }
 
+    fn call_parse(source: &[u8], options: &[u8]) -> MermanResult {
+        unsafe {
+            merman_parse_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+            )
+        }
+    }
+
+    fn call_layout(source: &[u8], options: &[u8]) -> MermanResult {
+        unsafe {
+            merman_layout_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+            )
+        }
+    }
+
     fn take_buffer(buffer: MermanBuffer) -> Vec<u8> {
         if buffer.data.is_null() || buffer.len == 0 {
             return Vec::new();
@@ -481,6 +590,40 @@ mod tests {
         let svg = take_text(result.data);
         assert!(svg.contains("id=\"ffi-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[test]
+    fn parse_json_returns_semantic_model() {
+        let result = call_parse(b"flowchart TD\nA[Hello] --> B[World]", b"");
+
+        assert_eq!(result.code, MermanStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert!(json.is_object());
+        assert_eq!(
+            json.get("type").and_then(Value::as_str),
+            Some("flowchart-v2")
+        );
+        assert!(json.get("nodes").and_then(Value::as_array).is_some());
+        assert!(json.get("edges").and_then(Value::as_array).is_some());
+    }
+
+    #[test]
+    fn layout_json_returns_layouted_diagram() {
+        let result = call_layout(b"flowchart TD\nA[Hello] --> B[World]", b"");
+
+        assert_eq!(result.code, MermanStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+        assert!(json.get("meta").is_some());
+        assert!(json.get("layout").is_some());
+    }
+
+    #[test]
+    fn parse_json_uses_same_error_payload() {
+        let result = call_parse(&[0xff], b"");
+
+        assert_eq!(result.code, MermanStatus::Utf8Error.code());
+        let error = take_error(result);
+        assert_eq!(error["code_name"], MermanStatus::Utf8Error.name());
     }
 
     #[test]

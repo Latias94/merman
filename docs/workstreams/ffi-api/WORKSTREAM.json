@@ -62,7 +62,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "FFI-040",
-    "notes": "FFI-010 through FFI-030 are complete. Start FFI-040: expose merman_parse_json and merman_layout_json through the same result/buffer/error policy."
+    "next_task": "FFI-050",
+    "notes": "FFI-010 through FFI-040 are complete. Start FFI-050 by deciding whether raster output belongs in the first FFI release or should split into a follow-on; keep UniFFI for FFI-060 or a separate packaging lane."
   }
 }
