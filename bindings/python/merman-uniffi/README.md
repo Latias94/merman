@@ -29,8 +29,8 @@ PYTHONPATH=bindings/python/merman-uniffi/src python -c "import merman_uniffi; pr
 
 Build a local platform wheel and run an install smoke:
 
-```powershell
-.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```bash
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 PyPI publishing is follow-on work; this scaffold is the package staging shape used by the Rust smoke

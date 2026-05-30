@@ -63,8 +63,8 @@ invalid options JSON.
 
 ## Build A Local Wheel
 
-```powershell
-.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```bash
+python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 The script builds `merman-uniffi`, stages generated UniFFI Python files into

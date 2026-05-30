@@ -26,24 +26,24 @@ cargo build -p merman-ffi
 cd platforms/flutter
 flutter pub get
 flutter analyze
-dart run example/smoke.dart ../../target/debug/merman_ffi.dll
+dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
 Android packaging smoke:
 
-```powershell
-.\platforms\flutter\tool\android-smoke.ps1
+```bash
+python3 platforms/flutter/tool/android-smoke.py
 ```
 
 Combined platform gate:
 
-```powershell
-.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
-.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices -RunFlutterAndroidSmoke
+```bash
+python3 scripts/verify-platform-bindings.py --build-android-slices
+python3 scripts/verify-platform-bindings.py --build-android-slices --run-flutter-android-smoke
 ```
 
-Use `../../target/debug/libmerman_ffi.so` on Linux and
-`../../target/debug/libmerman_ffi.dylib` on macOS.
+Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
+Windows.
 
 ## Follow-On Packaging
 
