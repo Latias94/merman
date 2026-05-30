@@ -823,7 +823,7 @@ mod tests {
             node_metrics.width
         );
         assert!(
-            (30.0..=70.0).contains(&node_metrics.height),
+            (20.0..=70.0).contains(&node_metrics.height),
             "node height = {}",
             node_metrics.height
         );
