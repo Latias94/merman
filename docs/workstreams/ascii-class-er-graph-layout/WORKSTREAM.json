@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-class-er-graph-layout",
+  "title": "ASCII Class ER Graph Layout",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Class and ER ASCII renderers are useful but still reject common multi-relationship layouts because their layout model is single-relation-only.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "parent",
+      "path": "docs/workstreams/ascii-reference-implementation-expansion/"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-class-er-graph-layout/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-class-er-graph-layout/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-class-er-graph-layout/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-class-er-graph-layout/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-class-er-graph-layout/HANDOFF.md"
+    }
+  ],
+  "gates": [
+    "git diff --check",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-ascii class",
+    "cargo nextest run -p merman-ascii er",
+    "cargo nextest run -p merman-ascii",
+    "cargo nextest run -p merman --features ascii",
+    "cargo nextest run -p merman-cli --features ascii",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "ACEG-010",
+      "result": "opened follow-on lane for class/ER multi-relationship terminal graph layout"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "continue_policy": {
+    "default_action": "continue",
+    "next_task": "ACEG-020",
+    "notes": "Start with parser-backed tracer tests for class and ER multi-relationship diagrams before introducing a shared layout boundary. Keep color/style, state ASCII, true BT/RL flowchart directions, and richer XYChart layout out of this lane."
+  }
+}
