@@ -1,12 +1,14 @@
 use super::{
     BOX_BORDER_WIDTH, BOX_PADDING_LEFT_RIGHT, MIN_BOX_WIDTH, NOTE_SIDE_GAP, NOTE_WRAP_TEXT_WIDTH,
 };
+use crate::color::AsciiColorRole;
 use crate::error::{AsciiError, Result};
 use crate::text::{display_width, wrap_display_lines};
 
 use super::layout::SequenceLayout;
 use super::model::{SequenceNote, SequenceNotePlacement};
 use super::render::{SequenceChars, render_overlay_row};
+use super::text::SequenceLine;
 
 pub(super) fn ensure_note_actors_visible(
     note: &SequenceNote,
@@ -30,7 +32,7 @@ pub(super) fn render_note(
     chars: &SequenceChars,
     active_counts: &[usize],
     visible_actors: &[bool],
-) -> Vec<String> {
+) -> Vec<SequenceLine> {
     let label_lines = note_label_lines(note, layout);
     let label_width = label_lines
         .iter()
@@ -60,39 +62,46 @@ pub(super) fn render_note(
         }
     };
 
-    let top = format!(
-        "{}{}{}",
-        chars.top_left,
-        chars.horizontal.to_string().repeat(inner_width),
-        chars.top_right
-    );
-    let bottom = format!(
-        "{}{}{}",
-        chars.bottom_left,
-        chars.horizontal.to_string().repeat(inner_width),
-        chars.bottom_right
-    );
-
     let mut rows = Vec::with_capacity(label_lines.len() + 2);
-    rows.push(top);
+    rows.push(note_border_row(
+        chars.top_left,
+        chars.top_right,
+        chars.horizontal,
+        inner_width,
+    ));
     for line in label_lines {
         let line_width = display_width(&line);
         let left_padding = (inner_width - line_width) / 2;
-        let right_padding = inner_width - left_padding - line_width;
-        rows.push(format!(
-            "{}{}{}{}{}",
+        let mut row = SequenceLine::blank(inner_width + BOX_BORDER_WIDTH);
+        row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
+        row.write_text_role(1 + left_padding, &line, AsciiColorRole::Text);
+        row.set_role(
+            inner_width + 1,
             chars.vertical,
-            " ".repeat(left_padding),
-            line,
-            " ".repeat(right_padding),
-            chars.vertical
-        ));
+            AsciiColorRole::SequenceFrame,
+        );
+        rows.push(row);
     }
-    rows.push(bottom);
+    rows.push(note_border_row(
+        chars.bottom_left,
+        chars.bottom_right,
+        chars.horizontal,
+        inner_width,
+    ));
 
     rows.into_iter()
         .map(|row| render_overlay_row(layout, chars, active_counts, visible_actors, left, &row))
         .collect()
+}
+
+fn note_border_row(left: char, right: char, horizontal: char, inner_width: usize) -> SequenceLine {
+    let mut row = SequenceLine::blank(inner_width + BOX_BORDER_WIDTH);
+    row.set_role(0, left, AsciiColorRole::SequenceFrame);
+    for x in 1..=inner_width {
+        row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
+    }
+    row.set_role(inner_width + 1, right, AsciiColorRole::SequenceFrame);
+    row
 }
 
 fn note_label_lines(note: &SequenceNote, layout: &SequenceLayout) -> Vec<String> {

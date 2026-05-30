@@ -100,6 +100,11 @@
       "date": "2026-05-30",
       "task": "ACR-053",
       "result": "adopted semantic color roles for XYChart titles, labels, axes, bars, and line series through role-aware chart lines and cells"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-054",
+      "result": "adopted semantic color roles for sequence participants, lifelines, activations, messages, notes, boxes, and control frames through role-aware row buffers"
     }
   ],
   "adr_refs": [
@@ -117,7 +122,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-054",
-    "notes": "XYChart role adoption is complete. Sequence should adopt participant, lifeline, activation, message, note, box, and control-frame roles next."
+    "next_task": "ACR-060",
+    "notes": "Family role adoption is complete. Flowchart Mermaid style/class/linkStyle mapping remains the next color-related follow-on if style parity is the priority."
   }
 }

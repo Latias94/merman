@@ -27,7 +27,7 @@ snapshot failures hard to localize.
 | Class | `RelationGraphBox` role lines plus layered `Canvas` routes | Medium; boxes and routes use different paths | DONE in ACR-052. |
 | ER | Same relation graph substrate as class | Medium; cardinalities add relationship text roles | DONE in ACR-052. |
 | XYChart | Local role-aware chart line/cell buffers finalized through `Canvas` | Medium; series overlays must keep role ownership stable | DONE in ACR-053. |
-| Sequence | Plain `String` rows with overlays, frames, notes, lifelines, activations | High; many row builders and lifecycle overlays | Separate final lane after the substrate proves out. |
+| Sequence | Role-aware row buffers with overlays, frames, notes, lifelines, and activations | High; many row builders and lifecycle overlays | DONE in ACR-054. |
 
 ## Lane Order
 
@@ -45,7 +45,7 @@ snapshot failures hard to localize.
    - Roles should cover chart titles/text, axes, and `ChartSeries(index)` for bars and line plots.
    - This validates the series-index API from ADR 0067.
 
-4. ACR-054: Adopt roles for sequence.
+4. ACR-054: DONE. Adopt roles for sequence.
    - Roles should cover participant text/borders, lifelines, activations, messages, notes, sequence
      boxes, and control frames.
    - Keep Mermaid `rect`/box fill color interpretation deferred because background/fill remains out

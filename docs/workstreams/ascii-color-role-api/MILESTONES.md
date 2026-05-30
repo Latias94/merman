@@ -17,5 +17,5 @@ Last updated: 2026-05-30
 - M1: DONE. Role-aware canvas and forced output encoders landed without changing default rendering.
 - M2: DONE. Flowchart semantic color roles landed with forced TrueColor and HTML coverage.
 - M3: IN PROGRESS. ACR-051 completed the shared substrate, ACR-052 completed class/ER role
-  adoption, and ACR-053 completed XYChart role adoption; remaining lanes are sequence and
-  flowchart style-mapping.
+  adoption, ACR-053 completed XYChart role adoption, and ACR-054 completed sequence role adoption;
+  the remaining lane is flowchart style-mapping.

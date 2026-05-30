@@ -29,6 +29,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Sequence control blocks | Supported subset | `loop`, `opt`, `break`, `rect`, and `par_over` render as single-section frames; `alt`/`else`, `par`/`and`, and `critical`/`option` render as sectioned frames. |
 | Control-block combinations | Supported subset | Notes, activations, create/destroy lifecycle rows, and participant boxes are covered with control-block frames. |
 | Character sets | Supported | ASCII and Unicode output via `AsciiRenderOptions::ascii()` and `unicode()`. |
+| ANSI/HTML color roles | Supported subset | Opt-in `AsciiColorMode` can emit foreground roles for participants, lifelines, activations, messages, notes, boxes, and control frames. Mermaid `rect` and box fill/background colors remain deferred. |
 
 ## Explicitly Unsupported
 

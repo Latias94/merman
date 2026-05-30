@@ -9,7 +9,9 @@ use super::layout::{
 };
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead, SequenceEvent};
 use super::notes::{ensure_note_actors_visible, render_note};
-use super::text::{padded_line, trim_right, write_text};
+use super::text::{SequenceLine, padded_line, trim_right};
+use crate::canvas::Canvas;
+use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::error::{AsciiError, Result};
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::text::display_width;
@@ -233,7 +235,7 @@ pub(crate) fn render_sequence_diagram(
         }
 
         for _ in 0..layout.message_spacing {
-            lines.push(build_lifeline(
+            lines.push(build_lifeline_line(
                 &layout,
                 &chars,
                 &active_counts,
@@ -305,7 +307,7 @@ pub(crate) fn render_sequence_diagram(
         }
     }
 
-    lines.push(build_lifeline(
+    lines.push(build_lifeline_line(
         &layout,
         &chars,
         &active_counts,
@@ -323,24 +325,24 @@ pub(crate) fn render_sequence_diagram(
     if !diagram.boxes.is_empty() {
         lines = render_sequence_boxes(lines, diagram, &layout, &chars);
     }
-    Ok(lines.join("\n") + "\n")
+    Ok(finish_sequence_lines(lines, options))
 }
 
 fn build_participant_line(
     diagram: &AsciiSequenceDiagram,
     layout: &SequenceLayout,
     visible_actors: &[bool],
-    draw: impl Fn(usize) -> String,
-) -> String {
-    let mut line = String::new();
+    draw: impl Fn(usize) -> SequenceLine,
+) -> SequenceLine {
+    let mut line = SequenceLine::blank(0);
     for index in 0..diagram.participants.len() {
         if !visible_actors.get(index).copied().unwrap_or(true) {
             continue;
         }
         let left = participant_left(layout, index);
-        let needed = left.saturating_sub(line.chars().count());
-        line.push_str(&" ".repeat(needed));
-        line.push_str(&draw(index));
+        let needed = left.saturating_sub(line.len());
+        line.push_spaces(needed);
+        line.push_line(&draw(index));
     }
     line
 }
@@ -358,41 +360,40 @@ fn participant_box_segment(
     chars: &SequenceChars,
     index: usize,
     row: ParticipantBoxRow,
-) -> String {
+) -> SequenceLine {
     let width = layout.participant_widths[index];
+    let total_width = width + 2;
+    let mut line = SequenceLine::blank(total_width);
     match row {
         ParticipantBoxRow::Top => {
-            format!(
-                "{}{}{}",
-                chars.top_left,
-                chars.horizontal.to_string().repeat(width),
-                chars.top_right
-            )
+            line.set_role(0, chars.top_left, AsciiColorRole::SequenceFrame);
+            for x in 1..=width {
+                line.set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
+            }
+            line.set_role(width + 1, chars.top_right, AsciiColorRole::SequenceFrame);
         }
         ParticipantBoxRow::Label => {
             let label = &diagram.participants[index].label;
             let label_width = display_width(label);
             let left_padding = (width - label_width) / 2;
-            format!(
-                "{}{}{}{}{}",
-                chars.vertical,
-                " ".repeat(left_padding),
-                label,
-                " ".repeat(width - left_padding - label_width),
-                chars.vertical
-            )
+            line.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
+            line.write_text_role(1 + left_padding, label, AsciiColorRole::Text);
+            line.set_role(width + 1, chars.vertical, AsciiColorRole::SequenceFrame);
         }
         ParticipantBoxRow::Bottom => {
-            format!(
-                "{}{}{}{}{}",
-                chars.bottom_left,
-                chars.horizontal.to_string().repeat(width / 2),
-                chars.tee_down,
-                chars.horizontal.to_string().repeat(width - width / 2 - 1),
-                chars.bottom_right
-            )
+            line.set_role(0, chars.bottom_left, AsciiColorRole::SequenceFrame);
+            for x in 1..=width {
+                let ch = if x == (width / 2) + 1 {
+                    chars.tee_down
+                } else {
+                    chars.horizontal
+                };
+                line.set_role(x, ch, AsciiColorRole::SequenceFrame);
+            }
+            line.set_role(width + 1, chars.bottom_right, AsciiColorRole::SequenceFrame);
         }
     }
+    line
 }
 
 fn render_lifecycle_participants(
@@ -402,7 +403,7 @@ fn render_lifecycle_participants(
     active_counts: &[usize],
     visible_actors: &[bool],
     actor_indices: &[usize],
-) -> Vec<String> {
+) -> Vec<SequenceLine> {
     [
         ParticipantBoxRow::Top,
         ParticipantBoxRow::Label,
@@ -414,40 +415,40 @@ fn render_lifecycle_participants(
             .iter()
             .map(|index| {
                 participant_left(layout, *index)
-                    + participant_box_segment(diagram, layout, chars, *index, row)
-                        .chars()
-                        .count()
+                    + participant_box_segment(diagram, layout, chars, *index, row).len()
             })
             .max()
             .unwrap_or(layout.total_width + 1)
             .max(layout.total_width + 1);
         let mut line = padded_line(
-            build_lifeline(layout, chars, active_counts, visible_actors),
+            build_lifeline_line(layout, chars, active_counts, visible_actors),
             width,
         );
         for index in actor_indices {
             let segment = participant_box_segment(diagram, layout, chars, *index, row);
-            write_text(&mut line, participant_left(layout, *index), &segment);
+            line.write_line(participant_left(layout, *index), &segment);
         }
         trim_right(line)
     })
     .collect()
 }
 
-pub(super) fn build_lifeline(
+pub(super) fn build_lifeline_line(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
     visible_actors: &[bool],
-) -> String {
-    let mut line = vec![' '; layout.total_width + 1];
+) -> SequenceLine {
+    let mut line = SequenceLine::blank(layout.total_width + 1);
     for (index, center) in layout.participant_centers.iter().enumerate() {
         if !visible_actors.get(index).copied().unwrap_or(true) {
             continue;
         }
-        if *center < line.len() {
-            line[*center] = lifeline_char(index, chars, active_counts);
-        }
+        line.set_role(
+            *center,
+            lifeline_char(index, chars, active_counts),
+            lifeline_role(index, active_counts),
+        );
     }
     trim_right(line)
 }
@@ -460,19 +461,54 @@ pub(super) fn lifeline_char(index: usize, chars: &SequenceChars, active_counts: 
     }
 }
 
+pub(super) fn lifeline_role(index: usize, active_counts: &[usize]) -> AsciiColorRole {
+    if active_counts.get(index).copied().unwrap_or(0) > 0 {
+        AsciiColorRole::SequenceActivation
+    } else {
+        AsciiColorRole::SequenceLifeline
+    }
+}
+
 pub(super) fn render_overlay_row(
     layout: &SequenceLayout,
     chars: &SequenceChars,
     active_counts: &[usize],
     visible_actors: &[bool],
     left: usize,
-    text: &str,
-) -> String {
-    let needed = left + text.chars().count();
+    overlay: &SequenceLine,
+) -> SequenceLine {
+    let needed = left + overlay.len();
     let mut line = padded_line(
-        build_lifeline(layout, chars, active_counts, visible_actors),
+        build_lifeline_line(layout, chars, active_counts, visible_actors),
         needed,
     );
-    write_text(&mut line, left, text);
+    line.write_line(left, overlay);
     trim_right(line)
+}
+
+fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions) -> String {
+    if options.color_mode == AsciiColorMode::Plain {
+        return lines
+            .into_iter()
+            .map(SequenceLine::into_text)
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+    }
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    if width == 0 {
+        return "\n".repeat(lines.len());
+    }
+
+    let mut canvas = Canvas::new(width, lines.len());
+    for (y, line) in lines.iter().enumerate() {
+        line.write_to(&mut canvas, y);
+    }
+
+    canvas.finish_trimmed_with_options(options)
 }

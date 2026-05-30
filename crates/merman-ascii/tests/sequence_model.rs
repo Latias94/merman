@@ -1,5 +1,6 @@
 use merman_ascii::{
-    AsciiError, AsciiRenderOptions, render_model, render_sequence as render_sequence_model,
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiError, AsciiRenderOptions, AsciiRgb,
+    render_model, render_sequence as render_sequence_model,
 };
 use merman_core::diagrams::sequence::{
     SequenceActor, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
@@ -86,6 +87,184 @@ fn normalize_sequence_output(text: &str) -> String {
     }
 
     lines.join("\n")
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn strip_html_spans(input: &str) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let rest = &input[index..];
+        if rest.starts_with("<span ") {
+            index += rest.find('>').expect("span start tag should be closed") + 1;
+            continue;
+        }
+        if rest.starts_with("</span>") {
+            index += "</span>".len();
+            continue;
+        }
+        if rest.starts_with("&gt;") {
+            output.push('>');
+            index += "&gt;".len();
+            continue;
+        }
+        if rest.starts_with("&lt;") {
+            output.push('<');
+            index += "&lt;".len();
+            continue;
+        }
+        if rest.starts_with("&amp;") {
+            output.push('&');
+            index += "&amp;".len();
+            continue;
+        }
+        let ch = rest
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+    output
+}
+
+#[test]
+fn sequence_color_truecolor_emits_participant_lifeline_activation_and_message_roles() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 1, 1))
+        .with_role(AsciiColorRole::SequenceFrame, AsciiRgb::new(2, 2, 2))
+        .with_role(AsciiColorRole::SequenceLifeline, AsciiRgb::new(3, 3, 3))
+        .with_role(AsciiColorRole::SequenceActivation, AsciiRgb::new(4, 4, 4))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::new(5, 5, 5))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::new(6, 6, 6))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::new(7, 7, 7))
+        .with_role(AsciiColorRole::Junction, AsciiRgb::new(8, 8, 8));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nA->>+B: Start\nB-->>-A: Done",
+        &options,
+    )
+    .expect("sequence should render with color roles");
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "+---+     +---+\n",
+            "| A |     | B |\n",
+            "+-+-+     +-+-+\n",
+            "  |         |\n",
+            "  | Start   |\n",
+            "  +-------->|\n",
+            "  |         #\n",
+            "  | Done    #\n",
+            "  |<........+\n",
+            "  |         |\n",
+        )
+    );
+    for expected_code in [
+        "\u{1b}[38;2;1;1;1m",
+        "\u{1b}[38;2;2;2;2m",
+        "\u{1b}[38;2;3;3;3m",
+        "\u{1b}[38;2;4;4;4m",
+        "\u{1b}[38;2;5;5;5m",
+        "\u{1b}[38;2;6;6;6m",
+        "\u{1b}[38;2;7;7;7m",
+        "\u{1b}[38;2;8;8;8m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x101010))
+        .with_role(
+            AsciiColorRole::SequenceFrame,
+            AsciiRgb::from_hex24(0x202020),
+        )
+        .with_role(
+            AsciiColorRole::SequenceLifeline,
+            AsciiRgb::from_hex24(0x303030),
+        )
+        .with_role(
+            AsciiColorRole::SequenceActivation,
+            AsciiRgb::from_hex24(0x404040),
+        )
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x505050))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x606060))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::from_hex24(0x707070))
+        .with_role(AsciiColorRole::Junction, AsciiRgb::from_hex24(0x808080));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_sequence(
+        "sequenceDiagram\nbox Group\nparticipant A\nparticipant B\nend\nloop Work\nA->>+B: Start\nNote over A,B: Wait\nB-->>-A: Done\nend",
+        &options,
+    )
+    .expect("sequence with boxes, frames, notes, and messages should render");
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        concat!(
+            "+- Group -------+\n",
+            "|+---+     +---+|\n",
+            "|| A |     | B ||\n",
+            "|+-+-+     +-+-+|\n",
+            "|+ loop Work ----+\n",
+            "|| |         |  ||\n",
+            "|| | Start   |  ||\n",
+            "|| +-------->|  ||\n",
+            "|| |         #  ||\n",
+            "||+-----------+ ||\n",
+            "|||   Wait    | ||\n",
+            "||+-----------+ ||\n",
+            "|| |         #  ||\n",
+            "|| | Done    #  ||\n",
+            "|| |<........+  ||\n",
+            "|+---------------+\n",
+            "|  |         |  |\n",
+            "+---------------+\n",
+        )
+    );
+    for expected_fragment in [
+        "<span style=\"color:#202020\">+-</span><span style=\"color:#101010\"> Group </span>",
+        "<span style=\"color:#202020\">|+</span><span style=\"color:#101010\"> loop Work </span>",
+        "<span style=\"color:#202020\">||+-----------+</span>",
+        "<span style=\"color:#707070\">Start</span>",
+        "<span style=\"color:#505050\">--------</span><span style=\"color:#606060\">&gt;</span>",
+        "<span style=\"color:#404040\">#</span>",
+        "<span style=\"color:#101010\">Wait</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
 }
 
 fn basic_sequence_model() -> SequenceDiagramRenderModel {

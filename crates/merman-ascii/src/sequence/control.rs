@@ -1,6 +1,7 @@
 use super::model::SequenceControlKind;
 use super::render::SequenceChars;
-use super::text::{padded_line, trim_right, write_text};
+use super::text::{SequenceLine, padded_line, trim_right};
+use crate::color::AsciiColorRole;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SequenceControlFrame {
@@ -27,10 +28,10 @@ impl SequenceControlFrame {
 }
 
 pub(super) fn render_sequence_control_frames(
-    lines: Vec<String>,
+    lines: Vec<SequenceLine>,
     frames: &[SequenceControlFrame],
     chars: &SequenceChars,
-) -> Vec<String> {
+) -> Vec<SequenceLine> {
     if frames.is_empty() || lines.is_empty() {
         return lines;
     }
@@ -98,13 +99,13 @@ pub(super) fn render_sequence_control_frames(
     rendered
 }
 
-fn frame_width(frame: &SequenceControlFrame, lines: &[String]) -> usize {
+fn frame_width(frame: &SequenceControlFrame, lines: &[SequenceLine]) -> usize {
     let end_row = frame.end_row.unwrap_or(frame.start_row);
     let max_row_width = lines
         .iter()
         .enumerate()
         .filter_map(|(index, line)| {
-            (index >= frame.start_row && index <= end_row).then_some(line.chars().count())
+            (index >= frame.start_row && index <= end_row).then_some(line.len())
         })
         .max()
         .unwrap_or(0);
@@ -123,7 +124,11 @@ fn frame_width(frame: &SequenceControlFrame, lines: &[String]) -> usize {
         .max(separator_width + 2)
 }
 
-fn render_top_border(frame: &SequenceControlFrame, width: usize, chars: &SequenceChars) -> String {
+fn render_top_border(
+    frame: &SequenceControlFrame,
+    width: usize,
+    chars: &SequenceChars,
+) -> SequenceLine {
     render_border_row(
         chars.top_left,
         chars.top_right,
@@ -133,7 +138,7 @@ fn render_top_border(frame: &SequenceControlFrame, width: usize, chars: &Sequenc
     )
 }
 
-fn render_bottom_border(width: usize, chars: &SequenceChars) -> String {
+fn render_bottom_border(width: usize, chars: &SequenceChars) -> SequenceLine {
     render_border_row(
         chars.bottom_left,
         chars.bottom_right,
@@ -148,7 +153,7 @@ fn render_separator_border(
     separator: &SequenceControlFrameSeparator,
     width: usize,
     chars: &SequenceChars,
-) -> String {
+) -> SequenceLine {
     render_border_row(
         chars.tee_right,
         chars.tee_left,
@@ -164,20 +169,23 @@ fn render_border_row(
     horizontal: char,
     width: usize,
     label: Option<&str>,
-) -> String {
-    let mut row = vec![horizontal; width];
-    row[0] = left;
-    row[width - 1] = right;
+) -> SequenceLine {
+    let mut row = SequenceLine::blank(width);
+    for x in 0..width {
+        row.set_role(x, horizontal, AsciiColorRole::SequenceFrame);
+    }
+    row.set_role(0, left, AsciiColorRole::SequenceFrame);
+    row.set_role(width - 1, right, AsciiColorRole::SequenceFrame);
     if let Some(label) = label {
-        write_text(&mut row, 1, label);
+        row.write_text_role(1, label, AsciiColorRole::Text);
     }
     trim_right(row)
 }
 
-fn render_content_row(row: String, width: usize, chars: &SequenceChars) -> String {
+fn render_content_row(row: SequenceLine, width: usize, chars: &SequenceChars) -> SequenceLine {
     let mut row = padded_line(row, width);
-    row[0] = chars.vertical;
-    row[width - 1] = chars.vertical;
+    row.set_role(0, chars.vertical, AsciiColorRole::SequenceFrame);
+    row.set_role(width - 1, chars.vertical, AsciiColorRole::SequenceFrame);
     trim_right(row)
 }
 

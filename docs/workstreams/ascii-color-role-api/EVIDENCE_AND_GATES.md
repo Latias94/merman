@@ -44,6 +44,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-040 | Assigned flowchart semantic roles for node text/borders, group borders/titles, edge lines, labels, arrowheads, and routed junctions. | M2 vertical slice is complete; broader diagram-family adoption can be planned. |
 | 2026-05-30 | ACR-050 | Accepted a split family adoption plan for class/ER, XYChart, and sequence. | M3 is decomposed into ACR-051 through ACR-054; ACR-060 remains style mapping. |
 | 2026-05-30 | ACR-053 | Adopted semantic color roles for XYChart titles/text, axes, bars, and line plots. | XYChart role adoption is complete; sequence remains the final family role lane. |
+| 2026-05-30 | ACR-054 | Adopted semantic color roles for sequence participants, lifelines, activations, messages, notes, boxes, and control frames. | Family role adoption is complete; ACR-060 remains style mapping. |
 
 ## Verification Log
 
@@ -83,3 +84,9 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-053 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after XYChart role adoption. |
 | 2026-05-30 | ACR-053 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | XYChart role line/cell buffers and tests are warning-free under clippy. |
 | 2026-05-30 | ACR-053 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACR-054 | `cargo nextest run -p merman-ascii sequence_color` | Sequence forced-color role coverage | PASS | Parser-backed TrueColor and HTML snapshots cover participant boxes, lifelines, activations, messages, notes, sequence boxes, and control frames. |
+| 2026-05-30 | ACR-054 | `cargo nextest run -p merman-ascii sequence` | Sequence regression suite | PASS | Existing plain sequence golden comparisons and unsupported-feature diagnostics remain unchanged. |
+| 2026-05-30 | ACR-054 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Sequence role adoption does not regress other ascii families. |
+| 2026-05-30 | ACR-054 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after sequence role adoption. |
+| 2026-05-30 | ACR-054 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Sequence role row buffers and tests are warning-free under clippy. |
+| 2026-05-30 | ACR-054 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

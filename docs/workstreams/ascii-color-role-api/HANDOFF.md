@@ -13,17 +13,18 @@ junctions. ACR-050 split broader family adoption into smaller lanes in `FAMILY_A
 ACR-051 added the shared role-aware trim substrate in `Canvas` plus role-bearing relation graph
 lines. ACR-052 adopted semantic roles for class and ER boxes, relation lines, markers, labels, and
 junctions. ACR-053 adopted semantic roles for XYChart titles/text, axes, bars, and line plots using
-`ChartSeries(index)` for plotted data. Default plain output remains unchanged.
+`ChartSeries(index)` for plotted data. ACR-054 adopted semantic roles for sequence participants,
+lifelines, activations, messages, notes, boxes, and control frames. Default plain output remains
+unchanged.
 
 ## Active Task
 
-- Task ID: ACR-054
+- Task ID: ACR-060
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/sequence`, `crates/merman-ascii/tests`
-- Validation: `cargo nextest run -p merman-ascii sequence_color`;
-  `cargo nextest run -p merman-ascii sequence`
+- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`
+- Validation: parser-backed tests from existing style fixtures
 - Status: TODO
-- Review: Sequence plain golden comparisons must remain unchanged
+- Review: Do not silently misrepresent unsupported CSS properties
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -50,6 +51,10 @@ junctions. ACR-053 adopted semantic roles for XYChart titles/text, axes, bars, a
   rendering path.
 - XYChart now uses role-aware chart lines and cells. Titles, tick labels, category labels, and value
   suffixes use `Text`; axis glyphs use `ChartAxis`; bars and line plots use `ChartSeries(index)`.
+- Sequence now uses role-aware row buffers. Participant/note/box/control borders use
+  `SequenceFrame`, inactive lifelines use `SequenceLifeline`, active lifelines use
+  `SequenceActivation`, message labels use `EdgeLabel`, message lines use `EdgeLine`, arrowheads
+  use `EdgeArrow`, and message junctions use `Junction`.
 
 ## Blockers
 
@@ -57,6 +62,6 @@ junctions. ACR-053 adopted semantic roles for XYChart titles/text, axes, bars, a
 
 ## Next Recommended Action
 
-- Start ACR-054. Adopt roles for sequence participants, lifelines, activations, messages, notes,
-  boxes, and control frames. Keep ACR-060 style/class/linkStyle mapping separate unless the planner
-  explicitly prioritizes it.
+- Start ACR-060 if style parity is the next priority. Design or implement Mermaid flowchart
+  `classDef`, `class`, `style`, and `linkStyle` mapping without silently representing unsupported
+  CSS properties.

@@ -1,10 +1,11 @@
 use super::{BOX_BORDER_WIDTH, SEQUENCE_BOX_CONTENT_OFFSET, SEQUENCE_BOX_LABEL_MARGIN};
+use crate::color::AsciiColorRole;
 use crate::text::display_width;
 
 use super::layout::SequenceLayout;
 use super::model::{AsciiSequenceDiagram, SequenceGroupBox};
 use super::render::SequenceChars;
-use super::text::trim_right;
+use super::text::{SequenceLine, trim_right};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SequenceGroupBoxBounds {
@@ -13,11 +14,11 @@ struct SequenceGroupBoxBounds {
 }
 
 pub(super) fn render_sequence_boxes(
-    lines: Vec<String>,
+    lines: Vec<SequenceLine>,
     diagram: &AsciiSequenceDiagram,
     layout: &SequenceLayout,
     chars: &SequenceChars,
-) -> Vec<String> {
+) -> Vec<SequenceLine> {
     let bounds = diagram
         .boxes
         .iter()
@@ -25,7 +26,7 @@ pub(super) fn render_sequence_boxes(
         .collect::<Vec<_>>();
     let content_width = lines
         .iter()
-        .map(|line| line.chars().count() + SEQUENCE_BOX_CONTENT_OFFSET)
+        .map(|line| line.len() + SEQUENCE_BOX_CONTENT_OFFSET)
         .max()
         .unwrap_or(0);
     let box_width = bounds
@@ -36,17 +37,15 @@ pub(super) fn render_sequence_boxes(
     let width = content_width.max(box_width);
 
     let mut canvas = Vec::with_capacity(lines.len() + 2);
-    canvas.push(vec![' '; width]);
+    canvas.push(SequenceLine::blank(width));
     for line in lines {
-        let mut row = Vec::with_capacity(width);
-        row.extend(std::iter::repeat_n(' ', SEQUENCE_BOX_CONTENT_OFFSET));
-        row.extend(line.chars());
-        if row.len() < width {
-            row.extend(std::iter::repeat_n(' ', width - row.len()));
-        }
+        let mut row = SequenceLine::blank(0);
+        row.push_spaces(SEQUENCE_BOX_CONTENT_OFFSET);
+        row.push_line(&line);
+        row.pad_to(width);
         canvas.push(row);
     }
-    canvas.push(vec![' '; width]);
+    canvas.push(SequenceLine::blank(width));
 
     for (sequence_box, bounds) in diagram.boxes.iter().zip(bounds) {
         draw_sequence_box(&mut canvas, sequence_box, bounds, chars);
@@ -79,7 +78,7 @@ fn sequence_box_bounds(
 }
 
 fn draw_sequence_box(
-    canvas: &mut [Vec<char>],
+    canvas: &mut [SequenceLine],
     sequence_box: &SequenceGroupBox,
     bounds: SequenceGroupBoxBounds,
     chars: &SequenceChars,
@@ -92,13 +91,21 @@ fn draw_sequence_box(
     let bottom = canvas.len() - 1;
 
     for x in bounds.left..=bounds.right {
-        canvas[top][x] = chars.horizontal;
-        canvas[bottom][x] = chars.horizontal;
+        canvas[top].set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
+        canvas[bottom].set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
     }
-    canvas[top][bounds.left] = chars.top_left;
-    canvas[top][bounds.right] = chars.top_right;
-    canvas[bottom][bounds.left] = chars.bottom_left;
-    canvas[bottom][bounds.right] = chars.bottom_right;
+    canvas[top].set_role(bounds.left, chars.top_left, AsciiColorRole::SequenceFrame);
+    canvas[top].set_role(bounds.right, chars.top_right, AsciiColorRole::SequenceFrame);
+    canvas[bottom].set_role(
+        bounds.left,
+        chars.bottom_left,
+        AsciiColorRole::SequenceFrame,
+    );
+    canvas[bottom].set_role(
+        bounds.right,
+        chars.bottom_right,
+        AsciiColorRole::SequenceFrame,
+    );
 
     for row in canvas.iter_mut().take(bottom).skip(top + 1) {
         draw_background_vertical(row, bounds.left, chars.vertical);
@@ -111,15 +118,15 @@ fn draw_sequence_box(
         for (offset, ch) in label.chars().enumerate() {
             let index = start + offset;
             if index < bounds.right {
-                canvas[top][index] = ch;
+                canvas[top].set_role(index, ch, AsciiColorRole::Text);
             }
         }
     }
 }
 
-fn draw_background_vertical(row: &mut [char], index: usize, vertical: char) {
+fn draw_background_vertical(row: &mut SequenceLine, index: usize, vertical: char) {
     // Mermaid boxes are background regions; do not corrupt foreground labels or frames.
-    if row[index] == ' ' {
-        row[index] = vertical;
+    if row.get(index) == Some(' ') {
+        row.set_role(index, vertical, AsciiColorRole::SequenceFrame);
     }
 }

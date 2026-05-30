@@ -69,13 +69,13 @@ Last updated: 2026-05-30
   Evidence: Forced truecolor and HTML parser-backed snapshots for bar and line charts.
   Handoff: DONE. Series role behavior is stable; sequence remains the final family adoption lane.
 
-- [ ] ACR-054 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests]
+- [x] ACR-054 [owner=codex] [deps=ACR-051] [scope=crates/merman-ascii/src/sequence,crates/merman-ascii/tests]
   Goal: Adopt color roles for sequence participants, lifelines, activations, messages, notes, boxes,
   and control frames.
   Validation: `cargo nextest run -p merman-ascii sequence_color`; `cargo nextest run -p merman-ascii sequence`
   Review: Sequence plain golden comparisons must remain unchanged.
   Evidence: Forced truecolor and HTML parser-backed snapshots for messages, notes, and frames.
-  Handoff: Background/fill interpretation for Mermaid `rect` and boxes remains deferred.
+  Handoff: DONE. Background/fill interpretation for Mermaid `rect` and boxes remains deferred.
 
 - [ ] ACR-060 [owner=unassigned] [deps=ACR-040] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Design or implement Mermaid style mapping for flowchart `classDef`, `style`, and
