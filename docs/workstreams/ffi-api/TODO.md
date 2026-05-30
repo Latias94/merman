@@ -1,15 +1,16 @@
 # FFI API — TODO
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## M0 — Scope And Protocol Freeze
 
-- [ ] FFI-010 [owner=planner] [deps=none] [scope=docs/adr,docs/workstreams/ffi-api]
+- [x] FFI-010 [owner=planner] [deps=none] [scope=docs/adr,docs/workstreams/ffi-api]
   Goal: Freeze the FFI strategy, initial protocol, and non-goals.
   Validation: ADR 0066, DESIGN.md, MILESTONES.md, EVIDENCE_AND_GATES.md, and WORKSTREAM.json agree.
   Evidence: docs/adr/0066-ffi-binding-strategy.md
-  Handoff: Keep this lane draft until the protocol names and result-code policy are reviewed.
+  Handoff: DONE. `DESIGN.md` freezes names, result codes, error JSON, buffer ownership, input rules,
+  options JSON, and threading for the first ABI slice.
 
 ## M1 — C ABI SVG Proof
 

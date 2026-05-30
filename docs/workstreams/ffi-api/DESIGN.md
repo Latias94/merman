@@ -125,6 +125,119 @@ void merman_buffer_free(MermanBuffer buffer);
 The exact protocol should be frozen in `docs/bindings/FFI_PROTOCOL.md` before the ABI is called
 stable.
 
+## Frozen M0 Protocol Decisions
+
+These decisions complete `FFI-010` and are the starting contract for `FFI-020`.
+
+### C Names
+
+Use the `merman_` prefix for all exported symbols.
+
+Initial public types:
+
+- `MermanBuffer`
+- `MermanResult`
+
+Initial public functions:
+
+- `merman_render_svg`
+- `merman_buffer_free`
+
+Planned follow-up functions:
+
+- `merman_parse_json`
+- `merman_layout_json`
+
+### Result Codes
+
+`MermanResult.code == 0` means success. Non-zero codes are errors.
+
+| Code | Name | Meaning |
+| ---: | --- | --- |
+| 0 | `MERMAN_OK` | Success. |
+| 1 | `MERMAN_INVALID_ARGUMENT` | Pointer/length combination or option value is invalid. |
+| 2 | `MERMAN_UTF8_ERROR` | Source or options bytes are not valid UTF-8. |
+| 3 | `MERMAN_OPTIONS_JSON_ERROR` | Options JSON could not be parsed. |
+| 4 | `MERMAN_NO_DIAGRAM` | No Mermaid diagram was detected. |
+| 5 | `MERMAN_PARSE_ERROR` | Mermaid parsing failed. |
+| 6 | `MERMAN_RENDER_ERROR` | Layout, SVG, or postprocessing failed. |
+| 7 | `MERMAN_UNSUPPORTED_FORMAT` | Requested output is not enabled or not implemented. |
+| 8 | `MERMAN_PANIC` | Rust panic was caught at the ABI boundary. |
+| 9 | `MERMAN_INTERNAL_ERROR` | Serialization, allocation, or other unexpected internal failure. |
+
+### Payloads
+
+On success, `MermanResult.data` contains the raw output for the called function:
+
+- `merman_render_svg`: UTF-8 SVG bytes
+- future `merman_parse_json`: UTF-8 semantic JSON bytes
+- future `merman_layout_json`: UTF-8 layout JSON bytes
+
+On error, `MermanResult.data` contains UTF-8 JSON:
+
+```json
+{
+  "version": 1,
+  "ok": false,
+  "code": 6,
+  "code_name": "MERMAN_RENDER_ERROR",
+  "message": "layout failed: ..."
+}
+```
+
+Callers must ignore unknown fields and tolerate missing optional fields.
+
+### Memory Ownership
+
+- Every non-empty `MermanResult.data` returned by Rust must be released with
+  `merman_buffer_free`.
+- `merman_buffer_free` is a no-op for `data == NULL`.
+- Double-free remains caller misuse.
+- The implementation may allocate through `Vec<u8>` internally, but callers must treat the buffer as
+  opaque Rust-owned memory.
+
+### Input Rules
+
+- `source == NULL && source_len == 0` is accepted as an empty source and will usually return
+  `MERMAN_NO_DIAGRAM`.
+- `source == NULL && source_len > 0` returns `MERMAN_INVALID_ARGUMENT`.
+- `options_json == NULL && options_len == 0` means defaults.
+- `options_json == NULL && options_len > 0` returns `MERMAN_INVALID_ARGUMENT`.
+- Inputs must be UTF-8 when their length is non-zero.
+
+### Options JSON
+
+Options use a versioned, tolerant JSON object:
+
+```json
+{
+  "version": 1,
+  "parse": {
+    "suppress_errors": false
+  },
+  "layout": {
+    "viewport_width": 800.0,
+    "viewport_height": 600.0,
+    "text_measurer": "vendored",
+    "math_renderer": "none"
+  },
+  "svg": {
+    "diagram_id": null,
+    "pipeline": "parity"
+  }
+}
+```
+
+Defaults match `HeadlessRenderer::default()` unless explicitly documented otherwise. Unknown fields
+are ignored. Invalid known values return `MERMAN_INVALID_ARGUMENT` or
+`MERMAN_OPTIONS_JSON_ERROR`, depending on whether the JSON parsed successfully.
+
+### Threading
+
+The first ABI slice is stateless and thread-safe by construction. A future opaque engine handle may
+be added only if benchmarks show repeated setup cost matters or host configuration needs long-lived
+state.
+
 ## Closeout Condition
 
 This lane can close when the first FFI crate exports the SVG/JSON C ABI, header consumers can link

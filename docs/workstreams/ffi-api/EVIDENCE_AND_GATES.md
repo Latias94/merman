@@ -1,7 +1,16 @@
 # FFI API — Evidence And Gates
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
+
+## Current Evidence
+
+- 2026-05-30: `FFI-010` completed by freezing the initial ABI protocol decisions in
+  `DESIGN.md`.
+- 2026-05-30: `git diff --check -- docs/workstreams/ffi-api` passed after the `FFI-010`
+  protocol-freeze updates.
+- 2026-05-30: `git diff --check -- docs/adr/0066-ffi-binding-strategy.md docs/workstreams/ffi-api`
+  passed for the initial ADR/workstream creation.
 
 ## Gate Set
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ffi-api",
   "title": "FFI API",
-  "status": "draft",
+  "status": "active",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "Downstream hosts need a stable in-process ABI for parsing, layout, SVG rendering, and later raster outputs without moving unsafe code into the safe Rust crates.",
@@ -62,7 +62,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "FFI-010",
-    "notes": "Keep this lane draft until result-code names, buffer ownership rules, and the first C ABI symbol names are reviewed. Start implementation with FFI-020 after FFI-010 is checked off."
+    "next_task": "FFI-020",
+    "notes": "FFI-010 is complete. Start implementation with FFI-020: create crates/merman-ffi, export merman_render_svg and merman_buffer_free, and cover success/error/free/panic behavior."
   }
 }

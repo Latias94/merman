@@ -1,6 +1,6 @@
 # FFI API — Handoff
 
-Status: Draft
+Status: Active
 Last updated: 2026-05-30
 
 ## Current State
@@ -12,17 +12,26 @@ ADR 0066 records the binding strategy:
 - existing safe crates keep unsafe code out
 - SVG/JSON are the first deliverables; raster and RaTeX math stay feature-gated
 
-The workstream is open as a draft because the exact C symbol names, result-code enum, and error
-payload format still need a short review before implementation.
+`FFI-010` is complete. `DESIGN.md` now freezes the first-slice protocol:
+
+- types: `MermanBuffer`, `MermanResult`
+- first symbols: `merman_render_svg`, `merman_buffer_free`
+- planned symbols: `merman_parse_json`, `merman_layout_json`
+- result codes: `MERMAN_OK` through `MERMAN_INTERNAL_ERROR`
+- error payload: UTF-8 JSON in `MermanResult.data`
+- success payload: raw output bytes
+- options: versioned tolerant JSON
+- first ABI slice: stateless and thread-safe
 
 ## Next Task
 
-Start with `FFI-010`:
+Start with `FFI-020`:
 
-- review `DESIGN.md` and ADR 0066 for naming/protocol gaps
-- decide whether non-zero errors return UTF-8 text or structured JSON
-- decide final names for `MermanBuffer`, `MermanResult`, and first exported functions
-- then mark `FFI-010` complete and begin `FFI-020`
+- add `crates/merman-ffi`
+- export `merman_render_svg`
+- export `merman_buffer_free`
+- test success, invalid pointer/length pairs, invalid UTF-8, no diagram, parse/render errors, panic
+  containment, and buffer free behavior
 
 ## Guardrails
 
