@@ -1,6 +1,6 @@
 # ASCII Class ER Parallel Routing - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Lane Opening
@@ -50,3 +50,10 @@ Primary gates:
 - `cargo nextest run -p merman-ascii`
 - `cargo fmt --all --check`
 - `git diff --check`
+
+Closeout result:
+
+- Public support docs now describe same-endpoint class/ER parallel relationship lanes.
+- Full `merman-ascii` package tests, lint, fmt, and whitespace gates passed on 2026-05-30.
+- Remaining topology work stays outside this lane: mixed-parallel endpoint pairs, cyclic layouts,
+  spanning-level routing, and dense relationship routing.

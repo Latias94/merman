@@ -1,6 +1,6 @@
 # ASCII Class ER Parallel Routing
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -66,3 +66,7 @@ This lane can close when:
 - focused and full `merman-ascii` gates pass,
 - support docs describe the shipped parallel subset,
 - and broader dense topology work remains split or deferred.
+
+Closed on 2026-05-30. The shipped behavior covers same-endpoint parallel relationship lanes for
+classDiagram and erDiagram ASCII output. Mixed parallel endpoint pairs, cyclic layouts,
+spanning-level edges, and dense routing remain explicit follow-on topology work.
