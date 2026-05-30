@@ -19,7 +19,9 @@ use label::{
     push_label_on_canvas_lines, push_label_on_horizontal_line, push_label_on_vertical_line,
 };
 use path::{Port, StepDirection, merge_grid_path, route_grid_path, step_direction};
-use plan::{PlannedRouteCellKind, RoutePlan, plan_top_down_direct_route};
+use plan::{
+    PlannedRouteCellKind, RoutePlan, plan_left_right_direct_route, plan_top_down_direct_route,
+};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
@@ -207,6 +209,15 @@ fn draw_left_right_edge(
         return;
     }
 
+    if from.center_y() == to.center_y() && from.x < to.x {
+        if let Some(plan) =
+            plan_left_right_direct_route(&graph_layout.nodes, from, to, edge, charset)
+        {
+            paint_route_plan(drawing, &plan);
+            return;
+        }
+    }
+
     if draw_left_right_grid_path_edge(drawing, graph_layout, from, to, edge, charset) {
         return;
     }
@@ -239,28 +250,7 @@ fn draw_left_right_edge(
             edge,
             charset,
         );
-        return;
     }
-
-    if to.x <= from.right() + 1 {
-        return;
-    }
-
-    let y = from.center_y();
-    if from.shape != GraphNodeShape::Diamond {
-        set_edge_line(drawing.canvas, from.right(), y, charset.right_connector);
-    }
-    let start = from.right() + 1;
-    let end = to.x - 1;
-    let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    for x in start..end {
-        set_route_cell(drawing.canvas, drawing.route_cells, x, y, line);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(drawing.canvas, drawing.route_cells, end, y, line),
-        GraphEdgeArrow::Point => set_edge_arrow(drawing.canvas, end, y, charset.arrow_right),
-    }
-    push_label_on_horizontal_line(drawing.labels, start, end, y, edge.label.as_deref());
 }
 
 fn draw_left_right_grid_path_edge(
