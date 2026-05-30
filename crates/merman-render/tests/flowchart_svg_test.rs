@@ -444,3 +444,51 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
         "expected math source delimiters to be replaced by rendered SVG: {svg}"
     );
 }
+
+#[cfg(feature = "ratex-math")]
+#[test]
+fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
+    let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("fixtures")
+        .join("flowchart")
+        .join("upstream_docs_math_flowcharts_001.mmd");
+    let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
+    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            math_renderer: Some(math_renderer),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    let inline_formula_count = svg
+        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+        .count();
+    assert_eq!(
+        inline_formula_count, 7,
+        "expected every pure math label in the docs fixture to render through RaTeX: {svg}"
+    );
+    assert!(
+        !svg.contains("$$"),
+        "expected supported flowchart fixture formulas to replace source delimiters: {svg}"
+    );
+}

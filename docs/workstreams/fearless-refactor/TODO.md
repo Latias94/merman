@@ -941,6 +941,11 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   merman-cli`, `cargo check -p merman-cli --features ratex-math`, `cargo nextest run -p
   merman-render --features ratex-math --lib ratex_math_renderer`, and `cargo fmt --check` passed on
   2026-05-30.
+- [x] Audit RaTeX dimensions against Mermaid/KaTeX before adding calibration constants.
+  Evidence: `RATEX_MATH_AUDIT.md` records local Node/KaTeX probe facts versus RaTeX layout metrics
+  for representative Flowchart and Sequence formulas, and explains why a single global scale would
+  be incorrect. Added feature-gated fixture coverage for Flowchart docs math labels and the current
+  Sequence mixed-label boundary.
 
 ## P3: Documentation Cleanup
 

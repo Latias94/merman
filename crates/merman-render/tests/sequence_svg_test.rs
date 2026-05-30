@@ -370,3 +370,50 @@ Note right of B: $$x^2$$
         "expected math source delimiters to be replaced by rendered SVG: {svg}"
     );
 }
+
+#[cfg(feature = "ratex-math")]
+#[test]
+fn sequence_docs_math_fixture_documents_ratex_supported_and_mixed_label_boundary() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join("upstream_docs_math_sequence_002.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
+    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    let svg = render_sequence_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            math_renderer: Some(math_renderer),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    let inline_formula_count = svg
+        .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)
+        .count();
+    assert!(
+        inline_formula_count >= 5,
+        "expected participant and note math labels to render through RaTeX: {svg}"
+    );
+    assert!(
+        svg.contains(r#"Solve: $$\sqrt{2+2}$$"#) && svg.contains(r#"Answer: $$2$$"#),
+        "mixed prose/math sequence messages are an explicit follow-up boundary: {svg}"
+    );
+}
