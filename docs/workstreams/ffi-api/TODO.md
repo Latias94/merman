@@ -22,12 +22,13 @@ Last updated: 2026-05-30
   Handoff: DONE. Added `merman_render_svg`, `merman_buffer_free`, owned buffer transfer, structured
   error JSON, options JSON parsing, panic containment, and focused ABI tests.
 
-- [ ] FFI-030 [owner=unassigned] [deps=FFI-020] [scope=crates/merman-ffi,docs/bindings]
+- [x] FFI-030 [owner=codex] [deps=FFI-020] [scope=crates/merman-ffi,docs/bindings]
   Goal: Add a public C header and protocol doc for result codes, buffers, options, and errors.
   Validation: C header compile/link smoke test.
   Review: Check ABI naming and memory ownership clarity.
   Evidence: docs/bindings/FFI_PROTOCOL.md and a C smoke test.
-  Handoff: Header docs must be enough for a non-Rust caller to free all outputs correctly.
+  Handoff: DONE. Added `include/merman.h`, `docs/bindings/FFI_PROTOCOL.md`, and
+  `header_smoke` C compile coverage.
 
 ## M2 — JSON Surfaces
 

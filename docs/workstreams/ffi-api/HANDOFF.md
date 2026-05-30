@@ -32,15 +32,21 @@ The first implementation covers SVG success, readable pipeline options, invalid 
 pairs, invalid UTF-8, empty/no-diagram input, invalid options JSON, feature-gated RaTeX handling,
 null buffer free, and panic containment.
 
+`FFI-030` is complete:
+
+- `crates/merman-ffi/include/merman.h` documents the C ABI.
+- `docs/bindings/FFI_PROTOCOL.md` documents result codes, memory ownership, inputs, errors, and
+  options.
+- `crates/merman-ffi/tests/header_smoke.rs` compiles a small C consumer against the header.
+
 ## Next Task
 
-Start with `FFI-030`:
+Start with `FFI-040`:
 
-- add a public C header for `MermanBuffer`, `MermanResult`, result codes, `merman_render_svg`, and
-  `merman_buffer_free`
-- add `docs/bindings/FFI_PROTOCOL.md`
-- add a C header compile/link smoke test
-- keep parse/layout JSON for `FFI-040`
+- add `merman_parse_json`
+- add `merman_layout_json`
+- extend `include/merman.h` and `docs/bindings/FFI_PROTOCOL.md`
+- add ABI tests for parse/layout JSON success and error behavior
 
 ## Guardrails
 
@@ -54,8 +60,8 @@ Start with `FFI-030`:
 
 Implement only:
 
-- `crates/merman-ffi/include/merman.h`
-- `docs/bindings/FFI_PROTOCOL.md`
-- a test that compiles/links a tiny C consumer against the header
+- `merman_parse_json`
+- `merman_layout_json`
+- parse/layout JSON tests through the C ABI
 
-Leave parse/layout JSON and UniFFI for later slices.
+Leave raster and UniFFI for later slices.

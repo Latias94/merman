@@ -62,7 +62,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "FFI-030",
-    "notes": "FFI-010 and FFI-020 are complete. Start FFI-030: add public C header, protocol documentation, and a C header compile/link smoke test. Keep parse/layout JSON for FFI-040."
+    "next_task": "FFI-040",
+    "notes": "FFI-010 through FFI-030 are complete. Start FFI-040: expose merman_parse_json and merman_layout_json through the same result/buffer/error policy."
   }
 }

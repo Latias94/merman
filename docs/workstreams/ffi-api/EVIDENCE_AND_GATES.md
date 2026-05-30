@@ -21,6 +21,14 @@ Last updated: 2026-05-30
   passed.
 - 2026-05-30:
   `git diff --check -- Cargo.toml Cargo.lock crates/merman-ffi docs/workstreams/ffi-api` passed.
+- 2026-05-30: `FFI-030` completed the public C header and protocol doc.
+- 2026-05-30: `cargo fmt -p merman-ffi -- --check` passed after header/protocol changes.
+- 2026-05-30: `cargo nextest run -p merman-ffi header_smoke` passed (`1` test).
+- 2026-05-30: `cargo nextest run -p merman-ffi` passed (`10` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed (`10` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --features ratex-math --all-targets -- -D warnings`
+  passed.
 
 ## Gate Set
 
@@ -80,7 +88,7 @@ the reason and replacement coverage here.
 - `docs/workstreams/ffi-api/DESIGN.md`
 - `docs/workstreams/ffi-api/TODO.md`
 - `docs/workstreams/ffi-api/MILESTONES.md`
-- future `docs/bindings/FFI_PROTOCOL.md`
+- `docs/bindings/FFI_PROTOCOL.md`
 - `crates/merman-ffi` tests
 
 ## Notes

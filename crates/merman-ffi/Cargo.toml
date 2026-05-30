@@ -26,3 +26,6 @@ raster = ["merman/raster"]
 merman = { path = "../merman", version = "0.6.0", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+cc = "1.2"

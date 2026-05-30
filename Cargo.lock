@@ -1741,6 +1741,7 @@ dependencies = [
 name = "merman-ffi"
 version = "0.6.0"
 dependencies = [
+ "cc",
  "merman",
  "serde",
  "serde_json",
