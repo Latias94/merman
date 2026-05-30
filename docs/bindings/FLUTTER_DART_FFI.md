@@ -35,6 +35,13 @@ Android packaging smoke:
 .\platforms\flutter\tool\android-smoke.ps1
 ```
 
+Combined platform gate:
+
+```powershell
+.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
+.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices -RunFlutterAndroidSmoke
+```
+
 Use `../../target/debug/libmerman_ffi.so` on Linux and
 `../../target/debug/libmerman_ffi.dylib` on macOS.
 

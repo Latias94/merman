@@ -41,6 +41,12 @@ cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings
 .\platforms\android\build-android.ps1 -Targets aarch64-linux-android
 ```
 
+Combined platform gate:
+
+```powershell
+.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
+```
+
 ## Follow-On Packaging
 
 - Build every supported Android ABI in CI.
