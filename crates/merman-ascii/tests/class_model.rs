@@ -123,6 +123,30 @@ fn class_parser_relationship_layouts_render_unrelated_classes_as_components() {
 }
 
 #[test]
+fn class_parser_parallel_relationship_layout_renders_each_lane() {
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Dog\nAnimal <|-- Dog : parent\nAnimal <|-- Dog : base",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel class relationships should render distinct lanes");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            " +--------+\n",
+            " | Animal |\n",
+            " +--------+\n",
+            "  ^      ^\n",
+            "parent  base\n",
+            "  |      |\n",
+            "   +-----+\n",
+            "   | Dog |\n",
+            "   +-----+\n",
+        )
+    );
+}
+
+#[test]
 fn class_parser_extension_star_renders_all_children() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",

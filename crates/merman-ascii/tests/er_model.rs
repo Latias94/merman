@@ -187,3 +187,28 @@ fn er_parser_relationship_layouts_render_unrelated_entities_as_components() {
         )
     );
 }
+
+#[test]
+fn er_parser_parallel_relationship_layout_renders_each_lane() {
+    let rendered = render_er(
+        "erDiagram\nA ||--|| B : owns\nA ||..o{ B : contains",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parallel ER relationships should render distinct lanes");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "     +---+\n",
+            "     | A |\n",
+            "     +---+\n",
+            " ||      ||\n",
+            "owns  contains\n",
+            " |       :\n",
+            " ||      o{\n",
+            "     +---+\n",
+            "     | B |\n",
+            "     +---+\n",
+        )
+    );
+}

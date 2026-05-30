@@ -152,6 +152,9 @@ fn render_class_component(
     if layouts.is_empty() {
         return Ok(relation_graph::render_stacked_boxes(boxes));
     }
+    if is_same_endpoint_parallel_layout(layouts) {
+        return render_parallel_vertical_relations(boxes, layouts, charset);
+    }
     if layouts.len() == 1 {
         let layout = layouts[0];
         let top = find_box(boxes, layout.top_id)?;
@@ -473,6 +476,44 @@ fn render_vertical_relation(
 }
 
 type PlacedClassBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
+
+fn is_same_endpoint_parallel_layout(layouts: &[RelationLayout<'_>]) -> bool {
+    let Some(first) = layouts.first() else {
+        return false;
+    };
+    layouts.len() > 1
+        && layouts
+            .iter()
+            .all(|layout| layout.top_id == first.top_id && layout.bottom_id == first.bottom_id)
+}
+
+fn render_parallel_vertical_relations(
+    boxes: &[RenderedClassBox],
+    layouts: &[RelationLayout<'_>],
+    charset: ClassCharset,
+) -> Result<String> {
+    let first = layouts[0];
+    let top = find_box(boxes, first.top_id)?;
+    let bottom = find_box(boxes, first.bottom_id)?;
+    let lanes = layouts
+        .iter()
+        .map(|layout| parallel_class_lane_rows(*layout, charset))
+        .collect::<Vec<_>>();
+
+    Ok(relation_graph::render_parallel_vertical_stack(
+        top, bottom, &lanes, 2,
+    ))
+}
+
+fn parallel_class_lane_rows(layout: RelationLayout<'_>, charset: ClassCharset) -> Vec<String> {
+    let marker = marker_char(layout.marker, layout.marker_side, charset).to_string();
+    let line = line_char(layout.line, charset).to_string();
+    let label = layout.label.unwrap_or("").to_string();
+    match layout.marker_side {
+        MarkerSide::Top => vec![marker, label, line],
+        MarkerSide::Bottom => vec![line, label, marker],
+    }
+}
 
 fn render_layered_relations(
     boxes: &[RenderedClassBox],

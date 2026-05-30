@@ -14,16 +14,16 @@ Last updated: 2026-05-30
 
 ## M1 - Parallel Contract Tests
 
-- [ ] ACEPR-020 [owner=unassigned] [deps=ACEPR-010] [scope=crates/merman-ascii/tests]
+- [x] ACEPR-020 [owner=codex] [deps=ACEPR-010] [scope=crates/merman-ascii/tests]
   Goal: Add class and ER parser-backed tests for multiple relationships between the same endpoints.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`
   Review: Tests assert public output and fail red on the old parallel diagnostics.
   Evidence: class/ER parallel relationship tests.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Parser-backed class and ER tests now assert same-endpoint parallel lanes.
 
 ## M2 - Shared Parallel Lane Helper
 
-- [ ] ACEPR-030 [owner=unassigned] [deps=ACEPR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
+- [x] ACEPR-030 [owner=codex] [deps=ACEPR-020] [scope=crates/merman-ascii/src/relation_graph.rs,crates/merman-ascii/src/class,crates/merman-ascii/src/er]
   Goal: Render simple same-endpoint parallel relationships with distinct terminal lanes.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`
@@ -31,7 +31,8 @@ Last updated: 2026-05-30
   and cardinality ownership.
   Evidence: Parallel tests pass and existing chain, star, crossing, and component behavior remains
   stable.
-  Handoff: Final status must be DONE, DONE_WITH_CONCERNS, BLOCKED, or NEEDS_CONTEXT.
+  Handoff: DONE. Simple same-endpoint parallel layouts render through shared vertical lane
+  formatting while adapters retain semantics.
 
 ## M3 - Docs And Closeout
 

@@ -49,6 +49,16 @@
       "date": "2026-05-30",
       "task": "ACEPR-010",
       "result": "opened follow-on lane for same-endpoint class/ER parallel relationship routing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEPR-020",
+      "result": "added red/green parser-backed class and ER tests for same-endpoint parallel relationships"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEPR-030",
+      "result": "shared parallel vertical lane formatting now renders simple same-endpoint class/ER parallel relationships"
     }
   ],
   "adr_refs": [
@@ -65,7 +75,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACEPR-020",
-    "notes": "Start with parser-backed same-endpoint parallel relationship tests. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
+    "next_task": "ACEPR-040",
+    "notes": "Update support docs, run full merman-ascii gates, and close the lane. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
   }
 }

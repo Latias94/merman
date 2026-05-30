@@ -99,6 +99,9 @@ fn render_er_component(
     if relationships.is_empty() {
         return Ok(relation_graph::render_stacked_boxes(boxes));
     }
+    if is_same_endpoint_parallel_relationship(relationships) {
+        return render_parallel_vertical_relationships(boxes, relationships, charset);
+    }
     if relationships.len() == 1 {
         let relationship = &relationships[0];
         let top = find_box(boxes, &relationship.entity_a)?;
@@ -321,6 +324,49 @@ fn render_vertical_relationship(
 }
 
 type PlacedEntityBox<'a> = relation_graph::PlacedRelationGraphBox<'a>;
+
+fn is_same_endpoint_parallel_relationship(relationships: &[ErRelationshipRenderModel]) -> bool {
+    let Some(first) = relationships.first() else {
+        return false;
+    };
+    relationships.len() > 1
+        && relationships.iter().all(|relationship| {
+            relationship.entity_a == first.entity_a && relationship.entity_b == first.entity_b
+        })
+}
+
+fn render_parallel_vertical_relationships(
+    boxes: &[RenderedEntityBox],
+    relationships: &[ErRelationshipRenderModel],
+    charset: ErCharset,
+) -> Result<String> {
+    let first = &relationships[0];
+    let top = find_box(boxes, &first.entity_a)?;
+    let bottom = find_box(boxes, &first.entity_b)?;
+    let lanes = relationships
+        .iter()
+        .map(|relationship| parallel_er_lane_rows(relationship, charset))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(relation_graph::render_parallel_vertical_stack(
+        top, bottom, &lanes, 2,
+    ))
+}
+
+fn parallel_er_lane_rows(
+    relationship: &ErRelationshipRenderModel,
+    charset: ErCharset,
+) -> Result<Vec<String>> {
+    let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
+    let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
+    let line = relationship_line(&relationship.rel_spec.rel_type, charset)?;
+    Ok(vec![
+        top_cardinality.to_string(),
+        relationship.role_a.trim().to_string(),
+        line.to_string(),
+        bottom_cardinality.to_string(),
+    ])
+}
 
 fn render_layered_relationships(
     boxes: &[RenderedEntityBox],

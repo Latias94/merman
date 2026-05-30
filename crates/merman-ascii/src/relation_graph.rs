@@ -186,6 +186,49 @@ pub(crate) fn render_vertical_stack(
     rendered
 }
 
+pub(crate) fn render_parallel_vertical_stack(
+    top: &RelationGraphBox,
+    bottom: &RelationGraphBox,
+    lanes: &[Vec<String>],
+    lane_gap: usize,
+) -> String {
+    let lane_widths = lanes
+        .iter()
+        .map(|lane| {
+            lane.iter()
+                .map(|text| display_width(text))
+                .max()
+                .unwrap_or(1)
+                .max(1)
+        })
+        .collect::<Vec<_>>();
+    let lanes_width = lane_widths.iter().sum::<usize>()
+        + lane_gap.saturating_mul(lane_widths.len().saturating_sub(1));
+    let lane_center = lanes_width / 2;
+    let center = (top.width / 2).max(bottom.width / 2).max(lane_center);
+    let lane_left = center.saturating_sub(lane_center);
+    let row_count = lanes.iter().map(Vec::len).max().unwrap_or(0);
+
+    let mut relation_lines = Vec::new();
+    for row_index in 0..row_count {
+        let mut line = String::new();
+        line.extend(std::iter::repeat_n(' ', lane_left));
+        for (lane_index, lane) in lanes.iter().enumerate() {
+            if lane_index > 0 {
+                line.extend(std::iter::repeat_n(' ', lane_gap));
+            }
+            let text = lane.get(row_index).map(String::as_str).unwrap_or("");
+            line.push_str(&centered_cell(text, lane_widths[lane_index]));
+        }
+        while line.ends_with(' ') {
+            line.pop();
+        }
+        relation_lines.push(line);
+    }
+
+    render_vertical_stack(top, bottom, center, relation_lines)
+}
+
 pub(crate) fn marker_line(marker: char, center: usize) -> String {
     let mut line = String::new();
     line.extend(std::iter::repeat_n(' ', center));
@@ -512,6 +555,17 @@ fn render_box(relation_box: &RelationGraphBox) -> String {
     let mut rendered = relation_box.lines.join("\n");
     rendered.push('\n');
     rendered
+}
+
+fn centered_cell(text: &str, width: usize) -> String {
+    let text_width = display_width(text);
+    let left_padding = width.saturating_sub(text_width) / 2;
+    let right_padding = width.saturating_sub(text_width + left_padding);
+    let mut cell = String::new();
+    cell.extend(std::iter::repeat_n(' ', left_padding));
+    cell.push_str(text);
+    cell.extend(std::iter::repeat_n(' ', right_padding));
+    cell
 }
 
 fn align_box(relation_box: &RelationGraphBox, center: usize) -> Vec<String> {
