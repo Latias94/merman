@@ -41,13 +41,15 @@ Last updated: 2026-05-30
 
 ## M3 — Package Gate Matrix
 
-- [ ] WRV-040 [owner=codex] [deps=WRV-030] [scope=docs/workstreams/workspace-release-versioning]
+- [x] WRV-040 [owner=codex] [deps=WRV-030] [scope=docs/workstreams/workspace-release-versioning]
   Goal: Record package verification results in dependency order.
   Validation: cargo package commands recorded in EVIDENCE_AND_GATES.md.
   Review: Distinguish package file-list checks from full crates.io dependency verification.
   Evidence: package output for publishable crates.
   Context: docs/workstreams/workspace-release-versioning/CONTEXT.jsonl
-  Handoff: Do not run `cargo publish`; this lane only prepares evidence and order.
+  Handoff: DONE. Recorded package matrix in `docs/release/PUBLISH_ORDER.md` and
+  `EVIDENCE_AND_GATES.md`. Root packages package-verify where they have no unpublished workspace
+  dependencies; downstream full verification is blocked until upstream `0.7.0` crates are published.
 
 ## M4 — Closeout
 

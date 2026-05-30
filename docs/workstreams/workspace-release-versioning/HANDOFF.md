@@ -5,8 +5,8 @@ Last updated: 2026-05-30
 
 ## Current State
 
-`WRV-010`, `WRV-020`, and `WRV-030` are complete. The binding ABI work is not the blocker; release
-packaging is.
+`WRV-010`, `WRV-020`, `WRV-030`, and `WRV-040` are complete. The binding ABI work is not the
+blocker; release packaging is.
 
 Confirmed:
 
@@ -20,16 +20,16 @@ Confirmed:
   newer than `0.6.0`.
 - `docs/release/PUBLISH_ORDER.md` selects `0.7.0` as the next release target.
 - Workspace package version and internal dependency requirements are aligned to `0.7.0`.
+- `docs/release/PUBLISH_ORDER.md` records the package gate matrix.
 
 ## Next Task
 
-`WRV-040`: record the package gate matrix in dependency order.
+`WRV-050`: verify and close this lane.
 
 Recommended direction:
 
-- Run package file-list checks for binding crates.
-- Run full package verification where crates.io dependency availability allows it.
-- Record blocked checks without weakening manifests.
+- Confirm final docs and manifest state.
+- Record any remaining crates.io availability blockers as release-operator handoff notes.
 - Do not run `cargo publish` in this lane without an explicit release command.
 
 ## Guardrails

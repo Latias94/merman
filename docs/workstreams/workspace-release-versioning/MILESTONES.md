@@ -42,6 +42,10 @@ Exit criteria:
 - Full package verification results are recorded where possible.
 - Remaining crates.io-only blockers are explicit.
 
+Status: complete. `docs/release/PUBLISH_ORDER.md` records pass/blocker state in dependency order.
+The remaining blockers are expected crates.io availability blockers for unpublished `0.7.0`
+workspace crates.
+
 ## M4 — Closeout
 
 Exit criteria:

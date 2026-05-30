@@ -77,3 +77,22 @@ Use narrower formatting checks if this lane only edits release docs and manifest
 - 2026-05-30: `cargo check -p merman-uniffi` passed after version alignment.
 - 2026-05-30: `rg '0\.6\.0' Cargo.toml Cargo.lock crates -g Cargo.toml` found no remaining
   manifest or lockfile references.
+- 2026-05-30: `cargo package -p dugong-graphlib --allow-dirty` passed.
+- 2026-05-30: `cargo package -p manatee --allow-dirty` passed.
+- 2026-05-30: `cargo package -p merman-core --allow-dirty` passed.
+- 2026-05-30: `cargo package -p dugong --allow-dirty` failed as expected until
+  `dugong-graphlib 0.7.0` is available on crates.io.
+- 2026-05-30: `cargo package -p merman-render --allow-dirty` failed as expected until
+  `dugong 0.7.0` is available on crates.io.
+- 2026-05-30: `cargo package -p merman-ascii --allow-dirty --list` passed.
+- 2026-05-30: `cargo package -p merman --allow-dirty --list` passed.
+- 2026-05-30: `cargo package -p merman-bindings-core --allow-dirty --list` passed.
+- 2026-05-30: `cargo package -p merman-bindings-core --allow-dirty` failed as expected until
+  `merman 0.7.0` is available on crates.io.
+- 2026-05-30: `cargo package -p merman-ffi --allow-dirty --list` passed.
+- 2026-05-30: `cargo package -p merman-ffi --allow-dirty` failed as expected until
+  `merman-bindings-core 0.7.0` is available on crates.io.
+- 2026-05-30: `cargo package -p merman-uniffi --allow-dirty --list` passed.
+- 2026-05-30: `cargo package -p merman-uniffi --allow-dirty` failed as expected until
+  `merman-bindings-core 0.7.0` is available on crates.io.
+- 2026-05-30: `cargo package -p merman-cli --allow-dirty --list` passed.

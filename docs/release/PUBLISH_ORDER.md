@@ -78,6 +78,27 @@ cargo package -p merman-uniffi --allow-dirty --list
 After each upstream crate is published and the index is updated, full package verification can move
 one step farther down the dependency chain.
 
+## Current Package Matrix
+
+As of 2026-05-30:
+
+| Crate | Gate | Current result |
+| --- | --- | --- |
+| `dugong-graphlib` | `cargo package -p dugong-graphlib --allow-dirty` | Pass |
+| `manatee` | `cargo package -p manatee --allow-dirty` | Pass |
+| `merman-core` | `cargo package -p merman-core --allow-dirty` | Pass |
+| `dugong` | `cargo package -p dugong --allow-dirty` | Blocked until `dugong-graphlib 0.7.0` is published |
+| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.7.0` is published |
+| `merman-ascii` | `cargo package -p merman-ascii --allow-dirty --list` | Pass |
+| `merman` | `cargo package -p merman --allow-dirty --list` | Pass |
+| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty --list` | Pass |
+| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty` | Blocked until `merman 0.7.0` is published |
+| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty --list` | Pass |
+| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0` is published |
+| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty --list` | Pass |
+| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0` is published |
+| `merman-cli` | `cargo package -p merman-cli --allow-dirty --list` | Pass |
+
 ## Publish Guardrail
 
 Do not run `cargo publish` as part of an implementation lane unless the release operator explicitly

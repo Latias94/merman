@@ -61,7 +61,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "WRV-040",
-    "notes": "Workspace and internal dependency versions are aligned to 0.7.0. Continue with package gate matrix evidence."
+    "next_task": "WRV-050",
+    "notes": "Package gate matrix is recorded. Continue with lane verification and closeout."
   }
 }
