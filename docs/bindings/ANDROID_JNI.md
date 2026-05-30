@@ -47,6 +47,21 @@ Combined platform gate:
 .\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices
 ```
 
+To verify the standalone Android library module with Gradle 9.x:
+
+```powershell
+& "<gradle-install-dir>\bin\gradle.bat" -p platforms/android assembleRelease
+```
+
+The platform gate can run the same AAR packaging check after building native slices:
+
+```powershell
+.\scripts\verify-platform-bindings.ps1 -BuildAndroidSlices -RunAndroidGradleBuild -GradlePath "<gradle-install-dir>\bin\gradle.bat"
+```
+
+`-GradlePath` accepts either the Gradle executable path or the Gradle `bin` directory. You can also
+set `MERMAN_GRADLE` instead of passing the parameter.
+
 ## Follow-On Packaging
 
 - Build every supported Android ABI in CI.

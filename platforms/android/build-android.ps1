@@ -6,6 +6,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-Native {
+    param(
+        [string] $FilePath,
+        [string[]] $ArgumentList
+    )
+
+    & $FilePath @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
+    }
+}
+
 function Abi-ForTarget {
     param([string] $Target)
     switch ($Target) {
@@ -66,12 +78,12 @@ foreach ($target in $Targets) {
     Set-Item -Path "Env:$envName" -Value $clang
 
     Write-Host "Building merman-ffi for $target ($abi)"
-    rustup target add $target | Out-Host
+    Invoke-Native "rustup" @("target", "add", $target)
     if ($Profile -eq "release") {
-        cargo build -p merman-ffi --target $target --release --manifest-path (Join-Path $repoRoot "Cargo.toml") | Out-Host
+        Invoke-Native "cargo" @("build", "-p", "merman-ffi", "--target", $target, "--release", "--manifest-path", (Join-Path $repoRoot "Cargo.toml"))
         $artifact = Join-Path $repoRoot "target\$target\release\libmerman_ffi.so"
     } else {
-        cargo build -p merman-ffi --target $target --manifest-path (Join-Path $repoRoot "Cargo.toml") | Out-Host
+        Invoke-Native "cargo" @("build", "-p", "merman-ffi", "--target", $target, "--manifest-path", (Join-Path $repoRoot "Cargo.toml"))
         $artifact = Join-Path $repoRoot "target\$target\debug\libmerman_ffi.so"
     }
 
