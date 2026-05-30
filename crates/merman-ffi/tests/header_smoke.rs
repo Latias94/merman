@@ -14,13 +14,25 @@ fn header_smoke() {
         r#"
 #include "merman.h"
 
+#if MERMAN_ABI_VERSION != 1
+#error "unexpected merman ABI version"
+#endif
+
 int merman_header_smoke(void) {
     MermanBuffer buffer = {0};
     MermanResult result = {MERMAN_OK, buffer};
+    uint32_t (*abi_version)(void) = &merman_abi_version;
+    const char* (*package_version)(void) = &merman_package_version;
+    size_t (*buffer_struct_size)(void) = &merman_buffer_struct_size;
+    size_t (*result_struct_size)(void) = &merman_result_struct_size;
     MermanResult (*render_svg)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_svg;
     MermanResult (*parse_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_parse_json;
     MermanResult (*layout_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_layout_json;
     void (*free_buffer)(MermanBuffer) = &merman_buffer_free;
+    (void)abi_version;
+    (void)package_version;
+    (void)buffer_struct_size;
+    (void)result_struct_size;
     (void)render_svg;
     (void)parse_json;
     (void)layout_json;

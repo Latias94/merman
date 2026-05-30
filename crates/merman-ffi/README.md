@@ -46,6 +46,10 @@ Do not use `free`, `delete`, or a host runtime allocator for buffers returned by
 
 ## Entry Points
 
+- `merman_abi_version`
+- `merman_package_version`
+- `merman_buffer_struct_size`
+- `merman_result_struct_size`
 - `merman_render_svg`
 - `merman_parse_json`
 - `merman_layout_json`

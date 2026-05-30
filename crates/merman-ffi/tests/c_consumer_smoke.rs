@@ -1,10 +1,15 @@
 use libloading::Library;
 use merman_ffi::{MermanBuffer, MermanResult};
+use std::ffi::c_char;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[repr(C)]
 struct MermanApi {
+    abi_version: extern "C" fn() -> u32,
+    package_version: extern "C" fn() -> *const c_char,
+    buffer_struct_size: extern "C" fn() -> usize,
+    result_struct_size: extern "C" fn() -> usize,
     render_svg: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     parse_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     layout_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
@@ -27,6 +32,10 @@ fn c_consumer_smoke() {
             .expect("load merman_c_consumer_smoke symbol");
 
         let rc = smoke(MermanApi {
+            abi_version: merman_ffi::merman_abi_version,
+            package_version: merman_ffi::merman_package_version,
+            buffer_struct_size: merman_ffi::merman_buffer_struct_size,
+            result_struct_size: merman_ffi::merman_result_struct_size,
             render_svg: merman_ffi::merman_render_svg,
             parse_json: merman_ffi::merman_parse_json,
             layout_json: merman_ffi::merman_layout_json,

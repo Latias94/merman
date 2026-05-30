@@ -8,6 +8,10 @@ typedef MermanResult (*MermanCall)(const uint8_t*, size_t, const uint8_t*, size_
 typedef void (*MermanFree)(MermanBuffer);
 
 typedef struct MermanApi {
+    uint32_t (*abi_version)(void);
+    const char* (*package_version)(void);
+    size_t (*buffer_struct_size)(void);
+    size_t (*result_struct_size)(void);
     MermanCall render_svg;
     MermanCall parse_json;
     MermanCall layout_json;
@@ -75,12 +79,29 @@ int merman_c_consumer_smoke(MermanApi api) {
     int rc = 0;
 
     if (
+        api.abi_version == NULL ||
+        api.package_version == NULL ||
+        api.buffer_struct_size == NULL ||
+        api.result_struct_size == NULL ||
         api.render_svg == NULL ||
         api.parse_json == NULL ||
         api.layout_json == NULL ||
         api.buffer_free == NULL
     ) {
         return 1;
+    }
+
+    if (api.abi_version() != MERMAN_ABI_VERSION) {
+        return 2;
+    }
+    if (api.package_version() == NULL || strlen(api.package_version()) == 0) {
+        return 3;
+    }
+    if (api.buffer_struct_size() != sizeof(MermanBuffer)) {
+        return 4;
+    }
+    if (api.result_struct_size() != sizeof(MermanResult)) {
+        return 5;
     }
 
     rc = expect_ok_with(

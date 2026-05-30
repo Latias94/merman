@@ -6,8 +6,13 @@
 //! parser/render crates and shared binding facade remain safe Rust APIs.
 
 use merman_bindings_core::{BindingError, BindingStatus, error_payload_json_bytes};
+use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+
+pub const MERMAN_ABI_VERSION: u32 = 1;
+
+const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -30,6 +35,30 @@ impl MermanBuffer {
 pub struct MermanResult {
     pub code: i32,
     pub data: MermanBuffer,
+}
+
+/// Return the C ABI protocol version implemented by this library.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_abi_version() -> u32 {
+    MERMAN_ABI_VERSION
+}
+
+/// Return the `merman-ffi` crate package version as a static C string.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_package_version() -> *const c_char {
+    PACKAGE_VERSION.as_ptr().cast()
+}
+
+/// Return the Rust-side size of `MermanBuffer`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_buffer_struct_size() -> usize {
+    std::mem::size_of::<MermanBuffer>()
+}
+
+/// Return the Rust-side size of `MermanResult`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_result_struct_size() -> usize {
+    std::mem::size_of::<MermanResult>()
 }
 
 /// Render Mermaid source to SVG bytes.
@@ -198,6 +227,7 @@ fn error_result(status: BindingStatus, message: &str) -> MermanResult {
 mod tests {
     use super::*;
     use serde_json::Value;
+    use std::ffi::CStr;
 
     fn call_render(source: &[u8], options: &[u8]) -> MermanResult {
         unsafe {
@@ -247,6 +277,22 @@ mod tests {
 
     fn take_error(result: MermanResult) -> Value {
         serde_json::from_str(&take_text(result.data)).expect("error payload should be JSON")
+    }
+
+    #[test]
+    fn abi_introspection_reports_contract_values() {
+        assert_eq!(merman_abi_version(), MERMAN_ABI_VERSION);
+        assert_eq!(
+            merman_buffer_struct_size(),
+            std::mem::size_of::<MermanBuffer>()
+        );
+        assert_eq!(
+            merman_result_struct_size(),
+            std::mem::size_of::<MermanResult>()
+        );
+
+        let version = unsafe { CStr::from_ptr(merman_package_version()) };
+        assert_eq!(version.to_str().unwrap(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

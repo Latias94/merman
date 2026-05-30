@@ -15,6 +15,8 @@
 extern "C" {
 #endif
 
+#define MERMAN_ABI_VERSION 1
+
 enum {
     MERMAN_OK = 0,
     MERMAN_INVALID_ARGUMENT = 1,
@@ -37,6 +39,26 @@ typedef struct MermanResult {
     int32_t code;
     MermanBuffer data;
 } MermanResult;
+
+/*
+ * Return the C ABI protocol version implemented by this library.
+ *
+ * Hosts should compare this with MERMAN_ABI_VERSION before calling render functions.
+ */
+uint32_t merman_abi_version(void);
+
+/*
+ * Return the merman-ffi crate package version as a static null-terminated string.
+ *
+ * The returned pointer is owned by Rust and must not be freed.
+ */
+const char* merman_package_version(void);
+
+/*
+ * Return the Rust-side struct sizes for runtime host compatibility checks.
+ */
+size_t merman_buffer_struct_size(void);
+size_t merman_result_struct_size(void);
 
 /*
  * Render Mermaid source to SVG.

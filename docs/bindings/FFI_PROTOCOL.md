@@ -46,6 +46,12 @@ first FFI release candidate:
 
 ## Types
 
+The current ABI protocol version is:
+
+```c
+#define MERMAN_ABI_VERSION 1
+```
+
 ```c
 typedef struct MermanBuffer {
     uint8_t* data;
@@ -59,6 +65,22 @@ typedef struct MermanResult {
 ```
 
 `MermanBuffer.data == NULL` means there is no payload. `len == 0` means the payload is empty.
+
+## ABI Introspection
+
+Platform wrappers should check ABI compatibility before making render calls:
+
+```c
+uint32_t merman_abi_version(void);
+const char* merman_package_version(void);
+size_t merman_buffer_struct_size(void);
+size_t merman_result_struct_size(void);
+```
+
+- `merman_abi_version()` returns `MERMAN_ABI_VERSION`.
+- `merman_package_version()` returns a static null-terminated string owned by Rust. Do not free it.
+- `merman_buffer_struct_size()` and `merman_result_struct_size()` return Rust-side struct sizes so
+  hosts can catch packing or header/library mismatches at startup.
 
 ## Result Codes
 
