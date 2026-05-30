@@ -324,6 +324,33 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         ],
     },
     AcceptedRootParityResidual {
+        diagram: "flowchart",
+        stem: "upstream_docs_math_flowcharts_001",
+        fragments: &[
+            "svg: attr `style` mismatch",
+            "upstream=`max-width: 640.25px; background-color: white;`",
+            "local=`max-width: 622px; background-color: white;`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "sequence",
+        stem: "zed_pr_57644_sequence",
+        fragments: &[
+            "svg: attr `style` mismatch",
+            "upstream=`max-width: 796px; background-color: white;`",
+            "local=`max-width: 811px; background-color: white;`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "gitgraph",
+        stem: "zed_pr_57644_gitgraph",
+        fragments: &[
+            "svg: attr `style` mismatch",
+            "upstream=`max-width: 845.25px; background-color: white;`",
+            "local=`max-width: 845px; background-color: white;`",
+        ],
+    },
+    AcceptedRootParityResidual {
         diagram: "mindmap",
         stem: "upstream_docs_example_icons_br",
         fragments: &[
@@ -348,6 +375,15 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
             "svg: attr `style` mismatch",
             "upstream=`max-width: 756.25px; background-color: white;`",
             "local=`max-width: 756.75px; background-color: white;`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "mindmap",
+        stem: "zed_pr_57644_mindmap",
+        fragments: &[
+            "svg: attr `style` mismatch",
+            "upstream=`max-width: 1199.75px; background-color: white;`",
+            "local=`max-width: 1161.75px; background-color: white;`",
         ],
     },
 ];
@@ -437,6 +473,38 @@ dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_rende
         assert!(policy.accept_or_return_remaining("class", msg).is_none());
         assert_eq!(policy.accepted_summaries().len(), 2);
         assert!(policy.missing_failures().is_empty());
+    }
+
+    #[test]
+    fn root_parity_policy_matches_current_strict_root_residuals() {
+        let policy =
+            RootParityResidualPolicy::new(&["flowchart", "sequence", "gitgraph", "mindmap"]);
+
+        let residual_lines = [
+            (
+                "flowchart",
+                "dom mismatch for upstream_docs_math_flowcharts_001: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 640.25px; background-color: white;` local=`max-width: 622px; background-color: white;`)",
+            ),
+            (
+                "sequence",
+                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 796px; background-color: white;` local=`max-width: 811px; background-color: white;`)",
+            ),
+            (
+                "gitgraph",
+                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`)",
+            ),
+            (
+                "mindmap",
+                "dom mismatch for zed_pr_57644_mindmap: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 1199.75px; background-color: white;` local=`max-width: 1161.75px; background-color: white;`)",
+            ),
+        ];
+
+        for (diagram, line) in residual_lines {
+            assert!(
+                policy.matching_residual(diagram, line).is_some(),
+                "residual should match for {diagram}: {line}",
+            );
+        }
     }
 
     #[test]

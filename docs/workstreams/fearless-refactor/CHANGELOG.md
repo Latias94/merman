@@ -5,6 +5,10 @@ Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 
 ## 2026-05-19
 
+- Recorded the current strict root parity residuals for the Flowchart math fixture plus the
+  cross-family `zed_pr_57644` Sequence/GitGraph/Mindmap fixtures in the xtask residual policy.
+  This keeps the release gate strict on unexpected root viewport drift without adding fixture root
+  pins that could crop the larger local layouts.
 - Continued the root viewport derivation cleanup by replacing the ER `DELIVERY-ADDRESS`
   entity-label root bucket with one ER-owned 16px browser width fact. Six fixture-scoped ER root
   pins were deleted, full ER parity modes stay green, root viewport no-growth is now `294`, ER
