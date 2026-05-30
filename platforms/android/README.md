@@ -26,4 +26,27 @@ rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
 ```
 
-Producing Android `.so` artifacts and an AAR with Gradle/cargo-ndk is follow-on work.
+## Build Native Slices
+
+```powershell
+.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
+```
+
+This copies libraries into:
+
+```text
+platforms/android/src/main/jniLibs/{arm64-v8a,x86_64}/libmerman_ffi.so
+```
+
+`jniLibs` is generated output and is ignored by git.
+
+## Gradle Module
+
+`platforms/android` is an Android library module. In a host app:
+
+```kotlin
+include(":merman-android")
+project(":merman-android").projectDir = file("path/to/merman/platforms/android")
+```
+
+Then depend on `implementation(project(":merman-android"))`.

@@ -37,11 +37,12 @@ initialization.
 kotlinc platforms/android/src/main/kotlin/io/merman/MermanException.kt platforms/android/src/main/kotlin/io/merman/MermanEngine.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
+cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings
+.\platforms\android\build-android.ps1 -Targets aarch64-linux-android
 ```
 
 ## Follow-On Packaging
 
-- Add Gradle Android library metadata.
-- Build Android `.so` slices with cargo-ndk or explicit NDK linker config.
-- Package an AAR with `src/main/jniLibs`.
+- Build every supported Android ABI in CI.
+- Package an AAR with generated `src/main/jniLibs`.
 - Add emulator/device smoke once an Android CI target is available.
