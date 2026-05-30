@@ -29,14 +29,16 @@ Last updated: 2026-05-30
 
 ## M2 - Shared Relationship Layout Boundary
 
-- [ ] ACEG-030 [owner=unassigned] [deps=ACEG-020] [scope=crates/merman-ascii/src]
+- [x] ACEG-030 [owner=codex] [deps=ACEG-020] [scope=crates/merman-ascii/src]
   Goal: Introduce a small terminal relationship-graph placement boundary and route existing
   single-relationship class/ER outputs through it without broad behavior drift.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo nextest run -p merman-ascii er`;
   `cargo fmt --all --check`
   Review: Shared code must be terminal-layout-only; class/ER semantics stay in their adapters.
-  Evidence: new internal module plus unchanged or documented snapshots.
-  Handoff: ACEG-040 can add class multi-relationship rendering.
+  Evidence: `crates/merman-ascii/src/relation_graph.rs` now owns shared terminal box stacking,
+  center calculation, and vertical relation-line assembly; existing class/ER snapshots stayed
+  stable under focused nextest gates.
+  Handoff: DONE. ACEG-040 can add class multi-relationship rendering.
 
 ## M3 - Class Multi-Relationship Rendering
 

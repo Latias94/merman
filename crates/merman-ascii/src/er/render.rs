@@ -1,4 +1,6 @@
 use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::relation_graph;
+use crate::relation_graph::RelationGraphBox;
 use crate::text::display_width;
 use crate::{AsciiError, Result};
 use merman_core::diagrams::er::{
@@ -50,12 +52,7 @@ impl ErCharset {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RenderedEntityBox {
-    id: String,
-    lines: Vec<String>,
-    width: usize,
-}
+type RenderedEntityBox = RelationGraphBox;
 
 pub(crate) fn render_er_diagram(
     model: &ErDiagramRenderModel,
@@ -73,7 +70,7 @@ pub(crate) fn render_er_diagram(
         .collect::<Vec<_>>();
 
     if model.relationships.is_empty() {
-        return Ok(render_stacked_boxes(&boxes));
+        return Ok(relation_graph::render_stacked_boxes(&boxes));
     }
 
     if model.relationships.len() != 1 {
@@ -136,11 +133,7 @@ fn render_entity_box(
         content_width,
     ));
 
-    RenderedEntityBox {
-        id: entity.id.clone(),
-        lines: out,
-        width: content_width + 2,
-    }
+    RenderedEntityBox::new(entity.id.clone(), out, content_width + 2)
 }
 
 fn entity_sections(entity: &ErEntityRenderModel) -> Vec<Vec<String>> {
@@ -220,24 +213,11 @@ fn content_line(text: &str, content_width: usize, padding: usize, charset: ErCha
     line
 }
 
-fn render_stacked_boxes(boxes: &[RenderedEntityBox]) -> String {
-    boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
-}
-
-fn render_box(entity_box: &RenderedEntityBox) -> String {
-    let mut rendered = entity_box.lines.join("\n");
-    rendered.push('\n');
-    rendered
-}
-
 fn find_box<'a>(boxes: &'a [RenderedEntityBox], id: &str) -> Result<&'a RenderedEntityBox> {
-    boxes
-        .iter()
-        .find(|entity_box| entity_box.id == id)
-        .ok_or(AsciiError::UnsupportedFeature {
-            diagram_type: "er",
-            feature: "relationships with missing endpoint entities",
-        })
+    relation_graph::find_box(boxes, id).ok_or(AsciiError::UnsupportedFeature {
+        diagram_type: "er",
+        feature: "relationships with missing endpoint entities",
+    })
 }
 
 fn render_vertical_relationship(
@@ -255,25 +235,33 @@ fn render_vertical_relationship(
     } else {
         display_width(label) / 2
     };
-    let center = (top.width / 2)
-        .max(bottom.width / 2)
-        .max(display_width(top_cardinality) / 2)
-        .max(display_width(bottom_cardinality) / 2)
-        .max(label_half_width);
+    let center = relation_graph::vertical_center(
+        top,
+        bottom,
+        &[
+            display_width(top_cardinality) / 2,
+            display_width(bottom_cardinality) / 2,
+            label_half_width,
+        ],
+    );
 
-    let mut lines = Vec::new();
-    lines.extend(align_box(top, center));
-    lines.push(centered_text_line(top_cardinality, center));
+    let mut relation_lines = Vec::new();
+    relation_lines.push(relation_graph::centered_text_line(top_cardinality, center));
     if !label.is_empty() {
-        lines.push(centered_text_line(label, center));
+        relation_lines.push(relation_graph::centered_text_line(label, center));
     }
-    lines.push(marker_line(line, center));
-    lines.push(centered_text_line(bottom_cardinality, center));
-    lines.extend(align_box(bottom, center));
+    relation_lines.push(relation_graph::marker_line(line, center));
+    relation_lines.push(relation_graph::centered_text_line(
+        bottom_cardinality,
+        center,
+    ));
 
-    let mut rendered = lines.join("\n");
-    rendered.push('\n');
-    Ok(rendered)
+    Ok(relation_graph::render_vertical_stack(
+        top,
+        bottom,
+        center,
+        relation_lines,
+    ))
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {
@@ -298,29 +286,4 @@ fn relationship_line(rel_type: &str, charset: ErCharset) -> Result<char> {
             feature: "unknown ER relationship identification types",
         }),
     }
-}
-
-fn align_box(entity_box: &RenderedEntityBox, center: usize) -> Vec<String> {
-    let left_padding = center.saturating_sub(entity_box.width / 2);
-    let padding = " ".repeat(left_padding);
-    entity_box
-        .lines
-        .iter()
-        .map(|line| format!("{padding}{line}"))
-        .collect()
-}
-
-fn marker_line(marker: char, center: usize) -> String {
-    let mut line = String::new();
-    line.extend(std::iter::repeat_n(' ', center));
-    line.push(marker);
-    line
-}
-
-fn centered_text_line(text: &str, center: usize) -> String {
-    let mut line = String::new();
-    let half_width = display_width(text) / 2;
-    line.extend(std::iter::repeat_n(' ', center.saturating_sub(half_width)));
-    line.push_str(text);
-    line
 }

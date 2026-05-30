@@ -15,25 +15,27 @@ attributes, labels, identifying/non-identifying relationships, and common cardin
 
 ## Active Task
 
-- Task ID: ACEG-020
+- Task ID: ACEG-030
 - Owner: codex
 - Files:
-  - `crates/merman-ascii/tests/class_model.rs`
-  - `crates/merman-ascii/tests/er_model.rs`
+  - `crates/merman-ascii/src/relation_graph.rs`
+  - `crates/merman-ascii/src/class/render.rs`
+  - `crates/merman-ascii/src/er/render.rs`
   - `docs/workstreams/ascii-class-er-graph-layout/*`
 - Validation: `cargo nextest run -p merman-ascii class`;
-  `cargo nextest run -p merman-ascii er`
+  `cargo nextest run -p merman-ascii er`; `cargo fmt --all --check`; `git diff --check`
 - Status: DONE
-- Review: Public parser-backed diagnostics are now locked; no layout internals were added.
+- Review: Shared placement code is terminal-layout-only. Class and ER adapters still own marker,
+  cardinality, label, and unsupported-feature semantics.
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Next Recommended Action
 
-Run ACEG-030:
+Run ACEG-040:
 
-- Introduce the smallest shared terminal relationship-graph placement boundary.
-- Route existing single-relationship class/ER outputs through it without broad snapshot drift.
-- Keep class and ER relationship semantics in their own adapters.
+- Add class multi-relationship rendering on top of `relation_graph`.
+- Start with low-risk topologies such as chains and stars before dense/crossing layouts.
+- Keep unsupported diagnostics explicit when every relation cannot be rendered honestly.
 
 ## Constraints
 

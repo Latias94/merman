@@ -1,6 +1,8 @@
 use crate::AsciiError;
 use crate::Result;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
+use crate::relation_graph;
+use crate::relation_graph::RelationGraphBox;
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
 
@@ -67,12 +69,7 @@ impl ClassCharset {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RenderedClassBox {
-    id: String,
-    lines: Vec<String>,
-    width: usize,
-}
+type RenderedClassBox = RelationGraphBox;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RelationMarker {
@@ -120,7 +117,7 @@ pub(crate) fn render_class_diagram(
         .collect::<Vec<_>>();
 
     if model.relations.is_empty() {
-        return Ok(render_stacked_boxes(&boxes));
+        return Ok(relation_graph::render_stacked_boxes(&boxes));
     }
 
     if model.relations.len() != 1 {
@@ -185,11 +182,7 @@ fn render_class_box(
     ));
 
     let width = content_width + 2;
-    RenderedClassBox {
-        id: class.id.clone(),
-        lines: out,
-        width,
-    }
+    RenderedClassBox::new(class.id.clone(), out, width)
 }
 
 fn class_sections(class: &ClassNode) -> Vec<Vec<String>> {
@@ -262,16 +255,6 @@ fn content_line(text: &str, content_width: usize, padding: usize, charset: Class
     line.extend(std::iter::repeat_n(' ', trailing));
     line.push(charset.vertical);
     line
-}
-
-fn render_stacked_boxes(boxes: &[RenderedClassBox]) -> String {
-    boxes.iter().map(render_box).collect::<Vec<_>>().join("\n")
-}
-
-fn render_box(class_box: &RenderedClassBox) -> String {
-    let mut rendered = class_box.lines.join("\n");
-    rendered.push('\n');
-    rendered
 }
 
 fn relation_layout<'a>(
@@ -380,13 +363,10 @@ fn relation_end_label_is_absent(label: &str) -> bool {
 }
 
 fn find_box<'a>(boxes: &'a [RenderedClassBox], id: &str) -> Result<&'a RenderedClassBox> {
-    boxes
-        .iter()
-        .find(|class_box| class_box.id == id)
-        .ok_or(AsciiError::UnsupportedFeature {
-            diagram_type: "class",
-            feature: "relationships with missing endpoint classes",
-        })
+    relation_graph::find_box(boxes, id).ok_or(AsciiError::UnsupportedFeature {
+        diagram_type: "class",
+        feature: "relationships with missing endpoint classes",
+    })
 }
 
 fn render_vertical_relation(
@@ -399,37 +379,39 @@ fn render_vertical_relation(
         .label
         .map(|label| display_width(label) / 2)
         .unwrap_or(0);
-    let center = (top.width / 2).max(bottom.width / 2).max(label_half_width);
-    let mut lines = Vec::new();
+    let center = relation_graph::vertical_center(top, bottom, &[label_half_width]);
+    let mut relation_lines = Vec::new();
 
-    lines.extend(align_box(top, center));
     match layout.marker_side {
         MarkerSide::Top => {
-            lines.push(marker_line(
+            relation_lines.push(relation_graph::marker_line(
                 marker_char(layout.marker, MarkerSide::Top, charset),
                 center,
             ));
             if let Some(label) = layout.label {
-                lines.push(centered_text_line(label, center));
+                relation_lines.push(relation_graph::centered_text_line(label, center));
             }
-            lines.push(marker_line(line_char(layout.line, charset), center));
+            relation_lines.push(relation_graph::marker_line(
+                line_char(layout.line, charset),
+                center,
+            ));
         }
         MarkerSide::Bottom => {
-            lines.push(marker_line(line_char(layout.line, charset), center));
+            relation_lines.push(relation_graph::marker_line(
+                line_char(layout.line, charset),
+                center,
+            ));
             if let Some(label) = layout.label {
-                lines.push(centered_text_line(label, center));
+                relation_lines.push(relation_graph::centered_text_line(label, center));
             }
-            lines.push(marker_line(
+            relation_lines.push(relation_graph::marker_line(
                 marker_char(layout.marker, MarkerSide::Bottom, charset),
                 center,
             ));
         }
     }
-    lines.extend(align_box(bottom, center));
 
-    let mut rendered = lines.join("\n");
-    rendered.push('\n');
-    rendered
+    relation_graph::render_vertical_stack(top, bottom, center, relation_lines)
 }
 
 fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) -> char {
@@ -452,29 +434,4 @@ fn line_char(line: RelationLine, charset: ClassCharset) -> char {
         RelationLine::Solid => charset.solid_vertical_relation,
         RelationLine::Dotted => charset.dotted_vertical_relation,
     }
-}
-
-fn align_box(class_box: &RenderedClassBox, center: usize) -> Vec<String> {
-    let left_padding = center.saturating_sub(class_box.width / 2);
-    let padding = " ".repeat(left_padding);
-    class_box
-        .lines
-        .iter()
-        .map(|line| format!("{padding}{line}"))
-        .collect()
-}
-
-fn marker_line(marker: char, center: usize) -> String {
-    let mut line = String::new();
-    line.extend(std::iter::repeat_n(' ', center));
-    line.push(marker);
-    line
-}
-
-fn centered_text_line(text: &str, center: usize) -> String {
-    let mut line = String::new();
-    let half_width = display_width(text) / 2;
-    line.extend(std::iter::repeat_n(' ', center.saturating_sub(half_width)));
-    line.push_str(text);
-    line
 }

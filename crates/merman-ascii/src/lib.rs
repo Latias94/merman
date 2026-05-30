@@ -11,6 +11,7 @@ mod er;
 mod error;
 mod graph;
 mod options;
+mod relation_graph;
 mod sequence;
 mod text;
 mod xychart;

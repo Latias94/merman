@@ -42,6 +42,12 @@ Primary gates:
 - `cargo nextest run -p merman-ascii er`
 - `cargo fmt --all --check`
 
+Primary evidence:
+
+- `crates/merman-ascii/src/relation_graph.rs`
+- Class and ER single-relationship focused tests stayed green after routing through the shared
+  seam.
+
 ## M3 - Class Multi-Relationship Rendering
 
 Exit criteria:
