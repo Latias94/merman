@@ -62,7 +62,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "FFI-020",
-    "notes": "FFI-010 is complete. Start implementation with FFI-020: create crates/merman-ffi, export merman_render_svg and merman_buffer_free, and cover success/error/free/panic behavior."
+    "next_task": "FFI-030",
+    "notes": "FFI-010 and FFI-020 are complete. Start FFI-030: add public C header, protocol documentation, and a C header compile/link smoke test. Keep parse/layout JSON for FFI-040."
   }
 }

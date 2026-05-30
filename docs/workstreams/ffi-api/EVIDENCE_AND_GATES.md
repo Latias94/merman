@@ -11,6 +11,16 @@ Last updated: 2026-05-30
   protocol-freeze updates.
 - 2026-05-30: `git diff --check -- docs/adr/0066-ffi-binding-strategy.md docs/workstreams/ffi-api`
   passed for the initial ADR/workstream creation.
+- 2026-05-30: `FFI-020` completed the first C ABI proof with `merman_render_svg` and
+  `merman_buffer_free`.
+- 2026-05-30: `cargo fmt -p merman-ffi -- --check` passed.
+- 2026-05-30: `cargo nextest run -p merman-ffi` passed (`9` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --all-targets -- -D warnings` passed.
+- 2026-05-30: `cargo nextest run -p merman-ffi --features ratex-math` passed (`9` tests).
+- 2026-05-30: `cargo clippy -p merman-ffi --features ratex-math --all-targets -- -D warnings`
+  passed.
+- 2026-05-30:
+  `git diff --check -- Cargo.toml Cargo.lock crates/merman-ffi docs/workstreams/ffi-api` passed.
 
 ## Gate Set
 
@@ -71,7 +81,7 @@ the reason and replacement coverage here.
 - `docs/workstreams/ffi-api/TODO.md`
 - `docs/workstreams/ffi-api/MILESTONES.md`
 - future `docs/bindings/FFI_PROTOCOL.md`
-- future `crates/merman-ffi` tests
+- `crates/merman-ffi` tests
 
 ## Notes
 

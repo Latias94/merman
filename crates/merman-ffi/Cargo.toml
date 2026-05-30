@@ -1,0 +1,28 @@
+[package]
+name = "merman-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "C ABI bindings for merman headless Mermaid rendering."
+documentation = "https://docs.rs/merman-ffi"
+readme = "../../README.md"
+keywords = ["mermaid", "diagrams", "ffi", "svg", "headless"]
+categories = ["external-ffi-bindings", "visualization"]
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["render"]
+render = ["merman/render"]
+ratex-math = ["render", "merman/ratex-math"]
+raster = ["merman/raster"]
+
+[dependencies]
+merman = { path = "../merman", version = "0.6.0", default-features = false }
+serde.workspace = true
+serde_json.workspace = true

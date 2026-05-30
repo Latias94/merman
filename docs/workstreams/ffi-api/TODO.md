@@ -14,12 +14,13 @@ Last updated: 2026-05-30
 
 ## M1 — C ABI SVG Proof
 
-- [ ] FFI-020 [owner=unassigned] [deps=FFI-010] [scope=crates/merman-ffi]
+- [x] FFI-020 [owner=codex] [deps=FFI-010] [scope=crates/merman-ffi]
   Goal: Add `crates/merman-ffi` with `render_svg` C ABI proof, owned buffers, and explicit free.
   Validation: cargo nextest run -p merman-ffi
   Review: review-workstream before accepting completion.
   Evidence: crates/merman-ffi tests proving success, invalid UTF-8, null pointer, and free behavior.
-  Handoff: The slice is not done until panic-safe ABI behavior is covered.
+  Handoff: DONE. Added `merman_render_svg`, `merman_buffer_free`, owned buffer transfer, structured
+  error JSON, options JSON parsing, panic containment, and focused ABI tests.
 
 - [ ] FFI-030 [owner=unassigned] [deps=FFI-020] [scope=crates/merman-ffi,docs/bindings]
   Goal: Add a public C header and protocol doc for result codes, buffers, options, and errors.

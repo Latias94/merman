@@ -1738,6 +1738,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-ffi"
+version = "0.6.0"
+dependencies = [
+ "merman",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "merman-render"
 version = "0.6.0"
 dependencies = [

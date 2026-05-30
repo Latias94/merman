@@ -23,15 +23,24 @@ ADR 0066 records the binding strategy:
 - options: versioned tolerant JSON
 - first ABI slice: stateless and thread-safe
 
+`FFI-020` is complete. `crates/merman-ffi` now exports:
+
+- `merman_render_svg`
+- `merman_buffer_free`
+
+The first implementation covers SVG success, readable pipeline options, invalid pointer/length
+pairs, invalid UTF-8, empty/no-diagram input, invalid options JSON, feature-gated RaTeX handling,
+null buffer free, and panic containment.
+
 ## Next Task
 
-Start with `FFI-020`:
+Start with `FFI-030`:
 
-- add `crates/merman-ffi`
-- export `merman_render_svg`
-- export `merman_buffer_free`
-- test success, invalid pointer/length pairs, invalid UTF-8, no diagram, parse/render errors, panic
-  containment, and buffer free behavior
+- add a public C header for `MermanBuffer`, `MermanResult`, result codes, `merman_render_svg`, and
+  `merman_buffer_free`
+- add `docs/bindings/FFI_PROTOCOL.md`
+- add a C header compile/link smoke test
+- keep parse/layout JSON for `FFI-040`
 
 ## Guardrails
 
@@ -41,15 +50,12 @@ Start with `FFI-020`:
 - Do not expose Rust structs directly across the ABI.
 - Keep memory ownership rules documented before adding platform wrappers.
 
-## Suggested First Implementation Slice
+## Suggested Next Implementation Slice
 
 Implement only:
 
-- `crates/merman-ffi`
-- `merman_render_svg`
-- `merman_buffer_free`
-- panic containment
-- invalid pointer/UTF-8 tests
-- one successful flowchart SVG smoke test
+- `crates/merman-ffi/include/merman.h`
+- `docs/bindings/FFI_PROTOCOL.md`
+- a test that compiles/links a tiny C consumer against the header
 
 Leave parse/layout JSON and UniFFI for later slices.
