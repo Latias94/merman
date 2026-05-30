@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $flutterRoot = Join-Path $repoRoot "platforms\flutter"
 $androidRoot = Join-Path $repoRoot "platforms\android"
+$appleRoot = Join-Path $repoRoot "platforms\apple"
 $androidJarOut = Join-Path $repoRoot "target\platforms\android\merman-android.jar"
 $flutterJarOut = Join-Path $repoRoot "target\platforms\flutter\merman-flutter-android-plugin.jar"
 
@@ -15,6 +16,18 @@ function Step {
     param([string] $Name)
     Write-Host ""
     Write-Host "==> $Name"
+}
+
+function Invoke-BashSyntaxCheck {
+    param(
+        [System.Management.Automation.CommandInfo] $Bash,
+        [string] $Path
+    )
+
+    & $Bash.Source -n $Path
+    if ($LASTEXITCODE -ne 0) {
+        throw "bash syntax check failed: $Path"
+    }
 }
 
 Push-Location $repoRoot
@@ -76,6 +89,28 @@ try {
     finally {
         Pop-Location
     }
+
+    Step "Apple Swift package scaffold checks"
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
+    if (-not $bash) {
+        throw "bash not found; required for Apple scaffold syntax checks."
+    }
+    $appleBuildScript = Join-Path $repoRoot "scripts\build-apple-xcframework.sh"
+    $iosBuildScript = Join-Path $repoRoot "platforms\ios\build-ios.sh"
+    $swiftWrapper = Join-Path $appleRoot "Sources\Merman\MermanEngine.swift"
+    foreach ($path in @(
+            (Join-Path $repoRoot "Package.swift"),
+            $appleBuildScript,
+            $iosBuildScript,
+            $swiftWrapper,
+            (Join-Path $repoRoot "crates\merman-ffi\include\merman.h")
+        )) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            throw "Required Apple binding file not found: $path"
+        }
+    }
+    Invoke-BashSyntaxCheck -Bash $bash -Path "scripts/build-apple-xcframework.sh"
+    Invoke-BashSyntaxCheck -Bash $bash -Path "platforms/ios/build-ios.sh"
 
     if ($RunFlutterAndroidSmoke) {
         Step "Flutter Android APK packaging smoke"
