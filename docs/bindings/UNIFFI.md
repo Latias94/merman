@@ -32,5 +32,5 @@ package layouts should be split into follow-on lanes.
 ## Python Package Scaffold
 
 See `docs/bindings/PYTHON_UNIFFI.md` for the current Python package layout and local generation
-command. The package scaffold lives under `bindings/python/merman-uniffi`; generated Python source
+command. The package scaffold lives under `bindings/python/merman`; generated Python source
 and native libraries are ignored.

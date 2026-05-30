@@ -5,7 +5,7 @@ Status: experimental local package scaffold.
 The Python binding is generated from the `merman-uniffi` cdylib with UniFFI. The package shape is:
 
 ```text
-bindings/python/merman-uniffi/
+bindings/python/merman/
   pyproject.toml
   src/merman/
     __init__.py
@@ -23,14 +23,14 @@ UniFFI Python loader resolves the cdylib relative to `__file__`.
 ```bash
 cargo build -p merman-uniffi --features bindgen-smoke
 cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- \
-  --package-dir bindings/python/merman-uniffi
+  --package-dir bindings/python/merman
 ```
 
 On Windows PowerShell, use the same command on one line:
 
 ```powershell
 cargo build -p merman-uniffi --features bindgen-smoke
-cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- --package-dir bindings/python/merman-uniffi
+cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- --package-dir bindings/python/merman
 ```
 
 ## API
@@ -68,7 +68,7 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
 The script builds `merman-uniffi`, stages generated UniFFI Python files into
-`bindings/python/merman-uniffi`, builds a platform wheel under `target/python-wheels`, then
+`bindings/python/merman`, builds a platform wheel under `target/python-wheels`, then
 optionally installs it into a temporary venv and calls `MermanEngine.render_svg`.
 
 ## Example
@@ -76,7 +76,7 @@ optionally installs it into a temporary venv and calls `MermanEngine.render_svg`
 After generation, run:
 
 ```bash
-PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+PYTHONPATH=bindings/python/merman/src python bindings/python/merman/examples/smoke.py
 ```
 
 ## Not Yet Done

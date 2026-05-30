@@ -48,7 +48,7 @@ jobs:
         run: |
           PACKAGE_VERSION=$(python - <<'PY'
           import tomllib
-          with open("bindings/python/merman-uniffi/pyproject.toml", "rb") as f:
+          with open("bindings/python/merman/pyproject.toml", "rb") as f:
               print(tomllib.load(f)["project"]["version"])
           PY
           )
@@ -67,7 +67,7 @@ jobs:
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
       - name: Run Python example
-        run: PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+        run: PYTHONPATH=bindings/python/merman/src python bindings/python/merman/examples/smoke.py
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6

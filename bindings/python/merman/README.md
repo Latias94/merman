@@ -8,7 +8,7 @@ them from a local `merman-uniffi` cdylib:
 ```bash
 cargo build -p merman-uniffi --features bindgen-smoke
 cargo run -p merman-uniffi --features bindgen-smoke --example generate_python_package -- \
-  --package-dir bindings/python/merman-uniffi
+  --package-dir bindings/python/merman
 ```
 
 The generator writes:
@@ -24,13 +24,13 @@ library relative to the generated file.
 After generation, a local smoke can import the package by putting `src` on `PYTHONPATH`:
 
 ```bash
-PYTHONPATH=bindings/python/merman-uniffi/src python -c "import merman; print(merman.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
+PYTHONPATH=bindings/python/merman/src python -c "import merman; print(merman.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
 ```
 
 Or run the example script:
 
 ```bash
-PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+PYTHONPATH=bindings/python/merman/src python bindings/python/merman/examples/smoke.py
 ```
 
 Build a local platform wheel and run an install smoke:

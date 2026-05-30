@@ -37,7 +37,7 @@ Before tagging, verify these versions match the intended release:
 - `Cargo.toml` `[workspace.package].version`
 - `platforms/flutter/pubspec.yaml` `version`
 - `platforms/android/build.gradle.kts` `version`
-- `bindings/python/merman-uniffi/pyproject.toml` `project.version`
+- `bindings/python/merman/pyproject.toml` `project.version`
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 
