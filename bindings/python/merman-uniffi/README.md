@@ -27,5 +27,11 @@ After generation, a local smoke can import the package by putting `src` on `PYTH
 PYTHONPATH=bindings/python/merman-uniffi/src python -c "import merman_uniffi; print(merman_uniffi.MermanEngine().render_svg('flowchart TD\nA[Hello]', None)[:4])"
 ```
 
-Wheel building and PyPI publishing are follow-on work; this scaffold is the package staging shape
-used by the Rust smoke tests.
+Build a local platform wheel and run an install smoke:
+
+```powershell
+.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```
+
+PyPI publishing is follow-on work; this scaffold is the package staging shape used by the Rust smoke
+tests and local wheel checks.

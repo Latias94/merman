@@ -1,0 +1,7 @@
+/build/
+/dist/
+/src/*.egg-info/
+/src/merman_uniffi/merman_uniffi.py
+/src/merman_uniffi/*.dll
+/src/merman_uniffi/*.dylib
+/src/merman_uniffi/*.so

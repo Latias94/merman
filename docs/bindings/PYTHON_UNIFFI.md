@@ -61,6 +61,16 @@ it, imports `merman_uniffi` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.parse_json`, `MermanEngine.layout_json`, and checks `MermanError.Binding` fields for
 invalid options JSON.
 
+## Build A Local Wheel
+
+```powershell
+.\scripts\build-python-uniffi-wheel.ps1 -RunSmoke
+```
+
+The script builds `merman-uniffi`, stages generated UniFFI Python files into
+`bindings/python/merman-uniffi`, builds a platform wheel under `target/python-wheels`, then
+optionally installs it into a temporary venv and calls `MermanEngine.render_svg`.
+
 ## Not Yet Done
 
 - PyPI publishing.
