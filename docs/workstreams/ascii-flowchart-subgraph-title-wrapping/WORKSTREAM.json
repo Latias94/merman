@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-flowchart-subgraph-title-wrapping",
+  "title": "ASCII Flowchart Subgraph Title Wrapping",
+  "status": "closed",
+  "updated": "2026-05-30",
+  "scope_kind": "execution",
+  "problem": "Closed: long flowchart subgraph titles now wrap into centered title rows inside the group box.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ascii-flowchart-subgraph-title-wrapping/CONTEXT.jsonl",
+  "gates": [
+    "cargo nextest run -p merman-ascii flowchart_parser_long_subgraph_title_wraps_to_multiple_rows",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii",
+    "cargo fmt --all --check",
+    "git diff --check",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "AFSW-010",
+      "result": "opened the flowchart subgraph-title wrapping lane from the multiline-title follow-on"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFSW-020",
+      "result": "added a red parser-backed long-title wrapping contract"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFSW-030",
+      "result": "implemented wrapped group titles through GraphLabel and updated support docs"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFSW-040",
+      "result": "ran final gates and closed the workstream"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "flowchart",
+    "subgraph",
+    "wrapping"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane complete. Follow-ons are broader text wrapping, subgraph direction overrides, color/style roles, state diagram graph rendering, and uncommon shape families."
+  }
+}

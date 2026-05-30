@@ -1,0 +1,12 @@
+{"date":"2026-05-30","kind":"authority","path":"docs/adr/0065-ascii-output-boundary.md","note":"ASCII output boundary and explicit supported-subset framing."}
+{"date":"2026-05-30","kind":"authority","path":"docs/adr/0014-upstream-parity-policy.md","note":"Upstream parity policy for porting and follow-on splits."}
+{"date":"2026-05-30","kind":"workstream","path":"docs/workstreams/ascii-flowchart-multiline-subgraph-labels/HANDOFF.md","note":"Closed multiline-title lane and its explicit follow-on list."}
+{"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/FLOWCHART_SUPPORT.md","note":"Current flowchart support matrix and shipped wrapping boundary."}
+{"date":"2026-05-30","kind":"support_doc","path":"crates/merman-ascii/README.md","note":"Public flowchart capabilities summary for ASCII output."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/mermaid/packages/mermaid/src/rendering-util/createText.ts","note":"Mermaid text width and wrap primitives for browser-style label handling."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/mermaid/packages/mermaid/src/utils.ts","note":"Mermaid wrapLabel helper and width splitting behavior."}
+{"date":"2026-05-30","kind":"research","path":"repo-ref/beautiful-mermaid/src/ascii/multiline-utils.ts","note":"ASCII multiline title helper and centered rendering patterns."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/graph/label.rs","note":"Shared graph-label wrapping now combines explicit hard breaks with display-width automatic wrapping."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/graph/layout.rs","note":"Group layout now wraps subgraph titles against the existing group content width before computing title height."}
+{"date":"2026-05-30","kind":"implementation","path":"crates/merman-ascii/src/graph/draw.rs","note":"Group drawing consumes the precomputed GraphLabel directly instead of reparsing a raw title string."}
+{"date":"2026-05-30","kind":"test","path":"crates/merman-ascii/tests/flowchart_model.rs","note":"Parser-backed long subgraph title wrapping contract."}

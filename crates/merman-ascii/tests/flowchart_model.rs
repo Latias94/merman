@@ -242,6 +242,34 @@ fn flowchart_parser_multiline_subgraph_title_renders_centered_rows() {
 }
 
 #[test]
+fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
+    let rendered = render_flowchart(
+        "flowchart LR\nsubgraph cluster [Wrap this title nicely]\nA --> B\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("long subgraph titles should wrap inside the existing group box");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-----------------+\n",
+            "| Wrap this title |\n",
+            "|                 |\n",
+            "|     nicely      |\n",
+            "|                 |\n",
+            "|                 |\n",
+            "| +---+     +---+ |\n",
+            "| |   |     |   | |\n",
+            "| | A |---->| B | |\n",
+            "| |   |     |   | |\n",
+            "| +---+     +---+ |\n",
+            "|                 |\n",
+            "+-----------------+\n",
+        )
+    );
+}
+
+#[test]
 fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
     let rendered =
         render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();

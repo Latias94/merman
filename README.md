@@ -287,7 +287,8 @@ typed helpers (`render_flowchart`, `render_sequence`, `render_class`, `render_er
 `render_xychart`), and `merman-cli render --format ascii|unicode`.
 
 Flowchart text output covers LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape
-approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs.
+approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs with
+multiline and wrapped title rows.
 
 Sequence text output covers common messages, notes, lifecycle rows, participant boxes, and the
 primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`, `alt`, `par`,

@@ -14,7 +14,7 @@ This crate contains the public API foundation, options, errors, third-party prov
 upstream golden fixtures, flowchart rendering, and expanding sequence rendering. Flowcharts with
 LR/TD/TB/BT/RL root directions, boxed nodes, multiline node labels, common terminal shape
 approximations, edge labels, open/dotted and thick edges, length spacing, and titled/nested
-subgraphs with multiline title rows can render through `render_flowchart`.
+subgraphs with multiline and wrapped title rows can render through `render_flowchart`.
 Basic sequence diagrams with participants, filled/open solid and dotted messages, self messages,
 wrapped message labels, wrapped notes, sequence boxes, activations, actor create/destroy lifecycle
 markers, visible autonumber, and sequence control blocks can render through `render_sequence` or
@@ -46,7 +46,7 @@ See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support mat
 
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
-| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, and titled/nested subgraphs with multiline title rows. |
+| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, and titled/nested subgraphs with multiline and wrapped title rows. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, and core control blocks. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, and unrelated standalone class components. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, and unrelated standalone entity components. |

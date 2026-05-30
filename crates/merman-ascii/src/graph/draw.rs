@@ -1,5 +1,5 @@
 use super::charset::GraphCharset;
-use super::label::{GRAPH_LABEL_LINE_GAP, GraphLabel};
+use super::label::GRAPH_LABEL_LINE_GAP;
 use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
 use super::model::{AsciiGraph, GraphDirection, GraphNodeShape};
 use super::routing;
@@ -279,8 +279,7 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
 }
 
 fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
-    let title = GraphLabel::new(&group.title);
-    for (line_index, line) in title.lines().iter().enumerate() {
+    for (line_index, line) in group.title.lines().iter().enumerate() {
         let Some((title_x, title_y)) = group_title_line_position(group, line, line_index) else {
             continue;
         };
@@ -295,16 +294,15 @@ fn draw_transformed_group_title(
     width: usize,
     height: usize,
 ) {
-    let title = GraphLabel::new(&group.title);
     let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let content_y = group.y + 1;
-    let last_line_y = content_y + title.lines().len().saturating_sub(1) * line_step;
+    let last_line_y = content_y + group.title.lines().len().saturating_sub(1) * line_step;
     let transformed_content_y = match transform {
         OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
         OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,
     };
 
-    for (line_index, line) in title.lines().iter().enumerate() {
+    for (line_index, line) in group.title.lines().iter().enumerate() {
         let Some((title_x, _)) = group_title_line_position(group, line, line_index) else {
             continue;
         };

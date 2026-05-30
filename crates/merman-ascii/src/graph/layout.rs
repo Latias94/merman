@@ -68,7 +68,7 @@ pub(super) struct CanvasCoord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GroupLayout {
     pub(super) id: String,
-    pub(super) title: String,
+    pub(super) title: GraphLabel,
     pub(super) x: usize,
     pub(super) y: usize,
     pub(super) width: usize,
@@ -702,23 +702,18 @@ fn raw_group_bounds(
     }
 
     let member_bounds = member_bounds?;
-    let title = GraphLabel::new(&group.title);
+    let title_width = (member_bounds.right - member_bounds.x + 3).max(1) as usize;
+    let title = GraphLabel::wrapped(&group.title, title_width);
     let title_space = title.content_height() + 3;
     let x = member_bounds.x - 2;
     let y = member_bounds.y - title_space as isize;
     let right = member_bounds.right + 2;
     let bottom = member_bounds.bottom + 2;
-    let min_width = title.width() as isize + 2;
-    let width = right - x + 1;
 
     Some(RawBounds {
         x,
         y,
-        right: if width < min_width {
-            x + min_width - 1
-        } else {
-            right
-        },
+        right,
         bottom,
     })
 }
@@ -764,18 +759,17 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
             .max()
             .unwrap_or(0);
         let x = min_x.saturating_sub(2);
-        let title = GraphLabel::new(&group.title);
+        let title = GraphLabel::wrapped(&group.title, (max_right.saturating_sub(min_x) + 3).max(1));
         let title_space = title.content_height() + 3;
         let y = min_y.saturating_sub(title_space);
         let right = max_right + 2;
         let bottom = max_bottom + 2;
-        let min_width = title.width() + 2;
-        let width = (right - x + 1).max(min_width);
+        let width = right - x + 1;
         let height = bottom - y + 1;
 
         groups.push(GroupLayout {
             id: group.id.clone(),
-            title: group.title.clone(),
+            title,
             x,
             y,
             width,

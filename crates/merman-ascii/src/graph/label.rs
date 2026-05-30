@@ -1,4 +1,4 @@
-use crate::text::display_width;
+use crate::text::{display_width, wrap_display_lines};
 
 pub(super) const GRAPH_LABEL_LINE_GAP: usize = 1;
 
@@ -10,20 +10,25 @@ pub(super) struct GraphLabel {
 
 impl GraphLabel {
     pub(super) fn new(raw: &str) -> Self {
+        Self::from_lines(
+            normalize_label_breaks(raw)
+                .split('\n')
+                .map(ToOwned::to_owned)
+                .collect(),
+        )
+    }
+
+    pub(super) fn wrapped(raw: &str, max_width: usize) -> Self {
         let normalized = normalize_label_breaks(raw);
-        let mut lines = normalized
-            .split('\n')
-            .map(ToOwned::to_owned)
-            .collect::<Vec<_>>();
-        if lines.is_empty() {
-            lines.push(String::new());
+        let mut lines = Vec::new();
+        for paragraph in normalized.split('\n') {
+            if paragraph.is_empty() {
+                lines.push(String::new());
+            } else {
+                lines.extend(wrap_display_lines(paragraph, max_width));
+            }
         }
-        let width = lines
-            .iter()
-            .map(|line| display_width(line))
-            .max()
-            .unwrap_or_default();
-        Self { lines, width }
+        Self::from_lines(lines)
     }
 
     pub(super) fn lines(&self) -> &[String] {
@@ -39,6 +44,18 @@ impl GraphLabel {
             return 0;
         }
         self.lines.len() + (self.lines.len() - 1) * GRAPH_LABEL_LINE_GAP
+    }
+
+    fn from_lines(mut lines: Vec<String>) -> Self {
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        let width = lines
+            .iter()
+            .map(|line| display_width(line))
+            .max()
+            .unwrap_or_default();
+        Self { lines, width }
     }
 }
 
@@ -129,5 +146,14 @@ mod tests {
         assert_eq!(label.lines(), ["中A"]);
         assert_eq!(label.width(), 3);
         assert_eq!(label.content_height(), 1);
+    }
+
+    #[test]
+    fn graph_label_wrapped_preserves_hard_breaks() {
+        let label = GraphLabel::wrapped("Alpha Beta<br><br>Gamma Delta", 6);
+
+        assert_eq!(label.lines(), ["Alpha", "Beta", "", "Gamma", "Delta"]);
+        assert_eq!(label.width(), 5);
+        assert_eq!(label.content_height(), 9);
     }
 }
