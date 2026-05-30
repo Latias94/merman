@@ -9,7 +9,7 @@ mod label;
 mod path;
 
 pub(super) use cell::RouteCells;
-use cell::{edge_line_char, set_route_cell};
+use cell::{edge_line_char, set_edge_arrow, set_edge_line, set_route_cell};
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use label::{
     push_label_on_canvas_lines, push_label_on_horizontal_line, push_label_on_vertical_line,
@@ -230,7 +230,7 @@ fn draw_left_right_edge(
 
     let y = from.center_y();
     if from.shape != GraphNodeShape::Diamond {
-        drawing.canvas.set(from.right(), y, charset.right_connector);
+        set_edge_line(drawing.canvas, from.right(), y, charset.right_connector);
     }
     let start = from.right() + 1;
     let end = to.x - 1;
@@ -240,7 +240,7 @@ fn draw_left_right_edge(
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(drawing.canvas, drawing.route_cells, end, y, line),
-        GraphEdgeArrow::Point => drawing.canvas.set(end, y, charset.arrow_right),
+        GraphEdgeArrow::Point => set_edge_arrow(drawing.canvas, end, y, charset.arrow_right),
     }
     push_label_on_horizontal_line(drawing.labels, start, end, y, edge.label.as_deref());
 }
@@ -427,12 +427,20 @@ fn draw_grid_box_start(
     };
 
     match start_port.step_fallback() {
-        StepDirection::Up => canvas.set(from.x, from.y + 1, charset.up_connector),
-        StepDirection::Down => canvas.set(from.x, from.y.saturating_sub(1), charset.down_connector),
-        StepDirection::Left => canvas.set(from.x + 1, from.y, charset.left_connector),
-        StepDirection::Right => {
-            canvas.set(from.x.saturating_sub(1), from.y, charset.right_connector)
-        }
+        StepDirection::Up => set_edge_line(canvas, from.x, from.y + 1, charset.up_connector),
+        StepDirection::Down => set_edge_line(
+            canvas,
+            from.x,
+            from.y.saturating_sub(1),
+            charset.down_connector,
+        ),
+        StepDirection::Left => set_edge_line(canvas, from.x + 1, from.y, charset.left_connector),
+        StepDirection::Right => set_edge_line(
+            canvas,
+            from.x.saturating_sub(1),
+            from.y,
+            charset.right_connector,
+        ),
     }
 }
 
@@ -459,7 +467,7 @@ fn draw_grid_arrow_head(
         StepDirection::Left => charset.arrow_left,
         StepDirection::Right => charset.arrow_right,
     };
-    canvas.set(last.x, last.y, ch);
+    set_edge_arrow(canvas, last.x, last.y, ch);
 }
 
 fn canvas_line_direction(from: CanvasCoord, to: CanvasCoord) -> Option<StepDirection> {
@@ -534,8 +542,8 @@ fn draw_left_right_bottom_lane_edge(
 
     let arrow_y = bottom_y - 1;
     match edge.arrow {
-        GraphEdgeArrow::Open => drawing.canvas.set(end_x, arrow_y, vertical),
-        GraphEdgeArrow::Point => drawing.canvas.set(end_x, arrow_y, charset.arrow_up),
+        GraphEdgeArrow::Open => set_edge_line(drawing.canvas, end_x, arrow_y, vertical),
+        GraphEdgeArrow::Point => set_edge_arrow(drawing.canvas, end_x, arrow_y, charset.arrow_up),
     }
     push_label_on_horizontal_line(
         drawing.labels,
@@ -561,7 +569,7 @@ fn draw_left_right_reverse_over_self_loop(
 
     let y = to.center_y();
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    drawing.canvas.set(from.x, y, charset.left_connector);
+    set_edge_line(drawing.canvas, from.x, y, charset.left_connector);
     set_route_cell(
         drawing.canvas,
         drawing.route_cells,
@@ -582,7 +590,9 @@ fn draw_left_right_reverse_over_self_loop(
                 horizontal,
             );
         }
-        GraphEdgeArrow::Point => drawing.canvas.set(to.right() + 1, y, charset.arrow_left),
+        GraphEdgeArrow::Point => {
+            set_edge_arrow(drawing.canvas, to.right() + 1, y, charset.arrow_left)
+        }
     }
     for x in (to.right() + 2)..lane_x {
         set_route_cell(drawing.canvas, drawing.route_cells, x, y, horizontal);
@@ -619,7 +629,7 @@ fn draw_left_right_self_edge(
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     if from.shape != GraphNodeShape::Diamond {
-        canvas.set(from.right(), y, charset.right_connector);
+        set_edge_line(canvas, from.right(), y, charset.right_connector);
     }
     for x in (from.right() + 1)..loop_x {
         set_route_cell(canvas, route_cells, x, y, horizontal);
@@ -652,8 +662,8 @@ fn draw_left_right_self_edge(
         set_route_cell(canvas, route_cells, from.center_x(), line_y, vertical);
     }
     match edge.arrow {
-        GraphEdgeArrow::Open => canvas.set(from.center_x(), arrow_y, vertical),
-        GraphEdgeArrow::Point => canvas.set(from.center_x(), arrow_y, charset.arrow_up),
+        GraphEdgeArrow::Open => set_edge_line(canvas, from.center_x(), arrow_y, vertical),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, from.center_x(), arrow_y, charset.arrow_up),
     }
 }
 
@@ -723,13 +733,13 @@ fn draw_left_right_down_edge(
     let start = from.bottom() + 1;
     let end = to.y - 1;
     let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-    canvas.set(x, from.bottom(), charset.down_connector);
+    set_edge_line(canvas, x, from.bottom(), charset.down_connector);
     for y in start..end {
         set_route_cell(canvas, route_cells, x, y, line);
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, x, end, line),
-        GraphEdgeArrow::Point => canvas.set(x, end, charset.arrow_down),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, x, end, charset.arrow_down),
     }
 }
 
@@ -759,7 +769,7 @@ fn draw_left_right_down_then_right_edge(
 
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    canvas.set(source_x, from.bottom(), charset.down_connector);
+    set_edge_line(canvas, source_x, from.bottom(), charset.down_connector);
     for y in (from.bottom() + 1)..lane_y {
         set_route_cell(canvas, route_cells, source_x, y, vertical);
     }
@@ -792,7 +802,7 @@ fn draw_left_right_down_then_right_edge(
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, to.center_y(), horizontal),
-        GraphEdgeArrow::Point => canvas.set(end, to.center_y(), charset.arrow_right),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, to.center_y(), charset.arrow_right),
     }
 }
 
@@ -822,7 +832,7 @@ fn draw_left_right_right_then_up_edge(
 
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    canvas.set(source_x, from.y, charset.up_connector);
+    set_edge_line(canvas, source_x, from.y, charset.up_connector);
     for y in (lane_y + 1)..from.y {
         set_route_cell(canvas, route_cells, source_x, y, vertical);
     }
@@ -844,7 +854,7 @@ fn draw_left_right_right_then_up_edge(
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, to.center_y(), horizontal),
-        GraphEdgeArrow::Point => canvas.set(end, to.center_y(), charset.arrow_right),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, to.center_y(), charset.arrow_right),
     }
 }
 
@@ -864,7 +874,7 @@ fn draw_left_right_basic_down_then_right_edge(
 
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    canvas.set(x, from.bottom(), charset.down_connector);
+    set_edge_line(canvas, x, from.bottom(), charset.down_connector);
     for y in (from.bottom() + 1)..corner_y {
         set_route_cell(canvas, route_cells, x, y, vertical);
     }
@@ -876,7 +886,7 @@ fn draw_left_right_basic_down_then_right_edge(
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, corner_y, horizontal),
-        GraphEdgeArrow::Point => canvas.set(end, corner_y, charset.arrow_right),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, corner_y, charset.arrow_right),
     }
 }
 
@@ -896,7 +906,7 @@ fn draw_left_right_basic_right_then_up_edge(
 
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    canvas.set(from.right(), y, charset.right_connector);
+    set_edge_line(canvas, from.right(), y, charset.right_connector);
     for x in (from.right() + 1)..corner_x {
         set_route_cell(canvas, route_cells, x, y, horizontal);
     }
@@ -908,7 +918,7 @@ fn draw_left_right_basic_right_then_up_edge(
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, corner_x, arrow_y, vertical),
-        GraphEdgeArrow::Point => canvas.set(corner_x, arrow_y, charset.arrow_up),
+        GraphEdgeArrow::Point => set_edge_arrow(canvas, corner_x, arrow_y, charset.arrow_up),
     }
 }
 
@@ -977,13 +987,13 @@ fn draw_top_down_edge(
     let start = from.bottom() + 1;
     let end = to.y - 1;
     let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-    drawing.canvas.set(x, from.bottom(), charset.down_connector);
+    set_edge_line(drawing.canvas, x, from.bottom(), charset.down_connector);
     for y in start..end {
         set_route_cell(drawing.canvas, drawing.route_cells, x, y, line);
     }
     match edge.arrow {
         GraphEdgeArrow::Open => set_route_cell(drawing.canvas, drawing.route_cells, x, end, line),
-        GraphEdgeArrow::Point => drawing.canvas.set(x, end, charset.arrow_down),
+        GraphEdgeArrow::Point => set_edge_arrow(drawing.canvas, x, end, charset.arrow_down),
     }
     push_label_on_vertical_line(drawing.labels, x, start, end, edge.label.as_deref());
 }
@@ -1013,7 +1023,7 @@ fn draw_top_down_bent_edge(
             set_route_cell(drawing.canvas, drawing.route_cells, x, source_y, horizontal);
         }
     } else {
-        drawing.canvas.set(from.x, source_y, charset.left_connector);
+        set_edge_line(drawing.canvas, from.x, source_y, charset.left_connector);
         for x in (target_x + 1)..from.x {
             set_route_cell(drawing.canvas, drawing.route_cells, x, source_y, horizontal);
         }
@@ -1037,7 +1047,9 @@ fn draw_top_down_bent_edge(
             end_y,
             vertical,
         ),
-        GraphEdgeArrow::Point => drawing.canvas.set(target_x, end_y, charset.arrow_down),
+        GraphEdgeArrow::Point => {
+            set_edge_arrow(drawing.canvas, target_x, end_y, charset.arrow_down)
+        }
     }
     push_label_on_vertical_line(
         drawing.labels,

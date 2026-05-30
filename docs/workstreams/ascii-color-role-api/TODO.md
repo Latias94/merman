@@ -31,13 +31,13 @@ Last updated: 2026-05-30
 
 ## M2 - First Diagram Vertical Slice
 
-- [ ] ACR-040 [owner=unassigned] [deps=ACR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests/flowchart_model.rs]
+- [x] ACR-040 [owner=codex] [deps=ACR-030] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests/flowchart_model.rs]
   Goal: Assign flowchart roles for node text, node/group borders, edge lines, edge labels,
   arrowheads, and junctions.
   Validation: `cargo nextest run -p merman-ascii flowchart_color`; `cargo nextest run -p merman-ascii flowchart`
   Review: Plain flowchart snapshots must remain unchanged.
   Evidence: Forced truecolor and HTML parser-backed snapshots for a small flowchart.
-  Handoff: Style/class/linkStyle mapping remains deferred unless ACR-050 explicitly starts it.
+  Handoff: DONE. Style/class/linkStyle mapping remains deferred unless ACR-050 explicitly starts it.
 
 ## M3 - Follow-On Adoption Plan
 

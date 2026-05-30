@@ -1,4 +1,6 @@
-use merman_ascii::{AsciiRenderOptions, render_model};
+use merman_ascii::{
+    AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
+};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 
@@ -23,6 +25,156 @@ fn fixture_expected(directory: &str, name: &str) -> String {
         .split_once("\n---\n")
         .unwrap_or_else(|| panic!("fixture missing separator: {}", path.display()));
     expected.to_string()
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut output = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for escaped in chars.by_ref() {
+                if escaped == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+    output
+}
+
+fn strip_html_spans(input: &str) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < input.len() {
+        let rest = &input[index..];
+        if rest.starts_with("<span ") {
+            index += rest.find('>').expect("span start tag should be closed") + 1;
+            continue;
+        }
+        if rest.starts_with("</span>") {
+            index += "</span>".len();
+            continue;
+        }
+        let ch = rest
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        output.push(ch);
+        index += ch.len_utf8();
+    }
+    output
+}
+
+#[test]
+fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::new(1, 1, 1))
+        .with_role(AsciiColorRole::Text, AsciiRgb::new(2, 2, 2))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::new(3, 3, 3))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::new(4, 4, 4))
+        .with_role(AsciiColorRole::EdgeLabel, AsciiRgb::new(5, 5, 5));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_flowchart("flowchart LR\nA -- yes --> B", &options).unwrap();
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| A |-yes>| B |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+        )
+    );
+    for expected_code in [
+        "\u{1b}[38;2;1;1;1m",
+        "\u{1b}[38;2;2;2;2m",
+        "\u{1b}[38;2;3;3;3m",
+        "\u{1b}[38;2;4;4;4m",
+        "\u{1b}[38;2;5;5;5m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::GroupBorder, AsciiRgb::from_hex24(0x101010))
+        .with_role(AsciiColorRole::MutedText, AsciiRgb::from_hex24(0x202020))
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x303030))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x404040))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x505050))
+        .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x606060));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::Html)
+        .with_color_theme(theme);
+
+    let rendered = render_flowchart("flowchart TB\nsubgraph one\nA --> B\nend", &options).unwrap();
+
+    assert_eq!(
+        strip_html_spans(&rendered),
+        fixture_expected("ascii", "graph_tb_direction.txt")
+    );
+    for expected_fragment in [
+        "<span style=\"color:#101010\">+-------+</span>",
+        "<span style=\"color:#202020\">one</span>",
+        "<span style=\"color:#303030\">+---+</span>",
+        "<span style=\"color:#404040\">|</span>",
+        "<span style=\"color:#505050\">v</span>",
+        "<span style=\"color:#606060\">A</span>",
+        "<span style=\"color:#606060\">B</span>",
+    ] {
+        assert!(
+            rendered.contains(expected_fragment),
+            "missing {expected_fragment:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_color_truecolor_preserves_roles_after_horizontal_mirror() {
+    let theme = AsciiColorTheme::default_light()
+        .with_role(AsciiColorRole::NodeBorder, AsciiRgb::new(7, 7, 7))
+        .with_role(AsciiColorRole::Text, AsciiRgb::new(8, 8, 8))
+        .with_role(AsciiColorRole::EdgeLine, AsciiRgb::new(9, 9, 9))
+        .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::new(10, 10, 10));
+    let options = AsciiRenderOptions::ascii()
+        .with_color_mode(AsciiColorMode::TrueColor)
+        .with_color_theme(theme);
+
+    let rendered = render_flowchart("flowchart RL\nA --> B", &options).unwrap();
+
+    assert_eq!(
+        strip_ansi(&rendered),
+        concat!(
+            "+---+     +---+\n",
+            "|   |     |   |\n",
+            "| B |<----| A |\n",
+            "|   |     |   |\n",
+            "+---+     +---+\n",
+        )
+    );
+    for expected_code in [
+        "\u{1b}[38;2;7;7;7m",
+        "\u{1b}[38;2;8;8;8m",
+        "\u{1b}[38;2;9;9;9m",
+        "\u{1b}[38;2;10;10;10m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
 }
 
 #[test]

@@ -71,6 +71,11 @@
       "date": "2026-05-30",
       "task": "ACR-030",
       "result": "implemented public color types, color options, role-aware canvas storage, and forced ANSI/HTML encoders"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-040",
+      "result": "assigned flowchart semantic roles with forced TrueColor and HTML coverage while preserving plain snapshots"
     }
   ],
   "adr_refs": [
@@ -88,7 +93,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-040",
-    "notes": "Color infrastructure is in place. Continue by assigning flowchart semantic roles while keeping plain snapshots unchanged."
+    "next_task": "ACR-050",
+    "notes": "Flowchart roles are in place. Decide broader diagram-family adoption or split family-specific role lanes before style/class/linkStyle mapping."
   }
 }

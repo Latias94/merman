@@ -41,6 +41,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-010 | Drafted the color role API workstream and public API sketch. | Lane is draft; implementation waits on ADR/public API decision. |
 | 2026-05-30 | ACR-020 | Accepted ADR 0067 for the color role API and options migration. | Lane is active; implementation can start with role-aware canvas and encoders. |
 | 2026-05-30 | ACR-030 | Added public color types, color options, role-aware canvas storage, and forced ANSI/HTML encoders. | M1 infrastructure is complete; ACR-040 can assign flowchart roles. |
+| 2026-05-30 | ACR-040 | Assigned flowchart semantic roles for node text/borders, group borders/titles, edge lines, labels, arrowheads, and routed junctions. | M2 vertical slice is complete; broader diagram-family adoption can be planned. |
 
 ## Verification Log
 
@@ -55,3 +56,9 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-030 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Default diagram snapshots still pass after graph finalization uses color-aware output. |
 | 2026-05-30 | ACR-030 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
 | 2026-05-30 | ACR-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | New public color API and canvas encoder code are warning-free under clippy. |
+| 2026-05-30 | ACR-040 | `cargo nextest run -p merman-ascii flowchart_color` | Flowchart forced-color slice | PASS | TrueColor, HTML, and transformed-direction role snapshots pass. |
+| 2026-05-30 | ACR-040 | `cargo nextest run -p merman-ascii flowchart` | Flowchart regression suite | PASS | Plain flowchart snapshots remain unchanged while colored output is opt-in. |
+| 2026-05-30 | ACR-040 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after flowchart role assignment. |
+| 2026-05-30 | ACR-040 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Flowchart color roles do not regress other ascii diagram families. |
+| 2026-05-30 | ACR-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Flowchart role helpers and tests are warning-free under clippy. |
+| 2026-05-30 | ACR-040 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

@@ -1,6 +1,7 @@
 use super::super::charset::GraphCharset;
 use super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeStroke};
 use crate::canvas::Canvas;
+use crate::color::AsciiColorRole;
 use std::collections::HashSet;
 
 pub(crate) type RouteCells = HashSet<(usize, usize)>;
@@ -15,13 +16,29 @@ pub(super) fn set_route_cell(
     let Some(existing) = canvas.get(x, y) else {
         return;
     };
-    let merged = if route_cells.contains(&(x, y)) || is_arrow(existing) {
+    let was_routed = route_cells.contains(&(x, y));
+    let merged = if was_routed || is_arrow(existing) {
         merge_route_chars(existing, ch)
     } else {
         ch
     };
-    canvas.set(x, y, merged);
+    let role = if is_arrow(merged) {
+        AsciiColorRole::EdgeArrow
+    } else if was_routed && merged != existing {
+        AsciiColorRole::Junction
+    } else {
+        AsciiColorRole::EdgeLine
+    };
+    canvas.set_role(x, y, merged, role);
     route_cells.insert((x, y));
+}
+
+pub(super) fn set_edge_line(canvas: &mut Canvas, x: usize, y: usize, ch: char) {
+    canvas.set_role(x, y, ch, AsciiColorRole::EdgeLine);
+}
+
+pub(super) fn set_edge_arrow(canvas: &mut Canvas, x: usize, y: usize, ch: char) {
+    canvas.set_role(x, y, ch, AsciiColorRole::EdgeArrow);
 }
 
 fn merge_route_chars(existing: char, incoming: char) -> char {

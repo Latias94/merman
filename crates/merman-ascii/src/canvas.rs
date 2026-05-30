@@ -30,7 +30,6 @@ impl Canvas {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn set_role(&mut self, x: usize, y: usize, ch: char, role: AsciiColorRole) {
         if let Some(index) = self.index(x, y) {
             self.cells[index] = ch;
@@ -42,13 +41,16 @@ impl Canvas {
         self.index(x, y).map(|index| self.cells[index])
     }
 
+    pub(crate) fn get_role(&self, x: usize, y: usize) -> Option<AsciiColorRole> {
+        self.index(x, y).and_then(|index| self.roles[index])
+    }
+
     pub(crate) fn write_text(&mut self, x: usize, y: usize, text: &str) {
         for (offset, ch) in text.chars().enumerate() {
             self.set(x + offset, y, ch);
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn write_text_role(&mut self, x: usize, y: usize, text: &str, role: AsciiColorRole) {
         for (offset, ch) in text.chars().enumerate() {
             self.set_role(x + offset, y, ch, role);

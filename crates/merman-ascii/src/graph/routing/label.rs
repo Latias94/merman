@@ -1,5 +1,6 @@
 use super::super::layout::CanvasCoord;
 use crate::canvas::Canvas;
+use crate::color::AsciiColorRole;
 use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,7 +146,7 @@ fn draw_label_on_vertical_line(
 fn write_label_overlay(canvas: &mut Canvas, x: usize, y: usize, label: &str) {
     for (offset, ch) in label.chars().enumerate() {
         if ch != ' ' {
-            canvas.set(x + offset, y, ch);
+            canvas.set_role(x + offset, y, ch, AsciiColorRole::EdgeLabel);
         }
     }
 }
