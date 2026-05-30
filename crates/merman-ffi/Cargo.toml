@@ -25,6 +25,9 @@ raster = ["merman-bindings-core/raster"]
 [dependencies]
 merman-bindings-core.workspace = true
 
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+
 [dev-dependencies]
 cc = "1.2"
 libloading = "0.8"

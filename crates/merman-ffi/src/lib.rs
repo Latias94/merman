@@ -10,6 +10,9 @@ use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
+#[cfg(target_os = "android")]
+mod android_jni;
+
 pub const MERMAN_ABI_VERSION: u32 = 1;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
