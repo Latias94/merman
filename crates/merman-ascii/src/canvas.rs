@@ -57,35 +57,61 @@ impl Canvas {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn finish(self) -> String {
+        self.finish_plain(false)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn finish_trimmed(self) -> String {
+        self.finish_plain(true)
+    }
+
+    pub(crate) fn finish_with_options(self, options: &AsciiRenderOptions) -> String {
+        self.finish_with_options_internal(options, false)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn finish_trimmed_with_options(self, options: &AsciiRenderOptions) -> String {
+        self.finish_with_options_internal(options, true)
+    }
+
+    fn finish_plain(self, trim: bool) -> String {
         if self.width == 0 || self.height == 0 {
             return String::new();
         }
 
         let mut out = String::new();
-        for row in self.cells.chunks(self.width) {
-            for ch in row {
-                out.push(*ch);
+        for row_start in (0..self.cells.len()).step_by(self.width) {
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, false)
+            } else {
+                row_start + self.width
+            };
+            for index in row_start..row_end {
+                out.push(self.cells[index]);
             }
             out.push('\n');
         }
         out
     }
 
-    pub(crate) fn finish_with_options(self, options: &AsciiRenderOptions) -> String {
+    fn finish_with_options_internal(self, options: &AsciiRenderOptions, trim: bool) -> String {
         match resolve_color_mode(options.color_mode) {
-            AsciiColorMode::Plain => self.finish(),
+            AsciiColorMode::Plain => self.finish_plain(trim),
             AsciiColorMode::Auto => {
                 unreachable!("auto color mode must be resolved before encoding")
             }
-            AsciiColorMode::Ansi16 => self.finish_ansi(options.color_theme, AsciiColorMode::Ansi16),
+            AsciiColorMode::Ansi16 => {
+                self.finish_ansi(options.color_theme, AsciiColorMode::Ansi16, trim)
+            }
             AsciiColorMode::Ansi256 => {
-                self.finish_ansi(options.color_theme, AsciiColorMode::Ansi256)
+                self.finish_ansi(options.color_theme, AsciiColorMode::Ansi256, trim)
             }
             AsciiColorMode::TrueColor => {
-                self.finish_ansi(options.color_theme, AsciiColorMode::TrueColor)
+                self.finish_ansi(options.color_theme, AsciiColorMode::TrueColor, trim)
             }
-            AsciiColorMode::Html => self.finish_html(options.color_theme),
+            AsciiColorMode::Html => self.finish_html(options.color_theme, trim),
         }
     }
 
@@ -96,14 +122,18 @@ impl Canvas {
         Some(y * self.width + x)
     }
 
-    fn finish_ansi(self, theme: AsciiColorTheme, mode: AsciiColorMode) -> String {
+    fn finish_ansi(self, theme: AsciiColorTheme, mode: AsciiColorMode, trim: bool) -> String {
         if self.width == 0 || self.height == 0 {
             return String::new();
         }
 
         let mut out = String::new();
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = row_start + self.width;
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, true)
+            } else {
+                row_start + self.width
+            };
             let mut active_color = None;
             for index in row_start..row_end {
                 let desired_color = self.roles[index].map(|role| theme.color_for(role));
@@ -126,14 +156,18 @@ impl Canvas {
         out
     }
 
-    fn finish_html(self, theme: AsciiColorTheme) -> String {
+    fn finish_html(self, theme: AsciiColorTheme, trim: bool) -> String {
         if self.width == 0 || self.height == 0 {
             return String::new();
         }
 
         let mut out = String::new();
         for row_start in (0..self.cells.len()).step_by(self.width) {
-            let row_end = row_start + self.width;
+            let row_end = if trim {
+                self.trimmed_row_end(row_start, row_start + self.width, true)
+            } else {
+                row_start + self.width
+            };
             let mut active_color = None;
             for index in row_start..row_end {
                 let desired_color = self.roles[index].map(|role| theme.color_for(role));
@@ -154,6 +188,20 @@ impl Canvas {
             out.push('\n');
         }
         out
+    }
+
+    fn trimmed_row_end(&self, row_start: usize, mut row_end: usize, preserve_roles: bool) -> usize {
+        while row_end > row_start {
+            let index = row_end - 1;
+            if self.cells[index] != ' ' {
+                break;
+            }
+            if preserve_roles && self.roles[index].is_some() {
+                break;
+            }
+            row_end -= 1;
+        }
+        row_end
     }
 }
 
@@ -300,6 +348,46 @@ mod tests {
             ),
             "AB!\n"
         );
+    }
+
+    #[test]
+    fn finish_trimmed_plain_trims_trailing_spaces() {
+        let mut canvas = Canvas::new(4, 2);
+        canvas.write_text(0, 0, "AB");
+
+        assert_eq!(canvas.finish_trimmed(), "AB\n\n");
+    }
+
+    #[test]
+    fn finish_trimmed_truecolor_trims_unstyled_trailing_spaces() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let mut canvas = Canvas::new(4, 1);
+        canvas.write_text_role(0, 0, "AB", AsciiColorRole::Text);
+
+        let output = canvas.finish_trimmed_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn finish_trimmed_html_trims_unstyled_trailing_spaces_and_escapes_text() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0xff0000));
+        let mut canvas = Canvas::new(4, 1);
+        canvas.write_text_role(0, 0, "<&", AsciiColorRole::Text);
+
+        let output = canvas.finish_trimmed_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::Html)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(output, "<span style=\"color:#ff0000\">&lt;&amp;</span>\n");
     }
 
     #[test]

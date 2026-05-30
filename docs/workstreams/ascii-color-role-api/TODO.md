@@ -48,11 +48,11 @@ Last updated: 2026-05-30
   Evidence: `FAMILY_ADOPTION_PLAN.md` and updated support docs.
   Handoff: DONE. Broader adoption is split; start ACR-051 before family-specific role writers.
 
-- [ ] ACR-051 [owner=unassigned] [deps=ACR-050] [scope=crates/merman-ascii/src/canvas.rs,crates/merman-ascii/src/relation_graph.rs]
+- [x] ACR-051 [owner=codex] [deps=ACR-050] [scope=crates/merman-ascii/src/canvas.rs,crates/merman-ascii/src/relation_graph.rs]
   Goal: Add a shared role-aware text/trim substrate for non-flowchart renderers.
   Validation: `cargo nextest run -p merman-ascii color canvas relation_graph`; `cargo fmt --all --check`
   Review: Trimming trailing spaces must stay byte-for-byte compatible in plain output.
-  Evidence: Unit tests for trimmed plain, truecolor, and HTML finalization.
+  Evidence: Unit tests for trimmed plain, truecolor, and HTML finalization plus a role-aware relation_graph box draw test.
   Handoff: Class and ER should adopt the substrate first because they share relation graph boxes.
 
 - [ ] ACR-052 [owner=unassigned] [deps=ACR-051] [scope=crates/merman-ascii/src/class,crates/merman-ascii/src/er,crates/merman-ascii/tests]

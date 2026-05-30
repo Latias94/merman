@@ -64,3 +64,9 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Flowchart role helpers and tests are warning-free under clippy. |
 | 2026-05-30 | ACR-040 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
 | 2026-05-30 | ACR-050 | `git diff --check -- docs/workstreams/ascii-color-role-api crates/merman-ascii/FLOWCHART_SUPPORT.md crates/merman-ascii/README.md` | Adoption plan and support docs | PASS | Decision docs and support updates have no whitespace errors. |
+| 2026-05-30 | ACR-051 | `cargo nextest run -p merman-ascii color canvas relation_graph` | Shared trim substrate and relation graph line roles | PASS | Trimmed plain, TrueColor, HTML, and role-aware relation graph line tests pass. |
+| 2026-05-30 | ACR-051 | `cargo nextest run -p merman-ascii class er` | Class and ER plain regression suite | PASS | Relation graph substrate changes preserve existing class and ER output. |
+| 2026-05-30 | ACR-051 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Shared substrate changes do not regress any ascii family. |
+| 2026-05-30 | ACR-051 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after the shared substrate slice. |
+| 2026-05-30 | ACR-051 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Shared trim substrate and relation graph line types are warning-free under clippy. |
+| 2026-05-30 | ACR-051 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

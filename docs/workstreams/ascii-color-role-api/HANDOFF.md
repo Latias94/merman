@@ -10,17 +10,18 @@ The workstream is active. ADR 0067 accepted the public color role API shape and 
 public color types, color options, role-aware `Canvas` storage, and forced ANSI/HTML finalizers.
 ACR-040 assigned flowchart semantic roles for nodes, groups, edges, labels, arrowheads, and routed
 junctions. ACR-050 split broader family adoption into smaller lanes in `FAMILY_ADOPTION_PLAN.md`.
-Default plain output remains unchanged.
+ACR-051 added the shared role-aware trim substrate in `Canvas` plus role-bearing relation graph
+lines. Default plain output remains unchanged.
 
 ## Active Task
 
-- Task ID: ACR-051
+- Task ID: ACR-052
 - Owner: unassigned
-- Files: `crates/merman-ascii/src/canvas.rs`, `crates/merman-ascii/src/relation_graph.rs`
-- Validation: `cargo nextest run -p merman-ascii color canvas relation_graph`;
-  `cargo fmt --all --check`
+- Files: `crates/merman-ascii/src/class`, `crates/merman-ascii/src/er`, `crates/merman-ascii/tests`
+- Validation: `cargo nextest run -p merman-ascii class_color er_color`;
+  `cargo nextest run -p merman-ascii class er`
 - Status: TODO
-- Review: trailing-space trimming must stay byte-for-byte compatible in plain output
+- Review: existing class and ER plain snapshots must remain unchanged
 - Evidence: `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -42,7 +43,8 @@ Default plain output remains unchanged.
   arrowheads, and route junctions. Mermaid style/class/linkStyle mapping remains deferred.
 - ACR-050 decided to split broader family adoption. Class and ER share relation graph string boxes
   and layered `Canvas` routing; sequence and XYChart use different string/char-grid output paths.
-- The next substrate should support role-aware trimming before family-specific color writers land.
+- The next substrate now exists in `Canvas::finish_trimmed_with_options` and
+  `RelationGraphLine`; class and ER should adopt it before XYChart and sequence.
 
 ## Blockers
 
@@ -50,6 +52,5 @@ Default plain output remains unchanged.
 
 ## Next Recommended Action
 
-- Start ACR-051. Add a shared role-aware text/trim substrate for non-flowchart renderers, then use
-  it in class/ER before moving to XYChart and sequence. Keep ACR-060 style/class/linkStyle mapping
-  separate unless the planner explicitly prioritizes it.
+- Start ACR-052. Adopt the shared substrate in class and ER before moving to XYChart and sequence.
+  Keep ACR-060 style/class/linkStyle mapping separate unless the planner explicitly prioritizes it.

@@ -1,11 +1,18 @@
 use crate::canvas::Canvas;
+use crate::color::AsciiColorRole;
 use crate::text::display_width;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RelationGraphLine {
+    text: String,
+    roles: Vec<Option<AsciiColorRole>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphBox {
     id: String,
-    lines: Vec<String>,
+    lines: Vec<RelationGraphLine>,
     width: usize,
 }
 
@@ -125,8 +132,55 @@ impl<'a> RelationGraphComponent<'a> {
     }
 }
 
+impl RelationGraphLine {
+    #[allow(dead_code)]
+    pub(crate) fn new(text: String, roles: Vec<Option<AsciiColorRole>>) -> Self {
+        assert_eq!(text.chars().count(), roles.len());
+        Self { text, roles }
+    }
+
+    pub(crate) fn plain(text: String) -> Self {
+        let roles = vec![None; text.chars().count()];
+        Self { text, roles }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn with_role(text: String, role: AsciiColorRole) -> Self {
+        let roles = vec![Some(role); text.chars().count()];
+        Self { text, roles }
+    }
+
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
+        for (offset, (ch, role)) in self
+            .text
+            .chars()
+            .zip(self.roles.iter().copied())
+            .enumerate()
+        {
+            if let Some(role) = role {
+                canvas.set_role(x + offset, y, ch, role);
+            } else {
+                canvas.set(x + offset, y, ch);
+            }
+        }
+    }
+}
+
 impl RelationGraphBox {
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
+        Self {
+            id,
+            lines: lines.into_iter().map(RelationGraphLine::plain).collect(),
+            width,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn new_with_lines(id: String, lines: Vec<RelationGraphLine>, width: usize) -> Self {
         Self { id, lines, width }
     }
 
@@ -144,7 +198,7 @@ impl RelationGraphBox {
 
     pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
         for (row_index, line) in self.lines.iter().enumerate() {
-            canvas.write_text(x, y + row_index, line);
+            line.draw_at(canvas, x, y + row_index);
         }
     }
 }
@@ -588,7 +642,12 @@ fn layered_relation_gap_height(
 }
 
 fn render_box(relation_box: &RelationGraphBox) -> String {
-    let mut rendered = relation_box.lines.join("\n");
+    let mut rendered = relation_box
+        .lines
+        .iter()
+        .map(RelationGraphLine::text)
+        .collect::<Vec<_>>()
+        .join("\n");
     rendered.push('\n');
     rendered
 }
@@ -610,6 +669,41 @@ fn align_box(relation_box: &RelationGraphBox, center: usize) -> Vec<String> {
     relation_box
         .lines
         .iter()
-        .map(|line| format!("{padding}{line}"))
+        .map(|line| format!("{padding}{}", line.text()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::canvas::Canvas;
+    use crate::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb};
+
+    #[test]
+    fn render_stacked_boxes_preserves_plain_text() {
+        let boxes = vec![
+            RelationGraphBox::new("a".to_string(), vec!["A".to_string(), "|".to_string()], 1),
+            RelationGraphBox::new("b".to_string(), vec!["B".to_string(), "|".to_string()], 1),
+        ];
+
+        assert_eq!(render_stacked_boxes(&boxes), "A\n|\n\nB\n|\n");
+    }
+
+    #[test]
+    fn relation_graph_box_draws_role_lines_to_trimmed_canvas() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::Text, AsciiRgb::new(1, 2, 3));
+        let line = RelationGraphLine::with_role("AB".to_string(), AsciiColorRole::Text);
+        let relation_box = RelationGraphBox::new_with_lines("box".to_string(), vec![line], 2);
+        let mut canvas = Canvas::new(4, 1);
+        relation_box.draw_at(&mut canvas, 0, 0);
+
+        let output = canvas.finish_trimmed_with_options(
+            &AsciiRenderOptions::ascii()
+                .with_color_mode(AsciiColorMode::TrueColor)
+                .with_color_theme(theme),
+        );
+
+        assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m\n");
+    }
 }

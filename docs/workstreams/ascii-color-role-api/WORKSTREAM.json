@@ -85,6 +85,11 @@
       "date": "2026-05-30",
       "task": "ACR-050",
       "result": "split broader family adoption into substrate, class/ER, XYChart, and sequence lanes"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-051",
+      "result": "added a shared role-aware trim substrate in Canvas and relation graph lines with trimmed plain, TrueColor, HTML, and plain class/ER regression coverage"
     }
   ],
   "adr_refs": [
@@ -102,7 +107,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-051",
-    "notes": "Family adoption is split. Start with a shared role-aware text/trim substrate before class/ER, XYChart, and sequence role writers."
+    "next_task": "ACR-052",
+    "notes": "The shared substrate is in place. Class/ER should adopt it first before XYChart and sequence role writers."
   }
 }
