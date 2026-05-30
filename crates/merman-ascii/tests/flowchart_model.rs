@@ -214,6 +214,34 @@ fn flowchart_parser_simple_subgraph_renders_group_box() {
 }
 
 #[test]
+fn flowchart_parser_multiline_subgraph_title_renders_centered_rows() {
+    let rendered = render_flowchart(
+        "flowchart TB\nsubgraph cluster [Line<br>Two]\nA\nend",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("subgraph titles with Mermaid break syntax should render as multiline title rows");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-------+\n",
+            "| Line  |\n",
+            "|       |\n",
+            "|  Two  |\n",
+            "|       |\n",
+            "|       |\n",
+            "| +---+ |\n",
+            "| |   | |\n",
+            "| | A | |\n",
+            "| |   | |\n",
+            "| +---+ |\n",
+            "|       |\n",
+            "+-------+\n",
+        )
+    );
+}
+
+#[test]
 fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
     let rendered =
         render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();

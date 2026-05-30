@@ -322,6 +322,42 @@ mod tests {
     }
 
     #[test]
+    fn render_flowchart_renders_model_multiline_subgraph_titles() {
+        let mut model = empty_flowchart();
+        model.nodes = vec![node("A")];
+        model.subgraphs = vec![FlowSubgraph {
+            id: "cluster".to_string(),
+            title: "Line\nTwo".to_string(),
+            dir: None,
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string()],
+        }];
+
+        let rendered = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap();
+
+        assert_eq!(
+            rendered,
+            concat!(
+                "+-------+\n",
+                "| Line  |\n",
+                "|       |\n",
+                "|  Two  |\n",
+                "|       |\n",
+                "|       |\n",
+                "| +---+ |\n",
+                "| |   | |\n",
+                "| | A | |\n",
+                "| |   | |\n",
+                "| +---+ |\n",
+                "|       |\n",
+                "+-------+\n",
+            )
+        );
+    }
+
+    #[test]
     fn render_flowchart_rejects_unsupported_directions() {
         let mut model = empty_flowchart();
         model.direction = Some("XX".to_string());

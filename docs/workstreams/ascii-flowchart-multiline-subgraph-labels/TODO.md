@@ -14,12 +14,13 @@ Last updated: 2026-05-30
 
 ## M1 - Contract Tests
 
-- [ ] AFMS-020 [owner=unassigned] [deps=AFMS-010] [scope=crates/merman-ascii/tests,crates/merman-ascii/src/lib.rs]
+- [x] AFMS-020 [owner=codex] [deps=AFMS-010] [scope=crates/merman-ascii/tests,crates/merman-ascii/src/lib.rs]
   Goal: Capture multiline subgraph title behavior with public render surfaces.
   Validation: targeted `cargo nextest run -p merman-ascii` filters for the new tests.
   Review: Tests should fail on the current raw single-line title rendering or unsupported diagnostic.
   Evidence: Parser-backed `<br>` title test and direct-model newline title test.
-  Handoff: AFMS-030 makes those tests green without changing parser/core.
+  Handoff: DONE. Parser-backed `<br>` currently renders as raw title text; direct-model newline
+  titles currently hit `multiline subgraph labels`.
 
 ## M2 - Layout And Drawing
 
