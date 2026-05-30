@@ -1,6 +1,6 @@
 param(
     [string[]] $Targets = @("aarch64-linux-android", "x86_64-linux-android"),
-    [string] $ProjectName = "merman_flutter_smoke"
+    [string] $ProjectName = "merman_smoke"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,14 +19,14 @@ $pubspec = Join-Path $tempRoot "pubspec.yaml"
 Add-Content -LiteralPath $pubspec -Value @"
 
 dependency_overrides:
-  merman_flutter:
+  merman:
     path: $($pluginRoot.Path.Replace('\', '/'))
 "@
 
 $main = Join-Path $tempRoot "lib\main.dart"
 Set-Content -LiteralPath $main -Value @'
 import 'package:flutter/material.dart';
-import 'package:merman_flutter/merman_flutter.dart';
+import 'package:merman/merman.dart';
 
 void main() {
   runApp(const SmokeApp());

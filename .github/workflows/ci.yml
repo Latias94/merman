@@ -60,3 +60,124 @@ jobs:
         if: matrix.parity
         continue-on-error: true
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
+
+  platform-script-syntax:
+    name: platform-script-syntax
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check Python platform scripts
+        run: |
+          python3 -m py_compile \
+            scripts/verify-platform-bindings.py \
+            scripts/build-python-uniffi-wheel.py \
+            platforms/android/build-android.py \
+            platforms/flutter/tool/android-smoke.py
+
+      - name: Check Apple shell scripts
+        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
+
+  python-uniffi-wheel:
+    name: python-uniffi-wheel
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build and smoke Python UniFFI wheel
+        run: python scripts/build-python-uniffi-wheel.py --run-smoke
+
+      - name: Run Python example
+        run: PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+
+  c-ffi-example:
+    name: c-ffi-example
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build merman C ABI library
+        run: cargo build -p merman-ffi --release
+
+      - name: Build and run C example
+        run: |
+          cc -I crates/merman-ffi/include \
+            crates/merman-ffi/examples/render_svg.c \
+            -L target/release -lmerman_ffi \
+            -Wl,-rpath,"$PWD/target/release" \
+            -o target/merman-ffi-render-svg
+          target/merman-ffi-render-svg | grep -q '<svg'
+
+  flutter-package-check:
+    name: flutter-package-check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.3"
+          channel: stable
+          cache: true
+
+      - name: Validate Flutter package
+        working-directory: platforms/flutter
+        run: |
+          flutter pub get
+          flutter analyze
+          dart format --set-exit-if-changed lib example
+
+      - name: Run Dart FFI smoke
+        working-directory: platforms/flutter
+        run: |
+          cargo build -p merman-ffi
+          dart run example/smoke.dart ../../target/debug/libmerman_ffi.so
+
+  apple-ffi-smoke:
+    name: apple-ffi-smoke
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Apple XCFramework
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh
+
+      - name: Validate Swift package
+        run: |
+          swift package describe
+          swift build
+          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke

@@ -1,4 +1,4 @@
-import 'package:merman_flutter/merman_flutter.dart';
+import 'package:merman/merman.dart';
 
 void main(List<String> args) {
   final merman = Merman.open(args.isEmpty ? null : args.single);

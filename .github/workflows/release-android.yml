@@ -1,0 +1,87 @@
+name: Release Android (AAR)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_NAME" != v* ]]; then
+            echo "::error::Run this workflow from a v* tag."
+            exit 1
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Verify Android package version matches tag
+        run: |
+          ANDROID_VERSION=$(grep '^version = ' platforms/android/build.gradle.kts | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
+          if [ "$ANDROID_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::Android version '$ANDROID_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.2.0"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+
+      - name: Build Android native libraries
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+
+      - name: Build Android AAR
+        run: gradle -p platforms/android assembleRelease --stacktrace
+
+      - name: Prepare release asset
+        run: |
+          mkdir -p target/release-assets
+          cp platforms/android/build/outputs/aar/*.aar "target/release-assets/merman-android-${GITHUB_REF_NAME}.aar"
+
+      - name: Upload AAR artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-android-aar
+          path: target/release-assets/*.aar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release-assets/*.aar

@@ -89,7 +89,7 @@ fn generate(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    let module_dir = args.package_dir.join("src").join("merman_uniffi");
+    let module_dir = args.package_dir.join("src").join("merman");
     fs::create_dir_all(&module_dir)?;
     ensure_init_file(&module_dir)?;
 

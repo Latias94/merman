@@ -2,7 +2,7 @@
 
 Status: experimental scaffold.
 
-The Apple wrapper mirrors the RaTeX package shape:
+The Apple wrapper uses a root SwiftPM package shape:
 
 - root `Package.swift`
 - `platforms/apple/Merman.xcframework` binary target
@@ -45,6 +45,13 @@ let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
 mapped to `MermanError.binding`.
+
+## Smoke Example
+
+```bash
+bash scripts/build-apple-xcframework.sh
+swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+```
 
 ## Verification Status
 

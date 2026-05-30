@@ -1,5 +1,5 @@
 /target
-/.build/
+.build/
 /node_modules/
 /package-lock.json
 /package.json

@@ -2,9 +2,8 @@
 
 Status: experimental platform wrapper.
 
-`platforms/flutter` provides a Dart FFI wrapper over the canonical `merman-ffi` C ABI. It mirrors the
-RaTeX platform-wrapper pattern, but uses the merman byte-buffer ABI instead of RaTeX's display-list
-ABI.
+`platforms/flutter` provides a Dart FFI wrapper over the canonical `merman-ffi` C ABI. It uses the
+merman byte-buffer ABI and exposes SVG, semantic JSON, and layout JSON as Dart strings/maps.
 
 ## What It Does
 
@@ -28,6 +27,8 @@ flutter pub get
 flutter analyze
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
+
+The smoke example source is `platforms/flutter/example/smoke.dart`.
 
 Android packaging smoke:
 

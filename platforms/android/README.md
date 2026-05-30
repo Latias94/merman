@@ -18,6 +18,12 @@ val layoutJson = MermanEngine.layoutJson("flowchart TD\nA[Hello] --> B[World]")
 
 Native errors are thrown as `MermanException` with the C ABI JSON error payload as the message.
 
+## Example
+
+[`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
+sequence. Use it from an Android app or instrumentation test after packaging
+`libmerman_ffi.so` into the app.
+
 ## Local Verification
 
 ```bash

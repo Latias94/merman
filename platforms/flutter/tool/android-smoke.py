@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--project-name",
-        default="merman_flutter_smoke",
+        default="merman_smoke",
         help="Temporary Flutter project name.",
     )
     return parser.parse_args()
@@ -39,7 +39,7 @@ def run(args: list[str], *, cwd: Path | None = None) -> None:
 def write_smoke_main(path: Path) -> None:
     path.write_text(
         """import 'package:flutter/material.dart';
-import 'package:merman_flutter/merman_flutter.dart';
+import 'package:merman/merman.dart';
 
 void main() {
   runApp(const SmokeApp());
@@ -99,7 +99,7 @@ def main() -> int:
             f"""
 
 dependency_overrides:
-  merman_flutter:
+  merman:
     path: {PLUGIN_ROOT.as_posix()}
 """
         )

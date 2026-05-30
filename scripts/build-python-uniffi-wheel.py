@@ -55,12 +55,12 @@ def venv_python(venv_dir: Path) -> Path:
 
 def newest_wheel(wheel_dir: Path) -> Path:
     wheels = sorted(
-        wheel_dir.glob("merman_uniffi-*.whl"),
+        wheel_dir.glob("merman-*.whl"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     if not wheels:
-        raise RuntimeError(f"No merman_uniffi wheel found under {wheel_dir}")
+        raise RuntimeError(f"No merman wheel found under {wheel_dir}")
     return wheels[0]
 
 
@@ -101,7 +101,7 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                "import merman_uniffi; e = merman_uniffi.MermanEngine(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
+                "import merman; e = merman.MermanEngine(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
             ]
         )
 

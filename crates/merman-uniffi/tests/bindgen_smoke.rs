@@ -47,7 +47,7 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     let workspace_root = workspace_root();
     let cdylib = build_cdylib(&workspace_root);
     let package_dir = tempfile::tempdir().expect("create Python package smoke tempdir");
-    let module_dir = package_dir.path().join("src").join("merman_uniffi");
+    let module_dir = package_dir.path().join("src").join("merman");
     fs::create_dir_all(&module_dir).expect("create staged Python module directory");
     fs::write(
         module_dir.join("__init__.py"),
@@ -80,9 +80,9 @@ fn staged_python_package_imports_and_calls_rust_engine() {
 const PYTHON_PACKAGE_SMOKE: &str = r#"
 import json
 
-import merman_uniffi
+import merman
 
-engine = merman_uniffi.MermanEngine()
+engine = merman.MermanEngine()
 source = "flowchart TD\nA[Hello] --> B[World]"
 
 svg = engine.render_svg(source, None)
@@ -99,7 +99,7 @@ assert "layout" in layout
 
 try:
     engine.render_svg(source, "{")
-except merman_uniffi.MermanError.Binding as exc:
+except merman.MermanError.Binding as exc:
     assert exc.code == 3
     assert exc.code_name == "MERMAN_OPTIONS_JSON_ERROR"
     assert "invalid options_json" in exc.message

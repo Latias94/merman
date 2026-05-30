@@ -31,6 +31,11 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
 initialization.
 
+## Example
+
+`platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, semantic
+JSON, and layout JSON from Android/Kotlin.
+
 ## Verification
 
 ```bash
