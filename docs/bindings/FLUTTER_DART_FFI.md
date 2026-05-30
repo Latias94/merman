@@ -16,14 +16,16 @@ ABI.
   - `Merman.parseJson` / `parseJsonRaw`
   - `Merman.layoutJson` / `layoutJsonRaw`
 - Converts non-OK C ABI results into `MermanException`.
+- Declares an Android Flutter plugin shim that packages generated `libmerman_ffi.so` slices from
+  `platforms/android/src/main/jniLibs`.
 
 ## Verify Locally
 
 ```bash
 cargo build -p merman-ffi
 cd platforms/flutter
-dart pub get
-dart analyze
+flutter pub get
+flutter analyze
 dart run example/smoke.dart ../../target/debug/merman_ffi.dll
 ```
 
@@ -32,6 +34,5 @@ Use `../../target/debug/libmerman_ffi.so` on Linux and
 
 ## Follow-On Packaging
 
-- Bundle native libraries into a real Flutter plugin for Android/iOS/desktop.
-- Add Gradle/CocoaPods/CMake packaging.
+- Add iOS/macOS CocoaPods and desktop CMake packaging.
 - Add CI matrix smoke for Android, iOS/macOS, Windows, and Linux.
