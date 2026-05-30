@@ -1,6 +1,6 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-05-19
+Snapshot: 2026-05-30
 
 This page is the short-form dashboard for the fearless-refactor workstream.
 The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
@@ -25,20 +25,20 @@ What is done:
   workstream removed additional generated pins, most recently replacing the ER
   `DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`,
   `This **is** _Markdown_`, and `ATLAS-TEAMS` root buckets with
-  ER-owned browser label-width facts, and now governs the five remaining full-strict outside-table
+  ER-owned browser label-width facts, and now governs the nine current full-strict outside-table
   root residuals with an exact
   `compare-all-svgs` policy instead of silent debt.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes; the latest closeout run covered workspace
-  nextest (`1084` passed, `3` skipped), normal SVG DOM parity, and full root parity with the
-  explicit five-residual policy.
+  nextest (`1246` passed, `3` skipped), normal SVG DOM parity, and full root parity with the
+  explicit nine-residual policy.
 - `cargo run -p xtask -- verify --strict` includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
 - A disabled-root cross-check after numeric config parser centralization found no newly stale root
   viewport pins across generated root tables, so current root debt remains retained evidence rather
   than cleanup-by-count work.
-- The latest root closeout keeps generated root pins stale-free and locks the five accepted
+- The latest root closeout keeps generated root pins stale-free and locks the nine accepted
   outside-table root residuals to exact fixture/value pairs, so changed or additional residuals
   fail the strict gate.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in

@@ -17,7 +17,7 @@ Progress is tracked in the fearless-refactor workstream docs.
 | Healthier feature gates | `GATES.md` and `MILESTONES.md` document the feature matrix, override no-growth, workspace clippy, nextest, normal DOM parity, and full root parity coverage now included in `cargo run -p xtask -- verify --strict`. | Met |
 | Modular text subsystem | `MILESTONES.md` records the `text.rs` split into `text/*`, including markdown, measurement, font metrics, and overrides ownership boundaries. | Met |
 | Modular renderer subsystems | `MILESTONES.md` records the class, sequence, architecture, and flowchart renderer splits into smaller owner modules. | Met |
-| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes with an exact policy for five documented root residuals; `xtask verify --strict` includes root parity after normal DOM parity. The current no-growth budgets are `307` root viewport inventory entries and `484` text lookup entries. | Met |
+| Parity safety | Full `compare-all-svgs --dom-mode parity-root` now passes with an exact policy for nine documented root residuals; `xtask verify --strict` includes root parity after normal DOM parity. The current no-growth budgets are `286` root viewport inventory entries and `490` text lookup entries. | Met |
 | Measurable performance confidence | `docs/performance/*.md` includes the current baseline, typed-model spotchecks, the mmdr comparison/stage-attribution reports, the typed migration timing index, and the latest full benchmark gate record after the Flowchart override inventory cleanup. | Met |
 | Workstream tracking | `TODO.md`, `MILESTONES.md`, `CHANGELOG.md`, and this audit are kept current. | Met |
 
@@ -37,14 +37,16 @@ Progress is tracked in the fearless-refactor workstream docs.
 
 ## What Was Verified Recently
 
-- `cargo run -p xtask -- report-overrides --check-no-growth` passed with `307` root viewport
-  entries, `484` text lookup entries, `186` SVG text metric rows, and zero hand-curated helper or
+- `cargo run -p xtask -- report-overrides --check-no-growth` passed with `286` root viewport
+  entries, `490` text lookup entries, `186` SVG text metric rows, and zero hand-curated helper or
   manual raw SVG/path bridge overrides.
-- `cargo run -p xtask -- verify --strict` passed after the root viewport derivation closeout. The
+- `cargo run -p xtask -- verify --strict` passed after the current strict root residual policy
+  refresh. The
   run covered fmt, all-features check, workspace all-target/all-features clippy, override
-  no-growth, feature matrix checks, workspace nextest (`1084` tests passed, `3` skipped), normal
+  no-growth, feature matrix checks, workspace nextest (`1246` tests passed, `3` skipped), normal
   SVG DOM parity, and full root parity. The root parity stage accepted exactly the two Class
-  `different_text_labels_037` max-width residuals and the three Mindmap docs/example residuals.
+  `different_text_labels_037` max-width residuals, the Flowchart math docs residual, the
+  `zed_pr_57644` Sequence/GitGraph/Mindmap residuals, and the three Mindmap docs/example residuals.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passed after the Flowchart
   quoted-numeric rankSpacing derivation with `353` root viewport entries and `484` text lookup
   entries. Focused nextest/config checks and Flowchart `parity-root` checks cover the changed

@@ -18,7 +18,7 @@ starting with State and Mindmap, while keeping `parity-root` and strict release 
 | Keep `parity-root` green | Focused `compare-*-svgs --dom-mode parity-root` commands | Full State, Mindmap, Sequence, GitGraph, and Flowchart passes recorded |
 | Keep clippy green for render edits | `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` | Passed |
 | Keep nextest green for shared behavior edits | `cargo nextest run` | Workspace nextest passed in the closeout gate |
-| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed with an explicit root-parity residual policy for five exact fixtures |
+| Keep strict release gate green | `cargo run -p xtask -- verify --strict` | Passed with an explicit root-parity residual policy for nine exact fixtures |
 
 ## Current Baseline
 
@@ -341,8 +341,8 @@ workspace nextest (`1081` passed, `3` skipped), and normal SVG DOM parity.
 
 Full strict closeout is claimed with explicit residual governance. A fresh
 `cargo run -p xtask -- verify --strict` passed through fmt, all-feature check, clippy,
-override no-growth, feature matrix, workspace nextest (`1084` passed, `3` skipped), normal SVG
-DOM parity, and root parity. The root parity stage now accepts exactly five recorded residuals
+override no-growth, feature matrix, workspace nextest (`1246` passed, `3` skipped), normal SVG
+DOM parity, and root parity. The root parity stage now accepts exactly nine recorded residuals
 and fails on any changed or additional mismatch:
 
 - Class:
@@ -350,11 +350,21 @@ and fails on any changed or additional mismatch:
   and
   `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037`
   still report root `max-width` drift (`2355.75px` upstream versus `2345px` local).
+- Flowchart:
+  `upstream_docs_math_flowcharts_001` still reports math root `max-width` drift (`640.25px`
+  upstream versus `622px` local).
+- Sequence:
+  `zed_pr_57644_sequence` still reports root `max-width` drift (`796px` upstream versus `811px`
+  local).
+- GitGraph:
+  `zed_pr_57644_gitgraph` still reports root `max-width` drift (`845.25px` upstream versus
+  `845px` local).
 - Mindmap:
-  `upstream_docs_example_icons_br` and `upstream_examples_mindmap_basic_mindmap_001` still report
-  `max-width` drift (`756.25px` upstream versus `756.75px` local), and
+  `upstream_docs_example_icons_br` and `upstream_examples_mindmap_basic_mindmap_001` still
+  report `max-width` drift (`756.25px` upstream versus `756.75px` local),
   `upstream_docs_tidy_tree_example_usage_002` still reports a root `viewBox` height drift
-  (`671.5` upstream versus `671.75` local).
+  (`671.5` upstream versus `671.75` local), and `zed_pr_57644_mindmap` still reports root
+  `max-width` drift (`1199.75px` upstream versus `1161.75px` local).
 
 Therefore this workstream is closed with explicit root-parity residual governance: generated root
 table inventory is stable and stale-pin-free, the strict release gate is green, and the accepted
