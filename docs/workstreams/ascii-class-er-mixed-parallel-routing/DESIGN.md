@@ -1,6 +1,6 @@
 # ASCII Class ER Mixed Parallel Routing
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -61,3 +61,7 @@ This lane can close when:
 - focused and full `merman-ascii` gates pass,
 - support docs describe the shipped mixed-parallel subset,
 - and broader dense topology work remains split or deferred.
+
+Closed on 2026-05-30. The shipped behavior covers simple mixed-parallel class/ER components where a
+duplicate endpoint pair appears with another ordinary edge. Cyclic layouts, spanning-level edges,
+and dense label collision routing remain explicit follow-on topology work.

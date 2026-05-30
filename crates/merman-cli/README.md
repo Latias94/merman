@@ -62,9 +62,9 @@ SVG/raster rendering but return an unsupported-diagram error for `--format ascii
 typed text renderer is added.
 
 ClassDiagram and erDiagram text output include class/entity boxes, layered chain/star relationship
-layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint parallel
-relationship lanes, and unrelated standalone class/entity components. Denser mixed-parallel,
-cyclic, or spanning-level relationship graphs return explicit diagnostics instead of silently
+layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and simple
+mixed-parallel relationship lanes, and unrelated standalone class/entity components. Cyclic,
+spanning-level, or denser relationship graphs return explicit diagnostics instead of silently
 dropping edges.
 
 RaTeX math rendering is also feature-gated:

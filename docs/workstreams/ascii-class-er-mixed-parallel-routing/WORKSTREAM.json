@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "ascii-class-er-mixed-parallel-routing",
   "title": "ASCII Class ER Mixed Parallel Routing",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
-  "problem": "Class and ER ASCII renderers still reject a relationship component when one endpoint pair is parallel and another ordinary edge is present.",
+  "problem": "Class and ER ASCII renderers needed to render a relationship component when one endpoint pair is parallel and another ordinary edge is present.",
   "authoritative_docs": [
     {
       "role": "adr",
@@ -59,6 +59,11 @@
       "date": "2026-05-30",
       "task": "ACEMPR-030",
       "result": "layered drawing now offsets duplicate endpoint-pair lanes in mixed class/ER relationship components"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACEMPR-040",
+      "result": "updated support docs, passed full merman-ascii gates, and closed the lane"
     }
   ],
   "adr_refs": [
@@ -74,8 +79,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "ACEMPR-040",
-    "notes": "Update support docs, run full merman-ascii gates, and close the lane. Keep cyclic, spanning-level, dense, color/style, and flowchart routing out of this lane."
+    "default_action": "none",
+    "next_task": null,
+    "notes": "Lane closed. Remaining topology work is follow-on scope: cyclic layouts, spanning-level routing, dense label/marker collision routing, color/style, and flowchart routing."
   }
 }

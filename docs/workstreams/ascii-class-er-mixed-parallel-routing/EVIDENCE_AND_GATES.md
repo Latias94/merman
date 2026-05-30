@@ -1,6 +1,6 @@
 # ASCII Class ER Mixed Parallel Routing - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -31,6 +31,7 @@ git diff --check
 | 2026-05-30 | ACEMPR-010 | Opened follow-on lane from `ascii-class-er-parallel-routing` closeout. | Scope is limited to mixed-parallel relationship components. |
 | 2026-05-30 | ACEMPR-020 | Added parser-backed class and ER tests for a parallel endpoint pair plus another ordinary edge. | Red tests reproduced the old class/ER parallel diagnostics before implementation. |
 | 2026-05-30 | ACEMPR-030 | Removed duplicate endpoint-pair rejection from layered planning and added lane-offset drawing order. | Mixed-parallel class/ER components render all relationships without omitting duplicate lanes. |
+| 2026-05-30 | ACEMPR-040 | Updated README/support docs and closed the lane after fresh gates. | Full package tests, lint, fmt, and whitespace gates passed. |
 
 ## Verification Log
 
@@ -46,3 +47,7 @@ git diff --check
 | 2026-05-30 | ACEMPR-030 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII lint gate | PASS | Mixed-parallel refactor has no clippy warnings. |
 | 2026-05-30 | ACEMPR-030 | `cargo fmt --all --check` | Workspace formatting | PASS | Formatting is stable. |
 | 2026-05-30 | ACEMPR-030 | `git diff --check -- crates/merman-ascii/src/relation_graph.rs crates/merman-ascii/src/class/render.rs crates/merman-ascii/src/er/render.rs crates/merman-ascii/tests/class_model.rs crates/merman-ascii/tests/er_model.rs docs/workstreams/ascii-class-er-mixed-parallel-routing` | Lane diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACEMPR-040 | `cargo nextest run -p merman-ascii` | Full ASCII package gate | PASS | All 117 ASCII tests pass, including mixed-parallel behavior. |
+| 2026-05-30 | ACEMPR-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | Full ASCII lint gate | PASS | Closeout code has no clippy warnings. |
+| 2026-05-30 | ACEMPR-040 | `cargo fmt --all --check` | Workspace formatting | PASS | Formatting remains stable after support doc updates. |
+| 2026-05-30 | ACEMPR-040 | `git diff --check` | Whole worktree diff | PASS | Closeout diff has no whitespace errors. |
