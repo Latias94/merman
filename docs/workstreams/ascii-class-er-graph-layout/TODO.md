@@ -42,13 +42,16 @@ Last updated: 2026-05-30
 
 ## M3 - Class Multi-Relationship Rendering
 
-- [ ] ACEG-040 [owner=unassigned] [deps=ACEG-030] [scope=crates/merman-ascii/src/class,crates/merman-ascii/tests/class_model.rs]
+- [x] ACEG-040 [owner=codex] [deps=ACEG-030] [scope=crates/merman-ascii/src/class,crates/merman-ascii/tests/class_model.rs]
   Goal: Render useful classDiagram multi-relationship topologies such as chains and stars while
   preserving markers, labels, and explicit diagnostics for unsupported dense graphs.
   Validation: `cargo nextest run -p merman-ascii class`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: No silent omission of relations; snapshots must show every supported relation.
-  Evidence: class snapshots and support-doc updates.
-  Handoff: ACEG-050 reuses the boundary for ER.
+  Evidence: `class_parser_extension_star_renders_all_children`,
+  `class_parser_extension_chain_renders_each_relationship`, and
+  `class_parser_crossing_relationship_layouts_are_explicitly_unsupported`; support docs updated in
+  `crates/merman-ascii/README.md`.
+  Handoff: DONE. ACEG-050 reuses the boundary for ER.
 
 ## M4 - ER Multi-Relationship Rendering
 

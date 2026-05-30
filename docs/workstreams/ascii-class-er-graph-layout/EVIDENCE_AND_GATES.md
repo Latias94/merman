@@ -6,11 +6,13 @@ Last updated: 2026-05-30
 ## Smallest Current Repro
 
 The closed reference-expansion lane intentionally left class and ER graph layouts bounded to a
-single relationship. Current executable diagnostics:
+single relationship. Current executable capabilities and diagnostics:
 
-- `classDiagram` rejects multiple relationships with `multiple class relationships`.
+- `classDiagram` renders layered extension chains and simple extension stars.
 - `classDiagram` rejects unrelated-class relationship layouts with
   `class relationship layouts with unrelated classes`.
+- `classDiagram` rejects crossing class relationship layouts with
+  `crossing class relationship layouts`.
 - `erDiagram` rejects multiple relationships with `multiple ER relationships`.
 - `erDiagram` rejects unrelated-entity relationship layouts with
   `ER relationship layouts with unrelated entities`.
@@ -81,6 +83,7 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-010 | Opened follow-on lane from `ascii-reference-implementation-expansion` closeout. | Lane scope is limited to class/ER multi-relationship terminal graph layout. |
 | 2026-05-30 | ACEG-020 | Added parser-backed tracer tests in `crates/merman-ascii/tests/class_model.rs` and `crates/merman-ascii/tests/er_model.rs`. | Current unsupported diagnostics are locked for class multiple relationships and ER unrelated-entity relationship layouts before layout refactoring starts. |
 | 2026-05-30 | ACEG-030 | Added `crates/merman-ascii/src/relation_graph.rs` and routed class/ER single-relationship rendering through it. | Terminal placement is shared while class/ER adapters still own relationship semantics; focused snapshots stayed stable. |
+| 2026-05-30 | ACEG-040 | Added layered class relationship layout for parser-backed extension stars and chains, with explicit crossing-layout diagnostics and support-doc updates. | Class multi-relationship output now shows every supported relation without silently dropping edges. |
 
 ## Verification Log
 
@@ -93,3 +96,8 @@ Use package clippy for implementation tasks; use broader clippy before closeout.
 | 2026-05-30 | ACEG-030 | `cargo nextest run -p merman-ascii er` | Focused ER/filter gate | PASS, 77 tests | ER rendering uses the shared placement seam without changing existing ER or substring-matched behavior. |
 | 2026-05-30 | ACEG-030 | `cargo fmt --all --check` | Workspace formatting check | PASS | Refactor and docs are formatted. |
 | 2026-05-30 | ACEG-030 | `git diff --check` | Whitespace hygiene | PASS | Refactor and ledger updates have no whitespace errors. |
+| 2026-05-30 | ACEG-040 | `cargo nextest run -p merman-ascii class` | Focused class ASCII tests | PASS, 14 tests | Class extension star and chain layouts render through the public parser-backed path; crossing layouts stay explicit diagnostics. |
+| 2026-05-30 | ACEG-040 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | merman-ascii lint gate | PASS | New layered class layout code is warning-free under the package lint gate. |
+| 2026-05-30 | ACEG-040 | `cargo fmt --all --check` | Workspace formatting check | PASS | Implementation and support docs are formatted. |
+| 2026-05-30 | ACEG-040 | `git diff --check` | Whitespace hygiene | PASS | Implementation and ledger updates have no whitespace errors. |
+| 2026-05-30 | ACEG-040 | `cargo nextest run -p merman-ascii er` | Shared seam regression check | PASS, 79 tests | ER output still passes after extending shared `relation_graph` box geometry helpers for class layout. |

@@ -113,18 +113,72 @@ fn class_parser_relationship_layouts_with_unrelated_classes_are_explicitly_unsup
 }
 
 #[test]
-fn class_parser_multiple_relationships_are_explicitly_unsupported() {
-    let err = render_class(
+fn class_parser_extension_star_renders_all_children() {
+    let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",
         &AsciiRenderOptions::ascii(),
     )
-    .expect_err("multiple class relationship layout needs a graph layout pass");
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "    +--------+\n",
+            "    | Animal |\n",
+            "    +--------+\n",
+            "         ^\n",
+            "         |\n",
+            "   +-----+----+\n",
+            "+-----+    +-----+\n",
+            "| Dog |    | Cat |\n",
+            "+-----+    +-----+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_extension_chain_renders_each_relationship() {
+    let rendered = render_class(
+        "classDiagram\nclass Animal\nclass Mammal\nclass Dog\nAnimal <|-- Mammal\nMammal <|-- Dog",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("class diagram should render");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+--------+\n",
+            "| Animal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "     |\n",
+            "     |\n",
+            "+--------+\n",
+            "| Mammal |\n",
+            "+--------+\n",
+            "     ^\n",
+            "     |\n",
+            "     |\n",
+            "  +-----+\n",
+            "  | Dog |\n",
+            "  +-----+\n",
+        )
+    );
+}
+
+#[test]
+fn class_parser_crossing_relationship_layouts_are_explicitly_unsupported() {
+    let err = render_class(
+        "classDiagram\nclass A\nclass B\nclass C\nclass D\nA <|-- D\nB <|-- C",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect_err("crossing class relationships must not be rendered ambiguously");
 
     assert_eq!(
         err,
         AsciiError::UnsupportedFeature {
             diagram_type: "class",
-            feature: "multiple class relationships",
+            feature: "crossing class relationship layouts",
         }
     );
 }

@@ -1,3 +1,4 @@
+use crate::canvas::Canvas;
 use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +11,24 @@ pub(crate) struct RelationGraphBox {
 impl RelationGraphBox {
     pub(crate) fn new(id: String, lines: Vec<String>, width: usize) -> Self {
         Self { id, lines, width }
+    }
+
+    pub(crate) fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub(crate) fn width(&self) -> usize {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
+        for (row_index, line) in self.lines.iter().enumerate() {
+            canvas.write_text(x, y + row_index, line);
+        }
     }
 }
 

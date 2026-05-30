@@ -26,6 +26,13 @@ Exit criteria:
 Primary gate:
 
 - `cargo nextest run -p merman-ascii class`
+
+Primary evidence:
+
+- `class_parser_extension_star_renders_all_children`
+- `class_parser_extension_chain_renders_each_relationship`
+- `class_parser_crossing_relationship_layouts_are_explicitly_unsupported`
+- `crates/merman-ascii/README.md`
 - `cargo nextest run -p merman-ascii er`
 
 ## M2 - Shared Layout Boundary
