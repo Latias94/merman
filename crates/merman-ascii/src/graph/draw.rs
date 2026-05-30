@@ -1,7 +1,7 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
 use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
-use super::model::{AsciiGraph, GraphDirection, GraphNodeShape};
+use super::model::{AsciiGraph, GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
 use crate::canvas::Canvas;
 use crate::color::AsciiColorRole;
@@ -175,8 +175,8 @@ impl OutputTransform {
                 };
                 let coord = self.coord(CanvasCoord { x, y }, width, height);
                 let ch = self.map_char(ch);
-                if let Some(role) = source.get_role(x, y) {
-                    canvas.set_role(coord.x, coord.y, ch, role);
+                if let Some(color) = source.get_color(x, y) {
+                    canvas.set_canvas_color(coord.x, coord.y, ch, color);
                 } else {
                     canvas.set(coord.x, coord.y, ch);
                 }
@@ -271,19 +271,19 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
     let right = group.right();
     let bottom = group.bottom();
 
-    set_group_border(canvas, group.x, group.y, charset.top_left);
-    set_group_border(canvas, right, group.y, charset.top_right);
-    set_group_border(canvas, group.x, bottom, charset.bottom_left);
-    set_group_border(canvas, right, bottom, charset.bottom_right);
+    set_group_border(canvas, group.x, group.y, charset.top_left, group.style);
+    set_group_border(canvas, right, group.y, charset.top_right, group.style);
+    set_group_border(canvas, group.x, bottom, charset.bottom_left, group.style);
+    set_group_border(canvas, right, bottom, charset.bottom_right, group.style);
 
     for x in (group.x + 1)..right {
-        set_group_border(canvas, x, group.y, charset.horizontal);
-        set_group_border(canvas, x, bottom, charset.horizontal);
+        set_group_border(canvas, x, group.y, charset.horizontal, group.style);
+        set_group_border(canvas, x, bottom, charset.horizontal, group.style);
     }
 
     for y in (group.y + 1)..bottom {
-        set_group_border(canvas, group.x, y, charset.vertical);
-        set_group_border(canvas, right, y, charset.vertical);
+        set_group_border(canvas, group.x, y, charset.vertical, group.style);
+        set_group_border(canvas, right, y, charset.vertical, group.style);
     }
 }
 
@@ -292,7 +292,7 @@ fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
         let Some((title_x, title_y)) = group_title_line_position(group, line, line_index) else {
             continue;
         };
-        write_group_title(canvas, title_x, title_y, line);
+        write_group_title(canvas, title_x, title_y, line, group.style);
     }
 }
 
@@ -320,6 +320,7 @@ fn draw_transformed_group_title(
             transform.text_x(title_x, line, width),
             transformed_content_y + line_index * line_step,
             line,
+            group.style,
         );
     }
 }
@@ -343,20 +344,36 @@ fn group_title_line_position(
     ))
 }
 
-fn set_group_border(canvas: &mut Canvas, x: usize, y: usize, ch: char) {
-    canvas.set_role(x, y, ch, AsciiColorRole::GroupBorder);
+fn set_group_border(canvas: &mut Canvas, x: usize, y: usize, ch: char, style: GraphGroupStyle) {
+    if let Some(color) = style.border {
+        canvas.set_color(x, y, ch, color);
+    } else {
+        canvas.set_role(x, y, ch, AsciiColorRole::GroupBorder);
+    }
 }
 
-fn write_group_title(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
-    canvas.write_text_role(x, y, text, AsciiColorRole::MutedText);
+fn write_group_title(canvas: &mut Canvas, x: usize, y: usize, text: &str, style: GraphGroupStyle) {
+    if let Some(color) = style.title {
+        canvas.write_text_color(x, y, text, color);
+    } else {
+        canvas.write_text_role(x, y, text, AsciiColorRole::MutedText);
+    }
 }
 
-fn set_node_border(canvas: &mut Canvas, x: usize, y: usize, ch: char) {
-    canvas.set_role(x, y, ch, AsciiColorRole::NodeBorder);
+fn set_node_border(canvas: &mut Canvas, x: usize, y: usize, ch: char, style: GraphNodeStyle) {
+    if let Some(color) = style.border {
+        canvas.set_color(x, y, ch, color);
+    } else {
+        canvas.set_role(x, y, ch, AsciiColorRole::NodeBorder);
+    }
 }
 
-fn write_node_text(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
-    canvas.write_text_role(x, y, text, AsciiColorRole::Text);
+fn write_node_text(canvas: &mut Canvas, x: usize, y: usize, text: &str, style: GraphNodeStyle) {
+    if let Some(color) = style.text {
+        canvas.write_text_color(x, y, text, color);
+    } else {
+        canvas.write_text_role(x, y, text, AsciiColorRole::Text);
+    }
 }
 
 fn draw_rect_node(
@@ -368,19 +385,19 @@ fn draw_rect_node(
     let right = layout.right();
     let bottom = layout.bottom();
 
-    set_node_border(canvas, layout.x, layout.y, charset.top_left);
-    set_node_border(canvas, right, layout.y, charset.top_right);
-    set_node_border(canvas, layout.x, bottom, charset.bottom_left);
-    set_node_border(canvas, right, bottom, charset.bottom_right);
+    set_node_border(canvas, layout.x, layout.y, charset.top_left, layout.style);
+    set_node_border(canvas, right, layout.y, charset.top_right, layout.style);
+    set_node_border(canvas, layout.x, bottom, charset.bottom_left, layout.style);
+    set_node_border(canvas, right, bottom, charset.bottom_right, layout.style);
 
     for x in (layout.x + 1)..right {
-        set_node_border(canvas, x, layout.y, charset.horizontal);
-        set_node_border(canvas, x, bottom, charset.horizontal);
+        set_node_border(canvas, x, layout.y, charset.horizontal, layout.style);
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style);
     }
 
     for y in (layout.y + 1)..bottom {
-        set_node_border(canvas, layout.x, y, charset.vertical);
-        set_node_border(canvas, right, y, charset.vertical);
+        set_node_border(canvas, layout.x, y, charset.vertical, layout.style);
+        set_node_border(canvas, right, y, charset.vertical, layout.style);
     }
 
     write_centered_label(canvas, layout, options);
@@ -424,19 +441,19 @@ fn draw_node_with_corners(
     let right = layout.right();
     let bottom = layout.bottom();
 
-    set_node_border(canvas, layout.x, layout.y, corners.top_left);
-    set_node_border(canvas, right, layout.y, corners.top_right);
-    set_node_border(canvas, layout.x, bottom, corners.bottom_left);
-    set_node_border(canvas, right, bottom, corners.bottom_right);
+    set_node_border(canvas, layout.x, layout.y, corners.top_left, layout.style);
+    set_node_border(canvas, right, layout.y, corners.top_right, layout.style);
+    set_node_border(canvas, layout.x, bottom, corners.bottom_left, layout.style);
+    set_node_border(canvas, right, bottom, corners.bottom_right, layout.style);
 
     for x in (layout.x + 1)..right {
-        set_node_border(canvas, x, layout.y, charset.horizontal);
-        set_node_border(canvas, x, bottom, charset.horizontal);
+        set_node_border(canvas, x, layout.y, charset.horizontal, layout.style);
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style);
     }
 
     for y in (layout.y + 1)..bottom {
-        set_node_border(canvas, layout.x, y, charset.vertical);
-        set_node_border(canvas, right, y, charset.vertical);
+        set_node_border(canvas, layout.x, y, charset.vertical, layout.style);
+        set_node_border(canvas, right, y, charset.vertical, layout.style);
     }
 
     write_centered_label(canvas, layout, options);
@@ -452,20 +469,68 @@ fn draw_diamond_node(
     let bottom = layout.bottom();
     let center_y = layout.center_y();
 
-    set_node_border(canvas, layout.x, layout.y, charset.rounded_top_left);
-    set_node_border(canvas, right, layout.y, charset.rounded_top_right);
-    set_node_border(canvas, layout.x, layout.y + 1, charset.rounded_top_left);
-    set_node_border(canvas, right, layout.y + 1, charset.rounded_top_right);
-    set_node_border(canvas, layout.x, center_y, '<');
-    set_node_border(canvas, right, center_y, '>');
-    set_node_border(canvas, layout.x, bottom - 1, charset.rounded_bottom_left);
-    set_node_border(canvas, right, bottom - 1, charset.rounded_bottom_right);
-    set_node_border(canvas, layout.x, bottom, charset.rounded_bottom_left);
-    set_node_border(canvas, right, bottom, charset.rounded_bottom_right);
+    set_node_border(
+        canvas,
+        layout.x,
+        layout.y,
+        charset.rounded_top_left,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        right,
+        layout.y,
+        charset.rounded_top_right,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        layout.x,
+        layout.y + 1,
+        charset.rounded_top_left,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        right,
+        layout.y + 1,
+        charset.rounded_top_right,
+        layout.style,
+    );
+    set_node_border(canvas, layout.x, center_y, '<', layout.style);
+    set_node_border(canvas, right, center_y, '>', layout.style);
+    set_node_border(
+        canvas,
+        layout.x,
+        bottom - 1,
+        charset.rounded_bottom_left,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        right,
+        bottom - 1,
+        charset.rounded_bottom_right,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        layout.x,
+        bottom,
+        charset.rounded_bottom_left,
+        layout.style,
+    );
+    set_node_border(
+        canvas,
+        right,
+        bottom,
+        charset.rounded_bottom_right,
+        layout.style,
+    );
 
     for x in (layout.x + 1)..right {
-        set_node_border(canvas, x, layout.y, charset.horizontal);
-        set_node_border(canvas, x, bottom, charset.horizontal);
+        set_node_border(canvas, x, layout.y, charset.horizontal, layout.style);
+        set_node_border(canvas, x, bottom, charset.horizontal, layout.style);
     }
 
     write_centered_label(canvas, layout, options);
@@ -482,8 +547,8 @@ fn draw_subroutine_node(
         let left_inner = layout.x + 2;
         let right_inner = layout.right().saturating_sub(2);
         for y in (layout.y + 1)..layout.bottom() {
-            set_node_border(canvas, left_inner, y, charset.vertical);
-            set_node_border(canvas, right_inner, y, charset.vertical);
+            set_node_border(canvas, left_inner, y, charset.vertical, layout.style);
+            set_node_border(canvas, right_inner, y, charset.vertical, layout.style);
         }
         let text_y = layout.y + 1 + options.box_border_padding;
         for x in (left_inner + 1)..right_inner {
@@ -502,7 +567,7 @@ fn draw_cylinder_node(
     draw_rounded_node(canvas, layout, charset, options);
     if layout.height > 3 {
         for x in (layout.x + 1)..layout.right() {
-            set_node_border(canvas, x, layout.y + 1, charset.horizontal);
+            set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style);
         }
     }
     let text_y = layout.y + 1 + options.box_border_padding;
@@ -521,7 +586,7 @@ fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &Asc
         let text_width = display_width(line);
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let text_y = content_y + line_index * (GRAPH_LABEL_LINE_GAP + 1);
-        write_node_text(canvas, text_x, text_y, line);
+        write_node_text(canvas, text_x, text_y, line, layout.style);
     }
 }
 
@@ -572,7 +637,7 @@ fn redraw_transformed_node_label(
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let transformed_x = transform.text_x(text_x, line, width);
         let transformed_y = transformed_content_y + line_index * line_step;
-        write_node_text(canvas, transformed_x, transformed_y, line);
+        write_node_text(canvas, transformed_x, transformed_y, line, layout.style);
     }
 }
 

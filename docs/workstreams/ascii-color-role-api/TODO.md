@@ -77,10 +77,10 @@ Last updated: 2026-05-30
   Evidence: Forced truecolor and HTML parser-backed snapshots for messages, notes, and frames.
   Handoff: DONE. Background/fill interpretation for Mermaid `rect` and boxes remains deferred.
 
-- [ ] ACR-060 [owner=unassigned] [deps=ACR-040] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/FLOWCHART_SUPPORT.md]
+- [x] ACR-060 [owner=codex] [deps=ACR-040] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/FLOWCHART_SUPPORT.md]
   Goal: Design or implement Mermaid style mapping for flowchart `classDef`, `style`, and
   `linkStyle`.
-  Validation: parser-backed tests from existing style fixtures.
+  Validation: `cargo nextest run -p merman-ascii --test flowchart_model flowchart_style_color`; `cargo nextest run -p merman-ascii flowchart`
   Review: Do not silently misrepresent unsupported CSS properties.
-  Evidence: Style resolver tests and support matrix updates.
-  Handoff: Background/fill color remains a separate decision unless explicitly accepted.
+  Evidence: Parser-backed `flowchart_style_color_*` tests and support matrix updates.
+  Handoff: DONE. Background/fill color remains a separate decision.

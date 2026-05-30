@@ -105,6 +105,11 @@
       "date": "2026-05-30",
       "task": "ACR-054",
       "result": "adopted semantic color roles for sequence participants, lifelines, activations, messages, notes, boxes, and control frames through role-aware row buffers"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "ACR-060",
+      "result": "implemented flowchart foreground style mapping for classDef, class, inline style, and linkStyle while leaving fill/background as documented no-ops"
     }
   ],
   "adr_refs": [
@@ -122,7 +127,7 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "continue",
-    "next_task": "ACR-060",
-    "notes": "Family role adoption is complete. Flowchart Mermaid style/class/linkStyle mapping remains the next color-related follow-on if style parity is the priority."
+    "next_task": "review-or-closeout",
+    "notes": "Family role adoption and the flowchart foreground style-mapping subset are complete. Review and close the workstream or split a separate fill/background lane if that becomes a product goal."
   }
 }

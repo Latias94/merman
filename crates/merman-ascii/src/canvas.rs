@@ -9,7 +9,22 @@ pub(crate) struct Canvas {
     width: usize,
     height: usize,
     cells: Vec<char>,
-    roles: Vec<Option<AsciiColorRole>>,
+    colors: Vec<Option<CanvasColor>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CanvasColor {
+    Role(AsciiColorRole),
+    Direct(AsciiRgb),
+}
+
+impl CanvasColor {
+    fn resolve(self, theme: AsciiColorTheme) -> AsciiRgb {
+        match self {
+            Self::Role(role) => theme.color_for(role),
+            Self::Direct(color) => color,
+        }
+    }
 }
 
 impl Canvas {
@@ -19,21 +34,29 @@ impl Canvas {
             width,
             height,
             cells: vec![' '; cell_count],
-            roles: vec![None; cell_count],
+            colors: vec![None; cell_count],
         }
     }
 
     pub(crate) fn set(&mut self, x: usize, y: usize, ch: char) {
         if let Some(index) = self.index(x, y) {
             self.cells[index] = ch;
-            self.roles[index] = None;
+            self.colors[index] = None;
         }
     }
 
     pub(crate) fn set_role(&mut self, x: usize, y: usize, ch: char, role: AsciiColorRole) {
+        self.set_canvas_color(x, y, ch, CanvasColor::Role(role));
+    }
+
+    pub(crate) fn set_color(&mut self, x: usize, y: usize, ch: char, color: AsciiRgb) {
+        self.set_canvas_color(x, y, ch, CanvasColor::Direct(color));
+    }
+
+    pub(crate) fn set_canvas_color(&mut self, x: usize, y: usize, ch: char, color: CanvasColor) {
         if let Some(index) = self.index(x, y) {
             self.cells[index] = ch;
-            self.roles[index] = Some(role);
+            self.colors[index] = Some(color);
         }
     }
 
@@ -41,8 +64,16 @@ impl Canvas {
         self.index(x, y).map(|index| self.cells[index])
     }
 
-    pub(crate) fn get_role(&self, x: usize, y: usize) -> Option<AsciiColorRole> {
-        self.index(x, y).and_then(|index| self.roles[index])
+    pub(crate) fn get_color(&self, x: usize, y: usize) -> Option<CanvasColor> {
+        self.index(x, y).and_then(|index| self.colors[index])
+    }
+
+    pub(crate) fn width(&self) -> usize {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> usize {
+        self.height
     }
 
     #[allow(dead_code)]
@@ -55,6 +86,12 @@ impl Canvas {
     pub(crate) fn write_text_role(&mut self, x: usize, y: usize, text: &str, role: AsciiColorRole) {
         for (offset, ch) in text.chars().enumerate() {
             self.set_role(x + offset, y, ch, role);
+        }
+    }
+
+    pub(crate) fn write_text_color(&mut self, x: usize, y: usize, text: &str, color: AsciiRgb) {
+        for (offset, ch) in text.chars().enumerate() {
+            self.set_color(x + offset, y, ch, color);
         }
     }
 
@@ -137,7 +174,7 @@ impl Canvas {
             };
             let mut active_color = None;
             for index in row_start..row_end {
-                let desired_color = self.roles[index].map(|role| theme.color_for(role));
+                let desired_color = self.colors[index].map(|color| color.resolve(theme));
                 if desired_color != active_color {
                     if active_color.is_some() {
                         out.push_str("\u{1b}[0m");
@@ -171,7 +208,7 @@ impl Canvas {
             };
             let mut active_color = None;
             for index in row_start..row_end {
-                let desired_color = self.roles[index].map(|role| theme.color_for(role));
+                let desired_color = self.colors[index].map(|color| color.resolve(theme));
                 if desired_color != active_color {
                     if active_color.is_some() {
                         out.push_str("</span>");
@@ -197,7 +234,7 @@ impl Canvas {
             if self.cells[index] != ' ' {
                 break;
             }
-            if preserve_roles && self.roles[index].is_some() {
+            if preserve_roles && self.colors[index].is_some() {
                 break;
             }
             row_end -= 1;

@@ -62,8 +62,19 @@ fn strip_html_spans(input: &str) -> String {
             .chars()
             .next()
             .expect("index should be on a char boundary");
-        output.push(ch);
-        index += ch.len_utf8();
+        if let Some(entity) = rest.strip_prefix("&gt;") {
+            output.push('>');
+            index += rest.len() - entity.len();
+        } else if let Some(entity) = rest.strip_prefix("&lt;") {
+            output.push('<');
+            index += rest.len() - entity.len();
+        } else if let Some(entity) = rest.strip_prefix("&amp;") {
+            output.push('&');
+            index += rest.len() - entity.len();
+        } else {
+            output.push(ch);
+            index += ch.len_utf8();
+        }
     }
     output
 }
@@ -170,6 +181,91 @@ fn flowchart_color_truecolor_preserves_roles_after_horizontal_mirror() {
         "\u{1b}[38;2;9;9;9m",
         "\u{1b}[38;2;10;10;10m",
     ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_style_color_truecolor_maps_classdef_and_inline_node_foreground_without_plain_text_changes()
+ {
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[Alpha]:::hot --> B[Beta]\n",
+        "  classDef hot color:#112233,stroke:#445566,fill:#ffeecc\n",
+        "  style B color:#778899,stroke:#aabbcc,fill:#001122\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+
+    let rendered = render_flowchart(input, &options).unwrap();
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    for expected_code in [
+        "\u{1b}[38;2;17;34;51m",
+        "\u{1b}[38;2;68;85;102m",
+        "\u{1b}[38;2;119;136;153m",
+        "\u{1b}[38;2;170;187;204m",
+    ] {
+        assert!(
+            rendered.contains(expected_code),
+            "missing {expected_code:?} in {rendered:?}"
+        );
+    }
+    for ignored_fill_code in ["\u{1b}[38;2;255;238;204m", "\u{1b}[38;2;0;17;34m"] {
+        assert!(
+            !rendered.contains(ignored_fill_code),
+            "fill/background style should not be emitted as foreground in {rendered:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_style_color_html_maps_linkstyle_edge_and_label_foreground_without_plain_text_changes()
+{
+    let input = concat!(
+        "flowchart LR\n",
+        "  A[Alpha] -->|go| B[Beta]\n",
+        "  linkStyle 0 stroke:#123456,color:#654321\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::Html);
+
+    let rendered = render_flowchart(input, &options).unwrap();
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_html_spans(&rendered), plain);
+    assert!(
+        rendered.contains("<span style=\"color:#123456\">-</span>")
+            || rendered.contains("<span style=\"color:#123456\">&gt;</span>"),
+        "missing styled edge line or arrow in {rendered:?}"
+    );
+    assert!(
+        rendered.contains("<span style=\"color:#654321\">go</span>"),
+        "missing styled edge label in {rendered:?}"
+    );
+}
+
+#[test]
+fn flowchart_style_color_truecolor_maps_class_statement_to_node_and_subgraph_foreground_without_plain_text_changes()
+ {
+    let input = concat!(
+        "flowchart TB\n",
+        "  subgraph sg [Group]\n",
+        "    A[Alpha]\n",
+        "  end\n",
+        "  classDef warm color:#010203,stroke:#040506\n",
+        "  class sg warm\n",
+        "  class A warm\n",
+    );
+    let options = AsciiRenderOptions::ascii().with_color_mode(AsciiColorMode::TrueColor);
+
+    let rendered = render_flowchart(input, &options).unwrap();
+    let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
+
+    assert_eq!(strip_ansi(&rendered), plain);
+    for expected_code in ["\u{1b}[38;2;1;2;3m", "\u{1b}[38;2;4;5;6m"] {
         assert!(
             rendered.contains(expected_code),
             "missing {expected_code:?} in {rendered:?}"

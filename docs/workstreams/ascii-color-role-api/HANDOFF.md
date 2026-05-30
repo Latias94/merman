@@ -14,16 +14,18 @@ ACR-051 added the shared role-aware trim substrate in `Canvas` plus role-bearing
 lines. ACR-052 adopted semantic roles for class and ER boxes, relation lines, markers, labels, and
 junctions. ACR-053 adopted semantic roles for XYChart titles/text, axes, bars, and line plots using
 `ChartSeries(index)` for plotted data. ACR-054 adopted semantic roles for sequence participants,
-lifelines, activations, messages, notes, boxes, and control frames. Default plain output remains
-unchanged.
+lifelines, activations, messages, notes, boxes, and control frames. ACR-060 added the flowchart
+foreground style-mapping subset for `classDef`, `class`, inline `style`, and `linkStyle`.
+Default plain output remains unchanged.
 
 ## Active Task
 
 - Task ID: ACR-060
-- Owner: unassigned
-- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`
-- Validation: parser-backed tests from existing style fixtures
-- Status: TODO
+- Owner: codex
+- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/tests/flowchart_model.rs`,
+  `crates/merman-ascii/FLOWCHART_SUPPORT.md`
+- Validation: `cargo nextest run -p merman-ascii --test flowchart_model flowchart_style_color`
+- Status: DONE
 - Review: Do not silently misrepresent unsupported CSS properties
 - Evidence: `EVIDENCE_AND_GATES.md`
 
@@ -43,7 +45,7 @@ unchanged.
 - ACR-040 moved flowchart drawing to semantic role helpers. `OutputTransform` now preserves canvas
   roles before redrawing transformed labels/titles.
 - Flowchart roles cover node text, node borders, group borders/titles, edge lines, edge labels,
-  arrowheads, and route junctions. Mermaid style/class/linkStyle mapping remains deferred.
+  arrowheads, and route junctions.
 - ACR-050 decided to split broader family adoption. Class and ER share relation graph string boxes
   and layered `Canvas` routing; sequence and XYChart use different string/char-grid output paths.
 - The next substrate now exists in `Canvas::finish_trimmed_with_options` and
@@ -55,6 +57,10 @@ unchanged.
   `SequenceFrame`, inactive lifelines use `SequenceLifeline`, active lifelines use
   `SequenceActivation`, message labels use `EdgeLabel`, message lines use `EdgeLine`, arrowheads
   use `EdgeArrow`, and message junctions use `Junction`.
+- Flowchart Mermaid style mapping now resolves `classDef`, `class`, inline node/subgraph `style`,
+  and `linkStyle` into direct foreground colors. Supported style properties are `color` for
+  text/title/edge labels and `stroke` for node/subgraph borders plus edge lines/arrows. `fill` and
+  backgrounds remain documented no-ops.
 
 ## Blockers
 
@@ -62,6 +68,5 @@ unchanged.
 
 ## Next Recommended Action
 
-- Start ACR-060 if style parity is the next priority. Design or implement Mermaid flowchart
-  `classDef`, `class`, `style`, and `linkStyle` mapping without silently representing unsupported
-  CSS properties.
+- Review and close the workstream, or split a dedicated background/fill styling lane if that becomes
+  a product goal.

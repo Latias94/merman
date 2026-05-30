@@ -35,8 +35,9 @@ separate components beside the relationship layout. The XYChart slice can
 render deterministic compact vertical bars, stair-step lines, mixed bar/line overlays, horizontal
 bars, inferred numeric x labels, and ASCII/Unicode chart characters through `render_xychart` or
 `render_model`; richer legends and full terminal graph layout remain follow-on work. Shipped
-diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; Mermaid
-style/class/linkStyle and fill/background color interpretation remain follow-on work.
+diagram families have opt-in ANSI/HTML foreground color roles through `AsciiColorMode`; flowchart
+also maps Mermaid `classDef`, `class`, inline `style`, and `linkStyle` foreground colors for
+`color` and `stroke`. Fill/background interpretation remains follow-on work.
 
 Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
@@ -48,7 +49,7 @@ See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support mat
 
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
-| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, and opt-in ANSI/HTML foreground color roles. |
+| flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML foreground color roles, and foreground `classDef`/`class`/`style`/`linkStyle` mapping. |
 | sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |

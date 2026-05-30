@@ -1,6 +1,6 @@
 use super::super::layout::CanvasCoord;
 use crate::canvas::Canvas;
-use crate::color::AsciiColorRole;
+use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -8,6 +8,7 @@ pub(crate) struct EdgeLabel {
     pub(super) start: CanvasCoord,
     pub(super) end: CanvasCoord,
     pub(super) text: String,
+    pub(super) color: Option<AsciiRgb>,
 }
 
 pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
@@ -18,6 +19,7 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
             label.end.x,
             label.start.y,
             Some(&label.text),
+            label.color,
         );
     } else {
         draw_label_on_vertical_line(
@@ -26,6 +28,7 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
             label.start.y,
             label.end.y,
             Some(&label.text),
+            label.color,
         );
     }
 }
@@ -100,6 +103,7 @@ fn push_label(
         start,
         end,
         text: label.to_string(),
+        color: None,
     });
 }
 
@@ -109,6 +113,7 @@ fn draw_label_on_horizontal_line(
     end_x: usize,
     y: usize,
     label: Option<&str>,
+    color: Option<AsciiRgb>,
 ) {
     let Some(label) = label else {
         return;
@@ -120,7 +125,7 @@ fn draw_label_on_horizontal_line(
     let max_x = start_x.max(end_x);
     let middle_x = min_x + (max_x - min_x) / 2;
     let x = middle_x.saturating_sub(display_width(label) / 2);
-    write_label_overlay(canvas, x, y, label);
+    write_label_overlay(canvas, x, y, label, color);
 }
 
 fn draw_label_on_vertical_line(
@@ -129,6 +134,7 @@ fn draw_label_on_vertical_line(
     start_y: usize,
     end_y: usize,
     label: Option<&str>,
+    color: Option<AsciiRgb>,
 ) {
     let Some(label) = label else {
         return;
@@ -140,13 +146,23 @@ fn draw_label_on_vertical_line(
     let max_y = start_y.max(end_y);
     let middle_y = min_y + (max_y - min_y) / 2;
     let x = x.saturating_sub(display_width(label) / 2);
-    write_label_overlay(canvas, x, middle_y, label);
+    write_label_overlay(canvas, x, middle_y, label, color);
 }
 
-fn write_label_overlay(canvas: &mut Canvas, x: usize, y: usize, label: &str) {
+fn write_label_overlay(
+    canvas: &mut Canvas,
+    x: usize,
+    y: usize,
+    label: &str,
+    color: Option<AsciiRgb>,
+) {
     for (offset, ch) in label.chars().enumerate() {
         if ch != ' ' {
-            canvas.set_role(x + offset, y, ch, AsciiColorRole::EdgeLabel);
+            if let Some(color) = color {
+                canvas.set_color(x + offset, y, ch, color);
+            } else {
+                canvas.set_role(x + offset, y, ch, AsciiColorRole::EdgeLabel);
+            }
         }
     }
 }

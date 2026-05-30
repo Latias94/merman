@@ -1,4 +1,7 @@
-use super::model::{AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphNodeShape};
+use super::model::{
+    AsciiGraph, GraphDirection, GraphEdgeArrow, GraphEdgeAttrs, GraphEdgeStroke, GraphNodeShape,
+};
+use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
@@ -22,10 +25,11 @@ pub(crate) fn from_flowchart_model(
     let mut graph = AsciiGraph::new(direction);
 
     for node in &model.nodes {
-        graph.add_node_with_shape(
+        graph.add_node_with_shape_and_style(
             &node.id,
             node.label.as_deref().unwrap_or(&node.id),
             parse_node_shape(node.layout_shape.as_deref())?,
+            resolve_node_style(model, node),
         );
     }
 
@@ -33,19 +37,28 @@ pub(crate) fn from_flowchart_model(
         graph.add_edge_with_attrs(
             &edge.from,
             &edge.to,
-            edge.label
-                .as_deref()
-                .map(str::trim)
-                .filter(|label| !label.is_empty())
-                .map(ToOwned::to_owned),
-            parse_edge_stroke(edge.stroke.as_deref().unwrap_or("normal"))?,
-            parse_edge_arrow(edge.edge_type.as_deref().unwrap_or("arrow_point"))?,
-            edge.length,
+            GraphEdgeAttrs {
+                label: edge
+                    .label
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|label| !label.is_empty())
+                    .map(ToOwned::to_owned),
+                stroke: parse_edge_stroke(edge.stroke.as_deref().unwrap_or("normal"))?,
+                arrow: parse_edge_arrow(edge.edge_type.as_deref().unwrap_or("arrow_point"))?,
+                length: edge.length,
+                style: resolve_edge_style(model, edge),
+            },
         );
     }
 
     for subgraph in &model.subgraphs {
-        graph.add_group(&subgraph.id, &subgraph.title, subgraph.nodes.clone());
+        graph.add_group_with_style(
+            &subgraph.id,
+            &subgraph.title,
+            subgraph.nodes.clone(),
+            resolve_group_style(model, subgraph),
+        );
     }
 
     Ok(graph)

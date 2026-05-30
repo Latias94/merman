@@ -1,5 +1,7 @@
 use super::label::GraphLabel;
-use super::model::{AsciiGraph, AsciiGraphNode, GraphDirection, GraphNodeShape};
+use super::model::{
+    AsciiGraph, AsciiGraphNode, GraphDirection, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
+};
 use crate::options::AsciiRenderOptions;
 use crate::text::display_width;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -28,6 +30,7 @@ pub(super) struct NodeLayout {
     pub(super) id: String,
     pub(super) label: GraphLabel,
     pub(super) shape: GraphNodeShape,
+    pub(super) style: GraphNodeStyle,
     pub(super) grid: GridCoord,
     pub(super) x: usize,
     pub(super) y: usize,
@@ -69,6 +72,7 @@ pub(super) struct CanvasCoord {
 pub(super) struct GroupLayout {
     pub(super) id: String,
     pub(super) title: GraphLabel,
+    pub(super) style: GraphGroupStyle,
     pub(super) x: usize,
     pub(super) y: usize,
     pub(super) width: usize,
@@ -205,6 +209,7 @@ fn layout_left_right_grid_nodes(
             id: node.id.clone(),
             label: GraphLabel::new(&node.label),
             shape: node.shape,
+            style: node.style,
             grid: coord,
             x: axis_position(&column_widths, coord.x),
             y: axis_position(&row_heights, coord.y),
@@ -455,6 +460,7 @@ fn layout_top_down_grid_nodes(
             id: node.id.clone(),
             label: GraphLabel::new(&node.label),
             shape: node.shape,
+            style: node.style,
             grid: coord,
             x: axis_position(&column_widths, coord.x),
             y: axis_position(&row_heights, coord.y),
@@ -770,6 +776,7 @@ pub(super) fn layout_groups(graph: &AsciiGraph, layouts: &[NodeLayout]) -> Vec<G
         groups.push(GroupLayout {
             id: group.id.clone(),
             title,
+            style: group.style,
             x,
             y,
             width,

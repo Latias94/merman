@@ -1,7 +1,10 @@
 use super::charset::GraphCharset;
 use super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
-use super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
-use crate::canvas::Canvas;
+use super::model::{
+    AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStyle, GraphNodeShape,
+};
+use crate::canvas::{Canvas, CanvasColor};
+use crate::color::{AsciiColorRole, AsciiRgb};
 use crate::text::display_width;
 
 mod cell;
@@ -107,6 +110,7 @@ pub(super) fn transform_routed_label(
         start: transform(label.start),
         end: transform(label.end),
         text: label.text.clone(),
+        color: label.color,
     }
 }
 
@@ -127,6 +131,9 @@ pub(super) fn draw_edge(
         return;
     };
     let context = edge_context(edges, edge_index);
+    let labels_start = drawing.labels.len();
+    let before =
+        (edge.style.line.is_some() || edge.style.arrow.is_some()).then(|| drawing.canvas.clone());
 
     match direction.canonical() {
         GraphDirection::LeftRight => draw_left_right_edge(
@@ -140,6 +147,15 @@ pub(super) fn draw_edge(
         ),
         GraphDirection::TopDown => draw_top_down_edge(drawing, from, to, edge, charset),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    }
+
+    if let Some(before) = &before {
+        apply_edge_style_delta(drawing.canvas, before, edge.style);
+    }
+    if let Some(color) = edge.style.label {
+        for label in &mut drawing.labels[labels_start..] {
+            label.color = Some(color);
+        }
     }
 }
 
@@ -484,6 +500,78 @@ fn canvas_line_direction(from: CanvasCoord, to: CanvasCoord) -> Option<StepDirec
     } else {
         Some(StepDirection::Left)
     }
+}
+
+fn apply_edge_style_delta(canvas: &mut Canvas, before: &Canvas, style: GraphEdgeStyle) {
+    for y in 0..canvas.height() {
+        for x in 0..canvas.width() {
+            if before.get(x, y) == canvas.get(x, y)
+                && before.get_color(x, y) == canvas.get_color(x, y)
+            {
+                continue;
+            }
+            let Some(ch) = canvas.get(x, y) else {
+                continue;
+            };
+            let Some(color) = edge_delta_color(ch, canvas.get_color(x, y), style) else {
+                continue;
+            };
+            canvas.set_color(x, y, ch, color);
+        }
+    }
+}
+
+fn edge_delta_color(
+    ch: char,
+    color: Option<CanvasColor>,
+    style: GraphEdgeStyle,
+) -> Option<AsciiRgb> {
+    match color {
+        Some(CanvasColor::Role(AsciiColorRole::EdgeArrow)) => style.arrow.or(style.line),
+        Some(CanvasColor::Role(AsciiColorRole::EdgeLine | AsciiColorRole::Junction)) => style.line,
+        Some(CanvasColor::Role(_)) | Some(CanvasColor::Direct(_)) | None => {
+            if is_edge_arrow_char(ch) {
+                style.arrow.or(style.line)
+            } else if is_edge_line_char(ch) {
+                style.line
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn is_edge_arrow_char(ch: char) -> bool {
+    matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼')
+}
+
+fn is_edge_line_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '-' | '|'
+            | '+'
+            | '='
+            | '#'
+            | '─'
+            | '┄'
+            | '━'
+            | '│'
+            | '┆'
+            | '┃'
+            | '┌'
+            | '┐'
+            | '└'
+            | '┘'
+            | '├'
+            | '┤'
+            | '┬'
+            | '┴'
+            | '┼'
+            | '╭'
+            | '╮'
+            | '╰'
+            | '╯'
+    )
 }
 
 fn draw_left_right_bottom_lane_edge(

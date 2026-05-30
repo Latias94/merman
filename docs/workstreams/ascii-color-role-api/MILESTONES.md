@@ -16,6 +16,6 @@ Last updated: 2026-05-30
 - M0: DONE. Draft API design and ADR 0067 accepted the public `AsciiRenderOptions` migration.
 - M1: DONE. Role-aware canvas and forced output encoders landed without changing default rendering.
 - M2: DONE. Flowchart semantic color roles landed with forced TrueColor and HTML coverage.
-- M3: IN PROGRESS. ACR-051 completed the shared substrate, ACR-052 completed class/ER role
-  adoption, ACR-053 completed XYChart role adoption, and ACR-054 completed sequence role adoption;
-  the remaining lane is flowchart style-mapping.
+- M3: DONE. ACR-051 completed the shared substrate, ACR-052 completed class/ER role adoption,
+  ACR-053 completed XYChart role adoption, ACR-054 completed sequence role adoption, and ACR-060
+  completed the flowchart foreground style-mapping subset.

@@ -7,7 +7,9 @@ Last updated: 2026-05-30
 
 - `crates/merman-ascii/src/options.rs`: current public `AsciiRenderOptions` fields and validation.
 - `docs/adr/0067-ascii-color-role-api.md`: accepted public API and options migration decision.
-- `crates/merman-ascii/src/canvas.rs`: current character-only canvas and final string assembly.
+- `crates/merman-ascii/src/canvas.rs`: role/direct-color canvas storage and final string assembly.
+- `crates/merman-ascii/src/graph/style.rs`: flowchart foreground style resolver for direct Mermaid
+  colors.
 - `crates/merman-ascii/src/lib.rs`: public render entry points and option validation.
 - `crates/merman-ascii/FLOWCHART_SUPPORT.md`: existing deferred color/style row.
 - `repo-ref/beautiful-mermaid/src/ascii/types.ts`: reference role names and `AsciiTheme`.
@@ -45,6 +47,7 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-050 | Accepted a split family adoption plan for class/ER, XYChart, and sequence. | M3 is decomposed into ACR-051 through ACR-054; ACR-060 remains style mapping. |
 | 2026-05-30 | ACR-053 | Adopted semantic color roles for XYChart titles/text, axes, bars, and line plots. | XYChart role adoption is complete; sequence remains the final family role lane. |
 | 2026-05-30 | ACR-054 | Adopted semantic color roles for sequence participants, lifelines, activations, messages, notes, boxes, and control frames. | Family role adoption is complete; ACR-060 remains style mapping. |
+| 2026-05-30 | ACR-060 | Implemented flowchart foreground style mapping for `classDef`, `class`, inline `style`, and `linkStyle`. | Foreground style mapping is complete; fill/background remains a separate product decision. |
 
 ## Verification Log
 
@@ -90,3 +93,11 @@ cargo clippy -p merman-ascii --all-targets -- -D warnings
 | 2026-05-30 | ACR-054 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after sequence role adoption. |
 | 2026-05-30 | ACR-054 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Sequence role row buffers and tests are warning-free under clippy. |
 | 2026-05-30 | ACR-054 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |
+| 2026-05-30 | ACR-060 | `cargo nextest run -p merman-ascii canvas` | Shared canvas substrate | PASS | Direct RGB color storage does not regress role/plain/ANSI/HTML canvas finalization. |
+| 2026-05-30 | ACR-060 | `cargo nextest run -p merman-ascii --test flowchart_model flowchart_style_color` | Flowchart style mapping | PASS | Parser-backed classDef/class/style/linkStyle foreground colors render while plain text remains unchanged and fill is not emitted as foreground. |
+| 2026-05-30 | ACR-060 | `cargo nextest run -p merman-ascii flowchart_color` | Existing flowchart color role coverage | PASS | Renderer-owned semantic roles still render after adding direct Mermaid colors. |
+| 2026-05-30 | ACR-060 | `cargo nextest run -p merman-ascii flowchart` | Flowchart regression suite | PASS | Plain flowchart snapshots and routing behavior remain stable. |
+| 2026-05-30 | ACR-060 | `cargo nextest run -p merman-ascii` | Full ascii crate regression suite | PASS | Direct flowchart style colors do not regress other ascii diagram families. |
+| 2026-05-30 | ACR-060 | `cargo fmt --all --check` | Workspace formatting gate | PASS | Rust formatting is stable after style mapping. |
+| 2026-05-30 | ACR-060 | `cargo clippy -p merman-ascii --all-targets -- -D warnings` | ASCII crate lint gate | PASS | Style resolver, direct color canvas, and graph style plumbing are warning-free under clippy. |
+| 2026-05-30 | ACR-060 | `git diff --check` | Full worktree diff | PASS | Implementation and docs have no whitespace errors. |

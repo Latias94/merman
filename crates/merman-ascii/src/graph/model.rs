@@ -1,3 +1,5 @@
+use crate::color::AsciiRgb;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphDirection {
     LeftRight,
@@ -29,6 +31,13 @@ pub(super) struct AsciiGraphNode {
     pub(super) id: String,
     pub(super) label: String,
     pub(super) shape: GraphNodeShape,
+    pub(super) style: GraphNodeStyle,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GraphNodeStyle {
+    pub(super) text: Option<AsciiRgb>,
+    pub(super) border: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +57,35 @@ pub(super) struct AsciiGraphEdge {
     pub(super) stroke: GraphEdgeStroke,
     pub(super) arrow: GraphEdgeArrow,
     pub(super) length: usize,
+    pub(super) style: GraphEdgeStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct GraphEdgeAttrs {
+    pub(super) label: Option<String>,
+    pub(super) stroke: GraphEdgeStroke,
+    pub(super) arrow: GraphEdgeArrow,
+    pub(super) length: usize,
+    pub(super) style: GraphEdgeStyle,
+}
+
+impl Default for GraphEdgeAttrs {
+    fn default() -> Self {
+        Self {
+            label: None,
+            stroke: GraphEdgeStroke::Normal,
+            arrow: GraphEdgeArrow::Point,
+            length: 1,
+            style: GraphEdgeStyle::default(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GraphEdgeStyle {
+    pub(super) line: Option<AsciiRgb>,
+    pub(super) arrow: Option<AsciiRgb>,
+    pub(super) label: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +93,13 @@ pub(super) struct AsciiGraphGroup {
     pub(super) id: String,
     pub(super) title: String,
     pub(super) nodes: Vec<String>,
+    pub(super) style: GraphGroupStyle,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GraphGroupStyle {
+    pub(super) title: Option<AsciiRgb>,
+    pub(super) border: Option<AsciiRgb>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,63 +127,63 @@ impl AsciiGraph {
 
     #[cfg(test)]
     pub(crate) fn add_node(&mut self, id: impl Into<String>, label: impl Into<String>) {
-        self.add_node_with_shape(id, label, GraphNodeShape::Rect);
+        self.add_node_with_shape_and_style(
+            id,
+            label,
+            GraphNodeShape::Rect,
+            GraphNodeStyle::default(),
+        );
     }
 
-    pub(super) fn add_node_with_shape(
+    pub(super) fn add_node_with_shape_and_style(
         &mut self,
         id: impl Into<String>,
         label: impl Into<String>,
         shape: GraphNodeShape,
+        style: GraphNodeStyle,
     ) {
         self.nodes.push(AsciiGraphNode {
             id: id.into(),
             label: label.into(),
             shape,
+            style,
         });
     }
 
     #[cfg(test)]
     pub(crate) fn add_edge(&mut self, from: impl Into<String>, to: impl Into<String>) {
-        self.add_edge_with_attrs(
-            from,
-            to,
-            None,
-            GraphEdgeStroke::Normal,
-            GraphEdgeArrow::Point,
-            1,
-        );
+        self.add_edge_with_attrs(from, to, GraphEdgeAttrs::default());
     }
 
     pub(super) fn add_edge_with_attrs(
         &mut self,
         from: impl Into<String>,
         to: impl Into<String>,
-        label: Option<String>,
-        stroke: GraphEdgeStroke,
-        arrow: GraphEdgeArrow,
-        length: usize,
+        attrs: GraphEdgeAttrs,
     ) {
         self.edges.push(AsciiGraphEdge {
             from: from.into(),
             to: to.into(),
-            label,
-            stroke,
-            arrow,
-            length: length.max(1),
+            label: attrs.label,
+            stroke: attrs.stroke,
+            arrow: attrs.arrow,
+            length: attrs.length.max(1),
+            style: attrs.style,
         });
     }
 
-    pub(super) fn add_group(
+    pub(super) fn add_group_with_style(
         &mut self,
         id: impl Into<String>,
         title: impl Into<String>,
         nodes: Vec<String>,
+        style: GraphGroupStyle,
     ) {
         self.groups.push(AsciiGraphGroup {
             id: id.into(),
             title: title.into(),
             nodes,
+            style,
         });
     }
 }
