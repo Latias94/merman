@@ -16,6 +16,7 @@ categories = ["command-line-utilities", "visualization"]
 [features]
 default = []
 ascii = ["merman/ascii"]
+ratex-math = ["merman/ratex-math"]
 
 [dependencies]
 merman = { workspace = true, features = ["raster"] }

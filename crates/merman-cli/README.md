@@ -41,6 +41,7 @@ printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli render --out out.svg
 Useful flags:
 
 - `--text-measurer deterministic|vendored` controls text measurement. `vendored` is better for visual output; `deterministic` is useful for stable fixture-style output.
+- `--math-renderer none|ratex` enables optional `$$...$$` math rendering. `ratex` requires the `ratex-math` Cargo feature and currently handles math-only labels.
 - `--id <diagram-id>` sets the root SVG id and internal marker id prefix.
 - `--scale <n>` controls PNG/JPG raster scale.
 - `--background <css-color>` sets raster background.
@@ -59,6 +60,12 @@ With `--features ascii`, terminal text rendering currently supports flowchart/gr
 sequenceDiagram, classDiagram, erDiagram, and xychart. Other diagram families remain available for
 SVG/raster rendering but return an unsupported-diagram error for `--format ascii|unicode` until a
 typed text renderer is added.
+
+RaTeX math rendering is also feature-gated:
+
+```sh
+printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | cargo run -p merman-cli --features ratex-math -- render --math-renderer ratex -
+```
 
 ## SVG Input Rasterization
 

@@ -7,6 +7,8 @@ use merman_render::svg::{
 use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
+#[cfg(feature = "ratex-math")]
+use std::sync::Arc;
 
 fn fmt(v: f64) -> String {
     if !v.is_finite() {
@@ -394,5 +396,51 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
     assert!(
         svg.contains(r#"class="edgeLabel" style="font-style:italic !important;text-decoration:underline !important;letter-spacing:1px !important;color:#123456 !important""#),
         "expected edge label span to receive Mermaid label styles: {svg}"
+    );
+}
+
+#[cfg(feature = "ratex-math")]
+#[test]
+fn flowchart_svg_renders_ratex_math_labels_end_to_end() {
+    let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
+flowchart LR
+A["$$x^2$$"] -->|$$x^2$$| B[Done]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
+    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            math_renderer: Some(math_renderer),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"width="0.97153em""#),
+        "expected RaTeX inline SVG sizing in flowchart labels: {svg}"
+    );
+    assert!(
+        svg.contains("<path"),
+        "expected RaTeX glyph paths in flowchart SVG: {svg}"
+    );
+    assert!(
+        !svg.contains("$$x^2$$"),
+        "expected math source delimiters to be replaced by rendered SVG: {svg}"
     );
 }

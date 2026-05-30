@@ -930,6 +930,17 @@ simpler ownership boundaries, stronger gates, or measurable performance improvem
   Evidence: `crates/merman-cli/src/main.rs` now routes parse/layout/render through internal
   `RenderRequest` and `RasterRequest` structs, which centralize layout options, SVG options,
   raster options, and default raster output-path resolution without changing CLI behavior.
+- [x] Add a feature-gated CLI opt-in for the pure-Rust RaTeX math renderer.
+  Evidence: `merman-cli --math-renderer none|ratex` now wires the selected math renderer through
+  both layout measurement and SVG emission; the default build rejects `ratex` with a feature-gate
+  usage error, and `--features ratex-math` renders math-only `$$...$$` labels as inline RaTeX SVG.
+  Validation: `cargo nextest run -p merman-render --features ratex-math --test flowchart_svg_test
+  --test sequence_svg_test ratex`, `cargo nextest run -p merman-cli --test ratex_math`,
+  `cargo nextest run -p merman-cli --features ratex-math --test ratex_math`, `cargo nextest run -p
+  merman-cli --features ratex-math`, `cargo nextest run -p merman-cli`, `cargo check -p
+  merman-cli`, `cargo check -p merman-cli --features ratex-math`, `cargo nextest run -p
+  merman-render --features ratex-math --lib ratex_math_renderer`, and `cargo fmt --check` passed on
+  2026-05-30.
 
 ## P3: Documentation Cleanup
 

@@ -31,12 +31,17 @@ This note records the P3 review after the sequence, kanban, and gantt typed rend
   options for library callers.
 - For the CLI, prefer small internal helpers before a request object. The immediate duplication was
   layout-option construction and SVG raster output handling, and both are now shared.
+- Keep math rendering opt-in. `--math-renderer ratex` is feature-gated behind `ratex-math`, while
+  the default CLI path remains dependency-light and declines math rendering unless explicitly
+  requested.
 
 ## Cleanup Completed
 
 - CLI layout commands and render commands now share `layout_options`.
 - CLI Mermaid-input raster output and direct SVG-input raster output now share `write_rasterized_svg`.
 - CLI raster options and default output extension selection now have one owner.
+- CLI math renderer selection now has one feature-gated owner and feeds both `LayoutOptions` and
+  `SvgRenderOptions`, avoiding measurement/render drift.
 - The obsolete `merman_render::svg::render_layout_svg_parts_for_render_model` compat dispatcher was
   removed; render-model SVG dispatch now uses the `*_with_config` surface so callers do not rebuild
   `MermaidConfig` from JSON.

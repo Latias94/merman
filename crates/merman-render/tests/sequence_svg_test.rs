@@ -5,6 +5,8 @@ use merman_render::svg::{
 };
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
+#[cfg(feature = "ratex-math")]
+use std::sync::Arc;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -314,5 +316,57 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
     assert!(
         !svg.contains("font-size: 18px"),
         "expected sequence.messageFontSize (18px) to not affect SVG output under the pinned upstream baselines"
+    );
+}
+
+#[cfg(feature = "ratex-math")]
+#[test]
+fn sequence_svg_renders_ratex_math_message_and_note_end_to_end() {
+    let text = r#"sequenceDiagram
+participant A
+participant B
+A->>B: $$x^2$$
+Note right of B: $$x^2$$
+"#;
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
+    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    let svg = render_sequence_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            math_renderer: Some(math_renderer),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"width="0.97153em""#),
+        "expected RaTeX inline SVG sizing in sequence labels: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<div style="width: fit-content;""#),
+        "expected Sequence math labels to use the KaTeX foreignObject shell: {svg}"
+    );
+    assert!(
+        svg.contains("<path"),
+        "expected RaTeX glyph paths in sequence SVG: {svg}"
+    );
+    assert!(
+        !svg.contains("$$x^2$$"),
+        "expected math source delimiters to be replaced by rendered SVG: {svg}"
     );
 }

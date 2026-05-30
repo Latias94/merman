@@ -1,5 +1,5 @@
 use merman::render::{
-    DeterministicTextMeasurer, LayoutOptions, SvgRenderOptions, TextMeasurer,
+    DeterministicTextMeasurer, LayoutOptions, MathRenderer, SvgRenderOptions, TextMeasurer,
     VendoredFontMetricsTextMeasurer,
 };
 use merman::{Engine, MermaidConfig, ParseOptions};
@@ -92,6 +92,25 @@ enum TextMeasurerKind {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+enum MathRendererKind {
+    #[default]
+    None,
+    Ratex,
+}
+
+impl FromStr for MathRendererKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "none" => Ok(Self::None),
+            "ratex" => Ok(Self::Ratex),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
 enum RenderFormat {
     #[default]
     Svg,
@@ -149,6 +168,7 @@ struct Args {
     suppress_errors: bool,
     hand_drawn_seed: Option<u64>,
     text_measurer: TextMeasurerKind,
+    math_renderer: MathRendererKind,
     render_format: RenderFormat,
     render_scale: f32,
     background: Option<String>,
@@ -176,6 +196,7 @@ struct RenderRequest<'a> {
     args: &'a Args,
     engine: &'a Engine,
     parse_options: ParseOptions,
+    math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
 }
 
 struct RasterRequest<'a> {
@@ -189,14 +210,15 @@ fn usage() -> &'static str {
 USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
-  merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--format svg|png|jpg|pdf|ascii|unicode] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--math-renderer none|ratex] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png|jpg|pdf|ascii|unicode] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--math-renderer none|ratex] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
   - render --format ascii|unicode prints terminal-friendly text output.\n\
+  - --math-renderer ratex requires building merman-cli with --features ratex-math.\n\
   - render can also rasterize SVG input when --format is png/jpg/pdf (input starts with '<svg').\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
   - JPG output defaults to writing next to the input file (or ./out.jpg for stdin).\n\
@@ -234,6 +256,14 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                     "vendored" => TextMeasurerKind::Vendored,
                     _ => return Err(CliError::Usage(usage())),
                 };
+            }
+            "--math-renderer" => {
+                let Some(kind) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.math_renderer = kind
+                    .parse::<MathRendererKind>()
+                    .map_err(|_| CliError::Usage(usage()))?;
             }
             "--format" => {
                 let Some(fmt) = it.next() else {
@@ -346,6 +376,27 @@ fn text_measurer(kind: TextMeasurerKind) -> Arc<dyn TextMeasurer + Send + Sync> 
     }
 }
 
+fn math_renderer(
+    kind: MathRendererKind,
+) -> Result<Option<Arc<dyn MathRenderer + Send + Sync>>, CliError> {
+    match kind {
+        MathRendererKind::None => Ok(None),
+        MathRendererKind::Ratex => {
+            #[cfg(feature = "ratex-math")]
+            {
+                Ok(Some(Arc::new(merman::render::RatexMathRenderer)))
+            }
+
+            #[cfg(not(feature = "ratex-math"))]
+            {
+                Err(CliError::Usage(
+                    "RaTeX math rendering requires building merman-cli with --features ratex-math.",
+                ))
+            }
+        }
+    }
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
     let result = (|| -> Result<(), CliError> {
@@ -376,12 +427,14 @@ fn run(args: Args) -> Result<(), CliError> {
         engine = engine.with_site_config(cfg);
     }
 
+    let math_renderer = math_renderer(args.math_renderer)?;
     let request = RenderRequest {
         args: &args,
         engine: &engine,
         parse_options: ParseOptions {
             suppress_errors: args.suppress_errors,
         },
+        math_renderer,
     };
 
     match args.command {
@@ -398,7 +451,7 @@ impl<'a> RenderRequest<'a> {
             viewport_width: self.args.viewport_width,
             viewport_height: self.args.viewport_height,
             text_measurer: text_measurer(self.args.text_measurer),
-            math_renderer: None,
+            math_renderer: self.math_renderer.clone(),
             // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
             // manatee-backed layout engines. Prefer correctness for CLI output.
             use_manatee_layout: true,
@@ -408,6 +461,7 @@ impl<'a> RenderRequest<'a> {
     fn svg_options(&self) -> SvgRenderOptions {
         SvgRenderOptions {
             diagram_id: self.args.diagram_id.clone(),
+            math_renderer: self.math_renderer.clone(),
             ..Default::default()
         }
     }
