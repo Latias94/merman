@@ -96,6 +96,16 @@
       "date": "2026-05-30",
       "task": "AAD-040",
       "result": "passed relation_graph, class er, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-050",
+      "result": "introduced SequenceEventPlan for activation, actor visibility, lifecycle transition, and control frame state"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-050",
+      "result": "passed event_plan, sequence, package, fmt, and clippy gates"
     }
   ],
   "adr_refs": [
@@ -113,7 +123,7 @@
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
     "default_action": "continue_next_task",
-    "next_task": "AAD-050",
-    "notes": "Start AAD-050 by extracting the smallest useful sequence event-plan seam."
+    "next_task": "AAD-060",
+    "notes": "Start AAD-060 by creating the ASCII gap registry and linking it from the ASCII README."
   }
 }

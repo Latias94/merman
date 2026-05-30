@@ -52,15 +52,16 @@ Last updated: 2026-05-30
 
 ## M4 — Sequence Event Plan Seam
 
-- [ ] AAD-050 [owner=unassigned] [deps=AAD-020] [scope=crates/merman-ascii/src/sequence]
+- [x] AAD-050 [owner=codex] [deps=AAD-020] [scope=crates/merman-ascii/src/sequence.rs,crates/merman-ascii/src/sequence/plan.rs,crates/merman-ascii/src/sequence/render.rs]
   Goal: Separate sequence event-state planning from row painting for lifecycle, activation,
   visibility, and control-frame state.
   Validation: `cargo nextest run -p merman-ascii sequence`
   Review: Ensure the planner interface is behavior-bearing and not only a relocated render loop.
   Evidence: sequence tests for lifecycle/control/activation behavior.
   Context: `crates/merman-ascii/SEQUENCE_SUPPORT.md`, sequence parity workstream docs.
-  Handoff: Split nested control blocks or wrapped actor labels into feature lanes if they expand
-  beyond the planning seam.
+  Handoff: DONE on 2026-05-30. `SequenceEventPlan` now owns activation counts, actor visibility,
+  control frame state, lifecycle visibility updates, and control ordering errors. Row painting stays
+  in the existing render path.
 
 ## M5 — ASCII Gap Registry
 

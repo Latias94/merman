@@ -103,3 +103,8 @@ and residual risks in this file or a journal note.
   writing. Passed `cargo nextest run -p merman-ascii relation_graph`,
   `cargo nextest run -p merman-ascii class er`, `cargo nextest run -p merman-ascii`,
   `cargo fmt --all --check`, and `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-050 introduced `SequenceEventPlan` for activation counts, actor visibility,
+  lifecycle visibility transitions, and control frame ordering state. Passed
+  `cargo nextest run -p merman-ascii event_plan`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii`, `cargo fmt --all --check`, and
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
