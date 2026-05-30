@@ -125,9 +125,10 @@ fn layout_nodes(
     BTreeMap<usize, usize>,
     BTreeMap<usize, usize>,
 ) {
-    match graph.direction {
+    match graph.direction.canonical() {
         GraphDirection::LeftRight => layout_left_right_grid_nodes(graph, options),
         GraphDirection::TopDown => layout_top_down_grid_nodes(graph, options),
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
 
@@ -366,9 +367,10 @@ fn reserve_grid_spot(
 ) -> GridCoord {
     let mut coord = requested_coord;
     while grid_spot_occupied(occupied, coord) {
-        match direction {
+        match direction.canonical() {
             GraphDirection::LeftRight => coord.y += 4,
             GraphDirection::TopDown => coord.x += 4,
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
         }
     }
 

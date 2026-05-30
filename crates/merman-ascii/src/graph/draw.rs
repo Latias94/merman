@@ -1,7 +1,7 @@
 use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
-use super::layout::{GroupLayout, NodeLayout, layout_graph};
-use super::model::{AsciiGraph, GraphNodeShape};
+use super::layout::{CanvasCoord, GroupLayout, NodeLayout, layout_graph};
+use super::model::{AsciiGraph, GraphDirection, GraphNodeShape};
 use super::routing;
 use crate::canvas::Canvas;
 use crate::error::{AsciiError, Result};
@@ -98,14 +98,149 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
             );
         }
     }
+
+    let output_transform = OutputTransform::for_direction(graph.direction);
+    if output_transform.is_identity() {
+        for label in &edge_labels {
+            routing::draw_routed_label(&mut canvas, label);
+        }
+        for group in &graph_layout.groups {
+            draw_group_title(&mut canvas, group);
+        }
+        return Ok(canvas.finish());
+    }
+
+    let mut canvas = output_transform.transform_canvas(canvas.finish(), width, height);
+    redraw_transformed_node_labels(
+        &mut canvas,
+        &graph_layout.nodes,
+        output_transform,
+        width,
+        height,
+    );
     for label in &edge_labels {
-        routing::draw_routed_label(&mut canvas, label);
+        let label = routing::transform_routed_label(label, |coord| {
+            output_transform.coord(coord, width, height)
+        });
+        routing::draw_routed_label(&mut canvas, &label);
     }
     for group in &graph_layout.groups {
-        draw_group_title(&mut canvas, group);
+        draw_transformed_group_title(&mut canvas, group, output_transform, width, height);
     }
 
     Ok(canvas.finish())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputTransform {
+    Identity,
+    HorizontalMirror,
+    VerticalMirror,
+}
+
+impl OutputTransform {
+    fn for_direction(direction: GraphDirection) -> Self {
+        match direction {
+            GraphDirection::LeftRight | GraphDirection::TopDown => Self::Identity,
+            GraphDirection::RightLeft => Self::HorizontalMirror,
+            GraphDirection::BottomTop => Self::VerticalMirror,
+        }
+    }
+
+    fn is_identity(self) -> bool {
+        self == Self::Identity
+    }
+
+    fn coord(self, coord: CanvasCoord, width: usize, height: usize) -> CanvasCoord {
+        match self {
+            Self::Identity => coord,
+            Self::HorizontalMirror => CanvasCoord {
+                x: width.saturating_sub(1).saturating_sub(coord.x),
+                y: coord.y,
+            },
+            Self::VerticalMirror => CanvasCoord {
+                x: coord.x,
+                y: height.saturating_sub(1).saturating_sub(coord.y),
+            },
+        }
+    }
+
+    fn transform_canvas(self, rendered: String, width: usize, height: usize) -> Canvas {
+        let mut canvas = Canvas::new(width, height);
+        for (y, line) in rendered.lines().enumerate() {
+            for (x, ch) in line.chars().enumerate() {
+                let coord = self.coord(CanvasCoord { x, y }, width, height);
+                canvas.set(coord.x, coord.y, self.map_char(ch));
+            }
+        }
+        canvas
+    }
+
+    fn text_x(self, x: usize, text: &str, width: usize) -> usize {
+        match self {
+            Self::HorizontalMirror => width.saturating_sub(x).saturating_sub(text.chars().count()),
+            Self::Identity | Self::VerticalMirror => x,
+        }
+    }
+
+    fn text_y(self, y: usize, height: usize) -> usize {
+        match self {
+            Self::VerticalMirror => height.saturating_sub(1).saturating_sub(y),
+            Self::Identity | Self::HorizontalMirror => y,
+        }
+    }
+
+    fn map_char(self, ch: char) -> char {
+        match self {
+            Self::Identity => ch,
+            Self::HorizontalMirror => mirror_horizontal_char(ch),
+            Self::VerticalMirror => mirror_vertical_char(ch),
+        }
+    }
+}
+
+fn mirror_horizontal_char(ch: char) -> char {
+    match ch {
+        '>' => '<',
+        '<' => '>',
+        '►' => '◄',
+        '◄' => '►',
+        '/' => '\\',
+        '\\' => '/',
+        '┌' => '┐',
+        '┐' => '┌',
+        '└' => '┘',
+        '┘' => '└',
+        '├' => '┤',
+        '┤' => '├',
+        '╭' => '╮',
+        '╮' => '╭',
+        '╰' => '╯',
+        '╯' => '╰',
+        ch => ch,
+    }
+}
+
+fn mirror_vertical_char(ch: char) -> char {
+    match ch {
+        '^' => 'v',
+        'v' => '^',
+        '▲' => '▼',
+        '▼' => '▲',
+        '/' => '\\',
+        '\\' => '/',
+        '┌' => '└',
+        '└' => '┌',
+        '┐' => '┘',
+        '┘' => '┐',
+        '┬' => '┴',
+        '┴' => '┬',
+        '╭' => '╰',
+        '╰' => '╭',
+        '╮' => '╯',
+        '╯' => '╮',
+        ch => ch,
+    }
 }
 
 fn draw_node(
@@ -144,15 +279,39 @@ fn draw_group(canvas: &mut Canvas, group: &GroupLayout, charset: &GraphCharset) 
 }
 
 fn draw_group_title(canvas: &mut Canvas, group: &GroupLayout) {
+    let Some((title_x, title_y)) = group_title_position(group) else {
+        return;
+    };
+    canvas.write_text(title_x, title_y, &group.title);
+}
+
+fn draw_transformed_group_title(
+    canvas: &mut Canvas,
+    group: &GroupLayout,
+    transform: OutputTransform,
+    width: usize,
+    height: usize,
+) {
+    let Some((title_x, title_y)) = group_title_position(group) else {
+        return;
+    };
+    canvas.write_text(
+        transform.text_x(title_x, &group.title, width),
+        transform.text_y(title_y, height),
+        &group.title,
+    );
+}
+
+fn group_title_position(group: &GroupLayout) -> Option<(usize, usize)> {
     let title_width = display_width(&group.title);
     if title_width > group.width.saturating_sub(2) {
-        return;
+        return None;
     }
 
     let title_x = (group.x + group.width.saturating_sub(1) / 2)
         .saturating_sub(title_width / 2)
         .max(group.x + 1);
-    canvas.write_text(title_x, group.y + 1, &group.title);
+    Some((title_x, group.y + 1))
 }
 
 fn draw_rect_node(
@@ -318,6 +477,63 @@ fn write_centered_label(canvas: &mut Canvas, layout: &NodeLayout, _options: &Asc
         let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let text_y = content_y + line_index * (GRAPH_LABEL_LINE_GAP + 1);
         canvas.write_text(text_x, text_y, line);
+    }
+}
+
+fn redraw_transformed_node_labels(
+    canvas: &mut Canvas,
+    layouts: &[NodeLayout],
+    transform: OutputTransform,
+    width: usize,
+    height: usize,
+) {
+    for layout in layouts {
+        redraw_transformed_node_label(canvas, layout, transform, width, height);
+    }
+}
+
+fn redraw_transformed_node_label(
+    canvas: &mut Canvas,
+    layout: &NodeLayout,
+    transform: OutputTransform,
+    width: usize,
+    height: usize,
+) {
+    let inner_height = layout.height.saturating_sub(2);
+    let content_height = layout.label.content_height();
+    let content_y = layout.y + 1 + inner_height.saturating_sub(content_height) / 2;
+    let line_step = GRAPH_LABEL_LINE_GAP + 1;
+    let line_count = layout.label.lines().len();
+    let last_line_y = content_y + line_count.saturating_sub(1) * line_step;
+    let transformed_content_y = match transform {
+        OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
+        OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,
+    };
+
+    for (line_index, line) in layout.label.lines().iter().enumerate() {
+        let text_width = display_width(line);
+        let text_x = layout.x + centered_label_offset(layout.width, text_width);
+        let text_y = content_y + line_index * line_step;
+        clear_text_span(
+            canvas,
+            transform.text_x(text_x, line, width),
+            transform.text_y(text_y, height),
+            line,
+        );
+    }
+
+    for (line_index, line) in layout.label.lines().iter().enumerate() {
+        let text_width = display_width(line);
+        let text_x = layout.x + centered_label_offset(layout.width, text_width);
+        let transformed_x = transform.text_x(text_x, line, width);
+        let transformed_y = transformed_content_y + line_index * line_step;
+        canvas.write_text(transformed_x, transformed_y, line);
+    }
+}
+
+fn clear_text_span(canvas: &mut Canvas, x: usize, y: usize, text: &str) {
+    for offset in 0..text.chars().count() {
+        canvas.set(x + offset, y, ' ');
     }
 }
 

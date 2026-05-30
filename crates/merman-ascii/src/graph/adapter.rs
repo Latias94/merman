@@ -54,10 +54,12 @@ pub(crate) fn from_flowchart_model(
 fn parse_direction(direction: &str) -> Result<GraphDirection> {
     match direction {
         "LR" => Ok(GraphDirection::LeftRight),
+        "RL" => Ok(GraphDirection::RightLeft),
         "TB" | "TD" => Ok(GraphDirection::TopDown),
+        "BT" => Ok(GraphDirection::BottomTop),
         _ => Err(AsciiError::UnsupportedFeature {
             diagram_type: "flowchart",
-            feature: "non-LR/TD graph directions",
+            feature: "unsupported graph directions",
         }),
     }
 }

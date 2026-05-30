@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn render_flowchart_rejects_unsupported_directions() {
         let mut model = empty_flowchart();
-        model.direction = Some("BT".to_string());
+        model.direction = Some("XX".to_string());
         model.nodes = vec![node("A")];
 
         let err = render_flowchart(&model, &AsciiRenderOptions::ascii()).unwrap_err();
@@ -333,7 +333,7 @@ mod tests {
             err,
             AsciiError::UnsupportedFeature {
                 diagram_type: "flowchart",
-                feature: "non-LR/TD graph directions",
+                feature: "unsupported graph directions",
             }
         );
     }

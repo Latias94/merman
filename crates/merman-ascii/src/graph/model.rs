@@ -1,7 +1,19 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphDirection {
     LeftRight,
+    RightLeft,
     TopDown,
+    BottomTop,
+}
+
+impl GraphDirection {
+    pub(crate) fn canonical(self) -> Self {
+        match self {
+            Self::RightLeft => Self::LeftRight,
+            Self::BottomTop => Self::TopDown,
+            direction => direction,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

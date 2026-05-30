@@ -26,12 +26,13 @@ Last updated: 2026-05-30
 
 ## M2 - Root Direction Transform
 
-- [ ] AFDT-030 [owner=unassigned] [deps=AFDT-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/src/flowchart,crates/merman-ascii/tests]
+- [x] AFDT-030 [owner=codex] [deps=AFDT-020] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/src/lib.rs,crates/merman-ascii/tests]
   Goal: Implement a real BT vertical flip and RL horizontal mirror for flowchart ASCII output.
   Validation: `cargo nextest run -p merman-ascii flowchart`; `cargo clippy -p merman-ascii --all-targets -- -D warnings`
   Review: Keep LR/TD stable and avoid parser or core changes.
   Evidence: Flowchart BT/RL render through the public ASCII surface.
-  Handoff: AFDT-040 updates docs and closes or splits remaining flowchart direction work.
+  Handoff: DONE. AFDT-040 updates support docs and closes or splits remaining flowchart
+  direction work.
 
 ## M3 - Docs And Closeout
 

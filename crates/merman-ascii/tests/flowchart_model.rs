@@ -1,4 +1,4 @@
-use merman_ascii::{AsciiError, AsciiRenderOptions, render_model};
+use merman_ascii::{AsciiRenderOptions, render_model};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 
@@ -96,6 +96,63 @@ fn flowchart_parser_rl_root_direction_renders_with_horizontal_mirror() {
 }
 
 #[test]
+fn flowchart_parser_rl_multi_character_node_labels_stay_readable() {
+    let rendered = render_flowchart(
+        "flowchart RL\nLongerName1 --> LongerName2",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-------------+     +-------------+\n",
+            "|             |     |             |\n",
+            "| LongerName2 |<----| LongerName1 |\n",
+            "|             |     |             |\n",
+            "+-------------+     +-------------+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_rl_edge_labels_stay_readable() {
+    let rendered = render_flowchart(
+        "flowchart RL\nA -- hello --> B",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+---+       +---+\n",
+            "|   |       |   |\n",
+            "| B |<hello-| A |\n",
+            "|   |       |   |\n",
+            "+---+       +---+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_rl_chain_mirrors_unicode_connectors() {
+    let rendered = render_flowchart("flowchart RL\nA --> B", &AsciiRenderOptions::unicode())
+        .expect("RL flowchart direction should mirror Unicode connectors and arrowheads");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "┌───┐     ┌───┐\n",
+            "│   │     │   │\n",
+            "│ B │◄────┤ A │\n",
+            "│   │     │   │\n",
+            "└───┘     └───┘\n",
+        )
+    );
+}
+
+#[test]
 fn flowchart_parser_lr_edge_label_renders_on_edge_line() {
     let rendered = render_flowchart(
         "flowchart LR\nA -- hello --> B",
@@ -153,19 +210,6 @@ fn flowchart_parser_simple_subgraph_renders_group_box() {
     assert_eq!(
         rendered,
         fixture_expected("ascii", "graph_tb_direction.txt")
-    );
-}
-
-#[test]
-fn flowchart_parser_unsupported_direction_is_explicit() {
-    let err = render_flowchart("flowchart BT\nA --> B", &AsciiRenderOptions::ascii()).unwrap_err();
-
-    assert_eq!(
-        err,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "non-LR/TD graph directions",
-        }
     );
 }
 

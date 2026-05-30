@@ -111,12 +111,16 @@ pub(super) fn edge_line_char(
     charset: &GraphCharset,
     direction: GraphDirection,
 ) -> char {
-    match (edge.stroke, direction) {
+    match (edge.stroke, direction.canonical()) {
         (GraphEdgeStroke::Normal, GraphDirection::LeftRight) => charset.horizontal,
         (GraphEdgeStroke::Normal, GraphDirection::TopDown) => charset.vertical,
         (GraphEdgeStroke::Dotted, GraphDirection::LeftRight) => charset.dotted_horizontal,
         (GraphEdgeStroke::Dotted, GraphDirection::TopDown) => charset.dotted_vertical,
         (GraphEdgeStroke::Thick, GraphDirection::LeftRight) => charset.thick_horizontal,
         (GraphEdgeStroke::Thick, GraphDirection::TopDown) => charset.thick_vertical,
+        (
+            GraphEdgeStroke::Normal | GraphEdgeStroke::Dotted | GraphEdgeStroke::Thick,
+            GraphDirection::RightLeft | GraphDirection::BottomTop,
+        ) => unreachable!(),
     }
 }

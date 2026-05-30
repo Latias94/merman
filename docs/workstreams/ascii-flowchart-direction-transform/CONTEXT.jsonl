@@ -1,2 +1,3 @@
 {"date":"2026-05-30","kind":"scope_freeze","workstream":"ascii-flowchart-direction-transform","note":"Opened from FLOWCHART_SUPPORT gap triage. Scope is root-direction BT/RL transform only."}
 {"date":"2026-05-30","kind":"task_evidence","task":"AFDT-020","note":"Added parser-backed BT/RL ASCII output tests in flowchart_model.rs. Both fail red on current non-LR/TD unsupported-direction diagnostic."}
+{"date":"2026-05-30","kind":"task_evidence","task":"AFDT-030","note":"BT/RL now render via ASCII graph output transforms. Layout/routing canonicalize to TD/LR; final canvas mirrors vertically/horizontally and redraws labels/titles so text stays readable."}

@@ -74,7 +74,7 @@ pub(super) fn edge_canvas_extent(
             continue;
         };
         let context = edge_context(edges, edge_index);
-        match direction {
+        match direction.canonical() {
             GraphDirection::LeftRight => {
                 if from.center_y() == to.center_y() && (from.x > to.x || context.parallel_index > 0)
                 {
@@ -92,10 +92,22 @@ pub(super) fn edge_canvas_extent(
                     }
                 }
             }
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
         }
     }
 
     (width, height)
+}
+
+pub(super) fn transform_routed_label(
+    label: &EdgeLabel,
+    mut transform: impl FnMut(CanvasCoord) -> CanvasCoord,
+) -> EdgeLabel {
+    EdgeLabel {
+        start: transform(label.start),
+        end: transform(label.end),
+        text: label.text.clone(),
+    }
 }
 
 pub(super) fn draw_edge(
@@ -116,7 +128,7 @@ pub(super) fn draw_edge(
     };
     let context = edge_context(edges, edge_index);
 
-    match direction {
+    match direction.canonical() {
         GraphDirection::LeftRight => draw_left_right_edge(
             drawing,
             graph_layout,
@@ -127,6 +139,7 @@ pub(super) fn draw_edge(
             charset,
         ),
         GraphDirection::TopDown => draw_top_down_edge(drawing, from, to, edge, charset),
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
 
