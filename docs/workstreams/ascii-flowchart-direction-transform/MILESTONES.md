@@ -1,7 +1,13 @@
 # ASCII Flowchart Direction Transform - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
+
+## Closeout Summary
+
+All milestones are complete. BT/RL root-direction transforms are implemented and documented.
+Subgraph direction overrides, color/style roles, state diagram graph rendering, multiline subgraph
+labels, and uncommon shape families remain deferred follow-ons.
 
 ## M0 - Scope And Evidence Freeze
 

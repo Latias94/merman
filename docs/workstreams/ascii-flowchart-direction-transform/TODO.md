@@ -1,6 +1,6 @@
 # ASCII Flowchart Direction Transform - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 - Scope And Evidence Freeze
@@ -36,9 +36,10 @@ Last updated: 2026-05-30
 
 ## M3 - Docs And Closeout
 
-- [ ] AFDT-040 [owner=planner] [deps=AFDT-030] [scope=docs/workstreams/ascii-flowchart-direction-transform,crates/merman-ascii/FLOWCHART_SUPPORT.md,README.md]
+- [x] AFDT-040 [owner=codex] [deps=AFDT-030] [scope=docs/workstreams/ascii-flowchart-direction-transform,crates/merman-ascii/FLOWCHART_SUPPORT.md,README.md]
   Goal: Update support docs, run final gates, and close or split follow-on flowchart work.
   Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
   Review: Use `review-workstream` and `verify-rust-workstream` before closeout.
   Evidence: README/support docs and final handoff.
-  Handoff: Lane closes or names narrower follow-ons.
+  Handoff: DONE. Lane closed. Follow-ons remain scoped to subgraph direction overrides,
+  color/style roles, state diagrams, multiline subgraph labels, and uncommon shapes.

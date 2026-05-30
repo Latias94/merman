@@ -10,7 +10,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartV2Model`. |
-| Directions | Supported subset | `LR`, `TD`, and Mermaid's `TB` alias. |
+| Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
 | Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels, deterministic length spacing, and `mermaid-ascii` padding directives for simple LR/TD edges. |
@@ -26,6 +26,7 @@ approximations. These mappings are product behavior once shipped and should be s
 
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
+| Direction transforms | Supported subset. | `BT` vertically flips the TD layout; `RL` horizontally mirrors the LR layout. Node labels, edge labels, group titles, arrowheads, and Unicode connectors stay readable/oriented for the covered root-direction subset. |
 | Edge labels | Supported subset. | Labels render on routed edge paths for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
@@ -46,7 +47,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | --- | --- |
 | Multiline subgraph labels | `multiline subgraph labels` |
 | Multiline edge labels | `multiline edge labels` |
-| `BT`, `RL`, or other non-LR/TD directions | `non-LR/TD graph directions` |
+| Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
 | Hexagon, lean, document, fork/join, icon, image, and other uncommon shapes | `non-rectangular node shapes` |
 | Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
 | Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
@@ -61,8 +62,8 @@ reference implementation is only an implementation aid.
 | Delta | Decision | Rationale | Follow-up |
 | --- | --- | --- | --- |
 | Thick edges | Ported | `merman-core` preserves `edge.stroke = "thick"`, and the existing routing can use alternate line glyphs without changing layout semantics. | Covered by `flowchart_parser_thick_edges_render_with_heavy_ascii_line`, `flowchart_parser_thick_edges_render_with_heavy_unicode_line`, and `flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line`. |
-| `BT` root direction | Defer | The typed root direction is available, but honest output needs a post-layout vertical flip plus arrow/corner remapping. | Split into a focused direction-transform task with TD fixture parity and arrow orientation tests. |
-| `RL` root direction | Reject current reference approximation; defer true support | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics. | Implement only with true horizontal inversion and left-pointing arrow tests. |
+| `BT` root direction | Ported | The typed root direction is available, and honest terminal output is implemented as a post-layout vertical flip with arrow/corner remapping. | Covered by `flowchart_parser_bt_root_direction_renders_with_vertical_flip`. |
+| `RL` root direction | Ported with true inversion | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics; `merman-ascii` implements a true horizontal mirror instead. | Covered by `flowchart_parser_rl_root_direction_renders_with_horizontal_mirror`, `flowchart_parser_rl_multi_character_node_labels_stay_readable`, `flowchart_parser_rl_edge_labels_stay_readable`, and `flowchart_parser_rl_chain_mirrors_unicode_connectors`. |
 | Subgraph direction overrides | Defer | `FlowSubgraph.dir` is typed, but current graph layout is global; local subgraph layout needs a deeper layout pass. | Split with nested subgraph and cross-boundary edge fixtures. |
 | Multiline subgraph labels | Defer | The title text can be represented, but group layout reserves a single title row. | Expand group header height and route edges around taller headers. |
 | ANSI/HTML color roles | Defer | The current public options intentionally produce plain ASCII/Unicode text and have no role canvas or color mode. | Design an opt-in color API before emitting escape sequences or HTML spans. |
@@ -76,6 +77,8 @@ reference implementation is only an implementation aid.
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, bent cross-column downward edges, and
   right-side back-edge label lanes for the copied fixture set.
+- `BT` and `RL` are root-direction transforms only. `FlowSubgraph.dir` overrides remain a separate
+  layout follow-on.
 - Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
   directives by ASCII render entry points; they are not Mermaid flowchart syntax.
 - Classes, styles, links, callbacks, icons, images, Markdown labels, and HTML labels are not rendered.

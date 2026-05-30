@@ -1,13 +1,19 @@
 # ASCII Flowchart Direction Transform
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
+
+## Closeout
+
+Closed on 2026-05-30. BT and RL root directions render through public parser-backed ASCII tests,
+support docs describe the shipped direction subset, and remaining flowchart work is explicitly
+deferred to narrower follow-ons.
 
 ## Why This Lane Exists
 
-`merman-ascii` supports flowchart LR and TD/TB-alias output, but it still rejects BT and RL root
-directions with an explicit unsupported-feature diagnostic. The flowchart support matrix already
-calls out those directions as the next focused compatibility gap.
+`merman-ascii` supported flowchart LR and TD/TB-alias output, but rejected BT and RL root directions
+with an explicit unsupported-feature diagnostic. The flowchart support matrix already called out
+those directions as the next focused compatibility gap.
 
 ## Relevant Authority
 
@@ -22,8 +28,8 @@ calls out those directions as the next focused compatibility gap.
 
 ## Problem
 
-The current flowchart renderer refuses root directions outside LR and TD/TB alias. For terminal
-output to remain honest, BT and RL need a real root-direction transform rather than a silent
+The pre-lane flowchart renderer refused root directions outside LR and TD/TB alias. For terminal
+output to remain honest, BT and RL needed a real root-direction transform rather than a silent
 approximation or parser-level special case.
 
 ## Target State

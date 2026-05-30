@@ -1,29 +1,17 @@
 # ASCII Flowchart Direction Transform - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
 
-The flowchart ASCII renderer now accepts BT and RL root directions through render-layer output
-transforms. Parser-backed BT/RL contracts are green, LR and TD golden outputs remain stable, and the
-old unsupported-direction coverage now uses a hand-built model direction outside Mermaid's supported
-set. Support docs still need to be updated before closeout.
+The flowchart ASCII renderer accepts BT and RL root directions through render-layer output
+transforms. Parser-backed BT/RL contracts are green, LR and TD golden outputs remain stable, public
+support docs describe the shipped subset, and the lane is closed.
 
 ## Active Task
 
-- Task ID: AFDT-040
-- Owner: planner
-- Files:
-  - `crates/merman-ascii/FLOWCHART_SUPPORT.md`
-  - `README.md`
-  - `docs/workstreams/ascii-flowchart-direction-transform`
-- Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`; `git diff --check`
-- Status: READY
-- Review: Support docs should describe shipped BT/RL root-direction behavior and explicitly keep
-  subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of scope
-  unless split into follow-ons.
-- Evidence: `EVIDENCE_AND_GATES.md`
+None. This workstream is closed.
 
 ## Decisions Since Last Update
 
@@ -38,12 +26,17 @@ set. Support docs still need to be updated before closeout.
   readable.
 - Unsupported direction coverage now uses a direct model direction of `XX` and reports
   `unsupported graph directions`.
+- AFDT-040 updated `FLOWCHART_SUPPORT.md`, `crates/merman-ascii/README.md`, and the root `README.md`
+  so public docs list BT/RL root directions as shipped.
 
 ## Blockers
 
 - None.
 
-## Next Recommended Action
+## Follow-Ons
 
-- Run AFDT-040: update support docs/readme references, run final gates, then close or split any
-  remaining flowchart direction follow-ons.
+- Subgraph direction overrides from `FlowSubgraph.dir`.
+- ANSI/HTML color roles and `classDef`/`class`/inline style rendering.
+- State diagram graph rendering through a state-to-graph semantic adapter.
+- Multiline subgraph labels.
+- Additional uncommon flowchart shape families.

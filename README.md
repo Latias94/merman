@@ -112,7 +112,7 @@ merman-cli render path/to/diagram.mmd --out out.svg
 merman-cli render --format unicode path/to/diagram.mmd
 merman-cli render --format ascii path/to/diagram.mmd
 
-# Terminal text supports common flowchart labels, shapes, and simple subgraphs
+# Terminal text supports common flowchart directions, labels, shapes, and simple subgraphs
 printf "flowchart TB\nsubgraph one\nA((Start)) -- go --> B[(DB)]\nend\n" |
   merman-cli render --format ascii -
 
@@ -285,6 +285,9 @@ Current public text support covers flowchart/graph, sequenceDiagram, classDiagra
 xychart through `merman::ascii::render_ascii_sync`, typed `merman::ascii::render_model`, the direct
 typed helpers (`render_flowchart`, `render_sequence`, `render_class`, `render_er`,
 `render_xychart`), and `merman-cli render --format ascii|unicode`.
+
+Flowchart text output covers LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape
+approximations, labels, open/dotted/thick edges, length spacing, and titled/nested subgraphs.
 
 Sequence text output covers common messages, notes, lifecycle rows, participant boxes, and the
 primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`, `alt`, `par`,

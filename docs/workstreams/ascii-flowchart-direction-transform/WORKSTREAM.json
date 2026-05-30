@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "ascii-flowchart-direction-transform",
   "title": "ASCII Flowchart Direction Transform",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
-  "problem": "The ASCII flowchart renderer still rejects BT and RL root directions instead of transforming the rendered output honestly.",
+  "problem": "Closed: the ASCII flowchart renderer now supports BT and RL root directions with render-layer output transforms.",
   "authoritative_docs": [
     {
       "role": "adr",
@@ -63,6 +63,11 @@
       "date": "2026-05-30",
       "task": "AFDT-030",
       "result": "implemented render-layer BT and RL flowchart direction transforms with readable mirrored labels"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AFDT-040",
+      "result": "updated public support docs and closed the BT/RL flowchart direction workstream"
     }
   ],
   "adr_refs": [
@@ -79,8 +84,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "AFDT-040",
-    "notes": "Update support docs/readme references, run final gates, and close or split remaining flowchart direction work. Keep subgraph direction overrides, color/style roles, state diagrams, and uncommon shapes out of this lane unless explicitly opened as follow-ons."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane complete. Follow-ons are subgraph direction overrides, color/style roles, state diagram graph rendering, multiline subgraph labels, and additional uncommon shape families."
   }
 }
