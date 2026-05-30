@@ -93,6 +93,19 @@ assert "World" in svg
 parsed = json.loads(engine.parse_json(source, None))
 assert parsed["type"] == "flowchart-v2"
 
+layout = json.loads(engine.layout_json(source, None))
+assert "meta" in layout
+assert "layout" in layout
+
+try:
+    engine.render_svg(source, "{")
+except merman_uniffi.MermanError.Binding as exc:
+    assert exc.code == 3
+    assert exc.code_name == "MERMAN_OPTIONS_JSON_ERROR"
+    assert "invalid options_json" in exc.message
+else:
+    raise AssertionError("expected invalid options_json to raise MermanError.Binding")
+
 print("python package smoke passed")
 "#;
 

@@ -57,8 +57,9 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 ```
 
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
-it, imports `merman_uniffi` with Python, then calls `MermanEngine.render_svg` and
-`MermanEngine.parse_json`.
+it, imports `merman_uniffi` with Python, then calls `MermanEngine.render_svg`,
+`MermanEngine.parse_json`, `MermanEngine.layout_json`, and checks `MermanError.Binding` fields for
+invalid options JSON.
 
 ## Not Yet Done
 

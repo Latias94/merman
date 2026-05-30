@@ -23,7 +23,8 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 
 This test builds the `merman-uniffi` cdylib, generates Python bindings from the embedded UniFFI
 metadata into a temporary package, copies the native library beside the generated module, imports
-the package with Python, and calls `MermanEngine.render_svg` plus `MermanEngine.parse_json`.
+the package with Python, and calls `MermanEngine.render_svg`, `MermanEngine.parse_json`,
+`MermanEngine.layout_json`, plus a `MermanError.Binding` error-path check.
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.
