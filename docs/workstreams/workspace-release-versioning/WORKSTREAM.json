@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "workspace-release-versioning",
   "title": "Workspace Release Versioning",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "execution",
   "problem": "Binding crates are implemented but full cargo package verification is blocked by crates.io dependency availability and immutable 0.6.0 package versions.",
@@ -60,8 +60,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "next_task": "WRV-050",
-    "notes": "Package gate matrix is recorded. Continue with lane verification and closeout."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed. Use docs/release/PUBLISH_ORDER.md for release-operator publishing steps; platform packaging lanes can proceed from the 0.7.0 baseline."
   }
 }

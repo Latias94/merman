@@ -1,6 +1,6 @@
 # Workspace Release Versioning — Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -96,3 +96,6 @@ Use narrower formatting checks if this lane only edits release docs and manifest
 - 2026-05-30: `cargo package -p merman-uniffi --allow-dirty` failed as expected until
   `merman-bindings-core 0.7.0` is available on crates.io.
 - 2026-05-30: `cargo package -p merman-cli --allow-dirty --list` passed.
+- 2026-05-30: `WRV-050` closeout: `cargo check -p merman-ffi` passed.
+- 2026-05-30: `WRV-050` closeout: `cargo check -p merman-uniffi` passed.
+- 2026-05-30: `git diff --check` passed for closeout.

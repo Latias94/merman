@@ -1,6 +1,6 @@
 # Workspace Release Versioning
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Why This Lane Exists
@@ -69,3 +69,9 @@ This lane can close when:
 - workspace dependency versions are aligned,
 - package evidence is recorded,
 - and any remaining crates.io-only blocker is explicit.
+
+## Closeout Result
+
+Closed on 2026-05-30. The workspace is aligned to `0.7.0`, publish order is documented, package
+gate evidence is recorded, and remaining full package blockers are expected crates.io availability
+blockers until upstream `0.7.0` crates are published in order.

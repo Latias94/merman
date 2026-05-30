@@ -1,6 +1,6 @@
 # Workspace Release Versioning — Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Package Graph Frozen
@@ -53,3 +53,6 @@ Exit criteria:
 - Focused checks pass.
 - Release blockers are closed or split.
 - Platform lanes can proceed from a documented baseline.
+
+Status: complete. `0.7.0` is the documented baseline; platform lanes can proceed, and publishing
+must follow `docs/release/PUBLISH_ORDER.md`.

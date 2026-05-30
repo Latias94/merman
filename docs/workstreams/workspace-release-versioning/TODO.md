@@ -1,6 +1,6 @@
 # Workspace Release Versioning — TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Package Graph Freeze
@@ -53,9 +53,10 @@ Last updated: 2026-05-30
 
 ## M4 — Closeout
 
-- [ ] WRV-050 [owner=planner] [deps=WRV-040] [scope=docs/workstreams/workspace-release-versioning]
+- [x] WRV-050 [owner=planner] [deps=WRV-040] [scope=docs/workstreams/workspace-release-versioning]
   Goal: Close or split remaining release blockers.
   Validation: verify-rust-workstream records fresh final gate evidence.
   Review: Platform lanes should know whether release packaging is ready or still blocked.
   Evidence: EVIDENCE_AND_GATES.md, WORKSTREAM.json, HANDOFF.md
-  Handoff: Platform packaging lanes can start after version baseline is clear.
+  Handoff: DONE. Lane is closed. Remaining full package blockers are release-operator steps:
+  publish upstream `0.7.0` crates in order, then re-run downstream full package verification.
