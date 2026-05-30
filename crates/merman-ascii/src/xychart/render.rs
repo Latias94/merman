@@ -1,5 +1,6 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
+use crate::text::{StyledCell, StyledLine};
 use crate::{AsciiCharset, AsciiRenderOptions, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotRenderModel, XyChartPlotType,
@@ -67,109 +68,8 @@ impl ValueRange {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ChartCell {
-    ch: char,
-    role: Option<AsciiColorRole>,
-}
-
-impl ChartCell {
-    fn blank() -> Self {
-        Self {
-            ch: ' ',
-            role: None,
-        }
-    }
-
-    fn with_role(ch: char, role: AsciiColorRole) -> Self {
-        Self {
-            ch,
-            role: Some(role),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ChartLine {
-    chars: Vec<char>,
-    roles: Vec<Option<AsciiColorRole>>,
-}
-
-impl ChartLine {
-    fn new() -> Self {
-        Self {
-            chars: Vec::new(),
-            roles: Vec::new(),
-        }
-    }
-
-    fn role_text(text: &str, role: AsciiColorRole) -> Self {
-        let mut line = Self::new();
-        line.push_role_text(text, role);
-        line
-    }
-
-    fn push_plain_char(&mut self, ch: char) {
-        self.chars.push(ch);
-        self.roles.push(None);
-    }
-
-    fn push_spaces(&mut self, count: usize) {
-        for _ in 0..count {
-            self.push_plain_char(' ');
-        }
-    }
-
-    fn push_role_char(&mut self, ch: char, role: AsciiColorRole) {
-        self.chars.push(ch);
-        self.roles.push(Some(role));
-    }
-
-    fn push_role_text(&mut self, text: &str, role: AsciiColorRole) {
-        for ch in text.chars() {
-            self.push_role_char(ch, role);
-        }
-    }
-
-    fn push_role_text_with_unstyled_trailing_spaces(&mut self, text: &str, role: AsciiColorRole) {
-        let trimmed = text.trim_end_matches(' ');
-        self.push_role_text(trimmed, role);
-        self.push_spaces(text.chars().count() - trimmed.chars().count());
-    }
-
-    fn push_role_repeat(&mut self, ch: char, count: usize, role: AsciiColorRole) {
-        for _ in 0..count {
-            self.push_role_char(ch, role);
-        }
-    }
-
-    fn push_right_aligned_role_text(&mut self, text: &str, width: usize, role: AsciiColorRole) {
-        let len = text.chars().count();
-        self.push_spaces(width.saturating_sub(len));
-        self.push_role_text(text, role);
-    }
-
-    fn push_cells(&mut self, cells: &[ChartCell]) {
-        for cell in cells {
-            self.chars.push(cell.ch);
-            self.roles.push(cell.role);
-        }
-    }
-
-    fn text(&self) -> String {
-        self.chars.iter().collect()
-    }
-
-    fn write_to(&self, canvas: &mut Canvas, y: usize) {
-        for (x, (&ch, &role)) in self.chars.iter().zip(self.roles.iter()).enumerate() {
-            if let Some(role) = role {
-                canvas.set_role(x, y, ch, role);
-            } else {
-                canvas.set(x, y, ch);
-            }
-        }
-    }
-}
+type ChartCell = StyledCell;
+type ChartLine = StyledLine;
 
 pub(crate) fn render_xychart_diagram(
     model: &XyChartDiagramRenderModel,
@@ -718,7 +618,7 @@ fn finish_chart_lines(lines: Vec<ChartLine>, options: &AsciiRenderOptions) -> St
         return String::new();
     }
 
-    let width = lines.iter().map(|line| line.chars.len()).max().unwrap_or(0);
+    let width = lines.iter().map(ChartLine::len).max().unwrap_or(0);
     if width == 0 {
         return "\n".repeat(lines.len());
     }

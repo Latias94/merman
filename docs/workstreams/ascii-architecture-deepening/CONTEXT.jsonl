@@ -1,0 +1,11 @@
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Mermaid upstream remains the semantic authority; this lane must not intentionally diverge."}
+{"file":"docs/adr/0065-ascii-output-boundary.md","reason":"ASCII output is a first-class model-driven renderer and unsupported features must be explicit."}
+{"file":"docs/adr/0067-ascii-color-role-api.md","reason":"Color roles and opt-in ANSI/HTML output define the accepted styling surface."}
+{"file":"crates/merman-ascii/README.md","reason":"Current shipped family matrix and user-facing ASCII scope."}
+{"file":"crates/merman-ascii/FLOWCHART_SUPPORT.md","reason":"Flowchart supported subset, direction transform constraints, and documented follow-ons."}
+{"file":"crates/merman-ascii/SEQUENCE_SUPPORT.md","reason":"Sequence supported subset and documented unsupported features."}
+{"file":"crates/merman-ascii/GRAPH_FIXTURE_GAPS.md","reason":"Copied upstream graph fixture gap status."}
+{"file":"crates/merman-ascii/SEQUENCE_FIXTURE_GAPS.md","reason":"Copied upstream sequence fixture gap status."}
+{"file":"docs/workstreams/ascii-architecture-deepening/DESIGN.md","reason":"Target state, scope, assumptions, and architecture direction for this lane."}
+{"file":"docs/workstreams/ascii-architecture-deepening/TODO.md","reason":"Task ledger, dependencies, validation commands, and handoff expectations."}
+{"file":"docs/workstreams/ascii-architecture-deepening/EVIDENCE_AND_GATES.md","reason":"Fresh verification gates and evidence log for this lane."}

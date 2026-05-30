@@ -1,5 +1,13 @@
 # merman-core
 
+[![Crates.io](https://img.shields.io/crates/v/merman-core.svg)](https://crates.io/crates/merman-core)
+[![Documentation](https://docs.rs/merman-core/badge.svg)](https://docs.rs/merman-core)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman-core.svg)](https://crates.io/crates/merman-core)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 `merman-core` is the parser and semantic-model crate behind [merman](https://crates.io/crates/merman). Use it when you need Mermaid detection, metadata, semantic JSON, or typed render models without pulling in layout, SVG, or raster dependencies.
 
 Most application code that wants rendered output should use the `merman` crate with the `render` feature instead.

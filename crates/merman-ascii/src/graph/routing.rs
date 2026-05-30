@@ -10,6 +10,7 @@ use crate::text::display_width;
 mod cell;
 mod label;
 mod path;
+mod plan;
 
 pub(super) use cell::RouteCells;
 use cell::{edge_line_char, set_edge_arrow, set_edge_line, set_route_cell};
@@ -18,6 +19,7 @@ use label::{
     push_label_on_canvas_lines, push_label_on_horizontal_line, push_label_on_vertical_line,
 };
 use path::{Port, StepDirection, merge_grid_path, route_grid_path, step_direction};
+use plan::{PlannedRouteCellKind, RoutePlan, plan_top_down_direct_route};
 
 pub(super) struct RouteDrawing<'a> {
     canvas: &'a mut Canvas,
@@ -1071,19 +1073,38 @@ fn draw_top_down_edge(
         return;
     }
 
-    let x = from.center_x();
-    let start = from.bottom() + 1;
-    let end = to.y - 1;
-    let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-    set_edge_line(drawing.canvas, x, from.bottom(), charset.down_connector);
-    for y in start..end {
-        set_route_cell(drawing.canvas, drawing.route_cells, x, y, line);
+    if let Some(plan) = plan_top_down_direct_route(from, to, edge, charset) {
+        paint_route_plan(drawing, &plan);
     }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(drawing.canvas, drawing.route_cells, x, end, line),
-        GraphEdgeArrow::Point => set_edge_arrow(drawing.canvas, x, end, charset.arrow_down),
+}
+
+fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
+    for cell in &plan.cells {
+        match cell.kind {
+            PlannedRouteCellKind::EdgeLine => {
+                set_edge_line(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch)
+            }
+            PlannedRouteCellKind::RouteCell => set_route_cell(
+                drawing.canvas,
+                drawing.route_cells,
+                cell.coord.x,
+                cell.coord.y,
+                cell.ch,
+            ),
+            PlannedRouteCellKind::EdgeArrow => {
+                set_edge_arrow(drawing.canvas, cell.coord.x, cell.coord.y, cell.ch)
+            }
+        }
     }
-    push_label_on_vertical_line(drawing.labels, x, start, end, edge.label.as_deref());
+
+    drawing
+        .labels
+        .extend(plan.labels.iter().map(|label| EdgeLabel {
+            start: label.start,
+            end: label.end,
+            text: label.text.clone(),
+            color: None,
+        }));
 }
 
 fn draw_top_down_bent_edge(

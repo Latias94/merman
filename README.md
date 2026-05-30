@@ -2,7 +2,14 @@
 
 Mermaid, but headless, in Rust.
 
-![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman)
+[![Documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman.svg)](https://crates.io/crates/merman)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
@@ -10,88 +17,96 @@ Think of `merman` as Mermaid's headless twin: same language, same diagrams, no b
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
 changes that affect semantics, layout, or rendering are caught and reviewed.
 
-## TL;DR
+## Choose Your Entry Point
 
-- Want an executable? Use [`merman-cli`](crates/merman-cli) (render SVG/PNG/JPG/PDF and
-  ASCII/Unicode text).
-- Want a library? Use [`merman`](crates/merman) (`render` for SVG; `ascii` for text;
-  `raster` for PNG/JPG/PDF).
-- Embedding from C, C++, Swift, Kotlin, Dart FFI, or other native hosts? Use
-  [`merman-ffi`](crates/merman-ffi) and [`docs/bindings/FFI_PROTOCOL.md`](docs/bindings/FFI_PROTOCOL.md).
-- Only need parsing / semantic JSON? Use [`merman-core`](crates/merman-core).
-- Quality gate: `cargo run -p xtask -- verify` (fmt + nextest + DOM parity sweep).
+| You want to... | Start with | Notes |
+| --- | --- | --- |
+| Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
+| Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
+| Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
+| Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
+| Work on layout/rendering internals | [`merman-render`](https://crates.io/crates/merman-render) | Low-level layout and SVG stack used by the public `merman` facade. |
+
+## What Merman Outputs
+
+- Semantic JSON for Mermaid diagrams.
+- Layout JSON with computed geometry and routes.
+- Mermaid-like SVG from a fully headless Rust renderer.
+- ASCII/Unicode diagrams for terminals, logs, and documentation snippets.
+- PNG, JPG, and PDF via SVG rasterization/conversion.
+
+Diagram coverage and current parity status live in [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
+
+## Install
+
+```sh
+# Command-line tool
+cargo install merman-cli
+
+# Rust library: SVG rendering
+cargo add merman --features render
+
+# Rust library: ASCII/Unicode text output
+cargo add merman --features ascii
+
+# Rust library: SVG + PNG/JPG/PDF
+cargo add merman --features raster
+```
+
+From a local checkout:
+
+```sh
+cargo install --path crates/merman-cli
+cargo build -p merman-ffi --release
+```
+
+Use [`crates/merman-ffi/include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) and link the
+platform-specific library artifact from `target/release` for native embedding.
+
+MSRV is `rust-version = 1.87`.
 
 ## Contents
 
-- [Status](#status)
+- [Choose Your Entry Point](#choose-your-entry-point)
 - [Install](#install)
-- [Quickstart (CLI)](#quickstart-cli)
 - [Quickstart (library)](#quickstart-library)
-- [Quickstart (C ABI)](#quickstart-c-abi)
+- [Quickstart (CLI)](#quickstart-cli)
+- [Library API details](#library-api-details)
+- [Quickstart (FFI and native hosts)](#quickstart-ffi-and-native-hosts)
+- [Math Labels](#math-labels)
+- [ASCII/Unicode text output](#asciiunicode-text-output)
 - [Showcase](#showcase)
+- [Parity and coverage](#parity-and-coverage)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
 - [Architecture notes](#architecture-notes)
-- [Crates](#crates)
+- [Workspace crates](#workspace-crates)
 - [Links](#links)
 - [Changelog](#changelog)
 - [License](#license)
 
-## Status
+## Quickstart (library)
 
-- Baseline: Mermaid `@11.12.3`.
-- Alignment is enforced via upstream SVG DOM baselines + golden snapshots (“golden-driven parity”).
-- DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
-- Current coverage and gates: [docs/alignment/STATUS.md](docs/alignment/STATUS.md).
-- Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
-- ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](docs/adr/0061-external-diagrams-zenuml.md).
+For most Rust applications, start with `merman::render::HeadlessRenderer`:
 
-## What you get
+```rust
+use merman::render::HeadlessRenderer;
 
-- Parse Mermaid into a semantic JSON model (headless)
-- Compute headless layout (geometry + routes) as JSON
-- Render SVG (parity-focused DOM)
-- Render ASCII/Unicode text for terminals, logs, and documentation snippets
-- Render PNG (SVG rasterization via `resvg`)
-- Render JPG (SVG rasterization via `resvg`)
-- Render PDF (SVG → PDF conversion via `svg2pdf`)
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = HeadlessRenderer::new().with_diagram_id("readme-example");
+    let svg = renderer
+        .render_svg_sync("flowchart TD\nA[Start] --> B[Done]")?
+        .unwrap();
 
-Diagram coverage and current parity status live in [docs/alignment/STATUS.md](docs/alignment/STATUS.md).
-
-## Install
-
-From source:
-
-```sh
-cargo install --path crates/merman-cli
+    println!("{svg}");
+    Ok(())
+}
 ```
 
-From crates.io:
-
-```sh
-# CLI
-cargo install merman-cli
-
-# Library (SVG)
-cargo add merman --features render
-
-# Library (ASCII/Unicode text)
-cargo add merman --features ascii
-
-# Library (SVG + PNG/JPG/PDF)
-cargo add merman --features raster
-```
-
-For the C ABI:
-
-```sh
-cargo build -p merman-ffi --release
-```
-
-Use [`crates/merman-ffi/include/merman.h`](crates/merman-ffi/include/merman.h) and link the
-platform-specific library artifact from `target/release`.
-
-MSRV is `rust-version = 1.87`.
+Use `render_svg_sync()` when you want Mermaid-parity SVG. Use
+`render_svg_resvg_safe_sync()` when the result will be rasterized or shown by an SVG engine that
+does not support `<foreignObject>` well. Use the `ascii` feature and
+`merman::ascii::HeadlessAsciiRenderer` for terminal text output.
 
 ## Quickstart (CLI)
 
@@ -147,11 +162,11 @@ flowchart TD
 merman-cli render example.mmd --out example.svg
 ```
 
-## Quickstart (library)
+## Library API details
 
-The [`merman`](crates/merman) crate is a convenience wrapper around [`merman-core`](crates/merman-core) (parsing)
-and output crates such as [`merman-render`](crates/merman-render) (layout + SVG) and
-[`merman-ascii`](crates/merman-ascii) (ASCII/Unicode text). Enable the `render` feature when you
+The [`merman`](https://crates.io/crates/merman) crate is a convenience wrapper around [`merman-core`](https://crates.io/crates/merman-core) (parsing)
+and output crates such as [`merman-render`](https://crates.io/crates/merman-render) (layout + SVG) and
+[`merman-ascii`](https://crates.io/crates/merman-ascii) (ASCII/Unicode text). Enable the `render` feature when you
 want layout + SVG, `ascii` when you want text output, and `raster` when you also need PNG/JPG/PDF
 from Rust (no CLI required).
 
@@ -235,7 +250,7 @@ let svg = renderer
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
+See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md) for preset
 behavior, custom postprocessors that can read diagram type/title/svg id, and scoped CSS examples.
 
 Runnable example:
@@ -244,9 +259,9 @@ Runnable example:
 cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
 ```
 
-## Quickstart (C ABI)
+## Quickstart (FFI and native hosts)
 
-The [`merman-ffi`](crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The first
+The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The first
 release candidate supports SVG rendering, semantic JSON, layout JSON, and explicit Rust-owned
 buffer release.
 
@@ -263,8 +278,15 @@ merman_buffer_free(result.data);
 ```
 
 Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_free`. See
-[`docs/bindings/FFI_PROTOCOL.md`](docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
+[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
 threading, and compatibility rules.
+
+Higher-level wrappers build on the same ABI:
+
+- Android/Kotlin: [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
+- Apple Swift Package: [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
+- Flutter/Dart FFI: [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
+- Python UniFFI package: [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
 
 ### Math Labels
 
@@ -329,8 +351,8 @@ printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- r
 
 ## Showcase
 
-All screenshots below are produced by [`merman-cli`](crates/merman-cli) (headless) and committed under
-[docs/assets/showcase/](docs/assets/showcase/).
+All screenshots below are produced by [`merman-cli`](https://crates.io/crates/merman-cli) (headless) and committed under
+[docs/assets/showcase/](https://github.com/Latias94/merman/tree/main/docs/assets/showcase/).
 Each example links to an existing fixture so the README stays honest and reproducible.
 
 ### Architecture (many groups + sparse services)
@@ -339,7 +361,7 @@ Each example links to an existing fixture so the README stays honest and reprodu
   <img width="900" alt="Architecture diagram: many groups + sparse services" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png" />
 </p>
 
-Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd`](fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd)
+Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/architecture/stress_architecture_batch4_many_groups_sparse_services_069.mmd)
 
 <details>
   <summary>Mermaid source</summary>
@@ -371,7 +393,7 @@ c:R -- L:d
   <img width="900" alt="Mindmap diagram: label line break variants" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png" />
 </p>
 
-Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
+Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/mindmap/stress_mindmap_br_variants_031.mmd)
 
 <details>
   <summary>Mermaid source</summary>
@@ -395,7 +417,7 @@ mindmap
   <img width="900" alt="Sankey diagram: dense shared nodes" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png" />
 </p>
 
-Fixture: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
+Fixture: [`fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd)
 
 <details>
   <summary>Mermaid source</summary>
@@ -430,7 +452,7 @@ Z,Loss,2
   <img width="900" alt="Gantt diagram: date math + excludes" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/gantt.png" />
 </p>
 
-Fixture: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
+Fixture: [`fixtures/gantt/upstream_docs_gantt_syntax_002.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/gantt/upstream_docs_gantt_syntax_002.mmd)
 
 <details>
   <summary>Mermaid source</summary>
@@ -474,7 +496,16 @@ gantt
 
 | Architecture (ports + routing) | Mindmap (deep + wide) |
 | --- | --- |
-| <img width="430" alt="Architecture diagram: cross-region services + crosslinks" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture_crosslinks.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd`](fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd)<br/><sub>Note: Architecture diagonal arrowheads are oriented from the rendered edge segment; DOM parity still normalizes geometry against upstream Mermaid.</sub> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+| <img width="430" alt="Architecture diagram: cross-region services + crosslinks" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture_crosslinks.png" /><br/>Fixture: [`fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/architecture/stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd)<br/><sub>Note: Architecture diagonal arrowheads are oriented from the rendered edge segment; DOM parity still normalizes geometry against upstream Mermaid.</sub> | <img width="430" alt="Mindmap diagram: deep + wide tree" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap_deep_wide.png" /><br/>Fixture: [`fixtures/mindmap/stress_deep_wide_combo_011.mmd`](https://github.com/Latias94/merman/blob/main/fixtures/mindmap/stress_deep_wide_combo_011.mmd) |
+
+## Parity and coverage
+
+- Baseline: Mermaid `@11.12.3`.
+- Alignment is enforced via upstream SVG DOM baselines plus semantic/layout golden snapshots.
+- DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM, not byte-identical SVG text.
+- Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
+- Current coverage and gates: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
+- ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](https://github.com/Latias94/merman/blob/main/docs/adr/0061-external-diagrams-zenuml.md).
 
 ## Quality gates
 
@@ -483,7 +514,7 @@ This repo is built around reproducible alignment layers and CI-friendly gates:
 - Semantic snapshots: `fixtures/**/*.golden.json`
 - Layout snapshots: `fixtures/**/*.layout.golden.json`
 - Upstream SVG baselines: `fixtures/upstream-svgs/**`
-- DOM parity gates: `xtask compare-all-svgs --check-dom` (see [docs/adr/0050-release-quality-gates.md](docs/adr/0050-release-quality-gates.md))
+- DOM parity gates: `xtask compare-all-svgs --check-dom` (see [docs/adr/0050-release-quality-gates.md](https://github.com/Latias94/merman/blob/main/docs/adr/0050-release-quality-gates.md))
 
 The goal is not “it looks similar”, but “it stays aligned”.
 
@@ -510,7 +541,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.
-- Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](docs/alignment/STATUS.md)).
+- Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
 
 ## Architecture notes
@@ -526,22 +557,28 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - Parity renderers live under `svg/parity/*`; large renderers are split by diagram responsibility
   and generated overrides are treated as compatibility data, not as default model fixes.
 
-## Crates
+## Workspace crates
 
-- Headless parsing: [`merman-core`](crates/merman-core)
-- Convenience API: [`merman`](crates/merman) (enable `render` for layout + SVG)
-- C ABI bindings: [`merman-ffi`](crates/merman-ffi)
-- Rendering + layout stack: [`merman-render`](crates/merman-render)
-- Layout ports:
-  - [`dugong`](crates/dugong): Dagre-compatible layout (port of `dagrejs/dagre`)
-  - [`dugong-graphlib`](crates/dugong-graphlib): graph container APIs (port of `dagrejs/graphlib`)
-  - [`manatee`](crates/manatee): compound graph layouts (COSE/FCoSE ports)
+| Crate | Role |
+| --- | --- |
+| [`merman`](https://crates.io/crates/merman) | Public Rust facade. Enable `render`, `ascii`, and/or `raster` depending on output needs. |
+| [`merman-cli`](https://crates.io/crates/merman-cli) | Command-line interface for detect/parse/layout/render workflows. |
+| [`merman-core`](https://crates.io/crates/merman-core) | Detection, parsing, metadata, semantic JSON, and typed render models. |
+| [`merman-render`](https://crates.io/crates/merman-render) | Headless layout, SVG rendering, SVG pipelines, and raster-friendly postprocessing. |
+| [`merman-ascii`](https://crates.io/crates/merman-ascii) | ASCII/Unicode terminal rendering for typed models. |
+| [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI for native hosts and platform wrappers. |
+| [`merman-bindings-core`](https://crates.io/crates/merman-bindings-core) | Shared safe facade behind C ABI and UniFFI bindings. |
+| [`merman-uniffi`](https://crates.io/crates/merman-uniffi) | UniFFI-generated binding surface, currently used for Python packaging. |
+| [`dugong`](https://crates.io/crates/dugong) | Dagre-compatible layout port. |
+| [`dugong-graphlib`](https://crates.io/crates/dugong-graphlib) | Graph container APIs ported from `dagrejs/graphlib`. |
+| [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |
+| [`roughr-merman`](https://crates.io/crates/roughr-merman) | Forked Rough.js-style renderer dependency stabilized for Mermaid parity. |
 
 ## Links
 
-- Alignment status: [docs/alignment/STATUS.md](docs/alignment/STATUS.md)
-- Parity policy: [docs/adr/0014-upstream-parity-policy.md](docs/adr/0014-upstream-parity-policy.md)
-- Release quality gates: [docs/adr/0050-release-quality-gates.md](docs/adr/0050-release-quality-gates.md)
+- Alignment status: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- Parity policy: [docs/adr/0014-upstream-parity-policy.md](https://github.com/Latias94/merman/blob/main/docs/adr/0014-upstream-parity-policy.md)
+- Release quality gates: [docs/adr/0050-release-quality-gates.md](https://github.com/Latias94/merman/blob/main/docs/adr/0050-release-quality-gates.md)
 - Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid)
 - Related: [1jehuang/mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer/)
 - ASCII reference: [AlexanderGrooff/mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii)
@@ -551,7 +588,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
 
 ## License
 

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "slug": "ascii-architecture-deepening",
+  "title": "ASCII Architecture Deepening",
+  "status": "active",
+  "updated": "2026-05-30",
+  "scope_kind": "architecture",
+  "problem": "merman-ascii has shipped multiple diagram-family subsets, but text styling, graph routing, relation rendering, sequence event state, and gap tracking are still spread across shallow internal modules.",
+  "authoritative_docs": [
+    {
+      "role": "adr",
+      "path": "docs/adr/0014-upstream-parity-policy.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0065-ascii-output-boundary.md"
+    },
+    {
+      "role": "adr",
+      "path": "docs/adr/0067-ascii-color-role-api.md"
+    },
+    {
+      "role": "design",
+      "path": "docs/workstreams/ascii-architecture-deepening/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/ascii-architecture-deepening/TODO.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/ascii-architecture-deepening/MILESTONES.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/ascii-architecture-deepening/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/ascii-architecture-deepening/HANDOFF.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/ascii-architecture-deepening/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/ascii-architecture-deepening/CONTEXT.jsonl",
+  "gates": [
+    "git diff --check -- docs/workstreams/ascii-architecture-deepening",
+    "cargo nextest run -p merman-ascii canvas color",
+    "cargo nextest run -p merman-ascii flowchart",
+    "cargo nextest run -p merman-ascii class er",
+    "cargo nextest run -p merman-ascii sequence",
+    "cargo nextest run -p merman-ascii",
+    "cargo fmt --all --check",
+    "cargo clippy -p merman-ascii --all-targets -- -D warnings",
+    "git diff --check"
+  ],
+  "evidence": [
+    {
+      "date": "2026-05-30",
+      "task": "AAD-010",
+      "result": "opened the ASCII architecture deepening lane for the five selected refactor targets"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-010",
+      "result": "passed git diff --check for the new workstream docs"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-020",
+      "result": "introduced shared StyledCell and StyledLine substrate and migrated sequence plus XYChart line buffers"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-020",
+      "result": "passed targeted text, sequence, XYChart, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-030",
+      "result": "introduced a route-plan seam for top-down direct graph routes"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-030",
+      "result": "passed top_down_direct, flowchart, package, fmt, and clippy gates"
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0065-ascii-output-boundary.md",
+    "docs/adr/0067-ascii-color-role-api.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "ascii",
+    "architecture",
+    "renderer",
+    "terminal"
+  ],
+  "lane_slug": "ascii-architecture-deepening",
+  "continue_policy": {
+    "default_action": "continue_next_task",
+    "next_task": "AAD-040",
+    "notes": "Start AAD-040 by deepening relation graph adapters for class and ER."
+  }
+}

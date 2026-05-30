@@ -1,5 +1,13 @@
 # merman-cli
 
+[![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli)
+[![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli)
+[![Crates.io Downloads](https://img.shields.io/crates/d/merman-cli.svg)](https://crates.io/crates/merman-cli)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange.svg)](https://www.rust-lang.org)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 `merman-cli` is the command-line interface for [merman](https://crates.io/crates/merman). It can detect, parse, layout, and render Mermaid diagrams without a browser.
 
 ## Install
