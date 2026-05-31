@@ -28,13 +28,15 @@ Last updated: 2026-05-31
   Handoff: DONE. Added renderer tests for input-order slices and hidden-slice color-domain
   reservation, removed the descending value sort, and refreshed affected Pie layout/SVG baselines.
 
-- [ ] PIE-030 [owner=codex] [deps=PIE-010] [scope=crates/xtask/default_config_overrides.json,crates/merman-core/src/generated/default_config.json]
+- [x] PIE-030 [owner=codex] [deps=PIE-010] [scope=crates/xtask/default_config_overrides.json,crates/xtask/src/cmd/generate.rs,crates/merman-core/src/generated/default_config.json,crates/merman-core/src/tests/pie.rs]
   Goal: Restore supported Pie 11.15 config keys in generated defaults.
   Validation: `cargo run -p xtask -- gen-default-config`; `cargo run -p xtask -- verify-default-config`; `cargo nextest run -p merman-core config`.
   Review: Confirm only Pie removals are changed in the override manifest and generated artifact.
   Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
   Context: ADR-0019 and generated-default-config closeout.
-  Handoff: Not started.
+  Handoff: DONE. Removed the Pie key removals from the override manifest, regenerated defaults,
+  added a Pie config default/override regression test, and made default-config generation
+  recursively key-sorted with a trailing newline to avoid noisy generated diffs.
 
 ## M2 - Configured Rendering
 

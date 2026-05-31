@@ -75,6 +75,22 @@ git diff --check
   - `cargo nextest run -p merman-core pie`: passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-05-31 PIE-030 red:
+  - `cargo nextest run -p merman-core parse_pie_exposes_11_15_config_defaults_and_overrides`:
+    failed because `pie.donutHole` was absent from the generated default config.
+- 2026-05-31 PIE-030 green:
+  - Result: removed Pie key removals from `default_config_overrides.json`, regenerated
+    `default_config.json`, and added a regression test for default/override exposure.
+  - Result: stabilized `gen-default-config` output with recursive key sorting and a trailing
+    newline so the generator itself preserves the committed artifact shape.
+  - `cargo run -p xtask -- gen-default-config`: passed.
+  - `cargo nextest run -p merman-core parse_pie_exposes_11_15_config_defaults_and_overrides`:
+    passed.
+  - `cargo nextest run -p xtask default_config`: passed.
+  - `cargo run -p xtask -- verify-default-config`: passed.
+  - `cargo nextest run -p merman-core config`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

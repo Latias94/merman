@@ -2,7 +2,7 @@ use crate::XtaskError;
 use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_defaults, extract_frozen_string_array};
 use serde::Deserialize;
-use serde_json::Value as JsonValue;
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use serde_yaml::Value as YamlValue;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1519,6 +1519,32 @@ fn remove_json_path(root: &mut JsonValue, path: &[String]) {
     }
 }
 
+fn sort_json_value_keys(value: &mut JsonValue) {
+    match value {
+        JsonValue::Object(map) => {
+            for child in map.values_mut() {
+                sort_json_value_keys(child);
+            }
+
+            let mut sorted = JsonMap::new();
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            for key in keys {
+                if let Some(child) = map.remove(&key) {
+                    sorted.insert(key, child);
+                }
+            }
+            *map = sorted;
+        }
+        JsonValue::Array(items) => {
+            for item in items {
+                sort_json_value_keys(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         return Err(XtaskError::Usage);
@@ -1581,7 +1607,9 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
         apply_default_config_overrides(&mut root_defaults, &overrides)?;
     }
 
-    let pretty = serde_json::to_string_pretty(&root_defaults)?;
+    sort_json_value_keys(&mut root_defaults);
+    let mut pretty = serde_json::to_string_pretty(&root_defaults)?;
+    pretty.push('\n');
     let out_dir = out_path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(out_dir).map_err(|source| XtaskError::WriteFile {
         path: out_dir.display().to_string(),
@@ -2102,7 +2130,7 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         DOMPURIFY_BASELINE_VERSION, DefaultConfigOverride, DefaultConfigOverrideOp,
-        apply_default_config_overrides, render_dompurify_defaults_rs,
+        apply_default_config_overrides, render_dompurify_defaults_rs, sort_json_value_keys,
     };
     use serde_json::json;
 
@@ -2167,6 +2195,47 @@ mod tests {
         apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
 
         assert_eq!(root, json!({ "sankey": { "nodeColors": {} } }));
+    }
+
+    #[test]
+    fn default_config_output_sorts_json_keys_recursively() {
+        let mut root = json!({
+            "z": 1,
+            "a": {
+                "textPosition": 0.75,
+                "donutHole": 0
+            },
+            "m": [
+                {
+                    "b": true,
+                    "a": false
+                }
+            ]
+        });
+
+        sort_json_value_keys(&mut root);
+
+        let top_keys: Vec<&str> = root
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(top_keys, vec!["a", "m", "z"]);
+        let nested_keys: Vec<&str> = root["a"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(nested_keys, vec!["donutHole", "textPosition"]);
+        let array_object_keys: Vec<&str> = root["m"][0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(array_object_keys, vec!["a", "b"]);
     }
 
     #[test]

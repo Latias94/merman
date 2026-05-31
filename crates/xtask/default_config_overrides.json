@@ -51,20 +51,5 @@
     "op": "remove",
     "path": ["railroad"],
     "reason": "Out-of-scope 11.15 diagram family for the current baseline."
-  },
-  {
-    "op": "remove",
-    "path": ["pie", "donutHole"],
-    "reason": "Pie donut rendering is not implemented in the current 11.15 support matrix."
-  },
-  {
-    "op": "remove",
-    "path": ["pie", "highlightSlice"],
-    "reason": "Pie highlight-slice rendering is not implemented in the current 11.15 support matrix."
-  },
-  {
-    "op": "remove",
-    "path": ["pie", "legendPosition"],
-    "reason": "Pie legend-position rendering is not implemented in the current 11.15 support matrix."
   }
 ]

@@ -28,8 +28,7 @@ Primary gates:
 - `cargo run -p xtask -- verify-default-config`
 - `cargo nextest run -p merman-core config`
 
-Status: in progress. PIE-020 input-order and hidden-slice color-domain behavior is complete;
-PIE-030 generated config restoration remains before this milestone can close.
+Status: complete.
 
 ## M2 - Configured Rendering
 
