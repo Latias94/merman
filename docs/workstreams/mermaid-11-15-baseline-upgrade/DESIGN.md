@@ -53,6 +53,17 @@ as out of scope.
 - A documented scope decision for new diagram families such as `eventmodeling`, `wardley-beta`,
   `treeView`, `venn-beta`, and `ishikawa-beta`.
 
+## New Family Scope Decision
+
+No new diagram family is promoted into this lane's implementation scope. The 11.15 baseline bump
+may claim the existing supported diagram matrix plus completed 11.13-11.15 compatibility deltas,
+but it must explicitly defer `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, and
+`ishikawa(-beta)`.
+
+Additional upstream families that are present in the Mermaid 11.15 source tree but not part of the
+current local coverage corpus, including `cynefin-beta` and `railroad-*`, are out of scope unless a
+later workstream promotes them with a parser/model/layout/render plan.
+
 ## Out Of Scope
 
 - Claiming full `11.15.0` baseline parity before evidence gates pass.

@@ -80,13 +80,13 @@ Last updated: 2026-05-31
 
 ## M2 - Scope Decisions And Baseline Metadata
 
-- [ ] M15-090 [owner=planner] [deps=M15-020] [scope=docs/workstreams/mermaid-11-15-baseline-upgrade,docs/alignment]
+- [x] M15-090 [owner=codex] [deps=M15-020] [scope=docs/workstreams/mermaid-11-15-baseline-upgrade,docs/alignment]
   Goal: Decide and document support status for new diagram families from 11.13-11.15.
   Validation: `DESIGN.md`, `STATUS.md`, or follow-on workstreams record support/defer/out-of-scope status.
   Review: Confirm no unsupported family is implied by baseline wording.
-  Evidence: Docs update.
+  Evidence: `cargo run -p xtask -- check-alignment`; `cargo fmt --check`; `git diff --check`.
   Context: Workstream context plus upstream diagram directories.
-  Handoff: Split new families into independent lanes when accepted.
+  Handoff: DONE. `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, and `ishikawa(-beta)` are deferred to follow-on diagram-family lanes; `cynefin-beta` and `railroad-*` are documented as out of scope for this baseline unless later promoted.
 
 - [ ] M15-100 [owner=planner] [deps=M15-030,M15-040,M15-050,M15-060,M15-070,M15-080,M15-090] [scope=README.md,docs/adr,tools/upstreams,docs/alignment,fixtures]
   Goal: Update baseline metadata and fixtures only after selected compatibility deltas are complete.

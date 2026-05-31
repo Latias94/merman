@@ -55,3 +55,15 @@
 {"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"Local sequence message and autonumber marker references now use diagram-scoped marker URLs."}
 {"file":"crates/merman-render/src/svg/parity/sequence/css.rs","reason":"Local sequence marker CSS now uses suffix-compatible selectors."}
 {"file":"crates/merman-render/tests/svg_internal_id_test.rs","reason":"Public SVG tests for c4, journey, timeline, and sequence diagram-scoped marker IDs."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/eventmodeling/detector.ts","reason":"Upstream Event Modeling detector and header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/wardley/wardleyDetector.ts","reason":"Upstream Wardley Maps detector and wardley-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/treeView/detector.ts","reason":"Upstream TreeView detector and treeView-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/venn/vennDetector.ts","reason":"Upstream Venn detector and venn-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa/ishikawaDetector.ts","reason":"Upstream Ishikawa detector for ishikawa and ishikawa-beta headers in the M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/cynefin/cynefinDetector.ts","reason":"Upstream Cynefin detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/railroadDetector.ts","reason":"Upstream Railroad detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/abnfDetector.ts","reason":"Upstream Railroad ABNF detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/ebnfDetector.ts","reason":"Upstream Railroad EBNF detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/pegDetector.ts","reason":"Upstream Railroad PEG detector used to record out-of-scope status for this baseline."}
+{"file":"docs/alignment/STATUS.md","reason":"M15-090 support/defer/out-of-scope matrix for Mermaid 11.15 diagram-family scope."}
+{"file":"docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md","reason":"Alignment gate fix for stale Flowchart KaTeX fixture references found while verifying M15-090."}

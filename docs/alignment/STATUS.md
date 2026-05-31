@@ -73,6 +73,26 @@ Notes:
   This is not currently covered by upstream SVG baselines.
   Coverage docs: `docs/alignment/ZENUML_MINIMUM.md`, `docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md`.
 
+## Mermaid 11.15 Diagram Family Scope
+
+The `mermaid-11-15-baseline-upgrade` workstream selected existing-diagram compatibility as the
+baseline bump path. The 11.15 baseline claim must therefore cover the diagram matrix above plus
+the implemented 11.13-11.15 deltas for those diagrams; it must not imply support for every upstream
+diagram directory.
+
+| Upstream header or id | Upstream source | Local 11.15 status | Decision |
+|---|---|---|---|
+| `eventmodeling` | `repo-ref/mermaid/packages/mermaid/src/diagrams/eventmodeling` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
+| `wardley-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
+| `treeView-beta` / `treeView` | `repo-ref/mermaid/packages/mermaid/src/diagrams/treeView` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
+| `venn-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/venn` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
+| `ishikawa` / `ishikawa-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
+| `cynefin-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/cynefin` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Out of scope for this baseline unless explicitly promoted later. |
+| `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | `repo-ref/mermaid/packages/mermaid/src/diagrams/railroad` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Out of scope for this baseline unless explicitly promoted later. |
+
+These families should enter the main coverage matrix only after they have at least parse coverage
+and an accepted support plan for layout/render behavior.
+
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.

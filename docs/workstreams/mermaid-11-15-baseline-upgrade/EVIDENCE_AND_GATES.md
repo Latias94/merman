@@ -155,3 +155,13 @@ before marking a task, Codex goal, or lane complete.
   - `cargo fmt` applied standard formatting after the first `cargo fmt --check` reported two line-wrap diffs.
   - `cargo fmt --check` passed.
   - `git diff --check` passed with only the LF-to-CRLF warning for `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+- 2026-05-31: M15-090 new diagram family scope documented.
+  - `npm view mermaid version` returned `11.15.0`, matching the requested target and the local `repo-ref/mermaid/packages/mermaid/package.json`.
+  - Upstream detector/source check covered `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, `ishikawa(-beta)`, `cynefin-beta`, and `railroad-*`.
+  - `docs/alignment/STATUS.md` now records support/defer/out-of-scope status so the future 11.15 baseline wording cannot imply unsupported families.
+  - `docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md` records that no new diagram family is promoted into this lane's implementation scope.
+  - First `cargo run -p xtask -- check-alignment` exposed four stale Flowchart KaTeX fixture references in `docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md`.
+  - `docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md` now points those references at the existing `*_parser_only_katex` fixture names.
+  - `cargo run -p xtask -- check-alignment` passed after the reference fix.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed.

@@ -35,13 +35,18 @@ M15-080 is complete: c4, journey, timeline, and sequence marker IDs now use Merm
 `<diagram-id>-<local-id>` scoping, marker references point at the scoped IDs, sequence actor-man
 control markers follow the same helper, and sequence CSS now uses `[id$="..."]` selectors for
 prefixed marker IDs.
+M15-090 is complete: new Mermaid 11.13-11.15 diagram-family scope is explicit. `eventmodeling`,
+`wardley-beta`, `treeView-beta`, `venn-beta`, and `ishikawa(-beta)` are deferred to follow-on
+diagram-family lanes; `cynefin-beta` and `railroad-*` are out of scope for this baseline unless
+later promoted. `STATUS.md` now carries the support/defer/out-of-scope matrix, and a stale
+Flowchart KaTeX fixture reference set was corrected so `check-alignment` is green.
 
 ## Active Task
 
-- Task ID: M15-090
+- Task ID: M15-100
 - Owner: unassigned
-- Files: `docs/workstreams/mermaid-11-15-baseline-upgrade`, `docs/alignment`
-- Validation: `DESIGN.md`, `STATUS.md`, or follow-on workstreams record support/defer/out-of-scope status
+- Files: `README.md`, `docs/adr`, `tools/upstreams`, `docs/alignment`, `fixtures`
+- Validation: Fresh targeted gates plus appropriate workspace/package gates
 - Status: READY
 - Review: Required before task acceptance
 - Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
@@ -73,13 +78,21 @@ prefixed marker IDs.
   `scoped_svg_id` / `scoped_svg_url` helpers so exact-ID regressions are easier to spot.
 - Sequence marker CSS must stay suffix-compatible because marker IDs are no longer stable exact
   strings once a caller supplies `SvgRenderOptions.diagram_id`.
+- New diagram families are not part of this lane's implementation scope. The 11.15 baseline bump
+  should claim the existing supported diagram matrix plus completed existing-diagram deltas, not
+  every upstream directory.
+- `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, and `ishikawa(-beta)` should be
+  split into independent family lanes if accepted.
+- `cynefin-beta` and `railroad-*` are present in the upstream tree but remain out of scope for this
+  baseline unless explicitly promoted later.
 
 ## Blockers
 
-- None known for M15-090. This is a scope and baseline metadata decision task, not a renderer
-  implementation task.
+- None known for M15-100. Baseline metadata should be updated only if it preserves the documented
+  unsupported-family caveat.
 
 ## Next Recommended Action
 
-- Execute M15-090. Revisit the 11.13-11.15 release delta and document support, defer, or
-  out-of-scope status for new diagram families before bumping baseline metadata in M15-100.
+- Execute M15-100. Update baseline metadata only after verifying that README, ADR-0001,
+  `REPOS.lock.json`, and alignment docs describe the implemented 11.15 scope and the deferred or
+  out-of-scope diagram families.
