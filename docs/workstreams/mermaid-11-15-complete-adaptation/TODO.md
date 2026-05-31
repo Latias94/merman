@@ -50,19 +50,22 @@ Last updated: 2026-06-01
   upstream SVG baselines. Sequence keeps `stress_end_keyword_016` as local parser coverage but
   skips its stale SVG baseline in upstream gates because Mermaid 11.15 rejects `(end)` as a
   participant id. Timeline needed one renderer convergence fix for 11.15 scoped node ids before its
-  stored baselines could be refreshed. The current full `parity` gate is red only for sankey=24,
-  class=9, flowchart=1, xychart=1.
+  stored baselines could be refreshed. At M15C-040 close, the full `parity` gate was red only for
+  sankey=24, class=9, flowchart=1, xychart=1.
 
 ## M2 - Residual Existing-Matrix Parity
 
-- [ ] M15C-050 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/sankey,crates/merman-render/src/svg/parity/sankey.rs,crates/merman-render/tests]
+- [x] M15C-050 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/sankey,crates/merman-render/src/svg/parity/sankey.rs,crates/merman-render/tests]
   Goal: Close Sankey 11.15 parity after baseline refresh, especially stroke-width/layout deltas.
   Validation: `cargo nextest run -p merman-render sankey`;
   `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`.
   Review: Decide whether remaining drift is baseline refresh, d3-sankey config, or renderer math.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/alignment/SANKEY_UPSTREAM_TEST_COVERAGE.md`.
-  Handoff: Not started.
+  Handoff: DONE. Fresh Mermaid 11.15 Sankey SVG baselines matched local output, proving the 24
+  stored-fixture `stroke-width` mismatches were stale baseline drift rather than renderer math.
+  Stored Sankey SVG baselines were refreshed and the Sankey stored gate now passes. The current full
+  `parity` gate is red only for class=9, flowchart=1, xychart=1.
 
 - [ ] M15C-060 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/class,fixtures/upstream-svgs/xychart,fixtures/upstream-svgs/flowchart,crates/merman-render/src/svg/parity]
   Goal: Close the remaining Class, XYChart, and Flowchart Math parity deltas after 11.15 baselines

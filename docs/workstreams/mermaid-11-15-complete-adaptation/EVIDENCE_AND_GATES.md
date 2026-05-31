@@ -206,6 +206,27 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     failed with the current remaining split: sankey=24, class=9, flowchart=1, xychart=1. Timeline
     no longer appears in the full-gate failure set.
+- 2026-06-01 M15C-050 Sankey stored baseline refresh:
+  - `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed before refresh with 24 `stroke-width` mismatches.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram sankey --out target/upstream-svgs-11-15-sankey`:
+    passed and generated 33 fresh Mermaid 11.15 Sankey SVGs.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram sankey --upstream-root target/upstream-svgs-11-15-sankey --dom-mode parity --dom-decimals 3`:
+    passed against the fresh Mermaid 11.15 Sankey target, proving the stored failures were stale
+    baseline drift rather than renderer math.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram sankey --out fixtures/upstream-svgs`:
+    passed and refreshed 33 stored Sankey SVG baselines.
+  - `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram sankey --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render sankey`: passed, 4 tests.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed with the current remaining split: class=9, flowchart=1, xychart=1. Sankey no longer
+    appears in the full-gate failure set.
+  - `cargo run -p xtask -- check-alignment`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

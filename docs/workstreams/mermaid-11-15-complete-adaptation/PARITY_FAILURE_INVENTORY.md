@@ -11,8 +11,8 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decim
 
 Initial result on 2026-05-31: failed with 525 DOM mismatches across 8 diagram groups.
 
-Current result after the M15C-040 Sequence/C4/Journey/Timeline convergence on 2026-06-01: failed
-with 35 DOM mismatches across 4 diagram groups: sankey=24, class=9, flowchart=1, xychart=1.
+Current result after the M15C-050 Sankey baseline refresh on 2026-06-01: failed with 11 DOM
+mismatches across 3 diagram groups: class=9, flowchart=1, xychart=1.
 
 ## Summary
 
@@ -22,7 +22,7 @@ with 35 DOM mismatches across 4 diagram groups: sankey=24, class=9, flowchart=1,
 | Timeline | 0 | Stored-baseline marker drift plus a real 11.15 scoped node id delta. | Green after M15C-040 renderer fix and stored baseline refresh. | None for M15C-040; keep Timeline in future full-gate regression checks. |
 | C4 | 0 | Stored upstream marker/base symbol drift; fresh 11.15 also changed scoped base symbol ids and selected type-label text lengths. | Green after M15C-040 renderer fixes and stored baseline refresh. | None for M15C-040; keep C4 in future full-gate regression checks. |
 | Journey | 0 | Stored upstream marker/task-line id drift; fresh 11.15 scopes task-line ids by SVG id. | Green after M15C-040 renderer fix and stored baseline refresh. | None for M15C-040; keep Journey in future full-gate regression checks. |
-| Sankey | 24 | Link `stroke-width` differs by fixture. | Likely 11.15 baseline/config drift or d3-sankey math delta. | Refresh/check Sankey 11.15 upstream baselines, then inspect layout math only if still red. |
+| Sankey | 0 | Link `stroke-width` differed in stale stored baselines. | Green after M15C-050 fresh 11.15 check and stored baseline refresh. | None for M15C-050; keep Sankey in future full-gate regression checks. |
 | Class | 9 | Hierarchical namespace DOM differs: local nested groups versus old upstream namespace structure. | Likely expected 11.15 behavior compared against stale baseline. | Regenerate/check Class 11.15 baselines; keep local hierarchy unless fresh upstream disproves it. |
 | Flowchart | 1 | MathML `columnalign` extra attribute under KaTeX/MathML output. | Targeted renderer or normalizer gap after baseline freshness is confirmed. | Reproduce with fresh 11.15 upstream output for `upstream_docs_math_flowcharts_001`. |
 | XYChart | 1 | Data label `fill` differs: upstream `black`, local configured theme color. | Likely 11.15 config/baseline drift or theme precedence bug. | Reproduce with fresh 11.15 upstream output for the config fixture. |
@@ -52,16 +52,16 @@ refreshed. Timeline is also green after matching Mermaid 11.15 scoped node ids a
 Timeline baselines.
 
 Current `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` split after
-Sequence/C4/Journey/Timeline refresh: sankey=24, class=9, flowchart=1, xychart=1.
+Sequence/C4/Journey/Timeline/Sankey refresh: class=9, flowchart=1, xychart=1.
 
 ### Needs fresh 11.15 baseline before code changes
 
-- sankey
 - class
 - xychart
 
-These diagrams already had targeted 11.15 behavior changes. Treat the current mismatches as
-unproven until fresh upstream 11.15 baselines are generated or checked.
+Class and XYChart already had targeted 11.15 behavior changes. Treat the current mismatches as
+unproven until fresh upstream 11.15 baselines are generated or checked. Sankey was in this bucket
+and is now green after a fresh 11.15 baseline refresh.
 
 ### Likely targeted code/normalizer issue
 
@@ -76,4 +76,5 @@ Do not batch it with marker-ID baseline refresh.
    the current baseline.
 2. M15C-040 batch A: regenerate/check sequence, timeline, C4, and Journey 11.15 upstream SVGs.
 3. M15C-040 batch B: rerun full `parity` and recalculate mismatch counts.
-4. M15C-050/M15C-060: address the remaining Sankey, Class, Flowchart, and XYChart mismatches.
+4. M15C-050: refresh Sankey after fresh 11.15 output proves local renderer parity.
+5. M15C-060: address the remaining Class, Flowchart, and XYChart mismatches.

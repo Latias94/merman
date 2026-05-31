@@ -9,21 +9,22 @@ The umbrella campaign is open. The repo baseline points at Mermaid `11.15.0`, ge
 verify, and the Pie 11.15 lane is closed. M15C-030 removed active 11.12.3 report labels. M15C-040
 has landed renderer fixes for Sequence central connections, Sequence 11.15 metadata, C4 scoped
 symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 11.15 DOM
-differences, and Timeline scoped node ids. Sequence, C4, Journey, and Timeline stored upstream SVG
-baselines have been refreshed and now pass their stored-fixture compares. Full implemented matrix
-SVG DOM parity is still red, but only for sankey=24, class=9, flowchart=1, xychart=1.
+differences, Timeline scoped node ids, and the Sankey 11.15 baseline refresh. Sequence, C4,
+Journey, Timeline, and Sankey stored upstream SVG baselines have been refreshed and now pass their
+stored-fixture compares. Full implemented matrix SVG DOM parity is still red, but only for class=9,
+flowchart=1, xychart=1.
 
 ## Active Task
 
-- Task ID: M15C-050
+- Task ID: M15C-060
 - Owner: codex
-- Files: `fixtures/upstream-svgs/sankey`, `crates/merman-render/src/svg/parity/sankey.rs`,
-  `crates/merman-render/tests`
-- Validation: `cargo nextest run -p merman-render sankey`;
-  `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Files: `fixtures/upstream-svgs/class`, `fixtures/upstream-svgs/xychart`,
+  `fixtures/upstream-svgs/flowchart`, `crates/merman-render/src/svg/parity`
+- Validation: targeted compare commands for class, xychart, and flowchart in `parity` mode plus
+  package tests for any touched renderer.
 - Status: READY
-- Review: Start with fresh Mermaid 11.15 Sankey upstream baseline evidence before changing layout
-  math.
+- Review: Generate/check fresh 11.15 Class and XYChart baselines before changing renderer behavior;
+  keep Flowchart as a targeted MathML `columnalign` normalizer/renderer delta.
 - Evidence: `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -59,18 +60,21 @@ SVG DOM parity is still red, but only for sankey=24, class=9, flowchart=1, xycha
   preserving the upstream `node-undefined` class string. Stored Timeline SVG baselines were
   refreshed and both `compare-timeline-svgs` and `compare-svg-xml --diagram timeline` pass in
   `parity` mode.
+- Fresh Sankey 11.15 output matched local output without renderer changes, proving the stored
+  `stroke-width` failures were stale baseline drift. Stored Sankey SVG baselines were refreshed and
+  both `compare-sankey-svgs` and `compare-svg-xml --diagram sankey` pass in `parity` mode.
 
 ## Known Risks
 
 - Regenerating all upstream SVG baselines at once may produce very large fixture churn. Prefer
   diagram-scoped batches.
-- Sankey, Class, and XYChart still need fresh 11.15 baseline checks before treating their current
-  failures as renderer defects.
+- Class and XYChart still need fresh 11.15 baseline checks before treating their current failures as
+  renderer defects.
 - Flowchart has a single MathML `columnalign` delta and should stay a targeted normalizer/renderer
   task.
 
 ## Next Recommended Action
 
-Start M15C-050 with a fresh Sankey 11.15 baseline check, then decide whether the stroke-width
-deltas are stale baseline drift or d3-sankey math drift. M15C-060 can follow for Class, XYChart, and
-the single Flowchart MathML `columnalign` delta.
+Start M15C-060 with fresh Class and XYChart 11.15 baseline checks, then handle the single Flowchart
+MathML `columnalign` delta. After M15C-060 is green, M15C-070 can run the full implemented-matrix
+`parity` and `parity-root` gates.
