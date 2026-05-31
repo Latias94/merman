@@ -9,8 +9,8 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
 ```
 
-This currently fails against the fresh Mermaid 11.15 Flowchart target with hundreds of DOM
-mismatches plus one unsupported `flowchart-elk` local layout failure.
+This currently fails against the fresh Mermaid 11.15 Flowchart target with 67 DOM mismatches plus
+one unsupported `flowchart-elk` local layout failure.
 
 ## Gate Set
 
@@ -172,6 +172,46 @@ git diff --check
   - `cargo nextest run -p merman-render flowchart`: passed, 77 tests.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 F115-040/F115-050 theme-gradient slice:
+  - Aligned Mermaid 11.15 layout-renderer gradient defaults for Flowchart by seeding
+    `themeVariables.useGradient`, `gradientStart`, and `gradientStop` for the local `base`, `dark`,
+    `forest`, and `neutral` theme derivations.
+  - Added the Mermaid 11.15 root-level Flowchart `<linearGradient id="<diagram-id>-gradient">`
+    element when the effective theme enables gradients.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `upstream_cypress_conf_and_directives_spec_settings_from_directive_nodes_should_be_grey_004`,
+    `upstream_docs_theming_customizing_themes_with_themevariables_003`,
+    `upstream_docs_theming_diagram_specific_themes_002`,
+    `stress_flowchart_theme_default_vs_base_base_075`,
+    `upstream_cypress_flowchart_v2_spec_63_title_on_subgraphs_should_be_themeable_023`, and
+    `upstream_docs_directives_declaring_directives_004`, all using
+    `--upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`.
+  - The remaining `conf_and_directives` theme filters all pass against the fresh 11.15 target:
+    `upstream_cypress_conf_and_directives_spec_settings_from_directive_overriding_theme_variable_nodes_should_b_006`,
+    `upstream_cypress_conf_and_directives_spec_settings_from_frontmatter_nodes_should_be_grey_005`,
+    `upstream_cypress_conf_and_directives_spec_settings_from_initialize_and_directive_nodes_should_be_grey_007`,
+    `upstream_cypress_conf_and_directives_spec_settings_from_initialize_overriding_themevariable_nodes_should_b_003`,
+    `upstream_cypress_conf_and_directives_spec_should_render_if_values_are_not_quoted_properly_011`,
+    `upstream_cypress_conf_and_directives_spec_theme_from_initialize_directive_overriding_theme_variable_nodes_008`,
+    `upstream_cypress_conf_and_directives_spec_theme_from_initialize_frontmatter_overriding_theme_variable_dire_010`,
+    `upstream_cypress_conf_and_directives_spec_theme_from_initialize_frontmatter_overriding_theme_variable_node_009`, and
+    `upstream_cypress_conf_and_directives_spec_theme_variable_from_initialize_theme_from_directive_nodes_should_012`.
+  - `cargo nextest run -p merman-core base_theme_derivation_matches_upstream_fixture_values forest_theme_derives_cscale_palette_like_upstream dark_theme_derives_peer_and_inverted_scales_like_upstream neutral_theme_derives_peer_and_label_scales_like_upstream`:
+    passed, 4 tests.
+  - `cargo nextest run -p merman-core dark_theme_derives_peer_and_inverted_scales_like_upstream`:
+    passed, 1 test after aligning dark gradientStart serialization with upstream `#cccccc`.
+  - `cargo nextest run -p merman-render flowchart_base_theme_renders_root_gradient`: passed,
+    1 test.
+  - `cargo nextest run -p merman-core theme`: passed, 4 tests.
+  - `cargo nextest run -p merman-render flowchart`: passed, 78 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 67 canonical XML mismatches plus the existing `flowchart-elk` local layout failure.
+    This is a reduction from 95 fresh mismatches before the slice.
+  - Remaining mismatch classification after this slice: `theme_config=0`, `newshapes=24`,
+    `oldshapes=24`, `shape_alias=1`, `cluster=4`, `image_icon=4`, `edge=1`,
+    `flow_node_data=3`, and `other=6`.
 
 ## Evidence Anchors
 

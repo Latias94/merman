@@ -200,6 +200,17 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
     }
 }
 
+fn ensure_gradient_theme_defaults(tv: &mut Map<String, Value>) {
+    let primary_border_color =
+        get_truthy_string(tv, "primaryBorderColor").unwrap_or_else(|| "#9370DB".to_string());
+    let secondary_border_color = get_truthy_string(tv, "secondaryBorderColor")
+        .unwrap_or_else(|| primary_border_color.clone());
+
+    set_if_missing(tv, "useGradient", Value::Bool(true));
+    set_if_missing(tv, "gradientStart", Value::String(primary_border_color));
+    set_if_missing(tv, "gradientStop", Value::String(secondary_border_color));
+}
+
 fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &str) {
     let background = get_truthy_string(tv, "background").unwrap_or_else(|| "white".to_string());
     let primary_text = get_truthy_string(tv, "primaryTextColor")
@@ -316,6 +327,33 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         Value::String("#a44141".to_string()),
     );
     set_if_missing(&mut tv, "errorTextColor", Value::String("#ddd".to_string()));
+
+    let primary_color =
+        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#1f2020".to_string());
+    let primary_hsl = parse_hex_rgb01(&primary_color)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 180.0,
+            s_pct: 1.5873015873,
+            l_pct: 12.3529411765,
+        });
+    let secondary_hsl = adjust_hsl(primary_hsl, 0.0, 0.0, 16.0);
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String(fmt_hsl(secondary_hsl)),
+    );
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String("#cccccc".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, -40.0, -10.0))),
+    );
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(
         &mut tv,
@@ -529,6 +567,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
             mk_border_delta_l,
         ))),
     );
+    ensure_gradient_theme_defaults(&mut tv);
 
     // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
     let tertiary_hsl = if let Some(v) =
@@ -662,6 +701,41 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
         "#777",
     ];
+
+    let primary_color =
+        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#eee".to_string());
+    let primary_hsl = parse_hex_rgb01(&primary_color)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 0.0,
+            s_pct: 0.0,
+            l_pct: 93.3333333333,
+        });
+    let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
+    let secondary_hsl = parse_hex_rgb01(&contrast)
+        .map(rgb01_to_hsl)
+        .map(|hsl| adjust_hsl(hsl, 0.0, 0.0, 55.0))
+        .unwrap_or(Hsl {
+            h_deg: 0.0,
+            s_pct: 0.0,
+            l_pct: 98.9215686275,
+        });
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String(fmt_hsl(secondary_hsl)),
+    );
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(primary_hsl, 0.0, -40.0, -10.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, -40.0, -10.0))),
+    );
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "labelTextColor", Value::String("#333".to_string()));
     set_if_missing(
@@ -817,6 +891,23 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         );
     }
 
+    let secondary_border_hsl = if get_truthy_string(&tv, "secondaryBorderColor").is_some() {
+        None
+    } else {
+        Some(adjust_hsl(
+            secondary_hsl,
+            0.0,
+            -40.0,
+            if dark_mode { 10.0 } else { -10.0 },
+        ))
+    };
+    if let Some(hsl) = secondary_border_hsl {
+        tv.insert(
+            "secondaryBorderColor".to_string(),
+            Value::String(fmt_hsl(hsl)),
+        );
+    }
+
     let tertiary_border_hsl = if get_truthy_string(&tv, "tertiaryBorderColor").is_some() {
         None
     } else {
@@ -861,6 +952,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "tertiaryBorderColor").unwrap_or_else(|| "#aaaa33".to_string());
     let tertiary_color = get_truthy_string(&tv, "tertiaryColor")
         .unwrap_or_else(|| "hsl(80, 100%, 96.2745098039%)".to_string());
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
     set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
@@ -996,6 +1088,19 @@ mod tests {
             tv.get("nodeBorder").and_then(|v| v.as_str()),
             Some("hsl(284.0816326531, 5.7943925234%, 30.9803921569%)")
         );
+        assert_eq!(
+            tv.get("secondaryBorderColor").and_then(|v| v.as_str()),
+            Some("hsl(164.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(284.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(164.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
         assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#411d4e"));
         assert_eq!(
             tv.get("clusterBkg").and_then(|v| v.as_str()),
@@ -1049,6 +1154,15 @@ mod tests {
             tv.get("cScalePeer2").and_then(|v| v.as_str()),
             Some("hsl(78.1578947368, 58.4615384615%, 44.5098039216%)")
         );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(78.1578947368, 18.4615384615%, 64.5098039216%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(98.961038961, 60%, 74.9019607843%)")
+        );
     }
 
     #[test]
@@ -1077,6 +1191,11 @@ mod tests {
             tv.get("cScaleLabel1").and_then(|v| v.as_str()),
             Some("lightgrey")
         );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("#cccccc")
+        );
     }
 
     #[test]
@@ -1104,6 +1223,15 @@ mod tests {
         assert_eq!(
             tv.get("cScaleLabel0").and_then(|v| v.as_str()),
             Some("#F4F4F4")
+        );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 83.3333333333%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 88.9215686275%)")
         );
     }
 }

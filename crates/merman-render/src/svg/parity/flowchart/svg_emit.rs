@@ -412,6 +412,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     defs.push_extra_markers(&mut out);
     out.push_str("</g>");
+    push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
         let title_y = -title_top_margin;
@@ -480,5 +481,44 @@ fn push_flowchart_shadow_defs(
         flood_color,
         diagram_id.as_str(),
         flood_color
+    );
+}
+
+fn push_flowchart_gradient(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return;
+    }
+
+    let gradient_start =
+        config_string(effective_config_value, &["themeVariables", "gradientStart"])
+            .or_else(|| {
+                config_string(
+                    effective_config_value,
+                    &["themeVariables", "primaryBorderColor"],
+                )
+            })
+            .unwrap_or_else(|| "#9370DB".to_string());
+    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
+        .or_else(|| {
+            config_string(
+                effective_config_value,
+                &["themeVariables", "secondaryBorderColor"],
+            )
+        })
+        .unwrap_or_else(|| gradient_start.clone());
+
+    let diagram_id = escape_xml(diagram_id);
+    let gradient_start = escape_xml(&gradient_start);
+    let gradient_stop = escape_xml(&gradient_stop);
+    let _ = write!(
+        out,
+        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
+        diagram_id.as_str(),
+        gradient_start.as_str(),
+        gradient_stop.as_str()
     );
 }

@@ -230,6 +230,52 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
 }
 
 #[test]
+fn flowchart_base_theme_renders_root_gradient() {
+    let text = r##"%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#BB2528", "primaryBorderColor": "#7C0000", "secondaryColor": "#006100"}}}%%
+flowchart TB
+A --> B
+"##;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("flowchart_theme_gradient".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<linearGradient id="flowchart_theme_gradient-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
+        "expected Mermaid 11.15 root gradient element: {svg}"
+    );
+    assert!(
+        svg.contains(r##"<stop offset="0%" stop-color="#7C0000" stop-opacity="1"/>"##),
+        "expected gradientStart to use primaryBorderColor: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"<stop offset="100%" stop-color="hsl(120, 60%, 9.0196078431%)" stop-opacity="1"/>"#
+        ),
+        "expected gradientStop to use derived secondaryBorderColor: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_unescape_double_backslashes() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();
