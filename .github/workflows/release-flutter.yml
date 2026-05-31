@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
 
@@ -38,10 +38,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.87.0
         with:
-          targets: aarch64-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+
+      - name: Install desktop cross tools
+        run: |
+          if ! command -v zig >/dev/null 2>&1; then
+            brew install zig
+          fi
+          cargo install cargo-zigbuild --locked
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -63,6 +70,27 @@ jobs:
           cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
           test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
           test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
+
+      - name: Build and inject iOS XCFramework
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: |
+          bash scripts/build-apple-xcframework.sh --ios
+          rm -rf platforms/flutter/ios/Merman.xcframework
+          cp -R platforms/apple/Merman.xcframework platforms/flutter/ios/Merman.xcframework
+          test -d platforms/flutter/ios/Merman.xcframework
+
+      - name: Build desktop native libraries
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash platforms/flutter/build-desktop.sh --all
+
+      - name: Verify Flutter native artifacts
+        run: |
+          test -f platforms/flutter/macos/Libraries/libmerman_ffi.dylib
+          test -f platforms/flutter/windows/merman_ffi.dll
+          test -f platforms/flutter/linux/lib/x86_64/libmerman_ffi.so
+          test -f platforms/flutter/linux/lib/aarch64/libmerman_ffi.so
 
       - name: Setup Dart with pub.dev OIDC credentials
         uses: dart-lang/setup-dart@v1

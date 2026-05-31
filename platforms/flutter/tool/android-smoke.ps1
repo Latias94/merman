@@ -11,6 +11,10 @@ $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "$ProjectName-$([guid]::
 
 Write-Host "Building Android native slices for Flutter plugin smoke"
 & (Join-Path $repoRoot "platforms\android\build-android.ps1") -Targets $Targets -Profile release
+$generatedJniLibs = Join-Path $repoRoot "platforms\android\src\main\jniLibs"
+$pluginJniLibs = Join-Path $pluginRoot "android\src\main\jniLibs"
+New-Item -ItemType Directory -Force -Path $pluginJniLibs | Out-Null
+Copy-Item -Recurse -Force (Join-Path $generatedJniLibs "*") $pluginJniLibs
 
 Write-Host "Creating temporary Flutter app: $tempRoot"
 flutter create --platforms android --project-name $ProjectName $tempRoot | Out-Host

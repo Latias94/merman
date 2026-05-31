@@ -1,0 +1,26 @@
+# Control the pub.dev package surface. Pub merges this with .gitignore files.
+
+# Dart / Pub
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+*.iml
+.idea/
+.vscode/
+
+# Build / IDE
+*.log
+.DS_Store
+
+# CI builds these native artifacts before publishing; keep them out of git but
+# include them in the pub package.
+!android/src/main/jniLibs/
+!android/src/main/jniLibs/**
+!ios/Merman.xcframework/
+!ios/Merman.xcframework/**
+!macos/Libraries/
+!macos/Libraries/**
+!windows/merman_ffi.dll
+!linux/lib/
+!linux/lib/**

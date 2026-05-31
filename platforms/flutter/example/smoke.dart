@@ -1,7 +1,7 @@
 import 'package:merman/merman.dart';
 
 void main(List<String> args) {
-  final merman = Merman.open(args.isEmpty ? null : args.single);
+  final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
   final source = 'flowchart TD\nA[Hello] --> B[World]';
 
   final svg = merman.renderSvg(source);

@@ -1,13 +1,25 @@
 # Flutter/Dart FFI Wrapper
 
-Status: experimental platform wrapper.
+Status: experimental publishable Flutter package.
 
-`platforms/flutter` provides a Dart FFI wrapper over the canonical `merman-ffi` C ABI. It uses the
-merman byte-buffer ABI and exposes SVG, semantic JSON, and layout JSON as Dart strings/maps.
+`platforms/flutter` provides the `merman` Dart/Flutter package over the canonical `merman-ffi`
+C ABI. The Dart wrapper uses the byte-buffer ABI and exposes SVG, semantic JSON, and layout JSON as
+Dart strings/maps.
+
+Merman itself is a browserless Rust engine for Mermaid diagrams. Start from the
+[project README](https://github.com/Latias94/merman) for product scope, the
+[FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for ABI
+details, and
+[diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+for current Mermaid parity.
 
 ## What It Does
 
-- Loads `merman_ffi.dll`, `libmerman_ffi.so`, or the process-linked library depending on platform.
+- Opens the bundled native library for each Flutter platform:
+  - Android: `libmerman_ffi.so`
+  - iOS/macOS: process-linked symbols via `DynamicLibrary.process()`
+  - Windows: `merman_ffi.dll`
+  - Linux: `libmerman_ffi.so`
 - Checks `merman_abi_version`, `merman_buffer_struct_size`, and `merman_result_struct_size` before
   calling render functions.
 - Exposes:
@@ -15,8 +27,21 @@ merman byte-buffer ABI and exposes SVG, semantic JSON, and layout JSON as Dart s
   - `Merman.parseJson` / `parseJsonRaw`
   - `Merman.layoutJson` / `layoutJsonRaw`
 - Converts non-OK C ABI results into `MermanException`.
-- Declares an Android Flutter plugin shim that packages generated `libmerman_ffi.so` slices from
-  `platforms/android/src/main/jniLibs`.
+- Provides `Merman.openPath(path)` only for local Dart CLI smoke tests and other development
+  diagnostics where Flutter platform packaging is not running.
+
+## Platform Packaging
+
+- Android copies generated native slices into `platforms/flutter/android/src/main/jniLibs`.
+- iOS publishes `platforms/flutter/ios/Merman.xcframework` and force-loads `libmerman_ffi.a` from
+  the app target so Dart FFI can resolve C symbols.
+- macOS publishes `platforms/flutter/macos/Libraries/libmerman_ffi.dylib`.
+- Windows publishes `platforms/flutter/windows/merman_ffi.dll`.
+- Linux publishes `platforms/flutter/linux/lib/x86_64/libmerman_ffi.so` and
+  `platforms/flutter/linux/lib/aarch64/libmerman_ffi.so`.
+
+Generated native artifacts are ignored by git and re-included for pub packages through
+`platforms/flutter/.pubignore`.
 
 ## Verify Locally
 
@@ -28,7 +53,8 @@ flutter analyze
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
 
-The smoke example source is `platforms/flutter/example/smoke.dart`.
+Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
+Windows.
 
 Android packaging smoke:
 
@@ -42,11 +68,3 @@ Combined platform gate:
 python3 scripts/verify-platform-bindings.py --build-android-slices
 python3 scripts/verify-platform-bindings.py --build-android-slices --run-flutter-android-smoke
 ```
-
-Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
-Windows.
-
-## Follow-On Packaging
-
-- Add iOS/macOS CocoaPods and desktop CMake packaging.
-- Add CI matrix smoke for Android, iOS/macOS, Windows, and Linux.

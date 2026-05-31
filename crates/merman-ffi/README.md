@@ -10,9 +10,23 @@
 
 C ABI bindings for embedding `merman` in non-Rust hosts.
 
+`merman` is a headless Rust implementation of Mermaid diagram parsing, layout, and rendering. It is
+intended for servers, CLIs, mobile apps, desktop apps, and other environments that need Mermaid
+output without launching a browser. The main library can produce semantic JSON, layout JSON, SVG,
+terminal text, and raster formats depending on enabled features.
+
+Start with the main project README for product scope and diagram coverage:
+
+- Project README: <https://github.com/Latias94/merman>
+- Rust library: <https://crates.io/crates/merman>
+- CLI: <https://crates.io/crates/merman-cli>
+- Coverage status:
+  <https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md>
+
 This crate exposes the low-level stable boundary described by
-[`docs/bindings/FFI_PROTOCOL.md`](../../docs/bindings/FFI_PROTOCOL.md). Higher-level generated
-bindings such as UniFFI should sit above the same behavior, not replace this C ABI.
+[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md).
+Higher-level generated bindings such as UniFFI should sit above the same behavior, not replace this
+C ABI.
 
 ## Build
 
@@ -23,7 +37,8 @@ cargo build -p merman-ffi --release
 ```
 
 The crate builds `cdylib`, `staticlib`, and `rlib` artifacts. Include
-[`include/merman.h`](include/merman.h) from C or C-compatible hosts.
+[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
+from C or C-compatible hosts.
 
 Optional features:
 
@@ -54,8 +69,8 @@ Do not use `free`, `delete`, or a host runtime allocator for buffers returned by
 
 ## Example
 
-[`examples/render_svg.c`](examples/render_svg.c) is a small C consumer that renders a flowchart to
-SVG through the C ABI.
+[`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
+is a small C consumer that renders a flowchart to SVG through the C ABI.
 
 On macOS or Linux:
 
@@ -80,6 +95,19 @@ target/merman-ffi-render-svg
 - `merman_layout_json`
 - `merman_buffer_free`
 
-See [`include/merman.h`](include/merman.h) for declarations and
-[`docs/bindings/FFI_PROTOCOL.md`](../../docs/bindings/FFI_PROTOCOL.md) for result codes, options
-JSON, threading, and compatibility rules.
+See
+[`include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h)
+for declarations and
+[`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md)
+for result codes, options JSON, threading, and compatibility rules.
+
+Higher-level platform wrappers:
+
+- Apple SwiftPM:
+  [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
+- Android JNI/Kotlin:
+  [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
+- Flutter/Dart FFI:
+  [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
+- Python UniFFI:
+  [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)

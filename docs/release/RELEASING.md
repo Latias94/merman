@@ -14,7 +14,7 @@ will publish in that release.
 | `release-crates.yml` | Rust workspace crates | crates.io |
 | `release-apple.yml` | `Merman.xcframework-<tag>.zip` and release-tag `Package.swift` patch | GitHub Release + SwiftPM |
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release |
-| `release-flutter.yml` | `merman` with injected Android native libraries | pub.dev |
+| `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 
 All workflows can be run manually with `workflow_dispatch`, but they must be run from a `v*` tag.
@@ -53,6 +53,7 @@ python3 -m py_compile \
   scripts/build-python-uniffi-wheel.py \
   platforms/android/build-android.py \
   platforms/flutter/tool/android-smoke.py
+bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-desktop.sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
@@ -74,7 +75,9 @@ dart pub publish --dry-run
 ```
 
 The Flutter dry run should be executed from a clean working tree. The release workflow injects
-generated Android native libraries and then publishes with `--force`.
+generated Android, iOS, macOS, Windows, and Linux native artifacts and then publishes with
+`--force`; a full local pub package dry run should first run the same artifact injection steps from
+`.github/workflows/release-flutter.yml`.
 
 ## Tag And Push
 
@@ -93,5 +96,4 @@ to upload to an existing release when another workflow creates it first.
 
 - Add Android Maven Central publishing after Maven coordinates and signing metadata are confirmed.
 - Add Python PyPI publishing after wheels are produced with an accepted Linux compatibility policy.
-- Expand the Flutter package to iOS, macOS, Windows, and Linux once each platform has native library
-  packaging that works for pub.dev consumers without manual library paths.
+- Add device-level Flutter smoke coverage after a stable CI target is chosen for each platform.

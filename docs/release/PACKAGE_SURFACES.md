@@ -14,7 +14,7 @@ protect them before any registry publication is enabled.
 | CLI | `merman-cli` binary archives | `release.yml` | GitHub Release | Existing cargo-dist workflow. |
 | Apple | SwiftPM `Merman` with `Merman.xcframework` | `release-apple.yml` | GitHub Release + SwiftPM tag | Builds, zips, computes checksum, and patches `Package.swift` on the release tag. |
 | Python | `merman` wheels | `release-python.yml` | GitHub Release | Builds Linux, macOS, and Windows wheels. PyPI publishing needs a wheel policy decision. |
-| Flutter | `merman` | `release-flutter.yml` | pub.dev | Injects Android native libraries before publishing. |
+| Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. |
 | Android | `io.merman` Android library module | `release-android.yml` | GitHub Release AAR | Maven Central publishing needs Gradle signing/POM metadata and namespace confirmation. |
 | Web/WASM | none | none | none | Add only if a WASM API/package is built. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
