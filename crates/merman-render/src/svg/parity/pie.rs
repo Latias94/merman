@@ -1,4 +1,4 @@
-use super::{PieDiagramLayout, Result, SvgRenderOptions, root_svg};
+use super::{PieDiagramLayout, Result, SvgRenderOptions, config_string, root_svg};
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
@@ -25,6 +25,14 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     let x = radius * angle.sin();
     let y = -radius * angle.cos();
     (x, y)
+}
+
+fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
+    match config_string(effective_config, &["pie", "highlightSlice"]).as_deref() {
+        Some("hover") => "pieCircle highlightedOnHover".to_string(),
+        Some(target) if target == label => "pieCircle highlighted".to_string(),
+        _ => "pieCircle".to_string(),
+    }
 }
 
 fn apply_empty_pie_root_viewport(
@@ -183,6 +191,7 @@ pub(super) fn render_pie_diagram_svg_model(
     let inner_radius = crate::pie::pie_donut_hole(effective_config) * layout.radius;
     for slice in &layout.slices {
         let r = layout.radius;
+        let slice_class = pie_slice_class(effective_config, &slice.label);
         if slice.is_full_circle {
             let d = if inner_radius > 0.0 {
                 format!(
@@ -198,9 +207,10 @@ pub(super) fn render_pie_diagram_svg_model(
             };
             let _ = write!(
                 &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = super::escape_xml(&slice.fill)
+                fill = super::escape_xml(&slice.fill),
+                class = super::escape_xml(&slice_class)
             );
         } else {
             let (x0, y0) = pie_polar_xy(r, slice.start_angle);
@@ -240,9 +250,10 @@ pub(super) fn render_pie_diagram_svg_model(
             };
             let _ = write!(
                 &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = super::escape_xml(&slice.fill)
+                fill = super::escape_xml(&slice.fill),
+                class = super::escape_xml(&slice_class)
             );
         }
     }

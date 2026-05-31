@@ -216,3 +216,43 @@ pie
     );
     assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));
 }
+
+#[test]
+fn pie_highlight_slice_config_emits_highlight_classes_and_css() {
+    let svg = render_pie_from_text(
+        r#"%%{init: {"pie": {"highlightSlice": "A"}}}%%
+pie
+  "A" : 1
+  "B" : 1
+"#,
+    );
+
+    assert!(
+        svg.contains(r#".pieCircle.highlighted{scale:1.05;opacity:1;}"#),
+        "highlighted pie CSS rule should be present: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="pieCircle highlighted""#),
+        "matching slice should receive the highlighted class: {svg}"
+    );
+}
+
+#[test]
+fn pie_hover_highlight_slice_config_emits_hover_class_and_css() {
+    let svg = render_pie_from_text(
+        r#"%%{init: {"pie": {"highlightSlice": "hover"}}}%%
+pie
+  "A" : 1
+  "B" : 1
+"#,
+    );
+
+    assert!(
+        svg.contains(r#".pieCircle.highlightedOnHover:hover{transition-duration:250ms;scale:1.05;opacity:1;}"#),
+        "hover highlight CSS rule should be present: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="pieCircle highlightedOnHover""#),
+        "hover highlight should mark every slice: {svg}"
+    );
+}

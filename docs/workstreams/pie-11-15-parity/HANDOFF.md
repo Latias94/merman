@@ -5,22 +5,19 @@ Last updated: 2026-05-31
 
 ## Current State
 
-PIE-020, PIE-030, PIE-040, and PIE-050 are implemented and task-local gates are green. Mermaid
-11.15 Pie behavior still differs from the local renderer in highlight classes:
+PIE-020 through PIE-060 are implemented and task-local gates are green. The lane is ready for
+closeout/review.
 
-- Remaining configured behavior: upstream supports `highlightSlice`; generated defaults expose it,
-  but local layout/SVG still need to consume it.
+- Remaining behavior: no known Pie 11.15 configured-rendering task remains in this lane.
 
 ## Active Task
 
-- Task ID: PIE-060
+- Task ID: PIE-070
 - Owner: codex
-- Files: `crates/merman-render/src/pie.rs`, `crates/merman-render/src/svg/parity/pie.rs`,
-  `crates/merman-render/tests`
-- Validation: `cargo nextest run -p merman-render pie`; selected `compare-pie-svgs` parity checks
+- Files: `docs/workstreams/pie-11-15-parity`, `docs/alignment`
+- Validation: Fresh closeout gates recorded in `EVIDENCE_AND_GATES.md`
 - Status: READY
-- Review: Confirm default output remains unchanged when `highlightSlice` is empty and matching
-  slice classes are emitted for hover and direct highlight cases.
+- Review: Run workstream review and fresh verification before marking complete.
 - Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -38,6 +35,7 @@ PIE-020, PIE-030, PIE-040, and PIE-050 are implemented and task-local gates are 
   as annular paths; invalid donut values fall back to solid slices like upstream.
 - PIE-050 matches upstream legend placement for `top`, `bottom`, `left`, `right`, and `center`
   without changing the default-right SVG shape.
+- PIE-060 emits upstream Pie highlight CSS and `highlighted`/`highlightedOnHover` path classes.
 - Implement configured behavior in separate slices: donut/text radius, legend placement, highlight
   classes/CSS.
 
@@ -50,8 +48,10 @@ PIE-020, PIE-030, PIE-040, and PIE-050 are implemented and task-local gates are 
 - PIE-040 refreshed only the three Pie layout goldens that already configured `textPosition`.
 - PIE-050 did not require new Pie layout goldens because the tested legend-position cases were
   covered through direct layout/SVG assertions.
-- Legend-position support may expose root viewBox measurement differences.
+- Closeout should decide whether `docs/alignment/PIE_UPSTREAM_TEST_COVERAGE.md` needs a short
+  update for the newly covered 11.15 config keys.
 
 ## Next Recommended Action
 
-Run PIE-060 to implement `pie.highlightSlice` classes and Pie highlight CSS.
+Run PIE-070 closeout: review the lane, record fresh final gates, update alignment notes if useful,
+and close or split any residual Pie parity debt.

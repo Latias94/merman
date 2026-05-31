@@ -132,6 +132,26 @@ git diff --check
   - `cargo nextest run -p merman-render`: passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-05-31 PIE-060 red:
+  - `cargo nextest run -p merman-render pie_highlight_slice_config_emits_highlight_classes_and_css`:
+    failed because Pie highlight CSS and direct `highlighted` slice classes were absent.
+  - `cargo nextest run -p merman-render pie_hover_highlight_slice_config_emits_hover_class_and_css`:
+    failed because hover highlight CSS and `highlightedOnHover` classes were absent.
+- 2026-05-31 PIE-060 green:
+  - Result: Pie CSS now includes upstream highlight rules, and slice paths receive
+    `highlighted`/`highlightedOnHover` classes according to `pie.highlightSlice`.
+  - `cargo nextest run -p merman-render pie_highlight_slice_config_emits_highlight_classes_and_css`:
+    passed.
+  - `cargo nextest run -p merman-render pie_hover_highlight_slice_config_emits_hover_class_and_css`:
+    passed.
+  - `cargo nextest run -p merman-render pie`: passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

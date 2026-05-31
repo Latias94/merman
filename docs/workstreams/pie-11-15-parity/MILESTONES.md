@@ -44,8 +44,7 @@ Primary gates:
 - `cargo nextest run -p merman-render pie`
 - selected `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
-Status: in progress. PIE-050 legend placement is complete; highlight classes remain before this
-milestone can close.
+Status: complete.
 
 ## M3 - Closeout
 
