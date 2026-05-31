@@ -149,6 +149,29 @@ git diff --check
   - `cargo nextest run -p merman-render flowchart`: passed, 76 tests.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 F115-040 no-label outer-path slice:
+  - Added Mermaid 11.15 `outer-path` group classes for no-label special shapes where upstream
+    emits them: `stop`/`framed-circle`, `bolt`/`lightning-bolt`, and
+    `crossed-circle`/`summary`. `filled-circle` intentionally remains a bare group to match
+    upstream.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset16_016`,
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset19_019`,
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset2_tb_nolabel_009`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_nolabel_017`, and
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset2_tb_nolabel_009`.
+  - `cargo nextest run -p merman-render flowchart_no_label_special_shapes_render_outer_path_group`:
+    passed, 1 test.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 95 canonical XML mismatches plus the existing `flowchart-elk` local layout failure.
+    This is a reduction from 143 fresh mismatches before the slice.
+  - Remaining mismatch classification after this slice: `missingOuter=0`, shape matrix fixture name
+    count 49, polygon point-model deltas 18, config/theme fixtures 17, image/icon 5, cluster 7,
+    edge 2, and one residual missing markdown node-label class.
+  - `cargo nextest run -p merman-render flowchart`: passed, 77 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

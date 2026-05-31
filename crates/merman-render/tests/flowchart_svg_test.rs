@@ -201,6 +201,35 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
 }
 
 #[test]
+fn flowchart_no_label_special_shapes_render_outer_path_group() {
+    let text = "flowchart TB\nA@{ shape: stop }\nB@{ shape: lightning-bolt }\nC@{ shape: crossed-circle }\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.matches(r#"class="outer-path""#).count() >= 3,
+        "expected no-label special shapes to expose Mermaid 11.15 outer-path groups: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_unescape_double_backslashes() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();

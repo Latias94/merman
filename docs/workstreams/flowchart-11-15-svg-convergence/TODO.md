@@ -56,8 +56,9 @@ Last updated: 2026-06-01
   Context: this workstream.
   Handoff: IN_PROGRESS. First-order `outer-path` class coverage landed for representative special
   shapes. Mermaid 11.15 classic hexagon now uses the upstream 6-point polygon model and only uses
-  RoughJS paths for `look=handDrawn`. Residual shape matrix/path mismatches remain in the fresh full
-  Flowchart gate.
+  RoughJS paths for `look=handDrawn`. No-label special shapes now carry upstream `outer-path`
+  classes where Mermaid 11.15 emits them; full fresh Flowchart comparison is down to 95 mismatches
+  plus the existing `flowchart-elk` local layout failure.
 
 - [ ] F115-050 [owner=codex] [deps=F115-030,F115-040] [scope=crates/merman-render/src/svg/parity/flowchart]
   Goal: Match Mermaid 11.15 HTML/`foreignObject` label DOM surfaces that dominate the fresh
@@ -70,8 +71,9 @@ Last updated: 2026-06-01
   Handoff: IN_PROGRESS. The second config/label slice is landed: `shapeData` labels now default to
   `labelType=markdown`, explicit `labelType` is honored, normal node labels use root `htmlLabels`
   directly like Mermaid 11.15 `labelHelper`, and edge/cluster labels still use the deprecated
-  `flowchart.htmlLabels` fallback. Full fresh Flowchart comparison is down to 143 mismatches plus
-  the existing `flowchart-elk` local layout failure.
+  `flowchart.htmlLabels` fallback. Full fresh Flowchart comparison is down to 95 mismatches plus the
+  existing `flowchart-elk` local layout failure after the adjacent F115-040 no-label outer-path
+  slice.
 
 - [ ] F115-060 [owner=codex] [deps=F115-020] [scope=crates/merman-render/src/svg/parity/flowchart]
   Goal: Match Mermaid 11.15 subgraph cluster group structure, namespace ids, labels, and class

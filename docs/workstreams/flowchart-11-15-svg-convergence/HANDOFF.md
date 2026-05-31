@@ -12,7 +12,9 @@ first convergence slice: Flowchart 11.15 defs/markers/scoped ids/`data-look`, fi
 scoping, and root-first edge/cluster `htmlLabels` fallback behavior. The latest F115-040/F115-050
 slice aligned `shapeData` markdown-label defaults, normal node root `htmlLabels` semantics,
 markdown node label classes, icon/image label spans, and classic hexagon's 11.15 6-point polygon
-model. The targeted fresh probes pass. Full fresh Flowchart comparison is still red with 143
+model. The adjacent no-label shape slice added upstream `outer-path` classes for stop/framed-circle,
+bolt/lightning-bolt, and crossed-circle/summary. The targeted fresh probes pass. Full fresh
+Flowchart comparison is still red with 95
 mismatches and one unsupported `flowchart-elk` local layout failure.
 
 ## Active Task
@@ -46,6 +48,8 @@ mismatches and one unsupported `flowchart-elk` local layout failure.
 - Mermaid 11.15 `shapeData` labels default to markdown unless an explicit `labelType` is provided.
 - Classic hexagon is a 6-point polygon in Mermaid 11.15; RoughJS path output is only for
   `look=handDrawn`.
+- No-label special shapes are not uniform: `stop`, `bolt`, and `crossed-circle` use an `outer-path`
+  wrapper, while `filled-circle` remains a bare group.
 
 ## Blockers
 
@@ -54,7 +58,7 @@ mismatches and one unsupported `flowchart-elk` local layout failure.
 
 ## Next Recommended Action
 
-Continue F115-040/F115-050 by reducing the remaining 143 fresh mismatches. The next high-value
-target is the shape matrix bucket: newshapes/oldshapes/shape-alias fixtures account for most
-remaining failures, followed by polygon point-model deltas and config/theme cases. Keep
+Continue F115-040/F115-050 by reducing the remaining 95 fresh mismatches. The next high-value
+target is still the shape matrix bucket, now concentrated around stacked-rectangle/procs path
+structure and polygon point-model deltas, followed by config/theme cases. Keep
 `flowchart-elk` as a required F115-070 policy decision before stored Flowchart baseline refresh.
