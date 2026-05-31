@@ -13,6 +13,7 @@ permissions:
 jobs:
   publish:
     runs-on: macos-15
+    environment: pub.dev
     steps:
       - uses: actions/checkout@v6
 
