@@ -9,7 +9,7 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
 ```
 
-This currently fails against the fresh Mermaid 11.15 Flowchart target with 18 DOM mismatches plus
+This currently fails against the fresh Mermaid 11.15 Flowchart target with 15 DOM mismatches plus
 one unsupported `flowchart-elk` local layout failure.
 
 ## Gate Set
@@ -260,6 +260,25 @@ git diff --check
     failed with 18 canonical XML mismatches plus the existing `flowchart-elk` local layout
     failure. This is a reduction from 67 fresh mismatches before the slice.
   - `cargo nextest run -p merman-render flowchart`: passed, 81 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+- 2026-06-01 F115-040 stacked-rectangle/procs path-structure slice:
+  - Aligned Mermaid 11.15 `multiRect.ts` classic rendering for `procs`/`processes`/
+    `st-rect`/`stacked-rectangle`: each RoughJS layer is merged into one grouped path carrying
+    both fill and stroke attrs, instead of exposing separate fill and stroke path nodes.
+  - Preserved the existing stacked-rectangle layout bbox and label-offset behavior while changing
+    only the emitted SVG DOM/path grouping.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034`,
+    `upstream_docs_flowchart_example_flowchart_with_new_shapes_041`, and
+    `upstream_docs_flowchart_multi_process_stacked_rectangle_120`, all using
+    `--upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`.
+  - `cargo nextest run -p merman-render flowchart_stacked_rectangle_svg_uses_layout_bbox_once flowchart_stacked_rectangle_classic_merges_each_layer_path`:
+    passed, 2 tests.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 15 canonical XML mismatches plus the existing `flowchart-elk` local layout
+    failure. This is a reduction from 18 fresh mismatches before the slice.
+  - `cargo nextest run -p merman-render flowchart`: passed, 82 tests.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
 
