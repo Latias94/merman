@@ -19,8 +19,8 @@ engine with `Merman.open()` and does not pass a dynamic library path.
 - iOS: bundled `Merman.xcframework`, force-loaded so Dart FFI can use
   `DynamicLibrary.process()`.
 - macOS: bundled `Libraries/libmerman_ffi.dylib`, linked by CocoaPods.
-- Windows: bundled `merman_ffi.dll`, copied beside the plugin DLL by CMake.
-- Linux: bundled `linux/lib/<arch>/libmerman_ffi.so`, copied beside the plugin by CMake.
+- Windows: bundled `merman_ffi.dll`, installed into the Flutter app bundle by CMake.
+- Linux: bundled `linux/lib/<arch>/libmerman_ffi.so`, installed into the Flutter app bundle by CMake.
 
 ## API
 
