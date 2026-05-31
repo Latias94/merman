@@ -10,6 +10,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Diagram family | Supported subset | `sequenceDiagram` inputs that parse into `SequenceDiagramRenderModel`. |
+| Diagram titles | Supported subset | `title`/`title:` render as a centered text row above the participant boxes. |
 | Participants | Supported | Participant order follows `actorOrder`; labels use actor descriptions. |
 | Participant boxes | Supported | ASCII and Unicode box drawing with centered labels. |
 | Lifelines | Supported | One lifeline row before each message and one trailing lifeline row. |
@@ -37,7 +38,6 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 | Feature | Error feature |
 | --- | --- |
-| Diagram titles | `diagram titles` |
 | Actor-shaped participants | `actor participant shapes` |
 | Wrapped actor labels | `wrapped actor labels` |
 | Actor links/properties | `actor links/properties` |
@@ -64,6 +64,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 
 - Output comparison for copied upstream sequence fixtures follows upstream's normalized-whitespace
   comparison; trailing spaces in golden files are not product-significant.
+- Diagram titles render as terminal text above the participant row; accessibility titles remain
+  metadata and are not rendered in the text diagram.
 - Wrapped actor labels and wrapped boxes remain unsupported because they require multi-line
   participant and group-box layout.
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a

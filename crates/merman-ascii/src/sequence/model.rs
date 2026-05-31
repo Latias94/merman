@@ -40,6 +40,7 @@ const NOTE_PLACEMENT_OVER: i32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AsciiSequenceDiagram {
+    pub(super) title: Option<String>,
     pub(super) participants: Vec<SequenceParticipant>,
     pub(super) lifecycles: Vec<SequenceActorLifecycle>,
     pub(super) boxes: Vec<SequenceGroupBox>,
@@ -343,6 +344,11 @@ pub(crate) fn from_sequence_model(
     }
 
     Ok(AsciiSequenceDiagram {
+        title: model
+            .title
+            .as_ref()
+            .filter(|title| !title.is_empty())
+            .cloned(),
         participants,
         lifecycles,
         boxes,

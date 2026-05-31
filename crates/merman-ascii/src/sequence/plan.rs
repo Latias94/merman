@@ -239,6 +239,7 @@ mod tests {
 
     fn diagram(participant_count: usize) -> AsciiSequenceDiagram {
         AsciiSequenceDiagram {
+            title: None,
             participants: (0..participant_count)
                 .map(|index| SequenceParticipant {
                     id: format!("p{index}"),

@@ -224,6 +224,9 @@ pub(crate) fn render_sequence_diagram(
     if !diagram.boxes.is_empty() {
         lines = render_sequence_boxes(lines, diagram, &layout, &chars);
     }
+    if let Some(title) = diagram.title.as_deref() {
+        prepend_title_line(&mut lines, title);
+    }
     Ok(finish_sequence_lines(lines, options))
 }
 
@@ -410,4 +413,17 @@ fn finish_sequence_lines(lines: Vec<SequenceLine>, options: &AsciiRenderOptions)
     }
 
     canvas.finish_trimmed_with_options(options)
+}
+
+fn prepend_title_line(lines: &mut Vec<SequenceLine>, title: &str) {
+    let width = lines.iter().map(SequenceLine::len).max().unwrap_or(0);
+    lines.insert(0, render_title_line(title, width));
+}
+
+fn render_title_line(title: &str, width: usize) -> SequenceLine {
+    let title_width = display_width(title);
+    let left = width.saturating_sub(title_width) / 2;
+    let mut line = SequenceLine::blank(left);
+    line.push_role_text(title, AsciiColorRole::Text);
+    trim_right(line)
 }

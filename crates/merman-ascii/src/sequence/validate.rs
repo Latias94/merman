@@ -3,13 +3,6 @@ use crate::error::{AsciiError, Result};
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 
 pub(super) fn validate_supported_sequence_model(model: &SequenceDiagramRenderModel) -> Result<()> {
-    if model.title.is_some() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "diagram titles",
-        });
-    }
-
     if model
         .actors
         .values()

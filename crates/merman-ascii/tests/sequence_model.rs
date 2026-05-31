@@ -1355,11 +1355,38 @@ fn sequence_open_arrows_render_from_typed_model() {
 }
 
 #[test]
-fn sequence_titles_are_explicitly_unsupported() {
-    let mut model = basic_sequence_model();
-    model.title = Some("Setup".to_string());
+fn sequence_titles_render_above_participants() {
+    let rendered = render_sequence(
+        "sequenceDiagram\ntitle: Setup\nparticipant A\nparticipant B\nA->>B: Hi",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence title should render");
 
-    assert_unsupported_sequence_model(model, "diagram titles");
+    assert_eq!(
+        rendered,
+        concat!(
+            "     Setup\n",
+            "+---+     +---+\n",
+            "| A |     | B |\n",
+            "+-+-+     +-+-+\n",
+            "  |         |\n",
+            "  | Hi      |\n",
+            "  +-------->|\n",
+            "  |         |\n",
+        )
+    );
+
+    let boxed = render_sequence(
+        "sequenceDiagram\ntitle: Setup\nbox Group\nparticipant A\nparticipant B\nend\nA->>B: Hi",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("sequence title should render outside boxes");
+    let mut boxed_lines = boxed.lines();
+    assert_eq!(boxed_lines.next().unwrap().trim(), "Setup");
+    assert!(
+        boxed_lines.next().unwrap().starts_with("+- Group"),
+        "title should stay above sequence boxes:\n{boxed}"
+    );
 }
 
 #[test]
