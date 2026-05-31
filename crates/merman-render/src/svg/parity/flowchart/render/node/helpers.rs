@@ -140,6 +140,8 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             let _ = write!(out, "-{dom_idx}\"");
         } else {
             out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push('-');
             escape_xml_into(out, node_id);
             out.push('"');
         }
@@ -160,6 +162,8 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             out.push('"');
         } else {
             out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push('-');
             escape_xml_into(out, node_id);
             out.push_str(r#"" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);

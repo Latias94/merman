@@ -13,25 +13,26 @@ scoping, and root-first edge/cluster `htmlLabels` fallback behavior. The latest 
 slice aligned `shapeData` markdown-label defaults, normal node root `htmlLabels` semantics,
 markdown node label classes, icon/image label spans, and classic hexagon's 11.15 6-point polygon
 model. The adjacent no-label shape slice added upstream `outer-path` classes for stop/framed-circle,
-bolt/lightning-bolt, and crossed-circle/summary. The latest theme-gradient slice added Mermaid
-11.15 `useGradient` theme defaults plus the root Flowchart `<linearGradient>` element for `base`,
-`dark`, `forest`, and `neutral` themes. The latest node-label slice added `noteLabel`, wrapped SVG
-markdown node labels when `htmlLabels=false`, and preserved hourglass/collate parsed label type
-after clearing displayed labels. The latest stacked-rectangle/procs slice aligned Mermaid 11.15
-`multiRect.ts` classic merged-path grouping. The latest HTML label slice restored Mermaid 11.15
-single-image paragraph wrappers and trimmed shapeData markdown block trailing newlines. The targeted
-fresh probes pass. Full fresh Flowchart comparison is still red with 8 mismatches and one
-unsupported `flowchart-elk` local layout failure.
+bolt/lightning-bolt, and crossed-circle/summary. The theme-gradient slice added Mermaid 11.15
+`useGradient` theme defaults plus the root Flowchart `<linearGradient>` element for `base`, `dark`,
+`forest`, and `neutral` themes. The node-label slice added `noteLabel`, wrapped SVG markdown node
+labels when `htmlLabels=false`, and preserved hourglass/collate parsed label type after clearing
+displayed labels. The stacked-rectangle/procs slice aligned Mermaid 11.15 `multiRect.ts` classic
+merged-path grouping. The HTML label slice restored Mermaid 11.15 single-image paragraph wrappers
+and trimmed shapeData markdown block trailing newlines. The latest supported-DOM closeout slice
+aligned non-markdown subgraph title wrapping, empty subgraph node ids, non-markdown edge label
+paragraph wrappers, and literal `\n` handling in `nonMarkdownToHTML`. The supported fresh Flowchart
+comparison now reports zero canonical XML mismatches; the only remaining full-gate failure is the
+unsupported `flowchart-elk` local layout case.
 
 ## Active Task
 
-- Task ID: F115-040/F115-050 overlap
+- Task ID: F115-070
 - Owner: codex
 - Files: `crates/merman-core/src/diagrams/flowchart`, `crates/merman-render/src/flowchart`,
-  `crates/merman-render/src/svg/parity/flowchart`
-- Validation: targeted fresh `compare-svg-xml --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart`
-  filters for shape matrix fixtures, config/directive styling, image/icon labels, cluster labels,
-  and remaining special-shape cases; then `cargo nextest run -p merman-render flowchart`
+  `crates/merman-render/src/svg/parity/flowchart`, `crates/xtask/src/cmd/compare`
+- Validation: `flowchart-elk` is supported, explicitly skipped in fresh/stored SVG gates with
+  rationale, or split into a separate ELK layout workstream; then rerun the fresh Flowchart gate.
 - Status: IN_PROGRESS
 - Review: Compare against fresh Mermaid 11.15 output before changing stored baselines. Keep stored
   Flowchart baseline refresh blocked until the fresh gate is green or skips are documented.
@@ -56,15 +57,21 @@ unsupported `flowchart-elk` local layout failure.
   `look=handDrawn`.
 - No-label special shapes are not uniform: `stop`, `bolt`, and `crossed-circle` use an `outer-path`
   wrapper, while `filled-circle` remains a bare group.
+- Mermaid 11.15 Flowchart non-markdown HTML labels are not markdown-parsed by `*`/`_` alone; only
+  `labelType=markdown` goes through `markdownToHTML(...)`.
+- Mermaid 11.15 `nonMarkdownToHTML(...)` wraps non-empty edge labels in `<p>...</p>` and treats both
+  literal `\n` and actual newlines as `<br />`.
+- Mermaid 11.15 non-markdown subgraph titles route through deprecated `createLabel(...)` with
+  effectively infinite width; markdown subgraph titles still route through `createText(...)`.
 
 ## Blockers
 
-- None for F115-050.
-- Full lane closeout is blocked until `flowchart-elk` policy is decided.
+- Full lane closeout and stored Flowchart baseline refresh are blocked until `flowchart-elk` policy
+  is decided.
 
 ## Next Recommended Action
 
-Continue F115-060/F115-070 by reducing the remaining 8 fresh mismatches. The next high-value
-targets are cluster/subgraph label structure, edge label placement, SVG-like escaped tag handling,
-and the docs code-flow fixture. Keep `flowchart-elk` as a required F115-070 policy decision before
-stored Flowchart baseline refresh.
+Finish F115-070 by choosing the `flowchart-elk` policy. The supported Flowchart corpus is already
+at zero canonical XML mismatches against fresh Mermaid 11.15; stored baseline refresh should wait
+until ELK is supported, narrowly skipped with documented rationale, or split to a separate
+workstream.

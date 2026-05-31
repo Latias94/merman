@@ -373,7 +373,54 @@ A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
 }
 
 #[test]
-fn flowchart_html_labels_unescape_double_backslashes() {
+fn flowchart_svg_plain_subgraph_titles_do_not_wrap_when_html_labels_false() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
+flowchart TB
+subgraph A[SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious]
+  x
+end
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    let cluster_start = svg.find(r#"<g class="cluster""#).expect("cluster");
+    let cluster_label_start = svg[cluster_start..]
+        .find(r#"<g class="cluster-label""#)
+        .map(|idx| cluster_start + idx)
+        .expect("cluster label");
+    let cluster_label_end = svg[cluster_label_start..]
+        .find(r#"</text>"#)
+        .map(|idx| cluster_label_start + idx)
+        .expect("cluster label text end");
+    let cluster_label = &svg[cluster_label_start..cluster_label_end];
+
+    assert_eq!(
+        cluster_label.matches("text-outer-tspan").count(),
+        1,
+        "expected Mermaid 11.15 plain SVG subgraph titles to remain one unwrapped row: {cluster_label}"
+    );
+}
+
+#[test]
+fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -396,12 +443,12 @@ fn flowchart_html_labels_unescape_double_backslashes() {
     )
     .expect("render svg");
     assert!(
-        svg.contains("line1\\nline2"),
-        "expected output to contain a single backslash in `\\\\n` escape"
+        svg.contains("<p>line1<br />line2</p>"),
+        "expected Mermaid 11.15 nonMarkdownToHTML to treat decoded `\\\\n` as a line break: {svg}"
     );
     assert!(
-        !svg.contains("line1\\\\nline2"),
-        "expected output to not contain the raw double-backslash input"
+        !svg.contains("line1\\nline2"),
+        "expected output to not contain a literal backslash-n escape"
     );
 }
 
@@ -508,6 +555,39 @@ fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
 }
 
 #[test]
+fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
+    let text =
+        "flowchart TB\nA[\"Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(
+            "<p>Remove trailing whitespace<br />src.replace(/}\\s*<br />/g, '}<br />')</p>"
+        ),
+        "expected literal backslash-n sequences to match Mermaid nonMarkdownToHTML line breaks: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
     let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
     let engine = Engine::new();
@@ -551,6 +631,39 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
 }
 
 #[test]
+fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
+    let text = "flowchart TB\nA -->|plain edge label| B\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p>plain edge label</p></span>"#),
+        "expected plain HTML edge labels to use Mermaid nonMarkdownToHTML paragraph wrapper: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
     let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
     let engine = Engine::new();
@@ -587,6 +700,12 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
     assert!(
         svg.contains(r#"viewBox="0 0 154.921875 364""#),
         "expected computed root viewBox to include top-level empty subgraph node: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"<g class="node" id="upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015-B""#
+        ),
+        "expected empty subgraph node DOM id to be scoped by the diagram id: {svg}"
     );
 }
 

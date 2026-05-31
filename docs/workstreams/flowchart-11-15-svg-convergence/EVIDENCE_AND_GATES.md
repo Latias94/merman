@@ -9,8 +9,8 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
 ```
 
-This currently fails against the fresh Mermaid 11.15 Flowchart target with 8 DOM mismatches plus
-one unsupported `flowchart-elk` local layout failure.
+This currently reports zero canonical XML mismatches for the supported Flowchart corpus and one
+unsupported `flowchart-elk` local layout failure.
 
 ## Gate Set
 
@@ -303,6 +303,32 @@ git diff --check
   - `cargo nextest run -p merman-render flowchart`: passed, 84 tests.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 F115-050/F115-060/F115-070 supported-Flowchart DOM closeout slice:
+  - Aligned Mermaid 11.15 non-markdown subgraph title behavior: SVG titles no longer wrap when
+    `htmlLabels=false`, and HTML titles use the deprecated `createLabel(... width=Infinity)`
+    surface instead of the `createText(... width=200)` markdown path.
+  - Scoped empty-subgraph node wrapper ids by diagram id, matching Mermaid 11.15 nested-subgraph
+    DOM ids for outgoing-link fixtures.
+  - Aligned Flowchart HTML label conversion with Mermaid 11.15 `createText(...)`: non-markdown edge
+    labels force the upstream `<p>...</p>` wrapper; non-markdown HTML labels treat literal `\n`
+    sequences as `<br />`; text/string labels no longer parse markdown solely because they contain
+    `*` or `_`.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `stress_flowchart_cluster_title_long_multiline_022`,
+    `stress_flowchart_svglike_escaped_tags_025`,
+    `upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec`,
+    `outgoing_links_4`, `stress_flowchart_edge_labels_far_from_arrows_066`,
+    `upstream_docs_diagrams_flowchart_code_flow`, and
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_true_005`, all using
+    `--upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`.
+  - `cargo nextest run -p merman-render flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper`:
+    passed, 2 tests.
+  - `cargo nextest run -p merman-render flowchart`: passed, 87 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed only because `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` is an
+    unsupported local layout type; the report shows `canonical XML mismatches: 0`.
 
 ## Evidence Anchors
 

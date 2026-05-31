@@ -8,6 +8,25 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
+    flowchart_label_html_impl(label, label_type, config, math_renderer, false)
+}
+
+pub(in crate::svg::parity) fn flowchart_edge_label_html(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) -> String {
+    flowchart_label_html_impl(label, label_type, config, math_renderer, true)
+}
+
+fn flowchart_label_html_impl(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    force_non_markdown_paragraph: bool,
+) -> String {
     if label.trim().is_empty() {
         return String::new();
     }
@@ -249,16 +268,13 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         }
     }
 
-    let has_literal_backticks = label_type != "markdown" && label.contains('`');
-    let looks_like_markdown = label_type != "markdown" && !has_literal_backticks && {
-        // Mermaid flowchart-v2 treats `**...**` as Markdown strong inside HTML labels even when the
-        // FlowDB label type is `text`.
-        //
-        // However, edge labels like `-->|`edge **label**`|` keep the surrounding backticks
-        // literally; once backticks are present, Mermaid no longer applies this text-label
-        // Markdown heuristic.
-        label.contains("**") || label.contains("__") || label.contains('*') || label.contains('_')
-    };
+    fn replace_non_markdown_html_line_breaks(input: &str) -> String {
+        if input.contains("\\n") || input.contains('\n') {
+            input.replace("\\n", "<br />").replace('\n', "<br />")
+        } else {
+            input.to_string()
+        }
+    }
 
     if let Some(r) = math_renderer {
         if label.contains("$$") {
@@ -485,32 +501,6 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
         }
-        _ if looks_like_markdown => {
-            let decoded = decode_mermaid_entities_for_render_text(label);
-            let decoded = if decoded.contains("\\\\") {
-                std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
-            } else {
-                decoded
-            };
-            let decoded = trim_markdown_trailing_newlines(decoded);
-            let markdown_auto_wrap = config
-                .as_value()
-                .get("markdownAutoWrap")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(true);
-            let html_out = if crate::text::mermaid_markdown_contains_raw_blocks(decoded.as_ref()) {
-                crate::text::mermaid_markdown_to_html_label_fragment(
-                    decoded.as_ref(),
-                    markdown_auto_wrap,
-                )
-            } else {
-                let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
-                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
-            };
-            let html_out = html_out.trim().to_string();
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
-        }
         _ => {
             let label = if label.contains("\r\n") {
                 label.replace("\r\n", "\n")
@@ -524,7 +514,8 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 label
             };
             let label = label.trim_end_matches('\n');
-            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+            let wants_p = force_non_markdown_paragraph
+                || crate::text::mermaid_markdown_wants_paragraph_wrap(label);
             let label = crate::flowchart::flowchart_normalize_plain_multiline_label_for_html(label);
             let label = label.as_ref();
 
@@ -538,11 +529,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 && !label.contains(":fa-")
             {
                 let inner = if wants_p {
-                    if label.contains('\n') {
-                        label.replace('\n', "<br />")
-                    } else {
-                        label.to_string()
-                    }
+                    replace_non_markdown_html_line_breaks(label)
                 } else {
                     label.to_string()
                 };
@@ -553,7 +540,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             }
 
             let label = if wants_p {
-                label.replace('\n', "<br />")
+                replace_non_markdown_html_line_breaks(label)
             } else {
                 label.to_string()
             };

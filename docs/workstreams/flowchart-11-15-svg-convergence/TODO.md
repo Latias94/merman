@@ -46,7 +46,7 @@ Last updated: 2026-06-01
 
 ## M2 - Shape, Label, And Cluster Convergence
 
-- [ ] F115-040 [owner=codex] [deps=F115-020] [scope=crates/merman-render/src/svg/parity/flowchart]
+- [x] F115-040 [owner=codex] [deps=F115-020] [scope=crates/merman-render/src/svg/parity/flowchart]
   Goal: Close remaining 11.15 shape path and label-container class mismatches, including
   `outer-path` coverage for non-rect special shapes.
   Validation: targeted fresh compare filters covering representative special shapes; mismatch
@@ -54,17 +54,17 @@ Last updated: 2026-06-01
   Review: Prefer matching upstream shape helpers over fixture-specific patches.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream.
-  Handoff: IN_PROGRESS. First-order `outer-path` class coverage landed for representative special
+  Handoff: DONE. First-order `outer-path` class coverage landed for representative special
   shapes. Mermaid 11.15 classic hexagon now uses the upstream 6-point polygon model and only uses
   RoughJS paths for `look=handDrawn`. No-label special shapes now carry upstream `outer-path`
   classes where Mermaid 11.15 emits them. The adjacent theme-gradient slice cleared the remaining
   theme/config bucket. The node-label class/SVG markdown wrapping slice cleared the oldshape set3
   and newshape set1 matrices. The stacked-rectangle/procs slice cleared the remaining shape alias
-  and stacked-rectangle docs failures. The latest HTML image-label and shapeData multiline-label
-  slice cleared seven more fresh mismatches; full fresh Flowchart comparison is down to 8
-  mismatches plus the existing `flowchart-elk` local layout failure.
+  and stacked-rectangle docs failures. The HTML image-label and shapeData multiline-label slice
+  cleared seven more fresh mismatches. The supported Flowchart fresh comparison now reports zero
+  canonical XML mismatches; only the existing `flowchart-elk` local layout failure remains.
 
-- [ ] F115-050 [owner=codex] [deps=F115-030,F115-040] [scope=crates/merman-render/src/svg/parity/flowchart]
+- [x] F115-050 [owner=codex] [deps=F115-030,F115-040] [scope=crates/merman-render/src/svg/parity/flowchart]
   Goal: Match Mermaid 11.15 HTML/`foreignObject` label DOM surfaces that dominate the fresh
   `html_foreign_object` category.
   Validation: targeted fresh compare filters for node labels, edge labels, markdown labels, and
@@ -72,7 +72,7 @@ Last updated: 2026-06-01
   Review: Do not introduce a browser layout dependency; preserve deterministic local measurement.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/workstreams/flowchart-text-style-parity`.
-  Handoff: IN_PROGRESS. The second config/label slice is landed: `shapeData` labels now default to
+  Handoff: DONE. The second config/label slice is landed: `shapeData` labels now default to
   `labelType=markdown`, explicit `labelType` is honored, normal node labels use root `htmlLabels`
   directly like Mermaid 11.15 `labelHelper`, and edge/cluster labels still use the deprecated
   `flowchart.htmlLabels` fallback. Full fresh Flowchart comparison is down to 95 mismatches plus the
@@ -80,9 +80,10 @@ Last updated: 2026-06-01
   slice, then 67 mismatches after the Flowchart theme-gradient slice, then 18 mismatches after
   note label classes, SVG markdown node wrapping, and hourglass/collate empty-label class parity,
   then 15 mismatches after stacked-rectangle/procs path-structure parity, then 8 mismatches after
-  HTML image-label paragraph and shapeData multiline markdown parity.
+  HTML image-label paragraph and shapeData multiline markdown parity, then zero supported canonical
+  XML mismatches after Mermaid 11.15 non-markdown HTML label and edge-label paragraph parity.
 
-- [ ] F115-060 [owner=codex] [deps=F115-020] [scope=crates/merman-render/src/svg/parity/flowchart]
+- [x] F115-060 [owner=codex] [deps=F115-020] [scope=crates/merman-render/src/svg/parity/flowchart]
   Goal: Match Mermaid 11.15 subgraph cluster group structure, namespace ids, labels, and class
   ordering for supported Flowchart layouts.
   Validation: targeted fresh compare filters for subgraph-heavy fixtures; full fresh Flowchart
@@ -90,7 +91,11 @@ Last updated: 2026-06-01
   Review: Keep layout geometry changes separate from DOM ordering and class-string changes.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream.
-  Handoff: Not started.
+  Handoff: DONE. Non-markdown subgraph titles now follow Mermaid 11.15's deprecated
+  `createLabel(... width=Infinity)` behavior instead of the markdown `createText(... width=200)`
+  path; markdown titles still wrap through `createText(...)`. Empty subgraph node ids are scoped by
+  diagram id. The subgraph-heavy fresh filters pass, and the supported Flowchart corpus reports zero
+  canonical XML mismatches.
 
 - [ ] F115-070 [owner=codex] [deps=F115-020,F115-050] [scope=crates/merman-render/src/svg/parity/flowchart,crates/xtask/src/cmd/compare]
   Goal: Close clickable/tooltip wrapper deltas and decide the `flowchart-elk` fixture policy.
@@ -100,7 +105,10 @@ Last updated: 2026-06-01
   Review: Any skip must be narrow and documented in the umbrella evidence.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus upstream fixture metadata.
-  Handoff: Not started.
+  Handoff: IN_PROGRESS. Clickable/tooltip wrapper drift is no longer present in the supported fresh
+  Flowchart mismatch report. The only remaining full-gate failure is
+  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001`, which still needs an explicit
+  support, skip, or split decision before stored baseline refresh.
 
 ## M3 - Fresh Full Gate And Stored Baseline Refresh
 
