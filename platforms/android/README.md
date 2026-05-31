@@ -32,6 +32,8 @@ try {
 Native errors are thrown as `MermanException` with the C ABI JSON error payload as the message.
 `MermanEngine` checks the loaded native ABI before the first call and exposes the linked native
 package version through `packageVersion`.
+`optionsJson` follows the shared schema in
+[`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
 ## Example
 

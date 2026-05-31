@@ -109,3 +109,5 @@ parallel user edits.
   assertions for `abi_version()` and `package_version()`.
 - 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
   platforms/python/merman/examples/smoke.py` passed with version API checks.
+- 2026-05-31: Added `docs/bindings/OPTIONS_JSON.md` as the shared options contract and linked it
+  from the C ABI, UniFFI, Python, Android, Apple, and Flutter binding docs.

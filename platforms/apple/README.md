@@ -46,6 +46,8 @@ do {
 
 `MermanEngine` checks the native ABI version and FFI struct sizes during initialization. The package
 version is read from the linked native library.
+`optionsJson` follows the shared schema in
+[`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
 ## Local Package Use
 

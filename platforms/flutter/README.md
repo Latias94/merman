@@ -56,6 +56,8 @@ Packaging native libraries into Android, iOS, macOS, Windows, and Linux app/plug
 follow-on work beyond the current Android plugin scaffold.
 The pub.dev package name is `merman`; the current release workflow injects Android native libraries
 before publishing.
+`optionsJson` follows the shared schema in
+[`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
 
 ## Android Plugin Packaging
 

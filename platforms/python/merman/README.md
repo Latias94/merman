@@ -23,7 +23,8 @@ except merman.MermanError.Binding as error:
 ```
 
 `options_json` is optional. Pass `None` for defaults, or a JSON string with `parse`, `layout`, and
-`svg` options.
+`svg` options. The shared schema is documented in
+[`docs/bindings/OPTIONS_JSON.md`](../../../docs/bindings/OPTIONS_JSON.md).
 
 ## Generate Locally
 

@@ -14,6 +14,8 @@ Status: experimental generated-binding surface.
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
 Swift, Kotlin, Python, and Ruby package lanes.
+The optional `options_json` argument uses the shared contract documented in
+`docs/bindings/OPTIONS_JSON.md`.
 
 ## Bindgen Smoke
 

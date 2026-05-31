@@ -51,6 +51,8 @@ layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
 
 Errors are exposed through the generated `MermanError` type. The underlying status code, status
 name, and message still come from `merman-bindings-core`.
+The optional `options_json` argument uses the shared contract documented in
+`docs/bindings/OPTIONS_JSON.md`.
 
 ## Verification
 
