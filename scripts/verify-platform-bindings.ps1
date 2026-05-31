@@ -113,6 +113,28 @@ try {
         $flutterJarOut
     )
 
+    Step "Flutter native packaging scaffold checks"
+    $bash = Get-Command bash -ErrorAction SilentlyContinue
+    if (-not $bash) {
+        throw "bash not found; required for Flutter packaging syntax checks."
+    }
+    foreach ($path in @(
+            (Join-Path $flutterRoot "build-desktop.sh"),
+            (Join-Path $flutterRoot "ios\merman.podspec"),
+            (Join-Path $flutterRoot "ios\Classes\MermanFlutterPlugin.swift"),
+            (Join-Path $flutterRoot "macos\merman.podspec"),
+            (Join-Path $flutterRoot "macos\Classes\MermanFlutterPlugin.swift"),
+            (Join-Path $flutterRoot "linux\CMakeLists.txt"),
+            (Join-Path $flutterRoot "linux\include\merman\merman_flutter_plugin.h"),
+            (Join-Path $flutterRoot "windows\CMakeLists.txt"),
+            (Join-Path $flutterRoot "windows\include\merman\merman_flutter_plugin_c_api.h")
+        )) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            throw "Required Flutter packaging file not found: $path"
+        }
+    }
+    Invoke-Native $bash.Source @("-n", "platforms/flutter/build-desktop.sh")
+
     Step "Dart FFI native smoke"
     Invoke-Native "cargo" @("build", "-p", "merman-ffi")
     Push-Location $flutterRoot
@@ -137,10 +159,6 @@ try {
     }
 
     Step "Apple Swift package scaffold checks"
-    $bash = Get-Command bash -ErrorAction SilentlyContinue
-    if (-not $bash) {
-        throw "bash not found; required for Apple scaffold syntax checks."
-    }
     $appleBuildScript = Join-Path $repoRoot "scripts\build-apple-xcframework.sh"
     $iosBuildScript = Join-Path $repoRoot "platforms\ios\build-ios.sh"
     $swiftWrapper = Join-Path $appleRoot "Sources\Merman\MermanEngine.swift"

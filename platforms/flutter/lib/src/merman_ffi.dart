@@ -69,10 +69,7 @@ typedef _MermanCallDart = NativeMermanResult Function(
 typedef _BufferFreeC = Void Function(NativeMermanBuffer);
 typedef _BufferFreeDart = void Function(NativeMermanBuffer);
 
-DynamicLibrary openMermanLibrary([String? path]) {
-  if (path != null) {
-    return DynamicLibrary.open(path);
-  }
+DynamicLibrary openMermanLibrary() {
   if (Platform.isAndroid) {
     return DynamicLibrary.open('libmerman_ffi.so');
   }
@@ -87,6 +84,9 @@ DynamicLibrary openMermanLibrary([String? path]) {
   }
   throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');
 }
+
+DynamicLibrary openMermanLibraryFromPath(String path) =>
+    DynamicLibrary.open(path);
 
 class MermanException implements Exception {
   const MermanException({
@@ -104,11 +104,15 @@ class MermanException implements Exception {
 }
 
 class Merman {
-  Merman(DynamicLibrary library) : _bindings = _MermanBindings(library) {
+  Merman.fromDynamicLibrary(DynamicLibrary library)
+      : _bindings = _MermanBindings(library) {
     _bindings.checkAbi();
   }
 
-  factory Merman.open([String? path]) => Merman(openMermanLibrary(path));
+  factory Merman.open() => Merman.fromDynamicLibrary(openMermanLibrary());
+
+  factory Merman.openPath(String path) =>
+      Merman.fromDynamicLibrary(openMermanLibraryFromPath(path));
 
   final _MermanBindings _bindings;
 

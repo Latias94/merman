@@ -131,9 +131,9 @@ fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
 
 fn default_package_dir() -> PathBuf {
     workspace_root()
-        .join("bindings")
+        .join("platforms")
         .join("python")
-        .join("merman-uniffi")
+        .join("merman")
 }
 
 fn default_cdylib_path() -> PathBuf {

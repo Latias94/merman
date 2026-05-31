@@ -13,8 +13,8 @@ protect them before any registry publication is enabled.
 | Rust crates | workspace crates listed in `PUBLISH_ORDER.md` | `release-crates.yml` | crates.io | Publishes in dependency order. `xtask` remains private. |
 | CLI | `merman-cli` binary archives | `release.yml` | GitHub Release | Existing cargo-dist workflow. |
 | Apple | SwiftPM `Merman` with `Merman.xcframework` | `release-apple.yml` | GitHub Release + SwiftPM tag | Builds, zips, computes checksum, and patches `Package.swift` on the release tag. |
-| Python | `merman` wheels | `release-python.yml` | GitHub Release | Builds Linux, macOS, and Windows wheels. PyPI publishing needs a wheel policy decision. |
-| Flutter | `merman` | `release-flutter.yml` | pub.dev | Injects Android native libraries before publishing. |
+| Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
+| Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. |
 | Android | `io.merman` Android library module | `release-android.yml` | GitHub Release AAR | Maven Central publishing needs Gradle signing/POM metadata and namespace confirmation. |
 | Web/WASM | none | none | none | Add only if a WASM API/package is built. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
@@ -27,7 +27,7 @@ The first release set is:
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
 2. GitHub Release artifacts for `merman-cli`.
 3. SwiftPM/GitHub Release packaging for Apple.
-4. GitHub Release wheels for Python.
+4. GitHub Release wheels and PyPI publishing for Python.
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.
 

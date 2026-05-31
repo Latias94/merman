@@ -1,5 +1,5 @@
 name: merman
-description: Experimental Dart FFI wrapper for merman headless Mermaid rendering.
+description: Flutter and Dart FFI bindings for merman headless Mermaid rendering.
 version: 0.7.0
 repository: https://github.com/Latias94/merman
 
@@ -18,3 +18,11 @@ flutter:
       android:
         package: io.merman.flutter
         pluginClass: MermanFlutterPlugin
+      ios:
+        pluginClass: MermanFlutterPlugin
+      macos:
+        pluginClass: MermanFlutterPlugin
+      linux:
+        pluginClass: MermanFlutterPlugin
+      windows:
+        pluginClass: MermanFlutterPluginCApi

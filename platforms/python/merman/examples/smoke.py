@@ -3,6 +3,11 @@ import merman
 
 def main() -> None:
     engine = merman.MermanEngine()
+    if engine.abi_version() != 1:
+        raise RuntimeError(f"unexpected ABI version: {engine.abi_version()}")
+    if not engine.package_version():
+        raise RuntimeError("empty package version")
+
     source = "flowchart TD\nA[Hello] --> B[World]"
 
     svg = engine.render_svg(source, None)

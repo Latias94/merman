@@ -1,3 +1,8 @@
 /.dart_tool/
 /build/
 /pubspec.lock
+/android/src/main/jniLibs/
+/ios/Merman.xcframework/
+/macos/Libraries/
+/windows/merman_ffi.dll
+/linux/lib/

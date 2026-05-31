@@ -43,7 +43,7 @@ parallel user edits.
 
 - `crates/merman-uniffi/Cargo.toml`
 - `crates/merman-uniffi/tests/bindgen_smoke.rs`
-- `bindings/python/merman-uniffi`
+- `platforms/python/merman`
 - `docs/bindings/UNIFFI.md`
 - `docs/bindings/PYTHON_UNIFFI.md`
 
@@ -52,7 +52,7 @@ parallel user edits.
 - 2026-05-30: `python --version` reports Python 3.13.11.
 - 2026-05-30: PUP-010 opened this lane and selected staged package import/call smoke as the
   release-quality gate.
-- 2026-05-30: PUP-020 added `bindings/python/merman-uniffi` with package metadata, shim,
+- 2026-05-30: PUP-020 added `platforms/python/merman` with package metadata, shim,
   generated-artifact ignore rules, and `crates/merman-uniffi/examples/generate_python_package.rs`.
 - 2026-05-30: `cargo check -p merman-uniffi --features bindgen-smoke --examples` passed.
 - 2026-05-30: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke`
@@ -71,12 +71,43 @@ parallel user edits.
 - 2026-05-31: Renamed the Python distribution and public import package to `merman` after PyPI
   lookup showed no existing `merman` project.
 - 2026-05-31: `python3 -m py_compile scripts/build-python-uniffi-wheel.py
-  bindings/python/merman-uniffi/examples/smoke.py platforms/flutter/tool/android-smoke.py` passed.
+  platforms/python/merman/examples/smoke.py platforms/flutter/tool/android-smoke.py` passed.
 - 2026-05-31: `cargo fmt -p merman-uniffi -- --check` passed.
 - 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test
   bindgen_smoke` passed (`2` tests): source generation and staged `import merman` smoke.
 - 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed and produced
   `merman-0.7.0-py3-none-macosx_26_0_arm64.whl`.
-- 2026-05-31: `PYTHONPATH=bindings/python/merman-uniffi/src python3
-  bindings/python/merman-uniffi/examples/smoke.py` passed.
+- 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
+  platforms/python/merman/examples/smoke.py` passed.
 - 2026-05-31: `git diff --check` passed.
+- 2026-05-31: Renamed the internal Python packaging scaffold to `platforms/python/merman`; the
+  Rust crate remains `crates/merman-uniffi`.
+- 2026-05-31: `python3 -m py_compile scripts/build-python-uniffi-wheel.py
+  platforms/python/merman/examples/smoke.py platforms/flutter/tool/android-smoke.py` passed after
+  the directory rename.
+- 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test
+  bindgen_smoke` passed (`2` tests) after the directory rename.
+- 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed and generated the
+  package from `platforms/python/merman`.
+- 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
+  platforms/python/merman/examples/smoke.py` passed after the directory rename.
+- 2026-05-31: Moved the Python package scaffold under `platforms/python/merman` to align it with
+  the other publishable platform package surfaces.
+- 2026-05-31: `python3 -m py_compile scripts/build-python-uniffi-wheel.py
+  platforms/python/merman/examples/smoke.py platforms/flutter/tool/android-smoke.py` passed after
+  the platform directory move.
+- 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke --test
+  bindgen_smoke` passed (`2` tests) after the platform directory move.
+- 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed and generated the
+  package from `platforms/python/merman` after the platform directory move.
+- 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
+  platforms/python/merman/examples/smoke.py` passed after the platform directory move.
+- 2026-05-31: Added UniFFI `MermanEngine.abi_version()` and `MermanEngine.package_version()`.
+- 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke` passed (`8` tests),
+  including Rust unit coverage and generated Python binding coverage for the version APIs.
+- 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed with wheel smoke
+  assertions for `abi_version()` and `package_version()`.
+- 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
+  platforms/python/merman/examples/smoke.py` passed with version API checks.
+- 2026-05-31: Added `docs/bindings/OPTIONS_JSON.md` as the shared options contract and linked it
+  from the C ABI, UniFFI, Python, Android, Apple, and Flutter binding docs.

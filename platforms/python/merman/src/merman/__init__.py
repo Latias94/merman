@@ -8,7 +8,7 @@ except ModuleNotFoundError as exc:
             "Generated merman UniFFI bindings are missing. "
             "Run `cargo build -p merman-uniffi --features bindgen-smoke`, then "
             "`cargo run -p merman-uniffi --features bindgen-smoke --example "
-            "generate_python_package -- --package-dir bindings/python/merman-uniffi`."
+            "generate_python_package -- --package-dir platforms/python/merman`."
         ) from exc
     raise
 

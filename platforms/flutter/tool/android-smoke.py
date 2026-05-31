@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,9 @@ def main() -> int:
         ],
         cwd=REPO_ROOT,
     )
+    generated_jni_libs = REPO_ROOT / "platforms" / "android" / "src" / "main" / "jniLibs"
+    plugin_jni_libs = PLUGIN_ROOT / "android" / "src" / "main" / "jniLibs"
+    shutil.copytree(generated_jni_libs, plugin_jni_libs, dirs_exist_ok=True)
 
     print(f"Creating temporary Flutter app: {temp_root}")
     run(

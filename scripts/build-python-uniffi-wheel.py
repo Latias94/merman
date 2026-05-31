@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--package-dir",
-        default=str(REPO_ROOT / "bindings" / "python" / "merman-uniffi"),
+        default=str(REPO_ROOT / "platforms" / "python" / "merman"),
         help="Python package scaffold directory.",
     )
     parser.add_argument(
@@ -64,6 +64,18 @@ def newest_wheel(wheel_dir: Path) -> Path:
     return wheels[0]
 
 
+def remove_stale_wheels(wheel_dir: Path) -> None:
+    for wheel in wheel_dir.glob("merman-*.whl"):
+        wheel.unlink()
+
+
+def require_platform_wheel(wheel: Path) -> None:
+    if wheel.name.endswith("-py3-none-any.whl"):
+        raise RuntimeError(
+            f"expected a platform wheel with the bundled native library, got universal wheel: {wheel.name}"
+        )
+
+
 def main() -> int:
     args = parse_args()
     package_dir = Path(args.package_dir).expanduser().resolve()
@@ -87,10 +99,23 @@ def main() -> int:
     )
 
     wheel_dir.mkdir(parents=True, exist_ok=True)
-    run([args.python, "-m", "pip", "wheel", str(package_dir), "--no-deps", "--wheel-dir", str(wheel_dir)])
+    remove_stale_wheels(wheel_dir)
+    run(
+        [
+            args.python,
+            "-m",
+            "pip",
+            "wheel",
+            str(package_dir),
+            "--no-deps",
+            "--wheel-dir",
+            str(wheel_dir),
+        ]
+    )
+    wheel = newest_wheel(wheel_dir)
+    require_platform_wheel(wheel)
 
     if args.run_smoke:
-        wheel = newest_wheel(wheel_dir)
         venv_dir = REPO_ROOT / "target" / "python-wheel-smoke"
         if venv_dir.exists():
             shutil.rmtree(venv_dir)
@@ -101,7 +126,7 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                "import merman; e = merman.MermanEngine(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
+                "import merman; e = merman.MermanEngine(); assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
             ]
         )
 

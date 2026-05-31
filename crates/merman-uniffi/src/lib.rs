@@ -8,6 +8,8 @@
 use merman_bindings_core::{BindingError, BindingStatus};
 use std::sync::Arc;
 
+pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 1;
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
     #[error("{code_name}: {message}")]
@@ -46,6 +48,14 @@ impl MermanEngine {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self)
+    }
+
+    pub fn abi_version(&self) -> u32 {
+        MERMAN_UNIFFI_ABI_VERSION
+    }
+
+    pub fn package_version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_string()
     }
 
     pub fn render_svg(
@@ -112,6 +122,14 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
+    }
+
+    #[test]
+    fn engine_exposes_versions() {
+        let engine = engine();
+
+        assert_eq!(engine.abi_version(), MERMAN_UNIFFI_ABI_VERSION);
+        assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]

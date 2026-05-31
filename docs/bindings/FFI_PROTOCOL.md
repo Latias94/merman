@@ -33,6 +33,8 @@ cargo build -p merman-ffi --release --features raster,ratex-math
 
 The current C ABI exposes SVG, semantic JSON, and layout JSON. Raster byte outputs are not part of
 this protocol version even though the Rust crate has a reserved `raster` feature gate.
+All render functions accept the shared `options_json` contract documented in
+`docs/bindings/OPTIONS_JSON.md`.
 
 ## Stability
 
@@ -142,43 +144,8 @@ On error, `data` contains UTF-8 JSON:
 
 ## Options JSON
 
-Pass `NULL/0` for defaults. Non-empty options use a tolerant JSON object:
-
-```json
-{
-  "version": 1,
-  "parse": {
-    "suppress_errors": false
-  },
-  "layout": {
-    "viewport_width": 800.0,
-    "viewport_height": 600.0,
-    "text_measurer": "vendored",
-    "math_renderer": "none"
-  },
-  "svg": {
-    "diagram_id": null,
-    "pipeline": "parity"
-  }
-}
-```
-
-Supported `layout.text_measurer` values:
-
-- `vendored`
-- `deterministic`
-
-Supported `layout.math_renderer` values:
-
-- `none`
-- `ratex` when the `ratex-math` feature is enabled
-
-Supported `svg.pipeline` values:
-
-- `parity`
-- `readable`
-- `resvg_safe`
-- `resvg-safe`
+Pass `NULL/0` for defaults. Non-empty options use the shared tolerant JSON object documented in
+`docs/bindings/OPTIONS_JSON.md`.
 
 ## Parse JSON
 

@@ -1,7 +1,7 @@
 # Python UniFFI Package - Handoff
 
 Status: Closed
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 ## Current State
 
@@ -11,9 +11,9 @@ imported and called from Python.
 
 Confirmed:
 
-- `bindings/python/merman-uniffi` contains a package scaffold and generated-artifact ignores.
+- `platforms/python/merman` contains a package scaffold and generated-artifact ignores.
 - `generate_python_package` can populate a package directory from a built `merman-uniffi` cdylib.
-- `bindgen_smoke` stages a temporary package, imports `merman_uniffi`, and calls
+- `bindgen_smoke` stages a temporary package, imports `merman`, and calls
   `MermanEngine.render_svg` plus `MermanEngine.parse_json`.
 - `docs/bindings/PYTHON_UNIFFI.md` documents the local generation flow and current limits.
 

@@ -23,7 +23,7 @@ jobs:
             parity: true
           - os: macos-15
             parity: false
-          - os: windows-2025
+          - os: windows-2025-vs2026
             parity: false
 
     steps:
@@ -75,8 +75,8 @@ jobs:
             platforms/android/build-android.py \
             platforms/flutter/tool/android-smoke.py
 
-      - name: Check Apple shell scripts
-        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh
+      - name: Check shell scripts
+        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-desktop.sh
 
   python-uniffi-wheel:
     name: python-uniffi-wheel
@@ -99,7 +99,7 @@ jobs:
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
       - name: Run Python example
-        run: PYTHONPATH=bindings/python/merman-uniffi/src python bindings/python/merman-uniffi/examples/smoke.py
+        run: PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 
   c-ffi-example:
     name: c-ffi-example

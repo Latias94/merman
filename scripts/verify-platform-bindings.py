@@ -171,6 +171,23 @@ def main() -> int:
             ]
         )
 
+        step("Flutter native packaging scaffold checks")
+        bash = require_command("bash")
+        for path in [
+            FLUTTER_ROOT / "build-desktop.sh",
+            FLUTTER_ROOT / "ios" / "merman.podspec",
+            FLUTTER_ROOT / "ios" / "Classes" / "MermanFlutterPlugin.swift",
+            FLUTTER_ROOT / "macos" / "merman.podspec",
+            FLUTTER_ROOT / "macos" / "Classes" / "MermanFlutterPlugin.swift",
+            FLUTTER_ROOT / "linux" / "CMakeLists.txt",
+            FLUTTER_ROOT / "linux" / "include" / "merman" / "merman_flutter_plugin.h",
+            FLUTTER_ROOT / "windows" / "CMakeLists.txt",
+            FLUTTER_ROOT / "windows" / "include" / "merman" / "merman_flutter_plugin_c_api.h",
+        ]:
+            if not path.exists():
+                raise RuntimeError(f"required Flutter packaging file not found: {path}")
+        run([bash, "-n", str(FLUTTER_ROOT / "build-desktop.sh")])
+
         step("Dart FFI native smoke")
         run(["cargo", "build", "-p", "merman-ffi"])
         run(["dart", "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
@@ -197,7 +214,6 @@ def main() -> int:
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
 
         step("Apple Swift package scaffold checks")
-        bash = require_command("bash")
         for path in [
             REPO_ROOT / "Package.swift",
             REPO_ROOT / "scripts" / "build-apple-xcframework.sh",
