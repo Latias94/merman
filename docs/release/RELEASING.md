@@ -54,7 +54,7 @@ python3 -m py_compile \
   scripts/build-python-uniffi-wheel.py \
   platforms/android/build-android.py \
   platforms/flutter/tool/android-smoke.py
-bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-desktop.sh
+bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 

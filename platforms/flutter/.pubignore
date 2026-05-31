@@ -12,13 +12,17 @@
 # Build / IDE
 *.log
 .DS_Store
+__pycache__/
+*.pyc
 
 # CI builds these native artifacts before publishing; keep them out of git but
 # include them in the pub package.
+/ios/Merman.xcframework/
+/ios/Merman.xcframework/**
 !android/src/main/jniLibs/
 !android/src/main/jniLibs/**
-!ios/Merman.xcframework/
-!ios/Merman.xcframework/**
+!ios/MermanFFI.xcframework/
+!ios/MermanFFI.xcframework/**
 !macos/Libraries/
 !macos/Libraries/**
 !windows/merman_ffi.dll

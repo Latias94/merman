@@ -76,7 +76,7 @@ jobs:
             platforms/flutter/tool/android-smoke.py
 
       - name: Check shell scripts
-        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-desktop.sh
+        run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
 
   python-uniffi-wheel:
     name: python-uniffi-wheel

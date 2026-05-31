@@ -33,8 +33,8 @@ for current Mermaid parity.
 ## Platform Packaging
 
 - Android copies generated native slices into `platforms/flutter/android/src/main/jniLibs`.
-- iOS publishes `platforms/flutter/ios/Merman.xcframework` and force-loads `libmerman_ffi.a` from
-  the app target so Dart FFI can resolve C symbols.
+- iOS publishes `platforms/flutter/ios/MermanFFI.xcframework` as a dynamic framework so Dart FFI can
+  resolve C symbols through `DynamicLibrary.process()` without bundling the larger static archive.
 - macOS publishes `platforms/flutter/macos/Libraries/libmerman_ffi.dylib`.
 - Windows publishes `platforms/flutter/windows/merman_ffi.dll`.
 - Linux publishes `platforms/flutter/linux/lib/x86_64/libmerman_ffi.so` and

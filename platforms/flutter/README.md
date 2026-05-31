@@ -16,8 +16,8 @@ engine with `Merman.open()` and does not pass a dynamic library path.
 ## Supported Flutter Platforms
 
 - Android: bundled `libmerman_ffi.so` slices under `android/src/main/jniLibs`.
-- iOS: bundled `Merman.xcframework`, force-loaded so Dart FFI can use
-  `DynamicLibrary.process()`.
+- iOS: bundled `MermanFFI.xcframework`, linked as a dynamic framework so Dart FFI can use
+  `DynamicLibrary.process()` without shipping the much larger Rust static archive.
 - macOS: bundled `Libraries/libmerman_ffi.dylib`, linked by CocoaPods.
 - Windows: bundled `merman_ffi.dll`, installed into the Flutter app bundle by CMake.
 - Linux: bundled `linux/lib/<arch>/libmerman_ffi.so`, installed into the Flutter app bundle by CMake.
@@ -115,12 +115,10 @@ mkdir -p platforms/flutter/android/src/main/jniLibs
 cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
 ```
 
-iOS uses the shared Apple XCFramework script:
+iOS uses a Flutter-specific dynamic framework XCFramework:
 
 ```bash
-bash scripts/build-apple-xcframework.sh --ios
-rm -rf platforms/flutter/ios/Merman.xcframework
-cp -R platforms/apple/Merman.xcframework platforms/flutter/ios/Merman.xcframework
+bash platforms/flutter/build-ios.sh
 ```
 
 Desktop artifacts are built with:
