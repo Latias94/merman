@@ -9,8 +9,9 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
 ```
 
-As of 2026-06-01 this fails only for the current ER/Class remainder. Flowchart has been removed
-from the full-gate failure set after the stored Mermaid 11.15 baseline refresh.
+As of 2026-06-01 this fails only for the current Class remainder. Flowchart and ER have been
+removed from the full-gate failure set after their stored Mermaid 11.15 baseline refreshes and
+renderer convergence slices.
 
 ## Gate Set
 
@@ -294,6 +295,25 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     failed only for the current non-Flowchart remainder: ER has 1 DOM mismatch and Class has 14 DOM
     mismatches.
+- 2026-06-01 M15C-060 ER 11.15 renderer convergence and stored baseline refresh:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram er --out fixtures/upstream-svgs`:
+    passed and refreshed 101 stored ER SVG baselines to Mermaid 11.15.
+  - Initial stored ER compare after refresh failed for all 101 fixtures, proving the old single red
+    point was stale-baseline-masked renderer drift rather than a one-fixture problem.
+  - Implemented the Mermaid 11.15 ER unified-renderer envelope: root drop-shadow defs, scoped node
+    and edge path ids, `data-look="classic"`, `markdown-node-label` on no-attribute entity labels,
+    centered SVG relationship labels, Rough.js-style thin rectangle dividers for attribute tables,
+    ER theme gradients, and 11.15 ELK edge DOM ids without the old `_0` suffix.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram er --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/xml/xml_report.md` reports `Mismatches (0)`.
+  - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/er_report.md` has `dom ok = yes` for the 101 stored fixtures.
+  - `cargo nextest run -p merman-render er`: passed, 168 tests.
+  - `cargo nextest run -p merman-render er_svg_forest_theme_renders_root_gradient er_svg_renders_entities_and_relationships er_svg_relationship_labels_follow_flowchart_htmllabels_when_root_unset`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed only for Class with 14 DOM mismatches. ER no longer appears in the full-gate failure set.
 
 ## Evidence Anchors
 

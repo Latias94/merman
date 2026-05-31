@@ -75,7 +75,10 @@ fn er_svg_renders_entities_and_relationships() {
     )
     .expect("render svg");
 
-    assert!(svg.contains(r#"id="entity-BOOK-0""#));
+    assert!(svg.contains(r#"id="merman-entity-BOOK-0""#));
+    assert!(svg.contains(r#"data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-id_entity-BOOK-0_entity-PAGE-1_0""#));
+    assert!(svg.contains(r#"id="merman-drop-shadow""#));
     assert!(svg.contains("relationshipLine"));
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
@@ -132,6 +135,46 @@ erDiagram
 }
 
 #[test]
+fn er_svg_forest_theme_renders_root_gradient() {
+    let text = r#"---
+config:
+  theme: forest
+---
+erDiagram
+  A ||--|| B : owns
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
+        panic!("expected ErDiagram layout");
+    };
+
+    let svg = render_er_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("er_theme_gradient".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<linearGradient id="er_theme_gradient-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
+        "expected Mermaid 11.15 ER root gradient element: {svg}"
+    );
+}
+
+#[test]
 fn er_svg_relationship_labels_follow_root_htmllabels_not_flowchart_htmllabels() {
     let text = r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
 erDiagram
@@ -160,6 +203,7 @@ erDiagram
     .expect("render svg");
 
     let edge_labels = edge_labels_group(&svg);
+    assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));
     assert!(
         edge_labels.contains(r#"class="labelBkg""#)
             && edge_labels.contains(r#"<foreignObject width=""#),
@@ -199,6 +243,7 @@ erDiagram
     assert!(
         edge_labels.contains(r#"<rect class="background""#)
             && edge_labels.contains(">owns</tspan>")
+            && edge_labels.contains(r#"text-anchor="middle""#)
             && !edge_labels.contains("<foreignObject"),
         "expected ER relationship labels to switch to SVG text when flowchart htmlLabels=false and root htmlLabels is unset"
     );

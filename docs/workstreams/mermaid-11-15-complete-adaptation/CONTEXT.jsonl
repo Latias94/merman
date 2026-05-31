@@ -10,3 +10,4 @@
 {"file":"docs/adr/0001-upstream-baseline.md","reason":"Baseline authority and version claim."}
 {"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy authority for supported and deferred behavior."}
 {"file":"tools/upstreams/REPOS.lock.json","reason":"Pinned upstream repository versions for Mermaid and related render dependencies."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-060-er.md","reason":"ER 11.15 renderer convergence evidence and follow-on Class-only state."}

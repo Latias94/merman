@@ -1,7 +1,7 @@
 # Mermaid 11.15 Complete Adaptation - Milestones
 
 Status: Active
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 ## M0 - Scope And Evidence Freeze
 
@@ -21,7 +21,7 @@ Exit criteria:
 - Active compare reports and 11.15 parity docs no longer mislabel the current baseline as 11.12.3.
 - Marker-ID impacted diagrams have a clear baseline-refresh plan or completed regenerated baselines.
 
-Status: not started.
+Status: complete.
 
 ## M2 - Residual Existing-Matrix Parity
 
@@ -30,8 +30,11 @@ Exit criteria:
 - Sankey 11.15 stroke-width/layout deltas are closed or split with evidence.
 - Class hierarchical namespace deltas are closed against 11.15 baselines.
 - XYChart and Flowchart Math single-fixture deltas are closed or split.
+- ER 11.15 renderer-envelope deltas are closed against refreshed 11.15 baselines.
 
-Status: not started.
+Status: in progress. Sequence, C4, Journey, Timeline, Sankey, XYChart, Flowchart supported
+fixtures, and ER are green against Mermaid 11.15 stored baselines. Current M2 remainder is Class
+with 14 DOM mismatches.
 
 ## M3 - Full Implemented-Matrix Gates
 
