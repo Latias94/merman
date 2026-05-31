@@ -5,40 +5,48 @@
       "nodes": [
         {
           "id": "Admin",
-          "x": 137.832,
-          "y": 310.0,
+          "x": 247.832,
+          "y": 167.5,
           "width": 225.664,
           "height": 150.0,
           "is_cluster": false
         },
         {
+          "id": "Company",
+          "x": 501.953,
+          "y": 267.5,
+          "width": 1003.906,
+          "height": 535.0,
+          "is_cluster": true
+        },
+        {
           "id": "Company.Project",
-          "x": 585.824,
-          "y": 310.0,
-          "width": 396.164,
-          "height": 220.0,
+          "x": 501.953,
+          "y": 267.5,
+          "width": 933.906,
+          "height": 460.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project.Module",
-          "x": 137.832,
-          "y": 210.0,
-          "width": 275.664,
+          "x": 247.832,
+          "y": 267.5,
+          "width": 325.664,
           "height": 420.0,
           "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 137.832,
-          "y": 110.0,
+          "x": 247.832,
+          "y": 367.5,
           "width": 217.664,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "User",
-          "x": 585.824,
-          "y": 310.0,
+          "x": 745.824,
+          "y": 167.5,
           "width": 346.164,
           "height": 150.0,
           "is_cluster": false
@@ -53,29 +61,25 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 250.664,
-              "y": 310.0
+              "x": 360.664,
+              "y": 167.5
             },
             {
-              "x": 275.664,
-              "y": 310.0
+              "x": 410.664,
+              "y": 167.5
             },
             {
-              "x": 331.703,
-              "y": 310.0
+              "x": 491.703,
+              "y": 167.5
             },
             {
-              "x": 387.742,
-              "y": 310.0
-            },
-            {
-              "x": 412.742,
-              "y": 310.0
+              "x": 572.742,
+              "y": 167.5
             }
           ],
           "label": {
-            "x": 331.703,
-            "y": 310.0,
+            "x": 491.703,
+            "y": 167.5,
             "width": 62.078,
             "height": 24.0
           },
@@ -90,18 +94,39 @@
       ],
       "clusters": [
         {
-          "id": "Company.Project",
-          "x": 585.824,
-          "y": 310.0,
-          "width": 396.164,
-          "height": 220.0,
+          "id": "Company",
+          "x": 501.953,
+          "y": 267.5,
+          "width": 1003.906,
+          "height": 535.0,
           "diff": -15.0,
           "offset_y": 16.5,
-          "title": "Company.Project",
+          "title": "Company",
           "title_label": {
-            "x": 585.824,
-            "y": 212.0,
-            "width": 121.156,
+            "x": 501.953,
+            "y": 12.0,
+            "width": 58.4,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Company.Project",
+          "x": 501.953,
+          "y": 267.5,
+          "width": 933.906,
+          "height": 460.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Project",
+          "title_label": {
+            "x": 501.953,
+            "y": 49.5,
+            "width": 50.88,
             "height": 24.0
           },
           "requested_dir": null,
@@ -112,17 +137,17 @@
         },
         {
           "id": "Company.Project.Module",
-          "x": 137.832,
-          "y": 210.0,
-          "width": 275.664,
+          "x": 247.832,
+          "y": 267.5,
+          "width": 325.664,
           "height": 420.0,
           "diff": -15.0,
           "offset_y": 16.5,
-          "title": "Company.Project.Module",
+          "title": "Module",
           "title_label": {
-            "x": 137.832,
-            "y": 12.0,
-            "width": 178.063,
+            "x": 247.832,
+            "y": 69.5,
+            "width": 41.6,
             "height": 24.0
           },
           "requested_dir": null,
@@ -135,8 +160,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 783.906,
-        "max_y": 420.0
+        "max_x": 1003.906,
+        "max_y": 535.0
       }
     }
   }

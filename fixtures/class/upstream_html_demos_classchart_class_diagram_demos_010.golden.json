@@ -95,19 +95,45 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {
-      "Company.Project.Module.SubModule": {
-        "id": "Company.Project.Module.SubModule",
-        "domId": "classId-Company.Project.Module.SubModule-0",
-        "classIds": [
-          "Report"
-        ]
+      "Company": {
+        "id": "Company",
+        "label": "Company",
+        "domId": "classId-Company-0",
+        "classIds": [],
+        "noteIds": [],
+        "parent": null,
+        "explicit": false
+      },
+      "Company.Project": {
+        "id": "Company.Project",
+        "label": "Project",
+        "domId": "classId-Company.Project-1",
+        "classIds": [],
+        "noteIds": [],
+        "parent": "Company",
+        "explicit": false
       },
       "Company.Project.Module": {
         "id": "Company.Project.Module",
-        "domId": "classId-Company.Project.Module-1",
+        "label": "Module",
+        "domId": "classId-Company.Project.Module-2",
         "classIds": [
           "Admin"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "Company.Project",
+        "explicit": true
+      },
+      "Company.Project.Module.SubModule": {
+        "id": "Company.Project.Module.SubModule",
+        "label": "SubModule",
+        "domId": "classId-Company.Project.Module.SubModule-3",
+        "classIds": [
+          "Report"
+        ],
+        "noteIds": [],
+        "parent": "Company.Project.Module",
+        "explicit": true
       }
     },
     "styleClasses": {},

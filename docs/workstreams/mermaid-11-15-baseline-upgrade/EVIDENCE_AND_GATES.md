@@ -132,3 +132,17 @@ before marking a task, Codex goal, or lane complete.
   - `cargo nextest run -p merman-core` passed: 532 tests.
   - `cargo nextest run -p merman-render` passed: 240 tests.
   - `cargo fmt --check` passed.
+- 2026-05-31: M15-070 class hierarchical namespaces complete.
+  - Upstream check: Mermaid 11.15 class adds hierarchical namespace rendering for dotted names and syntactic nesting; `class.hierarchicalNamespaces` defaults to `true`, while `false` restores the <=11.14 flat dotted namespace behavior. Namespace bodies accept nested namespaces and notes, and namespace notes are parented to the active namespace.
+  - `cargo nextest run -p merman-core parse_diagram_class_hierarchical_dotted_namespace_and_notes parse_diagram_class_nested_namespace_syntax_builds_qualified_parents parse_class_exposes_11_15_hierarchical_namespaces_default_and_override` failed before implementation: `class.hierarchicalNamespaces` was missing from defaults, namespace notes failed to parse, and nested namespace syntax failed to parse.
+  - `cargo nextest run -p merman-render class_layout_dotted_namespace_builds_hierarchical_clusters class_layout_namespace_note_stays_inside_namespace_cluster class_svg_dotted_namespace_titles_use_hierarchical_segment_labels` failed before implementation: dotted namespaces were rendered as one flat cluster, namespace note parsing failed, and SVG output lacked the parent namespace cluster.
+  - `cargo nextest run -p merman-core parse_diagram_class_hierarchical_dotted_namespace_and_notes parse_diagram_class_nested_namespace_syntax_builds_qualified_parents parse_diagram_class_hierarchical_namespaces_can_be_disabled parse_class_exposes_11_15_hierarchical_namespaces_default_and_override` passed: 4 tests.
+  - `cargo nextest run -p merman-render class_layout_dotted_namespace_builds_hierarchical_clusters class_layout_namespace_note_stays_inside_namespace_cluster class_layout_hierarchical_namespaces_false_keeps_flat_dotted_cluster class_svg_dotted_namespace_titles_use_hierarchical_segment_labels` passed: 4 tests.
+  - `cargo nextest run -p merman-core class` passed: 44 tests.
+  - `cargo nextest run -p merman-render class` passed: 27 tests.
+  - `cargo run -p xtask -- update-snapshots` refreshed class semantic goldens; non-class reserialization noise was discarded.
+  - `cargo run -p xtask -- update-layout-snapshots --diagram class` refreshed class layout goldens for hierarchical namespaces.
+  - `cargo nextest run -p merman-core` passed: 536 tests.
+  - `cargo nextest run -p merman-render` passed: 244 tests.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only LF-to-CRLF warnings for `crates/merman-core/src/diagrams/class_grammar.lalrpop` and `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.

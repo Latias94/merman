@@ -27,6 +27,24 @@ fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2
     *layout
 }
 
+fn layout_class_text(
+    text: &str,
+) -> (
+    merman_render::model::ClassDiagramV2Layout,
+    serde_json::Value,
+) {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+    (*layout, out.semantic)
+}
+
 fn rect_from_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
     let hw = n.width / 2.0;
     let hh = n.height / 2.0;
@@ -149,6 +167,122 @@ fn class_layout_dense_namespaces_follow_declaration_order() {
         .map(|cluster| cluster.id.as_str())
         .collect::<Vec<_>>();
     assert_eq!(cluster_ids, vec!["Core", "API"]);
+}
+
+#[test]
+fn class_layout_dotted_namespace_builds_hierarchical_clusters() {
+    let (layout, _semantic) = layout_class_text(
+        r#"classDiagram
+namespace Company.Project.Module {
+  class User
+}
+"#,
+    );
+
+    let cluster_ids = layout
+        .clusters
+        .iter()
+        .map(|cluster| cluster.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        cluster_ids,
+        vec!["Company", "Company.Project", "Company.Project.Module"]
+    );
+
+    let mut cluster_by_id = std::collections::HashMap::new();
+    for c in &layout.clusters {
+        cluster_by_id.insert(c.id.as_str(), c);
+    }
+    let user = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "User")
+        .expect("User node");
+    let module = cluster_by_id
+        .get("Company.Project.Module")
+        .expect("module cluster");
+    let project = cluster_by_id
+        .get("Company.Project")
+        .expect("project cluster");
+    let company = cluster_by_id.get("Company").expect("company cluster");
+
+    assert!(
+        rect_contains(rect_from_cluster(module), rect_from_node(user), 0.01),
+        "module cluster should contain User"
+    );
+    assert!(
+        rect_contains(rect_from_cluster(project), rect_from_cluster(module), 0.01),
+        "project cluster should contain module"
+    );
+    assert!(
+        rect_contains(rect_from_cluster(company), rect_from_cluster(project), 0.01),
+        "company cluster should contain project"
+    );
+}
+
+#[test]
+fn class_layout_namespace_note_stays_inside_namespace_cluster() {
+    let (layout, semantic) = layout_class_text(
+        r#"classDiagram
+namespace Company.Project {
+  class User
+  note "Module scoped note"
+}
+"#,
+    );
+
+    assert_eq!(
+        semantic["notes"][0]["parent"],
+        serde_json::json!("Company.Project")
+    );
+
+    let note = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "note0")
+        .expect("note node");
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == "Company.Project")
+        .expect("namespace cluster");
+    assert!(
+        rect_contains(rect_from_cluster(cluster), rect_from_node(note), 0.01),
+        "namespace cluster should contain its note"
+    );
+}
+
+#[test]
+fn class_layout_hierarchical_namespaces_false_keeps_flat_dotted_cluster() {
+    let (layout, semantic) = layout_class_text(
+        r#"---
+config:
+  class:
+    hierarchicalNamespaces: false
+---
+classDiagram
+namespace Company.Project.Module {
+  class User
+}
+"#,
+    );
+
+    assert_eq!(
+        layout
+            .clusters
+            .iter()
+            .map(|cluster| cluster.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Company.Project.Module"]
+    );
+    assert_eq!(
+        layout.clusters[0].title, "Company.Project.Module",
+        "compact mode should use the full namespace id as the label"
+    );
+    assert_eq!(
+        semantic["classes"]["User"]["parent"],
+        serde_json::json!("Company.Project.Module")
+    );
 }
 
 #[test]

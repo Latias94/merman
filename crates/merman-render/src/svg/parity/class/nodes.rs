@@ -5,7 +5,8 @@ use super::interface::{
 use super::label::class_apply_inline_styles;
 use super::namespace::{
     ClassNamespaceSubgraphState, ClassNodeRenderOrder, build_class_node_render_order,
-    close_class_namespace_subgraph, transition_class_namespace_subgraph,
+    class_render_parent_for_id, close_class_namespace_subgraph,
+    transition_class_namespace_subgraph,
 };
 use super::node::{
     ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
@@ -69,6 +70,8 @@ pub(super) fn render_class_nodes(
         ctx.layout,
         ctx.model,
         ctx.class_nodes_by_id,
+        ctx.note_by_id,
+        ctx.iface_by_id,
         ctx.wrap_nodes_root,
         ctx.single_namespace_id,
         ctx.render_namespaces_as_subgraphs,
@@ -78,10 +81,12 @@ pub(super) fn render_class_nodes(
     let mut namespace_subgraph_state = ClassNamespaceSubgraphState::default();
     for id in ordered_ids {
         if ctx.wrap_nodes_root && inner_nodes_group_open {
-            let parent = ctx
-                .class_nodes_by_id
-                .get(id)
-                .and_then(|n| n.parent.as_deref());
+            let parent = class_render_parent_for_id(
+                id,
+                ctx.class_nodes_by_id,
+                ctx.note_by_id,
+                ctx.iface_by_id,
+            );
             let should_be_inner = ctx.single_namespace_id.is_some_and(|ns| parent == Some(ns));
             if !should_be_inner {
                 // Close the nested wrapper, then continue emitting remaining nodes at the outer level.
@@ -92,10 +97,12 @@ pub(super) fn render_class_nodes(
         }
 
         if ctx.render_namespaces_as_subgraphs {
-            let parent = ctx
-                .class_nodes_by_id
-                .get(id)
-                .and_then(|n| n.parent.as_deref());
+            let parent = class_render_parent_for_id(
+                id,
+                ctx.class_nodes_by_id,
+                ctx.note_by_id,
+                ctx.iface_by_id,
+            );
             let parent = parent.filter(|p| namespace_key_set.contains(p));
             transition_class_namespace_subgraph(
                 out,

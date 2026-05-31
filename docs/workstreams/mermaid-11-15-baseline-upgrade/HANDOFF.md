@@ -26,13 +26,18 @@ M15-060 is complete: xyChart now exposes Mermaid 11.15 `showDataLabelOutsideBar=
 labels use configured `themeVariables.xyChart.dataLabelColor` with `primaryTextColor` fallback, and
 vertical/horizontal outside-bar placement is covered by public SVG tests. No layout snapshot change
 was needed because the behavior is render-layer only.
+M15-070 is complete: class diagrams now default to Mermaid 11.15 hierarchical namespaces for dotted
+and nested namespace syntax, namespace notes are parented to the active namespace, and
+`class.hierarchicalNamespaces=false` compacts the semantic model back to the flat dotted namespace
+behavior used by <=11.14. Class semantic and layout goldens were refreshed only under
+`fixtures/class`; non-class snapshot churn was intentionally not kept.
 
 ## Active Task
 
-- Task ID: M15-070
+- Task ID: M15-080
 - Owner: unassigned
-- Files: `crates/merman-core/src/diagrams/class*`, `crates/merman-render/src/class.rs`
-- Validation: Class semantic/layout/SVG tests for dotted and nested namespaces, including disabled hierarchical mode
+- Files: `crates/merman-render/src/svg/parity`
+- Validation: SVG tests covering marker/internal IDs across c4, journey, timeline, and sequence
 - Status: READY
 - Review: Required before task acceptance
 - Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
@@ -56,12 +61,18 @@ was needed because the behavior is render-layer only.
   remain stable unless later work moves label extents into layout.
 - xyChart data-label color preserves the old effective black fallback unless
   `themeVariables.xyChart.dataLabelColor` or `themeVariables.primaryTextColor` is configured.
+- Class namespace baseline is hierarchical by default in the semantic model and layout renderer.
+- `class.hierarchicalNamespaces=false` is applied before layout/SVG rendering so fixture and render
+  paths share one compacted model.
+- Class layout/semantic golden changes are intentionally limited to `fixtures/class`.
 
 ## Blockers
 
-- None known for M15-070. Start from upstream class parser, namespace, and renderer behavior.
+- None known for M15-080. Start from upstream 11.14 duplicate-ID SVG changes and the local marker
+  helpers.
 
 ## Next Recommended Action
 
-- Execute M15-070. Start with upstream class parser/renderer changes and add the smallest public
-  tests for dotted hierarchical namespaces before handling namespace-attached notes.
+- Execute M15-080. Start by locating local marker/internal ID generation across c4, journey,
+  timeline, and sequence, then add the smallest SVG tests proving the diagram SVG ID prefixes the
+  internal IDs without breaking selector compatibility.

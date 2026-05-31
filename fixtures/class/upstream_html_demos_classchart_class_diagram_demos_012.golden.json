@@ -272,21 +272,29 @@
     "namespaces": {
       "Shapes": {
         "id": "Shapes",
+        "label": "Shapes",
         "domId": "classId-Shapes-0",
         "classIds": [
           "Shape",
           "Circle",
           "Square"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       },
       "Vehicles": {
         "id": "Vehicles",
+        "label": "Vehicles",
         "domId": "classId-Vehicles-1",
         "classIds": [
           "Vehicle",
           "Car",
           "Bike"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

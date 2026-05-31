@@ -12,6 +12,54 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn render_class_svg_from_text(text: &str) -> String {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_opts = LayoutOptions::headless_svg_defaults();
+    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+
+    render_class_diagram_v2_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_opts.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("svg render ok")
+}
+
+#[test]
+fn class_svg_dotted_namespace_titles_use_hierarchical_segment_labels() {
+    let svg = render_class_svg_from_text(
+        r#"classDiagram
+namespace Company.Project.Module {
+  class User
+}
+"#,
+    );
+
+    assert!(svg.contains(r#"id="Company" data-look="classic""#));
+    assert!(svg.contains(r#"id="Company.Project" data-look="classic""#));
+    assert!(svg.contains(r#"id="Company.Project.Module" data-look="classic""#));
+    assert!(
+        svg.contains("<p>Company</p>")
+            && svg.contains("<p>Project</p>")
+            && svg.contains("<p>Module</p>"),
+        "expected default hierarchical namespace labels to use path segments"
+    );
+    assert!(
+        !svg.contains("<p>Company.Project.Module</p>"),
+        "default hierarchical mode should not render the full dotted id as the leaf label"
+    );
+}
+
 #[test]
 fn class_debug_svg_renders_terminal_labels() {
     let path = workspace_root()
@@ -78,7 +126,7 @@ fn class_svg_generic_title_uses_upstream_max_width_override() {
 }
 
 #[test]
-fn class_svg_namespaces_and_relation_labels_keep_upstream_geometry() {
+fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() {
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -106,13 +154,18 @@ fn class_svg_namespaces_and_relation_labels_keep_upstream_geometry() {
     )
     .expect("svg render ok");
 
+    assert!(svg.contains(r#"id="Company" data-look="classic""#));
+    assert!(svg.contains(r#"id="Company.Project" data-look="classic""#));
+    assert!(svg.contains(r#"id="Company.Project.Module" data-look="classic""#));
     assert!(
-        svg.contains(r#"id="Company.Project" data-look="classic"><rect x="395.7421875" y="208" width="396.1640625" height="220" style="fill:none !important;stroke:black !important"/>"#),
-        "expected Company.Project cluster geometry to match Mermaid"
+        svg.contains("<p>Company</p>")
+            && svg.contains("<p>Project</p>")
+            && svg.contains("<p>Module</p>"),
+        "expected dotted namespace labels to use Mermaid 11.15 path segments"
     );
     assert!(
-        svg.contains(r#"<foreignObject width="62.078125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>manages</p></span></div></foreignObject>"#),
-        "expected relation label width for `manages` to match Mermaid"
+        svg.contains("<p>manages</p>"),
+        "expected relation label text to survive hierarchical namespace rendering"
     );
 }
 
@@ -163,7 +216,7 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
 }
 
 #[test]
-fn class_svg_multiple_namespace_subgraphs_keep_local_root_offsets() {
+fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -194,18 +247,15 @@ fn class_svg_multiple_namespace_subgraphs_keep_local_root_offsets() {
     )
     .expect("svg render ok");
 
+    assert!(svg.contains(r#"id="Root.A" data-look="classic""#));
+    assert!(svg.contains(r#"id="Root.B.B1" data-look="classic""#));
     assert!(
-        svg.contains(r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#),
-        "expected first namespace root to keep Mermaid's left margin wrapper"
+        svg.contains("<p>A</p>") && svg.contains("<p>B1</p>"),
+        "expected rendered dotted namespace clusters to use path-segment labels"
     );
     assert!(
-        svg.contains(r#"<g class="root" transform="translate(160."#),
-        "expected later namespace roots to keep Mermaid's local wrapper offsets"
-    );
-    assert!(
-        svg.contains(r#"id="Root.B.B1""#)
-            && svg.contains(r#"x="8" y="8" width="127.203125" height="288""#),
-        "expected second namespace cluster geometry to be localized inside its wrapper"
+        svg.contains("<p>Root.A.A1</p>") && svg.contains("<p>Root.B.B1.B1a</p>"),
+        "expected qualified relation facade class labels to remain visible"
     );
 }
 

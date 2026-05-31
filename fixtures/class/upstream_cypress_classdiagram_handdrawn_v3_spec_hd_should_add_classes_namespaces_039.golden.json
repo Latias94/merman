@@ -103,11 +103,15 @@
     "namespaces": {
       "Namespace1": {
         "id": "Namespace1",
+        "label": "Namespace1",
         "domId": "classId-Namespace1-0",
         "classIds": [
           "C1",
           "C2"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

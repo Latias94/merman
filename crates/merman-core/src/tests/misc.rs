@@ -551,6 +551,27 @@ bar [1]"#,
 }
 
 #[test]
+fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("classDiagram\nclass A", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let class = &default.effective_config.as_value()["class"];
+    assert_eq!(class["hierarchicalNamespaces"], json!(true));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"class": {"hierarchicalNamespaces": false}}}%%
+classDiagram
+class A"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let class = &configured.effective_config.as_value()["class"];
+    assert_eq!(class["hierarchicalNamespaces"], json!(false));
+}
+
+#[test]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"

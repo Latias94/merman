@@ -254,20 +254,21 @@ ClickStatement: Vec<Action> = {
 };
 
 NamespaceStatement: Vec<Action> = {
-  "namespace" <ns:Name> StructStart <_n:Newlines> <classes:NamespaceClasses> StructStop => {
-    let mut v = vec![Action::AddNamespace { id: ns.clone() }];
+  "namespace" <ns:Name> <label:ClassLabel?> StructStart <_n:Newlines> <classes:NamespaceClasses> StructStop => {
+    let mut v = vec![Action::AddNamespace { id: ns.clone(), label }];
     let (mut class_actions, class_ids) = classes;
     v.append(&mut class_actions);
     v.push(Action::AddClassesToNamespace { namespace: ns, class_ids });
+    v.push(Action::PopNamespace);
     v
   }
 };
 
 NamespaceClasses: (Vec<Action>, Vec<String>) = {
   => (Vec::new(), Vec::new()),
-  <c:ClassStatementWithId> <rest:NamespaceClassesRest> => {
-    let mut actions = c.1;
-    let mut ids = vec![c.0];
+  <c:NamespaceClassItem> <rest:NamespaceClassesRest> => {
+    let mut actions = c.0;
+    let mut ids = c.1;
     actions.extend(rest.0);
     ids.extend(rest.1);
     (actions, ids)
@@ -275,14 +276,20 @@ NamespaceClasses: (Vec<Action>, Vec<String>) = {
 };
 
 NamespaceClassesRest: (Vec<Action>, Vec<String>) = {
-  <_n:Newlines1> <c:ClassStatementWithId> <rest:NamespaceClassesRest> => {
-    let mut actions = c.1;
-    let mut ids = vec![c.0];
+  <_n:Newlines1> <c:NamespaceClassItem> <rest:NamespaceClassesRest> => {
+    let mut actions = c.0;
+    let mut ids = c.1;
     actions.extend(rest.0);
     ids.extend(rest.1);
     (actions, ids)
   },
   Newlines => (Vec::new(), Vec::new()),
+};
+
+NamespaceClassItem: (Vec<Action>, Vec<String>) = {
+  <c:ClassStatementWithId> => (c.1, vec![c.0]),
+  <n:NoteStatement> => (vec![n], Vec::new()),
+  <ns:NamespaceStatement> => (ns, Vec::new()),
 };
 
 RelationStatement: crate::diagrams::class::RelationData = {

@@ -143,6 +143,7 @@
     "diagramPadding": 20,
     "dividerMargin": 10,
     "hideEmptyMembersBox": false,
+    "hierarchicalNamespaces": true,
     "htmlLabels": false,
     "padding": 12,
     "textHeight": 10,

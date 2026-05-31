@@ -62,13 +62,13 @@ Last updated: 2026-05-31
   Context: Workstream context plus upstream xyChart renderer.
   Handoff: DONE. `showDataLabelOutsideBar` is exposed with the upstream default and override path; SVG bar data labels now honor `themeVariables.xyChart.dataLabelColor` with `primaryTextColor` fallback, and vertical/horizontal outside placement is covered by public SVG tests.
 
-- [ ] M15-070 [owner=unassigned] [deps=M15-010] [scope=crates/merman-core/src/diagrams/class*,crates/merman-render/src/class.rs]
+- [x] M15-070 [owner=codex] [deps=M15-010] [scope=crates/merman-core/src/diagrams/class*,crates/merman-core/src/models/class_diagram.rs,crates/merman-render/src/class.rs,crates/merman-render/src/svg/parity/class/*,fixtures/class]
   Goal: Support class hierarchical namespaces and notes attached to namespaces.
   Validation: Class semantic/layout/SVG tests for dotted and nested namespaces, including disabled hierarchical mode.
   Review: Preserve existing namespace facade behavior.
-  Evidence: `EVIDENCE_AND_GATES.md`
+  Evidence: `cargo nextest run -p merman-core class`; `cargo nextest run -p merman-render class`; `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`; `cargo fmt --check`.
   Context: Workstream context plus upstream class parser/renderer changes.
-  Handoff: Treat config semantics and note placement as separate commits if needed.
+  Handoff: DONE. Class parser/model now supports dotted and nested namespace hierarchy, namespace notes, `class.hierarchicalNamespaces=false`, and refreshed class semantic/layout snapshots.
 
 - [ ] M15-080 [owner=unassigned] [deps=M15-010] [scope=crates/merman-render/src/svg/parity]
   Goal: Prefix internal SVG IDs with the diagram SVG ID where upstream 11.14 changed duplicate-ID behavior.

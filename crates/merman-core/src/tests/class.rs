@@ -82,6 +82,128 @@ namespace Company.Project.Module {
 }
 
 #[test]
+fn parse_diagram_class_hierarchical_dotted_namespace_and_notes() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+namespace Company.Project.Module {
+  class User
+  note "Module scoped note"
+}
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let namespaces = res.model["namespaces"].as_object().unwrap();
+    assert!(namespaces.contains_key("Company"));
+    assert!(namespaces.contains_key("Company.Project"));
+    assert!(namespaces.contains_key("Company.Project.Module"));
+    assert_eq!(namespaces["Company"]["label"], json!("Company"));
+    assert_eq!(namespaces["Company"]["parent"], json!(null));
+    assert_eq!(namespaces["Company"]["explicit"], json!(false));
+    assert_eq!(namespaces["Company.Project"]["label"], json!("Project"));
+    assert_eq!(namespaces["Company.Project"]["parent"], json!("Company"));
+    assert_eq!(namespaces["Company.Project"]["explicit"], json!(false));
+    assert_eq!(
+        namespaces["Company.Project.Module"]["label"],
+        json!("Module")
+    );
+    assert_eq!(
+        namespaces["Company.Project.Module"]["parent"],
+        json!("Company.Project")
+    );
+    assert_eq!(
+        namespaces["Company.Project.Module"]["classIds"],
+        json!(["User"])
+    );
+    assert_eq!(
+        namespaces["Company.Project.Module"]["noteIds"],
+        json!(["note0"])
+    );
+
+    assert_eq!(
+        res.model["classes"]["User"]["parent"],
+        json!("Company.Project.Module")
+    );
+    assert_eq!(
+        res.model["notes"][0]["parent"],
+        json!("Company.Project.Module")
+    );
+    assert_eq!(res.model["notes"][0]["class"], json!(null));
+    assert_eq!(res.model["notes"][0]["text"], json!("Module scoped note"));
+}
+
+#[test]
+fn parse_diagram_class_nested_namespace_syntax_builds_qualified_parents() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+namespace Company {
+  namespace Project {
+    class User
+  }
+}
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.model["namespaces"]["Company"]["explicit"], json!(true));
+    assert_eq!(
+        res.model["namespaces"]["Company.Project"]["parent"],
+        json!("Company")
+    );
+    assert_eq!(
+        res.model["namespaces"]["Company.Project"]["explicit"],
+        json!(true)
+    );
+    assert_eq!(
+        res.model["classes"]["User"]["parent"],
+        json!("Company.Project")
+    );
+}
+
+#[test]
+fn parse_diagram_class_hierarchical_namespaces_can_be_disabled() {
+    let engine = Engine::new();
+    let text = r#"---
+config:
+  class:
+    hierarchicalNamespaces: false
+---
+classDiagram
+namespace Company.Project.Module {
+  class User
+  note "Module scoped note"
+}
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let namespaces = res.model["namespaces"].as_object().unwrap();
+    assert_eq!(
+        namespaces.keys().cloned().collect::<Vec<_>>(),
+        vec!["Company.Project.Module"]
+    );
+    assert_eq!(
+        namespaces["Company.Project.Module"]["label"],
+        json!("Company.Project.Module")
+    );
+    assert_eq!(namespaces["Company.Project.Module"]["parent"], json!(null));
+    assert_eq!(
+        res.model["classes"]["User"]["parent"],
+        json!("Company.Project.Module")
+    );
+    assert_eq!(
+        res.model["notes"][0]["parent"],
+        json!("Company.Project.Module")
+    );
+}
+
+#[test]
 fn parse_diagram_class_relation_only_generic_classes_keep_type_params() {
     let engine = Engine::new();
     let text = r#"classDiagram

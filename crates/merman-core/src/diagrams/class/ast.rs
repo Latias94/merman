@@ -5,11 +5,13 @@ pub(crate) enum Action {
 
     AddNamespace {
         id: String,
+        label: Option<String>,
     },
     AddClassesToNamespace {
         namespace: String,
         class_ids: Vec<String>,
     },
+    PopNamespace,
 
     AddClass {
         id: String,

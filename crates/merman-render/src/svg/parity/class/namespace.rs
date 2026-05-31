@@ -8,7 +8,7 @@ use super::super::{
     escape_attr, escape_attr_display, escape_xml, escape_xml_display, fmt, fmt_into,
 };
 use super::bounds::include_xywh;
-use super::{ClassSvgModel, ClassSvgNode};
+use super::{ClassSvgInterface, ClassSvgModel, ClassSvgNode, ClassSvgNote};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct ClassNamespaceSubgraphState<'a> {
@@ -19,14 +19,17 @@ pub(super) struct ClassNamespaceSubgraphState<'a> {
 pub(super) fn class_order_ids_for_namespace_subgraphs<'a>(
     ordered_ids: Vec<&'a str>,
     namespace_keys: &[&'a str],
-    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
 ) -> Vec<&'a str> {
     let mut inner: Vec<&str> = Vec::new();
     let mut used: HashSet<&str> = HashSet::new();
 
     for ns_id in namespace_keys {
         for id in &ordered_ids {
-            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            let parent =
+                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
             if parent == Some(*ns_id) && used.insert(*id) {
                 inner.push(*id);
             }
@@ -47,6 +50,25 @@ pub(super) struct ClassNodeRenderOrder<'a> {
     pub ordered_ids: Vec<&'a str>,
     pub namespace_key_set: HashSet<&'a str>,
     pub clusters_by_id: HashMap<&'a str, &'a LayoutCluster>,
+}
+
+pub(super) fn class_render_parent_for_id<'a>(
+    id: &'a str,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
+) -> Option<&'a str> {
+    if let Some(node) = class_nodes_by_id.get(id) {
+        return node.parent.as_deref();
+    }
+    if let Some(note) = note_by_id.get(id) {
+        return note.parent.as_deref();
+    }
+    iface_by_id.get(id).and_then(|iface| {
+        class_nodes_by_id
+            .get(iface.class_id.as_str())
+            .and_then(|node| node.parent.as_deref())
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -199,7 +221,9 @@ fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
 pub(super) fn build_class_node_render_order<'a>(
     layout: &'a ClassDiagramV2Layout,
     model: &'a ClassSvgModel,
-    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
     wrap_nodes_root: bool,
     single_namespace_id: Option<&'a str>,
     render_namespaces_as_subgraphs: bool,
@@ -248,7 +272,8 @@ pub(super) fn build_class_node_render_order<'a>(
         let mut inner: Vec<&str> = Vec::new();
         let mut outer: Vec<&str> = Vec::new();
         for id in &ordered_ids {
-            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            let parent =
+                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
             if single_namespace_id.is_some_and(|ns| parent == Some(ns)) {
                 inner.push(*id);
             } else {
@@ -273,6 +298,8 @@ pub(super) fn build_class_node_render_order<'a>(
             ordered_ids,
             &namespace_keys,
             class_nodes_by_id,
+            note_by_id,
+            iface_by_id,
         );
     }
 

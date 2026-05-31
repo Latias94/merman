@@ -70,10 +70,14 @@
     "namespaces": {
       "A::B": {
         "id": "A::B",
+        "label": "A::B",
         "domId": "classId-A::B-0",
         "classIds": [
           "IPC::Sender"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

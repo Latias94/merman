@@ -94,10 +94,14 @@
     "namespaces": {
       "testingNamespace": {
         "id": "testingNamespace",
+        "label": "testingNamespace",
         "domId": "classId-testingNamespace-0",
         "classIds": [
           "This\nTitle\nHas\nMany\nNewlines"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

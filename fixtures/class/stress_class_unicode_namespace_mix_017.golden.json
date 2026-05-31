@@ -152,17 +152,25 @@
     "namespaces": {
       "Core": {
         "id": "Core",
+        "label": "Core",
         "domId": "classId-Core-0",
         "classIds": [
           "Alpha"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       },
       "支付": {
         "id": "支付",
+        "label": "支付",
         "domId": "classId-支付-1",
         "classIds": [
           "订单"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

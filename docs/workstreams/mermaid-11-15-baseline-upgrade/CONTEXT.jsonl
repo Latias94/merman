@@ -33,3 +33,11 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js","reason":"Upstream theme fallback for xyChart dataLabelColor from primaryTextColor."}
 {"file":"crates/merman-render/src/svg/parity/xychart.rs","reason":"Local xyChart SVG renderer now supports outside bar labels and configured label color."}
 {"file":"crates/merman-render/tests/xychart_svg_test.rs","reason":"Public SVG tests for vertical and horizontal outside bar labels with configured color."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts","reason":"Upstream class namespace stack, ancestor creation, explicit namespace tracking, namespace notes, and compact hierarchicalNamespaces=false behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/parser/classDiagram.jison","reason":"Upstream class grammar allows namespace bodies to contain nested namespaces and notes."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classRenderer-v2.ts","reason":"Upstream class hierarchical and compact namespace rendering behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream class.hierarchicalNamespaces default true and schema field."}
+{"file":"crates/merman-core/src/diagrams/class/db.rs","reason":"Local class namespace stack, ancestor namespace model, namespace notes, and compact hierarchicalNamespaces=false model transform."}
+{"file":"crates/merman-render/src/class.rs","reason":"Local class compound layout parent support for hierarchical namespaces and namespace notes."}
+{"file":"crates/merman-render/tests/class_layout_test.rs","reason":"Public layout tests for hierarchical dotted namespaces, namespace notes, and disabled hierarchical mode."}
+{"file":"crates/merman-render/tests/class_svg_test.rs","reason":"Public SVG tests for hierarchical namespace labels and namespace subgraph rendering."}
