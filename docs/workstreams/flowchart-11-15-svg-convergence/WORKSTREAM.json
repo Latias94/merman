@@ -45,7 +45,8 @@
     "docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md",
     "docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md",
     "target/upstream-svgs-11-15-flowchart",
-    "target/compare/flowchart_report_parity.md"
+    "target/compare/flowchart_report.md",
+    "target/compare/xml/xml_report.md"
   ],
   "adr_refs": [
     "docs/adr/0001-upstream-baseline.md",

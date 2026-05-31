@@ -187,6 +187,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             continue;
         };
 
+        if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason("flowchart", stem) {
+            skipped.push(format!("skipped {stem}: {reason}"));
+            continue;
+        }
+
         let upstream_path = upstream_dir.join(format!("{stem}.svg"));
         let upstream_svg = match fs::read_to_string(&upstream_path) {
             Ok(v) => v,

@@ -16,6 +16,10 @@ fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) ->
         return false;
     };
 
+    if crate::cmd::upstream_svg_baseline_skip_reason(diagram, name).is_some() {
+        return true;
+    }
+
     if diagram == "gantt"
         && matches!(
             name,
@@ -33,11 +37,6 @@ fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) ->
         return true;
     }
     if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
-        return true;
-    }
-    if diagram == "sequence" && name == "stress_end_keyword_016.mmd" {
-        // Mermaid 11.15 rejects `(end)` as a participant id. Keep the fixture for local parser
-        // coverage, but do not require an upstream SVG baseline that cannot be regenerated.
         return true;
     }
     if diagram == "c4" {
@@ -67,6 +66,10 @@ fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool
         return false;
     };
 
+    if crate::cmd::upstream_svg_baseline_skip_reason(diagram, name).is_some() {
+        return true;
+    }
+
     if diagram == "gantt"
         && matches!(
             name,
@@ -83,9 +86,6 @@ fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool
         return true;
     }
     if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
-        return true;
-    }
-    if diagram == "sequence" && name == "stress_end_keyword_016.mmd" {
         return true;
     }
     if diagram == "c4" {

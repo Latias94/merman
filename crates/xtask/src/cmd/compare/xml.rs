@@ -9,10 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str> {
-    if diagram == "sequence" && stem == "stress_end_keyword_016" {
-        // Mermaid 11.15 rejects `(end)` as a sequence participant id. Keep the fixture and any
-        // stale SVG on disk for local parser coverage/history, but exclude it from 11.15 DOM gates.
-        return Some("upstream Mermaid 11.15 cannot regenerate this SVG baseline");
+    if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason(diagram, stem) {
+        return Some(reason);
     }
 
     if diagram == "flowchart" && stem == "upstream_html_demos_flowchart_elk_flowchart_elk_001" {
@@ -635,7 +633,7 @@ mod tests {
     fn svg_xml_compare_skip_reason_keeps_known_sequence_regen_skip() {
         assert_eq!(
             svg_xml_compare_skip_reason("sequence", "stress_end_keyword_016"),
-            Some("upstream Mermaid 11.15 cannot regenerate this SVG baseline")
+            Some("upstream Mermaid 11.15 rejects `(end)` as a participant id")
         );
         assert_eq!(
             svg_xml_compare_skip_reason("sequence", "stress_end_keyword_015"),
@@ -654,6 +652,19 @@ mod tests {
         assert_eq!(
             svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
             None
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_covers_flowchart_parser_only_svg_baselines() {
+        assert_eq!(
+            svg_xml_compare_skip_reason(
+                "flowchart",
+                "upstream_html_demos_flowchart_flowchart_040_parser_only_katex"
+            ),
+            Some(
+                "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture"
+            )
         );
     }
 }

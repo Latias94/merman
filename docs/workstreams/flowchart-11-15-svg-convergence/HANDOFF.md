@@ -23,20 +23,20 @@ and trimmed shapeData markdown block trailing newlines. The latest supported-DOM
 aligned non-markdown subgraph title wrapping, empty subgraph node ids, non-markdown edge label
 paragraph wrappers, and literal `\n` handling in `nonMarkdownToHTML`. The supported fresh Flowchart
 comparison now passes with zero canonical XML mismatches and one documented skip for the unsupported
-`flowchart-elk` local layout family.
+`flowchart-elk` local layout family. Stored Flowchart upstream SVG baselines have now been refreshed
+to Mermaid 11.15: 1069 SVGs changed and 4 stale parser-only KaTeX SVG baselines were removed.
+Both stored Flowchart gates pass.
 
 ## Active Task
 
-- Task ID: F115-080
-- Owner: codex
-- Files: `fixtures/upstream-svgs/flowchart`, `crates/xtask/src/cmd/compare`,
-  `crates/merman-render/src/svg/parity/flowchart`
-- Validation: regenerate stored Flowchart upstream SVG baselines, run
-  `compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`, and confirm the stored
-  gate honors the same documented `flowchart-elk` out-of-matrix policy.
+- Task ID: F115-090
+- Owner: planner
+- Files: `docs/workstreams/flowchart-11-15-svg-convergence`,
+  `docs/workstreams/mermaid-11-15-complete-adaptation`
+- Validation: review/verify the Flowchart lane, update umbrella evidence, and either close this
+  child lane or leave only explicit follow-on work such as ELK layout support.
 - Status: READY
-- Review: Compare against fresh Mermaid 11.15 output before changing stored baselines. Keep stored
-  baseline churn separate from renderer code when practical.
+- Review: Do not reopen Flowchart DOM work unless a fresh or stored Flowchart gate regresses.
 - Evidence: `docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -68,6 +68,9 @@ comparison now passes with zero canonical XML mismatches and one documented skip
   `compare-svg-xml` gate skips only
   `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason until a
   dedicated ELK layout lane lands.
+- The four historical stored `*_parser_only_katex.svg` Flowchart baselines are stale under Mermaid
+  11.15 and were removed. The shared `xtask` upstream SVG policy now skips those fixtures, plus the
+  existing ellipse parser-only fixture, for upstream SVG generation/check/compare.
 
 ## Blockers
 
@@ -76,11 +79,13 @@ comparison now passes with zero canonical XML mismatches and one documented skip
 
 ## Next Recommended Action
 
-Run F115-080: refresh stored Flowchart upstream SVG baselines, then run the stored Flowchart DOM
-gate. Preserve the fresh gate:
+Run F115-090 closeout for the Flowchart child lane, then continue the umbrella Mermaid 11.15
+campaign with the remaining ER/Class failures. Preserve these Flowchart gates:
 
 ```bash
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --dom-mode parity --dom-decimals 3
 ```
 
-It currently passes with `Mismatches (0)` and one documented `flowchart-elk` skip.
+All currently pass with only the documented `flowchart-elk` skip.

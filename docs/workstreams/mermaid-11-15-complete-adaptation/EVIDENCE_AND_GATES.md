@@ -9,8 +9,8 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
 ```
 
-On 2026-05-31 this failed, proving the implemented matrix is not yet verifiably green against the
-current stored upstream SVG baselines.
+As of 2026-06-01 this fails only for the current ER/Class remainder. Flowchart has been removed
+from the full-gate failure set after the stored Mermaid 11.15 baseline refresh.
 
 ## Gate Set
 
@@ -282,6 +282,18 @@ git diff --check
   - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
     passed. `target/compare/xml/xml_report.md` reports `Mismatches (0)` and one documented
     `flowchart-elk` skip.
+  - Stored Flowchart baselines were refreshed to Mermaid 11.15: 1069 SVG files changed and 4 stale
+    parser-only KaTeX SVG baselines were removed because upstream Mermaid 11.15 no longer
+    regenerates them.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/flowchart_report.md` reports `All fixtures matched` plus the documented
+    `flowchart-elk` skip.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/xml/xml_report.md` reports `Mismatches (0)` plus the documented
+    `flowchart-elk` skip.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed only for the current non-Flowchart remainder: ER has 1 DOM mismatch and Class has 14 DOM
+    mismatches.
 
 ## Evidence Anchors
 

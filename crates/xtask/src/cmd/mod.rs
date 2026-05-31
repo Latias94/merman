@@ -9,6 +9,7 @@ pub(crate) mod overrides;
 pub(crate) mod paths;
 pub(crate) mod root_override_audit;
 pub(crate) mod snapshots;
+pub(crate) mod upstream_svg_policy;
 pub(crate) mod verify;
 
 pub(crate) use audit::*;
@@ -22,4 +23,5 @@ pub(crate) use overrides::*;
 pub(crate) use paths::*;
 pub(crate) use root_override_audit::*;
 pub(crate) use snapshots::*;
+pub(crate) use upstream_svg_policy::*;
 pub(crate) use verify::*;

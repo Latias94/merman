@@ -114,7 +114,7 @@ Last updated: 2026-06-01
 
 ## M3 - Fresh Full Gate And Stored Baseline Refresh
 
-- [ ] F115-080 [owner=codex] [deps=F115-030,F115-040,F115-050,F115-060,F115-070] [scope=fixtures/upstream-svgs/flowchart,crates/merman-render/src/svg/parity/flowchart]
+- [x] F115-080 [owner=codex] [deps=F115-030,F115-040,F115-050,F115-060,F115-070] [scope=fixtures/upstream-svgs/flowchart,crates/merman-render/src/svg/parity/flowchart]
   Goal: Make the supported Flowchart corpus green against fresh Mermaid 11.15 output, then refresh
   stored Flowchart upstream SVG baselines.
   Validation: `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`;
@@ -123,8 +123,11 @@ Last updated: 2026-06-01
   Review: Stored baseline churn must be staged separately from renderer code when practical.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  Handoff: READY. Fresh supported Flowchart parity is green with the documented `flowchart-elk`
-  skip. Refresh stored Flowchart upstream SVG baselines next, then run the stored Flowchart gate.
+  Handoff: DONE. Stored Flowchart upstream SVG baselines were refreshed to Mermaid 11.15. The
+  refresh updated 1069 SVGs and removed 4 stale parser-only KaTeX SVG baselines that upstream
+  Mermaid 11.15 no longer regenerates. `compare-flowchart-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` and stored `compare-svg-xml --check --diagram flowchart --dom-mode parity
+  --dom-decimals 3` both pass with only the documented `flowchart-elk` skip.
 
 ## M4 - Closeout And Umbrella Reintegration
 
@@ -136,4 +139,5 @@ Last updated: 2026-06-01
   Review: No partial renderer convergence may be reported as complete without fresh gate evidence.
   Evidence: this workstream and `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
   Context: this workstream and umbrella workstream.
-  Handoff: Not started.
+  Handoff: READY. Flowchart no longer appears in the umbrella `compare-all-svgs` failure set; the
+  current remaining failures are ER and Class.

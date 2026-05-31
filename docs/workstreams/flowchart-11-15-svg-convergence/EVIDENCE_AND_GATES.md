@@ -46,6 +46,7 @@ This is authoritative for renderer convergence before stored baseline refresh.
 ```bash
 cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --out fixtures/upstream-svgs
 cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --dom-mode parity --dom-decimals 3
 ```
 
 Run only after the fresh Flowchart gate is green or after documented skips are in place.
@@ -342,6 +343,33 @@ git diff --check
   - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
     passed. `target/compare/xml/xml_report.md` reports `Mismatches (0)` and `Skipped (1)` for the
     documented `flowchart-elk` fixture.
+- 2026-06-01 F115-080 stored Flowchart baseline refresh:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --out fixtures/upstream-svgs`:
+    the shell command timed out after 15 minutes, but the original `xtask` process continued writing
+    Flowchart SVG baselines and exited after reaching the `upstream_pkgtests_subgraph_*` fixtures.
+  - The stored Flowchart baseline set now has 1070 SVG files. The refresh changed 1069 SVGs and
+    removed 4 stale parser-only KaTeX SVG baselines that Mermaid 11.15 does not regenerate:
+    `upstream_html_demos_flowchart_flowchart_040_parser_only_katex`,
+    `upstream_html_demos_flowchart_flowchart_042_parser_only_katex`,
+    `upstream_html_demos_flowchart_flowchart_044_parser_only_katex`, and
+    `upstream_html_demos_flowchart_graph_039_parser_only_katex`.
+  - Added a shared `xtask` upstream SVG baseline skip policy so generation/check/compare agree on
+    the known upstream-render gaps: the four parser-only KaTeX HTML-demo fixtures, the existing
+    ellipse parser-only fixture, and the existing Sequence `(end)` fixture.
+  - `cargo nextest run -p xtask upstream_svg_baseline_skip_reason svg_xml_compare_skip_reason`:
+    passed, 4 tests.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed. `target/compare/flowchart_report.md` reports `All fixtures matched` plus the documented
+    `flowchart-elk` skip.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --dom-mode parity --dom-decimals 3`:
+    passed. `target/compare/xml/xml_report.md` reports `Mismatches (0)` plus the documented
+    `flowchart-elk` skip.
+  - `cargo nextest run -p merman-render flowchart`: passed, 87 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed only for the current non-Flowchart remainder: ER has 1 DOM mismatch and Class has 14 DOM
+    mismatches. Flowchart no longer appears in the full-gate failure set.
 
 ## Evidence Anchors
 
@@ -350,7 +378,7 @@ git diff --check
 - `docs/workstreams/flowchart-11-15-svg-convergence/MILESTONES.md`
 - `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
 - `target/upstream-svgs-11-15-flowchart`
-- `target/compare/flowchart_report_parity.md`
+- `target/compare/flowchart_report.md`
 - `target/compare/xml/xml_report.md`
 
 ## Notes
