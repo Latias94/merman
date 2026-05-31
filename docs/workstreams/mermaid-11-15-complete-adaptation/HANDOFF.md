@@ -9,9 +9,10 @@ The umbrella campaign is open. The repo baseline points at Mermaid `11.15.0`, ge
 verify, and the Pie 11.15 lane is closed. M15C-030 removed active 11.12.3 report labels. M15C-040
 has landed renderer fixes for Sequence central connections, Sequence 11.15 metadata, C4 scoped
 symbols/type labels, and Journey scoped task-line ids. Fresh 11.15 probes are green for
-`sequence/basic`, `sequence/central`, full C4, and full Journey. Full implemented-matrix SVG DOM
-parity is still red until stored upstream SVG baselines are refreshed and Timeline's fresh 11.15
-renderer/model deltas are closed.
+`sequence/basic`, `sequence/central`, full C4, and full Journey. C4 and Journey stored upstream SVG
+baselines have been refreshed and now pass the default stored-fixture compare. Full implemented
+matrix SVG DOM parity is still red: current split is sequence=322, timeline=91, sankey=24, class=9,
+flowchart=1, xychart=1.
 
 ## Active Task
 
@@ -39,9 +40,13 @@ renderer/model deltas are closed.
   message, and note `data-*` attributes.
 - Fresh C4 11.15 output scopes base symbol ids (`computer`, `database`, `clock`) by SVG id and
   uses updated type-label text lengths for `system`, `system_db`, `system_queue`, and
-  `external_person`. Local C4 now matches the fresh 11.15 full-diagram target.
+  `external_person`. Local C4 now matches the fresh 11.15 full-diagram target, and stored C4 SVG
+  baselines have been refreshed.
 - Fresh Journey 11.15 output scopes task-line ids by SVG id. Local Journey now matches the fresh
-  11.15 full-diagram target.
+  11.15 full-diagram target, and stored Journey SVG baselines have been refreshed.
+- Full fresh Sequence 11.15 generation produced 322 SVGs, but full fresh compare still failed with
+  121 mismatches. Do not refresh stored Sequence baselines until Sequence residuals are closed or
+  explicitly split.
 - Fresh Timeline 11.15 output still does not match local output: representative deltas include
   scoped node ids such as `<svg-id>-node-0` versus local `node-undefined`, wrapper class/DOM shape
   differences, and multiline/tspan differences.
@@ -54,10 +59,11 @@ renderer/model deltas are closed.
   local scoped-id direction is correct there; Timeline needs renderer convergence rather than an
   unqualified baseline refresh.
 - Full stored upstream SVG refresh was intentionally not done in one batch. `fixtures/upstream-svgs`
-  may still contain stale 11.12-era marker ids until diagram-scoped refreshes land.
+  still contains stale 11.12-era Sequence and Timeline marker ids until those diagrams converge.
 
 ## Next Recommended Action
 
-Continue M15C-040 by either refreshing stored Sequence/C4/Journey upstream SVG baselines in
-diagram-scoped commits or splitting a Timeline-specific convergence task. Timeline should be
-debugged against `target/upstream-svgs-11-15-timeline` before its stored baselines are refreshed.
+Continue M15C-040 by splitting or running Sequence and Timeline convergence tasks. Sequence should
+be debugged against `target/upstream-svgs-11-15-sequence`; Timeline should be debugged against
+`target/upstream-svgs-11-15-timeline`. Sankey/Class/XYChart still need fresh 11.15 baseline checks
+before code changes.

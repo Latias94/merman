@@ -139,6 +139,26 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
   - Stored upstream SVG baselines were not refreshed in this code-fix slice.
+- 2026-05-31 M15C-040 C4/Journey stored baseline refresh and Sequence full-corpus check:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram sequence --out target/upstream-svgs-11-15-sequence`:
+    generated 322 fresh Mermaid 11.15 Sequence SVGs. The command took longer than the initial
+    5-minute shell timeout, but the original `xtask` process continued and completed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram sequence --upstream-root target/upstream-svgs-11-15-sequence --dom-mode parity --dom-decimals 3`:
+    failed with 121 mismatches. Dominant observed categories include control-structure data/class
+    differences, participant type SVG/data differences, note ordering, and wrapped text/tspan
+    differences. Stored Sequence baselines were not refreshed.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram c4 --out fixtures/upstream-svgs`: passed and
+    refreshed 51 stored C4 SVG baselines.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram journey --out fixtures/upstream-svgs`:
+    passed and refreshed 26 stored Journey SVG baselines; Mermaid CLI printed the same upstream NaN
+    attribute warnings observed during the target probe.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram c4 --dom-mode parity --dom-decimals 3`:
+    passed against stored fixtures.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram journey --dom-mode parity --dom-decimals 3`:
+    passed against stored fixtures.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed with the current stored-baseline split: sequence=322, timeline=91, sankey=24, class=9,
+    flowchart=1, xychart=1. C4 and Journey are now green in the full gate.
 
 ## Evidence Anchors
 

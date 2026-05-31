@@ -46,10 +46,11 @@ Last updated: 2026-05-31
   Review: Stage baseline churn separately from renderer code fixes when possible.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  Handoff: IN_PROGRESS. Sequence fresh 11.15 probes are green for `basic` and `central`; C4 and
-  Journey fresh 11.15 full-diagram probes are green after scoped-id and C4 type-label parity fixes.
-  Timeline fresh 11.15 still has broad renderer/model deltas and needs a separate convergence
-  slice. Stored upstream SVG baseline refresh is not complete.
+  Handoff: IN_PROGRESS. Sequence fresh 11.15 probes are green for `basic` and `central`, but the
+  full fresh Sequence corpus still has 121 DOM mismatches, so stored Sequence baselines were not
+  refreshed. C4 and Journey fresh 11.15 full-diagram probes are green, and their stored upstream SVG
+  baselines have been refreshed. Timeline fresh 11.15 still has broad renderer/model deltas and
+  needs a separate convergence slice.
 
 ## M2 - Residual Existing-Matrix Parity
 
