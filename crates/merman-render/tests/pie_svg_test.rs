@@ -139,3 +139,80 @@ pie
         "invalid donutHole should fall back to solid slices: {svg}"
     );
 }
+
+#[test]
+fn pie_legend_position_config_controls_layout_regions() {
+    let diagram = |position: &str| {
+        layout_pie_from_text(&format!(
+            r#"%%{{init: {{"pie": {{"legendPosition": "{position}"}}}}}}%%
+pie
+  "A" : 1
+  "B" : 1
+"#
+        ))
+    };
+
+    let right = diagram("right");
+    let right_bounds = right.bounds.as_ref().expect("right bounds");
+    assert!(right_bounds.max_x > 490.0);
+    assert_eq!(right_bounds.max_y, 450.0);
+    assert_eq!(right.legend_x, 216.0);
+    assert_eq!(right.legend_items[0].y, -22.0);
+
+    let top = diagram("top");
+    let top_bounds = top.bounds.as_ref().expect("top bounds");
+    assert_eq!(top_bounds.max_x, 490.0);
+    assert_eq!(top_bounds.max_y, 494.0);
+    assert!(top.legend_x < 0.0);
+    assert_eq!(top.legend_items[0].y, -185.0);
+
+    let bottom = diagram("bottom");
+    let bottom_bounds = bottom.bounds.as_ref().expect("bottom bounds");
+    assert_eq!(bottom_bounds.max_x, 490.0);
+    assert_eq!(bottom_bounds.max_y, 494.0);
+    assert!(bottom.legend_x < 0.0);
+    assert_eq!(bottom.legend_items[0].y, 207.0);
+
+    let left = diagram("left");
+    let left_bounds = left.bounds.as_ref().expect("left bounds");
+    assert!(left_bounds.max_x > 490.0);
+    assert_eq!(left_bounds.max_y, 450.0);
+    assert_eq!(left.legend_x, -207.0);
+    assert_eq!(left.legend_items[0].y, -22.0);
+
+    let center = diagram("center");
+    let center_bounds = center.bounds.as_ref().expect("center bounds");
+    assert_eq!(center_bounds.max_x, 490.0);
+    assert_eq!(center_bounds.max_y, 450.0);
+    assert!(center.legend_x < 0.0);
+    assert_eq!(center.legend_items[0].y, -22.0);
+}
+
+#[test]
+fn pie_legend_position_top_and_left_move_the_pie_group() {
+    let top_svg = render_pie_from_text(
+        r#"%%{init: {"pie": {"legendPosition": "top"}}}%%
+pie
+  "A" : 1
+  "B" : 1
+"#,
+    );
+    assert!(top_svg.contains(r#"viewBox="0 0 490 494""#));
+    assert!(
+        top_svg.contains(r#"<g transform="translate(0,66)">"#),
+        "top legend should move the pie group below the legend: {top_svg}"
+    );
+
+    let left_svg = render_pie_from_text(
+        r#"%%{init: {"pie": {"legendPosition": "left"}}}%%
+pie
+  "A" : 1
+  "B" : 1
+"#,
+    );
+    assert!(
+        left_svg.contains(r#"<g transform="translate(32.203125,0)">"#),
+        "left legend should move the pie group right by legend width: {left_svg}"
+    );
+    assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));
+}

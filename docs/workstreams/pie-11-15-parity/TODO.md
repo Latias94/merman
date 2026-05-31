@@ -50,13 +50,14 @@ Last updated: 2026-05-31
   Handoff: DONE. Layout now reads `pie.textPosition`; SVG path generation renders valid donut
   holes as annular arcs and falls back to solid slices for invalid values.
 
-- [ ] PIE-050 [owner=codex] [deps=PIE-030] [scope=crates/merman-render/src/pie.rs,crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/tests]
+- [x] PIE-050 [owner=codex] [deps=PIE-030] [scope=crates/merman-render/src/pie.rs,crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/tests]
   Goal: Implement `pie.legendPosition` for `top`, `bottom`, `left`, `right`, and `center`.
   Validation: `cargo nextest run -p merman-render pie`; selected `compare-pie-svgs` parity checks.
   Review: Confirm viewBox dimensions and pie/legend transforms match upstream layout rules.
   Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
   Context: upstream `pieRenderer.ts`.
-  Handoff: Not started.
+  Handoff: DONE. Layout now computes legend bounds and pie offsets per legend position, and SVG
+  rendering moves the pie group for `top` and `left` while keeping default/right output stable.
 
 - [ ] PIE-060 [owner=codex] [deps=PIE-030] [scope=crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/src/svg/parity/css.rs,crates/merman-render/tests]
   Goal: Implement `pie.highlightSlice` classes and Pie highlight CSS.

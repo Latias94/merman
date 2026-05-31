@@ -111,6 +111,27 @@ git diff --check
     layout goldens.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-05-31 PIE-050 red:
+  - `cargo nextest run -p merman-render pie_legend_position_config_controls_layout_regions`:
+    failed because layout bounds and legend positions were still hardcoded for the default-right
+    legend case.
+  - `cargo nextest run -p merman-render pie_legend_position_top_and_left_move_the_pie_group`:
+    failed because the pie group was never offset for `top` or `left`.
+- 2026-05-31 PIE-050 green:
+  - Result: Pie layout now derives width/height, legend placement, and pie offsets from
+    `pie.legendPosition`, and SVG rendering conditionally moves the pie group for `top` and `left`.
+  - `cargo nextest run -p merman-render pie_legend_position_config_controls_layout_regions`:
+    passed.
+  - `cargo nextest run -p merman-render pie_legend_position_top_and_left_move_the_pie_group`:
+    passed.
+  - `cargo nextest run -p merman-render pie`: passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

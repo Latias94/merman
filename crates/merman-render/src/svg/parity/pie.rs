@@ -152,6 +152,28 @@ pub(super) fn render_pie_diagram_svg_model(
         x = super::fmt(layout.center_x),
         y = super::fmt(layout.center_y)
     );
+
+    let legend_position = crate::pie::pie_legend_position(effective_config);
+    let pie_offset_x = if legend_position == crate::pie::PieLegendPosition::Left {
+        (vb_w - 490.0).max(0.0)
+    } else {
+        0.0
+    };
+    let pie_offset_y = if legend_position == crate::pie::PieLegendPosition::Top {
+        layout.legend_step_y * ((layout.legend_items.len() as f64) + 1.0)
+    } else {
+        0.0
+    };
+    let has_pie_offset = pie_offset_x != 0.0 || pie_offset_y != 0.0;
+    if has_pie_offset {
+        let _ = write!(
+            &mut out,
+            r#"<g transform="translate({x},{y})">"#,
+            x = super::fmt(pie_offset_x),
+            y = super::fmt(pie_offset_y)
+        );
+    }
+
     let _ = write!(
         &mut out,
         r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
@@ -233,6 +255,10 @@ pub(super) fn render_pie_diagram_svg_model(
             y = super::fmt(slice.text_y),
             text = super::escape_xml(&format!("{}%", slice.percent))
         );
+    }
+
+    if has_pie_offset {
+        out.push_str("</g>");
     }
 
     match model.title.as_deref() {
