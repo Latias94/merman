@@ -479,6 +479,130 @@ pub(super) fn plan_top_down_direct_route(
     Some(RoutePlan { cells, labels })
 }
 
+pub(super) fn plan_top_down_bent_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    if to.y <= from.center_y() + 1 {
+        return None;
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let source_y = from.center_y();
+    let target_x = to.center_x();
+    let end_y = to.y - 1;
+    let mut cells = Vec::new();
+
+    if target_x > from.center_x() {
+        cells.push(edge_line_cell(
+            from.right(),
+            source_y,
+            charset.right_connector,
+        ));
+        for x in (from.right() + 1)..target_x {
+            cells.push(route_cell(x, source_y, horizontal));
+        }
+    } else {
+        cells.push(edge_line_cell(from.x, source_y, charset.left_connector));
+        for x in (target_x + 1)..from.x {
+            cells.push(route_cell(x, source_y, horizontal));
+        }
+    }
+
+    cells.push(route_cell(target_x, source_y, charset.corner_down_right));
+    for y in (source_y + 1)..end_y {
+        cells.push(route_cell(target_x, y, vertical));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(target_x, end_y, vertical),
+        GraphEdgeArrow::Point => edge_arrow_cell(target_x, end_y, charset.arrow_down),
+    });
+
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord {
+            x: target_x,
+            y: source_y + 1,
+        },
+        CanvasCoord {
+            x: target_x,
+            y: end_y,
+        },
+    )
+    .into_iter()
+    .collect();
+
+    Some(RoutePlan { cells, labels })
+}
+
+pub(super) fn plan_top_down_back_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let lane_x = top_down_back_edge_lane_x(from, to);
+    let source_y = from.center_y();
+    let target_y = to.center_y();
+    if source_y <= target_y || lane_x <= from.right() {
+        return None;
+    }
+
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let mut cells = vec![edge_line_cell(
+        from.right(),
+        source_y,
+        charset.right_connector,
+    )];
+
+    for x in (from.right() + 1)..lane_x {
+        cells.push(route_cell(x, source_y, horizontal));
+    }
+    cells.push(route_cell(lane_x, source_y, charset.corner_right_up));
+
+    for y in (target_y + 1)..source_y {
+        cells.push(route_cell(lane_x, y, vertical));
+    }
+    cells.push(route_cell(lane_x, target_y, charset.top_right));
+
+    match edge.arrow {
+        GraphEdgeArrow::Open => {
+            for x in (to.right() + 1)..lane_x {
+                cells.push(route_cell(x, target_y, horizontal));
+            }
+        }
+        GraphEdgeArrow::Point => {
+            cells.push(edge_arrow_cell(
+                to.right() + 1,
+                target_y,
+                charset.arrow_left,
+            ));
+            for x in (to.right() + 2)..lane_x {
+                cells.push(route_cell(x, target_y, horizontal));
+            }
+        }
+    }
+    let labels = planned_label(
+        edge.label.as_deref(),
+        CanvasCoord {
+            x: lane_x,
+            y: target_y,
+        },
+        CanvasCoord {
+            x: lane_x,
+            y: source_y,
+        },
+    )
+    .into_iter()
+    .collect();
+
+    Some(RoutePlan { cells, labels })
+}
+
 fn plan_left_right_basic_down_then_right_route(
     from: &NodeLayout,
     to: &NodeLayout,
@@ -826,6 +950,10 @@ pub(super) fn self_loop_bottom_y_for_edges(
     } else {
         self_loop_bottom_y(from)
     }
+}
+
+pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {
+    from.right().max(to.right()) + 4
 }
 
 fn self_loop_has_right_neighbor(layouts: &[NodeLayout], from: &NodeLayout) -> bool {
@@ -1295,6 +1423,107 @@ mod tests {
             ]
         );
         assert!(plan.labels.is_empty());
+    }
+
+    #[test]
+    fn top_down_bent_route_plans_right_bend_arrow_and_label() {
+        let from = node("a", 0, 0, 3, 3);
+        let to = node("b", 6, 5, 3, 3);
+        let edge = edge(Some("bend"), GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(2, 1, '|', PlannedRouteCellKind::EdgeLine),
+                cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(7, 1, '+', PlannedRouteCellKind::RouteCell),
+                cell(7, 2, '|', PlannedRouteCellKind::RouteCell),
+                cell(7, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(7, 4, 'v', PlannedRouteCellKind::EdgeArrow),
+            ]
+        );
+        assert_eq!(
+            plan.labels,
+            vec![PlannedRouteLabel {
+                start: CanvasCoord { x: 7, y: 2 },
+                end: CanvasCoord { x: 7, y: 4 },
+                text: "bend".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn top_down_bent_route_plans_left_bend_open_endpoint() {
+        let from = node("a", 10, 0, 3, 3);
+        let to = node("b", 0, 5, 3, 3);
+        let edge = edge(None, GraphEdgeArrow::Open);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(10, 1, '|', PlannedRouteCellKind::EdgeLine),
+                cell(2, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(6, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(7, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(8, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(9, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(1, 1, '+', PlannedRouteCellKind::RouteCell),
+                cell(1, 2, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 4, '|', PlannedRouteCellKind::RouteCell),
+            ]
+        );
+        assert!(plan.labels.is_empty());
+    }
+
+    #[test]
+    fn top_down_back_route_plans_lane_arrow_and_label() {
+        let from = node("a", 0, 6, 3, 3);
+        let to = node("b", 0, 0, 3, 3);
+        let edge = edge(Some("back"), GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(2, 7, '|', PlannedRouteCellKind::EdgeLine),
+                cell(3, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(6, 7, '+', PlannedRouteCellKind::RouteCell),
+                cell(6, 2, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 4, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 5, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 6, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 1, '+', PlannedRouteCellKind::RouteCell),
+                cell(3, 1, '<', PlannedRouteCellKind::EdgeArrow),
+                cell(4, 1, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 1, '-', PlannedRouteCellKind::RouteCell),
+            ]
+        );
+        assert_eq!(
+            plan.labels,
+            vec![PlannedRouteLabel {
+                start: CanvasCoord { x: 6, y: 1 },
+                end: CanvasCoord { x: 6, y: 7 },
+                text: "back".to_string(),
+            }]
+        );
     }
 
     #[test]

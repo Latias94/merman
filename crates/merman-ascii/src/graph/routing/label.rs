@@ -33,41 +33,6 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
     }
 }
 
-pub(super) fn push_label_on_vertical_line(
-    labels: &mut Vec<EdgeLabel>,
-    x: usize,
-    start_y: usize,
-    end_y: usize,
-    label: Option<&str>,
-) {
-    push_label(
-        labels,
-        CanvasCoord { x, y: start_y },
-        CanvasCoord { x, y: end_y },
-        label,
-    );
-}
-
-fn push_label(
-    labels: &mut Vec<EdgeLabel>,
-    start: CanvasCoord,
-    end: CanvasCoord,
-    label: Option<&str>,
-) {
-    let Some(label) = label else {
-        return;
-    };
-    if label.is_empty() {
-        return;
-    }
-    labels.push(EdgeLabel {
-        start,
-        end,
-        text: label.to_string(),
-        color: None,
-    });
-}
-
 fn draw_label_on_horizontal_line(
     canvas: &mut Canvas,
     start_x: usize,
