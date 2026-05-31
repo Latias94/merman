@@ -4,6 +4,7 @@ mod events;
 mod layout;
 mod model;
 mod notes;
+mod plan;
 mod render;
 mod text;
 mod validate;

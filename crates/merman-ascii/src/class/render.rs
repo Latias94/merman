@@ -5,7 +5,9 @@ use crate::color::AsciiColorRole;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::relation_graph;
 use crate::relation_graph::RelationGraphBox;
-use crate::relation_graph::{LayeredRelationEdge, LayeredRelationError, RelationGraphLine};
+use crate::relation_graph::{
+    LayeredRelationEdge, LayeredRelationError, RelationGraphLine, RelationLineChars,
+};
 use crate::text::display_width;
 use merman_core::models::class_diagram::{ClassDiagram, ClassMember, ClassNode, ClassRelation};
 use std::collections::HashMap;
@@ -310,11 +312,13 @@ fn border_line(
     horizontal: char,
     content_width: usize,
 ) -> RelationGraphLine {
-    let mut line = String::new();
-    line.push(left);
-    line.extend(std::iter::repeat_n(horizontal, content_width));
-    line.push(right);
-    RelationGraphLine::with_role(line, AsciiColorRole::NodeBorder)
+    RelationGraphLine::box_border(
+        left,
+        right,
+        horizontal,
+        content_width,
+        AsciiColorRole::NodeBorder,
+    )
 }
 
 fn content_line(
@@ -323,57 +327,14 @@ fn content_line(
     padding: usize,
     charset: ClassCharset,
 ) -> RelationGraphLine {
-    let text_width = display_width(text);
-    let trailing = content_width.saturating_sub(padding + text_width);
-
-    let mut line = String::new();
-    let mut roles = Vec::new();
-    push_role_char(
-        &mut line,
-        &mut roles,
+    RelationGraphLine::box_content(
+        text,
+        content_width,
+        padding,
         charset.vertical,
         AsciiColorRole::NodeBorder,
-    );
-    push_plain_chars(&mut line, &mut roles, ' ', padding);
-    push_role_text(&mut line, &mut roles, text, AsciiColorRole::Text);
-    push_plain_chars(&mut line, &mut roles, ' ', trailing);
-    push_role_char(
-        &mut line,
-        &mut roles,
-        charset.vertical,
-        AsciiColorRole::NodeBorder,
-    );
-    RelationGraphLine::new(line, roles)
-}
-
-fn push_role_char(
-    line: &mut String,
-    roles: &mut Vec<Option<AsciiColorRole>>,
-    ch: char,
-    role: AsciiColorRole,
-) {
-    line.push(ch);
-    roles.push(Some(role));
-}
-
-fn push_plain_chars(
-    line: &mut String,
-    roles: &mut Vec<Option<AsciiColorRole>>,
-    ch: char,
-    count: usize,
-) {
-    line.extend(std::iter::repeat_n(ch, count));
-    roles.extend(std::iter::repeat_n(None, count));
-}
-
-fn push_role_text(
-    line: &mut String,
-    roles: &mut Vec<Option<AsciiColorRole>>,
-    text: &str,
-    role: AsciiColorRole,
-) {
-    line.push_str(text);
-    roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
+        AsciiColorRole::Text,
+    )
 }
 
 fn relation_layout<'a>(
@@ -723,24 +684,31 @@ fn draw_layered_relation(
     let route_y = to_y - 1;
     let vertical = line_char(layout.line, charset);
     let horizontal = horizontal_line_char(layout.line, charset);
+    let relation_chars = relation_line_chars(charset);
 
     for y in (from_y + 1)..=route_y {
-        put_relation_char(canvas, from_x, y, vertical, charset);
+        relation_graph::put_relation_char(canvas, from_x, y, vertical, relation_chars);
     }
     if from_x != to_x {
         let left = from_x.min(to_x);
         let right = from_x.max(to_x);
         for x in left..=right {
-            put_relation_char(canvas, x, route_y, horizontal, charset);
+            relation_graph::put_relation_char(canvas, x, route_y, horizontal, relation_chars);
         }
     }
     for y in route_y..to_y {
-        put_relation_char(canvas, to_x, y, vertical, charset);
+        relation_graph::put_relation_char(canvas, to_x, y, vertical, relation_chars);
     }
 
     if let Some(label) = layout.label {
         let label_y = (from_y + 2).min(route_y);
-        write_centered_relation_text(canvas, (from_x + to_x) / 2, label_y, label);
+        relation_graph::write_centered_relation_text(
+            canvas,
+            (from_x + to_x) / 2,
+            label_y,
+            label,
+            AsciiColorRole::EdgeLabel,
+        );
     }
 
     match layout.marker_side {
@@ -798,41 +766,14 @@ fn line_char(line: RelationLine, charset: ClassCharset) -> char {
     }
 }
 
-fn put_relation_char(canvas: &mut Canvas, x: usize, y: usize, ch: char, charset: ClassCharset) {
-    let next = match canvas.get(x, y) {
-        Some(existing) if existing == ' ' || existing == ch => ch,
-        Some(existing)
-            if is_relation_line_char(existing, charset) && is_relation_line_char(ch, charset) =>
-        {
-            charset.relation_junction
-        }
-        _ => ch,
-    };
-    let role = if next == charset.relation_junction {
-        AsciiColorRole::Junction
-    } else {
-        AsciiColorRole::EdgeLine
-    };
-    canvas.set_role(x, y, next, role);
-}
-
-fn is_relation_line_char(ch: char, charset: ClassCharset) -> bool {
-    matches!(
-        ch,
-        c if c == charset.solid_horizontal_relation
-            || c == charset.solid_vertical_relation
-            || c == charset.dotted_horizontal_relation
-            || c == charset.dotted_vertical_relation
-            || c == charset.relation_junction
+fn relation_line_chars(charset: ClassCharset) -> RelationLineChars {
+    RelationLineChars::new(
+        [
+            charset.solid_horizontal_relation,
+            charset.solid_vertical_relation,
+            charset.dotted_horizontal_relation,
+            charset.dotted_vertical_relation,
+        ],
+        charset.relation_junction,
     )
-}
-
-fn write_centered_relation_text(canvas: &mut Canvas, center_x: usize, y: usize, text: &str) {
-    let text_half_width = display_width(text) / 2;
-    canvas.write_text_role(
-        center_x.saturating_sub(text_half_width),
-        y,
-        text,
-        AsciiColorRole::EdgeLabel,
-    );
 }

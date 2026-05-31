@@ -1,13 +1,13 @@
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
 use crate::options::AsciiRenderOptions;
-use crate::text::display_width;
+use crate::text::{StyledLine, display_width};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RelationGraphLine {
     text: String,
-    roles: Vec<Option<AsciiColorRole>>,
+    line: StyledLine,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +123,25 @@ pub(crate) struct RelationGraphComponent<'a> {
     edge_indices: Vec<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RelationLineChars {
+    line_chars: [char; 4],
+    junction: char,
+}
+
+impl RelationLineChars {
+    pub(crate) fn new(line_chars: [char; 4], junction: char) -> Self {
+        Self {
+            line_chars,
+            junction,
+        }
+    }
+
+    fn contains(self, ch: char) -> bool {
+        self.line_chars.contains(&ch) || ch == self.junction
+    }
+}
+
 impl<'a> RelationGraphComponent<'a> {
     pub(crate) fn boxes(&self) -> &[&'a RelationGraphBox] {
         &self.boxes
@@ -135,18 +154,52 @@ impl<'a> RelationGraphComponent<'a> {
 
 impl RelationGraphLine {
     pub(crate) fn new(text: String, roles: Vec<Option<AsciiColorRole>>) -> Self {
-        assert_eq!(text.chars().count(), roles.len());
-        Self { text, roles }
+        let line = StyledLine::text_with_roles(&text, roles);
+        Self { text, line }
     }
 
     pub(crate) fn plain(text: String) -> Self {
-        let roles = vec![None; text.chars().count()];
-        Self { text, roles }
+        let line = StyledLine::plain_text(&text);
+        Self { text, line }
     }
 
     pub(crate) fn with_role(text: String, role: AsciiColorRole) -> Self {
-        let roles = vec![Some(role); text.chars().count()];
-        Self { text, roles }
+        let line = StyledLine::role_text(&text, role);
+        Self { text, line }
+    }
+
+    pub(crate) fn box_border(
+        left: char,
+        right: char,
+        horizontal: char,
+        content_width: usize,
+        role: AsciiColorRole,
+    ) -> Self {
+        let mut line = StyledLine::new();
+        line.push_role_char(left, role);
+        line.push_role_repeat(horizontal, content_width, role);
+        line.push_role_char(right, role);
+        Self::from_styled(line)
+    }
+
+    pub(crate) fn box_content(
+        text: &str,
+        content_width: usize,
+        padding: usize,
+        vertical: char,
+        border_role: AsciiColorRole,
+        text_role: AsciiColorRole,
+    ) -> Self {
+        let text_width = display_width(text);
+        let trailing = content_width.saturating_sub(padding + text_width);
+
+        let mut line = StyledLine::new();
+        line.push_role_char(vertical, border_role);
+        line.push_spaces(padding);
+        line.push_role_text(text, text_role);
+        line.push_spaces(trailing);
+        line.push_role_char(vertical, border_role);
+        Self::from_styled(line)
     }
 
     pub(crate) fn text(&self) -> &str {
@@ -154,18 +207,12 @@ impl RelationGraphLine {
     }
 
     pub(crate) fn draw_at(&self, canvas: &mut Canvas, x: usize, y: usize) {
-        for (offset, (ch, role)) in self
-            .text
-            .chars()
-            .zip(self.roles.iter().copied())
-            .enumerate()
-        {
-            if let Some(role) = role {
-                canvas.set_role(x + offset, y, ch, role);
-            } else {
-                canvas.set(x + offset, y, ch);
-            }
-        }
+        self.line.write_to_at(canvas, x, y);
+    }
+
+    fn from_styled(line: StyledLine) -> Self {
+        let text = line.text();
+        Self { text, line }
     }
 }
 
@@ -431,6 +478,37 @@ pub(crate) fn centered_text_line_with_role(
     let mut roles = vec![None; left_padding];
     roles.extend(std::iter::repeat_n(Some(role), text.chars().count()));
     RelationGraphLine::new(line, roles)
+}
+
+pub(crate) fn put_relation_char(
+    canvas: &mut Canvas,
+    x: usize,
+    y: usize,
+    ch: char,
+    chars: RelationLineChars,
+) {
+    let next = match canvas.get(x, y) {
+        Some(existing) if existing == ' ' || existing == ch => ch,
+        Some(existing) if chars.contains(existing) && chars.contains(ch) => chars.junction,
+        _ => ch,
+    };
+    let role = if next == chars.junction {
+        AsciiColorRole::Junction
+    } else {
+        AsciiColorRole::EdgeLine
+    };
+    canvas.set_role(x, y, next, role);
+}
+
+pub(crate) fn write_centered_relation_text(
+    canvas: &mut Canvas,
+    center_x: usize,
+    y: usize,
+    text: &str,
+    role: AsciiColorRole,
+) {
+    let text_half_width = display_width(text) / 2;
+    canvas.write_text_role(center_x.saturating_sub(text_half_width), y, text, role);
 }
 
 pub(crate) fn relation_components<'a>(
@@ -827,26 +905,18 @@ fn align_box_lines(relation_box: &RelationGraphBox, center: usize) -> Vec<Relati
 }
 
 fn padded_line(line: &RelationGraphLine, left: usize, right: usize) -> RelationGraphLine {
-    let mut text = String::new();
-    text.extend(std::iter::repeat_n(' ', left));
-    text.push_str(line.text());
-    text.extend(std::iter::repeat_n(' ', right));
-
-    let mut roles = vec![None; left];
-    roles.extend(line.roles.iter().copied());
-    roles.extend(std::iter::repeat_n(None, right));
-
-    RelationGraphLine::new(text, roles)
+    let mut padded = StyledLine::blank(left);
+    padded.push_line(&line.line);
+    padded.push_spaces(right);
+    RelationGraphLine::from_styled(padded)
 }
 
 fn concat_relation_lines(parts: Vec<RelationGraphLine>) -> RelationGraphLine {
-    let mut text = String::new();
-    let mut roles = Vec::new();
+    let mut line = StyledLine::new();
     for part in parts {
-        text.push_str(part.text());
-        roles.extend(part.roles);
+        line.push_line(&part.line);
     }
-    RelationGraphLine::new(text, roles)
+    RelationGraphLine::from_styled(line)
 }
 
 #[cfg(test)]
@@ -881,5 +951,48 @@ mod tests {
         );
 
         assert_eq!(output, "\u{1b}[38;2;1;2;3mAB\u{1b}[0m\n");
+    }
+
+    #[test]
+    fn relation_graph_box_content_line_preserves_border_and_text_roles() {
+        let theme = AsciiColorTheme::default_light()
+            .with_role(AsciiColorRole::NodeBorder, AsciiRgb::from_hex24(0x111111))
+            .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x222222));
+        let line = RelationGraphLine::box_content(
+            "A",
+            3,
+            1,
+            '|',
+            AsciiColorRole::NodeBorder,
+            AsciiColorRole::Text,
+        );
+        let mut canvas = Canvas::new(5, 1);
+
+        line.draw_at(&mut canvas, 0, 0);
+
+        assert_eq!(line.text(), "| A |");
+        assert_eq!(
+            canvas.finish_trimmed_with_options(
+                &AsciiRenderOptions::ascii()
+                    .with_color_mode(AsciiColorMode::Html)
+                    .with_color_theme(theme),
+            ),
+            "<span style=\"color:#111111\">|</span> <span style=\"color:#222222\">A</span> <span style=\"color:#111111\">|</span>\n"
+        );
+    }
+
+    #[test]
+    fn relation_line_chars_merge_crossing_relation_lines_to_junction() {
+        let chars = RelationLineChars::new(['-', '|', '.', ':'], '+');
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_role(0, 0, '-', AsciiColorRole::EdgeLine);
+
+        put_relation_char(&mut canvas, 0, 0, '|', chars);
+
+        assert_eq!(canvas.get(0, 0), Some('+'));
+        assert_eq!(
+            canvas.get_color(0, 0),
+            Some(crate::canvas::CanvasColor::Role(AsciiColorRole::Junction))
+        );
     }
 }

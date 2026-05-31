@@ -50,6 +50,27 @@ impl StyledLine {
         line
     }
 
+    pub(crate) fn plain_text(text: &str) -> Self {
+        let mut line = Self::new();
+        for ch in text.chars() {
+            line.push_plain_char(ch);
+        }
+        line
+    }
+
+    pub(crate) fn text_with_roles(text: &str, roles: Vec<Option<AsciiColorRole>>) -> Self {
+        assert_eq!(text.chars().count(), roles.len());
+        let cells = text
+            .chars()
+            .zip(roles)
+            .map(|(ch, role)| match role {
+                Some(role) => StyledCell::with_role(ch, role),
+                None => StyledCell::plain(ch),
+            })
+            .collect();
+        Self { cells }
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.cells.len()
     }
@@ -154,11 +175,15 @@ impl StyledLine {
     }
 
     pub(crate) fn write_to(&self, canvas: &mut Canvas, y: usize) {
+        self.write_to_at(canvas, 0, y);
+    }
+
+    pub(crate) fn write_to_at(&self, canvas: &mut Canvas, x_offset: usize, y: usize) {
         for (x, cell) in self.cells.iter().enumerate() {
             if let Some(color) = cell.color {
-                canvas.set_canvas_color(x, y, cell.ch, color);
+                canvas.set_canvas_color(x_offset + x, y, cell.ch, color);
             } else {
-                canvas.set(x, y, cell.ch);
+                canvas.set(x_offset + x, y, cell.ch);
             }
         }
     }

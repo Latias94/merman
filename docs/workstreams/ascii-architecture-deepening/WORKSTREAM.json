@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "ascii-architecture-deepening",
   "title": "ASCII Architecture Deepening",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-30",
   "scope_kind": "architecture",
   "problem": "merman-ascii has shipped multiple diagram-family subsets, but text styling, graph routing, relation rendering, sequence event state, and gap tracking are still spread across shallow internal modules.",
@@ -86,6 +86,46 @@
       "date": "2026-05-30",
       "task": "AAD-030",
       "result": "passed top_down_direct, flowchart, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-040",
+      "result": "migrated RelationGraphLine to StyledLine and centralized relation graph box row construction, relation line merging, and centered text writing"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-040",
+      "result": "passed relation_graph, class er, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-050",
+      "result": "introduced SequenceEventPlan for activation, actor visibility, lifecycle transition, and control frame state"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-050",
+      "result": "passed event_plan, sequence, package, fmt, and clippy gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-060",
+      "result": "added ASCII_GAP_REGISTRY.md and linked it from the ASCII README"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-060",
+      "result": "passed git diff --check for crates/merman-ascii and this workstream"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-070",
+      "result": "passed final package, format, clippy, and diff-check gates"
+    },
+    {
+      "date": "2026-05-30",
+      "task": "AAD-070",
+      "result": "closed the workstream with no blocking review findings"
     }
   ],
   "adr_refs": [
@@ -102,8 +142,8 @@
   ],
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
-    "default_action": "continue_next_task",
-    "next_task": "AAD-040",
-    "notes": "Start AAD-040 by deepening relation graph adapters for class and ER."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Closed. Use crates/merman-ascii/ASCII_GAP_REGISTRY.md to open the next ASCII feature or route-planning lane."
   }
 }

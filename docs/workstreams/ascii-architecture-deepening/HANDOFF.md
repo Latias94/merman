@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Current State
@@ -13,17 +13,18 @@ The lane has been opened to execute five architecture deepening targets for `mer
 - sequence event plan seam,
 - ASCII gap registry.
 
-AAD-010, AAD-020, and AAD-030 are complete. The next task is AAD-040.
+AAD-010 through AAD-070 are complete. The lane is closed.
 
 ## Active Task
 
-- Task ID: AAD-040
-- Owner: unassigned
-- Files: `crates/merman-ascii/src/relation_graph.rs`, `crates/merman-ascii/src/class`, `crates/merman-ascii/src/er`
-- Validation: `cargo nextest run -p merman-ascii class er`
-- Status: NEEDS_CONTEXT
-- Review: Pending implementation.
-- Evidence: class and ER regression tests covering relation routing and color roles
+- Task ID: AAD-070
+- Owner: planner
+- Files: `docs/workstreams/ascii-architecture-deepening`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo fmt --all --check`;
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`; `git diff --check`
+- Status: DONE
+- Review: No blocking findings.
+- Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`, `JOURNAL/2026-05-30-closeout.md`
 
 ## Decisions Since Last Update
 
@@ -42,12 +43,23 @@ AAD-010, AAD-020, and AAD-030 are complete. The next task is AAD-040.
   a route plan before painting.
 - Other graph route families intentionally remain on the old drawing path until a future graph
   routing expansion.
+- AAD-040 moved `RelationGraphLine` onto `StyledLine`.
+- AAD-040 moved class/ER box row construction, relation line merging, and centered relation text
+  writing behind `relation_graph`.
+- Class and ER still own family-specific relationship semantics, marker/cardinality selection, and
+  charset mapping.
+- AAD-050 added `SequenceEventPlan` in `crates/merman-ascii/src/sequence/plan.rs`.
+- The sequence render loop now delegates activation counts, actor visibility, lifecycle transitions,
+  and control-frame ordering state to the event plan before row painting.
+- AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+- The ASCII README links to the registry from the current status section.
+- AAD-070 final gates passed and the lane was closed.
 
 ## Blockers
 
-- None.
+- None. Follow-on feature gaps are tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
 
 ## Next Recommended Action
 
-- Commit AAD-030, then start AAD-040 by moving relation graph line behavior onto the shared styled
-  substrate and reducing class/ER relation-rendering duplication where the seam has enough depth.
+- Start a new workstream from `crates/merman-ascii/ASCII_GAP_REGISTRY.md` when prioritizing the next
+  ASCII feature or route-planning expansion.

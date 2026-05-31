@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## Smallest Current Repro
@@ -98,3 +98,20 @@ and residual risks in this file or a journal note.
   `cargo nextest run -p merman-ascii top_down_direct`, `cargo nextest run -p merman-ascii flowchart`,
   `cargo nextest run -p merman-ascii`, `cargo fmt --all --check`, and
   `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-040 deepened relation graph adapters by moving `RelationGraphLine` onto
+  `StyledLine`, centralizing box row construction, relation line merging, and centered relation text
+  writing. Passed `cargo nextest run -p merman-ascii relation_graph`,
+  `cargo nextest run -p merman-ascii class er`, `cargo nextest run -p merman-ascii`,
+  `cargo fmt --all --check`, and `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-050 introduced `SequenceEventPlan` for activation counts, actor visibility,
+  lifecycle visibility transitions, and control frame ordering state. Passed
+  `cargo nextest run -p merman-ascii event_plan`, `cargo nextest run -p merman-ascii sequence`,
+  `cargo nextest run -p merman-ascii`, `cargo fmt --all --check`, and
+  `cargo clippy -p merman-ascii --all-targets -- -D warnings`.
+- 2026-05-30 — AAD-060 added `crates/merman-ascii/ASCII_GAP_REGISTRY.md` and linked it from the
+  ASCII README. Passed `git diff --check -- crates/merman-ascii docs/workstreams/ascii-architecture-deepening`.
+- 2026-05-30 — AAD-070 final verification passed `cargo nextest run -p merman-ascii` with 163
+  tests, `cargo fmt --all --check`, `cargo clippy -p merman-ascii --all-targets -- -D warnings`,
+  and `git diff --check`.
+- 2026-05-30 — AAD-070 review found no blocking workstream compliance or code-quality findings.
+  Residual route/feature expansion risk is intentionally tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.

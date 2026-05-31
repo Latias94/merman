@@ -1,14 +1,12 @@
 use super::boxes::render_sequence_boxes;
-use super::control::{
-    SequenceControlFrame, SequenceControlFrameSeparator, render_sequence_control_frames,
-};
+use super::control::render_sequence_control_frames;
 use super::events::{ensure_message_actors_visible, render_message, render_self_message};
 use super::layout::{
-    LifecycleEdge, SequenceLayout, calculate_layout, initial_visible_actors, lifecycle_actors_at,
-    participant_left,
+    LifecycleEdge, SequenceLayout, calculate_layout, lifecycle_actors_at, participant_left,
 };
 use super::model::{AsciiSequenceDiagram, SequenceArrowHead, SequenceEvent};
 use super::notes::{ensure_note_actors_visible, render_note};
+use super::plan::{SequenceEventPlan, SequencePlanStep};
 use super::text::{SequenceLine, padded_line, trim_right};
 use crate::canvas::Canvas;
 use crate::color::{AsciiColorMode, AsciiColorRole};
@@ -119,127 +117,38 @@ pub(crate) fn render_sequence_diagram(
     let chars = SequenceChars::for_options(options);
     let layout = calculate_layout(diagram, options);
     let mut lines = Vec::new();
-    let mut active_counts = vec![0usize; diagram.participants.len()];
-    let mut visible_actors = initial_visible_actors(diagram);
-    let mut control_frames = Vec::<SequenceControlFrame>::new();
-    let mut active_control_frame = None;
+    let mut event_plan = SequenceEventPlan::new(diagram);
 
     lines.push(build_participant_line(
         diagram,
         &layout,
-        &visible_actors,
+        event_plan.visible_actors(),
         |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Top),
     ));
     lines.push(build_participant_line(
         diagram,
         &layout,
-        &visible_actors,
+        event_plan.visible_actors(),
         |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Label),
     ));
     lines.push(build_participant_line(
         diagram,
         &layout,
-        &visible_actors,
+        event_plan.visible_actors(),
         |index| participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Bottom),
     ));
 
     for event in &diagram.events {
-        match event {
-            SequenceEvent::ActivationStart { actor, .. } => {
-                active_counts[*actor] += 1;
-                continue;
-            }
-            SequenceEvent::ActivationEnd { actor, .. } => {
-                let Some(count) = active_counts.get_mut(*actor) else {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "activation actor state",
-                    });
-                };
-                if *count == 0 {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "activation underflow",
-                    });
-                }
-                *count -= 1;
-                continue;
-            }
-            SequenceEvent::ControlStart(start) => {
-                if active_control_frame.is_some() {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "nested control blocks",
-                    });
-                }
-                active_control_frame = Some(control_frames.len());
-                control_frames.push(SequenceControlFrame {
-                    kind: start.kind,
-                    label: start.label.clone(),
-                    start_row: lines.len(),
-                    separators: Vec::new(),
-                    end_row: None,
-                });
-                continue;
-            }
-            SequenceEvent::ControlSeparator(separator) => {
-                let Some(frame_index) = active_control_frame else {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "control block ordering",
-                    });
-                };
-                let frame = &mut control_frames[frame_index];
-                if frame.kind != separator.kind {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "control block ordering",
-                    });
-                }
-                if frame.current_section_start_row() == lines.len() {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "empty control block sections",
-                    });
-                }
-                frame.separators.push(SequenceControlFrameSeparator {
-                    label: separator.label.clone(),
-                    row: lines.len(),
-                });
-                continue;
-            }
-            SequenceEvent::ControlEnd { kind, .. } => {
-                let Some(frame_index) = active_control_frame.take() else {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "control block ordering",
-                    });
-                };
-                let frame = &mut control_frames[frame_index];
-                if !frame.kind.accepts_end(*kind) {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "control block ordering",
-                    });
-                }
-                if frame.current_section_start_row() == lines.len() {
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: "sequence",
-                        feature: "empty control block sections",
-                    });
-                }
-                frame.end_row = Some(lines.len() - 1);
-                continue;
-            }
-            SequenceEvent::Message(_) | SequenceEvent::Note(_) => {}
+        if event_plan.handle_event(event, lines.len())? == SequencePlanStep::StateOnly {
+            continue;
         }
 
         for _ in 0..layout.message_spacing {
             lines.push(build_lifeline_line(
                 &layout,
                 &chars,
-                &active_counts,
-                &visible_actors,
+                event_plan.active_counts(),
+                event_plan.visible_actors(),
             ));
         }
 
@@ -250,27 +159,25 @@ pub(crate) fn render_sequence_diagram(
                 diagram,
                 &layout,
                 &chars,
-                &active_counts,
-                &visible_actors,
+                event_plan.active_counts(),
+                event_plan.visible_actors(),
                 &created_actors,
             ));
-            for actor in &created_actors {
-                visible_actors[*actor] = true;
-            }
+            event_plan.record_created_actors(&created_actors);
         }
 
         let destroyed_actors = lifecycle_actors_at(diagram, model_index, LifecycleEdge::Destroyed);
 
         match event {
             SequenceEvent::Message(message) => {
-                ensure_message_actors_visible(message, &visible_actors)?;
+                ensure_message_actors_visible(message, event_plan.visible_actors())?;
                 if message.from == message.to {
                     lines.extend(render_self_message(
                         message,
                         &layout,
                         &chars,
-                        &active_counts,
-                        &visible_actors,
+                        event_plan.active_counts(),
+                        event_plan.visible_actors(),
                         &destroyed_actors,
                     ));
                 } else {
@@ -278,20 +185,20 @@ pub(crate) fn render_sequence_diagram(
                         message,
                         &layout,
                         &chars,
-                        &active_counts,
-                        &visible_actors,
+                        event_plan.active_counts(),
+                        event_plan.visible_actors(),
                         &destroyed_actors,
                     ));
                 }
             }
             SequenceEvent::Note(note) => {
-                ensure_note_actors_visible(note, &visible_actors)?;
+                ensure_note_actors_visible(note, event_plan.visible_actors())?;
                 lines.extend(render_note(
                     note,
                     &layout,
                     &chars,
-                    &active_counts,
-                    &visible_actors,
+                    event_plan.active_counts(),
+                    event_plan.visible_actors(),
                 ));
             }
             SequenceEvent::ActivationStart { .. }
@@ -301,24 +208,16 @@ pub(crate) fn render_sequence_diagram(
             | SequenceEvent::ControlSeparator(_) => {}
         }
 
-        for actor in destroyed_actors {
-            visible_actors[actor] = false;
-            active_counts[actor] = 0;
-        }
+        event_plan.record_destroyed_actors(&destroyed_actors);
     }
 
     lines.push(build_lifeline_line(
         &layout,
         &chars,
-        &active_counts,
-        &visible_actors,
+        event_plan.active_counts(),
+        event_plan.visible_actors(),
     ));
-    if active_control_frame.is_some() {
-        return Err(AsciiError::UnsupportedFeature {
-            diagram_type: "sequence",
-            feature: "control block ordering",
-        });
-    }
+    let control_frames = event_plan.finish()?;
     if !control_frames.is_empty() {
         lines = render_sequence_control_frames(lines, &control_frames, &chars);
     }

@@ -1,6 +1,6 @@
 # ASCII Architecture Deepening — Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-30
 
 ## M0 — Scope And Evidence Freeze
@@ -86,3 +86,9 @@ Exit criteria:
 - `cargo clippy -p merman-ascii --all-targets -- -D warnings` passes.
 - `git diff --check` passes.
 - `WORKSTREAM.json`, `TODO.md`, `EVIDENCE_AND_GATES.md`, and `HANDOFF.md` reflect final state.
+
+Closeout result:
+
+- Completed on 2026-05-30.
+- All five architecture targets landed.
+- Final package, format, clippy, and whitespace gates passed.
