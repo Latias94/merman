@@ -33,6 +33,8 @@ enum XtaskError {
     ParseDompurify(String),
     #[error("failed to apply default config override: {0}")]
     DefaultConfigOverride(String),
+    #[error("missing reference checkout: {0}")]
+    MissingReference(String),
     #[error("verification failed:\n{0}")]
     VerifyFailed(String),
     #[error("snapshot update failed: {0}")]

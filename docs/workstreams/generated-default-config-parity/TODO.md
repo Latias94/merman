@@ -46,7 +46,7 @@ Last updated: 2026-05-31
   `verify-default-config` green. The manifest separates upstream non-JSON/defaultConfig behavior,
   local parity overrides, deferred/out-of-scope families, and unsupported Pie 11.15 config knobs.
 
-- [ ] GDC-040 [owner=unassigned] [deps=GDC-020] [scope=docs/adr/0024-dompurify-default-allowlists-and-generation.md,crates/xtask/src/cmd/generate.rs]
+- [x] GDC-040 [owner=codex] [deps=GDC-020] [scope=docs/adr/0024-dompurify-default-allowlists-and-generation.md,crates/xtask/src/cmd/generate.rs]
   Goal: Clarify DOMPurify source checkout policy for Mermaid 11.15 and decide whether the verifier
   should fail with remediation text or be treated as an optional bootstrap gate.
   Validation: `cargo run -p xtask -- verify-dompurify-defaults` with the expected reference checkout
@@ -55,7 +55,9 @@ Last updated: 2026-05-31
   dist files.
   Evidence: `docs/workstreams/generated-default-config-parity/EVIDENCE_AND_GATES.md`
   Context: ADR-0024 and this workstream context.
-  Handoff: Record whether DOMPurify remains part of the umbrella `verify-generated` gate.
+  Handoff: DONE. DOMPurify remains part of the umbrella `verify-generated` gate. The baseline now
+  follows Mermaid 11.15's resolved `dompurify@3.4.0`; `repo-ref/dompurify` is required reference
+  material and missing checkouts report actionable remediation text.
 
 ## M3 - Closeout
 

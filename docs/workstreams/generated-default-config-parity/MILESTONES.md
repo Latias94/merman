@@ -71,6 +71,9 @@ Primary gates:
 - `cargo run -p xtask -- verify-dompurify-defaults`
 - `cargo fmt --check`
 
+Status: complete. DOMPurify remains in `verify-generated`, now pinned to 3.4.0 with actionable
+missing-reference remediation.
+
 ## M4 - Closeout
 
 Exit criteria:

@@ -26,10 +26,14 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 
 ## Decision
 
-- Pin DOMPurify baseline to Mermaid's dependency version (`dompurify@3.2.5` for `mermaid@11.12.3`).
+- Pin DOMPurify baseline to Mermaid's resolved dependency version (`dompurify@3.4.0` for
+  `mermaid@11.15.0`).
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`
+- Treat `repo-ref/dompurify` as required reference material for the DOMPurify generated-artifact
+  gate. If it is absent, `xtask` reports an actionable missing-reference error that points to
+  `tools/upstreams/REPOS.lock.json`.
 - Verify generated allowlists using:
   - DOMPurify allowlists only: `cargo run -p xtask -- verify-dompurify-defaults`
   - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
@@ -46,7 +50,8 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 
 - `sanitizeText` / `removeScript` outputs are closer to Mermaid's actual DOMPurify behavior and more
   robust against bypass inputs.
-- We can update allowlists deterministically by updating `repo-ref/dompurify` and regenerating.
+- We can update allowlists deterministically by updating `tools/upstreams/REPOS.lock.json`,
+  materializing `repo-ref/dompurify`, and regenerating.
 - Full DOMPurify parity is still a long-term effort (namespaces, custom element handling, full config
   surface), but the foundation matches Mermaid's default behavior much better.
 
@@ -54,5 +59,6 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 
 - Mermaid common sanitizer: `repo-ref/mermaid/packages/mermaid/src/diagrams/common/common.ts`
 - DOMPurify dist baseline: `repo-ref/dompurify/dist/purify.cjs.js`
+- DOMPurify source lock: `tools/upstreams/REPOS.lock.json`
 - Generator: `crates/xtask/src/main.rs`
 - Generated allowlists: `crates/merman-core/src/generated/dompurify_defaults.rs`

@@ -95,6 +95,27 @@ Run `review-workstream` before accepting task or lane completion.
   - Command: `cargo run -p xtask -- verify-generated`
   - Result: failed only with the DOMPurify missing-checkout error for
     `repo-ref/dompurify/dist/purify.cjs.js`; default-config verification is no longer a blocker.
+- 2026-05-31 GDC-040 implementation checks:
+  - Reference checkout: `repo-ref/dompurify` materialized at DOMPurify `3.4.0`, commit
+    `5b16e0b892e82b1779d62b9928b43c4c4ff290b9`.
+  - Command: `cargo run -p xtask -- gen-dompurify-defaults`
+  - Result: passed and regenerated `crates/merman-core/src/generated/dompurify_defaults.rs`.
+  - Command: `cargo run -p xtask -- verify-dompurify-defaults`
+  - Result: passed.
+  - Command: `cargo run -p xtask -- verify-generated`
+  - Result: passed.
+  - Command: `cargo nextest run -p xtask dompurify`
+  - Result: passed, 2 tests.
+  - Command: `cargo nextest run -p xtask`
+  - Result: passed, 66 tests.
+  - Command: `cargo nextest run -p merman-core sanitize`
+  - Result: passed, 23 tests.
+  - Command: `cargo nextest run -p merman-core`
+  - Result: passed, 536 tests.
+  - Command: `cargo fmt --check`
+  - Result: passed.
+  - Command: `git diff --check`
+  - Result: passed.
 
 ## Evidence Anchors
 
@@ -104,3 +125,5 @@ Run `review-workstream` before accepting task or lane completion.
 - `docs/adr/0019-generated-default-config.md`
 - `docs/adr/0024-dompurify-default-allowlists-and-generation.md`
 - `crates/xtask/default_config_overrides.json`
+- `crates/merman-core/src/generated/dompurify_defaults.rs`
+- `tools/upstreams/REPOS.lock.json`

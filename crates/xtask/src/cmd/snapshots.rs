@@ -545,8 +545,6 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
     let expected_purify = PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs");
     let actual_purify = tmp_dir.join("dompurify_defaults.actual.rs");
     super::gen_dompurify_defaults(vec![
-        "--src".to_string(),
-        "repo-ref/dompurify/dist/purify.cjs.js".to_string(),
         "--out".to_string(),
         actual_purify.display().to_string(),
     ])?;
