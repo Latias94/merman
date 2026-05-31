@@ -1,8 +1,14 @@
 {
   "architecture": {
+    "edgeElasticity": 0.45,
     "fontSize": 16,
     "iconSize": 80,
+    "idealEdgeLengthMultiplier": 1.5,
+    "nodeSeparation": 75,
+    "numIter": 2500,
     "padding": 40,
+    "randomize": false,
+    "seed": 1,
     "useMaxWidth": true
   },
   "arrowMarkerAbsolute": false,
@@ -167,7 +173,7 @@
     "useMaxWidth": true
   },
   "flowchart": {
-    "curve": "basis",
+    "curve": "rounded",
     "defaultRenderer": "dagre-wrapper",
     "diagramPadding": 8,
     "htmlLabels": true,

@@ -24,8 +24,8 @@ pub(super) struct SequenceMessageRenderContext<'a> {
 
 pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
     let mut sequence_number_visible = false;
-    let mut sequence_number: i64 = 1;
-    let mut sequence_number_step: i64 = 1;
+    let mut sequence_number = 1.0;
+    let mut sequence_number_step = 1.0;
 
     for msg in &ctx.model.messages {
         match msg.message_type {
@@ -213,6 +213,14 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         }
 
         if sequence_number_visible {
+            let sequence_number_text = format_sequence_number(sequence_number);
+            let font_size = if sequence_number_text.len() > 5 {
+                "7px"
+            } else if sequence_number_text.len() > 3 {
+                "9px"
+            } else {
+                "12px"
+            };
             let x = p0.x;
             let y = p0.y;
             let _ = write!(
@@ -223,15 +231,27 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             );
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
+                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
                 x = fmt(x),
                 y = fmt(y + 4.0),
-                n = sequence_number,
+                n = sequence_number_text,
             );
-            sequence_number = sequence_number.saturating_add(sequence_number_step);
+            sequence_number = round_sequence_number(sequence_number + sequence_number_step);
         }
 
         let _ = (from, to);
+    }
+}
+
+fn round_sequence_number(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn format_sequence_number(value: f64) -> String {
+    if value.is_finite() {
+        value.to_string()
+    } else {
+        String::new()
     }
 }
 

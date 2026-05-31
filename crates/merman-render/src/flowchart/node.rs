@@ -171,7 +171,7 @@ fn node_render_dimensions(
         "anchor" => (2.001_899_003_982_544, 2.0),
 
         // Default flowchart process node.
-        "squareRect" => (text_w + 4.0 * p, text_h + 2.0 * p),
+        "squareRect" | "data-store" | "datastore" => (text_w + 4.0 * p, text_h + 2.0 * p),
 
         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.

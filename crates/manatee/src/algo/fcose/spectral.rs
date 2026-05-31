@@ -7,9 +7,7 @@ use super::{SimEdge, SimNode, XorShift64Star};
 const INFINITY_HOPS: f64 = 100_000_000.0;
 const SMALL: f64 = 1e-9;
 
-// Mermaid `@11.12.2` defaults (cytoscape-fcose).
 const DEFAULT_SAMPLE_SIZE: usize = 25;
-const DEFAULT_NODE_SEPARATION: f64 = 75.0;
 const DEFAULT_PI_TOL: f64 = 1e-7;
 
 const MAX_POWER_ITERATIONS: usize = 10_000;
@@ -19,6 +17,7 @@ pub(super) fn apply_spectral_start_positions(
     edges: &[SimEdge],
     compound_parent: &[Option<usize>],
     compound_ids_in_order: &[usize],
+    node_separation: f64,
     rng: &mut XorShift64Star,
 ) -> bool {
     if nodes.is_empty() {
@@ -80,7 +79,7 @@ pub(super) fn apply_spectral_start_positions(
             sample,
             col,
             &adjacency,
-            DEFAULT_NODE_SEPARATION,
+            node_separation,
             &mut c,
             Some(&mut min_dist),
         );

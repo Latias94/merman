@@ -62,6 +62,11 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_bow_tie_rect(out, ctx, common, label, details);
         }
 
+        // Flowchart v2 datastore: rectangular node with only top and bottom borders.
+        "datastore" | "data-store" => {
+            super::render_datastore(out, common);
+        }
+
         // Flowchart v2 tagged rectangle (Tagged process).
         "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => {
             super::render_tag_rect(out, ctx, common, label, details);

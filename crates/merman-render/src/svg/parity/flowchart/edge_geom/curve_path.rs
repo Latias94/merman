@@ -25,6 +25,7 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             | "cardinal"
             | "monotoneX"
             | "monotoneY"
+            | "rounded"
     );
 
     if curve_is_basis {
@@ -55,7 +56,8 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             "monotoneY" => {
                 crate::svg::parity::curve::curve_monotone_path_d_and_bounds(line_data, true)
             }
-            // Mermaid defaults to `basis` for flowchart edges.
+            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(line_data, 5.0),
+            // Unknown curve names fall back to Mermaid's historical `basis` behavior.
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
         };
 

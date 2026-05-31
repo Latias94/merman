@@ -46,7 +46,7 @@ pub(crate) enum Tok {
     Plus,
     Minus,
 
-    Num(i64),
+    Num(f64),
     Actor(String),
     Text(String),
     RestOfLine(String),
@@ -529,17 +529,39 @@ impl<'input> Lexer<'input> {
     fn lex_num(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let mut end = self.pos;
+        let mut saw_digit = false;
         while let Some(b) = self.input.as_bytes().get(end) {
             if b.is_ascii_digit() {
                 end += 1;
+                saw_digit = true;
                 continue;
             }
             break;
         }
-        if end == start {
+
+        if self.input.as_bytes().get(end) == Some(&b'.') {
+            let decimal_start = end + 1;
+            let mut decimal_end = decimal_start;
+            while let Some(b) = self.input.as_bytes().get(decimal_end) {
+                if b.is_ascii_digit() {
+                    decimal_end += 1;
+                    continue;
+                }
+                break;
+            }
+            let decimal_places = decimal_end - decimal_start;
+            if decimal_places == 0 || decimal_places > 2 {
+                return None;
+            }
+            end = decimal_end;
+        } else if !saw_digit {
             return None;
         }
-        let n: i64 = self.input[start..end].parse().ok()?;
+
+        let n: f64 = self.input[start..end].parse().ok()?;
+        if !n.is_finite() {
+            return None;
+        }
         self.pos = end;
         Some((start, Tok::Num(n), self.pos))
     }

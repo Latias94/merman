@@ -399,6 +399,114 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
     );
 }
 
+#[test]
+fn flowchart_default_curve_renders_rounded_edges_while_basis_remains_available() {
+    fn render(text: &str) -> String {
+        let engine = Engine::new();
+        let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+
+        let layout_options = LayoutOptions {
+            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        };
+        let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+        let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+            panic!("expected FlowchartV2 layout");
+        };
+
+        render_flowchart_v2_svg(
+            &layout,
+            &out.semantic,
+            &out.meta.effective_config,
+            out.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg")
+    }
+
+    fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {
+        let id_attr = format!(r#"id="{edge_id}""#);
+        let id_start = svg.find(&id_attr).expect("edge id");
+        let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
+        let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
+        let path = &svg[path_start..path_end];
+        let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
+        let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
+        &path[d_start..d_end]
+    }
+
+    let diagram = "flowchart LR\nA --> B\nA --> C\n";
+    let rounded_svg = render(diagram);
+    let rounded_d = edge_path_d(&rounded_svg, "L_A_B_0");
+    assert!(
+        rounded_d.contains('Q') && !rounded_d.contains('C'),
+        "expected default flowchart curve to be rounded, not basis: {rounded_d}"
+    );
+
+    let basis_svg = render(&format!(
+        "%%{{init: {{\"flowchart\": {{\"curve\": \"basis\"}}}}}}%%\n{diagram}"
+    ));
+    let basis_d = edge_path_d(&basis_svg, "L_A_B_0");
+    assert!(
+        basis_d.contains('C'),
+        "expected explicit flowchart.curve=basis to preserve smooth curve output: {basis_d}"
+    );
+}
+
+#[test]
+fn flowchart_datastore_shape_renders_top_and_bottom_border_rect() {
+    let text = r#"flowchart TB
+D@{ shape: datastore, label: "Datastore" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    let rect_start = svg
+        .find(r#"<rect class="basic label-container""#)
+        .expect("datastore rect");
+    let rect_end = svg[rect_start..].find("/>").expect("rect end") + rect_start;
+    let rect = &svg[rect_start..rect_end];
+    let attr = |name: &str| {
+        let needle = format!(r#"{name}=""#);
+        let start = rect.find(&needle).expect("attribute") + needle.len();
+        let end = rect[start..].find('"').expect("attribute end") + start;
+        &rect[start..end]
+    };
+    let expected_dasharray = format!("{} {}", attr("width"), attr("height"));
+    assert!(
+        attr("stroke-dasharray") == expected_dasharray,
+        "expected datastore rect to hide vertical borders with width/height stroke-dasharray: {svg}"
+    );
+    assert!(
+        !rect.contains("<path"),
+        "expected datastore to render as a dashed-border rect, not bow-tie path: {svg}"
+    );
+}
+
 #[cfg(feature = "ratex-math")]
 #[test]
 fn flowchart_svg_renders_ratex_math_labels_end_to_end() {

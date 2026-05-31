@@ -71,8 +71,8 @@ pub(crate) enum Action {
     },
 
     Autonumber {
-        start: Option<i64>,
-        step: Option<i64>,
+        start: Option<f64>,
+        step: Option<f64>,
         visible: bool,
     },
 }

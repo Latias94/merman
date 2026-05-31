@@ -156,7 +156,8 @@ pub(super) fn flowchart_compute_edge_path_geom(
         maybe_fix_corners, maybe_normalize_selfedge_loop_points,
         maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
         maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
-        normalize_cyclic_special_data_points, write_flowchart_edge_trace,
+        normalize_cyclic_special_data_points, rounded_line_with_marker_offsets_for_edge_type,
+        write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -303,16 +304,20 @@ pub(super) fn flowchart_compute_edge_path_geom(
         .interpolate
         .as_deref()
         .unwrap_or(ctx.default_edge_interpolate.as_str());
+    let is_rounded = interpolate == "rounded";
     let is_basis = !matches!(
         interpolate,
         "linear"
             | "natural"
+            | "bumpY"
+            | "catmullRom"
             | "step"
             | "stepAfter"
             | "stepBefore"
             | "cardinal"
             | "monotoneX"
             | "monotoneY"
+            | "rounded"
     );
 
     let label_text = edge.label.as_deref().unwrap_or_default();
@@ -372,8 +377,11 @@ pub(super) fn flowchart_compute_edge_path_geom(
         .collect();
 
     // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
-    // round orthogonal corners before feeding into D3's line generator.
-    maybe_fix_corners(&mut line_data);
+    // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
+    // its own rounded-corner generator and skips this pre-processing upstream.
+    if !is_rounded {
+        maybe_fix_corners(&mut line_data);
+    }
 
     if is_basis {
         maybe_snap_shallow_basis_triplet_y_to_f32(&mut line_data, edge.edge_type.as_deref());
@@ -382,7 +390,11 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-    let mut line_data = line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref());
+    let mut line_data = if is_rounded {
+        rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
+    } else {
+        line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
+    };
     maybe_collapse_degenerate_subgraph_edge_route(
         ctx,
         edge,

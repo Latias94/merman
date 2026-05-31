@@ -59,7 +59,7 @@ extern {
     Plus => Tok::Plus,
     Minus => Tok::Minus,
 
-    Num => Tok::Num(<i64>),
+    Num => Tok::Num(<f64>),
     Actor => Tok::Actor(<String>),
     Text => Tok::Text(<String>),
     RestOfLine => Tok::RestOfLine(<String>),
@@ -374,7 +374,7 @@ Placement: i32 = {
 
 AutonumberStatement: Action = {
   "autonumber" <a:Num> <b:Num> => Action::Autonumber { start: Some(a), step: Some(b), visible: true },
-  "autonumber" <a:Num> => Action::Autonumber { start: Some(a), step: Some(1), visible: true },
+  "autonumber" <a:Num> => Action::Autonumber { start: Some(a), step: Some(1.0), visible: true },
   "autonumber" "off" => Action::Autonumber { start: None, step: None, visible: false },
   "autonumber" => Action::Autonumber { start: None, step: None, visible: true },
 };

@@ -40,6 +40,14 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_bool()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct ArchitectureNodeModel {
     id: String,
@@ -289,6 +297,29 @@ fn layout_architecture_diagram_model(
     let padding_px = padding_px.max(0.0);
     let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let font_size_px = font_size_px.max(1.0);
+    let fcose_randomize =
+        config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
+    let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .unwrap_or(75.0);
+    let ideal_edge_length_multiplier = config_f64(
+        effective_config,
+        &["architecture", "idealEdgeLengthMultiplier"],
+    )
+    .filter(|v| v.is_finite() && *v > 0.0)
+    .unwrap_or(1.5);
+    let same_group_edge_elasticity =
+        config_f64(effective_config, &["architecture", "edgeElasticity"])
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(0.45);
+    let fcose_num_iter = config_f64(effective_config, &["architecture", "numIter"])
+        .filter(|v| v.is_finite() && *v >= 1.0)
+        .map(|v| v.round() as usize)
+        .unwrap_or(2500);
+    let fcose_seed = config_f64(effective_config, &["architecture", "seed"])
+        .filter(|v| v.is_finite() && *v >= 1.0)
+        .map(|v| v.round() as u64)
+        .unwrap_or(1);
 
     #[derive(Debug, Clone, Copy)]
     struct BBox {
@@ -1104,7 +1135,7 @@ fn layout_architecture_diagram_model(
         // input even when the underlying spatial map discovery is approximate.
         let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> =
             Vec::new();
-        let gap = 1.5 * icon_size;
+        let gap = ideal_edge_length_multiplier * icon_size;
         for spatial_map in spatial_maps {
             let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
             inv.reserve(spatial_map.len().saturating_mul(2));
@@ -1241,7 +1272,7 @@ fn layout_architecture_diagram_model(
             let same_parent = lhs_g == rhs_g;
 
             let base_ideal_length = if same_parent {
-                1.5 * icon_size
+                ideal_edge_length_multiplier * icon_size
             } else {
                 0.5 * icon_size
             };
@@ -1250,7 +1281,11 @@ fn layout_architecture_diagram_model(
 
             let ideal_length = base_ideal_length;
 
-            let elasticity = if same_parent { 0.45 } else { 0.001 };
+            let elasticity = if same_parent {
+                same_group_edge_elasticity
+            } else {
+                0.001
+            };
 
             let source_anchor = e.lhs_dir.and_then(Dir::from_char).map(|d| match d {
                 Dir::L => manatee::Anchor::Left,
@@ -1357,16 +1392,17 @@ fn layout_architecture_diagram_model(
             }),
             relative_placement_constraint: relative,
             default_edge_length: Some(default_edge_length),
+            randomize: fcose_randomize,
+            node_separation: Some(fcose_node_separation),
+            num_iter: Some(fcose_num_iter),
             compound_padding: Some(compound_padding_px),
             relocate_center: None,
             // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
             // which advances the seeded RNG stream and can change final positions.
             rerun: true,
-            // Mermaid@11.12.2 Architecture layout uses Cytoscape FCoSE with a spectral
-            // initialization that depends on `Math.random()`. Our upstream SVG baselines are
-            // generated with a deterministic RNG seed (see ADR-0055), so we must use the same
-            // seed here to match those baselines.
-            random_seed: 1,
+            // Mermaid@11.15 wraps FCoSE in a seeded `Math.random()` helper. Seed 0 opts out
+            // upstream; the Rust port keeps a deterministic fallback for headless repeatability.
+            random_seed: fcose_seed,
         };
 
         if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")

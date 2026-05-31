@@ -1,0 +1,25 @@
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md","reason":"Target state, scope, non-goals, and architecture direction for the 11.15 baseline upgrade."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/TODO.md","reason":"Task ledger and dependency order for executable slices."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/EVIDENCE_AND_GATES.md","reason":"Validation commands and evidence requirements."}
+{"file":"docs/adr/0001-upstream-baseline.md","reason":"Current upstream baseline authority and update policy."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy for upstream-aligned behavior and fixtures."}
+{"file":"docs/adr/0019-generated-default-config.md","reason":"Default config generation and drift policy."}
+{"file":"docs/alignment/STATUS.md","reason":"Current parity dashboard and corpus scope."}
+{"file":"tools/upstreams/REPOS.lock.json","reason":"Pinned upstream refs that must not be advanced before evidence supports the baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/CHANGELOG.md","reason":"Authoritative release delta from Mermaid 11.13.0 through 11.15.0."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/datastore.ts","reason":"Upstream datastore renderer: drawRect plus stroke-dasharray width/height behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes.ts","reason":"Upstream shape aliases: datastore/data-store are distinct from bow-rect/stored-data."}
+{"file":"crates/merman-core/src/diagrams/flowchart/shape_data.rs","reason":"Local flowchart shape-data allow-list for upstream shape names."}
+{"file":"crates/merman-render/src/svg/parity/flowchart/render/node/shapes/datastore.rs","reason":"Local SVG parity renderer for datastore."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/edges.js","reason":"Upstream rounded flowchart edge path generation and basis fallback behavior."}
+{"file":"crates/merman-core/src/generated/default_config.json","reason":"Local generated default config now carries the 11.13 flowchart curve default."}
+{"file":"crates/merman-render/src/svg/parity/flowchart/edge_geom/curve_path.rs","reason":"Local SVG curve selection for flowchart edge paths."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts","reason":"Upstream 11.15 Architecture FCoSE config wiring for randomize, nodeSeparation, idealEdgeLengthMultiplier, edgeElasticity, numIter, and seed."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architecture.spec.ts","reason":"Upstream Architecture config default and override tests for FCoSE knobs."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/config.type.ts","reason":"Upstream ArchitectureDiagramConfig documentation for new FCoSE fields."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream Architecture default values and required config fields."}
+{"file":"docs/workstreams/architecture-indexed-fcose/DESIGN.md","reason":"Existing local indexed FCoSE architecture boundary and constraints for M15-040 changes."}
+{"file":"docs/workstreams/architecture-indexed-fcose/HANDOFF.md","reason":"Completed Architecture indexed FCoSE lane state and follow-on boundaries."}
+{"file":"crates/manatee/src/algo/fcose/mod.rs","reason":"Local indexed FCoSE options and layout behavior extended for Architecture config."}
+{"file":"crates/merman-render/src/architecture.rs","reason":"Local Architecture layout now reads Mermaid 11.15 FCoSE config fields."}
+{"file":"crates/merman-render/tests/architecture_layout_test.rs","reason":"Public parse+layout tests for deterministic defaults and configured Architecture FCoSE changes."}

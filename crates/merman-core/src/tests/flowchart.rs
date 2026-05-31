@@ -539,6 +539,23 @@ fn parse_diagram_flowchart_node_data_shape_data_whitespace_variants() {
 }
 
 #[test]
+fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
+    let engine = Engine::new();
+
+    for shape in ["datastore", "data-store"] {
+        let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Datastore\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("D"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Datastore"), "diagram: {diagram}");
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_shape_data_amp_and_edge_matrix() {
     let engine = Engine::new();
 

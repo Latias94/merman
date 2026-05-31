@@ -282,7 +282,7 @@ impl SequenceDb {
         count
     }
 
-    fn add_autonumber(&mut self, start: Option<i64>, step: Option<i64>, visible: bool) {
+    fn add_autonumber(&mut self, start: Option<f64>, step: Option<f64>, visible: bool) {
         self.messages.push(Message {
             id: self.messages.len().to_string(),
             from: None,

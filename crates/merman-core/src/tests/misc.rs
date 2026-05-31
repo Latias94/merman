@@ -121,6 +121,43 @@ Alice->Bob: Hi
 }
 
 #[test]
+fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata(
+        "architecture-beta\n  service a(server)[A]\n",
+        ParseOptions::strict(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let arch = &default.effective_config.as_value()["architecture"];
+    assert_eq!(arch["randomize"], json!(false));
+    assert_eq!(arch["nodeSeparation"], json!(75));
+    assert_eq!(arch["idealEdgeLengthMultiplier"], json!(1.5));
+    assert_eq!(arch["edgeElasticity"], json!(0.45));
+    assert_eq!(arch["numIter"], json!(2500));
+    assert_eq!(arch["seed"], json!(1));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"architecture": {"randomize": true, "nodeSeparation": 120, "idealEdgeLengthMultiplier": 2, "edgeElasticity": 0.6, "numIter": 5000, "seed": 7}}}%%
+architecture-beta
+  service a(server)[A]
+"#,
+        ParseOptions::strict(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let arch = &configured.effective_config.as_value()["architecture"];
+    assert_eq!(arch["randomize"], json!(true));
+    assert_eq!(arch["nodeSeparation"], json!(120));
+    assert_eq!(arch["idealEdgeLengthMultiplier"], json!(2));
+    assert_eq!(arch["edgeElasticity"], json!(0.6));
+    assert_eq!(arch["numIter"], json!(5000));
+    assert_eq!(arch["seed"], json!(7));
+}
+
+#[test]
 fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(

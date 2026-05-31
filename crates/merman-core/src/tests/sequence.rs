@@ -36,6 +36,41 @@ Bob-->Alice: I am good thanks!"#;
 }
 
 #[test]
+fn parse_diagram_sequence_autonumber_allows_decimal_start_and_step() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+autonumber 10.1 .01
+Alice->>Bob:Hello
+Bob-->>Alice:Back"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    let msgs = res.model["messages"].as_array().unwrap();
+    assert_eq!(msgs[0]["type"], json!(26));
+    assert_eq!(msgs[0]["message"]["start"].as_f64(), Some(10.1));
+    assert_eq!(msgs[0]["message"]["step"].as_f64(), Some(0.01));
+    assert_eq!(msgs[0]["message"]["visible"], json!(true));
+    assert_eq!(msgs[1]["message"], json!("Hello"));
+    assert_eq!(msgs[2]["message"], json!("Back"));
+}
+
+#[test]
+fn parse_diagram_sequence_autonumber_rejects_thousandths() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+autonumber 10.001
+Alice->>Bob:Hello"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()));
+    assert!(
+        res.is_err(),
+        "expected Mermaid 11.15-compatible parse failure for thousandths"
+    );
+}
+
+#[test]
 fn parse_diagram_sequence_is_stateless_across_multiple_parses() {
     let engine = Engine::new();
     let first = r#"sequenceDiagram

@@ -105,10 +105,13 @@ pub struct IndexedEdge {
     pub elasticity: f64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct IndexedFcoseOptions {
     pub random_seed: u64,
     pub rerun: bool,
+    pub randomize: bool,
+    pub node_separation: Option<f64>,
+    pub num_iter: Option<usize>,
     pub default_edge_length: Option<f64>,
     /// Alignment groups use FCoSE element indices: leaves first, then compounds.
     pub alignment_constraint: Option<IndexedAlignmentConstraint>,
@@ -116,6 +119,23 @@ pub struct IndexedFcoseOptions {
     pub relative_placement_constraint: Vec<IndexedRelativePlacementConstraint>,
     pub compound_padding: Option<f64>,
     pub relocate_center: Option<(f64, f64)>,
+}
+
+impl Default for IndexedFcoseOptions {
+    fn default() -> Self {
+        Self {
+            random_seed: 0,
+            rerun: false,
+            randomize: true,
+            node_separation: None,
+            num_iter: None,
+            default_edge_length: None,
+            alignment_constraint: None,
+            relative_placement_constraint: Vec::new(),
+            compound_padding: None,
+            relocate_center: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -186,10 +206,12 @@ pub fn layout_indexed(
     }
 
     let mut rng = XorShift64Star::new(opts.random_seed);
-    // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start; a small
-    // amount of randomness can be consumed before the first spectral sampler draw. Model that as
-    // a single deterministic "seed offset" per layout invocation (not per rerun).
-    let _ = rng.next_f64_unit();
+    if opts.randomize {
+        // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start; a small
+        // amount of randomness can be consumed before the first spectral sampler draw. Model that
+        // as a single deterministic "seed offset" per layout invocation (not per rerun).
+        let _ = rng.next_f64_unit();
+    }
     let run_count = if opts.rerun { 2 } else { 1 };
     let mut spring_stats = SpringStats::default();
 
@@ -412,6 +434,9 @@ fn graph_to_indexed(graph: &Graph, opts: &FcoseOptions) -> (IndexedGraph, Indexe
     let indexed_opts = IndexedFcoseOptions {
         random_seed: opts.random_seed,
         rerun: opts.rerun,
+        randomize: opts.randomize,
+        node_separation: opts.node_separation,
+        num_iter: opts.num_iter,
         default_edge_length: opts.default_edge_length,
         alignment_constraint: opts.alignment_constraint.as_ref().map(|a| {
             IndexedAlignmentConstraint {
@@ -1981,23 +2006,30 @@ impl SimGraph {
             }
         }
 
-        // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
-        // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
-        // make this explicit and deterministic via `random_seed`.
+        // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
+        // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
         let spectral_start = timing_enabled.then(std::time::Instant::now);
-        let spectral_edges: Vec<SimEdge> = self
-            .edges
-            .iter()
-            .copied()
-            .filter(|e| e.a < self.leaf_count && e.b < self.leaf_count)
-            .collect();
-        let spectral_applied = spectral::apply_spectral_start_positions(
-            &mut self.nodes[..self.leaf_count],
-            &spectral_edges,
-            &self.compound_parent,
-            &self.compound_ids_in_order,
-            rng,
-        );
+        let mut spectral_applied = false;
+        if opts.randomize {
+            let node_separation = opts
+                .node_separation
+                .filter(|v| v.is_finite() && *v > 0.0)
+                .unwrap_or(75.0);
+            let spectral_edges: Vec<SimEdge> = self
+                .edges
+                .iter()
+                .copied()
+                .filter(|e| e.a < self.leaf_count && e.b < self.leaf_count)
+                .collect();
+            spectral_applied = spectral::apply_spectral_start_positions(
+                &mut self.nodes[..self.leaf_count],
+                &spectral_edges,
+                &self.compound_parent,
+                &self.compound_ids_in_order,
+                node_separation,
+                rng,
+            );
+        }
         dump_positions("spectral_raw", &self.nodes);
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), spectral_start) {
             t.spectral = s.elapsed();
@@ -2044,7 +2076,7 @@ impl SimGraph {
         let mut repulsion_grid: Option<RepulsionGrid> = None;
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
-        if self.edges.is_empty() && !spectral_applied {
+        if opts.randomize && self.edges.is_empty() && !spectral_applied {
             let collapse_start = timing_enabled.then(std::time::Instant::now);
             self.collapse_start_positions(default_edge_length, rng);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), collapse_start) {
@@ -2091,7 +2123,11 @@ impl SimGraph {
         let initial_cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
         let mut cooling_factor = initial_cooling_factor;
         let max_node_displacement = Self::MAX_NODE_DISPLACEMENT_INCREMENTAL;
-        let max_iterations = Self::MAX_ITERATIONS.max(self.nodes.len() * 5);
+        let configured_max_iterations = opts
+            .num_iter
+            .filter(|v| *v > 0)
+            .unwrap_or(Self::MAX_ITERATIONS);
+        let max_iterations = configured_max_iterations.max(self.nodes.len() * 5);
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = Self::FINAL_TEMPERATURE;
         let mut cooling_cycle = 0.0f64;
@@ -4004,6 +4040,9 @@ mod tests {
         let opts = FcoseOptions {
             random_seed: 1,
             rerun: false,
+            randomize: true,
+            node_separation: None,
+            num_iter: None,
             default_edge_length: Some(80.0),
             alignment_constraint: Some(AlignmentConstraint {
                 horizontal: vec![vec!["a".to_string(), "b".to_string()]],
@@ -4076,6 +4115,9 @@ mod tests {
         let indexed_opts = IndexedFcoseOptions {
             random_seed: 1,
             rerun: false,
+            randomize: true,
+            node_separation: None,
+            num_iter: None,
             default_edge_length: Some(80.0),
             alignment_constraint: Some(IndexedAlignmentConstraint {
                 horizontal: vec![vec![0, 1]],

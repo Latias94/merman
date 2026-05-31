@@ -44,7 +44,10 @@ fn render_sequence_svg_from_fixture(fixture: &str) -> String {
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
+    render_sequence_svg_from_text(&text)
+}
 
+fn render_sequence_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
         .expect("parse ok")
@@ -65,6 +68,34 @@ fn render_sequence_svg_from_fixture(fixture: &str) -> String {
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+#[test]
+fn sequence_autonumber_renders_decimal_sequence_numbers() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+autonumber 10.01 .01
+Alice->>Bob:Hello
+Bob-->>Alice:Back
+Bob->>Alice:Again"#,
+    );
+
+    assert!(
+        svg.contains(r#"font-size="9px" text-anchor="middle" class="sequenceNumber">10.01</text>"#),
+        "expected first decimal sequence number in SVG"
+    );
+    assert!(
+        svg.contains(r#"font-size="9px" text-anchor="middle" class="sequenceNumber">10.02</text>"#),
+        "expected second decimal sequence number rounded to hundredths"
+    );
+    assert!(
+        svg.contains(r#"font-size="9px" text-anchor="middle" class="sequenceNumber">10.03</text>"#),
+        "expected third decimal sequence number rounded to hundredths"
+    );
+    assert!(
+        !svg.contains("10.019999"),
+        "expected decimal sequence numbers to avoid floating point artifacts"
+    );
 }
 
 #[test]
