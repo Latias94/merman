@@ -54,13 +54,13 @@ Last updated: 2026-05-31
   Context: Workstream context plus upstream sankey renderer.
   Handoff: DONE. Sankey defaults now include 11.15 `nodeWidth=10`, `nodePadding=12`, `labelStyle=legacy`, and empty `nodeColors`; layout reads width/padding, renderer applies custom node colors to nodes and links, and `labelStyle=outlined` emits background/foreground labels. Sankey layout goldens were refreshed for the upstream padding baseline change.
 
-- [ ] M15-060 [owner=unassigned] [deps=M15-010] [scope=crates/merman-render/src/xychart.rs,crates/merman-core/src/generated/default_config.json]
+- [x] M15-060 [owner=codex] [deps=M15-010] [scope=crates/merman-render/src/svg/parity/xychart.rs,crates/merman-core/src/generated/default_config.json,crates/merman-render/tests/xychart_svg_test.rs,crates/merman-core/src/tests/misc.rs]
   Goal: Support xyChart `dataLabelColor` and `showDataLabelOutsideBar`.
-  Validation: xyChart layout/SVG tests for data-label placement and color.
+  Validation: xyChart config and SVG tests for data-label placement and color.
   Review: Keep vertical and horizontal chart behavior explicit.
-  Evidence: `EVIDENCE_AND_GATES.md`
+  Evidence: `cargo nextest run -p merman-core xychart`; `cargo nextest run -p merman-render xychart`; `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`; `cargo fmt --check`.
   Context: Workstream context plus upstream xyChart renderer.
-  Handoff: Add examples covering bar charts first.
+  Handoff: DONE. `showDataLabelOutsideBar` is exposed with the upstream default and override path; SVG bar data labels now honor `themeVariables.xyChart.dataLabelColor` with `primaryTextColor` fallback, and vertical/horizontal outside placement is covered by public SVG tests.
 
 - [ ] M15-070 [owner=unassigned] [deps=M15-010] [scope=crates/merman-core/src/diagrams/class*,crates/merman-render/src/class.rs]
   Goal: Support class hierarchical namespaces and notes attached to namespaces.

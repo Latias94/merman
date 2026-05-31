@@ -108,7 +108,19 @@ pub(super) fn render_xychart_diagram_svg(
         fmt_string(v)
     }
 
+    fn data_label_color(effective_config: &serde_json::Value) -> String {
+        config_string(
+            effective_config,
+            &["themeVariables", "xyChart", "dataLabelColor"],
+        )
+        .or_else(|| config_string(effective_config, &["themeVariables", "primaryTextColor"]))
+        .unwrap_or_else(|| "black".to_string())
+    }
+
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
+    let show_data_label_outside_bar =
+        config_bool(_effective_config, &["xyChart", "showDataLabelOutsideBar"]).unwrap_or(false);
+    let data_label_color = data_label_color(_effective_config);
 
     let mut out = String::new();
     let w_attr = fmt(layout.width.max(1.0)).to_string();
@@ -224,14 +236,23 @@ pub(super) fn render_xychart_diagram_svg(
                             let uniform = min_font.floor().max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
-                                t.attr(
-                                    "x",
-                                    fmt_xy(item.rect.x + item.rect.width - bar_data_label_inset_px),
-                                );
+                                let x = if show_data_label_outside_bar {
+                                    item.rect.x + item.rect.width + bar_data_label_inset_px
+                                } else {
+                                    item.rect.x + item.rect.width - bar_data_label_inset_px
+                                };
+                                t.attr("x", fmt_xy(x));
                                 t.attr("y", fmt_xy(item.rect.y + item.rect.height / 2.0));
-                                t.attr("text-anchor", "end");
+                                t.attr(
+                                    "text-anchor",
+                                    if show_data_label_outside_bar {
+                                        "start"
+                                    } else {
+                                        "end"
+                                    },
+                                );
                                 t.attr("dominant-baseline", "middle");
-                                t.attr("fill", "black");
+                                t.attr("fill", escape_xml(&data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);
@@ -277,10 +298,22 @@ pub(super) fn render_xychart_diagram_svg(
                             for item in &valid_items {
                                 let mut t = node("text");
                                 t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
-                                t.attr("y", fmt_xy(item.rect.y + y_offset));
+                                let y = if show_data_label_outside_bar {
+                                    item.rect.y - y_offset
+                                } else {
+                                    item.rect.y + y_offset
+                                };
+                                t.attr("y", fmt_xy(y));
                                 t.attr("text-anchor", "middle");
-                                t.attr("dominant-baseline", "hanging");
-                                t.attr("fill", "black");
+                                t.attr(
+                                    "dominant-baseline",
+                                    if show_data_label_outside_bar {
+                                        "auto"
+                                    } else {
+                                        "hanging"
+                                    },
+                                );
+                                t.attr("fill", escape_xml(&data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
                                 t.text = Some(escape_xml(item.label));
                                 push_child(&mut arena, parent, t);

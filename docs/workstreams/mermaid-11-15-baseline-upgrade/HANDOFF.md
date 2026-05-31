@@ -22,13 +22,17 @@ M15-050 is complete: Sankey now exposes Mermaid 11.15 defaults for `nodeWidth`, 
 `labelStyle`, and `nodeColors`; layout reads configured width/padding, SVG rendering applies custom
 node colors to nodes and links, and `labelStyle=outlined` emits Mermaid-style background/foreground
 labels. Sankey layout goldens were refreshed for the upstream default padding change.
+M15-060 is complete: xyChart now exposes Mermaid 11.15 `showDataLabelOutsideBar=false`, bar data
+labels use configured `themeVariables.xyChart.dataLabelColor` with `primaryTextColor` fallback, and
+vertical/horizontal outside-bar placement is covered by public SVG tests. No layout snapshot change
+was needed because the behavior is render-layer only.
 
 ## Active Task
 
-- Task ID: M15-060
+- Task ID: M15-070
 - Owner: unassigned
-- Files: `crates/merman-render/src/xychart.rs`, `crates/merman-core/src/generated/default_config.json`
-- Validation: targeted xyChart layout/SVG tests for `dataLabelColor` and `showDataLabelOutsideBar`
+- Files: `crates/merman-core/src/diagrams/class*`, `crates/merman-render/src/class.rs`
+- Validation: Class semantic/layout/SVG tests for dotted and nested namespaces, including disabled hierarchical mode
 - Status: READY
 - Review: Required before task acceptance
 - Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
@@ -48,12 +52,16 @@ labels. Sankey layout goldens were refreshed for the upstream default padding ch
   shown), so existing Sankey layout goldens changed intentionally.
 - Sankey `nodeColors` is represented as `{}` in local generated JSON because upstream TypeScript
   exposes the key as `undefined`; render behavior is equivalent for the default case.
+- xyChart data-label outside placement is a render-layer change in this repo; layout goldens should
+  remain stable unless later work moves label extents into layout.
+- xyChart data-label color preserves the old effective black fallback unless
+  `themeVariables.xyChart.dataLabelColor` or `themeVariables.primaryTextColor` is configured.
 
 ## Blockers
 
-- None known for M15-060. Start from upstream xyChart config/schema and renderer behavior.
+- None known for M15-070. Start from upstream class parser, namespace, and renderer behavior.
 
 ## Next Recommended Action
 
-- Execute M15-060. Start with the upstream xyChart config/schema and add the smallest public
-  layout/SVG test for `dataLabelColor` or `showDataLabelOutsideBar` before wiring config.
+- Execute M15-070. Start with upstream class parser/renderer changes and add the smallest public
+  tests for dotted hierarchical namespaces before handling namespace-attached notes.

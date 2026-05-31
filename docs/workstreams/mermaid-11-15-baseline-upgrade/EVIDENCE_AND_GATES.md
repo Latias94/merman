@@ -119,3 +119,16 @@ before marking a task, Codex goal, or lane complete.
   - `cargo nextest run -p merman-core` passed: 531 tests.
   - `cargo nextest run -p merman-render` passed: 238 tests.
   - `cargo fmt --check` passed.
+- 2026-05-31: M15-060 xyChart data-label config support complete.
+  - Upstream check: Mermaid 11.15 xyChart schema defaults `showDataLabelOutsideBar=false`; the renderer uses it to place horizontal bar labels outside with `text-anchor=start` and vertical bar labels above the bar with `dominant-baseline=auto`, and fills data labels from theme `dataLabelColor`.
+  - `cargo nextest run -p merman-render xychart_vertical_bar_data_label_can_render_outside_with_configured_color` failed before implementation because vertical labels still used `dominant-baseline="hanging"` and `fill="black"`.
+  - `cargo nextest run -p merman-core parse_xychart_exposes_11_15_data_label_outside_default_and_override` failed before implementation because `xyChart.showDataLabelOutsideBar` was missing from generated defaults.
+  - `cargo nextest run -p merman-render xychart_vertical_bar_data_label_can_render_outside_with_configured_color` passed: 1 test.
+  - `cargo nextest run -p merman-render xychart_horizontal_bar_data_label_can_render_outside xychart_vertical_bar_data_label_can_render_outside_with_configured_color` passed: 2 tests.
+  - `cargo nextest run -p merman-core parse_xychart_exposes_11_15_data_label_outside_default_and_override` passed: 1 test.
+  - `cargo nextest run -p merman-render xychart` passed: 2 tests.
+  - `cargo nextest run -p merman-core xychart` passed: 17 tests.
+  - `cargo nextest run -p merman-core config` passed: 11 tests.
+  - `cargo nextest run -p merman-core` passed: 532 tests.
+  - `cargo nextest run -p merman-render` passed: 240 tests.
+  - `cargo fmt --check` passed.

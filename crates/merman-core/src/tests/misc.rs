@@ -528,6 +528,29 @@ line "Series 2" [2, 3]
 }
 
 #[test]
+fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("xychart\nbar [1]", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let xychart = &default.effective_config.as_value()["xyChart"];
+    assert_eq!(xychart["showDataLabel"], json!(false));
+    assert_eq!(xychart["showDataLabelOutsideBar"], json!(false));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"xyChart": {"showDataLabel": true, "showDataLabelOutsideBar": true}}}%%
+xychart
+bar [1]"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let xychart = &configured.effective_config.as_value()["xyChart"];
+    assert_eq!(xychart["showDataLabel"], json!(true));
+    assert_eq!(xychart["showDataLabelOutsideBar"], json!(true));
+}
+
+#[test]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"

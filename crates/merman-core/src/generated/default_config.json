@@ -475,6 +475,7 @@
     "height": 500,
     "plotReservedSpacePercent": 50,
     "showDataLabel": false,
+    "showDataLabelOutsideBar": false,
     "showTitle": true,
     "titleFontSize": 20,
     "titlePadding": 10,

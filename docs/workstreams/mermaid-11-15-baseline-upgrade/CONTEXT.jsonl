@@ -28,3 +28,8 @@
 {"file":"crates/merman-render/src/sankey.rs","reason":"Local Sankey layout now reads configured node width and padding."}
 {"file":"crates/merman-render/src/svg/parity/sankey.rs","reason":"Local Sankey SVG now applies nodeColors and outlined labels."}
 {"file":"crates/merman-render/tests/sankey_svg_test.rs","reason":"Public SVG test for configured Sankey colors and outlined labels."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/xychartRenderer.ts","reason":"Upstream xyChart renderer behavior for showDataLabelOutsideBar placement and themed dataLabelColor."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream xyChart showDataLabelOutsideBar schema default."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js","reason":"Upstream theme fallback for xyChart dataLabelColor from primaryTextColor."}
+{"file":"crates/merman-render/src/svg/parity/xychart.rs","reason":"Local xyChart SVG renderer now supports outside bar labels and configured label color."}
+{"file":"crates/merman-render/tests/xychart_svg_test.rs","reason":"Public SVG tests for vertical and horizontal outside bar labels with configured color."}
