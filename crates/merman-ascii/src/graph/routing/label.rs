@@ -33,21 +33,6 @@ pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel) {
     }
 }
 
-pub(super) fn push_label_on_horizontal_line(
-    labels: &mut Vec<EdgeLabel>,
-    start_x: usize,
-    end_x: usize,
-    y: usize,
-    label: Option<&str>,
-) {
-    push_label(
-        labels,
-        CanvasCoord { x: start_x, y },
-        CanvasCoord { x: end_x, y },
-        label,
-    );
-}
-
 pub(super) fn push_label_on_vertical_line(
     labels: &mut Vec<EdgeLabel>,
     x: usize,
