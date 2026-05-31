@@ -4,7 +4,7 @@ use crate::util::*;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
     // `--diagram <dir>` is a directory selector. Fixtures in that directory can still parse into
@@ -436,14 +436,51 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
 }
 
-pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
-    if !args.is_empty() && !(args.len() == 1 && (args[0] == "--help" || args[0] == "-h")) {
-        return Err(XtaskError::Usage);
-    }
-    if args.len() == 1 {
-        return Err(XtaskError::Usage);
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GeneratedArtifactCheck {
+    DefaultConfig,
+    DompurifyDefaults,
+    FlowchartFontMetrics,
+}
 
+fn verify_default_config_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::DefaultConfig]
+}
+
+fn verify_dompurify_defaults_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::DompurifyDefaults]
+}
+
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 3] {
+    [
+        GeneratedArtifactCheck::DefaultConfig,
+        GeneratedArtifactCheck::DompurifyDefaults,
+        GeneratedArtifactCheck::FlowchartFontMetrics,
+    ]
+}
+
+impl GeneratedArtifactCheck {
+    fn label(self) -> &'static str {
+        match self {
+            GeneratedArtifactCheck::DefaultConfig => "default config",
+            GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
+            GeneratedArtifactCheck::FlowchartFontMetrics => "flowchart font metrics",
+        }
+    }
+}
+
+fn validate_verify_generated_args(args: &[String]) -> Result<(), XtaskError> {
+    if args.is_empty() {
+        return Ok(());
+    }
+    Err(XtaskError::Usage)
+}
+
+fn verify_generated_artifact_checks(
+    args: Vec<String>,
+    checks: &[GeneratedArtifactCheck],
+) -> Result<(), XtaskError> {
+    validate_verify_generated_args(&args)?;
     let tmp_dir = PathBuf::from("target/xtask");
     fs::create_dir_all(&tmp_dir).map_err(|source| XtaskError::WriteFile {
         path: tmp_dir.display().to_string(),
@@ -451,8 +488,39 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mut failures = Vec::new();
+    let aggregate_errors = checks.len() > 1;
+    for check in checks {
+        match verify_generated_artifact_check(*check, &tmp_dir) {
+            Ok(Some(failure)) => failures.push(failure),
+            Ok(None) => {}
+            Err(err) if aggregate_errors => {
+                failures.push(format!("{} verification error: {err}", check.label()));
+            }
+            Err(err) => return Err(err),
+        }
+    }
 
-    // Verify default config JSON.
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(XtaskError::VerifyFailed(failures.join("\n")))
+}
+
+fn verify_generated_artifact_check(
+    check: GeneratedArtifactCheck,
+    tmp_dir: &Path,
+) -> Result<Option<String>, XtaskError> {
+    match check {
+        GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
+        GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
+        GeneratedArtifactCheck::FlowchartFontMetrics => {
+            verify_flowchart_font_metrics_artifact(tmp_dir)
+        }
+    }
+}
+
+fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_config = PathBuf::from("crates/merman-core/src/generated/default_config.json");
     let actual_config = tmp_dir.join("default_config.actual.json");
     super::gen_default_config(vec![
@@ -464,13 +532,16 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     let expected_config_json: JsonValue = serde_json::from_str(&read_text(&expected_config)?)?;
     let actual_config_json: JsonValue = serde_json::from_str(&read_text(&actual_config)?)?;
     if expected_config_json != actual_config_json {
-        failures.push(format!(
+        return Ok(Some(format!(
             "default config mismatch: regenerate with `cargo run -p xtask -- gen-default-config` ({})",
             expected_config.display()
-        ));
+        )));
     }
 
-    // Verify DOMPurify allowlists.
+    Ok(None)
+}
+
+fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_purify = PathBuf::from("crates/merman-core/src/generated/dompurify_defaults.rs");
     let actual_purify = tmp_dir.join("dompurify_defaults.actual.rs");
     super::gen_dompurify_defaults(vec![
@@ -480,13 +551,16 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
         actual_purify.display().to_string(),
     ])?;
     if read_text_normalized(&expected_purify)? != read_text_normalized(&actual_purify)? {
-        failures.push(format!(
+        return Ok(Some(format!(
             "dompurify defaults mismatch: regenerate with `cargo run -p xtask -- gen-dompurify-defaults` ({})",
             expected_purify.display()
-        ));
+        )));
     }
 
-    // Verify generated Flowchart font metrics table.
+    Ok(None)
+}
+
+fn verify_flowchart_font_metrics_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_flowchart_font_metrics =
         PathBuf::from("crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs");
     let actual_flowchart_font_metrics = tmp_dir.join("font_metrics_flowchart_11_12_2.actual.rs");
@@ -503,17 +577,28 @@ pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     if read_text_normalized(&expected_flowchart_font_metrics)?
         != read_text_normalized(&actual_flowchart_font_metrics)?
     {
-        failures.push(format!(
+        return Ok(Some(format!(
             "flowchart font metrics mismatch: regenerate with `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16 --preserve-layout-from crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` ({})",
             expected_flowchart_font_metrics.display()
-        ));
+        )));
     }
 
-    if failures.is_empty() {
-        return Ok(());
-    }
+    Ok(None)
+}
 
-    Err(XtaskError::VerifyFailed(failures.join("\n")))
+pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_default_config_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_dompurify_defaults_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_generated_checks();
+    verify_generated_artifact_checks(args, &checks)
 }
 
 pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
@@ -723,9 +808,48 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts};
+    use super::{
+        GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts,
+        validate_verify_generated_args, verify_default_config_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks,
+    };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
+
+    #[test]
+    fn generated_artifact_verify_commands_have_expected_scope() {
+        assert_eq!(
+            verify_default_config_checks(),
+            [GeneratedArtifactCheck::DefaultConfig]
+        );
+        assert_eq!(
+            verify_dompurify_defaults_checks(),
+            [GeneratedArtifactCheck::DompurifyDefaults]
+        );
+        assert_eq!(
+            verify_generated_checks(),
+            [
+                GeneratedArtifactCheck::DefaultConfig,
+                GeneratedArtifactCheck::DompurifyDefaults,
+                GeneratedArtifactCheck::FlowchartFontMetrics,
+            ]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::DefaultConfig.label(),
+            "default config"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::DompurifyDefaults.label(),
+            "dompurify defaults"
+        );
+    }
+
+    #[test]
+    fn generated_artifact_verify_commands_reject_args() {
+        assert!(validate_verify_generated_args(&[]).is_ok());
+        assert!(validate_verify_generated_args(&["--help".to_string()]).is_err());
+        assert!(validate_verify_generated_args(&["unexpected".to_string()]).is_err());
+    }
 
     #[test]
     fn collect_mmd_fixtures_honors_snapshot_scan_policy() {

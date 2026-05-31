@@ -86,8 +86,11 @@ Related docs:
 - [ ] Add a “coverage sanity” report for root viewport overrides:
       - list mismatch stems that lack overrides
       - list overrides that no longer affect any fixture
-- [ ] Make `xtask verify-generated` not fail on missing optional `repo-ref/*` build artifacts, or add
-      a dedicated `xtask bootstrap` that materializes them.
+- [ ] Finish generated-artifact verification ergonomics: keep `xtask verify-generated` as an
+      umbrella check, expose artifact-specific gates for default config and DOMPurify, and decide
+      whether missing optional `repo-ref/*` build artifacts should be bootstrap failures or
+      optional-gate failures. 2026-05-31: tracked in
+      `docs/workstreams/generated-default-config-parity/`.
 
 ### P3: Output stability and debug UX
 

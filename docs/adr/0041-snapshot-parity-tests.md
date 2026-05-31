@@ -40,4 +40,4 @@ Upstream end-to-end SVG baselines are generated separately via the official Merm
 - Updating golden snapshots is an explicit action and should be paired with a clear reason (e.g.
   upstream parity fix).
 - Because `config` is excluded from snapshots, changes to generated defaults remain covered by
-  `xtask verify-generated`.
+  `xtask verify-default-config` and the umbrella `xtask verify-generated` gate.

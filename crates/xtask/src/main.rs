@@ -62,6 +62,8 @@ fn print_help(topic: Option<&str>) {
     println!();
     println!("Common commands:");
     println!("  verify");
+    println!("  verify-default-config");
+    println!("  verify-dompurify-defaults");
     println!("  check-alignment");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
@@ -144,6 +146,8 @@ fn main() -> Result<(), XtaskError> {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
         "verify" => cmd::verify(args.collect()),
+        "verify-default-config" => cmd::verify_default_config(args.collect()),
+        "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),

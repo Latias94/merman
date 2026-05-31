@@ -54,8 +54,9 @@ Notes:
   - change risk
   - review time
   - accidental drift across diagrams
-- `xtask verify-generated` can fail due to missing `repo-ref/*` build artifacts, which is confusing
-  when the actual release gates are green.
+- Generated-artifact verification needs artifact-specific commands because `xtask verify-generated`
+  can fail due to missing optional `repo-ref/*` build artifacts, which is confusing when the actual
+  release gates are green.
 
 ## Proposed architecture (incremental)
 

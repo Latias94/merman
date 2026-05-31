@@ -30,8 +30,9 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 - Generate a Rust module containing DOMPurify's default allowlists via `xtask`:
   - source: `repo-ref/dompurify/dist/purify.cjs.js`
   - output: `crates/merman-core/src/generated/dompurify_defaults.rs`
-- Verify generated artifacts using:
-  - `cargo run -p xtask -- verify-generated`
+- Verify generated allowlists using:
+  - DOMPurify allowlists only: `cargo run -p xtask -- verify-dompurify-defaults`
+  - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
 - Implement a DOMPurify-inspired tag/attribute validation step in `merman-core::sanitize` driven by:
   - `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`
   - `DEFAULT_URI_SAFE_ATTRIBUTES` / `DEFAULT_DATA_URI_TAGS`

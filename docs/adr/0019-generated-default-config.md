@@ -20,8 +20,9 @@ defaults should be stable across environments and CI.
 - Add an `xtask` command to generate a JSON defaults artifact from the schema:
   - `cargo run -p xtask -- gen-default-config`
   - Output: `crates/merman-core/src/generated/default_config.json`
-- Add a verification command for CI/local checks:
-  - `cargo run -p xtask -- verify-generated`
+- Add verification commands for CI/local checks:
+  - default config only: `cargo run -p xtask -- verify-default-config`
+  - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
 - Commit the generated artifact to the repository and load it via `include_str!()` inside `merman-core`.
 - Keep a small explicit override layer only when Mermaid defaults are known to differ from generated
   schema defaults, when upstream introduces non-schema defaults, or while the generator has not yet

@@ -1,0 +1,6 @@
+{"role":"adr","path":"docs/adr/0019-generated-default-config.md","reason":"Defines generated default config source of truth and verification expectations."}
+{"role":"adr","path":"docs/adr/0024-dompurify-default-allowlists-and-generation.md","reason":"Defines DOMPurify allowlist generation source and artifact policy."}
+{"role":"adr","path":"docs/adr/0041-snapshot-parity-tests.md","reason":"Explains why config is excluded from semantic snapshots and must be covered by generated-artifact gates."}
+{"role":"workstream","path":"docs/workstreams/mermaid-11-15-baseline-upgrade/","reason":"Records the 11.15 baseline closeout concerns that spawned this lane."}
+{"role":"refactor-doc","path":"docs/rendering/FEARLESS_REFACTORING_SVG_PARITY.md","reason":"Tracks generated-artifact verification ergonomics as a refactor pain point."}
+{"role":"todo","path":"docs/rendering/REFACTOR_TODO.md","reason":"Contains the existing TODO for making generated verification less dependent on optional repo-ref artifacts."}
