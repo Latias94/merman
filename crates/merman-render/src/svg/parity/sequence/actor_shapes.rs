@@ -65,17 +65,25 @@ pub(super) fn write_lifeline_root_open(
     y1: f64,
     y2: f64,
     actor_id: &str,
+    actor_type: &str,
 ) {
     out.push_str("<g>");
+    let root_class = if actor_type == "queue" {
+        r#" class="actor actor-top""#
+    } else {
+        ""
+    };
     let _ = write!(
         out,
-        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}" data-et="participant" data-type="participant" data-id="{data_id}">"##,
+        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}">"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
         y2 = fmt(y2),
         name = escape_xml(actor_id),
         data_id = escape_attr(actor_id),
+        root_class = root_class,
+        actor_type = escape_attr(actor_type),
     );
 }
 
@@ -119,7 +127,7 @@ pub(super) fn write_queue_actor_shape(
     out: &mut String,
     n: &LayoutNode,
     actor: &SequenceActor,
-    placement_class: &str,
+    _placement_class: &str,
     label_ctx: &ActorLabelContext<'_>,
 ) {
     let (x, y) = node_left_top(n);
@@ -129,7 +137,7 @@ pub(super) fn write_queue_actor_shape(
     let y_mid = y + ry;
     let _ = write!(
         out,
-        r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor {placement_class}"/></g>"##,
+        r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z"/></g>"##,
         tx1 = fmt(rx),
         ty = fmt(-n.height / 2.0),
         x = fmt(x),
@@ -138,11 +146,10 @@ pub(super) fn write_queue_actor_shape(
         ry = fmt(ry),
         h = fmt(n.height),
         body_w = fmt(body_w),
-        placement_class = placement_class,
     );
     let _ = write!(
         out,
-        r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor {placement_class}"/></g>"##,
+        r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}"/></g>"##,
         tx2 = fmt(n.width - rx),
         ty = fmt(-n.height / 2.0),
         x = fmt(x),
@@ -150,7 +157,6 @@ pub(super) fn write_queue_actor_shape(
         rx = fmt(rx),
         ry = fmt(ry),
         h = fmt(n.height),
-        placement_class = placement_class,
     );
     label_ctx.write_actor(out, n.x, y_mid, actor);
 }
@@ -172,7 +178,7 @@ pub(super) fn write_database_top_actor_shape(
     let y_text = y + actor_height + (ry / 2.0);
     let _ = write!(
         out,
-        r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-top"/></g>"##,
+        r##"<g class="actor actor-top" transform="translate({tx}, {ty})" style="stroke: rgb(147, 112, 219);"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}"/></g>"##,
         tx = fmt(tx),
         ty = fmt(ty),
         x = fmt(x),
@@ -205,7 +211,7 @@ pub(super) fn write_database_bottom_actor_shape(
     let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
     let _ = write!(
         out,
-        r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g>"##,
+        r##"<g class="actor actor-bottom" transform="translate({tx}, {ty})" style="stroke: rgb(147, 112, 219);"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}"/></g>"##,
         tx = fmt(tx),
         ty = fmt(ty),
         x = fmt(x),

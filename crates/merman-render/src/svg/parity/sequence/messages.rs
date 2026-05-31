@@ -313,11 +313,14 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     y4 = fmt(y + 20.0)
                 )
             };
-            // Mermaid attaches an `x1` attribute to bidirectional self-reference message paths
-            // when sequence numbers are visible (autonumber), even though the geometry lives in
-            // the `d` attribute. This keeps DOM parity with upstream Cypress baselines.
-            let path_x1 = if sequence_number_visible && marker_start.is_some() {
-                Some(p0.x + 6.0)
+            // Mermaid attaches an `x1` attribute to autonumbered self-reference paths even
+            // though the geometry lives in the `d` attribute.
+            let path_x1 = if sequence_number_visible {
+                Some(if marker_start.is_some() {
+                    p0.x + 6.0
+                } else {
+                    p0.x
+                })
             } else {
                 None
             };

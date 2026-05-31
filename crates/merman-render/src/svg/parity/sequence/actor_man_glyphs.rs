@@ -296,7 +296,7 @@ fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}"{data_attrs}><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" style="stroke: rgb(147, 112, 219); fill: rgb(236, 236, 255);"{data_attrs}><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5" stroke-width="1.2"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" filter=""/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,
@@ -315,7 +315,7 @@ fn write_entity_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0, 9)"{data_attrs}><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor {placement_class}" name="{name}" transform="translate(0, 9)"{data_attrs}><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
         data_attrs = data_attrs,

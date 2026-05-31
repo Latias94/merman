@@ -1,17 +1,17 @@
 # Mermaid 11.15 Complete Adaptation - Handoff
 
 Status: Active
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 ## Current State
 
 The umbrella campaign is open. The repo baseline points at Mermaid `11.15.0`, generated artifacts
 verify, and the Pie 11.15 lane is closed. M15C-030 removed active 11.12.3 report labels. M15C-040
 has landed renderer fixes for Sequence central connections, Sequence 11.15 metadata, C4 scoped
-symbols/type labels, and Journey scoped task-line ids. Fresh 11.15 probes are green for
-`sequence/basic`, `sequence/central`, full C4, and full Journey. C4 and Journey stored upstream SVG
-baselines have been refreshed and now pass the default stored-fixture compare. Full implemented
-matrix SVG DOM parity is still red: current split is sequence=322, timeline=91, sankey=24, class=9,
+symbols/type labels, Journey scoped task-line ids, and the remaining full Sequence 11.15 DOM
+differences. Sequence, C4, and Journey stored upstream SVG baselines have been refreshed and now
+pass their stored-fixture compares. Full implemented matrix SVG DOM parity is still red, but
+Sequence is no longer in the failure set: current split is timeline=91, sankey=24, class=9,
 flowchart=1, xychart=1.
 
 ## Active Task
@@ -47,6 +47,10 @@ flowchart=1, xychart=1.
 - Full fresh Sequence 11.15 generation produced 322 SVGs, but full fresh compare still failed with
   121 mismatches. Do not refresh stored Sequence baselines until Sequence residuals are closed or
   explicitly split.
+- Sequence residuals were closed after the full fresh probe. Stored Sequence baselines were
+  refreshed and both `compare-sequence-svgs` and `compare-svg-xml --diagram sequence` pass in
+  `parity` mode. `stress_end_keyword_016` is intentionally skipped in upstream SVG gates because
+  Mermaid 11.15 rejects `(end)` as a participant id; keep it for local parser coverage.
 - Fresh Timeline 11.15 output still does not match local output: representative deltas include
   scoped node ids such as `<svg-id>-node-0` versus local `node-undefined`, wrapper class/DOM shape
   differences, and multiline/tspan differences.
@@ -59,11 +63,11 @@ flowchart=1, xychart=1.
   local scoped-id direction is correct there; Timeline needs renderer convergence rather than an
   unqualified baseline refresh.
 - Full stored upstream SVG refresh was intentionally not done in one batch. `fixtures/upstream-svgs`
-  still contains stale 11.12-era Sequence and Timeline marker ids until those diagrams converge.
+  still contains stale 11.12-era Timeline marker ids until Timeline converges.
 
 ## Next Recommended Action
 
-Continue M15C-040 by splitting or running Sequence and Timeline convergence tasks. Sequence should
-be debugged against `target/upstream-svgs-11-15-sequence`; Timeline should be debugged against
-`target/upstream-svgs-11-15-timeline`. Sankey/Class/XYChart still need fresh 11.15 baseline checks
-before code changes.
+Continue M15C-040 with Timeline convergence against `target/upstream-svgs-11-15-timeline`, then
+move to M15C-050/M15C-060 for Sankey/Class/XYChart/Flowchart residuals. Sankey, Class, and XYChart
+still need fresh 11.15 baseline checks before code changes; Flowchart has a single MathML
+`columnalign` normalizer/renderer delta.

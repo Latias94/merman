@@ -1,7 +1,7 @@
 # Mermaid 11.15 Complete Adaptation - Evidence And Gates
 
 Status: Active
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 ## Smallest Current Repro
 
@@ -159,6 +159,35 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     failed with the current stored-baseline split: sequence=322, timeline=91, sankey=24, class=9,
     flowchart=1, xychart=1. C4 and Journey are now green in the full gate.
+- 2026-06-01 M15C-040 Sequence full-corpus convergence and stored baseline refresh:
+  - Implemented the remaining Sequence 11.15 DOM deltas found by the fresh full-corpus probe:
+    control-structure group metadata, section-title text classes, participant type data/classes,
+    queue/database actor wrapper shape, actor-man DOM/style ordering, self-message `x1`, and note
+    wrapping slack.
+  - `compare-svg-xml` now attaches the Node KaTeX math renderer for Sequence as well as Flowchart,
+    fixing the Sequence math fixture in parity mode.
+  - `stress_end_keyword_016` is explicitly excluded from upstream SVG generation/check/DOM compare:
+    Mermaid 11.15 rejects `(end)` as a participant id, while merman keeps the fixture for local
+    parser coverage.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram sequence --out fixtures/upstream-svgs`:
+    refreshed stored Sequence SVG baselines. The shell timeout expired first, but the original
+    `xtask` process continued and completed; the only unrefreshable fixture is the skipped
+    `stress_end_keyword_016`.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram sequence --filter stress_end_keyword_016 --out target/upstream-svgs-skip-probe`:
+    passed, skipped 1 known upstream render gap.
+  - `cargo run -p xtask -- check-upstream-svgs --diagram sequence --filter stress_end_keyword_016 --check-dom --dom-mode parity --dom-decimals 3`:
+    passed, skipped 1 known upstream render/check gap.
+  - `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram sequence --dom-mode parity --dom-decimals 3`:
+    passed; report records 1 skipped fixture.
+  - `cargo nextest run -p merman-render sequence`: passed, 16 tests.
+  - `cargo nextest run -p xtask`: passed, 67 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed with the current remaining split: timeline=91, sankey=24, class=9, flowchart=1,
+    xychart=1. Sequence, C4, and Journey no longer appear in the full-gate failure set.
 
 ## Evidence Anchors
 

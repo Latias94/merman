@@ -1,7 +1,7 @@
 # Mermaid 11.15 Complete Adaptation - TODO
 
 Status: Active
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 ## M0 - Scope And Evidence Freeze
 
@@ -46,11 +46,12 @@ Last updated: 2026-05-31
   Review: Stage baseline churn separately from renderer code fixes when possible.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  Handoff: IN_PROGRESS. Sequence fresh 11.15 probes are green for `basic` and `central`, but the
-  full fresh Sequence corpus still has 121 DOM mismatches, so stored Sequence baselines were not
-  refreshed. C4 and Journey fresh 11.15 full-diagram probes are green, and their stored upstream SVG
-  baselines have been refreshed. Timeline fresh 11.15 still has broad renderer/model deltas and
-  needs a separate convergence slice.
+  Handoff: IN_PROGRESS. Sequence, C4, and Journey are green against stored Mermaid 11.15 upstream
+  SVG baselines. Sequence keeps `stress_end_keyword_016` as local parser coverage but skips its
+  stale SVG baseline in upstream gates because Mermaid 11.15 rejects `(end)` as a participant id.
+  Timeline fresh 11.15 still has broad renderer/model deltas and needs a separate convergence
+  slice. The current full `parity` gate is red only for timeline=91, sankey=24, class=9,
+  flowchart=1, xychart=1.
 
 ## M2 - Residual Existing-Matrix Parity
 

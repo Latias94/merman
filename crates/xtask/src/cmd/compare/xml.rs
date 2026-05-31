@@ -82,7 +82,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let workspace_root = crate::cmd::workspace_root();
 
-    let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
+    let node_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
         let node_cwd = crate::cmd::mermaid_cli_root();
         if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
             Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
@@ -161,6 +161,12 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         } else {
             id.to_string()
         }
+    }
+
+    fn upstream_svg_fixture_is_skipped_for_xml_compare(diagram: &str, stem: &str) -> bool {
+        // Mermaid 11.15 rejects `(end)` as a sequence participant id. Keep the fixture and any
+        // stale SVG on disk for local parser coverage/history, but exclude it from 11.15 DOM gates.
+        diagram == "sequence" && stem == "stress_end_keyword_016"
     }
 
     fn gantt_upstream_today_x1(svg: &str) -> Option<f64> {
@@ -305,6 +311,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut mismatches: Vec<(String, String, PathBuf, PathBuf)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
 
     for diagram in diagrams {
         let upstream_dir = upstream_root.join(&diagram);
@@ -349,6 +356,10 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             let Some(stem) = upstream_path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
+            if upstream_svg_fixture_is_skipped_for_xml_compare(&diagram, stem) {
+                skipped.push(format!("{diagram}/{stem}"));
+                continue;
+            }
             let fixture_path = fixtures_dir.join(format!("{stem}.mmd"));
             let text = match fs::read_to_string(&fixture_path) {
                 Ok(v) => v,
@@ -389,8 +400,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             };
 
             let mut layout_opts = layout_opts.clone();
-            if diagram == "flowchart" {
-                layout_opts.math_renderer = flowchart_math_renderer.clone();
+            if matches!(diagram.as_str(), "flowchart" | "sequence") {
+                layout_opts.math_renderer = node_math_renderer.clone();
             }
 
             let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -422,8 +433,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
-            if diagram == "flowchart" {
-                svg_opts.math_renderer = flowchart_math_renderer.clone();
+            if matches!(diagram.as_str(), "flowchart" | "sequence") {
+                svg_opts.math_renderer = node_math_renderer.clone();
             }
             if diagram == "gantt" {
                 if let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
@@ -514,6 +525,17 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         let _ = writeln!(&mut report);
         for m in &missing {
             let _ = writeln!(&mut report, "- {m}");
+        }
+    }
+    if !skipped.is_empty() {
+        let _ = writeln!(&mut report);
+        let _ = writeln!(&mut report, "## Skipped ({})", skipped.len());
+        let _ = writeln!(&mut report);
+        for item in &skipped {
+            let _ = writeln!(
+                &mut report,
+                "- {item}: upstream Mermaid 11.15 cannot regenerate this SVG baseline"
+            );
         }
     }
 

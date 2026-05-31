@@ -35,6 +35,11 @@ fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) ->
     if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
         return true;
     }
+    if diagram == "sequence" && name == "stress_end_keyword_016.mmd" {
+        // Mermaid 11.15 rejects `(end)` as a participant id. Keep the fixture for local parser
+        // coverage, but do not require an upstream SVG baseline that cannot be regenerated.
+        return true;
+    }
     if diagram == "c4" {
         // Mermaid C4 has known render-time type assumptions that make some valid parser
         // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
@@ -78,6 +83,9 @@ fn upstream_svg_fixture_is_skipped_for_check(diagram: &str, path: &Path) -> bool
         return true;
     }
     if diagram == "class" && name.contains("upstream_text_label_variants_spec") {
+        return true;
+    }
+    if diagram == "sequence" && name == "stress_end_keyword_016.mmd" {
         return true;
     }
     if diagram == "c4" {
@@ -237,9 +245,22 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         let mut mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, true);
-        mmd_files.retain(|path| !upstream_svg_fixture_is_skipped_for_generation(diagram, path));
+        let mut skipped_count = 0usize;
+        mmd_files.retain(|path| {
+            let skipped = upstream_svg_fixture_is_skipped_for_generation(diagram, path);
+            if skipped {
+                skipped_count += 1;
+            }
+            !skipped
+        });
 
         if mmd_files.is_empty() {
+            if skipped_count > 0 {
+                println!(
+                    "skipped {skipped_count} upstream svg fixture(s) for {diagram}: known upstream render gap"
+                );
+                return Ok(());
+            }
             return Err(XtaskError::UpstreamSvgFailed(format!(
                 "no .mmd fixtures matched under {}",
                 fixtures_dir.display()
@@ -553,9 +574,22 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let out_dir = out_root.join(diagram);
 
         let mut mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, true);
-        mmd_files.retain(|path| !upstream_svg_fixture_is_skipped_for_check(diagram, path));
+        let mut skipped_count = 0usize;
+        mmd_files.retain(|path| {
+            let skipped = upstream_svg_fixture_is_skipped_for_check(diagram, path);
+            if skipped {
+                skipped_count += 1;
+            }
+            !skipped
+        });
 
         if mmd_files.is_empty() {
+            if skipped_count > 0 {
+                println!(
+                    "skipped {skipped_count} upstream svg check fixture(s) for {diagram}: known upstream render gap"
+                );
+                return Ok(());
+            }
             return Err(XtaskError::UpstreamSvgFailed(format!(
                 "no .mmd fixtures matched under {}",
                 fixtures_dir.display()

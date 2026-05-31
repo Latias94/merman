@@ -1,7 +1,7 @@
 # Mermaid 11.15 Parity Failure Inventory
 
 Status: Draft
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 Source command:
 
@@ -9,13 +9,16 @@ Source command:
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
 ```
 
-Result on 2026-05-31: failed with 525 DOM mismatches across 8 diagram groups.
+Initial result on 2026-05-31: failed with 525 DOM mismatches across 8 diagram groups.
+
+Current result after the M15C-040 Sequence/C4/Journey convergence on 2026-06-01: failed with 126
+DOM mismatches across 5 diagram groups: timeline=91, sankey=24, class=9, flowchart=1, xychart=1.
 
 ## Summary
 
 | Diagram | Mismatches | Dominant observed failure | Current classification | Next action |
 | --- | ---: | --- | --- | --- |
-| Sequence | 322 | Stored upstream markers use bare IDs such as `arrowhead`; local output uses `<svg-id>-arrowhead`; fresh 11.15 probes also exposed central-connection model drift. | Stored baseline is stale, but full fresh 11.15 Sequence still has 121 real residual mismatches after central-connection fixes. | Split/continue a Sequence convergence slice before refreshing stored Sequence baselines. |
+| Sequence | 0 | Stored baselines were stale and fresh 11.15 probes exposed central-connection plus DOM metadata drift. | Green after M15C-040 renderer fixes and stored baseline refresh. `stress_end_keyword_016` is skipped because Mermaid 11.15 rejects `(end)` participant ids. | None for current full gate; keep the skipped fixture as local parser coverage. |
 | Timeline | 91 | Stored-baseline marker drift plus fresh 11.15 renderer/model deltas: scoped node ids, wrapper class/DOM shape, and multiline/tspan differences. | Real Timeline convergence gap after baseline freshness was checked. | Split or continue a Timeline-specific 11.15 convergence slice before refreshing stored Timeline baselines. |
 | C4 | 51 | Stored upstream marker/base symbol drift; fresh 11.15 also changed scoped base symbol ids and selected type-label text lengths. | Green after M15C-040 renderer fixes and stored baseline refresh. | None for M15C-040; keep C4 in future full-gate regression checks. |
 | Journey | 26 | Stored upstream marker/task-line id drift; fresh 11.15 scopes task-line ids by SVG id. | Green after M15C-040 renderer fix and stored baseline refresh. | None for M15C-040; keep Journey in future full-gate regression checks. |
@@ -41,13 +44,15 @@ compare reports still label their baselines as Mermaid 11.12.3.
 
 M15C-040 update: fresh Mermaid 11.15 `sequence/basic` and `sequence/central` SVG probes now compare
 green in `parity` mode after implementing upstream central connections and 11.15 sequence SVG
-metadata. The full fresh Sequence corpus still fails with 121 mismatches, so stored Sequence
-baselines were not refreshed. Fresh Mermaid 11.15 C4 and Journey full-diagram probes are green after
-scoped-id and C4 type-label fixes, and their stored baselines have been refreshed. Timeline fresh
-11.15 still fails broadly, so it is no longer grouped as a simple stale-baseline marker-id batch.
+metadata. A later full Sequence convergence pass closed the 121 fresh-corpus residuals and refreshed
+stored Sequence baselines. `stress_end_keyword_016` remains excluded from upstream SVG gates because
+Mermaid 11.15 rejects its `(end)` participant id. Fresh Mermaid 11.15 C4 and Journey full-diagram
+probes are green after scoped-id and C4 type-label fixes, and their stored baselines have been
+refreshed. Timeline fresh 11.15 still fails broadly, so it is no longer grouped as a simple
+stale-baseline marker-id batch.
 
-Current `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` split after C4/Journey
-refresh: sequence=322, timeline=91, sankey=24, class=9, flowchart=1, xychart=1.
+Current `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` split after
+Sequence/C4/Journey refresh: timeline=91, sankey=24, class=9, flowchart=1, xychart=1.
 
 ### Needs fresh 11.15 baseline before code changes
 

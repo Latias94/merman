@@ -5,6 +5,7 @@ use super::block_geometry::{
 };
 use super::block_text::{
     LoopTextRenderContext, display_block_label, wrap_svg_text_lines, write_loop_text_lines,
+    write_section_title_lines,
 };
 use crate::sequence::sequence_text_line_step_px;
 use rustc_hash::FxHashMap;
@@ -26,6 +27,14 @@ impl<'a> SequenceBlockRenderContext<'a> {
     fn loop_text_context(&self) -> LoopTextRenderContext<'_> {
         LoopTextRenderContext::new(self.measurer, self.loop_text_style)
     }
+}
+
+fn write_control_structure_group_open(out: &mut String, control_id: &str) {
+    let _ = write!(
+        out,
+        r#"<g data-et="control-structure" data-id="i{id}">"#,
+        id = escape_attr(control_id)
+    );
 }
 
 pub(super) fn write_block_frame(
@@ -95,6 +104,7 @@ pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f
 
 pub(super) fn render_simple_sequence_block(
     out: &mut String,
+    control_id: &str,
     block_label: &str,
     raw_label: &str,
     message_ids: &[&str],
@@ -129,7 +139,7 @@ pub(super) fn render_simple_sequence_block(
     let frame_y1 = min_y - header_offset;
     let frame_y2 = max_y + 10.0;
 
-    out.push_str(r#"<g>"#);
+    write_control_structure_group_open(out, control_id);
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
     write_block_label_box(out, frame_x1, frame_y1, block_label);
     let label_box_right = frame_x1 + 50.0;
@@ -152,6 +162,7 @@ pub(super) fn render_simple_sequence_block(
 
 pub(super) fn render_sectioned_sequence_block(
     out: &mut String,
+    control_id: &str,
     block_label: &str,
     sections: &[AltSection<'_>],
     adjust_header_for_wrap: bool,
@@ -185,7 +196,7 @@ pub(super) fn render_sectioned_sequence_block(
     let frame_y1 = min_y - header_offset;
     let frame_y2 = max_y + 10.0;
 
-    out.push_str(r#"<g>"#);
+    write_control_structure_group_open(out, control_id);
 
     // frame
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
@@ -240,15 +251,7 @@ pub(super) fn render_sectioned_sequence_block(
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
         let loop_text_ctx = ctx.loop_text_context();
-        write_loop_text_lines(
-            out,
-            &loop_text_ctx,
-            center_text_x,
-            y,
-            None,
-            &label_text,
-            false,
-        );
+        write_section_title_lines(out, &loop_text_ctx, center_text_x, y, None, &label_text);
     }
 
     out.push_str("</g>");
@@ -256,6 +259,7 @@ pub(super) fn render_sectioned_sequence_block(
 
 pub(super) fn render_critical_sequence_block(
     out: &mut String,
+    control_id: &str,
     sections: &[AltSection<'_>],
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
@@ -313,7 +317,7 @@ pub(super) fn render_critical_sequence_block(
     let frame_y1 = min_y - header_offset;
     let frame_y2 = max_y + 10.0;
 
-    out.push_str(r#"<g>"#);
+    write_control_structure_group_open(out, control_id);
 
     // frame
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
@@ -366,15 +370,7 @@ pub(super) fn render_critical_sequence_block(
         }
         let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
         let loop_text_ctx = ctx.loop_text_context();
-        write_loop_text_lines(
-            out,
-            &loop_text_ctx,
-            center_text_x,
-            y,
-            None,
-            &label_text,
-            false,
-        );
+        write_section_title_lines(out, &loop_text_ctx, center_text_x, y, None, &label_text);
     }
 
     out.push_str("</g>");

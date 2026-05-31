@@ -84,6 +84,29 @@ pub(super) fn write_loop_text_lines(
     }
 }
 
+pub(super) fn write_section_title_lines(
+    out: &mut String,
+    ctx: &LoopTextRenderContext<'_>,
+    x: f64,
+    y0: f64,
+    max_width: Option<f64>,
+    text: &str,
+) {
+    let line_step = sequence_text_line_step_px(ctx.style.font_size);
+    let lines = wrap_svg_text_lines(text, ctx.measurer, ctx.style, max_width);
+    for (i, line) in lines.into_iter().enumerate() {
+        let y = y0 + (i as f64) * line_step;
+        let _ = write!(
+            out,
+            r#"<text x="{x}" y="{y}" text-anchor="middle" class="sectionTitle" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+            x = fmt(x),
+            y = fmt(y),
+            fs = fmt(ctx.style.font_size),
+            text = escape_xml(&line)
+        );
+    }
+}
+
 fn bracketize(s: &str) -> String {
     let t = s.trim();
     if t.is_empty() {
