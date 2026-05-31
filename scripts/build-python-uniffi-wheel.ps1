@@ -1,5 +1,5 @@
 param(
-    [string] $PackageDir = (Join-Path $PSScriptRoot "..\bindings\python\merman"),
+    [string] $PackageDir = (Join-Path $PSScriptRoot "..\platforms\python\merman"),
     [string] $WheelDir = "target\python-wheels",
     [string] $Python = "python",
     [switch] $RunSmoke

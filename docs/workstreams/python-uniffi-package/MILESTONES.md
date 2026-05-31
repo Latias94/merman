@@ -17,12 +17,12 @@ Status: complete.
 
 Exit criteria:
 
-- `bindings/python/merman` contains a package scaffold.
+- `platforms/python/merman` contains a package scaffold.
 - A Rust generator example can generate Python bindings from a built cdylib into the package module
   directory.
 - The native cdylib is copied beside the generated module.
 
-Status: complete. The scaffold lives under `bindings/python/merman`, and
+Status: complete. The scaffold lives under `platforms/python/merman`, and
 `generate_python_package` can populate a package directory from the built cdylib.
 
 ## M2 - Importable Python Smoke

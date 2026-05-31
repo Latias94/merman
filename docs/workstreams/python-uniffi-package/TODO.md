@@ -17,14 +17,14 @@ Last updated: 2026-05-31
 
 ## M1 - Package Scaffold And Generator
 
-- [x] PUP-020 [owner=codex] [deps=PUP-010] [scope=bindings/python/merman,crates/merman-uniffi]
+- [x] PUP-020 [owner=codex] [deps=PUP-010] [scope=platforms/python/merman,crates/merman-uniffi]
   Goal: Add a Python package staging scaffold plus a generator command that emits the generated
   UniFFI Python module and copies the built cdylib into the package module directory.
   Validation: cargo check -p merman-uniffi --features bindgen-smoke --examples
   Review: Generated Python files and native libraries must not be committed.
   Evidence: generator example plus package scaffold files.
   Context: docs/workstreams/python-uniffi-package/CONTEXT.jsonl
-  Handoff: DONE. Added `bindings/python/merman` package scaffold, generated artifact ignores,
+  Handoff: DONE. Added `platforms/python/merman` package scaffold, generated artifact ignores,
   and a `generate_python_package` example that emits Python bindings from the cdylib and copies the
   native library beside the generated module.
 

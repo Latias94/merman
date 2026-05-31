@@ -11,7 +11,7 @@ imported and called from Python.
 
 Confirmed:
 
-- `bindings/python/merman` contains a package scaffold and generated-artifact ignores.
+- `platforms/python/merman` contains a package scaffold and generated-artifact ignores.
 - `generate_python_package` can populate a package directory from a built `merman-uniffi` cdylib.
 - `bindgen_smoke` stages a temporary package, imports `merman`, and calls
   `MermanEngine.render_svg` plus `MermanEngine.parse_json`.

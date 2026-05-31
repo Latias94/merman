@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--package-dir",
-        default=str(REPO_ROOT / "bindings" / "python" / "merman"),
+        default=str(REPO_ROOT / "platforms" / "python" / "merman"),
         help="Python package scaffold directory.",
     )
     parser.add_argument(

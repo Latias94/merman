@@ -43,7 +43,7 @@ that matter for a real package:
 
 ## In Scope
 
-- Python package staging under `bindings/python/merman`.
+- Python package staging under `platforms/python/merman`.
 - A small Rust generator example using UniFFI bindgen APIs already present behind
   `bindgen-smoke`.
 - Integration smoke coverage in `crates/merman-uniffi/tests/bindgen_smoke.rs`.
@@ -80,7 +80,7 @@ target/<profile>/merman_uniffi.{dll,so,dylib}
 UniFFI bindgen example
         |
         v
-bindings/python/merman/src/merman/
+platforms/python/merman/src/merman/
   __init__.py                 stable package shim
   merman_uniffi.py            generated UniFFI module
   merman_uniffi.{dll,so,dylib} native library beside generated module

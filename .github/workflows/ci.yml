@@ -99,7 +99,7 @@ jobs:
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
       - name: Run Python example
-        run: PYTHONPATH=bindings/python/merman/src python bindings/python/merman/examples/smoke.py
+        run: PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 
   c-ffi-example:
     name: c-ffi-example
