@@ -1,6 +1,6 @@
 # Python UniFFI Bindings
 
-Status: experimental local package scaffold.
+Status: experimental publishable Python package.
 
 The Python binding is generated from the `merman-uniffi` cdylib with UniFFI. The package shape is:
 
@@ -17,6 +17,13 @@ platforms/python/merman/
 
 The generated Python module and native library must live in the same package directory because the
 UniFFI Python loader resolves the cdylib relative to `__file__`.
+
+Merman itself is a browserless Rust engine for Mermaid diagrams. Start from the
+[project README](https://github.com/Latias94/merman) for product scope, the
+[UniFFI binding notes](https://github.com/Latias94/merman/blob/main/docs/bindings/UNIFFI.md) for
+the shared wrapper layer, and
+[diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+for current Mermaid parity.
 
 ## Generate Locally
 
@@ -52,7 +59,7 @@ layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
 Errors are exposed through the generated `MermanError` type. The underlying status code, status
 name, and message still come from `merman-bindings-core`.
 The optional `options_json` argument uses the shared contract documented in
-`docs/bindings/OPTIONS_JSON.md`.
+[`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
 ## Verification
 
@@ -74,7 +81,18 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 
 The script builds `merman-uniffi`, stages generated UniFFI Python files into
 `platforms/python/merman`, builds a platform wheel under `target/python-wheels`, then
-optionally installs it into a temporary venv and calls `MermanEngine.render_svg`.
+optionally installs it into a temporary venv and calls `MermanEngine.render_svg`. The build script
+fails if setuptools emits a universal `py3-none-any` wheel, because the package carries a native
+library.
+
+## Release
+
+`release-python.yml` runs on `v*` tags, builds and smokes wheels on Linux, macOS, and Windows,
+repairs the Linux wheel with `auditwheel`, checks wheel metadata with `twine`, attaches wheels to
+the GitHub Release, and publishes to PyPI through Trusted Publishing.
+
+Configure the PyPI project `merman` with a Trusted Publisher for this repository and
+`.github/workflows/release-python.yml`. No PyPI API token is required for the OIDC path.
 
 ## Example
 
@@ -86,8 +104,6 @@ PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/s
 
 ## Not Yet Done
 
-- PyPI publishing.
-- Platform wheel matrix.
-- manylinux/musllinux policy.
+- Broader architecture matrix beyond the default GitHub hosted runner architecture for each OS.
 - macOS universal2 wheel assembly.
 - Windows wheel signing or installer metadata.

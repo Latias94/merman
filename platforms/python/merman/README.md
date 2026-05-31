@@ -2,6 +2,13 @@
 
 Experimental Python package scaffold for UniFFI-generated merman bindings.
 
+Merman renders Mermaid diagrams without a browser. It can parse Mermaid source, return semantic
+JSON, compute layout JSON, and render SVG through a headless Rust engine. See the
+[project README](https://github.com/Latias94/merman),
+[Python binding notes](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md),
+and [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+for the main library contract.
+
 ## API
 
 ```python
@@ -24,7 +31,7 @@ except merman.MermanError.Binding as error:
 
 `options_json` is optional. Pass `None` for defaults, or a JSON string with `parse`, `layout`, and
 `svg` options. The shared schema is documented in
-[`docs/bindings/OPTIONS_JSON.md`](../../../docs/bindings/OPTIONS_JSON.md).
+[`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
 ## Generate Locally
 
@@ -65,5 +72,6 @@ Build a local platform wheel and run an install smoke:
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
 
-PyPI publishing is follow-on work. This scaffold is the package staging shape used by the Rust smoke
-tests, local wheel checks, and the `release-python.yml` wheel artifact workflow.
+The wheel is platform-specific because it bundles `merman-uniffi` as a native `.so`, `.dylib`, or
+`.dll`. Tag releases run `release-python.yml`, attach platform wheels to the GitHub Release, and
+publish the `merman` distribution to PyPI when Trusted Publishing is configured.

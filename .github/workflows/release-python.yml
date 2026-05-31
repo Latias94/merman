@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -66,6 +67,18 @@ jobs:
       - name: Build and smoke wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
+      - name: Repair Linux wheel
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+          python -m pip install --upgrade auditwheel
+          mkdir -p target/python-wheels/repaired
+          python -m auditwheel repair target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired
+          rm target/python-wheels/merman-*.whl
+          mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
+          rmdir target/python-wheels/repaired
+
       - name: Run Python example
         run: PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 
@@ -73,12 +86,17 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: python-wheel-${{ runner.os }}-${{ runner.arch }}
-          path: target/python-wheels/*.whl
+          path: target/python-wheels/merman-*.whl
 
   release:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Download wheel artifacts
         uses: actions/download-artifact@v7
         with:
@@ -86,7 +104,17 @@ jobs:
           path: wheels
           merge-multiple: true
 
+      - name: Check wheel metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check wheels/merman-*.whl
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: wheels/*.whl
+          files: wheels/merman-*.whl
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: wheels
