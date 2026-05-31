@@ -33,6 +33,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added sequence ASCII/Unicode rendering for typed activation state.
 - Added sequence ASCII/Unicode rendering for typed actor create/destroy lifecycle markers.
 - Added sequence ASCII/Unicode rendering for wrapped message labels and wrapped notes.
+- Added the initial FFI surface for the merman C ABI, plus experimental Flutter/Dart, Android JNI,
+  Apple SwiftPM, and Python UniFFI packages.
 
 ### Changed
 
