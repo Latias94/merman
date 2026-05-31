@@ -8,21 +8,22 @@ Last updated: 2026-06-01
 The umbrella campaign is open. The repo baseline points at Mermaid `11.15.0`, generated artifacts
 verify, and the Pie 11.15 lane is closed. M15C-030 removed active 11.12.3 report labels. M15C-040
 has landed renderer fixes for Sequence central connections, Sequence 11.15 metadata, C4 scoped
-symbols/type labels, Journey scoped task-line ids, and the remaining full Sequence 11.15 DOM
-differences. Sequence, C4, and Journey stored upstream SVG baselines have been refreshed and now
-pass their stored-fixture compares. Full implemented matrix SVG DOM parity is still red, but
-Sequence is no longer in the failure set: current split is timeline=91, sankey=24, class=9,
-flowchart=1, xychart=1.
+symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 11.15 DOM
+differences, and Timeline scoped node ids. Sequence, C4, Journey, and Timeline stored upstream SVG
+baselines have been refreshed and now pass their stored-fixture compares. Full implemented matrix
+SVG DOM parity is still red, but only for sankey=24, class=9, flowchart=1, xychart=1.
 
 ## Active Task
 
-- Task ID: M15C-040
+- Task ID: M15C-050
 - Owner: codex
-- Files: `fixtures/upstream-svgs`, `tools/mermaid-cli`, `crates/xtask/src/cmd/generate.rs`
-- Validation: targeted `check-upstream-svgs` / `gen-upstream-svgs` commands plus marker-ID
-  impacted diagram compares
-- Status: IN_PROGRESS
-- Review: Stage baseline churn separately from renderer fixes where possible.
+- Files: `fixtures/upstream-svgs/sankey`, `crates/merman-render/src/svg/parity/sankey.rs`,
+  `crates/merman-render/tests`
+- Validation: `cargo nextest run -p merman-render sankey`;
+  `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Status: READY
+- Review: Start with fresh Mermaid 11.15 Sankey upstream baseline evidence before changing layout
+  math.
 - Evidence: `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -51,23 +52,25 @@ flowchart=1, xychart=1.
   refreshed and both `compare-sequence-svgs` and `compare-svg-xml --diagram sequence` pass in
   `parity` mode. `stress_end_keyword_016` is intentionally skipped in upstream SVG gates because
   Mermaid 11.15 rejects `(end)` as a participant id; keep it for local parser coverage.
-- Fresh Timeline 11.15 output still does not match local output: representative deltas include
-  scoped node ids such as `<svg-id>-node-0` versus local `node-undefined`, wrapper class/DOM shape
-  differences, and multiline/tspan differences.
+- The initial fresh Timeline 11.15 probe exposed scoped node ids such as `<svg-id>-node-0` versus
+  local `node-undefined`; later raw SVG inspection narrowed the actionable DOM delta to node
+  background ids.
+- Timeline is now green after matching Mermaid 11.15 scoped node ids (`<svg-id>-node-N`) while
+  preserving the upstream `node-undefined` class string. Stored Timeline SVG baselines were
+  refreshed and both `compare-timeline-svgs` and `compare-svg-xml --diagram timeline` pass in
+  `parity` mode.
 
 ## Known Risks
 
 - Regenerating all upstream SVG baselines at once may produce very large fixture churn. Prefer
   diagram-scoped batches.
-- Marker-ID mismatches are widespread in stored baselines. Fresh C4 and Journey have proven the
-  local scoped-id direction is correct there; Timeline needs renderer convergence rather than an
-  unqualified baseline refresh.
-- Full stored upstream SVG refresh was intentionally not done in one batch. `fixtures/upstream-svgs`
-  still contains stale 11.12-era Timeline marker ids until Timeline converges.
+- Sankey, Class, and XYChart still need fresh 11.15 baseline checks before treating their current
+  failures as renderer defects.
+- Flowchart has a single MathML `columnalign` delta and should stay a targeted normalizer/renderer
+  task.
 
 ## Next Recommended Action
 
-Continue M15C-040 with Timeline convergence against `target/upstream-svgs-11-15-timeline`, then
-move to M15C-050/M15C-060 for Sankey/Class/XYChart/Flowchart residuals. Sankey, Class, and XYChart
-still need fresh 11.15 baseline checks before code changes; Flowchart has a single MathML
-`columnalign` normalizer/renderer delta.
+Start M15C-050 with a fresh Sankey 11.15 baseline check, then decide whether the stroke-width
+deltas are stale baseline drift or d3-sankey math drift. M15C-060 can follow for Class, XYChart, and
+the single Flowchart MathML `columnalign` delta.

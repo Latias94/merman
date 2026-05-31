@@ -37,7 +37,7 @@ Last updated: 2026-06-01
   Handoff: DONE. Active compare report headers now say `pinned Mermaid baseline` instead of
   hard-coded Mermaid 11.12.3, and the hardening plan top-level baseline label names 11.15.
 
-- [ ] M15C-040 [owner=codex] [deps=M15C-030] [scope=fixtures/upstream-svgs,tools/mermaid-cli,crates/xtask/src/cmd/generate.rs]
+- [x] M15C-040 [owner=codex] [deps=M15C-030] [scope=fixtures/upstream-svgs,tools/mermaid-cli,crates/xtask/src/cmd/generate.rs]
   Goal: Regenerate or check Mermaid 11.15 upstream SVG baselines for marker-ID impacted diagrams
   and split any real renderer mismatches.
   Validation: Targeted `check-upstream-svgs` / `gen-upstream-svgs` commands plus
@@ -46,12 +46,12 @@ Last updated: 2026-06-01
   Review: Stage baseline churn separately from renderer code fixes when possible.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  Handoff: IN_PROGRESS. Sequence, C4, and Journey are green against stored Mermaid 11.15 upstream
-  SVG baselines. Sequence keeps `stress_end_keyword_016` as local parser coverage but skips its
-  stale SVG baseline in upstream gates because Mermaid 11.15 rejects `(end)` as a participant id.
-  Timeline fresh 11.15 still has broad renderer/model deltas and needs a separate convergence
-  slice. The current full `parity` gate is red only for timeline=91, sankey=24, class=9,
-  flowchart=1, xychart=1.
+  Handoff: DONE. Sequence, C4, Journey, and Timeline are green against stored Mermaid 11.15
+  upstream SVG baselines. Sequence keeps `stress_end_keyword_016` as local parser coverage but
+  skips its stale SVG baseline in upstream gates because Mermaid 11.15 rejects `(end)` as a
+  participant id. Timeline needed one renderer convergence fix for 11.15 scoped node ids before its
+  stored baselines could be refreshed. The current full `parity` gate is red only for sankey=24,
+  class=9, flowchart=1, xychart=1.
 
 ## M2 - Residual Existing-Matrix Parity
 

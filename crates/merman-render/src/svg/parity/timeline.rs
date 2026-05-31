@@ -234,7 +234,14 @@ fn render_timeline_diagram_svg_inner(
         format!("node-line-{rest}")
     }
 
-    fn render_node(out: &mut String, n: &crate::model::TimelineNodeLayout) {
+    fn render_node(
+        out: &mut String,
+        diagram_id: &str,
+        node_count: &mut usize,
+        n: &crate::model::TimelineNodeLayout,
+    ) {
+        let node_id = scoped_svg_id(diagram_id, &format!("node-{node_count}"));
+        *node_count += 1;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
         let rd = 5.0;
@@ -254,7 +261,8 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("<g>");
         let _ = write!(
             out,
-            r#"<path id="node-undefined" class="node-bkg node-undefined" d="{d}"/>"#,
+            r#"<path id="{node_id}" class="node-bkg node-undefined" d="{d}"/>"#,
+            node_id = escape_attr(&node_id),
             d = escape_attr(&d)
         );
         let _ = write!(
@@ -322,6 +330,7 @@ fn render_timeline_diagram_svg_inner(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g/>"#);
+    let mut node_count = 0usize;
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
     let _ = write!(
@@ -338,7 +347,7 @@ fn render_timeline_diagram_svg_inner(
             x = fmt(node.x),
             y = fmt(node.y)
         );
-        render_node(&mut out, node);
+        render_node(&mut out, diagram_id, &mut node_count, node);
         out.push_str("</g>");
 
         for task in &section.tasks {
@@ -349,7 +358,7 @@ fn render_timeline_diagram_svg_inner(
                 x = fmt(task_node.x),
                 y = fmt(task_node.y)
             );
-            render_node(&mut out, task_node);
+            render_node(&mut out, diagram_id, &mut node_count, task_node);
             out.push_str("</g>");
 
             let _ = write!(
@@ -369,7 +378,7 @@ fn render_timeline_diagram_svg_inner(
                     x = fmt(ev.x),
                     y = fmt(ev.y)
                 );
-                render_node(&mut out, ev);
+                render_node(&mut out, diagram_id, &mut node_count, ev);
                 out.push_str("</g>");
             }
         }
@@ -383,7 +392,7 @@ fn render_timeline_diagram_svg_inner(
             x = fmt(task_node.x),
             y = fmt(task_node.y)
         );
-        render_node(&mut out, task_node);
+        render_node(&mut out, diagram_id, &mut node_count, task_node);
         out.push_str("</g>");
 
         let _ = write!(
@@ -403,7 +412,7 @@ fn render_timeline_diagram_svg_inner(
                 x = fmt(ev.x),
                 y = fmt(ev.y)
             );
-            render_node(&mut out, ev);
+            render_node(&mut out, diagram_id, &mut node_count, ev);
             out.push_str("</g>");
         }
     }

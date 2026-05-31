@@ -188,6 +188,24 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     failed with the current remaining split: timeline=91, sankey=24, class=9, flowchart=1,
     xychart=1. Sequence, C4, and Journey no longer appear in the full-gate failure set.
+- 2026-06-01 M15C-040 Timeline convergence and stored baseline refresh:
+  - Implemented Mermaid 11.15 Timeline scoped node background ids (`<svg-id>-node-N`) while keeping
+    the upstream `node-bkg node-undefined` class string.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram timeline --filter upstream_docs_timeline_an_example_of_a_timeline_002 --upstream-root target/upstream-svgs-11-15-timeline --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram timeline --upstream-root target/upstream-svgs-11-15-timeline --dom-mode parity --dom-decimals 3`:
+    passed against the fresh Mermaid 11.15 Timeline target.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram timeline --out fixtures/upstream-svgs`:
+    the shell timed out at 5 minutes, but the original `xtask` process continued and completed;
+    91 stored Timeline SVG baselines were refreshed and no generator process remained afterward.
+  - `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram timeline --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render timeline`: passed, 4 tests.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    failed with the current remaining split: sankey=24, class=9, flowchart=1, xychart=1. Timeline
+    no longer appears in the full-gate failure set.
 
 ## Evidence Anchors
 
