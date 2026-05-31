@@ -32,6 +32,14 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose render_svg"
     );
     assert!(
+        generated.contains("def abi_version"),
+        "generated binding should expose abi_version"
+    );
+    assert!(
+        generated.contains("def package_version"),
+        "generated binding should expose package_version"
+    );
+    assert!(
         generated.contains("class MermanError"),
         "generated binding should expose structured MermanError"
     );
@@ -83,6 +91,8 @@ import json
 import merman
 
 engine = merman.MermanEngine()
+assert engine.abi_version() == 1
+assert engine.package_version()
 source = "flowchart TD\nA[Hello] --> B[World]"
 
 svg = engine.render_svg(source, None)

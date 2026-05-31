@@ -35,13 +35,27 @@ The smoke example lives in [`example/smoke.dart`](example/smoke.dart).
 import 'package:merman/merman.dart';
 
 final merman = Merman.open('path/to/libmerman_ffi.dylib');
-final svg = merman.renderSvg('flowchart TD\nA[Hello] --> B[World]');
-final semantic = merman.parseJson('flowchart TD\nA[Hello] --> B[World]');
-final layout = merman.layoutJson('flowchart TD\nA[Hello] --> B[World]');
+final source = 'flowchart TD\nA[Hello] --> B[World]';
+final version = merman.packageVersion;
+
+final svg = merman.renderSvg(
+  source,
+  optionsJson: '{"svg":{"pipeline":"readable"}}',
+);
+final semantic = merman.parseJson(source);
+final layout = merman.layoutJson(source);
+
+try {
+  merman.renderSvg(source, optionsJson: '{');
+} on MermanException catch (error) {
+  print('${error.codeName}: ${error.message}');
+}
 ```
 
 Packaging native libraries into Android, iOS, macOS, Windows, and Linux app/plugin bundles remains
 follow-on work beyond the current Android plugin scaffold.
+The pub.dev package name is `merman`; the current release workflow injects Android native libraries
+before publishing.
 
 ## Android Plugin Packaging
 

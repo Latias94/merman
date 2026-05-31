@@ -101,7 +101,7 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                "import merman; e = merman.MermanEngine(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
+                "import merman; e = merman.MermanEngine(); assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg('flowchart TD\\nA[Hello]', None).startswith('<svg')",
             ]
         )
 

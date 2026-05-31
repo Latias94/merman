@@ -102,3 +102,10 @@ parallel user edits.
   package from `platforms/python/merman` after the platform directory move.
 - 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
   platforms/python/merman/examples/smoke.py` passed after the platform directory move.
+- 2026-05-31: Added UniFFI `MermanEngine.abi_version()` and `MermanEngine.package_version()`.
+- 2026-05-31: `cargo nextest run -p merman-uniffi --features bindgen-smoke` passed (`8` tests),
+  including Rust unit coverage and generated Python binding coverage for the version APIs.
+- 2026-05-31: `python3 scripts/build-python-uniffi-wheel.py --run-smoke` passed with wheel smoke
+  assertions for `abi_version()` and `package_version()`.
+- 2026-05-31: `PYTHONPATH=platforms/python/merman/src python3
+  platforms/python/merman/examples/smoke.py` passed with version API checks.

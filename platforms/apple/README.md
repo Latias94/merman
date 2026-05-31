@@ -27,10 +27,25 @@ Generated `Merman.xcframework` is ignored by git.
 import Merman
 
 let engine = try MermanEngine()
-let svg = try engine.renderSvg("flowchart TD\nA[Hello] --> B[World]")
-let semanticJson = try engine.parseJsonRaw("flowchart TD\nA[Hello] --> B[World]")
-let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
+let source = "flowchart TD\nA[Hello] --> B[World]"
+let version = engine.packageVersion
+
+let svg = try engine.renderSvg(
+    source,
+    optionsJson: #"{"svg":{"pipeline":"readable"}}"#
+)
+let semanticJson = try engine.parseJsonRaw(source)
+let layoutJson = try engine.layoutJsonRaw(source)
+
+do {
+    _ = try engine.renderSvg(source, optionsJson: "{")
+} catch MermanError.binding(_, let codeName, let message) {
+    print("\(codeName): \(message)")
+}
 ```
+
+`MermanEngine` checks the native ABI version and FFI struct sizes during initialization. The package
+version is read from the linked native library.
 
 ## Local Package Use
 
@@ -49,3 +64,6 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
 The example lives in `platforms/apple/examples/smoke` and exercises SVG, semantic JSON, and layout
 JSON through the Swift wrapper.
+
+Release builds upload a zipped `Merman.xcframework` to GitHub Releases and patch the release-tag
+Swift package checksum for SwiftPM consumers.

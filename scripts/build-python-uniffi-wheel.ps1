@@ -85,7 +85,7 @@ try {
         Invoke-Native $venvPython @("-m", "pip", "install", "--no-deps", $wheel.FullName)
         Invoke-Native $venvPython @(
             "-c",
-            "import merman; e = merman.MermanEngine(); assert e.render_svg('flowchart TD\nA[Hello]', None).startswith('<svg')"
+            "import merman; e = merman.MermanEngine(); assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg('flowchart TD\nA[Hello]', None).startswith('<svg')"
         )
     }
 }

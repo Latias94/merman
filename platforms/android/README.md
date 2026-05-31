@@ -10,13 +10,28 @@ background dispatcher in app code.
 
 ```kotlin
 import io.merman.MermanEngine
+import io.merman.MermanException
 
-val svg = MermanEngine.renderSvg("flowchart TD\nA[Hello] --> B[World]")
-val semanticJson = MermanEngine.parseJson("flowchart TD\nA[Hello] --> B[World]")
-val layoutJson = MermanEngine.layoutJson("flowchart TD\nA[Hello] --> B[World]")
+val source = "flowchart TD\nA[Hello] --> B[World]"
+val version = MermanEngine.packageVersion
+
+val svg = MermanEngine.renderSvg(
+    source,
+    optionsJson = """{"svg":{"pipeline":"readable"}}""",
+)
+val semanticJson = MermanEngine.parseJson(source)
+val layoutJson = MermanEngine.layoutJson(source)
+
+try {
+    MermanEngine.renderSvg(source, optionsJson = "{")
+} catch (error: MermanException) {
+    println(error.message)
+}
 ```
 
 Native errors are thrown as `MermanException` with the C ABI JSON error payload as the message.
+`MermanEngine` checks the loaded native ABI before the first call and exposes the linked native
+package version through `packageVersion`.
 
 ## Example
 
@@ -78,3 +93,6 @@ project(":merman-android").projectDir = file("path/to/merman/platforms/android")
 ```
 
 Then depend on `implementation(project(":merman-android"))`.
+
+The release workflow currently uploads an AAR to GitHub Releases. Maven Central publishing still
+needs final coordinates, signing, and POM metadata.
