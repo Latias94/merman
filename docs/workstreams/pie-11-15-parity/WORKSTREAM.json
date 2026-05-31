@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "slug": "pie-11-15-parity",
+  "title": "Pie 11.15 Parity",
+  "status": "active",
+  "updated": "2026-05-31",
+  "scope_kind": "execution",
+  "problem": "Pie renderer still follows older slice ordering and does not support Mermaid 11.15 Pie config keys.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/pie-11-15-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/pie-11-15-parity/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/pie-11-15-parity/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/pie-11-15-parity/CONTEXT.jsonl",
+  "gates": [
+    "cargo nextest run -p merman-render pie",
+    "cargo nextest run -p merman-core pie",
+    "cargo run -p xtask -- verify-default-config",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0019-generated-default-config.md"
+  ],
+  "architecture_refs": [
+    "docs/alignment/PIE_UPSTREAM_TEST_COVERAGE.md",
+    "docs/rendering/UPSTREAM_SVG_BASELINES.md"
+  ],
+  "capability_tags": [
+    "pie",
+    "svg-parity",
+    "default-config",
+    "mermaid-11-15"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Continue while tasks stay within Pie 11.15 ordering, config defaults, configured SVG behavior, and Pie parity evidence. Split new diagram families or broad theme-system work into separate lanes."
+  }
+}
