@@ -230,6 +230,38 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
 }
 
 #[test]
+fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
+    let text = r#"flowchart TB
+A@{ shape: hourglass, label: "Hourglass label" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
+        "expected Mermaid 11.15 hourglass to keep markdown label class on the empty label: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_base_theme_renders_root_gradient() {
     let text = r##"%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#BB2528", "primaryBorderColor": "#7C0000", "secondaryColor": "#006100"}}}%%
 flowchart TB
@@ -272,6 +304,71 @@ A --> B
             r#"<stop offset="100%" stop-color="hsl(120, 60%, 9.0196078431%)" stop-opacity="1"/>"#
         ),
         "expected gradientStop to use derived secondaryBorderColor: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_note_shape_renders_note_label_class() {
+    let text = r#"flowchart TB
+A@{ shape: note, label: "Note" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<g class="label noteLabel""#),
+        "expected Mermaid 11.15 note labels to carry the noteLabel class: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_markdown_node_labels_wrap_when_html_labels_false() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"wrappingWidth": 80}}}%%
+flowchart TB
+A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.matches(r#"class="row text-outer-tspan""#).count() > 1,
+        "expected Mermaid 11.15 SVG markdown node labels to wrap into multiple rows: {svg}"
     );
 }
 

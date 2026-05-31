@@ -9,7 +9,7 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
 ```
 
-This currently fails against the fresh Mermaid 11.15 Flowchart target with 67 DOM mismatches plus
+This currently fails against the fresh Mermaid 11.15 Flowchart target with 18 DOM mismatches plus
 one unsupported `flowchart-elk` local layout failure.
 
 ## Gate Set
@@ -212,6 +212,56 @@ git diff --check
   - Remaining mismatch classification after this slice: `theme_config=0`, `newshapes=24`,
     `oldshapes=24`, `shape_alias=1`, `cluster=4`, `image_icon=4`, `edge=1`,
     `flow_node_data=3`, and `other=6`.
+- 2026-06-01 F115-040/F115-050 node-label class and SVG markdown wrapping slice:
+  - Added Mermaid 11.15 `noteLabel` coverage for Flowchart `note` shape label groups.
+  - Aligned SVG node markdown labels when `htmlLabels=false` with the existing wrapped markdown
+    row writer, so long node markdown emits multiple `row text-outer-tspan` rows instead of one
+    unwrapped text block.
+  - Aligned Mermaid 11.15 hourglass/collate behavior: the renderer clears displayed label text
+    but preserves the parsed `labelType`, so empty HTML labels still carry
+    `markdown-node-label` when shapeData labels defaulted to markdown.
+  - Targeted fresh `compare-svg-xml` filters passed for the full old-shape set3 matrix:
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_allpairs_059`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_classdef_064`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_label_058`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_longlabel_060`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_false_062`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_md_html_true_061`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_nolabel_057`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_lr_styles_063`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_allpairs_019`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_classdef_024`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_label_018`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_longlabel_020`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_md_html_false_022`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_md_html_true_021`,
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_nolabel_017`, and
+    `upstream_cypress_oldshapes_spec_shapessets_shapesset3_tb_styles_023`.
+  - Targeted fresh `compare-svg-xml` filters passed for the full new-shape set1 matrix:
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_allpairs_051`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_classdef_056`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_label_050`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_longlabel_052`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_md_html_true_053`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_lr_styles_055`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_allpairs_003`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_classdef_008`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_label_002`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_longlabel_004`,
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_true_005`, and
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_styles_007`.
+  - `upstream_docs_flowchart_collate_hourglass_082` also passes against the fresh 11.15 target.
+  - `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034` and
+    `upstream_docs_flowchart_example_flowchart_with_new_shapes_041` still fail, but both are now
+    dominated by stacked-rectangle/procs RoughJS/path DOM structure, not the node-label class slice.
+  - `cargo nextest run -p merman-render flowchart_note_shape_renders_note_label_class flowchart_svg_markdown_node_labels_wrap_when_html_labels_false flowchart_hourglass_preserves_markdown_label_class_after_clearing_label`:
+    passed, 3 tests.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 18 canonical XML mismatches plus the existing `flowchart-elk` local layout
+    failure. This is a reduction from 67 fresh mismatches before the slice.
+  - `cargo nextest run -p merman-render flowchart`: passed, 81 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

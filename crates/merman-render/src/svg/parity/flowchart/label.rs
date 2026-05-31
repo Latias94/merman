@@ -851,3 +851,16 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
     let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
     write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true);
 }
+
+pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let markdown = normalized_markdown_label(markdown);
+    let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false);
+}

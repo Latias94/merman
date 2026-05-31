@@ -20,10 +20,9 @@ pub(in super::super) fn render_flowchart_v2_shape(
         // Flowchart v2 shapes with no label group are handled earlier.
 
         // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
-        // label group (via `labelHelper(...)`).
+        // label group via `labelHelper(...)`, preserving the parsed label type.
         "hourglass" | "collate" => {
             label.text = "";
-            label.label_type = "text";
             super::render_hourglass_collate(out, common, details);
         }
 

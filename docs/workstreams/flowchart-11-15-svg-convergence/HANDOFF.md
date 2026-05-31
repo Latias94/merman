@@ -15,9 +15,10 @@ markdown node label classes, icon/image label spans, and classic hexagon's 11.15
 model. The adjacent no-label shape slice added upstream `outer-path` classes for stop/framed-circle,
 bolt/lightning-bolt, and crossed-circle/summary. The latest theme-gradient slice added Mermaid
 11.15 `useGradient` theme defaults plus the root Flowchart `<linearGradient>` element for `base`,
-`dark`, `forest`, and `neutral` themes. The targeted fresh probes pass. Full fresh Flowchart
-comparison is still red with 67
-mismatches and one unsupported `flowchart-elk` local layout failure.
+`dark`, `forest`, and `neutral` themes. The latest node-label slice added `noteLabel`, wrapped SVG
+markdown node labels when `htmlLabels=false`, and preserved hourglass/collate parsed label type
+after clearing displayed labels. The targeted fresh probes pass. Full fresh Flowchart comparison is
+still red with 18 mismatches and one unsupported `flowchart-elk` local layout failure.
 
 ## Active Task
 
@@ -60,8 +61,9 @@ mismatches and one unsupported `flowchart-elk` local layout failure.
 
 ## Next Recommended Action
 
-Continue F115-040/F115-050 by reducing the remaining 67 fresh mismatches. The next high-value
-target is the shape matrix bucket, now concentrated around SVG-label row wrapping for
-`htmlLabels=false`, special label-class surfaces such as `noteLabel`, and stacked-rectangle/procs
-path structure. Keep `flowchart-elk` as a required F115-070 policy decision before stored
-Flowchart baseline refresh.
+Continue F115-040/F115-050 by reducing the remaining 18 fresh mismatches. The next high-value
+target is stacked-rectangle/procs RoughJS/path DOM structure because it accounts for the remaining
+shape alias and new-shape documentation failures. After that, inspect image/icon HTML labels,
+cluster/subgraph label structure, edge label placement, flow node data, and SVG-like escaped tag
+handling. Keep `flowchart-elk` as a required F115-070 policy decision before stored Flowchart
+baseline refresh.
