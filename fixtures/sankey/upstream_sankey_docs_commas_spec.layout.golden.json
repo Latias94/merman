@@ -11,7 +11,7 @@
       "width": 600.0,
       "height": 400.0,
       "node_width": 10.0,
-      "node_padding": 25.0,
+      "node_padding": 27.0,
       "nodes": [
         {
           "id": "Pumped heat",
@@ -22,8 +22,8 @@
           "value": 263.698,
           "x0": 0.0,
           "x1": 10.0,
-          "y0": 4.383,
-          "y1": 379.383
+          "y0": 4.733,
+          "y1": 377.733
         },
         {
           "id": "Heating and cooling, homes",
@@ -35,7 +35,7 @@
           "x0": 590.0,
           "x1": 600.0,
           "y0": 0.0,
-          "y1": 274.499
+          "y1": 273.035
         },
         {
           "id": "Heating and cooling, commercial",
@@ -46,7 +46,7 @@
           "value": 70.672,
           "x0": 590.0,
           "x1": 600.0,
-          "y0": 299.499,
+          "y0": 300.035,
           "y1": 400.0
         }
       ],
@@ -56,18 +56,18 @@
           "source": "Pumped heat",
           "target": "Heating and cooling, homes",
           "value": 193.026,
-          "width": 274.499,
-          "y0": 141.632,
-          "y1": 137.249
+          "width": 273.035,
+          "y0": 141.25,
+          "y1": 136.517
         },
         {
           "index": 1.0,
           "source": "Pumped heat",
           "target": "Heating and cooling, commercial",
           "value": 70.672,
-          "width": 100.501,
-          "y0": 329.132,
-          "y1": 349.749
+          "width": 99.965,
+          "y0": 327.75,
+          "y1": 350.017
         }
       ]
     }

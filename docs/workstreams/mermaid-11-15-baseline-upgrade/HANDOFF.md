@@ -18,13 +18,17 @@ M15-040 is complete: Architecture now carries Mermaid 11.15 FCoSE defaults and w
 `randomize`, `nodeSeparation`, `idealEdgeLengthMultiplier`, `edgeElasticity`, `numIter`, and
 deterministic `seed` through the local indexed FCoSE path. Default output remains deterministic;
 configured randomization and layout-budget changes are covered by layout tests.
+M15-050 is complete: Sankey now exposes Mermaid 11.15 defaults for `nodeWidth`, `nodePadding`,
+`labelStyle`, and `nodeColors`; layout reads configured width/padding, SVG rendering applies custom
+node colors to nodes and links, and `labelStyle=outlined` emits Mermaid-style background/foreground
+labels. Sankey layout goldens were refreshed for the upstream default padding change.
 
 ## Active Task
 
-- Task ID: M15-050
+- Task ID: M15-060
 - Owner: unassigned
-- Files: `crates/merman-render/src/sankey.rs`, `crates/merman-core/src/generated/default_config.json`
-- Validation: targeted Sankey layout/SVG tests for defaults and configured variants
+- Files: `crates/merman-render/src/xychart.rs`, `crates/merman-core/src/generated/default_config.json`
+- Validation: targeted xyChart layout/SVG tests for `dataLabelColor` and `showDataLabelOutsideBar`
 - Status: READY
 - Review: Required before task acceptance
 - Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
@@ -40,13 +44,16 @@ configured randomization and layout-budget changes are covered by layout tests.
   broad fixture churn.
 - Architecture FCoSE remains deterministic by default (`randomize=false`, `seed=1`), but manatee's
   generic FCoSE API keeps cytoscape-fcose's library default of `randomize=true`.
+- Sankey follows the 11.15 default padding baseline (`nodePadding=12`, plus 15 when values are
+  shown), so existing Sankey layout goldens changed intentionally.
+- Sankey `nodeColors` is represented as `{}` in local generated JSON because upstream TypeScript
+  exposes the key as `undefined`; render behavior is equivalent for the default case.
 
 ## Blockers
 
-- None known for M15-050. Start from upstream Sankey config defaults and decide whether label style
-  belongs in one slice or a follow-up render slice.
+- None known for M15-060. Start from upstream xyChart config/schema and renderer behavior.
 
 ## Next Recommended Action
 
-- Execute M15-050. Start with the upstream Sankey config/schema and current local Sankey layout
-  defaults, then add the smallest public render/layout test before wiring config.
+- Execute M15-060. Start with the upstream xyChart config/schema and add the smallest public
+  layout/SVG test for `dataLabelColor` or `showDataLabelOutsideBar` before wiring config.

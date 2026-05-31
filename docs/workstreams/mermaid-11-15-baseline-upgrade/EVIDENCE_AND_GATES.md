@@ -104,3 +104,18 @@ before marking a task, Codex goal, or lane complete.
   - `cargo nextest run -p merman-core` passed: 530 tests.
   - `cargo nextest run -p merman-render` passed: 236 tests.
   - `cargo fmt --check` passed.
+- 2026-05-31: M15-050 Sankey 11.15 config support complete.
+  - Upstream check: Mermaid 11.15 Sankey defaults include `nodeWidth=10`, `nodePadding=12`, `labelStyle=legacy`, and `nodeColors` as an optional ID-to-color map; renderer adds 15px to node padding when `showValues=true`, uses custom node colors for nodes and link colors, and renders `outlined` labels as background/foreground text.
+  - `cargo nextest run -p merman-render sankey_layout_uses_configured_node_width_and_padding` failed before implementation because layout still hardcoded `nodeWidth=10`.
+  - `cargo nextest run -p merman-render sankey_svg_uses_configured_node_colors_and_outlined_labels` failed before implementation because SVG still used Tableau colors and legacy single labels.
+  - `cargo nextest run -p merman-core parse_sankey_exposes_11_15_config_defaults_and_overrides` failed before implementation because `sankey.nodeWidth` was missing from generated defaults.
+  - `cargo nextest run -p merman-render sankey_layout_uses_configured_node_width_and_padding sankey_node_geometry_constants_match_mermaid sankey_layout_uses_mermaid_node_geometry` passed: 3 tests.
+  - `cargo nextest run -p merman-render sankey_svg_uses_configured_node_colors_and_outlined_labels` passed: 1 test.
+  - `cargo nextest run -p merman-core parse_sankey_exposes_11_15_config_defaults_and_overrides` passed: 1 test.
+  - `cargo nextest run -p merman-render sankey` passed: 4 tests.
+  - `cargo nextest run -p merman-core sankey` passed: 5 tests.
+  - `cargo nextest run -p merman-core config` passed: 11 tests.
+  - `cargo run -p xtask -- update-layout-snapshots --diagram sankey` refreshed Sankey layout goldens for the 11.15 padding baseline.
+  - `cargo nextest run -p merman-core` passed: 531 tests.
+  - `cargo nextest run -p merman-render` passed: 238 tests.
+  - `cargo fmt --check` passed.

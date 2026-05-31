@@ -838,6 +838,33 @@ Target,Done,2.5
 }
 
 #[test]
+fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("sankey\nA,B,1", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let sankey = &default.effective_config.as_value()["sankey"];
+    assert_eq!(sankey["nodeWidth"], json!(10));
+    assert_eq!(sankey["nodePadding"], json!(12));
+    assert_eq!(sankey["labelStyle"], json!("legacy"));
+    assert_eq!(sankey["nodeColors"], json!({}));
+
+    let configured = block_on(engine.parse_metadata(
+        r##"%%{init: {"sankey": {"nodeWidth": 24, "nodePadding": 18, "labelStyle": "outlined", "nodeColors": {"A": "#112233"}}}}%%
+sankey
+A,B,1"##,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let sankey = &configured.effective_config.as_value()["sankey"];
+    assert_eq!(sankey["nodeWidth"], json!(24));
+    assert_eq!(sankey["nodePadding"], json!(18));
+    assert_eq!(sankey["labelStyle"], json!("outlined"));
+    assert_eq!(sankey["nodeColors"]["A"], json!("#112233"));
+}
+
+#[test]
 fn parse_radar_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"

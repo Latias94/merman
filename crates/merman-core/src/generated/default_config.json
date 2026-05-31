@@ -351,8 +351,12 @@
   },
   "sankey": {
     "height": 400,
+    "labelStyle": "legacy",
     "linkColor": "gradient",
     "nodeAlignment": "justify",
+    "nodeColors": {},
+    "nodePadding": 12,
+    "nodeWidth": 10,
     "prefix": "",
     "showValues": true,
     "suffix": "",

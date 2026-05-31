@@ -46,13 +46,13 @@ Last updated: 2026-05-31
   Context: Workstream context plus `docs/workstreams/architecture-indexed-fcose`.
   Handoff: DONE. Architecture default config now includes Mermaid 11.15 FCoSE fields; layout reads `randomize`, `nodeSeparation`, `idealEdgeLengthMultiplier`, `edgeElasticity`, `numIter`, and deterministic `seed`.
 
-- [ ] M15-050 [owner=unassigned] [deps=M15-010] [scope=crates/merman-render/src/sankey.rs,crates/merman-core/src/generated/default_config.json]
+- [x] M15-050 [owner=codex] [deps=M15-010] [scope=crates/merman-render/src/sankey.rs,crates/merman-render/src/svg/parity/sankey.rs,crates/merman-core/src/generated/default_config.json,fixtures/sankey]
   Goal: Support sankey `nodeWidth`, `nodePadding`, `labelStyle`, and `nodeColors`.
   Validation: Sankey layout/render tests for defaults and configured variants.
   Review: Ensure defaults keep old parity unless upstream 11.15 requires a baseline change.
-  Evidence: `EVIDENCE_AND_GATES.md`
+  Evidence: `cargo nextest run -p merman-core sankey`; `cargo nextest run -p merman-render sankey`; `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`; `cargo fmt --check`.
   Context: Workstream context plus upstream sankey renderer.
-  Handoff: SVG label outline work may need its own render slice.
+  Handoff: DONE. Sankey defaults now include 11.15 `nodeWidth=10`, `nodePadding=12`, `labelStyle=legacy`, and empty `nodeColors`; layout reads width/padding, renderer applies custom node colors to nodes and links, and `labelStyle=outlined` emits background/foreground labels. Sankey layout goldens were refreshed for the upstream padding baseline change.
 
 - [ ] M15-060 [owner=unassigned] [deps=M15-010] [scope=crates/merman-render/src/xychart.rs,crates/merman-core/src/generated/default_config.json]
   Goal: Support xyChart `dataLabelColor` and `showDataLabelOutsideBar`.

@@ -23,3 +23,8 @@
 {"file":"crates/manatee/src/algo/fcose/mod.rs","reason":"Local indexed FCoSE options and layout behavior extended for Architecture config."}
 {"file":"crates/merman-render/src/architecture.rs","reason":"Local Architecture layout now reads Mermaid 11.15 FCoSE config fields."}
 {"file":"crates/merman-render/tests/architecture_layout_test.rs","reason":"Public parse+layout tests for deterministic defaults and configured Architecture FCoSE changes."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyRenderer.ts","reason":"Upstream Sankey renderer behavior for nodeWidth, nodePadding, labelStyle, and nodeColors."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream Sankey 11.15 config defaults and schema fields."}
+{"file":"crates/merman-render/src/sankey.rs","reason":"Local Sankey layout now reads configured node width and padding."}
+{"file":"crates/merman-render/src/svg/parity/sankey.rs","reason":"Local Sankey SVG now applies nodeColors and outlined labels."}
+{"file":"crates/merman-render/tests/sankey_svg_test.rs","reason":"Public SVG test for configured Sankey colors and outlined labels."}

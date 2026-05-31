@@ -529,8 +529,8 @@ pub(super) fn sankey_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font, id, id, font, id, font
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:#fff;stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:#333;}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font, id, id, font, id, font, id, id, id, id, id, font
     );
     out
 }

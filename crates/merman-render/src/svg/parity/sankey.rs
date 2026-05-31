@@ -22,6 +22,17 @@ pub(super) fn render_sankey_diagram_svg(
         cur.as_str().map(|s| s.to_string())
     }
 
+    fn config_object<'a>(
+        cfg: &'a serde_json::Value,
+        path: &[&str],
+    ) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+        let mut cur = cfg;
+        for key in path {
+            cur = cur.get(*key)?;
+        }
+        cur.as_object()
+    }
+
     let sankey_cfg = effective_config.get("sankey");
     let sankey_cfg_missing = sankey_cfg.is_none()
         || sankey_cfg.is_some_and(|v| v.as_object().is_some_and(|m| m.contains_key("$ref")));
@@ -50,6 +61,18 @@ pub(super) fn render_sankey_diagram_svg(
     } else {
         config_string(effective_config, &["sankey", "linkColor"])
             .unwrap_or_else(|| "gradient".to_string())
+    };
+    let label_style = if sankey_cfg_missing {
+        "legacy".to_string()
+    } else {
+        config_string(effective_config, &["sankey", "labelStyle"])
+            .unwrap_or_else(|| "legacy".to_string())
+    };
+    let outlined_labels = label_style == "outlined";
+    let node_colors = if sankey_cfg_missing {
+        None
+    } else {
+        config_object(effective_config, &["sankey", "nodeColors"])
     };
 
     let layout_width = layout.width.max(1.0);
@@ -150,6 +173,12 @@ pub(super) fn render_sankey_diagram_svg(
     let mut color_domain: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
     let mut color_for = |id: &str| -> String {
+        if let Some(color) = node_colors
+            .and_then(|colors| colors.get(id))
+            .and_then(|color| color.as_str())
+        {
+            return color.to_string();
+        }
         if let Some(&idx) = color_domain.get(id) {
             return scheme_tableau10[idx % scheme_tableau10.len()].to_string();
         }
@@ -190,7 +219,7 @@ pub(super) fn render_sankey_diagram_svg(
             y = fmt(y),
             h = fmt(h),
             w = fmt(w),
-            fill = fill,
+            fill = escape_attr(&fill),
         );
     }
     out.push_str("</g>");
@@ -200,33 +229,60 @@ pub(super) fn render_sankey_diagram_svg(
         r#"<g class="node-labels" font-size="{font_size}">"#,
         font_size = fmt(label_font_size)
     );
+    let mut max_value = 0.0;
+    let mut central_node_layer = 0usize;
     for n in &layout.nodes {
-        let y = (n.y0 + n.y1) / 2.0;
-        let (x, anchor) = if n.x0 < layout_width / 2.0 {
-            (n.x1 + label_gap_x, "start")
-        } else {
-            (n.x0 - label_gap_x, "end")
-        };
-        let dy = if show_values {
-            "0em".to_string()
-        } else {
-            format!("{}em", fmt(label_hide_values_dy_em))
-        };
-        let v = (n.value * 100.0).round() / 100.0;
-        let text = if show_values {
-            format!("{}\n{}{}{}", n.id, prefix, v, suffix)
-        } else {
-            n.id.clone()
-        };
-        let _ = write!(
-            &mut out,
-            r#"<text x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">{text}</text>"#,
-            x = fmt(x),
-            y = fmt(y),
-            dy = dy,
-            anchor = anchor,
-            text = escape_xml(&text),
-        );
+        if n.value > max_value {
+            max_value = n.value;
+            central_node_layer = n.layer;
+        }
+    }
+
+    let append_labels = |out: &mut String, class_name: Option<&str>| {
+        for n in &layout.nodes {
+            let y = (n.y0 + n.y1) / 2.0;
+            let (x, anchor) = if outlined_labels {
+                if n.layer < central_node_layer {
+                    (n.x0 - label_gap_x, "end")
+                } else {
+                    (n.x1 + label_gap_x, "start")
+                }
+            } else if n.x0 < layout_width / 2.0 {
+                (n.x1 + label_gap_x, "start")
+            } else {
+                (n.x0 - label_gap_x, "end")
+            };
+            let dy = if show_values {
+                "0em".to_string()
+            } else {
+                format!("{}em", fmt(label_hide_values_dy_em))
+            };
+            let v = (n.value * 100.0).round() / 100.0;
+            let text = if show_values {
+                format!("{}\n{}{}{}", n.id, prefix, v, suffix)
+            } else {
+                n.id.clone()
+            };
+            let class_attr = class_name
+                .map(|class_name| format!(r#" class="{}""#, escape_attr(class_name)))
+                .unwrap_or_default();
+            let _ = write!(
+                out,
+                r#"<text{class_attr} x="{x}" y="{y}" dy="{dy}" text-anchor="{anchor}">{text}</text>"#,
+                class_attr = class_attr,
+                x = fmt(x),
+                y = fmt(y),
+                dy = dy,
+                anchor = anchor,
+                text = escape_xml(&text),
+            );
+        }
+    };
+    if outlined_labels {
+        append_labels(&mut out, Some("sankey-label-bg"));
+        append_labels(&mut out, Some("sankey-label-fg"));
+    } else {
+        append_labels(&mut out, None);
     }
     out.push_str("</g>");
 
@@ -275,8 +331,8 @@ pub(super) fn render_sankey_diagram_svg(
                     id = escape_xml(&gradient_id),
                     x1 = fmt(sx),
                     x2 = fmt(tx),
-                    c1 = source_color,
-                    c2 = target_color,
+                    c1 = escape_attr(&source_color),
+                    c2 = escape_attr(&target_color),
                 );
                 format!("url(#{})", gradient_id)
             }

@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 const SANKEY_NODE_WIDTH_PX: f64 = 10.0;
-const SANKEY_NODE_PADDING_BASE_PX: f64 = 10.0;
+const SANKEY_NODE_PADDING_BASE_PX: f64 = 12.0;
 const SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX: f64 = 15.0;
 
 #[derive(Debug, Clone)]
@@ -80,13 +80,12 @@ fn f64_cmp(a: f64, b: f64) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Equal)
 }
 
-fn sankey_node_padding_px(show_values: bool) -> f64 {
-    SANKEY_NODE_PADDING_BASE_PX
-        + if show_values {
-            SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX
-        } else {
-            0.0
-        }
+fn sankey_node_padding_px_with_base(base: f64, show_values: bool) -> f64 {
+    base + if show_values {
+        SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX
+    } else {
+        0.0
+    }
 }
 
 pub fn layout_sankey_diagram(
@@ -115,8 +114,18 @@ pub fn layout_sankey_diagram_typed(
     };
     let align = parse_align(effective_config);
 
-    let dx = SANKEY_NODE_WIDTH_PX;
-    let dy = sankey_node_padding_px(show_values);
+    let dx = if sankey_cfg_missing {
+        SANKEY_NODE_WIDTH_PX
+    } else {
+        config_f64(effective_config, &["sankey", "nodeWidth"]).unwrap_or(SANKEY_NODE_WIDTH_PX)
+    };
+    let node_padding_base = if sankey_cfg_missing {
+        SANKEY_NODE_PADDING_BASE_PX
+    } else {
+        config_f64(effective_config, &["sankey", "nodePadding"])
+            .unwrap_or(SANKEY_NODE_PADDING_BASE_PX)
+    };
+    let dy = sankey_node_padding_px_with_base(node_padding_base, show_values);
     let iterations = 6usize;
 
     let mut nodes: Vec<Node> = model
@@ -662,8 +671,14 @@ mod tests {
     #[test]
     fn sankey_node_geometry_constants_match_mermaid() {
         assert_eq!(super::SANKEY_NODE_WIDTH_PX, 10.0);
-        assert_eq!(super::sankey_node_padding_px(true), 25.0);
-        assert_eq!(super::sankey_node_padding_px(false), 10.0);
+        assert_eq!(
+            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, true),
+            27.0
+        );
+        assert_eq!(
+            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, false),
+            12.0
+        );
     }
 
     #[test]
@@ -683,7 +698,7 @@ mod tests {
         assert_eq!(default_layout.node_width, super::SANKEY_NODE_WIDTH_PX);
         assert_eq!(
             default_layout.node_padding,
-            super::sankey_node_padding_px(true)
+            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, true)
         );
 
         let hidden_values_layout = layout_sankey_diagram(
@@ -694,7 +709,40 @@ mod tests {
         .unwrap();
         assert_eq!(
             hidden_values_layout.node_padding,
-            super::sankey_node_padding_px(false)
+            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, false)
         );
+    }
+
+    #[test]
+    fn sankey_layout_uses_configured_node_width_and_padding() {
+        let semantic = json!({
+            "graph": {
+                "nodes": [{"id": "A"}, {"id": "B"}],
+                "links": [{"source": "A", "target": "B", "value": 1.0}]
+            }
+        });
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let layout = layout_sankey_diagram(
+            &semantic,
+            &json!({"sankey": {"nodeWidth": 24, "nodePadding": 18}}),
+            &measurer,
+        )
+        .unwrap();
+
+        assert_eq!(layout.node_width, 24.0);
+        assert_eq!(layout.node_padding, 33.0);
+        assert_eq!(layout.nodes[0].x1 - layout.nodes[0].x0, 24.0);
+
+        let hidden_values_layout = layout_sankey_diagram(
+            &semantic,
+            &json!({"sankey": {"nodeWidth": 24, "nodePadding": 18, "showValues": false}}),
+            &measurer,
+        )
+        .unwrap();
+        assert_eq!(hidden_values_layout.node_padding, 18.0);
     }
 }
