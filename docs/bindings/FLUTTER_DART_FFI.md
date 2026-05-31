@@ -43,6 +43,41 @@ for current Mermaid parity.
 Generated native artifacts are ignored by git and re-included for pub packages through
 `platforms/flutter/.pubignore`.
 
+## SVG Rendering Guidance
+
+The Flutter wrapper returns SVG strings. It intentionally does not wrap them in a UI component,
+because the right display surface depends on the host app's fidelity and portability needs.
+
+For browser-like visual fidelity, use a WebView or another renderer that supports Mermaid-style SVG.
+Mermaid-like output can contain `<style>`, `<marker>`, and `<foreignObject>`:
+
+- `<style>` carries theme and class styling.
+- `<marker>` draws arrowheads.
+- `<foreignObject>` carries HTML labels.
+
+Native Flutter SVG renderers and some rasterizers may ignore or partially support those elements.
+For example, a renderer that ignores `<marker>` can drop arrowheads, and a renderer that ignores
+`<foreignObject>` can lose label content.
+
+Application code should not blindly remove these tags. Choose an explicit SVG pipeline through
+`optionsJson` instead:
+
+```dart
+final paritySvg = merman.renderSvg(source);
+final readableSvg = merman.renderSvg(
+  source,
+  optionsJson: '{"svg":{"pipeline":"readable"}}',
+);
+final resvgSafeSvg = merman.renderSvg(
+  source,
+  optionsJson: '{"svg":{"pipeline":"resvg-safe"}}',
+);
+```
+
+- Use the default `parity` output for WebView/browser display and Mermaid-like comparison.
+- Use `readable` when the target renderer needs best-effort label text fallbacks.
+- Use `resvg-safe` for stricter SVG consumers and raster/PDF export flows.
+
 ## Verify Locally
 
 ```bash

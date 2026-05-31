@@ -48,6 +48,48 @@ try {
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
 
+## Rendering SVG In Flutter
+
+`Merman.renderSvg` returns SVG text; this package does not prescribe a Flutter widget. For highest
+visual fidelity, render the SVG in a browser-capable surface such as `webview_flutter`:
+
+```dart
+final svg = Merman.open().renderSvg(source);
+final controller = WebViewController()
+  ..setJavaScriptMode(JavaScriptMode.unrestricted)
+  ..loadHtmlString('''
+<!doctype html>
+<html>
+<body style="margin:0;background:white">
+$svg
+</body>
+</html>
+''');
+```
+
+Mermaid-like SVG can include `<style>`, `<marker>`, and `<foreignObject>`. Those elements are valid
+parts of the output: styles preserve theme behavior, markers draw arrowheads, and foreign objects
+carry HTML labels. Native Flutter SVG widgets and some rasterizers may ignore or partially support
+those elements, so diagrams can lose arrowheads, labels, or styling outside a WebView.
+
+Do not blindly strip those tags in application code. Instead, select an explicit SVG pipeline for
+the target renderer:
+
+```dart
+final browserSvg = merman.renderSvg(source); // default parity output
+final readableSvg = merman.renderSvg(
+  source,
+  optionsJson: '{"svg":{"pipeline":"readable"}}',
+);
+final resvgSafeSvg = merman.renderSvg(
+  source,
+  optionsJson: '{"svg":{"pipeline":"resvg-safe"}}',
+);
+```
+
+Use the default parity output for WebView/browser display, `readable` when a renderer needs text
+fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF export paths.
+
 ## Local Dart Smoke
 
 Raw `dart run` does not execute Flutter's platform packaging step, so the smoke example accepts an
