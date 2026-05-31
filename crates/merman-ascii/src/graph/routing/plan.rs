@@ -120,6 +120,142 @@ pub(super) fn plan_left_right_grid_path_route(
     Some(RoutePlan { cells, labels })
 }
 
+pub(super) fn plan_left_right_down_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    if to.y <= from.bottom() + 1 {
+        return None;
+    }
+
+    let x = from.center_x();
+    let start = from.bottom() + 1;
+    let end = to.y - 1;
+    let line = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let mut cells = vec![edge_line_cell(x, from.bottom(), charset.down_connector)];
+    for y in start..end {
+        cells.push(route_cell(x, y, line));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(x, end, line),
+        GraphEdgeArrow::Point => edge_arrow_cell(x, end, charset.arrow_down),
+    });
+
+    Some(RoutePlan {
+        cells,
+        labels: Vec::new(),
+    })
+}
+
+pub(super) fn plan_left_right_down_then_right_route(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    if !has_left_right_crossing_pair(layouts, edges, from, to) {
+        return plan_left_right_basic_down_then_right_route(from, to, edge, charset);
+    }
+
+    let source_x = from.center_x();
+    let lane_x = lane_x_between(from, to);
+    let lane_y = lane_y_between(from, to);
+    if lane_y <= from.bottom() || to.x <= lane_x + 1 {
+        return None;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let mut cells = vec![edge_line_cell(
+        source_x,
+        from.bottom(),
+        charset.down_connector,
+    )];
+    for y in (from.bottom() + 1)..lane_y {
+        cells.push(route_cell(source_x, y, vertical));
+    }
+    cells.push(route_cell(source_x, lane_y, charset.corner_down_right));
+
+    for line_x in (source_x + 1)..lane_x {
+        cells.push(route_cell(line_x, lane_y, horizontal));
+    }
+    cells.push(route_cell(lane_x, lane_y, charset.top_right));
+
+    for y in (lane_y + 1)..to.center_y() {
+        cells.push(route_cell(lane_x, y, vertical));
+    }
+    let end = to.x - 1;
+    cells.push(route_cell(lane_x, to.center_y(), charset.corner_down_right));
+    for line_x in (lane_x + 1)..end {
+        cells.push(route_cell(line_x, to.center_y(), horizontal));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(end, to.center_y(), horizontal),
+        GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
+    });
+
+    Some(RoutePlan {
+        cells,
+        labels: Vec::new(),
+    })
+}
+
+pub(super) fn plan_left_right_right_then_up_route(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    if !has_left_right_reverse_crossing_pair(layouts, edges, from, to) {
+        return plan_left_right_basic_right_then_up_route(from, to, edge, charset);
+    }
+
+    let source_x = from.center_x();
+    let lane_x = lane_x_between(from, to);
+    let lane_y = lane_y_between(to, from);
+    if lane_x <= source_x || from.y <= lane_y || lane_y <= to.bottom() {
+        return None;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let mut cells = vec![edge_line_cell(source_x, from.y, charset.up_connector)];
+    for y in (lane_y + 1)..from.y {
+        cells.push(route_cell(source_x, y, vertical));
+    }
+    cells.push(route_cell(source_x, lane_y, charset.top_left));
+
+    for x in (source_x + 1)..lane_x {
+        cells.push(route_cell(x, lane_y, horizontal));
+    }
+    cells.push(route_cell(lane_x, lane_y, charset.corner_right_up));
+
+    for y in (to.center_y() + 1)..lane_y {
+        cells.push(route_cell(lane_x, y, vertical));
+    }
+    cells.push(route_cell(lane_x, to.center_y(), charset.top_left));
+
+    let end = to.x - 1;
+    for x in (lane_x + 1)..end {
+        cells.push(route_cell(x, to.center_y(), horizontal));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(end, to.center_y(), horizontal),
+        GraphEdgeArrow::Point => edge_arrow_cell(end, to.center_y(), charset.arrow_right),
+    });
+
+    Some(RoutePlan {
+        cells,
+        labels: Vec::new(),
+    })
+}
+
 pub(super) fn plan_top_down_direct_route(
     from: &NodeLayout,
     to: &NodeLayout,
@@ -171,6 +307,76 @@ pub(super) fn plan_top_down_direct_route(
     .collect();
 
     Some(RoutePlan { cells, labels })
+}
+
+fn plan_left_right_basic_down_then_right_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let x = from.center_x();
+    let corner_y = to.center_y();
+    if corner_y <= from.bottom() || to.x <= x + 1 {
+        return None;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let mut cells = vec![edge_line_cell(x, from.bottom(), charset.down_connector)];
+    for y in (from.bottom() + 1)..corner_y {
+        cells.push(route_cell(x, y, vertical));
+    }
+    cells.push(route_cell(x, corner_y, charset.corner_down_right));
+
+    let end = to.x - 1;
+    for line_x in (x + 1)..end {
+        cells.push(route_cell(line_x, corner_y, horizontal));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(end, corner_y, horizontal),
+        GraphEdgeArrow::Point => edge_arrow_cell(end, corner_y, charset.arrow_right),
+    });
+
+    Some(RoutePlan {
+        cells,
+        labels: Vec::new(),
+    })
+}
+
+fn plan_left_right_basic_right_then_up_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    let y = from.center_y();
+    let corner_x = to.center_x();
+    if corner_x <= from.right() || y <= to.bottom() + 1 {
+        return None;
+    }
+
+    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
+    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
+    let mut cells = vec![edge_line_cell(from.right(), y, charset.right_connector)];
+    for x in (from.right() + 1)..corner_x {
+        cells.push(route_cell(x, y, horizontal));
+    }
+    cells.push(route_cell(corner_x, y, charset.corner_right_up));
+
+    let arrow_y = to.bottom() + 1;
+    for line_y in (arrow_y + 1)..y {
+        cells.push(route_cell(corner_x, line_y, vertical));
+    }
+    cells.push(match edge.arrow {
+        GraphEdgeArrow::Open => route_cell(corner_x, arrow_y, vertical),
+        GraphEdgeArrow::Point => edge_arrow_cell(corner_x, arrow_y, charset.arrow_up),
+    });
+
+    Some(RoutePlan {
+        cells,
+        labels: Vec::new(),
+    })
 }
 
 fn plan_grid_path(
@@ -370,6 +576,58 @@ fn left_right_direct_route_is_clear(
         .all(|layout| {
             y < layout.y || y > layout.bottom() || end < layout.x || start > layout.right()
         })
+}
+
+fn has_left_right_crossing_pair(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    upper_source: &NodeLayout,
+    lower_target: &NodeLayout,
+) -> bool {
+    edges.iter().any(|edge| {
+        let Some(other_source) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            return false;
+        };
+        let Some(other_target) = layouts.iter().find(|layout| layout.id == edge.to) else {
+            return false;
+        };
+        other_source.x == upper_source.x
+            && other_target.x == lower_target.x
+            && other_source.center_y() > upper_source.center_y()
+            && other_target.center_y() < lower_target.center_y()
+    })
+}
+
+fn has_left_right_reverse_crossing_pair(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    lower_source: &NodeLayout,
+    upper_target: &NodeLayout,
+) -> bool {
+    edges.iter().any(|edge| {
+        let Some(other_source) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            return false;
+        };
+        let Some(other_target) = layouts.iter().find(|layout| layout.id == edge.to) else {
+            return false;
+        };
+        other_source.x == lower_source.x
+            && other_target.x == upper_target.x
+            && other_source.center_y() < lower_source.center_y()
+            && other_target.center_y() > upper_target.center_y()
+    })
+}
+
+fn lane_x_between(from: &NodeLayout, to: &NodeLayout) -> usize {
+    if from.x < to.x {
+        (from.right() + to.x) / 2
+    } else {
+        (to.right() + from.x) / 2
+    }
+}
+
+fn lane_y_between(upper: &NodeLayout, lower: &NodeLayout) -> usize {
+    (upper.bottom() + lower.y) / 2
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
@@ -579,6 +837,137 @@ mod tests {
         assert_eq!(
             plan.labels.first().map(|label| label.text.as_str()),
             Some("down")
+        );
+    }
+
+    #[test]
+    fn left_right_down_route_plans_vertical_bent_line() {
+        let from = node("a", 0, 0, 3, 3);
+        let to = node("b", 0, 6, 3, 3);
+        let edge = edge(None, GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_left_right_down_route(&from, &to, &edge, &charset).unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(1, 2, '-', PlannedRouteCellKind::EdgeLine),
+                cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 4, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 5, 'v', PlannedRouteCellKind::EdgeArrow),
+            ]
+        );
+        assert!(plan.labels.is_empty());
+    }
+
+    #[test]
+    fn left_right_down_then_right_route_plans_basic_bend() {
+        let from = node("a", 0, 0, 3, 3);
+        let to = node("b", 6, 4, 3, 3);
+        let edge = edge(None, GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_left_right_down_then_right_route(
+            &[from.clone(), to.clone()],
+            &[],
+            &from,
+            &to,
+            &edge,
+            &charset,
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(1, 2, '-', PlannedRouteCellKind::EdgeLine),
+                cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 4, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 5, '+', PlannedRouteCellKind::RouteCell),
+                cell(2, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(3, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 5, '>', PlannedRouteCellKind::EdgeArrow),
+            ]
+        );
+    }
+
+    #[test]
+    fn left_right_right_then_up_route_plans_basic_bend() {
+        let from = node("a", 0, 6, 3, 3);
+        let to = node("b", 6, 0, 3, 3);
+        let edge = edge(None, GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan = plan_left_right_right_then_up_route(
+            &[from.clone(), to.clone()],
+            &[],
+            &from,
+            &to,
+            &edge,
+            &charset,
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(2, 7, '|', PlannedRouteCellKind::EdgeLine),
+                cell(3, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(6, 7, '-', PlannedRouteCellKind::RouteCell),
+                cell(7, 7, '+', PlannedRouteCellKind::RouteCell),
+                cell(7, 4, '|', PlannedRouteCellKind::RouteCell),
+                cell(7, 5, '|', PlannedRouteCellKind::RouteCell),
+                cell(7, 6, '|', PlannedRouteCellKind::RouteCell),
+                cell(7, 3, '^', PlannedRouteCellKind::EdgeArrow),
+            ]
+        );
+    }
+
+    #[test]
+    fn left_right_down_then_right_route_plans_crossing_lane() {
+        let from = node("a", 0, 0, 3, 3);
+        let lower_source = node("b", 0, 8, 3, 3);
+        let upper_target = node("c", 10, 0, 3, 3);
+        let to = node("d", 10, 8, 3, 3);
+        let layouts = vec![
+            from.clone(),
+            lower_source.clone(),
+            upper_target.clone(),
+            to.clone(),
+        ];
+        let edge = edge_between("a", "d", None, GraphEdgeArrow::Point);
+        let crossing_edge = edge_between("b", "c", None, GraphEdgeArrow::Point);
+        let edges = vec![edge.clone(), crossing_edge];
+        let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+
+        let plan =
+            plan_left_right_down_then_right_route(&layouts, &edges, &from, &to, &edge, &charset)
+                .unwrap();
+
+        assert_eq!(
+            plan.cells,
+            vec![
+                cell(1, 2, '-', PlannedRouteCellKind::EdgeLine),
+                cell(1, 3, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 4, '|', PlannedRouteCellKind::RouteCell),
+                cell(1, 5, '+', PlannedRouteCellKind::RouteCell),
+                cell(2, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(3, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(4, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(5, 5, '-', PlannedRouteCellKind::RouteCell),
+                cell(6, 5, '+', PlannedRouteCellKind::RouteCell),
+                cell(6, 6, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 7, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 8, '|', PlannedRouteCellKind::RouteCell),
+                cell(6, 9, '+', PlannedRouteCellKind::RouteCell),
+                cell(7, 9, '-', PlannedRouteCellKind::RouteCell),
+                cell(8, 9, '-', PlannedRouteCellKind::RouteCell),
+                cell(9, 9, '>', PlannedRouteCellKind::EdgeArrow),
+            ]
         );
     }
 

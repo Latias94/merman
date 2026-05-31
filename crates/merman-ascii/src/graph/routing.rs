@@ -17,8 +17,9 @@ use cell::{edge_line_char, set_edge_arrow, set_edge_line, set_route_cell};
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use label::{push_label_on_horizontal_line, push_label_on_vertical_line};
 use plan::{
-    PlannedRouteCellKind, RoutePlan, plan_left_right_direct_route, plan_left_right_grid_path_route,
-    plan_top_down_direct_route,
+    PlannedRouteCellKind, RoutePlan, plan_left_right_direct_route, plan_left_right_down_route,
+    plan_left_right_down_then_right_route, plan_left_right_grid_path_route,
+    plan_left_right_right_then_up_route, plan_top_down_direct_route,
 };
 
 pub(super) struct RouteDrawing<'a> {
@@ -221,33 +222,32 @@ fn draw_left_right_edge(
     }
 
     if from.center_y() < to.center_y() && to.x > from.x {
-        draw_left_right_down_then_right_edge(
-            drawing.canvas,
-            drawing.route_cells,
+        if let Some(plan) = plan_left_right_down_then_right_route(
             &graph_layout.nodes,
             edges,
-            endpoints,
+            from,
+            to,
             edge,
             charset,
-        );
+        ) {
+            paint_route_plan(drawing, &plan);
+        }
         return;
     }
 
     if from.center_y() < to.center_y() && to.x == from.x {
-        draw_left_right_down_edge(drawing.canvas, drawing.route_cells, from, to, edge, charset);
+        if let Some(plan) = plan_left_right_down_route(from, to, edge, charset) {
+            paint_route_plan(drawing, &plan);
+        }
         return;
     }
 
     if from.center_y() > to.center_y() && to.x > from.x {
-        draw_left_right_right_then_up_edge(
-            drawing.canvas,
-            drawing.route_cells,
-            &graph_layout.nodes,
-            edges,
-            endpoints,
-            edge,
-            charset,
-        );
+        if let Some(plan) =
+            plan_left_right_right_then_up_route(&graph_layout.nodes, edges, from, to, edge, charset)
+        {
+            paint_route_plan(drawing, &plan);
+        }
     }
 }
 
@@ -569,251 +569,6 @@ fn has_same_row_reverse_edge_into(
     })
 }
 
-fn draw_left_right_down_edge(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    if to.y <= from.bottom() + 1 {
-        return;
-    }
-
-    let x = from.center_x();
-    let start = from.bottom() + 1;
-    let end = to.y - 1;
-    let line = edge_line_char(edge, charset, GraphDirection::TopDown);
-    set_edge_line(canvas, x, from.bottom(), charset.down_connector);
-    for y in start..end {
-        set_route_cell(canvas, route_cells, x, y, line);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, x, end, line),
-        GraphEdgeArrow::Point => set_edge_arrow(canvas, x, end, charset.arrow_down),
-    }
-}
-
-fn draw_left_right_down_then_right_edge(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    layouts: &[NodeLayout],
-    edges: &[AsciiGraphEdge],
-    endpoints: EdgeLayouts<'_>,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    let from = endpoints.from;
-    let to = endpoints.to;
-
-    if !has_left_right_crossing_pair(layouts, edges, from, to) {
-        draw_left_right_basic_down_then_right_edge(canvas, route_cells, from, to, edge, charset);
-        return;
-    }
-
-    let source_x = from.center_x();
-    let lane_x = lane_x_between(from, to);
-    let lane_y = lane_y_between(from, to);
-    if lane_y <= from.bottom() || to.x <= lane_x + 1 {
-        return;
-    }
-
-    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    set_edge_line(canvas, source_x, from.bottom(), charset.down_connector);
-    for y in (from.bottom() + 1)..lane_y {
-        set_route_cell(canvas, route_cells, source_x, y, vertical);
-    }
-    set_route_cell(
-        canvas,
-        route_cells,
-        source_x,
-        lane_y,
-        charset.corner_down_right,
-    );
-
-    for line_x in (source_x + 1)..lane_x {
-        set_route_cell(canvas, route_cells, line_x, lane_y, horizontal);
-    }
-    set_route_cell(canvas, route_cells, lane_x, lane_y, charset.top_right);
-
-    for y in (lane_y + 1)..to.center_y() {
-        set_route_cell(canvas, route_cells, lane_x, y, vertical);
-    }
-    let end = to.x - 1;
-    set_route_cell(
-        canvas,
-        route_cells,
-        lane_x,
-        to.center_y(),
-        charset.corner_down_right,
-    );
-    for line_x in (lane_x + 1)..end {
-        set_route_cell(canvas, route_cells, line_x, to.center_y(), horizontal);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, to.center_y(), horizontal),
-        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, to.center_y(), charset.arrow_right),
-    }
-}
-
-fn draw_left_right_right_then_up_edge(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    layouts: &[NodeLayout],
-    edges: &[AsciiGraphEdge],
-    endpoints: EdgeLayouts<'_>,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    let from = endpoints.from;
-    let to = endpoints.to;
-
-    if !has_left_right_reverse_crossing_pair(layouts, edges, from, to) {
-        draw_left_right_basic_right_then_up_edge(canvas, route_cells, from, to, edge, charset);
-        return;
-    }
-
-    let source_x = from.center_x();
-    let lane_x = lane_x_between(from, to);
-    let lane_y = lane_y_between(to, from);
-    if lane_x <= source_x || from.y <= lane_y || lane_y <= to.bottom() {
-        return;
-    }
-
-    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    set_edge_line(canvas, source_x, from.y, charset.up_connector);
-    for y in (lane_y + 1)..from.y {
-        set_route_cell(canvas, route_cells, source_x, y, vertical);
-    }
-    set_route_cell(canvas, route_cells, source_x, lane_y, charset.top_left);
-
-    for x in (source_x + 1)..lane_x {
-        set_route_cell(canvas, route_cells, x, lane_y, horizontal);
-    }
-    set_route_cell(canvas, route_cells, lane_x, lane_y, charset.corner_right_up);
-
-    for y in (to.center_y() + 1)..lane_y {
-        set_route_cell(canvas, route_cells, lane_x, y, vertical);
-    }
-    set_route_cell(canvas, route_cells, lane_x, to.center_y(), charset.top_left);
-
-    let end = to.x - 1;
-    for x in (lane_x + 1)..end {
-        set_route_cell(canvas, route_cells, x, to.center_y(), horizontal);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, to.center_y(), horizontal),
-        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, to.center_y(), charset.arrow_right),
-    }
-}
-
-fn draw_left_right_basic_down_then_right_edge(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    let x = from.center_x();
-    let corner_y = to.center_y();
-    if corner_y <= from.bottom() || to.x <= x + 1 {
-        return;
-    }
-
-    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    set_edge_line(canvas, x, from.bottom(), charset.down_connector);
-    for y in (from.bottom() + 1)..corner_y {
-        set_route_cell(canvas, route_cells, x, y, vertical);
-    }
-    set_route_cell(canvas, route_cells, x, corner_y, charset.corner_down_right);
-
-    let end = to.x - 1;
-    for line_x in (x + 1)..end {
-        set_route_cell(canvas, route_cells, line_x, corner_y, horizontal);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, end, corner_y, horizontal),
-        GraphEdgeArrow::Point => set_edge_arrow(canvas, end, corner_y, charset.arrow_right),
-    }
-}
-
-fn draw_left_right_basic_right_then_up_edge(
-    canvas: &mut Canvas,
-    route_cells: &mut RouteCells,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    let y = from.center_y();
-    let corner_x = to.center_x();
-    if corner_x <= from.right() || y <= to.bottom() + 1 {
-        return;
-    }
-
-    let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
-    let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
-    set_edge_line(canvas, from.right(), y, charset.right_connector);
-    for x in (from.right() + 1)..corner_x {
-        set_route_cell(canvas, route_cells, x, y, horizontal);
-    }
-    set_route_cell(canvas, route_cells, corner_x, y, charset.corner_right_up);
-
-    let arrow_y = to.bottom() + 1;
-    for line_y in (arrow_y + 1)..y {
-        set_route_cell(canvas, route_cells, corner_x, line_y, vertical);
-    }
-    match edge.arrow {
-        GraphEdgeArrow::Open => set_route_cell(canvas, route_cells, corner_x, arrow_y, vertical),
-        GraphEdgeArrow::Point => set_edge_arrow(canvas, corner_x, arrow_y, charset.arrow_up),
-    }
-}
-
-fn has_left_right_crossing_pair(
-    layouts: &[NodeLayout],
-    edges: &[AsciiGraphEdge],
-    upper_source: &NodeLayout,
-    lower_target: &NodeLayout,
-) -> bool {
-    edges.iter().any(|edge| {
-        let Some(other_source) = layouts.iter().find(|layout| layout.id == edge.from) else {
-            return false;
-        };
-        let Some(other_target) = layouts.iter().find(|layout| layout.id == edge.to) else {
-            return false;
-        };
-        other_source.x == upper_source.x
-            && other_target.x == lower_target.x
-            && other_source.center_y() > upper_source.center_y()
-            && other_target.center_y() < lower_target.center_y()
-    })
-}
-
-fn has_left_right_reverse_crossing_pair(
-    layouts: &[NodeLayout],
-    edges: &[AsciiGraphEdge],
-    lower_source: &NodeLayout,
-    upper_target: &NodeLayout,
-) -> bool {
-    edges.iter().any(|edge| {
-        let Some(other_source) = layouts.iter().find(|layout| layout.id == edge.from) else {
-            return false;
-        };
-        let Some(other_target) = layouts.iter().find(|layout| layout.id == edge.to) else {
-            return false;
-        };
-        other_source.x == lower_source.x
-            && other_target.x == upper_target.x
-            && other_source.center_y() < lower_source.center_y()
-            && other_target.center_y() > upper_target.center_y()
-    })
-}
-
 fn draw_top_down_edge(
     drawing: &mut RouteDrawing<'_>,
     from: &NodeLayout,
@@ -995,18 +750,6 @@ fn draw_top_down_back_edge(
         source_y,
         edge.label.as_deref(),
     );
-}
-
-fn lane_x_between(from: &NodeLayout, to: &NodeLayout) -> usize {
-    if from.x < to.x {
-        (from.right() + to.x) / 2
-    } else {
-        (to.right() + from.x) / 2
-    }
-}
-
-fn lane_y_between(upper: &NodeLayout, lower: &NodeLayout) -> usize {
-    (upper.bottom() + lower.y) / 2
 }
 
 fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {
