@@ -61,7 +61,7 @@ pub(super) fn render_pie_diagram_svg(
 pub(super) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -158,13 +158,22 @@ pub(super) fn render_pie_diagram_svg_model(
         r = super::fmt(layout.outer_radius)
     );
 
+    let inner_radius = crate::pie::pie_donut_hole(effective_config) * layout.radius;
     for slice in &layout.slices {
         let r = layout.radius;
         if slice.is_full_circle {
-            let d = format!(
-                "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                r = super::fmt(r)
-            );
+            let d = if inner_radius > 0.0 {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
+                    r = super::fmt(r),
+                    ir = super::fmt(inner_radius)
+                )
+            } else {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
+                    r = super::fmt(r)
+                )
+            };
             let _ = write!(
                 &mut out,
                 r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
@@ -179,15 +188,34 @@ pub(super) fn render_pie_diagram_svg_model(
             } else {
                 0
             };
-            let d = format!(
-                "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                x0 = super::fmt(x0),
-                y0 = super::fmt(y0),
-                r = super::fmt(r),
-                large = large,
-                x1 = super::fmt(x1),
-                y1 = super::fmt(y1)
-            );
+            let d = if inner_radius > 0.0 {
+                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
+                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
+                    x0 = super::fmt(x0),
+                    y0 = super::fmt(y0),
+                    r = super::fmt(r),
+                    large = large,
+                    x1 = super::fmt(x1),
+                    y1 = super::fmt(y1),
+                    ix1 = super::fmt(ix1),
+                    iy1 = super::fmt(iy1),
+                    ir = super::fmt(inner_radius),
+                    ix0 = super::fmt(ix0),
+                    iy0 = super::fmt(iy0)
+                )
+            } else {
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
+                    x0 = super::fmt(x0),
+                    y0 = super::fmt(y0),
+                    r = super::fmt(r),
+                    large = large,
+                    x1 = super::fmt(x1),
+                    y1 = super::fmt(y1)
+                )
+            };
             let _ = write!(
                 &mut out,
                 r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,

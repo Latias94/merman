@@ -91,6 +91,26 @@ git diff --check
   - `cargo nextest run -p merman-core config`: passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-05-31 PIE-040 red:
+  - `cargo nextest run -p merman-render pie_text_position_config_moves_slice_labels`: failed
+    because slice labels still used the hardcoded `0.75` radius.
+  - `cargo nextest run -p merman-render pie_donut_hole_config_renders_annular_slice_paths`:
+    failed because configured donut slices still closed through `L0,0Z`.
+- 2026-05-31 PIE-040 green:
+  - Result: Pie layout reads `pie.textPosition`; SVG rendering uses valid `pie.donutHole`
+    values as inner arc radii and falls back to solid slices for invalid values.
+  - `cargo nextest run -p merman-render pie_text_position_config_moves_slice_labels`: passed.
+  - `cargo nextest run -p merman-render pie_donut_hole_config_renders_annular_slice_paths`:
+    passed.
+  - `cargo nextest run -p merman-render pie`: passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render`: passed after refreshing the three `textPosition`
+    layout goldens.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

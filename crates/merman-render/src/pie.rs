@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::config::config_f64;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
@@ -242,18 +243,31 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+pub(crate) fn pie_text_position(effective_config: &serde_json::Value) -> f64 {
+    config_f64(effective_config, &["pie", "textPosition"]).unwrap_or(0.75)
+}
+
+pub(crate) fn pie_donut_hole(effective_config: &serde_json::Value) -> f64 {
+    let donut_hole = config_f64(effective_config, &["pie", "donutHole"]).unwrap_or(0.0);
+    if donut_hole > 0.0 && donut_hole <= 0.9 {
+        donut_hole
+    } else {
+        0.0
+    }
+}
+
 pub fn layout_pie_diagram(
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_pie_diagram_typed(&model, _effective_config, measurer)
+    layout_pie_diagram_typed(&model, effective_config, measurer)
 }
 
 pub fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let _ = (
@@ -262,7 +276,7 @@ pub fn layout_pie_diagram_typed(
         model.acc_descr.as_deref(),
     );
 
-    // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
+    // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
     let margin: f64 = 40.0;
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_spacing = PIE_LEGEND_SPACING_PX;
@@ -270,7 +284,7 @@ pub fn layout_pie_diagram_typed(
     let center: f64 = 225.0;
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
-    let label_radius = radius.max(0.0) * 0.75;
+    let label_radius = radius.max(0.0) * pie_text_position(effective_config);
     let legend_x = 12.0 * legend_rect_size;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;

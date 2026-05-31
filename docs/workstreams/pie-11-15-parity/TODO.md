@@ -40,14 +40,15 @@ Last updated: 2026-05-31
 
 ## M2 - Configured Rendering
 
-- [ ] PIE-040 [owner=codex] [deps=PIE-020,PIE-030] [scope=crates/merman-render/src/pie.rs,crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/tests]
+- [x] PIE-040 [owner=codex] [deps=PIE-020,PIE-030] [scope=crates/merman-render/src/pie.rs,crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/tests]
   Goal: Implement `pie.textPosition` and valid `pie.donutHole` geometry.
   Validation: `cargo nextest run -p merman-render pie`; targeted SVG/path assertions.
   Review: Confirm invalid donut values fall back to `0` like upstream and label radius uses
   configured text position.
   Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
   Context: upstream `pieRenderer.ts`.
-  Handoff: Not started.
+  Handoff: DONE. Layout now reads `pie.textPosition`; SVG path generation renders valid donut
+  holes as annular arcs and falls back to solid slices for invalid values.
 
 - [ ] PIE-050 [owner=codex] [deps=PIE-030] [scope=crates/merman-render/src/pie.rs,crates/merman-render/src/svg/parity/pie.rs,crates/merman-render/tests]
   Goal: Implement `pie.legendPosition` for `top`, `bottom`, `left`, `right`, and `center`.

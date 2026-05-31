@@ -23,8 +23,8 @@
           "end_angle": 2.499,
           "is_full_circle": false,
           "percent": 40.0,
-          "text_x": 131.646,
-          "text_y": -43.827,
+          "text_x": 87.764,
+          "text_y": -29.218,
           "fill": "#ECECFF"
         },
         {
@@ -34,8 +34,8 @@
           "end_angle": 5.41,
           "is_full_circle": false,
           "percent": 46.0,
-          "text_x": -100.77,
-          "text_y": 95.378,
+          "text_x": -67.18,
+          "text_y": 63.585,
           "fill": "#ffffde"
         },
         {
@@ -45,8 +45,8 @@
           "end_angle": 5.992,
           "is_full_circle": false,
           "percent": 9.0,
-          "text_x": -76.266,
-          "text_y": -115.91,
+          "text_x": -50.844,
+          "text_y": -77.273,
           "fill": "hsl(80, 100%, 56.2745098039%)"
         },
         {
@@ -56,8 +56,8 @@
           "end_angle": 6.283,
           "is_full_circle": false,
           "percent": 5.0,
-          "text_x": -20.106,
-          "text_y": -137.286,
+          "text_x": -13.404,
+          "text_y": -91.524,
           "fill": "hsl(240, 100%, 86.2745098039%)"
         }
       ],

@@ -44,7 +44,8 @@ Primary gates:
 - `cargo nextest run -p merman-render pie`
 - selected `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
-Status: not started.
+Status: in progress. PIE-040 text-position and donut-hole geometry is complete; legend placement
+and highlight classes remain.
 
 ## M3 - Closeout
 
