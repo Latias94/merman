@@ -486,7 +486,7 @@ pub(super) fn render_journey_diagram_svg_model(
         let _ = write!(
             &mut out,
             r##"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
-            id = escape_attr(&task.line_id),
+            id = escape_attr(&scoped_svg_id(diagram_id, &task.line_id)),
             x1 = fmt(task.line_x1),
             y1 = fmt(task.line_y1),
             x2 = fmt(task.line_x2),

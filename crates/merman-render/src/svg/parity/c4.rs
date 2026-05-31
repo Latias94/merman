@@ -81,14 +81,14 @@ fn c4_type_text_length_px(type_c4_shape: &str) -> Option<f64> {
         "external_container" => Some(112.0),
         "external_container_db" => Some(132.0),
         "external_container_queue" => Some(152.0),
-        "external_person" => Some(99.0),
+        "external_person" => Some(100.0),
         "external_system" => Some(101.0),
         "external_system_db" => Some(121.0),
         "external_system_queue" => Some(141.0),
         "person" => Some(50.0),
-        "system" => Some(51.0),
-        "system_db" => Some(71.0),
-        "system_queue" => Some(91.0),
+        "system" => Some(52.0),
+        "system_db" => Some(72.0),
+        "system_queue" => Some(92.0),
         _ => None,
     }
 }
@@ -299,17 +299,21 @@ pub(super) fn render_c4_diagram_svg_typed(
         "/assets/c4_database_d_11_12_2.txt"
     ));
 
-    out.push_str(
-        r#"<defs><symbol id="computer" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "computer"))
     );
-    out.push_str(
-        &format!(
-            r#"<defs><symbol id="database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
-            escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
-        ),
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "database")),
+        escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
     );
-    out.push_str(
-        r#"<defs><symbol id="clock" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "clock"))
     );
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
@@ -856,8 +860,11 @@ mod tests {
             ("component_db", Some(93.0)),
             ("container", Some(63.0)),
             ("external_container_queue", Some(152.0)),
+            ("external_person", Some(100.0)),
             ("person", Some(50.0)),
-            ("system_queue", Some(91.0)),
+            ("system", Some(52.0)),
+            ("system_db", Some(72.0)),
+            ("system_queue", Some(92.0)),
             ("unknown", None),
         ];
 

@@ -115,6 +115,30 @@ git diff --check
   - `cargo fmt --check`: passed.
   - Non-sequence marker-ID baseline refresh remains open for C4, Journey, and Timeline; stored
     `fixtures/upstream-svgs/sequence` was not bulk-refreshed in this slice.
+- 2026-05-31 M15C-040 C4/Journey/Timeline fresh 11.15 probes:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram c4 --out target/upstream-svgs-11-15-c4`:
+    generated 51 fresh Mermaid 11.15 C4 SVGs.
+  - Initial C4 fresh compare failed with 51 mismatches. After scoping the C4 base symbol ids and
+    updating 11.15 C4 type-label `textLength` constants, `cargo run -p xtask -- compare-svg-xml --check --diagram c4 --upstream-root target/upstream-svgs-11-15-c4 --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram journey --out target/upstream-svgs-11-15-journey`:
+    generated 26 fresh Mermaid 11.15 Journey SVGs. Mermaid CLI printed upstream NaN attribute
+    warnings for a subset of fixtures but exited successfully.
+  - Initial Journey fresh compare failed with 17 mismatches. After scoping Journey task-line ids,
+    `cargo run -p xtask -- compare-svg-xml --check --diagram journey --upstream-root target/upstream-svgs-11-15-journey --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram timeline --out target/upstream-svgs-11-15-timeline`:
+    generated 91 fresh Mermaid 11.15 Timeline SVGs.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram timeline --upstream-root target/upstream-svgs-11-15-timeline --dom-mode parity --dom-decimals 3`:
+    failed with 90 mismatches. Representative fresh 11.15 deltas include upstream scoped node ids
+    such as `<svg-id>-node-0` versus local `node-undefined`, `taskWrapper`/`eventWrapper` class
+    ordering and DOM-shape differences, and multiline/tspan differences. Timeline is no longer
+    classified as only stale marker-id baseline drift.
+  - `cargo nextest run -p merman-render c4`: passed, 3 tests.
+  - `cargo nextest run -p merman-render journey`: passed, 3 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - Stored upstream SVG baselines were not refreshed in this code-fix slice.
 
 ## Evidence Anchors
 
