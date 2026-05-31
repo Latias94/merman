@@ -41,3 +41,17 @@
 {"file":"crates/merman-render/src/class.rs","reason":"Local class compound layout parent support for hierarchical namespaces and namespace notes."}
 {"file":"crates/merman-render/tests/class_layout_test.rs","reason":"Public layout tests for hierarchical dotted namespaces, namespace notes, and disabled hierarchical mode."}
 {"file":"crates/merman-render/tests/class_svg_test.rs","reason":"Public SVG tests for hierarchical namespace labels and namespace subgraph rendering."}
+{"file":"repo-ref/mermaid/packages/mermaid/CHANGELOG.md","reason":"Upstream 11.14 PR #7526 duplicate SVG element ID behavior and suffix-selector guidance."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/c4/svgDraw.js","reason":"Upstream c4 marker IDs and marker references are prefixed with the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js","reason":"Upstream user journey arrowhead marker ID uses the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/svgDraw.js","reason":"Upstream timeline arrowhead marker ID uses the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts","reason":"Upstream sequence message marker references include the diagram SVG ID prefix."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/styles.js","reason":"Upstream sequence CSS uses suffix selectors for prefixed marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/util.rs","reason":"Local scoped_svg_id/scoped_svg_url helpers for diagram-prefixed internal SVG IDs."}
+{"file":"crates/merman-render/src/svg/parity/c4.rs","reason":"Local c4 marker definitions and references now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/journey.rs","reason":"Local journey marker definition and reference now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/timeline.rs","reason":"Local timeline marker definition and references now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/sequence/render.rs","reason":"Local sequence base marker defs are scoped by diagram ID before emission."}
+{"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"Local sequence message and autonumber marker references now use diagram-scoped marker URLs."}
+{"file":"crates/merman-render/src/svg/parity/sequence/css.rs","reason":"Local sequence marker CSS now uses suffix-compatible selectors."}
+{"file":"crates/merman-render/tests/svg_internal_id_test.rs","reason":"Public SVG tests for c4, journey, timeline, and sequence diagram-scoped marker IDs."}

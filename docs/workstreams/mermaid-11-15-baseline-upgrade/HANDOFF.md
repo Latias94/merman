@@ -31,13 +31,17 @@ and nested namespace syntax, namespace notes are parented to the active namespac
 `class.hierarchicalNamespaces=false` compacts the semantic model back to the flat dotted namespace
 behavior used by <=11.14. Class semantic and layout goldens were refreshed only under
 `fixtures/class`; non-class snapshot churn was intentionally not kept.
+M15-080 is complete: c4, journey, timeline, and sequence marker IDs now use Mermaid 11.14-style
+`<diagram-id>-<local-id>` scoping, marker references point at the scoped IDs, sequence actor-man
+control markers follow the same helper, and sequence CSS now uses `[id$="..."]` selectors for
+prefixed marker IDs.
 
 ## Active Task
 
-- Task ID: M15-080
+- Task ID: M15-090
 - Owner: unassigned
-- Files: `crates/merman-render/src/svg/parity`
-- Validation: SVG tests covering marker/internal IDs across c4, journey, timeline, and sequence
+- Files: `docs/workstreams/mermaid-11-15-baseline-upgrade`, `docs/alignment`
+- Validation: `DESIGN.md`, `STATUS.md`, or follow-on workstreams record support/defer/out-of-scope status
 - Status: READY
 - Review: Required before task acceptance
 - Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
@@ -65,14 +69,17 @@ behavior used by <=11.14. Class semantic and layout goldens were refreshed only 
 - `class.hierarchicalNamespaces=false` is applied before layout/SVG rendering so fixture and render
   paths share one compacted model.
 - Class layout/semantic golden changes are intentionally limited to `fixtures/class`.
+- Internal marker IDs in newly touched SVG renderers should be derived with the shared
+  `scoped_svg_id` / `scoped_svg_url` helpers so exact-ID regressions are easier to spot.
+- Sequence marker CSS must stay suffix-compatible because marker IDs are no longer stable exact
+  strings once a caller supplies `SvgRenderOptions.diagram_id`.
 
 ## Blockers
 
-- None known for M15-080. Start from upstream 11.14 duplicate-ID SVG changes and the local marker
-  helpers.
+- None known for M15-090. This is a scope and baseline metadata decision task, not a renderer
+  implementation task.
 
 ## Next Recommended Action
 
-- Execute M15-080. Start by locating local marker/internal ID generation across c4, journey,
-  timeline, and sequence, then add the smallest SVG tests proving the diagram SVG ID prefixes the
-  internal IDs without breaking selector compatibility.
+- Execute M15-090. Revisit the 11.13-11.15 release delta and document support, defer, or
+  out-of-scope status for new diagram families before bumping baseline metadata in M15-100.

@@ -415,8 +415,12 @@ pub(super) fn render_journey_diagram_svg_model(
     let css = journey_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
-    out.push_str(
-        r#"<defs><marker id="arrowhead" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
+    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+        escape_attr(&arrowhead_id)
     );
 
     for item in &layout.actor_legend {
@@ -603,11 +607,12 @@ pub(super) fn render_journey_diagram_svg_model(
 
     let _ = write!(
         &mut out,
-        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="url(#arrowhead)"/>"#,
+        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/>"#,
         x1 = fmt(layout.activity_line.x1),
         y1 = fmt(layout.activity_line.y1),
         x2 = fmt(layout.activity_line.x2),
         y2 = fmt(layout.activity_line.y2),
+        marker_end = escape_attr(&arrowhead_url),
     );
 
     out.push_str("</svg>\n");

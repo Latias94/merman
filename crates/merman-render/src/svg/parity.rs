@@ -66,7 +66,7 @@ use util::{
     escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
     fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string, json_f64,
     json_stringify_points, json_stringify_points_into, normalize_css_font_family, push_points_attr,
-    theme_color,
+    scoped_svg_id, scoped_svg_url, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(

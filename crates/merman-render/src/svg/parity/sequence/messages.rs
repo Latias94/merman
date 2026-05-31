@@ -14,12 +14,20 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
+    pub(super) diagram_id: &'a str,
     pub(super) actor_height: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
     pub(super) loop_text_style: &'a TextStyle,
+}
+
+fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
+    format!(
+        r#" {attr_name}="{}""#,
+        escape_attr(&scoped_svg_url(diagram_id, local_id))
+    )
 }
 
 pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
@@ -133,18 +141,18 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         };
 
         let marker_start = match msg.message_type {
-            33 | 34 => Some(r#" marker-start="url(#arrowhead)""#),
+            33 | 34 => Some(marker_attr("marker-start", ctx.diagram_id, "arrowhead")),
             _ => None,
         };
         let marker_end = match msg.message_type {
             // open arrow variants: no marker.
             5 | 6 => None,
             // cross arrow variants
-            3 | 4 => Some(r#" marker-end="url(#crosshead)""#),
+            3 | 4 => Some(marker_attr("marker-end", ctx.diagram_id, "crosshead")),
             // filled-head variants
-            24 | 25 => Some(r#" marker-end="url(#filled-head)""#),
+            24 | 25 => Some(marker_attr("marker-end", ctx.diagram_id, "filled-head")),
             // default arrowhead variants
-            _ => Some(r#" marker-end="url(#arrowhead)""#),
+            _ => Some(marker_attr("marker-end", ctx.diagram_id, "arrowhead")),
         };
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
@@ -190,8 +198,8 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 r#"<path d="{d}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
                 d = d,
                 class = class,
-                marker_start = marker_start.unwrap_or(""),
-                marker_end = marker_end.unwrap_or(""),
+                marker_start = marker_start.as_deref().unwrap_or(""),
+                marker_end = marker_end.as_deref().unwrap_or(""),
                 x1 = path_x1
                     .map(|x1| format!(r#" x1="{x1}""#, x1 = fmt(x1)))
                     .unwrap_or_default(),
@@ -206,8 +214,8 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 x2 = fmt(p1.x),
                 y2 = fmt(p1.y),
                 class = class,
-                marker_start = marker_start.unwrap_or(""),
-                marker_end = marker_end.unwrap_or(""),
+                marker_start = marker_start.as_deref().unwrap_or(""),
+                marker_end = marker_end.as_deref().unwrap_or(""),
                 style = style
             );
         }
@@ -225,9 +233,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             let y = p0.y;
             let _ = write!(
                 out,
-                r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="url(#sequencenumber)"/>"#,
+                r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="{marker_start}"/>"#,
                 x = fmt(x),
                 y = fmt(y),
+                marker_start = escape_attr(&scoped_svg_url(ctx.diagram_id, "sequencenumber")),
             );
             let _ = write!(
                 out,

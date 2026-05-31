@@ -88,6 +88,14 @@ pub(super) fn theme_color(
         .unwrap_or_else(|| fallback.to_string())
 }
 
+pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
+    format!("{diagram_id}-{local_id}")
+}
+
+pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
+    format!("url(#{})", scoped_svg_id(diagram_id, local_id))
+}
+
 pub(super) fn fmt_debug_3dp(v: f64) -> String {
     let mut out = String::new();
     fmt_debug_3dp_into(&mut out, v);

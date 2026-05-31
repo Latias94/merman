@@ -70,13 +70,13 @@ Last updated: 2026-05-31
   Context: Workstream context plus upstream class parser/renderer changes.
   Handoff: DONE. Class parser/model now supports dotted and nested namespace hierarchy, namespace notes, `class.hierarchicalNamespaces=false`, and refreshed class semantic/layout snapshots.
 
-- [ ] M15-080 [owner=unassigned] [deps=M15-010] [scope=crates/merman-render/src/svg/parity]
+- [x] M15-080 [owner=codex] [deps=M15-010] [scope=crates/merman-render/src/svg/parity,crates/merman-render/tests/svg_internal_id_test.rs]
   Goal: Prefix internal SVG IDs with the diagram SVG ID where upstream 11.14 changed duplicate-ID behavior.
   Validation: SVG tests covering at least marker IDs across c4, journey, timeline, and sequence.
   Review: Verify selectors use suffix-compatible forms where needed.
-  Evidence: `EVIDENCE_AND_GATES.md`
+  Evidence: `cargo nextest run -p merman-render sequence`; `cargo nextest run -p merman-render`; `cargo fmt --check`.
   Context: Workstream context plus Mermaid 11.14 changelog entry.
-  Handoff: This is cross-renderer; avoid overlapping with unrelated SVG refactors.
+  Handoff: DONE. c4, journey, timeline, and sequence marker IDs and marker references now use `<diagram-id>-<local-id>`; sequence marker CSS uses suffix selectors for prefixed IDs.
 
 ## M2 - Scope Decisions And Baseline Metadata
 

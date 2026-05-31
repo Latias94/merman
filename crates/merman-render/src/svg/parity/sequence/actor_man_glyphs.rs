@@ -17,6 +17,7 @@ struct ActorManGlyphContext<'a> {
     label_y: f64,
     width: f64,
     height: f64,
+    diagram_id: &'a str,
 }
 
 pub(super) fn write_actor_man_top_glyph(
@@ -27,6 +28,7 @@ pub(super) fn write_actor_man_top_glyph(
     n: &LayoutNode,
     idx: usize,
     actor_height: f64,
+    diagram_id: &str,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -45,6 +47,7 @@ pub(super) fn write_actor_man_top_glyph(
                 label_y: actor_y + actor_height + 2.5,
                 width: n.width,
                 height: actor_height,
+                diagram_id,
             },
         ),
         "boundary" => {
@@ -64,6 +67,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -83,6 +87,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -103,6 +108,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -118,6 +124,7 @@ pub(super) fn write_actor_man_bottom_glyph(
     n: &LayoutNode,
     idx: usize,
     metrics: ActorManBottomGlyphMetrics,
+    diagram_id: &str,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -136,6 +143,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                 label_y: actor_y + metrics.actor_height + 2.5,
                 width: n.width,
                 height: metrics.actor_height,
+                diagram_id,
             },
         ),
         "boundary" => {
@@ -155,6 +163,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -175,6 +184,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -196,6 +206,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -256,11 +267,15 @@ fn write_boundary_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) 
 
 fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let r = 18.0;
+    let marker_id = scoped_svg_id(ctx.diagram_id, "filled-head-control");
+    let marker_url = scoped_svg_url(ctx.diagram_id, "filled-head-control");
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}"><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
+        marker_id = escape_attr(&marker_id),
+        marker_url = escape_attr(&marker_url),
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
         ly = fmt(ctx.cy - r),

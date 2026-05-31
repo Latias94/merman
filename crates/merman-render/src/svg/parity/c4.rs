@@ -673,10 +673,32 @@ pub(super) fn render_c4_diagram_svg_typed(
         out.push_str("</g>");
     }
 
-    out.push_str(r#"<defs><marker id="arrowhead" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#);
-    out.push_str(r#"<defs><marker id="arrowend" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#);
-    out.push_str(r##"<defs><marker id="crosshead" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##);
-    out.push_str(r#"<defs><marker id="filled-head" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#);
+    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
+    let arrowend_id = scoped_svg_id(diagram_id, "arrowend");
+    let crosshead_id = scoped_svg_id(diagram_id, "crosshead");
+    let filled_head_id = scoped_svg_id(diagram_id, "filled-head");
+    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
+        escape_attr(&arrowhead_id)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
+        escape_attr(&arrowend_id)
+    );
+    let _ = write!(
+        &mut out,
+        r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
+        escape_attr(&crosshead_id)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
+        escape_attr(&filled_head_id)
+    );
 
     out.push_str("<g>");
     for (idx, rel) in layout.rels.iter().enumerate() {
@@ -701,10 +723,14 @@ pub(super) fn render_c4_diagram_svg_typed(
                 escape_attr(&stroke_color)
             );
             if rel.rel_type != "rel_b" {
-                out.push_str(r#" marker-end="url(#arrowhead)""#);
+                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                out.push_str(r#" marker-start="url(#arrowend)""#);
+                let _ = write!(
+                    &mut out,
+                    r#" marker-start="{}""#,
+                    escape_attr(&arrowend_url)
+                );
             }
             out.push_str(r#" style="fill: none;"/>"#);
         } else {
@@ -727,10 +753,14 @@ pub(super) fn render_c4_diagram_svg_typed(
                 escape_attr(&d)
             );
             if rel.rel_type != "rel_b" {
-                out.push_str(r#" marker-end="url(#arrowhead)""#);
+                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                out.push_str(r#" marker-start="url(#arrowend)""#);
+                let _ = write!(
+                    &mut out,
+                    r#" marker-start="{}""#,
+                    escape_attr(&arrowend_url)
+                );
             }
             out.push_str("/>");
         }

@@ -322,8 +322,12 @@ fn render_timeline_diagram_svg_inner(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g/>"#);
-    out.push_str(
-        r#"<defs><marker id="arrowhead" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
+    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+        escape_attr(&arrowhead_id)
     );
 
     for section in &layout.sections {
@@ -350,11 +354,12 @@ fn render_timeline_diagram_svg_inner(
 
             let _ = write!(
                 &mut out,
-                r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="url(#arrowhead)" stroke-dasharray="5,5"/></g>"#,
+                r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
                 x1 = fmt(task.connector.x1),
                 y1 = fmt(task.connector.y1),
                 x2 = fmt(task.connector.x2),
                 y2 = fmt(task.connector.y2),
+                marker_end = escape_attr(&arrowhead_url),
             );
 
             for ev in &task.events {
@@ -383,11 +388,12 @@ fn render_timeline_diagram_svg_inner(
 
         let _ = write!(
             &mut out,
-            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="url(#arrowhead)" stroke-dasharray="5,5"/></g>"#,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="{marker_end}" stroke-dasharray="5,5"/></g>"#,
             x1 = fmt(task.connector.x1),
             y1 = fmt(task.connector.y1),
             x2 = fmt(task.connector.x2),
             y2 = fmt(task.connector.y2),
+            marker_end = escape_attr(&arrowhead_url),
         );
 
         for ev in &task.events {
@@ -414,11 +420,12 @@ fn render_timeline_diagram_svg_inner(
 
     let _ = write!(
         &mut out,
-        r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="url(#arrowhead)"/></g>"#,
+        r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/></g>"#,
         x1 = fmt(layout.activity_line.x1),
         y1 = fmt(layout.activity_line.y1),
         x2 = fmt(layout.activity_line.x2),
         y2 = fmt(layout.activity_line.y2),
+        marker_end = escape_attr(&arrowhead_url),
     );
 
     out.push_str("</svg>\n");

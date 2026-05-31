@@ -146,3 +146,12 @@ before marking a task, Codex goal, or lane complete.
   - `cargo nextest run -p merman-render` passed: 244 tests.
   - `cargo fmt --check` passed.
   - `git diff --check` passed with only LF-to-CRLF warnings for `crates/merman-core/src/diagrams/class_grammar.lalrpop` and `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+- 2026-05-31: M15-080 scoped internal SVG marker IDs complete.
+  - Upstream check: Mermaid 11.14 PR #7526 prefixes internal SVG element IDs with the diagram SVG element ID across diagram types; exact marker selectors should move to suffix-compatible selectors such as `[id$="-arrowhead"]`.
+  - `cargo nextest run -p merman-render c4_marker_ids_are_prefixed_with_diagram_svg_id journey_marker_ids_are_prefixed_with_diagram_svg_id timeline_marker_ids_are_prefixed_with_diagram_svg_id sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors` failed before implementation: c4, journey, timeline, and sequence still emitted bare `id="arrowhead"` / `url(#arrowhead)` markers, and sequence CSS used exact `#arrowhead` / `#sequencenumber` selectors.
+  - `cargo nextest run -p merman-render c4_marker_ids_are_prefixed_with_diagram_svg_id journey_marker_ids_are_prefixed_with_diagram_svg_id timeline_marker_ids_are_prefixed_with_diagram_svg_id sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors` passed: 4 tests.
+  - `cargo nextest run -p merman-render sequence` passed: 16 tests.
+  - `cargo nextest run -p merman-render` passed: 248 tests.
+  - `cargo fmt` applied standard formatting after the first `cargo fmt --check` reported two line-wrap diffs.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only the LF-to-CRLF warning for `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
