@@ -30,11 +30,11 @@ refresh.
 
 ## Problem
 
-Local Flowchart parity output does not yet match Mermaid 11.15's SVG DOM contract. Fresh comparison
-against Mermaid 11.15 shows 594 canonical XML mismatches and one unsupported `flowchart-elk`
-layout fixture. The dominant gaps are 11.15 DOM envelope semantics, scoped identifiers, marker and
-drop-shadow definitions, shape class surfaces, markdown/text row structure, `foreignObject` label
-structure, subgraph cluster groups, clickable/tooltip wrappers, and ELK fixture policy.
+Local Flowchart parity output initially did not match Mermaid 11.15's SVG DOM contract. Fresh
+comparison against Mermaid 11.15 showed 594 canonical XML mismatches and one unsupported
+`flowchart-elk` layout fixture. The DOM gaps have been closed for the supported Flowchart corpus;
+the remaining policy boundary is ELK layout support, which is documented as out of the current
+headless support matrix.
 
 ## Target State
 
@@ -44,8 +44,8 @@ structure, subgraph cluster groups, clickable/tooltip wrappers, and ELK fixture 
   green or after explicitly documented skips.
 - The umbrella Mermaid 11.15 complete-adaptation lane can remove Flowchart from the full
   implemented-matrix failure set.
-- Unsupported `flowchart-elk` behavior is documented as an explicit skip, follow-on workstream, or
-  supported implementation decision.
+- Unsupported `flowchart-elk` behavior is documented as an explicit skip and follow-on ELK layout
+  support decision.
 
 ## In Scope
 
@@ -72,7 +72,7 @@ structure, subgraph cluster groups, clickable/tooltip wrappers, and ELK fixture 
 | Mermaid CLI pinned in `tools/mermaid-cli` is 11.15.0. | High | `node -e "console.log(require('./tools/mermaid-cli/node_modules/mermaid/package.json').version)"` printed `11.15.0` during the umbrella lane. | Re-run generation after fixing the pinned toolchain. |
 | The old stored Flowchart Math failure was stale baseline drift. | High | Fresh target and local output both included MathML `columnalign`; targeted XY-style baseline refresh pattern passed for the Math fixture after refresh. | Re-open Math fixture comparison before refreshing stored baselines. |
 | The 594 fresh Flowchart mismatches are real renderer DOM gaps, not all canonicalizer noise. | High | Representative diffs show missing `outer-path`, markdown row spans, 11.15 defs, scoped ids, and wrapper attributes. | Narrow the canonicalizer before changing renderer behavior. |
-| `flowchart-elk` requires an explicit policy. | High | Fresh full compare reports local layout failure: unsupported diagram type for layout: `flowchart-elk`. | Full Flowchart gates will stay red even after DOM convergence. |
+| `flowchart-elk` requires an explicit policy. | High | Fresh full compare previously reported local layout failure: unsupported diagram type for layout: `flowchart-elk`; F115-070 now records a narrow gate skip. | If ELK enters the supported matrix later, open a dedicated ELK layout lane before removing the skip. |
 
 ## Architecture Direction
 

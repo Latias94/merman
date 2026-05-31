@@ -8,6 +8,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str> {
+    if diagram == "sequence" && stem == "stress_end_keyword_016" {
+        // Mermaid 11.15 rejects `(end)` as a sequence participant id. Keep the fixture and any
+        // stale SVG on disk for local parser coverage/history, but exclude it from 11.15 DOM gates.
+        return Some("upstream Mermaid 11.15 cannot regenerate this SVG baseline");
+    }
+
+    if diagram == "flowchart" && stem == "upstream_html_demos_flowchart_elk_flowchart_elk_001" {
+        return Some(
+            "local Flowchart ELK layout is not implemented; F115-070 treats flowchart-elk as a documented out-of-matrix upstream family until a dedicated ELK layout lane lands",
+        );
+    }
+
+    None
+}
+
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -163,12 +179,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    fn upstream_svg_fixture_is_skipped_for_xml_compare(diagram: &str, stem: &str) -> bool {
-        // Mermaid 11.15 rejects `(end)` as a sequence participant id. Keep the fixture and any
-        // stale SVG on disk for local parser coverage/history, but exclude it from 11.15 DOM gates.
-        diagram == "sequence" && stem == "stress_end_keyword_016"
-    }
-
     fn gantt_upstream_today_x1(svg: &str) -> Option<f64> {
         let doc = roxmltree::Document::parse(svg).ok()?;
         for n in doc.descendants().filter(|n| n.has_tag_name("line")) {
@@ -311,7 +321,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut mismatches: Vec<(String, String, PathBuf, PathBuf)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
 
     for diagram in diagrams {
         let upstream_dir = upstream_root.join(&diagram);
@@ -356,8 +366,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             let Some(stem) = upstream_path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if upstream_svg_fixture_is_skipped_for_xml_compare(&diagram, stem) {
-                skipped.push(format!("{diagram}/{stem}"));
+            if let Some(reason) = svg_xml_compare_skip_reason(&diagram, stem) {
+                skipped.push((format!("{diagram}/{stem}"), reason));
                 continue;
             }
             let fixture_path = fixtures_dir.join(format!("{stem}.mmd"));
@@ -531,11 +541,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         let _ = writeln!(&mut report);
         let _ = writeln!(&mut report, "## Skipped ({})", skipped.len());
         let _ = writeln!(&mut report);
-        for item in &skipped {
-            let _ = writeln!(
-                &mut report,
-                "- {item}: upstream Mermaid 11.15 cannot regenerate this SVG baseline"
-            );
+        for (item, reason) in &skipped {
+            let _ = writeln!(&mut report, "- {item}: {reason}");
         }
     }
 
@@ -618,4 +625,35 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let xml = svgdom::canonical_xml(&svg, mode, decimals).map_err(XtaskError::SvgCompareFailed)?;
     print!("{xml}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::svg_xml_compare_skip_reason;
+
+    #[test]
+    fn svg_xml_compare_skip_reason_keeps_known_sequence_regen_skip() {
+        assert_eq!(
+            svg_xml_compare_skip_reason("sequence", "stress_end_keyword_016"),
+            Some("upstream Mermaid 11.15 cannot regenerate this SVG baseline")
+        );
+        assert_eq!(
+            svg_xml_compare_skip_reason("sequence", "stress_end_keyword_015"),
+            None
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_is_narrow_for_flowchart_elk() {
+        let reason = svg_xml_compare_skip_reason(
+            "flowchart",
+            "upstream_html_demos_flowchart_elk_flowchart_elk_001",
+        )
+        .expect("flowchart-elk fixture should be explicitly skipped");
+        assert!(reason.contains("ELK layout is not implemented"));
+        assert_eq!(
+            svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
+            None
+        );
+    }
 }

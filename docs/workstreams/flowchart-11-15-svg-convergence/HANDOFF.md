@@ -22,20 +22,21 @@ merged-path grouping. The HTML label slice restored Mermaid 11.15 single-image p
 and trimmed shapeData markdown block trailing newlines. The latest supported-DOM closeout slice
 aligned non-markdown subgraph title wrapping, empty subgraph node ids, non-markdown edge label
 paragraph wrappers, and literal `\n` handling in `nonMarkdownToHTML`. The supported fresh Flowchart
-comparison now reports zero canonical XML mismatches; the only remaining full-gate failure is the
-unsupported `flowchart-elk` local layout case.
+comparison now passes with zero canonical XML mismatches and one documented skip for the unsupported
+`flowchart-elk` local layout family.
 
 ## Active Task
 
-- Task ID: F115-070
+- Task ID: F115-080
 - Owner: codex
-- Files: `crates/merman-core/src/diagrams/flowchart`, `crates/merman-render/src/flowchart`,
-  `crates/merman-render/src/svg/parity/flowchart`, `crates/xtask/src/cmd/compare`
-- Validation: `flowchart-elk` is supported, explicitly skipped in fresh/stored SVG gates with
-  rationale, or split into a separate ELK layout workstream; then rerun the fresh Flowchart gate.
-- Status: IN_PROGRESS
+- Files: `fixtures/upstream-svgs/flowchart`, `crates/xtask/src/cmd/compare`,
+  `crates/merman-render/src/svg/parity/flowchart`
+- Validation: regenerate stored Flowchart upstream SVG baselines, run
+  `compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`, and confirm the stored
+  gate honors the same documented `flowchart-elk` out-of-matrix policy.
+- Status: READY
 - Review: Compare against fresh Mermaid 11.15 output before changing stored baselines. Keep stored
-  Flowchart baseline refresh blocked until the fresh gate is green or skips are documented.
+  baseline churn separate from renderer code when practical.
 - Evidence: `docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -63,15 +64,23 @@ unsupported `flowchart-elk` local layout case.
   literal `\n` and actual newlines as `<br />`.
 - Mermaid 11.15 non-markdown subgraph titles route through deprecated `createLabel(...)` with
   effectively infinite width; markdown subgraph titles still route through `createText(...)`.
+- `flowchart-elk` is explicitly out of the current supported headless Flowchart matrix. The
+  `compare-svg-xml` gate skips only
+  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason until a
+  dedicated ELK layout lane lands.
 
 ## Blockers
 
-- Full lane closeout and stored Flowchart baseline refresh are blocked until `flowchart-elk` policy
-  is decided.
+- No current blocker for the supported Flowchart matrix. ELK layout support remains a follow-on
+  layout lane, not part of this DOM convergence lane.
 
 ## Next Recommended Action
 
-Finish F115-070 by choosing the `flowchart-elk` policy. The supported Flowchart corpus is already
-at zero canonical XML mismatches against fresh Mermaid 11.15; stored baseline refresh should wait
-until ELK is supported, narrowly skipped with documented rationale, or split to a separate
-workstream.
+Run F115-080: refresh stored Flowchart upstream SVG baselines, then run the stored Flowchart DOM
+gate. Preserve the fresh gate:
+
+```bash
+cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
+```
+
+It currently passes with `Mismatches (0)` and one documented `flowchart-elk` skip.

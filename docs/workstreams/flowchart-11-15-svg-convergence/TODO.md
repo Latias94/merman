@@ -97,7 +97,7 @@ Last updated: 2026-06-01
   diagram id. The subgraph-heavy fresh filters pass, and the supported Flowchart corpus reports zero
   canonical XML mismatches.
 
-- [ ] F115-070 [owner=codex] [deps=F115-020,F115-050] [scope=crates/merman-render/src/svg/parity/flowchart,crates/xtask/src/cmd/compare]
+- [x] F115-070 [owner=codex] [deps=F115-020,F115-050] [scope=crates/merman-render/src/svg/parity/flowchart,crates/xtask/src/cmd/compare]
   Goal: Close clickable/tooltip wrapper deltas and decide the `flowchart-elk` fixture policy.
   Validation: targeted fresh compare filters for clickable Flowchart fixtures; one of these is true:
   `flowchart-elk` is supported, explicitly skipped in upstream SVG gates with rationale, or split to
@@ -105,10 +105,12 @@ Last updated: 2026-06-01
   Review: Any skip must be narrow and documented in the umbrella evidence.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus upstream fixture metadata.
-  Handoff: IN_PROGRESS. Clickable/tooltip wrapper drift is no longer present in the supported fresh
-  Flowchart mismatch report. The only remaining full-gate failure is
-  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001`, which still needs an explicit
-  support, skip, or split decision before stored baseline refresh.
+  Handoff: DONE. Clickable/tooltip wrapper drift is no longer present in the supported fresh
+  Flowchart mismatch report. `compare-svg-xml` now narrowly skips
+  `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason:
+  Flowchart ELK layout is not implemented and remains out of the current supported matrix until a
+  dedicated ELK layout lane lands. The full fresh Flowchart gate now passes with zero canonical XML
+  mismatches and one documented skip.
 
 ## M3 - Fresh Full Gate And Stored Baseline Refresh
 
@@ -121,7 +123,8 @@ Last updated: 2026-06-01
   Review: Stored baseline churn must be staged separately from renderer code when practical.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  Handoff: Not started.
+  Handoff: READY. Fresh supported Flowchart parity is green with the documented `flowchart-elk`
+  skip. Refresh stored Flowchart upstream SVG baselines next, then run the stored Flowchart gate.
 
 ## M4 - Closeout And Umbrella Reintegration
 

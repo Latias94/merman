@@ -275,6 +275,13 @@ git diff --check
     Math fixture, representative special-shape class/click fixtures, edge markdown labels, cluster
     id scoping, and root-first `htmlLabels` precedence. See
     `docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md`.
+  - Later child-lane slices brought the supported Flowchart fresh corpus to zero canonical XML
+    mismatches. `flowchart-elk` is explicitly out of the current headless support matrix and is
+    narrowly skipped in `compare-svg-xml` with a local-policy reason until a dedicated ELK layout
+    lane lands.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    passed. `target/compare/xml/xml_report.md` reports `Mismatches (0)` and one documented
+    `flowchart-elk` skip.
 
 ## Evidence Anchors
 

@@ -9,3 +9,4 @@
 {"role":"adr","path":"docs/adr/0001-upstream-baseline.md","why":"Baseline authority policy."}
 {"role":"adr","path":"docs/adr/0014-upstream-parity-policy.md","why":"Parity and compatibility policy."}
 {"role":"upstream_reference","path":"repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart","why":"Mermaid 11.15 Flowchart renderer source of truth for DOM surfaces."}
+{"role":"journal","path":"docs/workstreams/flowchart-11-15-svg-convergence/JOURNAL/2026-06-01-f115-elk-policy.md","why":"Records the F115-070 decision to keep flowchart-elk out of the current supported matrix with a narrow SVG XML gate skip."}
