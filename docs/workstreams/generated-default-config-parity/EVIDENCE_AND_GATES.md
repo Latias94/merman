@@ -1,6 +1,6 @@
 # Generated Default Config Parity - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Smallest Current Repro
@@ -112,6 +112,28 @@ Run `review-workstream` before accepting task or lane completion.
   - Result: passed, 23 tests.
   - Command: `cargo nextest run -p merman-core`
   - Result: passed, 536 tests.
+  - Command: `cargo fmt --check`
+  - Result: passed.
+  - Command: `git diff --check`
+  - Result: passed.
+- 2026-05-31 GDC-050 review:
+  - Workstream compliance: no blocking findings. The lane target state is met and remaining work is
+    split into follow-ons.
+  - Code quality: no blocking findings. The xtask changes keep narrow artifact ownership, preserve
+    the umbrella `verify-generated` command, and report actionable missing-reference errors.
+  - Missing gates: fixed during closeout with fresh workspace and generated-artifact checks.
+  - Documentation finding: fixed stale `docs/rendering/REFACTOR_TODO.md` text that still described
+    DOMPurify checkout policy as pending.
+- 2026-05-31 GDC-050 closeout checks:
+  - Command: `cargo nextest run --workspace` with `CARGO_PROFILE_TEST_DEBUG=0` and
+    `CARGO_BUILD_JOBS=2`
+  - Result: passed, 1383 tests passed and 3 skipped.
+  - Command: `cargo run -p xtask -- verify-generated`
+  - Result: passed.
+  - Command: `cargo run -p xtask -- verify-default-config`
+  - Result: passed.
+  - Command: `cargo run -p xtask -- verify-dompurify-defaults`
+  - Result: passed.
   - Command: `cargo fmt --check`
   - Result: passed.
   - Command: `git diff --check`

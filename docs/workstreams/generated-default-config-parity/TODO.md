@@ -1,6 +1,6 @@
 # Generated Default Config Parity - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -61,10 +61,13 @@ Last updated: 2026-05-31
 
 ## M3 - Closeout
 
-- [ ] GDC-050 [owner=planner] [deps=GDC-030,GDC-040] [scope=docs/workstreams/generated-default-config-parity,docs/releasing]
+- [x] GDC-050 [owner=codex] [deps=GDC-030,GDC-040] [scope=docs/workstreams/generated-default-config-parity,docs/releasing]
   Goal: Close the lane or split remaining generated-artifact verification debt.
   Validation: Fresh closeout gates recorded in `EVIDENCE_AND_GATES.md`.
   Review: Run workstream review and fresh verification before marking complete.
   Evidence: `docs/workstreams/generated-default-config-parity/EVIDENCE_AND_GATES.md`
   Context: this workstream.
-  Handoff: Summarize residual risks and next lane candidates.
+  Handoff: DONE. Review found no blocking workstream or code-quality issues. Fresh closeout gates
+  passed, the lane status is closed, and remaining support work is split into follow-ons for Pie
+  11.15 config knobs, deferred 11.15 diagram families, and sanitizer/runtime parity beyond generated
+  default allowlists.

@@ -1,6 +1,6 @@
 # Generated Default Config Parity
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Why This Lane Exists
@@ -89,3 +89,7 @@ This lane can close when:
 - DOMPurify verification has an explicit reference-checkout policy,
 - the relevant ADRs name the artifact-specific gates,
 - and remaining generated-artifact work is either completed or split into a follow-on.
+
+Closeout status: complete as of GDC-050. The remaining Mermaid 11.15 work is no longer
+generated-artifact verification debt; it belongs in follow-on lanes for Pie config behavior,
+deferred diagram families, or sanitizer runtime parity.

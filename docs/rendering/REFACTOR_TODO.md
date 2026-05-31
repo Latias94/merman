@@ -86,12 +86,13 @@ Related docs:
 - [ ] Add a “coverage sanity” report for root viewport overrides:
       - list mismatch stems that lack overrides
       - list overrides that no longer affect any fixture
-- [ ] Finish generated-artifact verification ergonomics: keep `xtask verify-generated` as an
+- [x] Finish generated-artifact verification ergonomics: keep `xtask verify-generated` as an
       umbrella check, expose artifact-specific gates for default config and DOMPurify, and decide
       whether missing optional `repo-ref/*` build artifacts should be bootstrap failures or
-      optional-gate failures. 2026-05-31: tracked in
-      `docs/workstreams/generated-default-config-parity/`; `verify-default-config` is now green via
-      `crates/xtask/default_config_overrides.json`, with DOMPurify checkout policy still pending.
+      optional-gate failures. 2026-05-31: completed in
+      `docs/workstreams/generated-default-config-parity/`; `verify-default-config` is green via
+      `crates/xtask/default_config_overrides.json`, and DOMPurify is pinned to Mermaid 11.15's
+      resolved `dompurify@3.4.0` with actionable reference-checkout remediation.
 
 ### P3: Output stability and debug UX
 

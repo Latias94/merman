@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "generated-default-config-parity",
   "title": "Generated Default Config Parity",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-31",
   "scope_kind": "execution",
   "problem": "Generated artifact verification couples default config parity to DOMPurify and other unrelated generated artifacts.",
@@ -52,7 +52,7 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue while tasks stay within generated-artifact verification and default config parity. Split a follow-on for sanitizer runtime behavior or new diagram families."
+    "default_action": "split-follow-on",
+    "notes": "Closed after GDC-050. Split follow-ons for sanitizer runtime behavior, new diagram families, Pie 11.15 config knobs, or additional generated artifact families."
   }
 }

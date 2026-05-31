@@ -1,6 +1,6 @@
 # Generated Default Config Parity - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -81,3 +81,16 @@ Exit criteria:
 - Gate set is recorded.
 - Remaining work is completed, deferred, or split into a follow-on.
 - `WORKSTREAM.json` status is updated.
+
+Primary gates:
+
+- `cargo nextest run --workspace`
+- `cargo run -p xtask -- verify-generated`
+- `cargo run -p xtask -- verify-default-config`
+- `cargo run -p xtask -- verify-dompurify-defaults`
+- `cargo fmt --check`
+- `git diff --check`
+
+Status: complete. The generated-artifact verification lane is closed. Follow-ons are outside this
+lane: Pie 11.15 config behavior, deferred 11.15 diagram families, and deeper sanitizer runtime
+parity.
