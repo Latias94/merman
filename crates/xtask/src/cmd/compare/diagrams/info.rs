@@ -70,7 +70,7 @@ pub(crate) fn compare_info_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Info SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/info/*.svg` (Mermaid 11.12.3)\n- Local: `render_info_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
+        "# Info SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/info/*.svg` (pinned Mermaid baseline)\n- Local: `render_info_diagram_svg`\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
 
