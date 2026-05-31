@@ -1,6 +1,6 @@
 # Pie 11.15 Parity - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -55,4 +55,4 @@ Exit criteria:
 - Pie docs and alignment notes no longer imply unsupported 11.15 Pie config behavior.
 - Any remaining parity gaps are split into a follow-on.
 
-Status: not started.
+Status: complete.

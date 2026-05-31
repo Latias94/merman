@@ -1,6 +1,6 @@
 # Pie 11.15 Parity
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Why This Lane Exists
@@ -91,3 +91,16 @@ This lane can close when:
 - configured donut, legend position, text position, and highlight behavior have targeted tests,
 - `verify-default-config` is green,
 - and any remaining Pie parity debt is explicitly split into a follow-on.
+
+## Closeout Summary
+
+Closed on 2026-05-31. PIE-020 through PIE-060 met the target state:
+
+- visible Pie slices now follow Mermaid 11.15 input order,
+- hidden slices reserve color-domain slots like upstream,
+- Pie 11.15 config defaults are generated and exposed,
+- `textPosition`, `donutHole`, `legendPosition`, and `highlightSlice` are implemented with targeted
+  renderer tests,
+- and closeout gates are recorded in `EVIDENCE_AND_GATES.md`.
+
+No follow-on is required for the scoped Pie 11.15 behavior.

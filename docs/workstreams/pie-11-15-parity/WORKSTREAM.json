@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "pie-11-15-parity",
   "title": "Pie 11.15 Parity",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-05-31",
   "scope_kind": "execution",
   "problem": "Pie renderer still follows older slice ordering and does not support Mermaid 11.15 Pie config keys.",
@@ -50,7 +50,7 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue while tasks stay within Pie 11.15 ordering, config defaults, configured SVG behavior, and Pie parity evidence. Split new diagram families or broad theme-system work into separate lanes."
+    "default_action": "closed",
+    "notes": "Closed after Pie input-order, default config, textPosition, donutHole, legendPosition, and highlightSlice parity were implemented and verified. Open a new lane for any future non-Pie or broader theme-system work."
   }
 }

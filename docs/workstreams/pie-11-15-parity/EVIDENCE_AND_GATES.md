@@ -1,6 +1,6 @@
 # Pie 11.15 Parity - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Smallest Current Repro
@@ -150,6 +150,17 @@ git diff --check
   - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
     passed.
   - `cargo nextest run -p merman-render`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+- 2026-05-31 PIE-070 closeout:
+  - Result: scoped Pie 11.15 behavior is complete; no follow-on is required for this lane.
+  - `cargo nextest run -p merman-render pie`: passed.
+  - `cargo nextest run -p merman-core pie`: passed.
+  - `cargo run -p xtask -- verify-default-config`: passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
 

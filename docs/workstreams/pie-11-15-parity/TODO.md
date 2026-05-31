@@ -1,6 +1,6 @@
 # Pie 11.15 Parity - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -71,10 +71,10 @@ Last updated: 2026-05-31
 
 ## M3 - Closeout
 
-- [ ] PIE-070 [owner=planner] [deps=PIE-020,PIE-030,PIE-040,PIE-050,PIE-060] [scope=docs/workstreams/pie-11-15-parity,docs/alignment]
+- [x] PIE-070 [owner=planner] [deps=PIE-020,PIE-030,PIE-040,PIE-050,PIE-060] [scope=docs/workstreams/pie-11-15-parity,docs/alignment]
   Goal: Close the lane or split residual Pie parity debt.
   Validation: Fresh closeout gates recorded in `EVIDENCE_AND_GATES.md`.
   Review: Run workstream review and fresh verification before marking complete.
   Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
   Context: this workstream.
-  Handoff: Not started.
+  Handoff: DONE. Closeout gates are green and no scoped Pie 11.15 follow-on remains.

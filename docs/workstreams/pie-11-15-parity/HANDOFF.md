@@ -1,23 +1,22 @@
 # Pie 11.15 Parity - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Current State
 
-PIE-020 through PIE-060 are implemented and task-local gates are green. The lane is ready for
-closeout/review.
+PIE-020 through PIE-070 are complete. The workstream is closed.
 
 - Remaining behavior: no known Pie 11.15 configured-rendering task remains in this lane.
 
 ## Active Task
 
-- Task ID: PIE-070
+- Task ID: none
 - Owner: codex
 - Files: `docs/workstreams/pie-11-15-parity`, `docs/alignment`
 - Validation: Fresh closeout gates recorded in `EVIDENCE_AND_GATES.md`
-- Status: READY
-- Review: Run workstream review and fresh verification before marking complete.
+- Status: DONE
+- Review: Complete.
 - Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -53,5 +52,5 @@ closeout/review.
 
 ## Next Recommended Action
 
-Run PIE-070 closeout: review the lane, record fresh final gates, update alignment notes if useful,
-and close or split any residual Pie parity debt.
+No next action inside this workstream. Continue with broader Mermaid 11.15 residuals only if a new
+lane is opened.
