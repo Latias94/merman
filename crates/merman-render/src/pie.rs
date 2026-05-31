@@ -3,7 +3,6 @@ use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 use ryu_js::Buffer;
-use std::cmp::Ordering;
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
@@ -284,22 +283,24 @@ pub fn layout_pie_diagram_typed(
         .sum();
 
     let mut color_scale = ColorScale::new_default();
+    for sec in &model.sections {
+        let _ = color_scale.color_for(&sec.label);
+    }
 
     let mut slices: Vec<PieSliceLayout> = Vec::new();
     if total.is_finite() && total > 0.0 {
-        // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
+        // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
         //
         // - filter out values < 1% (based on the original total)
-        // - sort remaining values by descending value before D3 pie() computes angles
+        // - preserve input order before D3 pie() computes angles (`sort(null)`)
         // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
         // - percentage labels are still computed using the original total
-        let mut pie_sections: Vec<&PieRenderSection> = model
+        let pie_sections: Vec<&PieRenderSection> = model
             .sections
             .iter()
             .filter(|s| s.value.is_finite() && s.value > 0.0)
             .filter(|s| (s.value / total) * 100.0 >= 1.0)
             .collect();
-        pie_sections.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));
 
         let pie_total: f64 = pie_sections.iter().map(|s| s.value).sum();
         if !pie_sections.is_empty() && pie_total.is_finite() && pie_total > 0.0 {

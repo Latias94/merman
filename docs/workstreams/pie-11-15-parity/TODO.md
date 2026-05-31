@@ -17,7 +17,7 @@ Last updated: 2026-05-31
 
 ## M1 - 11.15 Baseline Behavior
 
-- [ ] PIE-020 [owner=codex] [deps=PIE-010] [scope=crates/merman-render/src/pie.rs,crates/merman-render/tests]
+- [x] PIE-020 [owner=codex] [deps=PIE-010] [scope=crates/merman-render/src/pie.rs,crates/merman-render/tests]
   Goal: Render visible Pie slices in input order while preserving Mermaid's hidden-slice color-domain
   behavior.
   Validation: `cargo nextest run -p merman-render pie`; `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3` when fixture baselines are updated.
@@ -25,7 +25,8 @@ Last updated: 2026-05-31
   assignment for hidden slices.
   Evidence: `docs/workstreams/pie-11-15-parity/EVIDENCE_AND_GATES.md`
   Context: upstream `pieRenderer.ts`.
-  Handoff: Not started.
+  Handoff: DONE. Added renderer tests for input-order slices and hidden-slice color-domain
+  reservation, removed the descending value sort, and refreshed affected Pie layout/SVG baselines.
 
 - [ ] PIE-030 [owner=codex] [deps=PIE-010] [scope=crates/xtask/default_config_overrides.json,crates/merman-core/src/generated/default_config.json]
   Goal: Restore supported Pie 11.15 config keys in generated defaults.

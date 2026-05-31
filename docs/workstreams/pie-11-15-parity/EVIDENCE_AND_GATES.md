@@ -55,6 +55,26 @@ git diff --check
     `donutHole`, `legendPosition`, and `highlightSlice`.
   - Local evidence: `crates/merman-render/src/pie.rs` still sorts visible slices by descending
     value and ignores the effective Pie config.
+- 2026-05-31 PIE-020 red:
+  - `cargo nextest run -p merman-render pie_slices_follow_input_order_in_mermaid_11_15`: failed
+    with local slice order `B, C, A` instead of input order `A, B, C`.
+  - `cargo nextest run -p merman-render pie_hidden_slices_still_reserve_color_domain_slots`:
+    failed because a hidden `<1%` slice did not reserve its upstream color-domain slot.
+- 2026-05-31 PIE-020 green:
+  - Result: removed descending value sorting and pre-reserved the color scale domain from all Pie
+    sections before hidden-slice filtering.
+  - `cargo nextest run -p merman-render pie_slices_follow_input_order_in_mermaid_11_15`: passed.
+  - `cargo nextest run -p merman-render pie_hidden_slices_still_reserve_color_domain_slots`:
+    passed.
+  - `cargo nextest run -p merman-render pie`: passed.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed after refreshing the two affected upstream SVG baselines.
+  - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render`: passed after refreshing affected Pie layout goldens.
+  - `cargo nextest run -p merman-core pie`: passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

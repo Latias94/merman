@@ -25,20 +25,20 @@
           "percent": 100.0,
           "text_x": 0.0,
           "text_y": 138.75,
-          "fill": "#ECECFF"
+          "fill": "#ffffde"
         }
       ],
       "legend_items": [
         {
           "label": "dogs",
           "value": 0.0,
-          "fill": "#ffffde",
+          "fill": "#ECECFF",
           "y": -22.0
         },
         {
           "label": "rats",
           "value": 40.12,
-          "fill": "#ECECFF",
+          "fill": "#ffffde",
           "y": 0.0
         }
       ]

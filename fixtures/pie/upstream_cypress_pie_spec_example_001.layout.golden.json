@@ -17,36 +17,36 @@
       "legend_step_y": 22.0,
       "slices": [
         {
-          "label": "Football",
-          "value": 90.0,
+          "label": "Bandy",
+          "value": 40.0,
           "start_angle": 0.0,
-          "end_angle": 2.693,
+          "end_angle": 1.197,
           "is_full_circle": false,
-          "percent": 43.0,
-          "text_x": 135.271,
-          "text_y": -30.875,
+          "percent": 19.0,
+          "text_x": 78.161,
+          "text_y": -114.641,
           "fill": "#ECECFF"
         },
         {
           "label": "Ice-Hockey",
           "value": 80.0,
-          "start_angle": 2.693,
-          "end_angle": 5.086,
+          "start_angle": 1.197,
+          "end_angle": 3.59,
           "is_full_circle": false,
           "percent": 38.0,
-          "text_x": -94.374,
+          "text_x": 94.374,
           "text_y": 101.711,
           "fill": "#ffffde"
         },
         {
-          "label": "Bandy",
-          "value": 40.0,
-          "start_angle": 5.086,
+          "label": "Football",
+          "value": 90.0,
+          "start_angle": 3.59,
           "end_angle": 6.283,
           "is_full_circle": false,
-          "percent": 19.0,
-          "text_x": -78.161,
-          "text_y": -114.641,
+          "percent": 43.0,
+          "text_x": -135.271,
+          "text_y": -30.875,
           "fill": "hsl(80, 100%, 56.2745098039%)"
         }
       ],
@@ -54,7 +54,7 @@
         {
           "label": "Bandy",
           "value": 40.0,
-          "fill": "hsl(80, 100%, 56.2745098039%)",
+          "fill": "#ECECFF",
           "y": -33.0
         },
         {
@@ -66,7 +66,7 @@
         {
           "label": "Football",
           "value": 90.0,
-          "fill": "#ECECFF",
+          "fill": "hsl(80, 100%, 56.2745098039%)",
           "y": 11.0
         }
       ]
