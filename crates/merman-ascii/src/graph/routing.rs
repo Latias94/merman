@@ -3,7 +3,6 @@ use super::layout::{CanvasCoord, GraphLayout, NodeLayout};
 use super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeStyle};
 use crate::canvas::{Canvas, CanvasColor};
 use crate::color::{AsciiColorRole, AsciiRgb};
-use crate::text::display_width;
 
 mod cell;
 mod label;
@@ -14,8 +13,7 @@ pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow, set_edge_line, set_route_cell};
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use plan::{
-    EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, left_right_back_edge_bottom_y,
-    plan_edge_route, self_loop_bottom_y_for_edges, self_loop_right_x, top_down_back_edge_lane_x,
+    EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, plan_edge_route, route_canvas_extent,
 };
 
 pub(super) struct RouteDrawing<'a> {
@@ -38,61 +36,12 @@ impl<'a> RouteDrawing<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct EdgeContext {
-    parallel_index: usize,
-}
-
 pub(super) fn edge_canvas_extent(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     direction: GraphDirection,
 ) -> (usize, usize) {
-    let mut width = 0;
-    let mut height = 0;
-
-    for edge in edges.iter().filter(|edge| edge.from == edge.to) {
-        let Some(layout) = layouts.iter().find(|layout| layout.id == edge.from) else {
-            continue;
-        };
-        width = width.max(self_loop_right_x(layouts, layout) + 1);
-        height = height.max(self_loop_bottom_y_for_edges(layouts, edges, layout) + 1);
-    }
-    for (edge_index, edge) in edges
-        .iter()
-        .enumerate()
-        .filter(|(_, edge)| edge.from != edge.to)
-    {
-        let Some(from) = layouts.iter().find(|layout| layout.id == edge.from) else {
-            continue;
-        };
-        let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
-            continue;
-        };
-        let context = edge_context(edges, edge_index);
-        match direction.canonical() {
-            GraphDirection::LeftRight => {
-                if from.center_y() == to.center_y() && (from.x > to.x || context.parallel_index > 0)
-                {
-                    width = width.max(from.center_x().max(to.center_x()) + 3);
-                    height = height.max(left_right_back_edge_bottom_y(from) + 1);
-                }
-            }
-            GraphDirection::TopDown => {
-                if from.center_y() > to.center_y() {
-                    let lane_x = top_down_back_edge_lane_x(from, to);
-                    width = width.max(lane_x + 3);
-                    if let Some(label) = edge.label.as_deref() {
-                        let label_start = lane_x.saturating_sub(display_width(label) / 2);
-                        width = width.max(label_start + display_width(label) + 1);
-                    }
-                }
-            }
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        }
-    }
-
-    (width, height)
+    route_canvas_extent(layouts, edges, direction)
 }
 
 pub(super) fn transform_routed_label(
@@ -123,7 +72,6 @@ pub(super) fn draw_edge(
     let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
         return;
     };
-    let context = edge_context(edges, edge_index);
     let labels_start = drawing.labels.len();
     let before =
         (edge.style.line.is_some() || edge.style.arrow.is_some()).then(|| drawing.canvas.clone());
@@ -133,7 +81,7 @@ pub(super) fn draw_edge(
         edges,
         from,
         to,
-        parallel_index: context.parallel_index,
+        edge_index,
         edge,
         direction,
         charset,
@@ -250,20 +198,4 @@ fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
             text: label.text.clone(),
             color: None,
         }));
-}
-
-fn edge_context(edges: &[AsciiGraphEdge], edge_index: usize) -> EdgeContext {
-    let Some(edge) = edges.get(edge_index) else {
-        return EdgeContext { parallel_index: 0 };
-    };
-    let parallel_index = edges[..edge_index]
-        .iter()
-        .filter(|previous| same_edge_pair(previous, edge))
-        .count();
-    EdgeContext { parallel_index }
-}
-
-fn same_edge_pair(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> bool {
-    (left.from == right.from && left.to == right.to)
-        || (left.from == right.to && left.to == right.from)
 }

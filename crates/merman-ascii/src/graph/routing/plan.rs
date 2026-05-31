@@ -3,6 +3,7 @@ use super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
 use super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphNodeShape};
 use super::cell::edge_line_char;
 use super::path::{Port, StepDirection, merge_grid_path, route_grid_path, step_direction};
+use crate::text::display_width;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
@@ -37,7 +38,7 @@ pub(super) struct EdgeRouteRequest<'a> {
     pub(super) edges: &'a [AsciiGraphEdge],
     pub(super) from: &'a NodeLayout,
     pub(super) to: &'a NodeLayout,
-    pub(super) parallel_index: usize,
+    pub(super) edge_index: usize,
     pub(super) edge: &'a AsciiGraphEdge,
     pub(super) direction: GraphDirection,
     pub(super) charset: &'a GraphCharset,
@@ -70,7 +71,8 @@ fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
         );
     }
 
-    if from.center_y() == to.center_y() && from.x < to.x && request.parallel_index > 0 {
+    let parallel_index = parallel_edge_index(request.edges, request.edge_index);
+    if from.center_y() == to.center_y() && from.x < to.x && parallel_index > 0 {
         return plan_left_right_bottom_lane_route(from, to, edge, charset);
     }
 
@@ -143,6 +145,58 @@ fn plan_top_down_route(
     }
 
     plan_top_down_direct_route(from, to, edge, charset)
+}
+
+pub(super) fn route_canvas_extent(
+    layouts: &[NodeLayout],
+    edges: &[AsciiGraphEdge],
+    direction: GraphDirection,
+) -> (usize, usize) {
+    let mut width = 0;
+    let mut height = 0;
+
+    for edge in edges.iter().filter(|edge| edge.from == edge.to) {
+        let Some(layout) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            continue;
+        };
+        width = width.max(self_loop_right_x(layouts, layout) + 1);
+        height = height.max(self_loop_bottom_y_for_edges(layouts, edges, layout) + 1);
+    }
+    for (edge_index, edge) in edges
+        .iter()
+        .enumerate()
+        .filter(|(_, edge)| edge.from != edge.to)
+    {
+        let Some(from) = layouts.iter().find(|layout| layout.id == edge.from) else {
+            continue;
+        };
+        let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
+            continue;
+        };
+        match direction.canonical() {
+            GraphDirection::LeftRight => {
+                if from.center_y() == to.center_y()
+                    && (from.x > to.x || parallel_edge_index(edges, edge_index) > 0)
+                {
+                    width = width.max(from.center_x().max(to.center_x()) + 3);
+                    height = height.max(left_right_back_edge_bottom_y(from) + 1);
+                }
+            }
+            GraphDirection::TopDown => {
+                if from.center_y() > to.center_y() {
+                    let lane_x = top_down_back_edge_lane_x(from, to);
+                    width = width.max(lane_x + 3);
+                    if let Some(label) = edge.label.as_deref() {
+                        let label_start = lane_x.saturating_sub(display_width(label) / 2);
+                        width = width.max(label_start + display_width(label) + 1);
+                    }
+                }
+            }
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        }
+    }
+
+    (width, height)
 }
 
 pub(super) fn plan_left_right_direct_route(
@@ -1102,6 +1156,21 @@ fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {
         .any(|edge| edge.from == node_id && edge.to == node_id)
 }
 
+fn parallel_edge_index(edges: &[AsciiGraphEdge], edge_index: usize) -> usize {
+    let Some(edge) = edges.get(edge_index) else {
+        return 0;
+    };
+    edges[..edge_index]
+        .iter()
+        .filter(|previous| same_edge_pair(previous, edge))
+        .count()
+}
+
+fn same_edge_pair(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> bool {
+    (left.from == right.from && left.to == right.to)
+        || (left.from == right.to && left.to == right.from)
+}
+
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
@@ -1171,21 +1240,24 @@ mod tests {
         let layout = left_right_layout(&[("a", "b"), ("a", "b")], &options);
         let from = layout_node(&layout, "a");
         let to = layout_node(&layout, "b");
-        let edge = edge(Some("parallel"), GraphEdgeArrow::Point);
+        let edges = vec![
+            edge(Some("parallel"), GraphEdgeArrow::Point),
+            edge(Some("parallel"), GraphEdgeArrow::Point),
+        ];
         let charset = GraphCharset::for_options(&options);
 
         let selected = plan_edge_route(EdgeRouteRequest {
             graph_layout: &layout,
-            edges: &[],
+            edges: &edges,
             from,
             to,
-            parallel_index: 1,
-            edge: &edge,
+            edge_index: 1,
+            edge: &edges[1],
             direction: GraphDirection::LeftRight,
             charset: &charset,
         })
         .unwrap();
-        let expected = plan_left_right_bottom_lane_route(from, to, &edge, &charset).unwrap();
+        let expected = plan_left_right_bottom_lane_route(from, to, &edges[1], &charset).unwrap();
 
         assert_eq!(selected, expected);
     }
@@ -1204,7 +1276,7 @@ mod tests {
             edges: &[],
             from: &from,
             to: &to,
-            parallel_index: 0,
+            edge_index: 0,
             edge: &edge,
             direction: GraphDirection::TopDown,
             charset: &charset,
@@ -1213,6 +1285,32 @@ mod tests {
         let expected = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
 
         assert_eq!(selected, expected);
+    }
+
+    #[test]
+    fn route_canvas_extent_accounts_for_left_right_back_lane() {
+        let from = node("a", 10, 0, 3, 3);
+        let to = node("b", 0, 0, 3, 3);
+        let layouts = vec![from, to];
+        let edges = vec![edge_between("a", "b", None, GraphEdgeArrow::Point)];
+
+        assert_eq!(
+            route_canvas_extent(&layouts, &edges, GraphDirection::LeftRight),
+            (14, 5)
+        );
+    }
+
+    #[test]
+    fn route_canvas_extent_accounts_for_top_down_back_label_width() {
+        let from = node("a", 0, 6, 3, 3);
+        let to = node("b", 0, 0, 3, 3);
+        let layouts = vec![from, to];
+        let edges = vec![edge_between("a", "b", Some("back"), GraphEdgeArrow::Point)];
+
+        assert_eq!(
+            route_canvas_extent(&layouts, &edges, GraphDirection::TopDown),
+            (9, 0)
+        );
     }
 
     #[test]
