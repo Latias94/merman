@@ -15,9 +15,24 @@ use rustc_hash::FxHashMap;
 use super::css::sequence_css;
 use super::model::*;
 
+const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_11_15_0: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
+
 fn scoped_sequence_base_defs(diagram_id: &str) -> String {
     let mut defs = MERMAID_SEQUENCE_BASE_DEFS_11_12_2.to_string();
-    for local_id in ["arrowhead", "crosshead", "filled-head", "sequencenumber"] {
+    defs.push_str(MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_11_15_0);
+    for local_id in [
+        "computer",
+        "database",
+        "clock",
+        "arrowhead",
+        "crosshead",
+        "filled-head",
+        "sequencenumber",
+        "solidTopArrowHead",
+        "solidBottomArrowHead",
+        "stickTopArrowHead",
+        "stickBottomArrowHead",
+    ] {
         let bare = format!(r#"id="{local_id}""#);
         let scoped = format!(
             r#"id="{}""#,

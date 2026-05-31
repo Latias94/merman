@@ -13,7 +13,7 @@
         },
         {
           "id": "actor-top-Bob",
-          "x": 275.0,
+          "x": 360.0,
           "y": 32.5,
           "width": 150.0,
           "height": 65.0,
@@ -21,47 +21,7 @@
         },
         {
           "id": "actor-top-Charlie",
-          "x": 475.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-()Bob",
-          "x": 675.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Bob()",
-          "x": 875.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Alice()",
-          "x": 1075.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-()Charlie",
-          "x": 1275.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Charlie()",
-          "x": 1475.0,
+          "x": 604.0,
           "y": 32.5,
           "width": 150.0,
           "height": 65.0,
@@ -77,7 +37,7 @@
         },
         {
           "id": "actor-bottom-Bob",
-          "x": 275.0,
+          "x": 360.0,
           "y": 381.5,
           "width": 150.0,
           "height": 65.0,
@@ -85,47 +45,7 @@
         },
         {
           "id": "actor-bottom-Charlie",
-          "x": 475.0,
-          "y": 381.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-()Bob",
-          "x": 675.0,
-          "y": 381.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Bob()",
-          "x": 875.0,
-          "y": 381.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Alice()",
-          "x": 1075.0,
-          "y": 381.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-()Charlie",
-          "x": 1275.0,
-          "y": 381.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Charlie()",
-          "x": 1475.0,
+          "x": 604.0,
           "y": 381.5,
           "width": 150.0,
           "height": 65.0,
@@ -136,7 +56,7 @@
         {
           "id": "msg-1",
           "from": "Alice",
-          "to": "()Bob",
+          "to": "Bob",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
@@ -145,12 +65,12 @@
               "y": 109.0
             },
             {
-              "x": 671.0,
+              "x": 352.0,
               "y": 109.0
             }
           ],
           "label": {
-            "x": 374.0,
+            "x": 214.0,
             "y": 80.0,
             "width": 215.0,
             "height": 17.6
@@ -164,14 +84,14 @@
           "stroke_dasharray": null
         },
         {
-          "id": "msg-2",
-          "from": "Bob()",
+          "id": "msg-3",
+          "from": "Bob",
           "to": "Alice",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 874.0,
+              "x": 363.0,
               "y": 153.0
             },
             {
@@ -180,7 +100,7 @@
             }
           ],
           "label": {
-            "x": 477.0,
+            "x": 221.0,
             "y": 124.0,
             "width": 168.0,
             "height": 17.6
@@ -194,23 +114,23 @@
           "stroke_dasharray": null
         },
         {
-          "id": "msg-3",
-          "from": "Alice()",
-          "to": "()Bob",
+          "id": "msg-5",
+          "from": "Alice",
+          "to": "Bob",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 1074.0,
+              "x": 80.0,
               "y": 197.0
             },
             {
-              "x": 679.0,
+              "x": 352.0,
               "y": 197.0
             }
           ],
           "label": {
-            "x": 877.0,
+            "x": 216.0,
             "y": 168.0,
             "width": 157.0,
             "height": 17.6
@@ -224,23 +144,23 @@
           "stroke_dasharray": null
         },
         {
-          "id": "msg-4",
+          "id": "msg-8",
           "from": "Bob",
-          "to": "()Charlie",
+          "to": "Charlie",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 276.0,
+              "x": 361.0,
               "y": 241.0
             },
             {
-              "x": 1271.0,
+              "x": 596.0,
               "y": 241.0
             }
           ],
           "label": {
-            "x": 774.0,
+            "x": 479.0,
             "y": 212.0,
             "width": 174.0,
             "height": 17.6
@@ -254,14 +174,14 @@
           "stroke_dasharray": null
         },
         {
-          "id": "msg-5",
-          "from": "Charlie()",
+          "id": "msg-10",
+          "from": "Charlie",
           "to": "Alice",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 1474.0,
+              "x": 607.0,
               "y": 285.0
             },
             {
@@ -270,7 +190,7 @@
             }
           ],
           "label": {
-            "x": 777.0,
+            "x": 343.0,
             "y": 256.0,
             "width": 148.0,
             "height": 17.6
@@ -284,23 +204,23 @@
           "stroke_dasharray": null
         },
         {
-          "id": "msg-6",
-          "from": "Alice()",
-          "to": "()Bob",
+          "id": "msg-12",
+          "from": "Alice",
+          "to": "Bob",
           "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 1071.0,
+              "x": 83.0,
               "y": 329.0
             },
             {
-              "x": 679.0,
+              "x": 352.0,
               "y": 329.0
             }
           ],
           "label": {
-            "x": 875.0,
+            "x": 218.0,
             "y": 300.0,
             "width": 164.0,
             "height": 17.6
@@ -346,11 +266,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 275.0,
+              "x": 360.0,
               "y": 65.0
             },
             {
-              "x": 275.0,
+              "x": 360.0,
               "y": 349.0
             }
           ],
@@ -371,136 +291,11 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 475.0,
+              "x": 604.0,
               "y": 65.0
             },
             {
-              "x": 475.0,
-              "y": 349.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-()Bob",
-          "from": "actor-top-()Bob",
-          "to": "actor-bottom-()Bob",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 675.0,
-              "y": 65.0
-            },
-            {
-              "x": 675.0,
-              "y": 349.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Bob()",
-          "from": "actor-top-Bob()",
-          "to": "actor-bottom-Bob()",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 875.0,
-              "y": 65.0
-            },
-            {
-              "x": 875.0,
-              "y": 349.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Alice()",
-          "from": "actor-top-Alice()",
-          "to": "actor-bottom-Alice()",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 1075.0,
-              "y": 65.0
-            },
-            {
-              "x": 1075.0,
-              "y": 349.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-()Charlie",
-          "from": "actor-top-()Charlie",
-          "to": "actor-bottom-()Charlie",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 1275.0,
-              "y": 65.0
-            },
-            {
-              "x": 1275.0,
-              "y": 349.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Charlie()",
-          "from": "actor-top-Charlie()",
-          "to": "actor-bottom-Charlie()",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 1475.0,
-              "y": 65.0
-            },
-            {
-              "x": 1475.0,
+              "x": 604.0,
               "y": 349.0
             }
           ],
@@ -518,7 +313,7 @@
       "bounds": {
         "min_x": -50.0,
         "min_y": -10.0,
-        "max_x": 1600.0,
+        "max_x": 729.0,
         "max_y": 425.0
       }
     }

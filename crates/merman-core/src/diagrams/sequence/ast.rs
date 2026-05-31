@@ -56,11 +56,18 @@ pub(crate) enum Action {
         signal_type: i32,
         text: String,
         activate: bool,
+        central_connection: i32,
     },
     ActiveStart {
         actor: String,
     },
     ActiveEnd {
+        actor: String,
+    },
+    CentralConnection {
+        actor: String,
+    },
+    CentralConnectionReverse {
         actor: String,
     },
 

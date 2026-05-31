@@ -7,11 +7,7 @@
     "accDescr": null,
     "actorOrder": [
       "Alice",
-      "John",
-      "()John",
-      "Alice()",
-      "John()",
-      "()Alice"
+      "John"
     ],
     "actors": {
       "Alice": {
@@ -29,66 +25,73 @@
         "type": "participant",
         "links": {},
         "properties": {}
-      },
-      "()John": {
-        "name": "()John",
-        "description": "()John",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Alice()": {
-        "name": "Alice()",
-        "description": "Alice()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "John()": {
-        "name": "John()",
-        "description": "John()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "()Alice": {
-        "name": "()Alice",
-        "description": "()Alice",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
       }
     },
     "messages": [
       {
         "id": "0",
         "from": "Alice",
-        "to": "()John",
+        "to": "John",
         "message": "Hello John",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": true,
+        "centralConnection": 59
       },
       {
         "id": "1",
-        "from": "Alice()",
-        "to": "John",
-        "message": "How are you?",
+        "from": "John",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
+        "type": 59,
         "activate": false
       },
       {
         "id": "2",
-        "from": "John()",
-        "to": "()Alice",
+        "from": "Alice",
+        "to": "John",
+        "message": "How are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false,
+        "centralConnection": 60
+      },
+      {
+        "id": "3",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "John",
+        "to": "Alice",
         "message": "Great!",
         "wrap": false,
         "type": 0,
+        "activate": true,
+        "centralConnection": 61
+      },
+      {
+        "id": "5",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
         "activate": false
       }
     ],

@@ -48,12 +48,13 @@ pub(super) fn write_actor_man_lifeline(
 ) {
     let _ = write!(
         out,
-        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/></g>"##,
+        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
         y2 = fmt(y2),
-        name = escape_xml(actor_id)
+        name = escape_xml(actor_id),
+        data_id = escape_attr(actor_id),
     );
 }
 
@@ -68,12 +69,13 @@ pub(super) fn write_lifeline_root_open(
     out.push_str("<g>");
     let _ = write!(
         out,
-        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}">"##,
+        r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}" data-et="participant" data-type="participant" data-id="{data_id}">"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
         y2 = fmt(y2),
         name = escape_xml(actor_id),
+        data_id = escape_attr(actor_id),
     );
 }
 

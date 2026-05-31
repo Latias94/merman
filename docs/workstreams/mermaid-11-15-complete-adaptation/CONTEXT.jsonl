@@ -1,0 +1,12 @@
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md","reason":"Umbrella target state, scope, non-goals, and closeout conditions for Mermaid 11.15 complete adaptation."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md","reason":"Task ledger and current executable slices."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md","reason":"Current red/green evidence and required verification gates."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md","reason":"Current 525-mismatch inventory and stale-baseline versus renderer-gap classification."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md","reason":"Prior 11.15 baseline upgrade scope and closeout result."}
+{"file":"docs/workstreams/generated-default-config-parity/DESIGN.md","reason":"Generated artifact verification split and closeout result."}
+{"file":"docs/workstreams/pie-11-15-parity/DESIGN.md","reason":"Closed Pie 11.15 behavior lane and evidence boundaries."}
+{"file":"docs/alignment/STATUS.md","reason":"Implemented matrix, unsupported family decisions, and parity dashboard."}
+{"file":"docs/rendering/UPSTREAM_SVG_BASELINES.md","reason":"Upstream SVG generation and checking workflow."}
+{"file":"docs/adr/0001-upstream-baseline.md","reason":"Baseline authority and version claim."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy authority for supported and deferred behavior."}
+{"file":"tools/upstreams/REPOS.lock.json","reason":"Pinned upstream repository versions for Mermaid and related render dependencies."}

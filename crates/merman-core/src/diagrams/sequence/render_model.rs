@@ -54,6 +54,12 @@ pub struct SequenceMessage {
     pub activate: bool,
     #[serde(default)]
     pub placement: Option<i32>,
+    #[serde(
+        rename = "centralConnection",
+        default,
+        skip_serializing_if = "is_zero_i32"
+    )]
+    pub central_connection: i32,
 }
 
 impl SequenceMessage {
@@ -133,6 +139,10 @@ where
 
 fn default_true() -> bool {
     true
+}
+
+fn is_zero_i32(value: &i32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

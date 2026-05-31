@@ -8,9 +8,7 @@
     "actorOrder": [
       "Alice",
       "Bob",
-      "Charlie",
-      "()Alice",
-      "()Bob"
+      "Charlie"
     ],
     "actors": {
       "Alice": {
@@ -36,22 +34,6 @@
         "type": "participant",
         "links": {},
         "properties": {}
-      },
-      "()Alice": {
-        "name": "()Alice",
-        "description": "()Alice",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "()Bob": {
-        "name": "()Bob",
-        "description": "()Bob",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
       }
     },
     "messages": [
@@ -69,46 +51,96 @@
       {
         "id": "1",
         "from": "Bob",
-        "to": "()Alice",
+        "to": "Alice",
         "message": "Solid arrow with circle at destination (RTL)",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": true,
+        "centralConnection": 59
       },
       {
         "id": "2",
-        "from": "Charlie",
-        "to": "()Bob",
-        "message": "Dotted arrow with circle at destination (RTL)",
+        "from": "Alice",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 1,
+        "type": 59,
         "activate": false
       },
       {
         "id": "3",
-        "from": "Bob",
-        "to": "()Alice",
-        "message": "Open arrow with circle at destination (RTL)",
+        "from": "Charlie",
+        "to": "Bob",
+        "message": "Dotted arrow with circle at destination (RTL)",
         "wrap": false,
-        "type": 5,
-        "activate": false
+        "type": 1,
+        "activate": true,
+        "centralConnection": 59
       },
       {
         "id": "4",
-        "from": "Charlie",
-        "to": "()Alice",
-        "message": "Cross arrow with circle at destination (RTL)",
+        "from": "Bob",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 4,
+        "type": 59,
         "activate": false
       },
       {
         "id": "5",
         "from": "Bob",
-        "to": "()Alice",
+        "to": "Alice",
+        "message": "Open arrow with circle at destination (RTL)",
+        "wrap": false,
+        "type": 5,
+        "activate": true,
+        "centralConnection": 59
+      },
+      {
+        "id": "6",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Charlie",
+        "to": "Alice",
+        "message": "Cross arrow with circle at destination (RTL)",
+        "wrap": false,
+        "type": 4,
+        "activate": true,
+        "centralConnection": 59
+      },
+      {
+        "id": "8",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Bob",
+        "to": "Alice",
         "message": "Close arrow with circle at destination (RTL)",
         "wrap": false,
         "type": 25,
+        "activate": true,
+        "centralConnection": 59
+      },
+      {
+        "id": "10",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
         "activate": false
       }
     ],

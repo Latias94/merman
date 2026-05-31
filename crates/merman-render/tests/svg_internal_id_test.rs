@@ -45,6 +45,20 @@ fn assert_scoped_marker(svg: &str, diagram_id: &str, local_id: &str) {
     );
 }
 
+fn assert_scoped_definition_id(svg: &str, diagram_id: &str, local_id: &str) {
+    let scoped_id = format!(r#"id="{diagram_id}-{local_id}""#);
+    let bare_id = format!(r#"id="{local_id}""#);
+
+    assert!(
+        svg.contains(&scoped_id),
+        "expected scoped definition `{scoped_id}` in SVG:\n{svg}"
+    );
+    assert!(
+        !svg.contains(&bare_id),
+        "expected no bare definition `{bare_id}` in SVG:\n{svg}"
+    );
+}
+
 #[test]
 fn c4_marker_ids_are_prefixed_with_diagram_svg_id() {
     let svg = render_svg_from_text(
@@ -98,6 +112,21 @@ Bob-->>Alice: Back"#,
 
     assert_scoped_marker(&svg, "m15-sequence", "arrowhead");
     assert_scoped_marker(&svg, "m15-sequence", "sequencenumber");
+    assert_scoped_definition_id(&svg, "m15-sequence", "computer");
+    assert_scoped_definition_id(&svg, "m15-sequence", "database");
+    assert_scoped_definition_id(&svg, "m15-sequence", "clock");
+    assert_scoped_definition_id(&svg, "m15-sequence", "solidTopArrowHead");
+    assert_scoped_definition_id(&svg, "m15-sequence", "solidBottomArrowHead");
+    assert_scoped_definition_id(&svg, "m15-sequence", "stickTopArrowHead");
+    assert_scoped_definition_id(&svg, "m15-sequence", "stickBottomArrowHead");
+    assert!(
+        svg.contains(r#"data-et="life-line" data-id="Alice""#),
+        "expected sequence lifeline data attributes:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"data-et="message" data-id="i1" data-from="Alice" data-to="Bob""#),
+        "expected sequence message data attributes:\n{svg}"
+    );
     assert!(
         svg.contains(r#"[id$="-arrowhead"] path"#),
         "expected sequence CSS to target prefixed marker IDs by suffix:\n{svg}"

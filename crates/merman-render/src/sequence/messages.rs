@@ -9,6 +9,13 @@ use crate::text::{
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceMessage;
 
+const LINETYPE_BIDIRECTIONAL_SOLID: i32 = 33;
+const LINETYPE_BIDIRECTIONAL_DOTTED: i32 = 34;
+const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
+const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
+const CENTRAL_CONNECTION_BASE_OFFSET: f64 = 4.0;
+const CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET: f64 = 6.0;
+
 pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) actor_index: &'a std::collections::HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
@@ -64,6 +71,7 @@ pub(super) fn layout_sequence_message<'a>(
     let (mut startx, mut stopx, is_arrow_to_right, is_arrow_to_activation) =
         initial_message_endpoints(from, to, from_x, to_x, &ctx);
     let adjust_value = |v: f64| if is_arrow_to_right { -v } else { v };
+    startx += central_connection_offset(msg, is_arrow_to_right);
 
     let is_self = from == to;
     if is_self {
@@ -137,6 +145,32 @@ pub(super) fn layout_sequence_message<'a>(
         cursor_step,
         is_self,
     })
+}
+
+fn central_connection_offset(msg: &SequenceMessage, is_arrow_to_right: bool) -> f64 {
+    let mut offset = 0.0;
+    if matches!(
+        msg.central_connection,
+        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
+    ) {
+        offset += CENTRAL_CONNECTION_BASE_OFFSET;
+    }
+
+    if matches!(
+        msg.central_connection,
+        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
+    ) && matches!(
+        msg.message_type,
+        LINETYPE_BIDIRECTIONAL_SOLID | LINETYPE_BIDIRECTIONAL_DOTTED
+    ) {
+        offset += if is_arrow_to_right {
+            0.0
+        } else {
+            -CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET
+        };
+    }
+
+    offset
 }
 
 fn initial_message_endpoints(
