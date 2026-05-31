@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, AsciiError>;
 
+#[non_exhaustive]
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AsciiError {
     #[error("invalid ASCII render option `{field}`: {message}")]

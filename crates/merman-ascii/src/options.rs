@@ -1,7 +1,7 @@
 use crate::color::{AsciiColorMode, AsciiColorTheme};
 use crate::error::{AsciiError, Result};
-use std::borrow::Cow;
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsciiCharset {
     Unicode,
@@ -14,6 +14,7 @@ impl Default for AsciiCharset {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsciiDirection {
     LeftRight,
@@ -99,63 +100,4 @@ impl AsciiRenderOptions {
 
         Ok(())
     }
-
-    /// Applies leading `mermaid-ascii` source directives such as `paddingX=2` and `paddingY=1`.
-    ///
-    /// These directives are not Mermaid syntax. They are accepted for compatibility with copied
-    /// `mermaid-ascii` fixtures and CLI-style input before the Mermaid graph declaration.
-    pub fn apply_mermaid_ascii_directives<'a>(&self, source: &'a str) -> (Self, Cow<'a, str>) {
-        let mut options = *self;
-        let mut changed = false;
-        let mut output = String::new();
-        let mut before_diagram = true;
-
-        for line in source.lines() {
-            let trimmed = line.trim();
-            if before_diagram {
-                if let Some((axis, value)) = parse_padding_directive(trimmed) {
-                    match axis {
-                        PaddingAxis::X => options.graph_padding_x = value,
-                        PaddingAxis::Y => options.graph_padding_y = value,
-                    }
-                    changed = true;
-                    continue;
-                }
-                if is_diagram_header(trimmed) {
-                    before_diagram = false;
-                }
-            }
-            output.push_str(line);
-            output.push('\n');
-        }
-
-        if changed {
-            (options, Cow::Owned(output))
-        } else {
-            (options, Cow::Borrowed(source))
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PaddingAxis {
-    X,
-    Y,
-}
-
-fn parse_padding_directive(line: &str) -> Option<(PaddingAxis, usize)> {
-    let (key, value) = line.split_once('=')?;
-    let axis = if key.trim().eq_ignore_ascii_case("paddingX") {
-        PaddingAxis::X
-    } else if key.trim().eq_ignore_ascii_case("paddingY") {
-        PaddingAxis::Y
-    } else {
-        return None;
-    };
-    let value = value.trim().parse().ok()?;
-    Some((axis, value))
-}
-
-fn is_diagram_header(line: &str) -> bool {
-    line.starts_with("graph ") || line.starts_with("flowchart ")
 }

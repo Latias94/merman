@@ -193,17 +193,6 @@ mod tests {
     }
 
     #[test]
-    fn options_apply_mermaid_ascii_padding_directives() {
-        let options = AsciiRenderOptions::ascii();
-        let (options, source) =
-            options.apply_mermaid_ascii_directives("paddingX=2\npaddingY=1\ngraph LR\nA --> B");
-
-        assert_eq!(options.graph_padding_x, 2);
-        assert_eq!(options.graph_padding_y, 1);
-        assert_eq!(source, "graph LR\nA --> B\n");
-    }
-
-    #[test]
     fn validates_sequence_self_message_width() {
         let options = AsciiRenderOptions {
             sequence_self_message_width: 1,

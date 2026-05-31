@@ -34,6 +34,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added sequence ASCII/Unicode rendering for typed actor create/destroy lifecycle markers.
 - Added sequence ASCII/Unicode rendering for wrapped message labels and wrapped notes.
 
+### Changed
+
+- Hardened the pre-release `merman-ascii` public API by making ASCII errors and narrow option enums
+  non-exhaustive, and moved `mermaid-ascii` padding directive handling out of the model-driven
+  `merman-ascii` options surface into the higher-level source render entry points.
+
 ## [0.6.0] - 2026-05-28
 
 This release adds an opt-in SVG output pipeline for applications that need Mermaid-parity SVG by default but also need cleaner output for in-app previews, PNG/PDF export, or host-specific theming. Use `render_svg_sync` for parity snapshots, `SvgPipeline::readable()` when the SVG will be inlined and should keep readable fallback text, and `SvgPipeline::resvg_safe()` before rasterizing through `resvg` / `usvg`.
