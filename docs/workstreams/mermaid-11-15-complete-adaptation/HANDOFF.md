@@ -12,7 +12,9 @@ symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 1
 differences, Timeline scoped node ids, and the Sankey 11.15 baseline refresh. Sequence, C4,
 Journey, Timeline, and Sankey stored upstream SVG baselines have been refreshed and now pass their
 stored-fixture compares. Full implemented matrix SVG DOM parity is still red, but only for class=9,
-flowchart=1, xychart=1.
+flowchart=1, xychart=1 when measured against the older stored baseline set. M15C-060 triage
+proved the XYChart red point was stale baseline drift, the Class red points are real renderer DOM
+gaps, and Flowchart expands to a larger fresh Mermaid 11.15 renderer convergence effort.
 
 ## Active Task
 
@@ -22,9 +24,11 @@ flowchart=1, xychart=1.
   `fixtures/upstream-svgs/flowchart`, `crates/merman-render/src/svg/parity`
 - Validation: targeted compare commands for class, xychart, and flowchart in `parity` mode plus
   package tests for any touched renderer.
-- Status: READY
-- Review: Generate/check fresh 11.15 Class and XYChart baselines before changing renderer behavior;
-  keep Flowchart as a targeted MathML `columnalign` normalizer/renderer delta.
+- Status: IN_PROGRESS
+- Review: XYChart may be committed as a targeted baseline refresh after gates. Class should be a
+  renderer/namespace task. Flowchart is now delegated to
+  `docs/workstreams/flowchart-11-15-svg-convergence`; do not bulk-refresh stored Flowchart SVGs
+  until that child lane is green against fresh Mermaid 11.15 output.
 - Evidence: `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
@@ -63,18 +67,32 @@ flowchart=1, xychart=1.
 - Fresh Sankey 11.15 output matched local output without renderer changes, proving the stored
   `stroke-width` failures were stale baseline drift. Stored Sankey SVG baselines were refreshed and
   both `compare-sankey-svgs` and `compare-svg-xml --diagram sankey` pass in `parity` mode.
+- Fresh XYChart 11.15 output matched local output for
+  `upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013`, so its stored baseline
+  was refreshed and the targeted XYChart parity gate passes.
+- Fresh Class 11.15 output still fails for the 9 known stored failures; treat these as real Class
+  11.15 namespace/DOM renderer gaps.
+- Fresh Flowchart 11.15 output exposes 594 canonical XML mismatches plus one unsupported
+  `flowchart-elk` local layout failure. Flowchart is split into a child workstream instead of
+  staying as a targeted MathML `columnalign` cleanup. The first child-lane slice reduced the fresh
+  Flowchart count to 359 mismatches and kept `flowchart-elk` as the remaining layout-policy
+  failure.
 
 ## Known Risks
 
 - Regenerating all upstream SVG baselines at once may produce very large fixture churn. Prefer
   diagram-scoped batches.
-- Class and XYChart still need fresh 11.15 baseline checks before treating their current failures as
-  renderer defects.
-- Flowchart has a single MathML `columnalign` delta and should stay a targeted normalizer/renderer
-  task.
+- Class needs a dedicated renderer convergence task for scoped ids, root groups, marker/drop-shadow
+  defs, and `data-look` surfaces.
+- Flowchart first child-lane slice is useful but incomplete: targeted fresh probes pass for the
+  DOM envelope, edge markdown, cluster id scoping, and `htmlLabels` precedence, while the fresh full
+  Flowchart gate still has 359 mismatches. Keep stored Flowchart baseline refresh blocked.
+- `flowchart-elk` is not supported by the local layout path; it needs either an explicit skip
+  policy or a separate ELK layout support lane.
 
 ## Next Recommended Action
 
-Start M15C-060 with fresh Class and XYChart 11.15 baseline checks, then handle the single Flowchart
-MathML `columnalign` delta. After M15C-060 is green, M15C-070 can run the full implemented-matrix
-`parity` and `parity-root` gates.
+Continue the Flowchart child workstream from F115-050/F115-040: HTML/`foreignObject` label DOM,
+long SVG cluster title wrapping, directive/theme style deltas, and residual special-shape cases.
+After Flowchart is either green or explicitly split again, return to M15C-060 for the Class
+renderer gap and then run M15C-070 full implemented-matrix gates.

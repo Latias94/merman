@@ -90,6 +90,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     helpers::open_node_wrapper(
         out,
         helpers::NodeWrapperAttrs {
+            diagram_id: ctx.diagram_id,
             node_id,
             dom_idx,
             class_attr_base,
@@ -100,6 +101,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             y,
             tooltip_enabled,
             tooltip,
+            look: flowchart_config_look(ctx.config),
         },
     );
 

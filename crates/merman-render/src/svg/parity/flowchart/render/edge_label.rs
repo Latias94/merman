@@ -121,7 +121,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             fmt_display(y),
                             escape_xml_display(&edge.id),
                         );
-                        write_flowchart_svg_text(out, "", true);
+                        write_flowchart_svg_text_centered(out, "", true);
                         out.push_str("</g></g></g>");
                         return;
                     }
@@ -156,7 +156,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     )
                     .join("\n");
                     if label_type == "markdown" {
-                        write_flowchart_svg_text_markdown_wrapped(
+                        write_flowchart_svg_text_markdown_wrapped_centered(
                             out,
                             label_text,
                             true,
@@ -165,7 +165,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                             Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                         );
                     } else {
-                        write_flowchart_svg_text(out, &wrapped, true);
+                        write_flowchart_svg_text_centered(out, &wrapped, true);
                     }
                     out.push_str("</g></g></g>");
                     return;
@@ -205,7 +205,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 )
                 .join("\n");
                 if label_type == "markdown" {
-                    write_flowchart_svg_text_markdown_wrapped(
+                    write_flowchart_svg_text_markdown_wrapped_centered(
                         out,
                         label_text,
                         true,
@@ -214,7 +214,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                         Some(FLOWCHART_EDGE_LABEL_WRAP_WIDTH),
                     );
                 } else {
-                    write_flowchart_svg_text(out, &wrapped, true);
+                    write_flowchart_svg_text_centered(out, &wrapped, true);
                 }
                 out.push_str("</g></g></g>");
                 return;
@@ -226,7 +226,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0,0)">"#,
             escape_xml_display(&edge.id)
         );
-        write_flowchart_svg_text(out, "", false);
+        write_flowchart_svg_text_centered(out, "", false);
         out.push_str("</g></g>");
         return;
     }

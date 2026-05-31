@@ -36,7 +36,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
             })
         })
     {
-        let _ = write!(out, r#"<g class="basic label-container">"#);
+        let _ = write!(out, r#"<g class="basic label-container outer-path">"#);
         let _ = write!(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -58,7 +58,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_note(
         // Fallback: basic rect.
         let _ = write!(
             out,
-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+            r#"<rect class="basic label-container outer-path" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
             escape_attr(common.style),
             fmt(x),
             fmt(y),

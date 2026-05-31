@@ -66,7 +66,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
         .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(-wave_amplitude / 2.0),
         escape_attr(&fill_d),
         escape_attr(common.fill_color),

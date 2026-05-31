@@ -52,7 +52,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
     let outer_path = path_from_points(&outer_points);
     let inner_path = path_from_points(&inner_points);
 
-    out.push_str(r#"<g class="basic label-container">"#);
+    out.push_str(r#"<g class="basic label-container outer-path">"#);
     out.push_str("<g>");
     if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {

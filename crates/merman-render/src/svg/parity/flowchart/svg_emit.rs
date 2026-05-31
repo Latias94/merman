@@ -397,6 +397,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
+    push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
 
     let defs = prepare_flowchart_defs(diagram_id, &ctx);
 
@@ -458,4 +459,26 @@ fn render_flowchart_v2_svg_with_config_inner(
         );
     }
     Ok(out)
+}
+
+fn push_flowchart_shadow_defs(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    let flood_color = effective_config_value
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .filter(|theme| theme.contains("dark"))
+        .map(|_| "#FFFFFF")
+        .unwrap_or("#000000");
+    let diagram_id = escape_xml(diagram_id);
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        diagram_id.as_str(),
+        flood_color,
+        diagram_id.as_str(),
+        flood_color
+    );
 }

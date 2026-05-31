@@ -2,18 +2,20 @@ use crate::text::TextStyle;
 use indexmap::IndexMap;
 
 pub(crate) fn flowchart_effective_node_html_labels(effective_config: &serde_json::Value) -> bool {
-    effective_config
-        .get("htmlLabels")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true)
+    flowchart_effective_html_labels(effective_config)
 }
 
 pub(crate) fn flowchart_effective_html_labels(effective_config: &serde_json::Value) -> bool {
     effective_config
-        .get("flowchart")
-        .and_then(|v| v.get("htmlLabels"))
+        .get("htmlLabels")
         .and_then(serde_json::Value::as_bool)
-        .unwrap_or_else(|| flowchart_effective_node_html_labels(effective_config))
+        .or_else(|| {
+            effective_config
+                .get("flowchart")
+                .and_then(|v| v.get("htmlLabels"))
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(true)
 }
 
 fn parse_style_decl(s: &str) -> Option<(&str, &str)> {

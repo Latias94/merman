@@ -99,8 +99,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
 
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class=""#,
+        r#"<path d="{}" id="{}-{}" class=""#,
         d,
+        escape_xml_display(ctx.diagram_id),
         escape_xml_display(&edge.id),
     );
     css::write_flowchart_edge_class_attr(out, edge);
@@ -120,9 +121,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     }
     let _ = write!(
         out,
-        r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+        r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
         escape_xml_display(&edge.id),
         data_points_b64,
+        escape_xml_display(flowchart_config_look(ctx.config)),
     );
     if let Some(base) = flowchart_edge_marker_start_base(edge) {
         out.push_str(r#" marker-start="url(#"#);

@@ -67,7 +67,7 @@ Last updated: 2026-06-01
   Stored Sankey SVG baselines were refreshed and the Sankey stored gate now passes. The current full
   `parity` gate is red only for class=9, flowchart=1, xychart=1.
 
-- [ ] M15C-060 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/class,fixtures/upstream-svgs/xychart,fixtures/upstream-svgs/flowchart,crates/merman-render/src/svg/parity]
+- [ ] M15C-060 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/class,fixtures/upstream-svgs/xychart,fixtures/upstream-svgs/flowchart,crates/merman-render/src/svg/parity,docs/workstreams/flowchart-11-15-svg-convergence]
   Goal: Close the remaining Class, XYChart, and Flowchart Math parity deltas after 11.15 baselines
   are authoritative.
   Validation: Targeted compare commands for class, xychart, and flowchart in `parity` mode plus
@@ -75,7 +75,11 @@ Last updated: 2026-06-01
   Review: Split a child lane if any one diagram turns into a larger renderer convergence effort.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus diagram-specific alignment docs.
-  Handoff: Not started.
+  Handoff: IN_PROGRESS. XYChart was stale baseline drift and has a refreshed targeted 11.15
+  baseline. Class has 9 real fresh 11.15 namespace/DOM failures. Flowchart was not a single
+  MathML baseline issue: fresh Mermaid 11.15 output exposed 594 flowchart DOM mismatches plus one
+  unsupported `flowchart-elk` fixture, so Flowchart is split to
+  `docs/workstreams/flowchart-11-15-svg-convergence`.
 
 ## M3 - Full Implemented-Matrix Gates
 

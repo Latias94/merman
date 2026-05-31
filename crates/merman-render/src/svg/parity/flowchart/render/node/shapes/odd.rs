@@ -40,7 +40,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
     {
         let _ = write!(
             out,
-            r#"<g class="basic label-container" transform="translate({},0)">"#,
+            r#"<g class="basic label-container outer-path" transform="translate({},0)">"#,
             fmt(dx)
         );
         let _ = write!(
@@ -63,7 +63,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_odd(
     } else {
         let _ = write!(
             out,
-            r#"<polygon points="{},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({},{})"{} />"#,
+            r#"<polygon points="{},{} {},{} {},{} {},{} {},{}" class="label-container outer-path" transform="translate({},{})"{} />"#,
             fmt(x + notch),
             fmt(y),
             fmt(x),

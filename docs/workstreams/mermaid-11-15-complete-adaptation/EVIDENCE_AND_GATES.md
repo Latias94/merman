@@ -227,12 +227,61 @@ git diff --check
   - `cargo run -p xtask -- check-alignment`: passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-060 residual triage and Flowchart split:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram class --filter <9 failing class fixtures> --out target/upstream-svgs-11-15-class-probe`:
+    generated fresh Mermaid 11.15 Class probes.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram class --filter <9 failing class fixtures> --upstream-root target/upstream-svgs-11-15-class-probe --dom-mode parity --dom-decimals 3`:
+    failed for the same 9 fixtures. These are real Class renderer/namespace DOM gaps, not stale
+    stored baselines. Representative 11.15 deltas include scoped node ids, `data-look`, marker defs,
+    drop-shadow defs, and root group structure.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram xychart --filter upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013 --out target/upstream-svgs-11-15-xychart-probe`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram xychart --filter upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013 --upstream-root target/upstream-svgs-11-15-xychart-probe --dom-mode parity --dom-decimals 3`:
+    passed, proving the stored XYChart mismatch was stale baseline drift.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram xychart --filter upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013 --out fixtures/upstream-svgs`:
+    refreshed the stored XYChart baseline for the stale fixture.
+  - `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013`:
+    passed.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --filter upstream_docs_math_flowcharts_001 --out target/upstream-svgs-11-15-flowchart-probe`:
+    passed. Fresh Mermaid 11.15 and local output both include MathML `columnalign`; the stored
+    baseline was stale for this one fixture.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --filter upstream_docs_math_flowcharts_001 --out fixtures/upstream-svgs`:
+    refreshed the stored Flowchart Math baseline for the stale `columnalign` fixture.
+  - Initial Flowchart 11.15 DOM-envelope renderer work made
+    `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_docs_math_flowcharts_001`
+    pass for the targeted Math fixture, but full Flowchart parity is not green.
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --out target/upstream-svgs-11-15-flowchart`:
+    generated 1070 fresh Mermaid 11.15 Flowchart SVGs after the shell timeout expired and the
+    original `xtask` process continued. Five parser-only or upstream-render-failing fixtures did
+    not produce SVGs:
+    `upstream_flow_text_ellipse_vertex_parser_only_spec`,
+    `upstream_html_demos_flowchart_flowchart_040_parser_only_katex`,
+    `upstream_html_demos_flowchart_flowchart_042_parser_only_katex`,
+    `upstream_html_demos_flowchart_flowchart_044_parser_only_katex`, and
+    `upstream_html_demos_flowchart_graph_039_parser_only_katex`.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 594 canonical XML mismatches plus one local layout failure for
+    `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` because `flowchart-elk` is not
+    supported by the local layout path.
+  - Lightweight mismatch classification from the fresh Flowchart target:
+    `outer_path_class=203`, `edge_markdown_rows=61`, `missing_row_class=61`,
+    `shape_path_class=77`, `anchor_or_click=23`, `html_foreign_object=556`,
+    `subgraph_cluster=594`, `other=0`.
+  - Flowchart is split to `docs/workstreams/flowchart-11-15-svg-convergence` instead of treating
+    the old stored-baseline red point as a single MathML fix. Do not bulk-refresh stored Flowchart
+    SVG baselines until that child lane is green against fresh Mermaid 11.15 output.
+  - First child-lane Flowchart convergence slice reduced fresh Flowchart mismatches from 594 to
+    359 plus the existing `flowchart-elk` layout failure. Targeted fresh probes now pass for the
+    Math fixture, representative special-shape class/click fixtures, edge markdown labels, cluster
+    id scoping, and root-first `htmlLabels` precedence. See
+    `docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md`.
 
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`
 - `docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md`
 - `docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md`
+- `docs/workstreams/flowchart-11-15-svg-convergence/`
 - `docs/alignment/STATUS.md`
 - `docs/rendering/UPSTREAM_SVG_BASELINES.md`
 - `tools/upstreams/REPOS.lock.json`

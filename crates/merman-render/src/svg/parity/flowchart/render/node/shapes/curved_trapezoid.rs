@@ -74,7 +74,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curved_trapezoid(
     }
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(-w / 2.0),
         util::fmt(-h / 2.0),
         escape_attr(&fill_d),

@@ -154,7 +154,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_double_circle(out, common);
         }
         "roundedRect" | "rounded" | "event" => {
-            super::render_rounded_rect(out, common, details);
+            super::render_rounded_rect(out, ctx, common, details);
         }
         "note" => {
             super::render_note(out, ctx, common, details);

@@ -74,7 +74,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
 
     let _ = write!(
         out,
-        r#"<g class="basic label-container" transform="translate(0,{})">"#,
+        r#"<g class="basic label-container outer-path" transform="translate(0,{})">"#,
         fmt_display(-wave_amplitude / 2.0)
     );
     if let Some((fill_d, stroke_d)) =

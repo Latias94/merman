@@ -70,7 +70,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
 
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate({},0)"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" transform="translate({},0)"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(rx / 2.0),
         escape_attr(&fill_d),
         escape_attr(common.fill_color),

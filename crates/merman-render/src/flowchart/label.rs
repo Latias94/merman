@@ -815,18 +815,6 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             out.trim().to_string()
         }
         _ => {
-            let trimmed = label.trim();
-            if !html_labels
-                && trimmed.len() >= 2
-                && trimmed.starts_with('`')
-                && trimmed.ends_with('`')
-            {
-                // Mermaid SVG-label mode still routes `text` labels through `markdownToLines(...)`.
-                // A bare backtick-wrapped pipe edge label like `-->|`edge **label**`|` becomes a
-                // code-span token, which upstream drops from the emitted `<tspan>` runs.
-                return String::new();
-            }
-
             let mut t = flowchart_decode_label_escapes(&label.replace("\r\n", "\n"));
             if html_labels || label_type == "html" {
                 // Keep the raw label text for layout, then strip HTML tags/entities.

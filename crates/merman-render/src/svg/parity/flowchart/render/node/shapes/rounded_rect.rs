@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::escape_attr;
+use crate::svg::parity::flowchart::flowchart_config_look;
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::{arc_points, path_from_points};
@@ -10,6 +11,7 @@ use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     out: &mut String,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
@@ -65,7 +67,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     ));
     let path_data = path_from_points(&pts);
 
-    if let Some((fill_d, stroke_d)) =
+    let rough_paths = if flowchart_config_look(ctx.config) == "handDrawn" {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -76,7 +78,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
                 common.hand_drawn_seed,
             )
         })
-    {
+    } else {
+        None
+    };
+
+    if let Some((fill_d, stroke_d)) = rough_paths {
         out.push_str(r#"<g class="basic label-container outer-path">"#);
         let _ = write!(
             out,
