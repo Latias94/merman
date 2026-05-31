@@ -90,7 +90,8 @@ Related docs:
       umbrella check, expose artifact-specific gates for default config and DOMPurify, and decide
       whether missing optional `repo-ref/*` build artifacts should be bootstrap failures or
       optional-gate failures. 2026-05-31: tracked in
-      `docs/workstreams/generated-default-config-parity/`.
+      `docs/workstreams/generated-default-config-parity/`; `verify-default-config` is now green via
+      `crates/xtask/default_config_overrides.json`, with DOMPurify checkout policy still pending.
 
 ### P3: Output stability and debug UX
 

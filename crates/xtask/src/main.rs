@@ -31,6 +31,8 @@ enum XtaskError {
     UnresolvedRef(String),
     #[error("failed to parse dompurify dist file: {0}")]
     ParseDompurify(String),
+    #[error("failed to apply default config override: {0}")]
+    DefaultConfigOverride(String),
     #[error("verification failed:\n{0}")]
     VerifyFailed(String),
     #[error("snapshot update failed: {0}")]

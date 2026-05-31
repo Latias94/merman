@@ -32,7 +32,7 @@ Last updated: 2026-05-31
 
 ## M2 - Default Config Overlay Parity
 
-- [ ] GDC-030 [owner=unassigned] [deps=GDC-020] [scope=crates/xtask/src/cmd/generate.rs,crates/merman-core/src/generated/default_config.json,docs/adr/0019-generated-default-config.md]
+- [x] GDC-030 [owner=codex] [deps=GDC-020] [scope=crates/xtask/src/cmd/generate.rs,crates/merman-core/src/generated/default_config.json,docs/adr/0019-generated-default-config.md]
   Goal: Make `verify-default-config` green by modeling Mermaid 11.15 `defaultConfig.ts` overlay
   semantics or by introducing an explicit generated override manifest.
   Validation: `cargo run -p xtask -- verify-default-config`; `cargo nextest run -p merman-core config`;
@@ -41,7 +41,10 @@ Last updated: 2026-05-31
   defaults are clearly separated.
   Evidence: `docs/workstreams/generated-default-config-parity/EVIDENCE_AND_GATES.md`
   Context: `docs/workstreams/generated-default-config-parity/CONTEXT.jsonl` plus ADR-0019.
-  Handoff: Split if the override model changes the generated artifact contract.
+  Handoff: DONE. Added `crates/xtask/default_config_overrides.json`, made `gen-default-config`
+  apply it by default, kept `--no-local-overrides` for schema-only diagnostics, and proved
+  `verify-default-config` green. The manifest separates upstream non-JSON/defaultConfig behavior,
+  local parity overrides, deferred/out-of-scope families, and unsupported Pie 11.15 config knobs.
 
 - [ ] GDC-040 [owner=unassigned] [deps=GDC-020] [scope=docs/adr/0024-dompurify-default-allowlists-and-generation.md,crates/xtask/src/cmd/generate.rs]
   Goal: Clarify DOMPurify source checkout policy for Mermaid 11.15 and decide whether the verifier

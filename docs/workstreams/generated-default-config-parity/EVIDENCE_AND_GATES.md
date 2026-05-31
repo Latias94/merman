@@ -75,6 +75,26 @@ Run `review-workstream` before accepting task or lane completion.
   - Result: passed.
   - Command: `git diff --check`
   - Result: passed.
+- 2026-05-31 GDC-030 implementation checks:
+  - Command: `cargo nextest run -p xtask default_config`
+  - Result: passed, 2 tests.
+  - Command: `cargo run -p xtask -- verify-default-config`
+  - Result: passed.
+  - Command: `cargo run -p xtask -- gen-default-config --no-local-overrides --out target/xtask/default_config.schema_only.json`
+  - Result: passed, proving schema-only diagnostics remain available.
+  - Command: `cargo nextest run -p xtask`
+  - Result: passed, 64 tests.
+  - Command: `cargo nextest run -p merman-core config`
+  - Result: passed, 11 tests.
+  - Command: `cargo nextest run -p merman-render`
+  - Result: passed, 248 tests.
+  - Command: `cargo fmt --check`
+  - Result: passed.
+  - Command: `git diff --check`
+  - Result: passed.
+  - Command: `cargo run -p xtask -- verify-generated`
+  - Result: failed only with the DOMPurify missing-checkout error for
+    `repo-ref/dompurify/dist/purify.cjs.js`; default-config verification is no longer a blocker.
 
 ## Evidence Anchors
 
@@ -83,3 +103,4 @@ Run `review-workstream` before accepting task or lane completion.
 - `docs/workstreams/generated-default-config-parity/MILESTONES.md`
 - `docs/adr/0019-generated-default-config.md`
 - `docs/adr/0024-dompurify-default-allowlists-and-generation.md`
+- `crates/xtask/default_config_overrides.json`

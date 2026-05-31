@@ -1,6 +1,8 @@
 use crate::XtaskError;
 use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_defaults, extract_frozen_string_array};
+use serde::Deserialize;
+use serde_json::Value as JsonValue;
 use serde_yaml::Value as YamlValue;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1395,6 +1397,126 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     Err(XtaskError::DebugSvgFailed(failures.join("\n")))
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum DefaultConfigOverrideOp {
+    Set,
+    Remove,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct DefaultConfigOverride {
+    op: DefaultConfigOverrideOp,
+    path: Vec<String>,
+    #[serde(default)]
+    value: Option<JsonValue>,
+    #[serde(default, rename = "reason")]
+    _reason: Option<String>,
+}
+
+fn default_config_overrides_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("default_config_overrides.json")
+}
+
+fn read_default_config_overrides(path: &Path) -> Result<Vec<DefaultConfigOverride>, XtaskError> {
+    let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
+        path: path.display().to_string(),
+        source,
+    })?;
+    Ok(serde_json::from_str(&text)?)
+}
+
+fn apply_default_config_overrides(
+    root: &mut JsonValue,
+    overrides: &[DefaultConfigOverride],
+) -> Result<(), XtaskError> {
+    for override_entry in overrides {
+        apply_default_config_override(root, override_entry)?;
+    }
+    Ok(())
+}
+
+fn apply_default_config_override(
+    root: &mut JsonValue,
+    override_entry: &DefaultConfigOverride,
+) -> Result<(), XtaskError> {
+    if override_entry.path.is_empty() {
+        return Err(XtaskError::DefaultConfigOverride(
+            "override path must not be empty".to_string(),
+        ));
+    }
+
+    match override_entry.op {
+        DefaultConfigOverrideOp::Set => {
+            let value = override_entry.value.clone().ok_or_else(|| {
+                XtaskError::DefaultConfigOverride(format!(
+                    "set override for `{}` is missing value",
+                    override_entry.path.join(".")
+                ))
+            })?;
+            set_json_path(root, &override_entry.path, value)
+        }
+        DefaultConfigOverrideOp::Remove => {
+            remove_json_path(root, &override_entry.path);
+            Ok(())
+        }
+    }
+}
+
+fn set_json_path(
+    root: &mut JsonValue,
+    path: &[String],
+    value: JsonValue,
+) -> Result<(), XtaskError> {
+    let mut cur = root;
+    for segment in &path[..path.len() - 1] {
+        if !cur.is_object() {
+            return Err(XtaskError::DefaultConfigOverride(format!(
+                "cannot set `{}` through non-object segment `{segment}`",
+                path.join(".")
+            )));
+        }
+        let obj = cur.as_object_mut().ok_or_else(|| {
+            XtaskError::DefaultConfigOverride(format!(
+                "cannot set `{}` through non-object segment `{segment}`",
+                path.join(".")
+            ))
+        })?;
+        cur = obj
+            .entry(segment.clone())
+            .or_insert_with(|| JsonValue::Object(Default::default()));
+    }
+
+    let leaf = path.last().expect("path is known non-empty");
+    let obj = cur.as_object_mut().ok_or_else(|| {
+        XtaskError::DefaultConfigOverride(format!(
+            "cannot set `{}` on a non-object parent",
+            path.join(".")
+        ))
+    })?;
+    obj.insert(leaf.clone(), value);
+    Ok(())
+}
+
+fn remove_json_path(root: &mut JsonValue, path: &[String]) {
+    let mut cur = root;
+    for segment in &path[..path.len() - 1] {
+        let Some(obj) = cur.as_object_mut() else {
+            return;
+        };
+        let Some(next) = obj.get_mut(segment) else {
+            return;
+        };
+        cur = next;
+    }
+
+    if let Some(obj) = cur.as_object_mut() {
+        if let Some(leaf) = path.last() {
+            obj.remove(leaf);
+        }
+    }
+}
+
 pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         return Err(XtaskError::Usage);
@@ -1402,6 +1524,8 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut schema_path: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
+    let mut overrides_path: Option<PathBuf> = None;
+    let mut apply_local_overrides = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -1413,6 +1537,14 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
             "--out" => {
                 i += 1;
                 out_path = args.get(i).map(PathBuf::from);
+            }
+            "--overrides" => {
+                i += 1;
+                overrides_path = args.get(i).map(PathBuf::from);
+                apply_local_overrides = true;
+            }
+            "--no-local-overrides" => {
+                apply_local_overrides = false;
             }
             _ => return Err(XtaskError::Usage),
         }
@@ -1436,11 +1568,16 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
     let schema_yaml: YamlValue = serde_yaml::from_str(&schema_text)?;
 
-    let Some(root_defaults) = extract_defaults(&schema_yaml, &schema_yaml) else {
+    let Some(mut root_defaults) = extract_defaults(&schema_yaml, &schema_yaml) else {
         return Err(XtaskError::InvalidRef(
             "schema produced no defaults (unexpected)".to_string(),
         ));
     };
+    if apply_local_overrides {
+        let overrides_path = overrides_path.unwrap_or_else(default_config_overrides_path);
+        let overrides = read_default_config_overrides(&overrides_path)?;
+        apply_default_config_overrides(&mut root_defaults, &overrides)?;
+    }
 
     let pretty = serde_json::to_string_pretty(&root_defaults)?;
     let out_dir = out_path.parent().unwrap_or_else(|| Path::new("."));
@@ -1941,4 +2078,73 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             Ok(svg)
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DefaultConfigOverride, DefaultConfigOverrideOp, apply_default_config_overrides};
+    use serde_json::json;
+
+    #[test]
+    fn default_config_overrides_set_and_remove_nested_paths() {
+        let mut root = json!({
+            "class": { "padding": 5 },
+            "flowchart": { "htmlLabels": null },
+            "pie": {
+                "textPosition": 0.75,
+                "donutHole": 0,
+                "legendPosition": "right"
+            },
+            "treeView": { "paddingX": 5 }
+        });
+        let overrides = vec![
+            DefaultConfigOverride {
+                op: DefaultConfigOverrideOp::Set,
+                path: vec!["class".to_string(), "padding".to_string()],
+                value: Some(json!(12)),
+                _reason: None,
+            },
+            DefaultConfigOverride {
+                op: DefaultConfigOverrideOp::Set,
+                path: vec!["flowchart".to_string(), "htmlLabels".to_string()],
+                value: Some(json!(true)),
+                _reason: None,
+            },
+            DefaultConfigOverride {
+                op: DefaultConfigOverrideOp::Remove,
+                path: vec!["treeView".to_string()],
+                value: None,
+                _reason: None,
+            },
+            DefaultConfigOverride {
+                op: DefaultConfigOverrideOp::Remove,
+                path: vec!["pie".to_string(), "donutHole".to_string()],
+                value: None,
+                _reason: None,
+            },
+        ];
+
+        apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
+
+        assert_eq!(root["class"]["padding"], json!(12));
+        assert_eq!(root["flowchart"]["htmlLabels"], json!(true));
+        assert!(root.get("treeView").is_none());
+        assert!(root["pie"].get("donutHole").is_none());
+        assert_eq!(root["pie"]["legendPosition"], json!("right"));
+    }
+
+    #[test]
+    fn default_config_set_override_creates_missing_objects() {
+        let mut root = json!({});
+        let overrides = [DefaultConfigOverride {
+            op: DefaultConfigOverrideOp::Set,
+            path: vec!["sankey".to_string(), "nodeColors".to_string()],
+            value: Some(json!({})),
+            _reason: None,
+        }];
+
+        apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
+
+        assert_eq!(root, json!({ "sankey": { "nodeColors": {} } }));
+    }
 }

@@ -54,6 +54,9 @@ Primary gates:
 - `cargo nextest run -p merman-render`
 - `cargo fmt --check`
 
+Status: complete. `verify-default-config` is green through an explicit override manifest applied by
+`gen-default-config`.
+
 ## M3 - DOMPurify Source Policy
 
 Exit criteria:
