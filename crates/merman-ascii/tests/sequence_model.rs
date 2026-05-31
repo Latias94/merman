@@ -378,6 +378,33 @@ fn sequence_golden_ascii_fixtures_match_upstream() {
 }
 
 #[test]
+fn sequence_autonumber_accepts_decimal_start_and_step() {
+    let rendered = render_sequence(
+        "sequenceDiagram\nparticipant A\nparticipant B\nautonumber 10.1 .01\nA->>B: First\nB-->>A: Second\nA->>B: Third",
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("sequence decimal autonumber should render");
+    let normalized = normalize_sequence_output(&rendered);
+
+    assert!(
+        normalized.contains("10.1. First"),
+        "expected decimal start in ASCII output:\n{normalized}"
+    );
+    assert!(
+        normalized.contains("10.11. Second"),
+        "expected rounded decimal step in ASCII output:\n{normalized}"
+    );
+    assert!(
+        normalized.contains("10.12. Third"),
+        "expected second rounded decimal step in ASCII output:\n{normalized}"
+    );
+    assert!(
+        !normalized.contains("10.110000"),
+        "expected decimal labels to avoid floating point artifacts:\n{normalized}"
+    );
+}
+
+#[test]
 fn sequence_notes_render_from_typed_model() {
     let rendered = render_sequence(
         "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Start\nNote right of A: right\nNote left of B: left\nNote over A,B: over both\nB-->>A: Done",

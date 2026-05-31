@@ -1,6 +1,6 @@
 # Mermaid 11.15 Baseline Upgrade - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -49,3 +49,11 @@ Exit criteria:
 - Fresh verification evidence is recorded.
 - Remaining work is either done or split into follow-on workstreams.
 - `WORKSTREAM.json` status is updated.
+
+Closeout result:
+
+- Closed on 2026-05-31 by M15-100.
+- Baseline metadata and local Mermaid CLI tooling now target Mermaid `11.15.0` for the implemented
+  diagram matrix.
+- Follow-ons are split by scope: deferred new diagram families, generated default-config overlay
+  parity, optional DOMPurify reference checkout repair, and npm audit remediation.

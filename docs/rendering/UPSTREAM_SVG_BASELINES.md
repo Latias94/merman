@@ -3,7 +3,11 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.12.3`.
+Baseline version: Mermaid `@11.15.0`.
+
+Historical fixture notes may still mention the baseline version that introduced a fixture or
+normalization rule. The current authoritative baseline is ADR-0001 plus
+`tools/upstreams/REPOS.lock.json`.
 
 ## Why This Exists
 
@@ -40,7 +44,7 @@ If we need tighter 1:1 parity coverage beyond ER, extend the golden strategy in 
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.12.3`.
+to force Mermaid `11.15.0`.
 
 Install:
 

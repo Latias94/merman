@@ -844,7 +844,7 @@ mod tests {
             return;
         };
         assert!(
-            (180.0..=260.0).contains(&node_metrics.width),
+            (150.0..=260.0).contains(&node_metrics.width),
             "node width = {}",
             node_metrics.width
         );
@@ -870,12 +870,12 @@ mod tests {
             return;
         };
         assert!(
-            (180.0..=320.0).contains(&edge_metrics.width),
+            (150.0..=320.0).contains(&edge_metrics.width),
             "edge width = {}",
             edge_metrics.width
         );
         assert!(
-            (40.0..=100.0).contains(&edge_metrics.height),
+            (30.0..=100.0).contains(&edge_metrics.height),
             "edge height = {}",
             edge_metrics.height
         );

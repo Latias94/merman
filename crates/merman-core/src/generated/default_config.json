@@ -174,7 +174,7 @@
     "useMaxWidth": true
   },
   "flowchart": {
-    "curve": "rounded",
+    "curve": "basis",
     "defaultRenderer": "dagre-wrapper",
     "diagramPadding": 8,
     "htmlLabels": true,

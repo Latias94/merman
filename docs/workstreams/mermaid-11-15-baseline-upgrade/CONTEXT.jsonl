@@ -67,3 +67,12 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/pegDetector.ts","reason":"Upstream Railroad PEG detector used to record out-of-scope status for this baseline."}
 {"file":"docs/alignment/STATUS.md","reason":"M15-090 support/defer/out-of-scope matrix for Mermaid 11.15 diagram-family scope."}
 {"file":"docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md","reason":"Alignment gate fix for stale Flowchart KaTeX fixture references found while verifying M15-090."}
+{"file":"tools/mermaid-cli/package.json","reason":"M15-100 local upstream SVG toolchain package pin for Mermaid CLI 11.15.0 and Mermaid 11.15.0 override."}
+{"file":"tools/mermaid-cli/package-lock.json","reason":"M15-100 resolved Mermaid CLI 11.15.0 dependency graph used for local CLI probes and future baseline generation."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/defaultConfig.ts","reason":"M15-100 default-config closeout check; upstream runtime defaults overlay schema defaults and explain schema-only generator drift."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"M15-100 default-config closeout check and generated schema default comparison."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.ts","reason":"M15-100 flowchart default curve verification against upstream runtime behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/edges.js","reason":"M15-100 flowchart CLI probe source for basis and rounded path rendering behavior."}
+{"file":"docs/adr/0019-generated-default-config.md","reason":"M15-100 records schema/defaultConfig overlay limitation discovered during 11.15 baseline closeout."}
+{"file":"crates/merman-ascii/src/sequence/model.rs","reason":"M15-100 workspace closeout fix for sequence decimal autonumber in ASCII rendering."}
+{"file":"crates/merman-ascii/tests/sequence_model.rs","reason":"M15-100 regression coverage for sequence decimal autonumber in ASCII rendering."}

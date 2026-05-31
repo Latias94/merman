@@ -14,20 +14,23 @@ defaults should be stable across environments and CI.
 
 ## Decision
 
-- Treat the pinned upstream schema (`repo-ref/mermaid/.../schemas/config.schema.yaml`) as the source of truth
-  for configuration defaults.
+- Treat the pinned upstream schema (`repo-ref/mermaid/.../schemas/config.schema.yaml`) plus
+  Mermaid's `src/defaultConfig.ts` overlay behavior as the source of truth for configuration
+  defaults.
 - Add an `xtask` command to generate a JSON defaults artifact from the schema:
   - `cargo run -p xtask -- gen-default-config`
   - Output: `crates/merman-core/src/generated/default_config.json`
 - Add a verification command for CI/local checks:
   - `cargo run -p xtask -- verify-generated`
 - Commit the generated artifact to the repository and load it via `include_str!()` inside `merman-core`.
-- Keep a small explicit override layer only when Mermaid defaults are known to differ from schema defaults
-  (or when upstream introduces non-schema defaults), backed by parity tests.
+- Keep a small explicit override layer only when Mermaid defaults are known to differ from generated
+  schema defaults, when upstream introduces non-schema defaults, or while the generator has not yet
+  modeled `defaultConfig.ts` overlay semantics. Back each override with parity tests.
 
 ## Consequences
 
 - Default behavior is more likely to stay aligned with Mermaid across diagrams.
 - Diffs in default behavior become reviewable as changes to a single generated artifact.
-- The generator is intentionally simple and may not perfectly model all JSON-schema features; when a mismatch
-  is discovered, we either improve the generator or add a small override layer with a regression test.
+- The generator is intentionally simple and may not perfectly model all JSON-schema features or
+  Mermaid's JavaScript overlay defaults; when a mismatch is discovered, we either improve the
+  generator or add a small override layer with a regression test.

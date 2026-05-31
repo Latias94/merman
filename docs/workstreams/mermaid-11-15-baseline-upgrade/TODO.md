@@ -1,6 +1,6 @@
 # Mermaid 11.15 Baseline Upgrade - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## M0 - Scope And Evidence Freeze
@@ -31,12 +31,12 @@ Last updated: 2026-05-31
   Handoff: DONE. `datastore` and `data-store` parse as valid shape-data names; renderer emits a rect with `stroke-dasharray=width height`, distinct from `stored-data` / `bow-rect`.
 
 - [x] M15-031 [owner=codex] [deps=M15-030] [scope=crates/merman-core/src/generated/default_config.json,crates/merman-render/src/flowchart*,fixtures]
-  Goal: Address the 11.13 default curve change from `basis` to `rounded`.
+  Goal: Verify 11.13+ rounded curve behavior without regressing the actual 11.15 default curve.
   Validation: Targeted flowchart layout/SVG tests plus fixture churn review.
   Review: Treat this as a baseline-impacting behavior change, not a shape patch.
   Evidence: `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`; `cargo fmt --check`.
   Context: Workstream context plus Mermaid 11.13 changelog.
-  Handoff: DONE. Default `flowchart.curve` is `rounded`; rounded path generation uses quadratic corner arcs, while explicit `curve: basis` remains available.
+  Handoff: DONE_WITH_CORRECTION. Rounded path generation uses quadratic corner arcs when explicitly configured; M15-100 CLI probes corrected the default back to Mermaid 11.15's observed `basis` behavior.
 
 - [x] M15-040 [owner=codex] [deps=M15-010] [scope=crates/merman-render/src/architecture.rs,crates/merman-core/src/generated/default_config.json]
   Goal: Expose architecture `randomize`, `nodeSeparation`, `idealEdgeLengthMultiplier`, `edgeElasticity`, and `numIter` behavior.
@@ -88,10 +88,10 @@ Last updated: 2026-05-31
   Context: Workstream context plus upstream diagram directories.
   Handoff: DONE. `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, and `ishikawa(-beta)` are deferred to follow-on diagram-family lanes; `cynefin-beta` and `railroad-*` are documented as out of scope for this baseline unless later promoted.
 
-- [ ] M15-100 [owner=planner] [deps=M15-030,M15-040,M15-050,M15-060,M15-070,M15-080,M15-090] [scope=README.md,docs/adr,tools/upstreams,docs/alignment,fixtures]
+- [x] M15-100 [owner=planner] [deps=M15-030,M15-040,M15-050,M15-060,M15-070,M15-080,M15-090] [scope=README.md,docs/adr,tools/upstreams,docs/alignment,fixtures,crates/merman-ascii/src/sequence*,crates/merman-ascii/tests]
   Goal: Update baseline metadata and fixtures only after selected compatibility deltas are complete.
   Validation: Fresh targeted gates plus appropriate workspace/package gates.
   Review: Baseline docs must distinguish implemented, deferred, and out-of-scope support.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: Workstream context plus ADR-0001 and parity policy.
-  Handoff: Close or split follow-ons.
+  Handoff: DONE_WITH_CONCERNS. Baseline docs, upstream lock metadata, and the Mermaid CLI toolchain now target 11.15.0 for the implemented matrix. Closeout also fixed `merman-ascii` sequence decimal `autonumber` handling exposed by the workspace gate. Follow-on lanes remain needed for deferred diagram families, npm audit remediation, optional DOMPurify checkout repair, and generated-default overlay parity.

@@ -13,7 +13,7 @@ Mermaid, but headless, in Rust.
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
-`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.12.3`).
+`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.15.0`).
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
 changes that affect semantics, layout, or rendering are caught and reviewed.
 
@@ -500,10 +500,12 @@ gantt
 
 ## Parity and coverage
 
-- Baseline: Mermaid `@11.12.3`.
+- Baseline: Mermaid `@11.15.0`.
 - Alignment is enforced via upstream SVG DOM baselines plus semantic/layout golden snapshots.
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM, not byte-identical SVG text.
 - Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
+- Mermaid diagram families that are present upstream but not implemented here are listed in
+  [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 - Current coverage and gates: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](https://github.com/Latias94/merman/blob/main/docs/adr/0061-external-diagrams-zenuml.md).
 

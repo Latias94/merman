@@ -1,6 +1,7 @@
 # Alignment Status (Mermaid Parity Dashboard)
 
-Baseline: Mermaid `@11.12.3` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.15.0` for the implemented diagram matrix (see
+`tools/upstreams/REPOS.lock.json`). Unsupported upstream diagram families are scoped below.
 
 This file is a lightweight dashboard of what is currently implemented and what is covered by
 goldens/baselines. It is intentionally short and should stay true even as fixtures grow.
@@ -76,9 +77,9 @@ Notes:
 ## Mermaid 11.15 Diagram Family Scope
 
 The `mermaid-11-15-baseline-upgrade` workstream selected existing-diagram compatibility as the
-baseline bump path. The 11.15 baseline claim must therefore cover the diagram matrix above plus
-the implemented 11.13-11.15 deltas for those diagrams; it must not imply support for every upstream
-diagram directory.
+baseline bump path. The 11.15 baseline covers the diagram matrix above plus the implemented
+11.13-11.15 deltas for those diagrams; it does not imply support for every upstream diagram
+directory.
 
 | Upstream header or id | Upstream source | Local 11.15 status | Decision |
 |---|---|---|---|

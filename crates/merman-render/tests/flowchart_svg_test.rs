@@ -400,7 +400,7 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
 }
 
 #[test]
-fn flowchart_default_curve_renders_rounded_edges_while_basis_remains_available() {
+fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available() {
     fn render(text: &str) -> String {
         let engine = Engine::new();
         let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -439,20 +439,20 @@ fn flowchart_default_curve_renders_rounded_edges_while_basis_remains_available()
     }
 
     let diagram = "flowchart LR\nA --> B\nA --> C\n";
-    let rounded_svg = render(diagram);
-    let rounded_d = edge_path_d(&rounded_svg, "L_A_B_0");
-    assert!(
-        rounded_d.contains('Q') && !rounded_d.contains('C'),
-        "expected default flowchart curve to be rounded, not basis: {rounded_d}"
-    );
-
-    let basis_svg = render(&format!(
-        "%%{{init: {{\"flowchart\": {{\"curve\": \"basis\"}}}}}}%%\n{diagram}"
-    ));
+    let basis_svg = render(diagram);
     let basis_d = edge_path_d(&basis_svg, "L_A_B_0");
     assert!(
         basis_d.contains('C'),
-        "expected explicit flowchart.curve=basis to preserve smooth curve output: {basis_d}"
+        "expected default flowchart curve to preserve smooth basis output in Mermaid 11.15: {basis_d}"
+    );
+
+    let rounded_svg = render(&format!(
+        "%%{{init: {{\"flowchart\": {{\"curve\": \"rounded\"}}}}}}%%\n{diagram}"
+    ));
+    let rounded_d = edge_path_d(&rounded_svg, "L_A_B_0");
+    assert!(
+        rounded_d.contains('Q') && !rounded_d.contains('C'),
+        "expected explicit flowchart.curve=rounded to render rounded corners: {rounded_d}"
     );
 }
 

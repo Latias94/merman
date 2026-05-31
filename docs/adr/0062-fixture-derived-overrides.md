@@ -62,7 +62,7 @@ that is currently impractical to reproduce algorithmically in a pure Rust pipeli
 
 ### Governance rules
 
-- Overrides must be **version-pinned** to the upstream baseline (`11.12.3` today).
+- Overrides must be **version-pinned** to the upstream baseline (`11.15.0` today).
 - Overrides must be **traceable** to an upstream fixture and reproducible from baselines.
 - Prefer **general fixes** first (layout/text algorithms); add overrides only when the remaining delta is
   primarily browser/font lattice behavior.
@@ -88,4 +88,3 @@ Overrides are acceptable, but they should not grow without control. We treat the
 - Some parity improvements will land as “generated override deltas” before they can be fully generalized.
 - The project gains a measurable convergence metric: override footprint should trend down over time as
   algorithms converge.
-

@@ -1,6 +1,6 @@
 # Mermaid 11.15 Baseline Upgrade - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Smallest Current Repro
@@ -78,10 +78,10 @@ before marking a task, Codex goal, or lane complete.
   - `cargo nextest run -p merman-core flowchart` passed: 94 tests.
   - `cargo nextest run -p merman-render flowchart` passed: 73 tests.
   - `cargo fmt --check` passed.
-- 2026-05-31: M15-031 flowchart default curve change complete.
-  - Upstream check: Mermaid 11.13 changes default flowchart curve from `basis` to `rounded`, while explicit `flowchart.curve: "basis"` restores the previous smooth curve.
-  - `cargo nextest run -p merman-render flowchart_default_curve_renders_rounded_edges_while_basis_remains_available` failed before implementation because the default edge path still used `curveBasis` `C` commands.
-  - `cargo nextest run -p merman-render flowchart_default_curve_renders_rounded_edges_while_basis_remains_available` passed: 1 test.
+- 2026-05-31: M15-031 flowchart rounded curve support complete, with a closeout correction in M15-100.
+  - Initial changelog-based interpretation treated Mermaid 11.13 as a default flowchart curve change from `basis` to `rounded`.
+  - M15-100 CLI probes against Mermaid 11.15.0 superseded that assumption: non-ELK default output still matches explicit `basis` cubic paths, while explicit `flowchart.curve: "rounded"` renders quadratic corner paths.
+  - The original `flowchart_default_curve_renders_rounded_edges_while_basis_remains_available` test proved rounded path generation during the slice, then M15-100 replaced it with `flowchart_default_curve_renders_basis_edges_while_rounded_remains_available`.
   - `cargo nextest run -p merman-render flowchart` passed: 74 tests.
   - `cargo nextest run -p merman-core flowchart` passed: 94 tests.
   - `cargo nextest run -p merman-core config` passed: 9 tests.
@@ -165,3 +165,25 @@ before marking a task, Codex goal, or lane complete.
   - `cargo run -p xtask -- check-alignment` passed after the reference fix.
   - `cargo fmt --check` passed.
   - `git diff --check` passed.
+- 2026-05-31: M15-100 baseline metadata and closeout complete.
+  - `tools/mermaid-cli/package.json` and `package-lock.json` now pin `@mermaid-js/mermaid-cli@11.15.0` with Mermaid overridden to `11.15.0`.
+  - `npm ls @mermaid-js/mermaid-cli mermaid` in `tools/mermaid-cli` passed and resolved `@mermaid-js/mermaid-cli@11.15.0` plus `mermaid@11.15.0 overridden`.
+  - `node node_modules/@mermaid-js/mermaid-cli/src/cli.js --version` passed and printed `11.15.0`.
+  - `node -e "console.log(require('./node_modules/mermaid/package.json').version)"` passed and printed `11.15.0`.
+  - Mermaid 11.15.0 CLI probes for `flowchart LR` showed default and explicit `curve: "basis"` share the same cubic `C` edge path, while explicit `curve: "rounded"` emits a quadratic `Q` path. Local `default_config.json` was corrected back to `flowchart.curve="basis"`.
+  - Baseline metadata was updated in README, ADR-0001, alignment docs, rendering baseline docs, `tools/upstreams/REPOS.lock.json`, and workstream closeout docs. The 11.15 support claim remains limited to the implemented diagram matrix and the scope table in `docs/alignment/STATUS.md`.
+  - First `cargo nextest run --workspace` exposed a real compile failure in `merman-ascii`: sequence `autonumber.start`/`step` are now `f64`, while the ASCII renderer still stored `AutonumberState` as integers.
+  - `merman-ascii` now stores sequence autonumber state as `f64`, rounds each increment to hundredths, and has regression coverage for decimal start/step labels.
+  - `cargo nextest run -p merman-ascii sequence_autonumber_accepts_decimal_start_and_step` passed: 1 test.
+  - `cargo nextest run -p merman-ascii` passed: 183 tests.
+  - `cargo nextest run -p merman-core` passed: 536 tests.
+  - `cargo nextest run -p merman-render` passed: 248 tests.
+  - `cargo run -p xtask -- check-alignment` passed.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only the LF-to-CRLF warning for `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+  - A default Windows `cargo nextest run --workspace` retry failed in the linker with MSVC PDB limit errors (`LNK1318` / `LNK1140`), not with Rust source errors.
+  - Directly passing `/PDB:NONE` as a linker arg was not portable here (`LNK1201`), so the final workspace gate used Cargo profile environment instead.
+  - `$env:CARGO_PROFILE_TEST_DEBUG='0'; $env:CARGO_BUILD_JOBS='2'; cargo nextest run --workspace` passed: 1377 tests, 3 skipped.
+  - `cargo run -p xtask -- verify-generated` failed before default-config comparison because `repo-ref/dompurify/dist/purify.cjs.js` is missing.
+  - `cargo run -p xtask -- gen-default-config --schema repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml --out target/xtask/default_config.m15.actual.json` passed, but `git diff --no-index --exit-code crates/merman-core/src/generated/default_config.json target/xtask/default_config.m15.actual.json` failed. The diff is expected until the generator models Mermaid `src/defaultConfig.ts` overlay semantics and unsupported-family defaults are handled deliberately.
+  - `npm audit --audit-level=critical --omit=optional` failed for the local Mermaid CLI dev toolchain with 7 vulnerabilities: 4 moderate, 2 high, and 1 critical. No audit fix was applied because that could change the upstream rendering toolchain outside this baseline bump.

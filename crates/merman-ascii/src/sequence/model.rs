@@ -563,24 +563,37 @@ fn actor_lifecycle_message<'a>(
         })
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct AutonumberState {
-    next: Option<i64>,
-    step: i64,
+    next: Option<f64>,
+    step: f64,
 }
 
 impl AutonumberState {
     fn label(&mut self, text: &str) -> String {
         if let Some(next) = self.next {
+            let number = format_sequence_number(next);
             let label = if text.is_empty() {
-                next.to_string()
+                number
             } else {
-                format!("{next}. {text}")
+                format!("{number}. {text}")
             };
-            self.next = Some(next + self.step);
+            self.next = Some(round_sequence_number(next + self.step));
             return label;
         }
         text.to_string()
+    }
+}
+
+fn round_sequence_number(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn format_sequence_number(value: f64) -> String {
+    if value.is_finite() {
+        value.to_string()
+    } else {
+        String::new()
     }
 }
 
@@ -594,11 +607,11 @@ fn consume_autonumber(message: &CoreSequenceMessage, state: &mut AutonumberState
     }
 
     if autonumber.visible {
-        state.next = Some(autonumber.start.unwrap_or(1));
-        state.step = autonumber.step.unwrap_or(1);
+        state.next = Some(autonumber.start.unwrap_or(1.0));
+        state.step = autonumber.step.unwrap_or(1.0);
     } else {
         state.next = None;
-        state.step = 1;
+        state.step = 1.0;
     }
     true
 }

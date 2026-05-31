@@ -1,12 +1,12 @@
 # Mermaid 11.15 Baseline Upgrade
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Why This Lane Exists
 
-`merman` currently documents and tests against `mermaid@11.12.3`, while the local upstream
-Mermaid checkout is at `packages/mermaid@11.15.0`. Moving the baseline forward changes parser
+At lane opening, `merman` documented and tested against `mermaid@11.12.3`, while the local upstream
+Mermaid checkout was at `packages/mermaid@11.15.0`. Moving the baseline forward changes parser
 semantics, renderer defaults, configuration surfaces, SVG ID behavior, and diagram family coverage.
 
 ## Relevant Authority
@@ -44,7 +44,7 @@ as out of scope.
 - Existing-diagram deltas from Mermaid `11.13.0` through `11.15.0`.
 - First priority:
   - sequence decimal `autonumber` start/increment values,
-  - flowchart `datastore` shape and default curve change,
+  - flowchart `datastore` shape and rounded curve behavior,
   - architecture FCoSE knobs and deterministic `randomize`,
   - sankey `nodeWidth`, `nodePadding`, `labelStyle`, and `nodeColors`,
   - xyChart `dataLabelColor` and `showDataLabelOutsideBar`,
@@ -74,7 +74,7 @@ later workstream promotes them with a parser/model/layout/render plan.
 
 | Assumption | Confidence | Evidence | Consequence if wrong |
 | --- | --- | --- | --- |
-| Current documented baseline is still `mermaid@11.12.3`. | High | `README.md`, ADR-0001, `REPOS.lock.json` | Baseline docs must be updated after compatibility work, not before. |
+| At lane opening, the documented baseline was still `mermaid@11.12.3`. | High | `README.md`, ADR-0001, `REPOS.lock.json` | Baseline docs must be updated after compatibility work, not before. |
 | The local upstream checkout contains Mermaid `11.15.0`. | High | `repo-ref/mermaid/packages/mermaid/package.json` | Re-check upstream source before fixture generation if the checkout moves. |
 | Existing-diagram deltas are safer first proof slices than new diagram families. | High | Current 23-diagram parity corpus in `docs/alignment/STATUS.md` | New diagram family work should be split if it dominates the lane. |
 
@@ -93,3 +93,16 @@ This lane can close when:
 - targeted and package-level gates have fresh evidence,
 - baseline docs and lock metadata accurately describe the shipped state,
 - and remaining work is split into follow-on lanes.
+
+## Closeout Result
+
+Closed on 2026-05-31 after M15-100. The documented baseline, upstream lock metadata, and local
+Mermaid CLI toolchain now target Mermaid `11.15.0` for the implemented diagram matrix. New diagram
+families remain explicitly deferred or out of scope in `docs/alignment/STATUS.md`.
+
+One early flowchart assumption was corrected during closeout: Mermaid 11.15 CLI output shows the
+non-ELK default flowchart curve still matches `basis`; explicit `flowchart.curve=rounded` remains
+supported and tested.
+
+The workspace gate passed on Windows with `CARGO_PROFILE_TEST_DEBUG=0` and low build concurrency,
+which avoids MSVC PDB limits in this repository's large test profile.

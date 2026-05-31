@@ -2,11 +2,11 @@
   "schema_version": 1,
   "slug": "mermaid-11-15-baseline-upgrade",
   "title": "Mermaid 11.15 Baseline Upgrade",
-  "status": "active",
+  "status": "closed",
   "created": "2026-05-31",
   "updated": "2026-05-31",
   "scope_kind": "execution",
-  "problem": "The repository documents Mermaid 11.12.3 parity while the requested target is Mermaid 11.15.0, whose release delta affects existing diagrams and diagram-family coverage.",
+  "problem": "At lane opening, the repository documented Mermaid 11.12.3 parity while the requested target was Mermaid 11.15.0, whose release delta affects existing diagrams and diagram-family coverage.",
   "authoritative_docs": [
     {
       "role": "design",
@@ -48,11 +48,9 @@
     "fixtures"
   ],
   "lane_slug": null,
-  "active_tasks": [
-    "M15-100"
-  ],
+  "active_tasks": [],
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue with existing-diagram compatibility slices. Split new diagram families into separate workstreams if accepted."
+    "default_action": "split_follow_on",
+    "notes": "Baseline upgrade lane is closed. Split deferred diagram families, generated default-config overlay support, DOMPurify checkout repair, and npm audit remediation into separate workstreams if accepted."
   }
 }

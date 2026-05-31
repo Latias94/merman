@@ -1,6 +1,6 @@
 # Mermaid 11.15 Baseline Upgrade - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-05-31
 
 ## Current State
@@ -11,9 +11,10 @@ without unnecessary `.0`, and renders decimal sequence numbers with two-decimal 
 M15-030 is complete: flowchart shape-data accepts `datastore` and `data-store`, sizes them like
 Mermaid's datastore `drawRect` path, and renders a top/bottom-border rect via
 `stroke-dasharray=width height` instead of using the existing `stored-data` / `bow-rect` geometry.
-M15-031 is complete: the generated default config now uses `flowchart.curve=rounded`, SVG edge
-rendering supports Mermaid's rounded quadratic-corner path, and explicit `curve: basis` still
-renders smooth cubic paths.
+M15-031 is complete with a closeout correction: SVG edge rendering supports Mermaid's rounded
+quadratic-corner path when `flowchart.curve=rounded` is explicit, but M15-100 CLI probes showed
+Mermaid 11.15's non-ELK default still matches `basis`; the local default config and SVG test were
+corrected back to `basis`.
 M15-040 is complete: Architecture now carries Mermaid 11.15 FCoSE defaults and wires
 `randomize`, `nodeSeparation`, `idealEdgeLengthMultiplier`, `edgeElasticity`, `numIter`, and
 deterministic `seed` through the local indexed FCoSE path. Default output remains deterministic;
@@ -40,16 +41,20 @@ M15-090 is complete: new Mermaid 11.13-11.15 diagram-family scope is explicit. `
 diagram-family lanes; `cynefin-beta` and `railroad-*` are out of scope for this baseline unless
 later promoted. `STATUS.md` now carries the support/defer/out-of-scope matrix, and a stale
 Flowchart KaTeX fixture reference set was corrected so `check-alignment` is green.
+M15-100 is complete with concerns: baseline metadata and the local Mermaid CLI toolchain now target
+Mermaid 11.15.0 for the implemented matrix, and a workspace-gate compile failure in
+`merman-ascii` sequence decimal `autonumber` handling was fixed.
 
-## Active Task
+## Completed Task
 
 - Task ID: M15-100
-- Owner: unassigned
-- Files: `README.md`, `docs/adr`, `tools/upstreams`, `docs/alignment`, `fixtures`
+- Owner: planner
+- Files: `README.md`, `docs/adr`, `tools/upstreams`, `docs/alignment`, `fixtures`,
+  `crates/merman-ascii/src/sequence*`, `crates/merman-ascii/tests`
 - Validation: Fresh targeted gates plus appropriate workspace/package gates
-- Status: READY
-- Review: Required before task acceptance
-- Evidence: To be recorded in `EVIDENCE_AND_GATES.md`
+- Status: DONE_WITH_CONCERNS
+- Review: Completed as part of closeout
+- Evidence: Recorded in `EVIDENCE_AND_GATES.md`
 
 ## Decisions Since Last Update
 
@@ -58,8 +63,8 @@ Flowchart KaTeX fixture reference set was corrected so `check-alignment` is gree
 - Sequence decimal `autonumber` is done and has fresh core/render/fmt evidence.
 - `datastore` is a new rectangular shape in Mermaid 11.15 and must not be mapped to
   `stored-data` / `bow-rect`.
-- The default flowchart curve baseline change was small in this repo: package gates passed without
-  broad fixture churn.
+- The earlier default-flowchart-curve changelog reading was superseded by Mermaid 11.15 CLI probes:
+  non-ELK default output still matches `basis`; explicit `curve: rounded` remains supported.
 - Architecture FCoSE remains deterministic by default (`randomize=false`, `seed=1`), but manatee's
   generic FCoSE API keeps cytoscape-fcose's library default of `randomize=true`.
 - Sankey follows the 11.15 default padding baseline (`nodePadding=12`, plus 15 when values are
@@ -88,11 +93,17 @@ Flowchart KaTeX fixture reference set was corrected so `check-alignment` is gree
 
 ## Blockers
 
-- None known for M15-100. Baseline metadata should be updated only if it preserves the documented
-  unsupported-family caveat.
+- `cargo run -p xtask -- verify-generated` is not a valid green closeout gate yet: the local
+  `repo-ref/dompurify` checkout is missing, and `gen-default-config` currently extracts schema
+  defaults without applying Mermaid's `defaultConfig.ts` overlay semantics.
+- `npm audit --audit-level=critical --omit=optional` still reports vulnerabilities in the local
+  Mermaid CLI dev toolchain. This was recorded but not auto-fixed because dependency remediation can
+  change the upstream rendering toolchain.
+- On this Windows host, the workspace gate needs `CARGO_PROFILE_TEST_DEBUG=0` and low build
+  concurrency to avoid MSVC PDB limits. With that environment, `cargo nextest run --workspace`
+  passed during closeout.
 
 ## Next Recommended Action
 
-- Execute M15-100. Update baseline metadata only after verifying that README, ADR-0001,
-  `REPOS.lock.json`, and alignment docs describe the implemented 11.15 scope and the deferred or
-  out-of-scope diagram families.
+- Split follow-on work only where needed: deferred diagram-family lanes, generated default-config
+  overlay support, DOMPurify reference checkout repair, and npm audit remediation.
