@@ -167,7 +167,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 r#"<foreignObject width="{}" height="{}">"#,
                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
                 r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
-                r#"max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div>"#,
+                r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
                 r#"</foreignObject></g>"#
             ),
             fmt_display(-metrics.width / 2.0),
@@ -175,6 +175,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             fmt_display(metrics.width),
             fmt_display(metrics.height),
             fmt_display(ctx.wrapping_width),
+            super::super::helpers::flowchart_node_label_span_class(label.label_type),
             label_html
         );
 

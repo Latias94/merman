@@ -9,18 +9,21 @@ This lane was split from M15C-060 after fresh Mermaid 11.15 evidence showed Flow
 convergence effort, not a one-fixture MathML baseline refresh. F115-020 and F115-030 landed the
 first convergence slice: Flowchart 11.15 defs/markers/scoped ids/`data-look`, first-order
 `outer-path` class surfaces, SVG-label row semantics, centered edge-label anchors, cluster id
-scoping, and root-first `htmlLabels` precedence. The targeted Flowchart Math stored fixture and the
-representative fresh probes pass. Full fresh Flowchart comparison is still red with 359 mismatches
-and one unsupported `flowchart-elk` local layout failure.
+scoping, and root-first edge/cluster `htmlLabels` fallback behavior. The latest F115-040/F115-050
+slice aligned `shapeData` markdown-label defaults, normal node root `htmlLabels` semantics,
+markdown node label classes, icon/image label spans, and classic hexagon's 11.15 6-point polygon
+model. The targeted fresh probes pass. Full fresh Flowchart comparison is still red with 143
+mismatches and one unsupported `flowchart-elk` local layout failure.
 
 ## Active Task
 
-- Task ID: F115-050
+- Task ID: F115-040/F115-050 overlap
 - Owner: codex
-- Files: `crates/merman-render/src/svg/parity/flowchart`
+- Files: `crates/merman-core/src/diagrams/flowchart`, `crates/merman-render/src/flowchart`,
+  `crates/merman-render/src/svg/parity/flowchart`
 - Validation: targeted fresh `compare-svg-xml --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart`
-  filters for HTML/`foreignObject` labels, raw-block markdown, config/directive styling, and
-  remaining special-shape cases; then `cargo nextest run -p merman-render flowchart`
+  filters for shape matrix fixtures, config/directive styling, image/icon labels, cluster labels,
+  and remaining special-shape cases; then `cargo nextest run -p merman-render flowchart`
 - Status: IN_PROGRESS
 - Review: Compare against fresh Mermaid 11.15 output before changing stored baselines. Keep stored
   Flowchart baseline refresh blocked until the fresh gate is green or skips are documented.
@@ -37,8 +40,12 @@ and one unsupported `flowchart-elk` local layout failure.
   skip, or split decision.
 - Mermaid 11.15 preserves bare backtick-wrapped pipe edge labels as plain SVG text instead of
   dropping them as an empty code span.
-- Mermaid 11.15 uses root-first `htmlLabels` precedence for Flowchart labels; `flowchart.htmlLabels`
-  is a deprecated fallback.
+- Mermaid 11.15 is asymmetric for Flowchart `htmlLabels`: normal node shapes read root
+  `htmlLabels` directly in `labelHelper`, while edge and cluster labels use
+  `getEffectiveHtmlLabels(...)` and still honor deprecated `flowchart.htmlLabels`.
+- Mermaid 11.15 `shapeData` labels default to markdown unless an explicit `labelType` is provided.
+- Classic hexagon is a 6-point polygon in Mermaid 11.15; RoughJS path output is only for
+  `look=handDrawn`.
 
 ## Blockers
 
@@ -47,7 +54,7 @@ and one unsupported `flowchart-elk` local layout failure.
 
 ## Next Recommended Action
 
-Continue F115-050/F115-040 by reducing the remaining 359 fresh mismatches. The next high-value
-targets are HTML/`foreignObject` label DOM surfaces, long SVG cluster title wrapping, directive/theme
-style deltas, and the residual special-shape cases. Keep `flowchart-elk` as a required F115-070
-policy decision before stored Flowchart baseline refresh.
+Continue F115-040/F115-050 by reducing the remaining 143 fresh mismatches. The next high-value
+target is the shape matrix bucket: newshapes/oldshapes/shape-alias fixtures account for most
+remaining failures, followed by polygon point-model deltas and config/theme cases. Keep
+`flowchart-elk` as a required F115-070 policy decision before stored Flowchart baseline refresh.

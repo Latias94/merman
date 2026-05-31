@@ -176,6 +176,14 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     out.push('>');
 }
 
+pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str {
+    if label_type == "markdown" {
+        "nodeLabel markdown-node-label"
+    } else {
+        "nodeLabel"
+    }
+}
+
 pub(super) fn timed_node_roughjs<T>(
     timing_enabled: bool,
     details: &mut FlowchartRenderDetails,

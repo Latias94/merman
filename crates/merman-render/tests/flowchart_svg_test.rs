@@ -134,6 +134,73 @@ fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
 }
 
 #[test]
+fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
+    let text =
+        "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains("<foreignObject "),
+        "expected node label to remain in the HTML label path: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="nodeLabel markdown-node-label""#),
+        "expected markdown node label class in HTML label path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classic_hexagon_renders_polygon_container() {
+    let text = "flowchart TB\nA{{\"`**Hex**`\"}}\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains(r#"<polygon "#) && svg.contains(r#"class="label-container""#),
+        "expected classic hexagon to render as a polygon label-container: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"<g class="basic label-container"><path "#),
+        "expected classic hexagon not to use the hand-drawn RoughJS path branch: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_unescape_double_backslashes() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();

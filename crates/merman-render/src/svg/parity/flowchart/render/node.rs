@@ -10,6 +10,7 @@ pub(in crate::svg::parity::flowchart) mod shapes;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
     pub shape: &'a str,
+    pub look: &'a str,
     pub layout_node: &'a crate::model::LayoutNode,
     pub node_classes: &'a [String],
     pub node_styles: &'a [String],
@@ -86,6 +87,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
         _ => node_classes,
     };
+    let look = flowchart_config_look(ctx.config);
 
     helpers::open_node_wrapper(
         out,
@@ -101,7 +103,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             y,
             tooltip_enabled,
             tooltip,
-            look: flowchart_config_look(ctx.config),
+            look,
         },
     );
 
@@ -140,6 +142,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     let common = FlowchartNodeRenderCommon {
         shape,
+        look,
         layout_node,
         node_classes,
         node_styles,

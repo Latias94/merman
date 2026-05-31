@@ -2,7 +2,13 @@ use crate::text::TextStyle;
 use indexmap::IndexMap;
 
 pub(crate) fn flowchart_effective_node_html_labels(effective_config: &serde_json::Value) -> bool {
-    flowchart_effective_html_labels(effective_config)
+    // Mermaid 11.15 node shapes use `evaluate(getConfig()?.htmlLabels)` in labelHelper, while
+    // edge and cluster labels use `getEffectiveHtmlLabels(...)` and still honor the deprecated
+    // `flowchart.htmlLabels` fallback.
+    effective_config
+        .get("htmlLabels")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true)
 }
 
 pub(crate) fn flowchart_effective_html_labels(effective_config: &serde_json::Value) -> bool {

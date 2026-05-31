@@ -217,13 +217,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         let _ = write!(
             out,
-            r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
             escape_xml_display(&compiled_styles.label_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
             fmt_display(metrics.width),
             fmt_display(metrics.height),
             escape_xml_display(&div_style),
+            super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,
             label_html
         );

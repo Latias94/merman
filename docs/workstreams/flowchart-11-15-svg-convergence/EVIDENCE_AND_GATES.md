@@ -117,6 +117,38 @@ git diff --check
   - First `cargo nextest run -p merman-render flowchart` attempt failed during compilation with a
     transient Windows/cache error: `crate palette required to be available in rlib format`.
   - Re-run `cargo nextest run -p merman-render flowchart`: passed, 74 tests.
+- 2026-06-01 F115-040/F115-050 shapeData label and hexagon slice:
+  - Aligned Mermaid 11.15 `shapeData` label semantics: `label` defaults to
+    `labelType=markdown`, while explicit `labelType: text|string|markdown` is honored.
+  - Aligned Flowchart node HTML-label semantics with Mermaid 11.15 `labelHelper`: normal node
+    labels read root `htmlLabels` directly and default to HTML labels when root is unset, while
+    edge and cluster labels still use `getEffectiveHtmlLabels(...)` and honor deprecated
+    `flowchart.htmlLabels`.
+  - Added `markdown-node-label` class coverage to Flowchart node HTML label spans, including
+    icon/image label renderers.
+  - Aligned classic hexagon rendering with Mermaid 11.15's 6-point polygon container and restricted
+    the RoughJS path branch to `look=handDrawn`.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `stress_flowchart_label_br_list_063`,
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset1_001`,
+    `stress_flowchart_subgraph_markdown_titles_013`, and
+    `upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005`,
+    all using `--upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`.
+  - `cargo nextest run -p merman-core parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_overridden parse_diagram_flowchart_node_data_shape_data_accepts_datastore parse_diagram_flowchart_node_data_multiple_properties_same_line`:
+    passed, 3 tests.
+  - `cargo nextest run -p merman-render flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false flowchart_classic_hexagon_renders_polygon_container`:
+    passed, 2 tests.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 143 canonical XML mismatches plus the existing `flowchart-elk` local layout
+    failure. This is a reduction from 359 fresh mismatches after F115-020/F115-030.
+  - Remaining mismatch classification is now dominated by shape matrix fixtures (heuristic name
+    count: 94), polygon point-model deltas (18), config/theme fixtures (17), and smaller
+    image/icon, cluster, and edge groups. The previous dominant missing markdown node-label class
+    category is reduced to one fresh mismatch.
+  - `cargo nextest run -p merman-core flowchart`: passed, 95 tests.
+  - `cargo nextest run -p merman-render flowchart`: passed, 76 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

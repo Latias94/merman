@@ -208,6 +208,15 @@ fn yaml_to_f64(v: &serde_yaml::Value) -> Option<f64> {
     }
 }
 
+fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
+    match label_type {
+        Some("text") => TitleKind::Text,
+        Some("string") => TitleKind::String,
+        Some("markdown") => TitleKind::Markdown,
+        _ => TitleKind::Markdown,
+    }
+}
+
 pub(super) fn apply_shape_data_to_node(
     node: &mut Node,
     yaml_body: &str,
@@ -220,6 +229,7 @@ pub(super) fn apply_shape_data_to_node(
     };
 
     let mut provided_label: Option<String> = None;
+    let mut provided_label_type: Option<TitleKind> = None;
     for (k, v) in map {
         let Some(key) = k.as_str() else { continue };
         match key {
@@ -239,8 +249,10 @@ pub(super) fn apply_shape_data_to_node(
                 if let Some(label) = yaml_to_string(v) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
-                    node.label_type = TitleKind::Text;
                 }
+            }
+            "labelType" => {
+                provided_label_type = Some(sanitize_shape_label_type(yaml_to_string(v).as_deref()));
             }
             "icon" => {
                 if let Some(icon) = yaml_to_string(v) {
@@ -279,6 +291,9 @@ pub(super) fn apply_shape_data_to_node(
             }
             _ => {}
         }
+    }
+    if provided_label.is_some() {
+        node.label_type = provided_label_type.unwrap_or(TitleKind::Markdown);
     }
 
     // Mermaid clears the default label when an icon or img is set without an explicit label.

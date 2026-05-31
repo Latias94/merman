@@ -725,8 +725,9 @@ fn layout_flowchart_v2_with_model(
     // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
     // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
     let cluster_title_wrapping_width = 200.0;
-    // Mermaid 11.15 `getEffectiveHtmlLabels(...)` gives the root `htmlLabels` toggle precedence
-    // and treats `flowchart.htmlLabels` as a deprecated fallback for all Flowchart label surfaces.
+    // Mermaid 11.15 has asymmetric Flowchart html-label semantics:
+    // node shapes use root `htmlLabels` directly, while edge and cluster labels use
+    // `getEffectiveHtmlLabels(...)` and still honor deprecated `flowchart.htmlLabels`.
     let node_html_labels = flowchart_effective_node_html_labels(effective_config_value);
     let flowchart_html_labels = flowchart_effective_html_labels(effective_config_value);
     let edge_html_labels = flowchart_html_labels;
