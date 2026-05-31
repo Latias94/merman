@@ -18,8 +18,10 @@ bolt/lightning-bolt, and crossed-circle/summary. The latest theme-gradient slice
 `dark`, `forest`, and `neutral` themes. The latest node-label slice added `noteLabel`, wrapped SVG
 markdown node labels when `htmlLabels=false`, and preserved hourglass/collate parsed label type
 after clearing displayed labels. The latest stacked-rectangle/procs slice aligned Mermaid 11.15
-`multiRect.ts` classic merged-path grouping. The targeted fresh probes pass. Full fresh Flowchart
-comparison is still red with 15 mismatches and one unsupported `flowchart-elk` local layout failure.
+`multiRect.ts` classic merged-path grouping. The latest HTML label slice restored Mermaid 11.15
+single-image paragraph wrappers and trimmed shapeData markdown block trailing newlines. The targeted
+fresh probes pass. Full fresh Flowchart comparison is still red with 8 mismatches and one
+unsupported `flowchart-elk` local layout failure.
 
 ## Active Task
 
@@ -62,7 +64,7 @@ comparison is still red with 15 mismatches and one unsupported `flowchart-elk` l
 
 ## Next Recommended Action
 
-Continue F115-050/F115-060 by reducing the remaining 15 fresh mismatches. The next high-value
-targets are image/icon HTML labels, cluster/subgraph label structure, edge label placement, flow
-node data, and SVG-like escaped tag handling. Keep `flowchart-elk` as a required F115-070 policy
-decision before stored Flowchart baseline refresh.
+Continue F115-060/F115-070 by reducing the remaining 8 fresh mismatches. The next high-value
+targets are cluster/subgraph label structure, edge label placement, SVG-like escaped tag handling,
+and the docs code-flow fixture. Keep `flowchart-elk` as a required F115-070 policy decision before
+stored Flowchart baseline refresh.

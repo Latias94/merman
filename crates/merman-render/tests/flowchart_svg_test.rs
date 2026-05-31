@@ -406,6 +406,75 @@ fn flowchart_html_labels_unescape_double_backslashes() {
 }
 
 #[test]
+fn flowchart_html_single_image_label_uses_paragraph_wrapper() {
+    let text = r#"flowchart TB
+B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="nodeLabel"><p><img "#),
+        "expected Mermaid 11.15 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_shape_data_multiline_markdown_trims_trailing_block_newline() {
+    let text = r#"flowchart TB
+A@{
+  label: |
+    This is a
+    multiline string
+}
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert_eq!(
+        svg.matches("<br").count(),
+        1,
+        "expected Mermaid 11.15 shapeData block labels to ignore the YAML trailing newline: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"\n  First\n      Second\n  \"]\n";
     let engine = Engine::new();

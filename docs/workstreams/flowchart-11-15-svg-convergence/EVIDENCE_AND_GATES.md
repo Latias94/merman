@@ -9,7 +9,7 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3
 ```
 
-This currently fails against the fresh Mermaid 11.15 Flowchart target with 15 DOM mismatches plus
+This currently fails against the fresh Mermaid 11.15 Flowchart target with 8 DOM mismatches plus
 one unsupported `flowchart-elk` local layout failure.
 
 ## Gate Set
@@ -279,6 +279,28 @@ git diff --check
     failed with 15 canonical XML mismatches plus the existing `flowchart-elk` local layout
     failure. This is a reduction from 18 fresh mismatches before the slice.
   - `cargo nextest run -p merman-render flowchart`: passed, 82 tests.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+- 2026-06-01 F115-050 HTML image-label and shapeData multiline-label slice:
+  - Aligned Mermaid 11.15 non-markdown HTML image labels with `nonMarkdownToHTML(...)`: a single
+    `<img>` label still receives the fixed-width Flowchart image style but remains wrapped in the
+    upstream `<p>...</p>` paragraph.
+  - Aligned shapeData block scalar markdown labels by ignoring the YAML trailing newline before
+    converting markdown to HTML, removing the extra local `<br/>` row.
+  - Targeted fresh `compare-svg-xml` filters passed for
+    `upstream_cypress_flowchart_v2_spec_4023_should_render_html_labels_with_images_and_or_text_correctly_042`,
+    `upstream_cypress_flowchart_v2_spec_4439_should_render_the_graph_even_if_some_images_are_missing_043`,
+    `upstream_flowchart_v2_html_labels_with_images_and_text_spec`,
+    `upstream_flowchart_v2_missing_images_should_not_crash_spec`, `upstream_node_data_minimal`,
+    `upstream_pkgtests_flow_node_data_spec_020`, and
+    `upstream_flow_node_data_multiline_strings_spec`, all using
+    `--upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`.
+  - `cargo nextest run -p merman-render flowchart_html_single_image_label_uses_paragraph_wrapper flowchart_shape_data_multiline_markdown_trims_trailing_block_newline`:
+    passed, 2 tests.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3`:
+    failed with 8 canonical XML mismatches plus the existing `flowchart-elk` local layout failure.
+    This is a reduction from 15 fresh mismatches before the slice.
+  - `cargo nextest run -p merman-render flowchart`: passed, 84 tests.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
 

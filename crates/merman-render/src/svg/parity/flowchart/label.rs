@@ -239,6 +239,16 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         t[end + 1..].trim().is_empty()
     }
 
+    fn trim_markdown_trailing_newlines(
+        input: std::borrow::Cow<'_, str>,
+    ) -> std::borrow::Cow<'_, str> {
+        if input.ends_with('\n') {
+            std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
+        } else {
+            input
+        }
+    }
+
     let has_literal_backticks = label_type != "markdown" && label.contains('`');
     let looks_like_markdown = label_type != "markdown" && !has_literal_backticks && {
         // Mermaid flowchart-v2 treats `**...**` as Markdown strong inside HTML labels even when the
@@ -456,6 +466,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             } else {
                 decoded
             };
+            let decoded = trim_markdown_trailing_newlines(decoded);
             let markdown_auto_wrap = config
                 .as_value()
                 .get("markdownAutoWrap")
@@ -481,6 +492,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             } else {
                 decoded
             };
+            let decoded = trim_markdown_trailing_newlines(decoded);
             let markdown_auto_wrap = config
                 .as_value()
                 .get("markdownAutoWrap")
@@ -547,7 +559,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             };
             let fixed_img_width = is_single_img_label(&label);
             let label = normalize_flowchart_img_tags(&label, fixed_img_width);
-            let wrapped = if fixed_img_width || !wants_p {
+            let wrapped = if !wants_p {
                 label
             } else {
                 format!("<p>{}</p>", label)
