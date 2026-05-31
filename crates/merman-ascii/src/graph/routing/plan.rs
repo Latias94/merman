@@ -31,6 +31,120 @@ pub(super) struct PlannedRouteLabel {
     pub(super) text: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EdgeRouteRequest<'a> {
+    pub(super) graph_layout: &'a GraphLayout,
+    pub(super) edges: &'a [AsciiGraphEdge],
+    pub(super) from: &'a NodeLayout,
+    pub(super) to: &'a NodeLayout,
+    pub(super) parallel_index: usize,
+    pub(super) edge: &'a AsciiGraphEdge,
+    pub(super) direction: GraphDirection,
+    pub(super) charset: &'a GraphCharset,
+}
+
+pub(super) fn plan_edge_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
+    match request.direction.canonical() {
+        GraphDirection::LeftRight => plan_left_right_route(request),
+        GraphDirection::TopDown => {
+            plan_top_down_route(request.from, request.to, request.edge, request.charset)
+        }
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    }
+}
+
+fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
+    let graph_layout = request.graph_layout;
+    let from = request.from;
+    let to = request.to;
+    let edge = request.edge;
+    let charset = request.charset;
+
+    if from.id == to.id {
+        return plan_left_right_self_loop_route(
+            &graph_layout.nodes,
+            request.edges,
+            from,
+            edge,
+            charset,
+        );
+    }
+
+    if from.center_y() == to.center_y() && from.x < to.x && request.parallel_index > 0 {
+        return plan_left_right_bottom_lane_route(from, to, edge, charset);
+    }
+
+    if from.center_y() == to.center_y() && from.x > to.x {
+        if has_self_loop(request.edges, &to.id) {
+            return plan_left_right_reverse_over_self_loop_route(
+                &graph_layout.nodes,
+                from,
+                to,
+                edge,
+                charset,
+            );
+        }
+        return plan_left_right_bottom_lane_route(from, to, edge, charset);
+    }
+
+    if from.center_y() == to.center_y() && from.x < to.x {
+        if let Some(plan) =
+            plan_left_right_direct_route(&graph_layout.nodes, from, to, edge, charset)
+        {
+            return Some(plan);
+        }
+    }
+
+    if let Some(plan) = plan_left_right_grid_path_route(graph_layout, from, to, edge, charset) {
+        return Some(plan);
+    }
+
+    if from.center_y() < to.center_y() && to.x > from.x {
+        return plan_left_right_down_then_right_route(
+            &graph_layout.nodes,
+            request.edges,
+            from,
+            to,
+            edge,
+            charset,
+        );
+    }
+
+    if from.center_y() < to.center_y() && to.x == from.x {
+        return plan_left_right_down_route(from, to, edge, charset);
+    }
+
+    if from.center_y() > to.center_y() && to.x > from.x {
+        return plan_left_right_right_then_up_route(
+            &graph_layout.nodes,
+            request.edges,
+            from,
+            to,
+            edge,
+            charset,
+        );
+    }
+
+    None
+}
+
+fn plan_top_down_route(
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+) -> Option<RoutePlan> {
+    if from.center_y() > to.center_y() {
+        return plan_top_down_back_route(from, to, edge, charset);
+    }
+
+    if from.center_x() != to.center_x() {
+        return plan_top_down_bent_route(from, to, edge, charset);
+    }
+
+    plan_top_down_direct_route(from, to, edge, charset)
+}
+
 pub(super) fn plan_left_right_direct_route(
     layouts: &[NodeLayout],
     from: &NodeLayout,
@@ -982,6 +1096,12 @@ fn has_same_row_reverse_edge_into(
     })
 }
 
+fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {
+    edges
+        .iter()
+        .any(|edge| edge.from == node_id && edge.to == node_id)
+}
+
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
@@ -1044,6 +1164,56 @@ mod tests {
     use crate::graph::model::{
         AsciiGraph, GraphDirection, GraphEdgeStroke, GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
     };
+
+    #[test]
+    fn edge_route_selects_left_right_parallel_bottom_lane() {
+        let options = AsciiRenderOptions::ascii();
+        let layout = left_right_layout(&[("a", "b"), ("a", "b")], &options);
+        let from = layout_node(&layout, "a");
+        let to = layout_node(&layout, "b");
+        let edge = edge(Some("parallel"), GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&options);
+
+        let selected = plan_edge_route(EdgeRouteRequest {
+            graph_layout: &layout,
+            edges: &[],
+            from,
+            to,
+            parallel_index: 1,
+            edge: &edge,
+            direction: GraphDirection::LeftRight,
+            charset: &charset,
+        })
+        .unwrap();
+        let expected = plan_left_right_bottom_lane_route(from, to, &edge, &charset).unwrap();
+
+        assert_eq!(selected, expected);
+    }
+
+    #[test]
+    fn edge_route_selects_top_down_back_route() {
+        let options = AsciiRenderOptions::ascii();
+        let layout = left_right_layout(&[("a", "b")], &options);
+        let from = node("a", 0, 6, 3, 3);
+        let to = node("b", 0, 0, 3, 3);
+        let edge = edge(Some("back"), GraphEdgeArrow::Point);
+        let charset = GraphCharset::for_options(&options);
+
+        let selected = plan_edge_route(EdgeRouteRequest {
+            graph_layout: &layout,
+            edges: &[],
+            from: &from,
+            to: &to,
+            parallel_index: 0,
+            edge: &edge,
+            direction: GraphDirection::TopDown,
+            charset: &charset,
+        })
+        .unwrap();
+        let expected = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
+
+        assert_eq!(selected, expected);
+    }
 
     #[test]
     fn left_right_direct_route_plans_ascii_line_arrow_and_label_without_connector() {

@@ -14,13 +14,8 @@ pub(super) use cell::RouteCells;
 use cell::{set_edge_arrow, set_edge_line, set_route_cell};
 pub(super) use label::{EdgeLabel, draw_routed_label};
 use plan::{
-    PlannedRouteCellKind, RoutePlan, left_right_back_edge_bottom_y,
-    plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
-    plan_left_right_down_then_right_route, plan_left_right_grid_path_route,
-    plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
-    plan_left_right_self_loop_route, plan_top_down_back_route, plan_top_down_bent_route,
-    plan_top_down_direct_route, self_loop_bottom_y_for_edges, self_loop_right_x,
-    top_down_back_edge_lane_x,
+    EdgeRouteRequest, PlannedRouteCellKind, RoutePlan, left_right_back_edge_bottom_y,
+    plan_edge_route, self_loop_bottom_y_for_edges, self_loop_right_x, top_down_back_edge_lane_x,
 };
 
 pub(super) struct RouteDrawing<'a> {
@@ -41,12 +36,6 @@ impl<'a> RouteDrawing<'a> {
             labels,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct EdgeLayouts<'a> {
-    from: &'a NodeLayout,
-    to: &'a NodeLayout,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -139,18 +128,17 @@ pub(super) fn draw_edge(
     let before =
         (edge.style.line.is_some() || edge.style.arrow.is_some()).then(|| drawing.canvas.clone());
 
-    match direction.canonical() {
-        GraphDirection::LeftRight => draw_left_right_edge(
-            drawing,
-            graph_layout,
-            edges,
-            EdgeLayouts { from, to },
-            context,
-            edge,
-            charset,
-        ),
-        GraphDirection::TopDown => draw_top_down_edge(drawing, from, to, edge, charset),
-        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    if let Some(plan) = plan_edge_route(EdgeRouteRequest {
+        graph_layout,
+        edges,
+        from,
+        to,
+        parallel_index: context.parallel_index,
+        edge,
+        direction,
+        charset,
+    }) {
+        paint_route_plan(drawing, &plan);
     }
 
     if let Some(before) = &before {
@@ -161,109 +149,6 @@ pub(super) fn draw_edge(
             label.color = Some(color);
         }
     }
-}
-
-fn draw_left_right_edge(
-    drawing: &mut RouteDrawing<'_>,
-    graph_layout: &GraphLayout,
-    edges: &[AsciiGraphEdge],
-    endpoints: EdgeLayouts<'_>,
-    context: EdgeContext,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    let from = endpoints.from;
-    let to = endpoints.to;
-
-    if from.id == to.id {
-        if let Some(plan) =
-            plan_left_right_self_loop_route(&graph_layout.nodes, edges, from, edge, charset)
-        {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_y() == to.center_y() && from.x < to.x && context.parallel_index > 0 {
-        if let Some(plan) = plan_left_right_bottom_lane_route(from, to, edge, charset) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_y() == to.center_y() && from.x > to.x {
-        if has_self_loop(edges, &to.id) {
-            if let Some(plan) = plan_left_right_reverse_over_self_loop_route(
-                &graph_layout.nodes,
-                from,
-                to,
-                edge,
-                charset,
-            ) {
-                paint_route_plan(drawing, &plan);
-            }
-        } else if let Some(plan) = plan_left_right_bottom_lane_route(from, to, edge, charset) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_y() == to.center_y() && from.x < to.x {
-        if let Some(plan) =
-            plan_left_right_direct_route(&graph_layout.nodes, from, to, edge, charset)
-        {
-            paint_route_plan(drawing, &plan);
-            return;
-        }
-    }
-
-    if draw_left_right_grid_path_edge(drawing, graph_layout, from, to, edge, charset) {
-        return;
-    }
-
-    if from.center_y() < to.center_y() && to.x > from.x {
-        if let Some(plan) = plan_left_right_down_then_right_route(
-            &graph_layout.nodes,
-            edges,
-            from,
-            to,
-            edge,
-            charset,
-        ) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_y() < to.center_y() && to.x == from.x {
-        if let Some(plan) = plan_left_right_down_route(from, to, edge, charset) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_y() > to.center_y() && to.x > from.x {
-        if let Some(plan) =
-            plan_left_right_right_then_up_route(&graph_layout.nodes, edges, from, to, edge, charset)
-        {
-            paint_route_plan(drawing, &plan);
-        }
-    }
-}
-
-fn draw_left_right_grid_path_edge(
-    drawing: &mut RouteDrawing<'_>,
-    graph_layout: &GraphLayout,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> bool {
-    let Some(plan) = plan_left_right_grid_path_route(graph_layout, from, to, edge, charset) else {
-        return false;
-    };
-    paint_route_plan(drawing, &plan);
-    true
 }
 
 fn apply_edge_style_delta(canvas: &mut Canvas, before: &Canvas, style: GraphEdgeStyle) {
@@ -338,32 +223,6 @@ fn is_edge_line_char(ch: char) -> bool {
     )
 }
 
-fn draw_top_down_edge(
-    drawing: &mut RouteDrawing<'_>,
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) {
-    if from.center_y() > to.center_y() {
-        if let Some(plan) = plan_top_down_back_route(from, to, edge, charset) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if from.center_x() != to.center_x() {
-        if let Some(plan) = plan_top_down_bent_route(from, to, edge, charset) {
-            paint_route_plan(drawing, &plan);
-        }
-        return;
-    }
-
-    if let Some(plan) = plan_top_down_direct_route(from, to, edge, charset) {
-        paint_route_plan(drawing, &plan);
-    }
-}
-
 fn paint_route_plan(drawing: &mut RouteDrawing<'_>, plan: &RoutePlan) {
     for cell in &plan.cells {
         match cell.kind {
@@ -407,10 +266,4 @@ fn edge_context(edges: &[AsciiGraphEdge], edge_index: usize) -> EdgeContext {
 fn same_edge_pair(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> bool {
     (left.from == right.from && left.to == right.to)
         || (left.from == right.to && left.to == right.from)
-}
-
-fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {
-    edges
-        .iter()
-        .any(|edge| edge.from == node_id && edge.to == node_id)
 }
