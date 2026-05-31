@@ -23,7 +23,7 @@ jobs:
             parity: true
           - os: macos-15
             parity: false
-          - os: windows-2025
+          - os: windows-2025-vs2026
             parity: false
 
     steps:
