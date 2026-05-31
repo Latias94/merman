@@ -1,3 +1,12 @@
+use super::grid::plan_left_right_grid_path_route;
+use super::left_right::{
+    plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
+    plan_left_right_down_then_right_route, plan_left_right_reverse_over_self_loop_route,
+    plan_left_right_right_then_up_route, plan_left_right_self_loop_route,
+};
+use super::top_down::{
+    plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
+};
 use super::*;
 use crate::AsciiRenderOptions;
 use crate::graph::charset::GraphCharset;

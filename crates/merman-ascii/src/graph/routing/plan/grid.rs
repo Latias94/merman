@@ -8,7 +8,7 @@ use super::{
     route_cell,
 };
 
-pub(in crate::graph::routing) fn plan_left_right_grid_path_route(
+pub(super) fn plan_left_right_grid_path_route(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
     to: &NodeLayout,

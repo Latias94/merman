@@ -7,7 +7,7 @@ use super::{
     planned_label, route_cell,
 };
 
-pub(in crate::graph::routing) fn plan_left_right_direct_route(
+pub(super) fn plan_left_right_direct_route(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
@@ -63,7 +63,7 @@ pub(in crate::graph::routing) fn plan_left_right_direct_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_down_route(
+pub(super) fn plan_left_right_down_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
@@ -92,7 +92,7 @@ pub(in crate::graph::routing) fn plan_left_right_down_route(
     })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_down_then_right_route(
+pub(super) fn plan_left_right_down_then_right_route(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
@@ -147,7 +147,7 @@ pub(in crate::graph::routing) fn plan_left_right_down_then_right_route(
     })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_right_then_up_route(
+pub(super) fn plan_left_right_right_then_up_route(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
@@ -199,7 +199,7 @@ pub(in crate::graph::routing) fn plan_left_right_right_then_up_route(
     })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_bottom_lane_route(
+pub(super) fn plan_left_right_bottom_lane_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
@@ -265,7 +265,7 @@ pub(in crate::graph::routing) fn plan_left_right_bottom_lane_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_reverse_over_self_loop_route(
+pub(super) fn plan_left_right_reverse_over_self_loop_route(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
@@ -310,7 +310,7 @@ pub(in crate::graph::routing) fn plan_left_right_reverse_over_self_loop_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn plan_left_right_self_loop_route(
+pub(super) fn plan_left_right_self_loop_route(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,
@@ -507,14 +507,11 @@ fn lane_y_between(upper: &NodeLayout, lower: &NodeLayout) -> usize {
     (upper.bottom() + lower.y) / 2
 }
 
-pub(in crate::graph::routing) fn left_right_back_edge_bottom_y(from: &NodeLayout) -> usize {
+pub(super) fn left_right_back_edge_bottom_y(from: &NodeLayout) -> usize {
     from.bottom() + 2
 }
 
-pub(in crate::graph::routing) fn self_loop_right_x(
-    layouts: &[NodeLayout],
-    from: &NodeLayout,
-) -> usize {
+pub(super) fn self_loop_right_x(layouts: &[NodeLayout], from: &NodeLayout) -> usize {
     layouts
         .iter()
         .filter(|layout| {
@@ -526,7 +523,7 @@ pub(in crate::graph::routing) fn self_loop_right_x(
         .unwrap_or_else(|| from.right() + 2)
 }
 
-pub(in crate::graph::routing) fn self_loop_bottom_y_for_edges(
+pub(super) fn self_loop_bottom_y_for_edges(
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     from: &NodeLayout,

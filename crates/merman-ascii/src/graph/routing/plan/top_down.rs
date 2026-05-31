@@ -7,7 +7,7 @@ use super::{
     planned_label, route_cell,
 };
 
-pub(in crate::graph::routing) fn plan_top_down_direct_route(
+pub(super) fn plan_top_down_direct_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
@@ -60,7 +60,7 @@ pub(in crate::graph::routing) fn plan_top_down_direct_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn plan_top_down_bent_route(
+pub(super) fn plan_top_down_bent_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
@@ -119,7 +119,7 @@ pub(in crate::graph::routing) fn plan_top_down_bent_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn plan_top_down_back_route(
+pub(super) fn plan_top_down_back_route(
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
@@ -184,9 +184,6 @@ pub(in crate::graph::routing) fn plan_top_down_back_route(
     Some(RoutePlan { cells, labels })
 }
 
-pub(in crate::graph::routing) fn top_down_back_edge_lane_x(
-    from: &NodeLayout,
-    to: &NodeLayout,
-) -> usize {
+pub(super) fn top_down_back_edge_lane_x(from: &NodeLayout, to: &NodeLayout) -> usize {
     from.right().max(to.right()) + 4
 }

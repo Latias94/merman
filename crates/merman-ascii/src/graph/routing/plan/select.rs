@@ -1,13 +1,16 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{GraphLayout, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection};
-use super::{
-    RoutePlan, left_right_back_edge_bottom_y, plan_left_right_bottom_lane_route,
-    plan_left_right_direct_route, plan_left_right_down_route,
-    plan_left_right_down_then_right_route, plan_left_right_grid_path_route,
+use super::RoutePlan;
+use super::grid::plan_left_right_grid_path_route;
+use super::left_right::{
+    left_right_back_edge_bottom_y, plan_left_right_bottom_lane_route, plan_left_right_direct_route,
+    plan_left_right_down_route, plan_left_right_down_then_right_route,
     plan_left_right_reverse_over_self_loop_route, plan_left_right_right_then_up_route,
-    plan_left_right_self_loop_route, plan_top_down_back_route, plan_top_down_bent_route,
-    plan_top_down_direct_route, self_loop_bottom_y_for_edges, self_loop_right_x,
+    plan_left_right_self_loop_route, self_loop_bottom_y_for_edges, self_loop_right_x,
+};
+use super::top_down::{
+    plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
     top_down_back_edge_lane_x,
 };
 use crate::text::display_width;
