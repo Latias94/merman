@@ -11,9 +11,11 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 
 As of 2026-06-01, implemented-matrix structural parity is green:
 `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` passed.
-The remaining smallest repro is now root-only viewport/max-width parity. The latest `parity-root`
-run still fails for residuals outside the Class structural slice, mainly ER, Flowchart, C4, and
-Architecture, and also reports one stale expected Flowchart Math residual policy entry.
+The remaining smallest repro is now root-only viewport/max-width parity. Fresh `parity-root`
+report triage shows raw root-only residuals across flowchart=229, sequence=168, architecture=32,
+class=20, c4=15, timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows.
+The stale expected `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been
+removed from the compare-all policy.
 
 ## Gate Set
 
@@ -356,6 +358,17 @@ git diff --check
     run also reported that the root parity residual policy still expects
     `flowchart/upstream_docs_math_flowcharts_001`, which was not observed and should be removed or
     updated with fresh root-closeout evidence.
+- 2026-06-01 M15C-070 root report correction:
+  - `git status --short --branch`: clean before the correction slice.
+  - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    failed with 20 Class root `style` max-width residuals, proving the active root set is not only
+    outside Class.
+  - Raw `target/compare/*_report_parity_root.md` triage counted root-only residuals:
+    flowchart=229, sequence=168, architecture=32, class=20, c4=15, timeline=7, mindmap=4,
+    sankey=3, journey=2, and er=4 table `dom ok = no` rows.
+  - Removed the stale accepted root residual policy entry for
+    `flowchart/upstream_docs_math_flowcharts_001`; it no longer appears after the Flowchart 11.15
+    Math baseline refresh.
 
 ## Evidence Anchors
 

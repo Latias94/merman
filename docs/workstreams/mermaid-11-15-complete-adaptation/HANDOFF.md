@@ -12,9 +12,10 @@ symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 1
 differences, Timeline scoped node ids, and the Sankey 11.15 baseline refresh. M15C-060 is now
 closed: XYChart, Flowchart, ER, and Class have all been refreshed or converged against Mermaid
 11.15 stored baselines. Full implemented-matrix SVG DOM `parity` now passes. The active remainder is
-M15C-070 `parity-root`: root/viewBox/max-width residuals outside the Class structural slice remain,
-mainly ER, Flowchart, C4, and Architecture, and the root residual policy still contains one stale
-expected Flowchart Math entry.
+M15C-070 `parity-root`: root/viewBox/max-width residuals remain across the implemented matrix.
+Fresh report triage shows flowchart=229, sequence=168, architecture=32, class=20, c4=15,
+timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale
+`flowchart/upstream_docs_math_flowcharts_001` accepted residual policy entry has been removed.
 
 ## Active Task
 
@@ -102,7 +103,7 @@ expected Flowchart Math entry.
 ## Next Recommended Action
 
 Continue M15C-070. Start by classifying the latest `parity-root` failures into true root-geometry
-gaps versus residual-policy maintenance. Remove or update the stale expected
-`flowchart/upstream_docs_math_flowcharts_001` policy entry only with fresh closeout evidence, then
-decide whether the larger ER/Flowchart/C4/Architecture root residual set should be fixed in this
-lane or split into dedicated root-parity child lanes.
+gaps versus residual-policy maintenance. The stale Flowchart Math policy entry has already been
+removed; the next executable step is to identify whether the large Flowchart/Sequence/Class/C4/
+Architecture buckets share a Mermaid 11.15 root viewport rule change before adding any new
+fixture-scoped root overrides.

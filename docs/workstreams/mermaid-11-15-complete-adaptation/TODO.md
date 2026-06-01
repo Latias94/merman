@@ -99,8 +99,10 @@ Last updated: 2026-06-01
   Context: this workstream plus `docs/alignment/PARITY_HARDENING_PLAN.md`.
   Handoff: IN_PROGRESS. `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
   now passes for the implemented matrix. `parity-root` is still red for root/viewBox/max-width
-  residuals outside the Class structural slice, mainly ER, Flowchart, C4, and Architecture, and the
-  root residual policy still contains one stale expected Flowchart Math fixture entry.
+  residuals only. Fresh report triage shows a broader 11.15 root viewport recalibration set:
+  flowchart=229, sequence=168, architecture=32, class=20, c4=15, timeline=7, mindmap=4,
+  sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale expected
+  `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been removed.
 
 ## M4 - Upstream Family Decisions
 

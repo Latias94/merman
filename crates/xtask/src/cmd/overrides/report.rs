@@ -71,7 +71,7 @@ impl OverrideCategory {
         match self {
             OverrideCategory::RootViewport => OverrideCategoryMetadata {
                 owner: "render parity workstream",
-                source: "fixture-derived upstream SVG root viewBox/max-width baselines for Mermaid @11.12.3",
+                source: "fixture-derived upstream SVG root viewBox/max-width baselines for the pinned Mermaid baseline",
                 allowed_use: "narrow export-bound pins when browser insertion or emitted bounds differ from deterministic Rust layout",
                 expected_removal: "delete entries once typed layout/emitted bounds can derive the same root viewport or a baseline upgrade removes the pinned behavior",
             },
@@ -165,7 +165,10 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let generated_entries = collect_generated_override_footprint_entries(&generated_dir)?;
     let manual_entries = collect_manual_bridge_footprint_entries(&parity_dir, &source_root)?;
 
-    println!("Mermaid baseline: @11.12.3");
+    println!(
+        "Mermaid baseline: {}",
+        pinned_mermaid_baseline_label(&workspace_root)
+    );
     println!();
     println!(
         "Generated override modules scanned: {}",
@@ -531,6 +534,33 @@ fn report_path_name(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn pinned_mermaid_baseline_label(workspace_root: &Path) -> String {
+    let lock_path = workspace_root
+        .join("tools")
+        .join("upstreams")
+        .join("REPOS.lock.json");
+    let Ok(text) = fs::read_to_string(lock_path) else {
+        return "pinned upstream".to_string();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return "pinned upstream".to_string();
+    };
+    let Some(reference) = value
+        .get("repos")
+        .and_then(|repos| repos.get("mermaid"))
+        .and_then(|mermaid| mermaid.get("ref"))
+        .and_then(|reference| reference.as_str())
+        .filter(|reference| !reference.trim().is_empty())
+    else {
+        return "pinned upstream".to_string();
+    };
+
+    reference
+        .strip_prefix("mermaid")
+        .map(|suffix| suffix.to_string())
+        .unwrap_or_else(|| reference.to_string())
+}
+
 fn count_root_viewport_entries(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re =
@@ -603,9 +633,11 @@ mod tests {
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
         classify_generated_override_file, count_manual_bridge_functions, count_some_match_arms,
         count_static_override_table_rows, count_visible_functions,
-        find_root_viewport_lookup_violations, report_path_name,
+        find_root_viewport_lookup_violations, pinned_mermaid_baseline_label, report_path_name,
     };
+    use std::fs;
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn counts_manual_bridge_functions_in_flowchart_path_override() {
@@ -712,6 +744,29 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
             )),
             "svg/parity/flowchart/edge_geom/degenerate_path.rs"
         );
+    }
+
+    #[test]
+    fn pinned_mermaid_baseline_label_reads_lockfile_ref() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "merman-report-overrides-test-{}-{unique}",
+            std::process::id()
+        ));
+        let lock_dir = dir.join("tools").join("upstreams");
+        fs::create_dir_all(&lock_dir).expect("lock dir");
+        fs::write(
+            lock_dir.join("REPOS.lock.json"),
+            r#"{"repos":{"mermaid":{"ref":"mermaid@11.15.0"}}}"#,
+        )
+        .expect("lockfile");
+
+        assert_eq!(pinned_mermaid_baseline_label(&dir), "@11.15.0");
+
+        fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[test]

@@ -45,7 +45,8 @@ Exit criteria:
 - Package/workspace tests relevant to changed code are green.
 
 Status: in progress. Full `parity` DOM compare is green for the implemented matrix. `parity-root`
-is still red for root/viewBox/max-width residuals, mainly ER, Flowchart, C4, and Architecture.
+is still red for root/viewBox/max-width residuals across the implemented matrix; current largest
+buckets are Flowchart, Sequence, Architecture, Class, and C4.
 
 ## M4 - Upstream Family Decisions
 
