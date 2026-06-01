@@ -46,6 +46,9 @@ Last updated: 2026-06-02
   Rust, 31 stale Architecture root pins were deleted, and the old groups-within-groups calibration
   was removed. Architecture structural parity is green and the bucket now has 32 honest root
   residuals.
+- Architecture FCoSE source-rule work is in progress in M15RV-089: deleting Rust's non-source
+  junction group inference reduced Architecture root residuals from 32 to 30 and made two formerly
+  large junction/group rows exact while keeping full structural parity green.
 - Remaining Architecture source-rule work is split into M15RV-089 for FCoSE/group-port root-bound
   residuals. The remaining Sequence rows are long-note and line-break/text-measurement tails.
 

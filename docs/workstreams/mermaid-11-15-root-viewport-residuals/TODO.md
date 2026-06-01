@@ -186,7 +186,7 @@ Last updated: 2026-06-02
   increase from 30 to 32 reflects baseline cleanup exposing current 11.15 root tails; do not
   restore old pins or calibrations to recover the smaller number.
 
-- [ ] M15RV-089 [owner=codex] [deps=M15RV-088] [scope=crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
+- [ ] M15RV-089 [owner=codex] [deps=M15RV-088] [scope=crates/merman-render/src/architecture.rs,crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root_after_m15rv089_junction_parent_source_rule.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
   Goal: Investigate the top Architecture FCoSE/group-port root residuals now that the 11.15
   upstream baseline and root-pin table are honest.
   Validation: focused Architecture `parity-root` compares for
@@ -199,10 +199,14 @@ Last updated: 2026-06-02
   approximations. Do not add broad Architecture root pins, root tolerances, or browser-dependent
   font/foreignObject hacks just to reduce the count.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: PENDING. Start from
-  `target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md`; the largest row is
-  `stress_architecture_junction_fork_join_026` at roughly `-1551px`, followed by FCoSE/group-port
-  rows around `-108px`, `+106px`, and `+89px`.
+  Handoff: IN_PROGRESS. Mermaid 11.15 `architectureRenderer.ts` shows junction Cytoscape parents
+  come only from `junction.in`; Rust's neighbor-based junction group inference was removed.
+  Architecture structural parity and full all-diagram structural parity remain green. Architecture
+  root residuals dropped from 32 to 30: `stress_architecture_fan_in_out_021` and
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` are exact, while
+  `stress_architecture_junction_fork_join_026` shrank from about `-1551px` to about `+14px`.
+  Continue from `stress_architecture_deep_nesting_013` (`+106px`) and the remaining smaller
+  text/root-bounds tails.
 
 ## M3 - Policy Closeout
 
@@ -215,6 +219,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 137 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 135 residuals;
   Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
   differences.

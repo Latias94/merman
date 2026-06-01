@@ -888,6 +888,54 @@ Outcome:
   These should be investigated as source/layout/root-bound issues before any diagnostic residual
   policy is considered.
 
+## M15RV-089 - Architecture Junction Parent Source Rule
+
+Fresh source evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts`
+  `addJunctions(...)` adds Cytoscape junction nodes with `parent: junction.in`.
+- The same source uses `idealEdgeLength(...)` and `edgeElasticity(...)` callbacks that switch on
+  whether `nodeData(nodeA).parent === nodeData(nodeB).parent`. A wrong junction parent therefore
+  changes the FCoSE spring model, not just a final SVG attribute.
+- Rust previously inferred a junction's group from neighboring non-junction services when
+  `junction.in` was absent. Mermaid 11.15 does not do this. In
+  `stress_architecture_junction_fork_join_026`, this put `fork` inside `left`, turning the
+  `fork -> auth` edge into a same-parent strong spring and collapsing the expected wide layout.
+
+Renderer change:
+
+- `crates/merman-render/src/architecture.rs` no longer infers group parents for ungrouped
+  Architecture junctions. Junction parentage now comes only from the parsed/render model, matching
+  Mermaid's `junction.in` source rule.
+
+Fresh validation:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_after_junction_parent_source_rule.md`:
+  expected failure, but the row improved from about `-1551px` to about `+14px`
+  (`2808.127px` upstream vs `2822.102px` local).
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv089_junction_parent_source_rule.md`:
+  passed for the full Architecture matrix.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv089_junction_parent_source_rule.md`:
+  expected failure with 30 Architecture root residuals, down from 32.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 135 unaccepted residuals: Flowchart 61, Architecture 30, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`.
+- `cargo fmt -p merman-render --check`: passed.
+
+Outcome:
+
+- `stress_architecture_fan_in_out_021` and
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` are now root-exact.
+- `stress_architecture_junction_fork_join_026` is no longer a large FCoSE collapse; its remaining
+  root delta is about `+14px` and should be treated separately from the removed parent-inference
+  bug.
+- The largest remaining Architecture row is now `stress_architecture_deep_nesting_013` at about
+  `+106px`. Continue source investigation there before considering residual policy.
+
 ## Gate Set
 
 Run after any code or generated-data change:
