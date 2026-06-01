@@ -92,6 +92,7 @@ pub(super) struct GraphEdgeStyle {
 pub(super) struct AsciiGraphGroup {
     pub(super) id: String,
     pub(super) title: String,
+    pub(super) direction: Option<GraphDirection>,
     pub(super) nodes: Vec<String>,
     pub(super) style: GraphGroupStyle,
 }
@@ -176,12 +177,14 @@ impl AsciiGraph {
         &mut self,
         id: impl Into<String>,
         title: impl Into<String>,
+        direction: Option<GraphDirection>,
         nodes: Vec<String>,
         style: GraphGroupStyle,
     ) {
         self.groups.push(AsciiGraphGroup {
             id: id.into(),
             title: title.into(),
+            direction,
             nodes,
             style,
         });

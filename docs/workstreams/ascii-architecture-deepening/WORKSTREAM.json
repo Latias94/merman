@@ -2,8 +2,8 @@
   "schema_version": 1,
   "slug": "ascii-architecture-deepening",
   "title": "ASCII Architecture Deepening",
-  "status": "closed",
-  "updated": "2026-05-30",
+  "status": "active",
+  "updated": "2026-06-01",
   "scope_kind": "architecture",
   "problem": "merman-ascii has shipped multiple diagram-family subsets, but text styling, graph routing, relation rendering, sequence event state, and gap tracking are still spread across shallow internal modules.",
   "authoritative_docs": [
@@ -126,6 +126,16 @@
       "date": "2026-05-30",
       "task": "AAD-070",
       "result": "closed the workstream with no blocking review findings"
+    },
+    {
+      "date": "2026-06-01",
+      "task": "AAD-080",
+      "result": "resumed the lane to ship a bounded FlowSubgraph.dir subset for internal local LR subgraphs inside TD roots"
+    },
+    {
+      "date": "2026-06-01",
+      "task": "AAD-080",
+      "result": "passed targeted flowchart subgraph and graph fixture validation for local-direction subset plus cross-boundary fallback"
     }
   ],
   "adr_refs": [
@@ -142,8 +152,8 @@
   ],
   "lane_slug": "ascii-architecture-deepening",
   "continue_policy": {
-    "default_action": "closed",
-    "next_task": null,
-    "notes": "Closed. Use crates/merman-ascii/ASCII_GAP_REGISTRY.md to open the next ASCII feature or route-planning lane."
+    "default_action": "continue",
+    "next_task": "AAD-080",
+    "notes": "Active again for bounded A-GRAPH-010 follow-on work. After AAD-080 commit or closeout, continue from crates/merman-ascii/ASCII_GAP_REGISTRY.md for the next ASCII feature or routing expansion."
   }
 }

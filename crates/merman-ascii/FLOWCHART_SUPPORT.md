@@ -65,7 +65,7 @@ reference implementation is only an implementation aid.
 | Thick edges | Ported | `merman-core` preserves `edge.stroke = "thick"`, and the existing routing can use alternate line glyphs without changing layout semantics. | Covered by `flowchart_parser_thick_edges_render_with_heavy_ascii_line`, `flowchart_parser_thick_edges_render_with_heavy_unicode_line`, and `flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line`. |
 | `BT` root direction | Ported | The typed root direction is available, and honest terminal output is implemented as a post-layout vertical flip with arrow/corner remapping. | Covered by `flowchart_parser_bt_root_direction_renders_with_vertical_flip`. |
 | `RL` root direction | Ported with true inversion | `beautiful-mermaid` currently treats `RL` as `LR`, which misrepresents Mermaid semantics; `merman-ascii` implements a true horizontal mirror instead. | Covered by `flowchart_parser_rl_root_direction_renders_with_horizontal_mirror`, `flowchart_parser_rl_multi_character_node_labels_stay_readable`, `flowchart_parser_rl_edge_labels_stay_readable`, and `flowchart_parser_rl_chain_mirrors_unicode_connectors`. |
-| Subgraph direction overrides | Defer | `FlowSubgraph.dir` is typed, but current graph layout is global; local subgraph layout needs a deeper layout pass. | Split with nested subgraph and cross-boundary edge fixtures. |
+| Subgraph direction overrides | Ported subset | `FlowSubgraph.dir` now supports a shipped local-direction subset: canonical `LR` subgraphs inside canonical `TD` roots when every routed edge stays inside the subgraph. Cross-boundary cases and broader mixed-direction combinations remain deferred until routing policy is defined for edges that cross the local/global boundary. | Covered by `render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges` and `flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_falls_back_to_global_layout`. |
 | Multiline and wrapped subgraph labels | Ported | The title text can be represented, and group layout now reserves multiple centered title rows using the shared graph label splitter and display-width wrapper. | Covered by `flowchart_parser_multiline_subgraph_title_renders_centered_rows`, `render_flowchart_renders_model_multiline_subgraph_titles`, and `flowchart_parser_long_subgraph_title_wraps_to_multiple_rows`. |
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in foreground color API, and flowchart now assigns semantic roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` foreground colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps only safe foreground semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
@@ -78,8 +78,10 @@ reference implementation is only an implementation aid.
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, bent cross-column downward edges, and
   right-side back-edge label lanes for the copied fixture set.
-- `BT` and `RL` are root-direction transforms only. `FlowSubgraph.dir` overrides remain a separate
-  layout follow-on.
+- `BT` and `RL` remain root-direction transforms only.
+- `FlowSubgraph.dir` currently ships only for internal, no-cross-boundary local `LR` subgraphs
+  inside canonical `TD` roots. Cross-boundary mixed-direction edges and broader local `TD`/nested
+  combinations remain follow-on work.
 - Subgraph titles preserve explicit line breaks (`<br>`/escaped newline/model newline) and wrap
   long titles inside the current group box width.
 - Leading `paddingX=` and `paddingY=` lines are supported as `mermaid-ascii` compatibility
