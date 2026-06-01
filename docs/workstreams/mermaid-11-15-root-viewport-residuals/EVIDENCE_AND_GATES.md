@@ -1213,6 +1213,11 @@ Fresh diagnostic evidence from 2026-06-02:
   source/target endpoints and do not feed a separate final group-rect rule. The row is therefore
   another group/service Cytoscape bbox approximation tail, not an HTML/entity parsing or edge-label
   source-rule bug.
+- `stress_architecture_unicode_and_xml_escapes_019` follows the same pattern despite the fixture
+  name: the authored fixture intentionally avoids XML/entity grammar pitfalls, the browser probe
+  constraints match Rust, and the root width is controlled by `group-i`. Browser reports
+  `Metrics Exporter=123x100`, while the current headless compound estimate is about `125px`; the
+  local group rect is about `3px` wider.
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_group_port_edges_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_group_port_edges_017_m15rv089_start.md`:
   expected failure; upstream root is about `707.769x542.448`, while local is about
   `709.238x524.603`.
@@ -1229,13 +1234,32 @@ Fresh diagnostic evidence from 2026-06-02:
   same-parent edges use `idealEdgeLengthMultiplier * iconSize` and configured `edgeElasticity`;
   cross-parent edges use `0.5 * iconSize` and `0.001` elasticity. Manatee debug also shows the
   same alignment/relative input and the expected intergraph edge-length adjustment path.
+- `stress_architecture_nested_groups_002` also has matching browser/Rust alignment and relative
+  constraints. The remaining root width delta is from nested compound bbox/layout approximation:
+  local service positions are shifted about `+1.25px` in X, and the outer platform group right
+  edge lands about `3.75px` farther right even though its width is only about `0.5px` narrower.
+
+Additional edge-label evidence:
+
+- `stress_architecture_edge_label_corner_cases_012` has matching service icon-floor bboxes,
+  matching constraints, and matching final SVG edge-label text splitting/transforms. Its
+  `-1.788px` root width tail is controlled by browser `getBBox()` for the horizontal edge label
+  `path api v1 items id 42`, not by routing or parser behavior.
+- `stress_architecture_batch4_init_fontsize_wrap_063` has effective browser config
+  `{ iconSize: 80, fontSize: 20, padding: 40 }`, matching local debug. Its service bboxes are
+  icon-floor dominated and its two vertical edge labels split the same way upstream and locally;
+  the `-1.788px` width tail is another rotated edge-label browser bbox residual.
 
 Outcome:
 
-- No renderer change was made for these two rows. `stress_architecture_html_titles_and_escapes_041`
-  is classified as a group/service Cytoscape bbox measurement tail. `stress_architecture_group_port_edges_017`
-  is classified as a source-input-matched FCoSE solver/compound-bound residual unless future
-  evidence finds a reusable `cytoscape-fcose` rule missing in manatee.
+- No renderer change was made for these rows. `stress_architecture_html_titles_and_escapes_041`
+  and `stress_architecture_unicode_and_xml_escapes_019` are classified as group/service Cytoscape
+  bbox measurement tails. `stress_architecture_edge_label_corner_cases_012` and
+  `stress_architecture_batch4_init_fontsize_wrap_063` are classified as edge-label browser
+  `getBBox()` tails. `stress_architecture_group_port_edges_017` and
+  `stress_architecture_nested_groups_002` are classified as source-input-matched
+  FCoSE/compound-bound residuals unless future evidence finds a reusable `cytoscape-fcose` rule
+  missing in manatee.
 - The existing Architecture diagonal-arrow behavior remains an intentional merman visual
   improvement: Mermaid emits translated port-direction polygons, while merman rotates diagonal
   arrowheads to the routed edge segment. The parity comparator already treats that transform as

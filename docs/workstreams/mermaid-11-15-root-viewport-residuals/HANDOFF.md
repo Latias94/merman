@@ -239,6 +239,16 @@ icon-floor dominated (`82x100` browser bboxes), but the final vertical spacing d
 `17.845px`, so this row is best classified as source-input-matched manatee vs cytoscape-fcose
 solver/compound-bound drift unless a future probe finds a reusable missing FCoSE rule.
 
+Follow-up focused checks classify four more Architecture rows. `stress_architecture_unicode_and_xml_escapes_019`
+is another group/service Cytoscape bbox tail: the fixture avoids XML grammar pitfalls, constraints
+match, and the local group is about `3px` wider because `Metrics Exporter` is overestimated.
+`stress_architecture_edge_label_corner_cases_012` and
+`stress_architecture_batch4_init_fontsize_wrap_063` are edge-label `getBBox()` tails: text splitting
+and transforms match upstream, but browser text bboxes are about `1.788px` wider than the current
+headless estimate. `stress_architecture_nested_groups_002` is a nested compound/layout tail with
+matching source inputs; local services shift about `+1.25px` in X and the outer group right edge
+lands about `3.75px` farther right.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -276,8 +286,9 @@ solver/compound-bound drift unless a future probe finds a reusable missing FCoSE
   does not reduce its remaining `+13.976px` tail.
   Pre-layout compound bbox inflation now also uses configured `architecture.padding`, keeping the
   FCoSE input and final group rectangle code on the same source rule.
-  Batch5, batch4-small-icon, html-title/escape, and group-port rows now have focused diagnostic
-  evidence; none justify a renderer-side one-off metric or root pin.
+  Batch5, batch4-small-icon, html-title/escape, unicode/xml, edge-label corner, fontsize-wrap,
+  nested-group, and group-port rows now have focused diagnostic evidence; none justify a
+  renderer-side one-off metric or root pin.
   Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
   no Architecture root pins.
 
@@ -337,6 +348,13 @@ solver/compound-bound drift unless a future probe finds a reusable missing FCoSE
 - Do not tune group-edge shifts from `stress_architecture_group_port_edges_017`; its constraints,
   service bboxes, and Mermaid source force policy already match, while the remaining height delta
   comes from the FCoSE solution.
+- Do not treat `stress_architecture_unicode_and_xml_escapes_019` as an entity-escaping bug; its
+  residual is group/service bbox width.
+- Do not alter Architecture edge-label wrapping from `stress_architecture_edge_label_corner_cases_012`
+  or `stress_architecture_batch4_init_fontsize_wrap_063`; focused SVG text splitting already
+  matches upstream.
+- Do not tune nested-group padding from `stress_architecture_nested_groups_002`; current evidence
+  points to small FCoSE/compound-bound drift after source inputs match.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

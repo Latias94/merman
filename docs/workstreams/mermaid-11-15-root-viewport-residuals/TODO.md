@@ -229,7 +229,12 @@ Last updated: 2026-06-02
   group/service Cytoscape bbox tail (not an HTML/entity or edge-label source bug), and
   `stress_architecture_group_port_edges_017` as source-input-matched manatee vs cytoscape-fcose
   solver/compound-bound drift. Do not tune group-edge shifts, root pins, or one-off metric
-  constants from those rows.
+  constants from those rows. Further focused diagnostics classify
+  `stress_architecture_unicode_and_xml_escapes_019` as the same group/service bbox class,
+  `stress_architecture_edge_label_corner_cases_012` and
+  `stress_architecture_batch4_init_fontsize_wrap_063` as edge-label browser `getBBox()` tails, and
+  `stress_architecture_nested_groups_002` as a nested-compound/FCoSE residual after source inputs
+  match.
 
 ## M3 - Policy Closeout
 
