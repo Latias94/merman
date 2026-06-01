@@ -145,7 +145,7 @@ Last updated: 2026-06-02
   Remaining rows are long left-of note width/height tails, small line-break width tails, and
   participant/actor-type height tails.
 
-- [ ] M15RV-087 [owner=codex] [deps=M15RV-085] [scope=crates/merman-render/src/sequence,crates/merman-render/src/text,target/compare/sequence_report_parity_root.md]
+- [x] M15RV-087 [owner=codex] [deps=M15RV-085] [scope=crates/merman-render/src/sequence,crates/merman-render/src/generated/sequence_root_overrides_11_12_2.rs,target/compare/sequence_report_parity_root.md]
   Goal: Classify and reduce the remaining Sequence long-note, small line-break width, and
   actor-type height tails after the M15RV-085 wrap evidence update.
   Validation: focused Sequence `parity-root` compares for
@@ -157,13 +157,32 @@ Last updated: 2026-06-02
   add root pins or per-string constants for the remaining 1-7px tails unless they come from a
   reusable generated measurement source.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: PENDING. Start from `target/compare/sequence_report_parity_root.md`; the largest
-  remaining root deltas are the two long-note rows at `+7px`, followed by small line-break width
-  tails and actor-type height-only rows.
+  Handoff: DONE_WITH_CONCERNS. Mermaid 11.15 source-derived actor-type glyph rules are now applied
+  for database, boundary, control, and entity participants. Created actor top placement now follows
+  `adjustCreatedDestroyedData(...)`'s pre-render actor-height anchor, and root bounds account for
+  Mermaid's footer-row max-height cursor bump. Six stale Sequence root pins that were exact with
+  root overrides disabled were deleted. Raw Sequence root mismatches dropped from 64 to 28, and
+  full all-diagram root policy leaves 27 unaccepted Sequence rows after the accepted
+  `zed_pr_57644_sequence` residual. Remaining rows are long-note and line-break/text-measurement
+  tails, not actor-type geometry.
+
+- [ ] M15RV-088 [owner=codex] [deps=M15RV-087,M15RV-040] [scope=crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
+  Goal: Classify and reduce the remaining Architecture root residual bucket with source-derived
+  group/port/disconnected-component root-bound rules where justified.
+  Validation: focused Architecture `parity-root` compares with `--report-root-all` and
+  `--no-root-overrides`, followed by full Architecture structural/root reports and full
+  all-diagram structural parity after any renderer change.
+  Review: Do not turn the 30 Architecture rows into broad root pins or tolerances. Prefer Mermaid
+  source rules, stale-pin deletion, or explicit diagnostic status for `foreignObject`/browser bbox
+  tails.
+  Evidence: `EVIDENCE_AND_GATES.md`
+  Handoff: PENDING. Start from `target/compare/architecture_report_parity_root.md`; current full
+  root evidence reports 30 unaccepted Architecture rows, led by disconnected components,
+  mixed-service forms, and grouped port/root-bound cases.
 
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085,M15RV-087] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085,M15RV-087,M15RV-088] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
@@ -172,6 +191,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 171 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 135 residuals;
   Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
   differences.

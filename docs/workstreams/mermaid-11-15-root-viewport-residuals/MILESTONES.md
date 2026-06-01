@@ -37,8 +37,12 @@ Last updated: 2026-06-02
 - Sequence HTML `<br>` / wrap evidence is partially closed by M15RV-085: final emitted actor,
   message, and note text evidence from wrap fixtures is now generated, the four largest wrap rows
   are root-exact, and the full all-diagram root policy now leaves 63 unaccepted Sequence rows.
-- Remaining Sequence work is split into M15RV-087 for long-note width/height, small line-break
-  width, and actor-type height tails.
+- Sequence actor-type/root-pin follow-up is partially closed by M15RV-087: source-derived
+  actor-type geometry, created/destroyed anchors, footer root cursor bounds, and stale Sequence
+  root-pin deletion reduced raw Sequence root residuals from 64 to 28. The full all-diagram root
+  policy now leaves 27 unaccepted Sequence rows.
+- Remaining source-rule work is split into M15RV-088 for Architecture root-bound residuals. The
+  remaining Sequence rows are long-note and line-break/text-measurement tails.
 
 ## M3 - Root Policy Closeout
 

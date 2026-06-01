@@ -533,14 +533,16 @@ impl<'a> SequenceActorLifecycle<'a> {
     }
 
     pub(super) fn apply_created_top_actor_positions(&self, nodes: &mut [LayoutNode]) {
-        // Created actors render their top box at the creation message y-position after the full
-        // message cursor pass has discovered that position.
+        // Created actors render from `lineStartY - actor.height / 2` in Mermaid's
+        // `adjustCreatedDestroyedData(...)`. Type-specific drawing can use a taller visual node,
+        // but that visual height does not move the creation anchor.
         for node in nodes {
             let Some(actor_id) = node.id.strip_prefix("actor-top-") else {
                 continue;
             };
             if let Some(y) = self.created_top_center_y(actor_id) {
-                node.y = y;
+                let h = self.actor_lifecycle_height(actor_id);
+                node.y = y - h / 2.0 + node.height / 2.0;
             }
         }
     }

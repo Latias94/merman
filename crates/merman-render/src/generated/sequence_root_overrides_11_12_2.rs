@@ -16,7 +16,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_self_messages_rect_021" => Some(("-50 -10 450 574", "450")),
         "stress_semicolons_022" => Some(("-50 -10 522 308", "522")),
         "stress_unicode_longish_messages_027" => Some(("-50 -10 710.5 333", "710.5")),
-        "stress_quoted_participants_and_types_023" => Some(("-50 -10 878 484", "878")),
         "stress_wrap_directive_and_prefixes_028" => Some(("-50 -10 1022 412", "1022")),
         "stress_nested_rect_par_029" => Some(("-50 -10 650 712", "650")),
         "stress_create_destroy_inside_alt_030" => Some(("-50 -10 734 679", "734")),
@@ -25,9 +24,6 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_message_text_with_colons_039" => Some(("-50 -10 986 318", "986")),
         "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
             Some(("-50 -10 512 435", "512"))
-        }
-        "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010" => {
-            Some(("-50 -10 1166.5 1485", "1166.5"))
         }
         "upstream_cypress_sequencediagram_spec_should_render_different_note_fonts_when_configured_011" => {
             Some(("-187 -10 587 308", "587"))
@@ -61,18 +57,6 @@ pub fn lookup_sequence_root_viewport_override(
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010" => {
             Some(("-50 -10 938 633", "938"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016" => {
-            Some(("-50 -10 1450 770", "1450"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015" => {
-            Some(("-50 -10 1471 793", "1471"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014" => {
-            Some(("-50 -10 1450 706", "1450"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011" => {
-            Some(("-50 -10 1655 626", "1655"))
         }
         "upstream_docs_sequencediagram_collections_016" => Some(("-50 -10 453 259", "453")),
         "upstream_docs_sequencediagram_parallel_054" => Some(("-50 -10 1062 547", "1062")),

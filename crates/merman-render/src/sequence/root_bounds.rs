@@ -101,6 +101,8 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds
         }
     }
 
+    include_footer_row_height(&mut content, ctx);
+
     if !ctx.mirror_actors {
         for e in ctx.edges {
             if e.id.starts_with("lifeline-") {
@@ -119,6 +121,25 @@ fn sequence_content_bounds(ctx: &SequenceRootBoundsContext<'_>) -> ContentBounds
         ctx.actor_width_min.max(1.0),
         (ctx.bottom_box_top_y + ctx.actor_height).max(1.0),
     )
+}
+
+fn include_footer_row_height(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {
+    if !ctx.mirror_actors {
+        return;
+    }
+
+    // Mermaid's footer draw pass bumps the shared bounds cursor by the maximum rendered actor
+    // height for the whole footer row, even when some actors were destroyed earlier and have their
+    // own `stopy`. The root viewport follows that cursor, not just each individual footer node.
+    let max_footer_height = ctx
+        .nodes
+        .iter()
+        .filter(|n| n.id.starts_with("actor-bottom-"))
+        .map(|n| n.height)
+        .fold(0.0, f64::max);
+    if max_footer_height > 0.0 {
+        content.include_y(ctx.bottom_box_top_y + max_footer_height);
+    }
 }
 
 fn include_actor_popup_bottoms(content: &mut ContentBounds, ctx: &SequenceRootBoundsContext<'_>) {

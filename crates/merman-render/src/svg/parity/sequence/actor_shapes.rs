@@ -169,13 +169,13 @@ pub(super) fn write_database_top_actor_shape(
     label_ctx: &ActorLabelContext<'_>,
 ) {
     let (x, y) = node_left_top(n);
-    let w = n.width / 4.0;
-    let h = n.width / 4.0;
+    let w = n.width / 3.0;
+    let h = n.width / 3.0;
     let rx = w / 2.0;
     let ry = rx / (2.5 + w / 50.0);
-    let tx = w * 1.5;
-    let ty = (actor_height + ry) / 4.0;
-    let y_text = y + actor_height + (ry / 2.0);
+    let tx = w;
+    let ty = ry;
+    let y_text = y + 35.0 + (actor_height / 2.0);
     let _ = write!(
         out,
         r##"<g class="actor actor-top" transform="translate({tx}, {ty})" style="stroke: rgb(147, 112, 219);"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}"/></g>"##,
@@ -199,16 +199,16 @@ pub(super) fn write_database_bottom_actor_shape(
     label_ctx: &ActorLabelContext<'_>,
 ) {
     // Mermaid's database actor uses a cylinder glyph and updates the actor height after
-    // the top render; the footer render uses that updated height (≈ width/4 + labelBoxHeight).
+    // the top render; the footer render uses that updated height (≈ width/3 + labelBoxHeight).
     let (x, y) = node_left_top(n);
-    let w = n.width / 4.0;
-    let h = n.width / 4.0;
+    let w = n.width / 3.0;
+    let h = n.width / 3.0;
     let rx = w / 2.0;
     let ry = rx / (2.5 + w / 50.0);
     let footer_h = h + label_box_height;
-    let tx = w * 1.5;
-    let ty = (footer_h / 4.0) - 2.0 * ry;
-    let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
+    let tx = w;
+    let ty = ry;
+    let y_text = y + 35.0 + (footer_h / 2.0);
     let _ = write!(
         out,
         r##"<g class="actor actor-bottom" transform="translate({tx}, {ty})" style="stroke: rgb(147, 112, 219);"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}"/></g>"##,

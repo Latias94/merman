@@ -623,6 +623,77 @@ Outcome:
   several small line-break/text-measurement width tails, and participant/actor-type height-only
   tails. These are split into M15RV-087.
 
+## M15RV-087 - Sequence Actor-Type And Stale Root Pin Follow-Up
+
+Fresh source findings from 2026-06-02:
+
+- Mermaid 11.15 `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/svgDraw.js` draws
+  database participants with `rect.width / 3` cylinders and translates the cylinder by
+  `(w, ry)`.
+- The same source path draws boundary, control, and entity actor-man variants with 22px source
+  radii and fixed source offsets. Rust previously carried stale approximations for several of
+  those glyphs.
+- Mermaid's `adjustCreatedDestroyedData(...)` positions created actor tops from
+  `lineStartY - actor.height / 2` using the pre-render actor height. Type-specific SVG drawing can
+  later update the rendered height, but that does not move the lifecycle anchor.
+- Mermaid's footer actor draw pass bumps the shared bounds cursor by the maximum rendered footer
+  actor height for the whole row. Individual destroyed actor `stopy` values do not replace that
+  row cursor.
+
+Renderer and root-policy changes:
+
+- `crates/merman-render/src/svg/parity/sequence/actor_shapes.rs` now emits database actor geometry
+  from the Mermaid 11.15 cylinder rule.
+- `crates/merman-render/src/svg/parity/sequence/actor_man_glyphs.rs` now mirrors the source
+  boundary/control/entity actor-man radii, transforms, circle positions, and text anchors.
+- `crates/merman-render/src/sequence/actors.rs` now positions created top actors using the
+  lifecycle height anchor instead of the type-specific visual height center.
+- `crates/merman-render/src/sequence/root_bounds.rs` now includes Mermaid's footer-row
+  max-height cursor bump in root bounds when `mirrorActors` is enabled.
+- Six stale Sequence root viewport overrides were deleted after focused
+  `--no-root-overrides` checks proved the computed roots were exact:
+  `stress_quoted_participants_and_types_023`,
+  `upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014`,
+  and `upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`.
+
+Fresh validation:
+
+- `cargo test -p merman-render sequence_text_and_frame_constants_match_mermaid -- --nocapture`:
+  passed.
+- `cargo run -p xtask -- compare-sequence-svgs --filter upstream_cypress_sequencediagram_v2_spec_should_render_participant_creation_and_destruction_with_differen_012 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_participant_creation_after_footer_cursor_rule.md`:
+  passed after the lifecycle/footer cursor rule.
+- Focused no-root stale-pin checks passed for
+  `stress_quoted_participants_and_types_023`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011`, and
+  `upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010`.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/sequence_report_parity_after_m15rv087_stale_pin_drop.md`:
+  passed for the full Sequence matrix.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_report_parity_root_after_m15rv087_stale_pin_drop.md`:
+  expected failure with 28 raw Sequence root mismatches, down from 64 after M15RV-085.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with Sequence root viewport
+  overrides reduced from 55 to 49 entries and total root viewport overrides reduced to 272.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 135 unaccepted residuals: Flowchart 61, Architecture 30, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+
+Outcome:
+
+- Sequence actor-type height rows and stale-root-pin rows are no longer part of the active
+  residual bucket.
+- Raw Sequence root mismatches dropped from 64 to 28. In the full all-diagram policy run, the
+  existing accepted `sequence/zed_pr_57644_sequence` row is still accepted, so Sequence has
+  27 unaccepted residuals.
+- Remaining Sequence rows are long-note width tails, line-break/text-measurement width tails, and
+  small math/root-measurement tails. They should not be forced with hand-written constants.
+
 ## M15RV-040 Follow-Up - Architecture Root Diagnostics Parity
 
 Fresh evidence from 2026-06-01:

@@ -147,29 +147,39 @@ Sequence structural parity is green, and raw Sequence root mismatches dropped fr
 all-diagram root policy accepts the existing `sequence/zed_pr_57644_sequence` residual, leaving
 63 unaccepted Sequence rows.
 
+M15RV-087 refined the Sequence actor-type/root-bound policy. Mermaid 11.15 `svgDraw.js` shows
+database cylinders use `rect.width / 3`, and boundary/control/entity actor-man glyphs use 22px
+source radii/offsets. Rust now mirrors those glyph rules, positions created actor tops from
+`lineStartY - actor.height / 2` using the pre-render lifecycle height, and includes Mermaid's
+footer-row `maxHeight` cursor bump in root bounds. Six stale Sequence root pins were deleted after
+focused `--no-root-overrides` checks proved the computed roots were exact. Raw Sequence root
+mismatches dropped from 64 to 28, and the full all-diagram root policy leaves 27 unaccepted
+Sequence rows after the accepted `zed_pr_57644_sequence` residual.
+
 ## Active Task
 
-- Task ID: M15RV-087
+- Task ID: M15RV-088
 - Owner: codex
 - Status: PENDING
-- Goal: Classify and reduce the remaining Sequence long-note, small line-break width, and
-  actor-type height tails after the M15RV-085 wrap evidence update.
-- Evidence: start from the latest `target/compare/sequence_report_parity_root.md`; top rows are
-  the two long-note residuals at `+7px`, followed by small line-break width tails and
-  participant/actor-type height-only rows.
-- Concern: Do not add root pins or string-by-string constants for the remaining tails unless they
-  come from a reusable generated measurement source. Prefer Mermaid source rules or explicit
-  diagnostic residual policy.
+- Goal: Classify and reduce the remaining Architecture root residual bucket with source-derived
+  group/port/disconnected-component root-bound rules where justified.
+- Evidence: start from the latest `target/compare/architecture_report_parity_root.md`; full root
+  evidence currently reports 30 unaccepted Architecture rows.
+- Concern: Do not convert Architecture layout/root-bound rows into broad root pins or tolerances.
+  Use `--report-root-all` and `--no-root-overrides` before deciding stale pin vs source rule vs
+  browser bbox diagnostic residual.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 171.
-- Largest buckets: Sequence 63, Flowchart 61, Architecture 30, Class 12.
+- Total unaccepted full-root residuals: 135.
+- Largest buckets: Flowchart 61, Architecture 30, Sequence 27, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
 - Closed in M15RV-085: Sequence 67 -> 63 unaccepted residuals in the full all-diagram root policy
   run, with the four largest HTML `<br>` / wrap rows now root-exact.
+- Closed in M15RV-087: Sequence 63 -> 27 unaccepted residuals in the full all-diagram root policy
+  run, with actor-type height rows and six stale Sequence root pins removed from the residual set.
 
 ## Guardrails
 

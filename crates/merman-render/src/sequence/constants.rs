@@ -1,5 +1,5 @@
 pub(crate) const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 0.0;
-pub(crate) const SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX: f64 = 3.0;
+pub(crate) const SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX: f64 = 0.0;
 pub(crate) const SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX: f64 = 0.0;
 pub(crate) const SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX: f64 = 4.0;
 pub(crate) const SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR: f64 = 4.5;
@@ -28,15 +28,15 @@ pub(super) fn sequence_actor_visual_height(
     label_box_height: f64,
 ) -> f64 {
     match actor_type {
-        // Mermaid (11.12.2) derives these from the actor-type glyph bbox + label box height.
+        // Mermaid derives these from the actor-type glyph bbox + label box height.
         // These heights are used by the footer actor rendering and affect the final SVG viewBox.
-        "boundary" => (60.0 + label_box_height).max(1.0),
-        // Mermaid's database actor updates the actor height after the top render.
-        // The footer render uses that updated height: approximately width/4 + labelBoxHeight.
-        "database" => ((base_width / 4.0) + label_box_height).max(1.0),
-        "entity" => (36.0 + label_box_height).max(1.0),
+        "boundary" => (44.0 + label_box_height).max(1.0),
+        // Mermaid's database actor updates the actor height from the cylinder bbox after render.
+        // The cylinder uses `rect.width / 3`, then the label box height is added.
+        "database" => ((base_width / 3.0) + label_box_height).max(1.0),
+        "entity" => (44.0 + label_box_height).max(1.0),
         // Control uses an extra label-box height in Mermaid.
-        "control" => (36.0 + 2.0 * label_box_height).max(1.0),
+        "control" => (44.0 + 2.0 * label_box_height).max(1.0),
         _ => base_height.max(1.0),
     }
 }
@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn sequence_text_and_frame_constants_match_mermaid() {
         assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 0.0);
-        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 3.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 0.0);
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 0.0);
         assert_eq!(super::SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, 4.0);
         assert_eq!(super::SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, 4.5);
@@ -72,6 +72,22 @@ mod tests {
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
         assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
+        assert_eq!(
+            super::sequence_actor_visual_height("database", 150.0, 65.0, 20.0),
+            70.0
+        );
+        assert_eq!(
+            super::sequence_actor_visual_height("boundary", 150.0, 65.0, 20.0),
+            64.0
+        );
+        assert_eq!(
+            super::sequence_actor_visual_height("entity", 150.0, 65.0, 20.0),
+            64.0
+        );
+        assert_eq!(
+            super::sequence_actor_visual_height("control", 150.0, 65.0, 20.0),
+            84.0
+        );
         assert_eq!(super::SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, 60.0);
         assert_eq!(super::SEQUENCE_FRAME_SIDE_PAD_PX, 11.0);
         assert_eq!(super::SEQUENCE_FRAME_GEOM_PAD_PX, 10.0);
