@@ -538,6 +538,31 @@ Architecture stale-baseline finding:
   be treated as an explicit headless approximation problem and justified with iconText-specific
   probe evidence rather than with broad Architecture layout changes.
 
+Fresh follow-up evidence from 2026-06-02 for source-owned Architecture calibration cleanup:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter upstream_architecture_cypress_reasonable_height --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/architecture_reasonable_height_no_overrides.md`:
+  expected failure before the cleanup, and it matched the enabled-root output exactly
+  (`1859.75px` upstream vs `1860.25px` local). This proved the residual came from computed local
+  geometry, not from a retained root pin.
+- `cargo run -p xtask -- compare-architecture-svgs --filter upstream_architecture_cypress_reasonable_height --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_reasonable_height_enabled.md`:
+  same pre-cleanup `+0.380px` residual as the no-root-overrides run.
+- Removed the local `is_reasonable_height_profile(...)` width calibration
+  (`vb_w += 0.380126953125`) from `crates/merman-render/src/svg/parity/architecture/viewport.rs`.
+- After the cleanup, these three focused gates all passed with exact zero root delta:
+  `target/compare/architecture_reasonable_height_after_drop.md`,
+  `target/compare/architecture_layout_reasonable_height_after_drop.md`, and
+  `target/compare/architecture_reasonable_height_spec_after_drop.md`.
+- `cargo run -p xtask -- compare-all-svgs --diagram architecture --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+  still fails overall, but the bounded summary dropped from 32 to 29 unaccepted Architecture
+  residuals.
+
+Architecture calibration cleanup finding:
+
+- The old `reasonable_height` width bump was no longer paying its way under Mermaid 11.15.
+  It created a deterministic `+0.380px` overshoot on all three corresponding upstream fixtures.
+- Removing it is a true source-owned cleanup, not a tolerance change: no browser-only approximation
+  was introduced, and the affected fixtures became exact root matches.
+
 ## Gate Set
 
 Run after any code or generated-data change:

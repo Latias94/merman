@@ -86,6 +86,15 @@ into a smaller `+10.145px` iconText root-bounds tail. This is important: do not 
 evidence of a gross Architecture layout bug anymore. It is now an iconText `foreignObject` bbox
 approximation problem.
 
+The same follow-up also proved one local Architecture calibration had gone stale. The
+`is_reasonable_height_profile(...)` width adjustment (`+0.380126953125px`) produced the same
+overshoot with or without root overrides enabled, so it was a source-owned local bump rather than a
+pinning artifact. Removing that bump made
+`upstream_architecture_cypress_reasonable_height`,
+`upstream_architecture_layout_reasonable_height`, and
+`upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_a_reasonable_height_011`
+all root-green, and reduced the aggregate Architecture bucket from 32 to 29 residuals.
+
 ## Active Task
 
 - Task ID: M15RV-070
@@ -126,3 +135,6 @@ approximation problem.
   reasoning from older focused reports; stale focused reports can still show the pre-refresh
   `+120px` iconText row even after the canonical aggregate report has moved to the refreshed
   `+10px` residual.
+- Prefer deleting stale source-owned calibrations like `reasonable_height` before inventing new
+  root heuristics. Those removals are lower risk and easier to defend against Mermaid source and
+  fixture evidence.

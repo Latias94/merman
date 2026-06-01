@@ -133,7 +133,7 @@ struct ArchitectureRootViewportProfile {
 fn apply_default_architecture_root_viewport_calibration<M: ArchitectureModelAccess>(
     model: &M,
     profile: ArchitectureRootViewportProfile,
-    vb_w: &mut f64,
+    _vb_w: &mut f64,
     vb_h: &mut f64,
 ) {
     if has_accessibility_text(model) {
@@ -145,10 +145,6 @@ fn apply_default_architecture_root_viewport_calibration<M: ArchitectureModelAcce
     // bucket differs by a small deterministic amount from browser Mermaid.
     if is_groups_within_groups_profile(model, profile) {
         *vb_h = (*vb_h - 0.85107421875).max(1.0);
-    }
-
-    if is_reasonable_height_profile(model, profile) {
-        *vb_w += 0.380126953125;
     }
 }
 
@@ -201,55 +197,4 @@ fn is_groups_within_groups_profile<M: ArchitectureModelAccess>(
     }
 
     pair_bt == 1 && (pair_lr == 2 || pair_rl == 2) && !has_titles && !has_group_edge_mod
-}
-
-fn is_reasonable_height_profile<M: ArchitectureModelAccess>(
-    model: &M,
-    profile: ArchitectureRootViewportProfile,
-) -> bool {
-    if profile.groups_len != 2
-        || profile.service_count != 10
-        || profile.junction_count != 7
-        || profile.edges_len != 16
-    {
-        return false;
-    }
-
-    let mut pair_rl = 0usize;
-    let mut pair_bt = 0usize;
-    let mut has_titles = false;
-    let mut has_group_edge_mod = false;
-    let mut lhs_into_count = 0usize;
-    let mut rhs_into_count = 0usize;
-
-    for edge in model.edges() {
-        match (edge.lhs_dir, edge.rhs_dir) {
-            ('R', 'L') => pair_rl += 1,
-            ('B', 'T') => pair_bt += 1,
-            _ => {}
-        }
-        if edge
-            .title
-            .map(str::trim)
-            .is_some_and(|t: &str| !t.is_empty())
-        {
-            has_titles = true;
-        }
-        if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-            has_group_edge_mod = true;
-        }
-        if edge.lhs_into == Some(true) {
-            lhs_into_count += 1;
-        }
-        if edge.rhs_into == Some(true) {
-            rhs_into_count += 1;
-        }
-    }
-
-    pair_rl == 9
-        && pair_bt == 7
-        && !has_titles
-        && !has_group_edge_mod
-        && lhs_into_count == 0
-        && rhs_into_count <= 1
 }
