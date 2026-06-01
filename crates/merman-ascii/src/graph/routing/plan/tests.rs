@@ -17,6 +17,7 @@ use crate::graph::model::{
     GraphNodeShape, GraphNodeStyle,
 };
 use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
+use crate::graph::routing::plan::PlannedRouteSegment;
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
@@ -372,7 +373,39 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
         charset: &charset,
     })
     .expect("leaving boundary route should use explicit right boundary ports");
-    assert_eq!(actual, expected);
+    assert_eq!(actual.labels, expected.labels);
+    assert_eq!(
+        actual
+            .cells
+            .iter()
+            .map(|cell| (cell.coord, cell.ch, cell.kind))
+            .collect::<Vec<_>>(),
+        expected
+            .cells
+            .iter()
+            .map(|cell| (cell.coord, cell.ch, cell.kind))
+            .collect::<Vec<_>>()
+    );
+    assert!(actual
+        .cells
+        .iter()
+        .all(|cell| cell.segment == PlannedRouteSegment::Boundary));
+}
+
+#[test]
+fn direct_grid_route_cells_keep_direct_segment_marker() {
+    let options = AsciiRenderOptions::ascii();
+    let layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&layout, "a");
+    let to = layout_node(&layout, "b");
+    let edge = edge(Some("go"), GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&options);
+
+    let plan = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset).unwrap();
+    assert!(plan
+        .cells
+        .iter()
+        .all(|cell| cell.segment == PlannedRouteSegment::Direct));
 }
 
 #[test]
@@ -912,6 +945,7 @@ fn cell(x: usize, y: usize, ch: char, kind: PlannedRouteCellKind) -> PlannedRout
         coord: CanvasCoord { x, y },
         ch,
         kind,
+        segment: PlannedRouteSegment::Direct,
     }
 }
 

@@ -6,8 +6,8 @@ use super::super::path::{
     Port, StepDirection, merge_grid_path, route_grid_path_with_ports, step_direction,
 };
 use super::{
-    PlannedRouteCell, RoutePlan, edge_arrow_cell, edge_line_cell, planned_label_on_canvas_lines,
-    route_cell,
+    PlannedRouteCell, PlannedRouteSegment, RoutePlan, edge_arrow_cell_in_segment,
+    edge_line_cell_in_segment, planned_label_on_canvas_lines, route_cell_in_segment,
 };
 
 pub(super) fn plan_left_right_grid_path_route(
@@ -29,6 +29,28 @@ pub(super) fn plan_left_right_grid_path_route_with_ports(
     start_port: Option<Port>,
     end_port: Option<Port>,
 ) -> Option<RoutePlan> {
+    plan_left_right_grid_path_route_with_ports_and_segment(
+        graph_layout,
+        from,
+        to,
+        edge,
+        charset,
+        start_port,
+        end_port,
+        PlannedRouteSegment::Direct,
+    )
+}
+
+pub(super) fn plan_left_right_grid_path_route_with_ports_and_segment(
+    graph_layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    start_port: Option<Port>,
+    end_port: Option<Port>,
+    segment: PlannedRouteSegment,
+) -> Option<RoutePlan> {
     let (path, start_port, end_port) = route_grid_path_with_ports(
         &graph_layout.nodes,
         from,
@@ -41,18 +63,20 @@ pub(super) fn plan_left_right_grid_path_route_with_ports(
     }
 
     let path = merge_grid_path(path);
-    let (mut cells, lines_drawn, line_dirs) = plan_grid_path(graph_layout, &path, edge, charset);
+    let (mut cells, lines_drawn, line_dirs) =
+        plan_grid_path(graph_layout, &path, edge, charset, segment);
     if lines_drawn.is_empty() || line_dirs.is_empty() {
         return None;
     }
-    plan_grid_corners(&mut cells, graph_layout, &path, charset);
-    plan_grid_box_start(&mut cells, lines_drawn[0].as_slice(), start_port, charset);
+    plan_grid_corners(&mut cells, graph_layout, &path, charset, segment);
+    plan_grid_box_start(&mut cells, lines_drawn[0].as_slice(), start_port, charset, segment);
     plan_grid_arrow_head(
         &mut cells,
         lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
         *line_dirs.last().unwrap_or(&end_port.step_fallback()),
         edge,
         charset,
+        segment,
     );
     let labels = planned_label_on_canvas_lines(edge.label.as_deref(), &lines_drawn)
         .into_iter()
@@ -66,6 +90,7 @@ fn plan_grid_path(
     path: &[GridCoord],
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
+    segment: PlannedRouteSegment,
 ) -> (
     Vec<PlannedRouteCell>,
     Vec<Vec<CanvasCoord>>,
@@ -75,14 +100,15 @@ fn plan_grid_path(
     let mut lines_drawn = Vec::new();
     let mut line_dirs = Vec::new();
 
-    for segment in path.windows(2) {
-        let direction = step_direction(segment[0], segment[1]);
+    for path_segment in path.windows(2) {
+        let direction = step_direction(path_segment[0], path_segment[1]);
         let (line_cells, line) = plan_grid_line(
-            graph_layout.grid_to_canvas(segment[0]),
-            graph_layout.grid_to_canvas(segment[1]),
+            graph_layout.grid_to_canvas(path_segment[0]),
+            graph_layout.grid_to_canvas(path_segment[1]),
             direction,
             edge,
             charset,
+            segment,
         );
         cells.extend(line_cells);
         if !line.is_empty() {
@@ -100,6 +126,7 @@ fn plan_grid_line(
     direction: StepDirection,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
+    segment: PlannedRouteSegment,
 ) -> (Vec<PlannedRouteCell>, Vec<CanvasCoord>) {
     let mut cells = Vec::new();
     let mut drawn = Vec::new();
@@ -107,28 +134,28 @@ fn plan_grid_line(
         StepDirection::Right => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in (from.x + 1)..to.x {
-                cells.push(route_cell(x, from.y, line));
+                cells.push(route_cell_in_segment(x, from.y, line, segment));
                 drawn.push(CanvasCoord { x, y: from.y });
             }
         }
         StepDirection::Left => {
             let line = edge_line_char(edge, charset, GraphDirection::LeftRight);
             for x in ((to.x + 1)..from.x).rev() {
-                cells.push(route_cell(x, from.y, line));
+                cells.push(route_cell_in_segment(x, from.y, line, segment));
                 drawn.push(CanvasCoord { x, y: from.y });
             }
         }
         StepDirection::Down => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in (from.y + 1)..to.y {
-                cells.push(route_cell(from.x, y, line));
+                cells.push(route_cell_in_segment(from.x, y, line, segment));
                 drawn.push(CanvasCoord { x: from.x, y });
             }
         }
         StepDirection::Up => {
             let line = edge_line_char(edge, charset, GraphDirection::TopDown);
             for y in ((to.y + 1)..from.y).rev() {
-                cells.push(route_cell(from.x, y, line));
+                cells.push(route_cell_in_segment(from.x, y, line, segment));
                 drawn.push(CanvasCoord { x: from.x, y });
             }
         }
@@ -141,15 +168,17 @@ fn plan_grid_corners(
     graph_layout: &GraphLayout,
     path: &[GridCoord],
     charset: &GraphCharset,
+    segment: PlannedRouteSegment,
 ) {
     for index in 1..path.len().saturating_sub(1) {
         let previous = step_direction(path[index - 1], path[index]);
         let next = step_direction(path[index], path[index + 1]);
         let coord = graph_layout.grid_to_canvas(path[index]);
-        cells.push(route_cell(
+        cells.push(route_cell_in_segment(
             coord.x,
             coord.y,
             grid_corner_char(previous, next, charset),
+            segment,
         ));
     }
 }
@@ -181,6 +210,7 @@ fn plan_grid_box_start(
     first_line: &[CanvasCoord],
     start_port: Port,
     charset: &GraphCharset,
+    segment: PlannedRouteSegment,
 ) {
     if !charset.unicode {
         return;
@@ -190,14 +220,26 @@ fn plan_grid_box_start(
     };
 
     let cell = match start_port.step_fallback() {
-        StepDirection::Up => edge_line_cell(from.x, from.y + 1, charset.up_connector),
+        StepDirection::Up => {
+            edge_line_cell_in_segment(from.x, from.y + 1, charset.up_connector, segment)
+        }
         StepDirection::Down => {
-            edge_line_cell(from.x, from.y.saturating_sub(1), charset.down_connector)
+            edge_line_cell_in_segment(
+                from.x,
+                from.y.saturating_sub(1),
+                charset.down_connector,
+                segment,
+            )
         }
-        StepDirection::Left => edge_line_cell(from.x + 1, from.y, charset.left_connector),
-        StepDirection::Right => {
-            edge_line_cell(from.x.saturating_sub(1), from.y, charset.right_connector)
+        StepDirection::Left => {
+            edge_line_cell_in_segment(from.x + 1, from.y, charset.left_connector, segment)
         }
+        StepDirection::Right => edge_line_cell_in_segment(
+            from.x.saturating_sub(1),
+            from.y,
+            charset.right_connector,
+            segment,
+        ),
     };
     cells.push(cell);
 }
@@ -208,6 +250,7 @@ fn plan_grid_arrow_head(
     fallback: StepDirection,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
+    segment: PlannedRouteSegment,
 ) {
     if edge.arrow == GraphEdgeArrow::Open {
         return;
@@ -225,7 +268,7 @@ fn plan_grid_arrow_head(
         StepDirection::Left => charset.arrow_left,
         StepDirection::Right => charset.arrow_right,
     };
-    cells.push(edge_arrow_cell(last.x, last.y, ch));
+    cells.push(edge_arrow_cell_in_segment(last.x, last.y, ch, segment));
 }
 
 fn canvas_line_direction(from: CanvasCoord, to: CanvasCoord) -> Option<StepDirection> {

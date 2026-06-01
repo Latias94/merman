@@ -14,10 +14,20 @@ pub(super) struct RoutePlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(super) enum PlannedRouteSegment {
+    Direct,
+    Internal,
+    Boundary,
+    External,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PlannedRouteCell {
     pub(super) coord: CanvasCoord,
     pub(super) ch: char,
     pub(super) kind: PlannedRouteCellKind,
+    pub(super) segment: PlannedRouteSegment,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,26 +45,56 @@ pub(super) struct PlannedRouteLabel {
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
+    route_cell_in_segment(x, y, ch, PlannedRouteSegment::Direct)
+}
+
+fn route_cell_in_segment(
+    x: usize,
+    y: usize,
+    ch: char,
+    segment: PlannedRouteSegment,
+) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind: PlannedRouteCellKind::RouteCell,
+        segment,
     }
 }
 
 fn edge_line_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
+    edge_line_cell_in_segment(x, y, ch, PlannedRouteSegment::Direct)
+}
+
+fn edge_line_cell_in_segment(
+    x: usize,
+    y: usize,
+    ch: char,
+    segment: PlannedRouteSegment,
+) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind: PlannedRouteCellKind::EdgeLine,
+        segment,
     }
 }
 
 fn edge_arrow_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
+    edge_arrow_cell_in_segment(x, y, ch, PlannedRouteSegment::Direct)
+}
+
+fn edge_arrow_cell_in_segment(
+    x: usize,
+    y: usize,
+    ch: char,
+    segment: PlannedRouteSegment,
+) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind: PlannedRouteCellKind::EdgeArrow,
+        segment,
     }
 }
 

@@ -2,7 +2,10 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{GraphLayout, NodeLayout};
 use super::super::super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection};
 use super::RoutePlan;
-use super::grid::{plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports};
+use super::grid::{
+    plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports,
+    plan_left_right_grid_path_route_with_ports_and_segment,
+};
 use super::left_right::{
     left_right_back_edge_bottom_y, plan_left_right_bottom_lane_route, plan_left_right_direct_route,
     plan_left_right_down_route, plan_left_right_down_then_right_route,
@@ -15,6 +18,7 @@ use super::top_down::{
 };
 use super::super::path::Port;
 use crate::text::display_width;
+use super::PlannedRouteSegment;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::graph::routing) enum EdgeBoundaryContext<'a> {
@@ -177,11 +181,11 @@ fn plan_boundary_route(
             Some(Port::Right),
             Some(Port::Left),
         ),
-        | EdgeBoundaryContext::Leaving {
+        EdgeBoundaryContext::Leaving {
             root_direction: GraphDirection::TopDown,
             local_direction: GraphDirection::LeftRight,
             ..
-        } => plan_left_right_grid_path_route_with_ports(
+        } => plan_left_right_grid_path_route_with_ports_and_segment(
             request.graph_layout,
             request.from,
             request.to,
@@ -189,6 +193,7 @@ fn plan_boundary_route(
             request.charset,
             Some(Port::Right),
             Some(Port::Right),
+            PlannedRouteSegment::Boundary,
         ),
         EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => None,
         EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => None,
