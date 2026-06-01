@@ -1,9 +1,13 @@
 // This file is intentionally hand-curated.
 //
 // We use these overrides to close the last few class HTML-label parity gaps where
-// Mermaid@11.12.2 upstream baselines reflect browser DOM measurement quirks for
+// Mermaid@11.15 upstream baselines still reflect browser DOM measurement quirks for
 // `calculateTextWidth(...)+50` probes, namespace titles, and note labels that are
 // difficult to reproduce from the shared vendored text metrics alone.
+//
+// The module name remains `*_11_12_2` for compatibility with existing lookup plumbing.
+// When touching this table, prefer deleting or replacing stale rows with auditable evidence
+// over growing the table with new hand-added fixture literals.
 
 pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<i64> {
     match (font_size_px, text.trim()) {

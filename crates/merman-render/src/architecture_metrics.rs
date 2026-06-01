@@ -98,6 +98,17 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     }
 }
 
+pub(crate) fn architecture_node_bbox_extras_to_manatee(
+    extras: ArchitectureNodeBBoxExtras,
+) -> manatee::BoundsExtras {
+    manatee::BoundsExtras {
+        left: extras.left,
+        right: extras.right,
+        top: extras.top,
+        bottom: extras.bottom,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -117,5 +128,20 @@ mod tests {
         );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
+    }
+
+    #[test]
+    fn architecture_node_bbox_extras_convert_to_manatee_bounds_extras() {
+        let extras = super::ArchitectureNodeBBoxExtras {
+            left: 1.5,
+            right: 2.5,
+            top: 3.5,
+            bottom: 4.5,
+        };
+        let mapped = super::architecture_node_bbox_extras_to_manatee(extras);
+        assert_eq!(mapped.left, 1.5);
+        assert_eq!(mapped.right, 2.5);
+        assert_eq!(mapped.top, 3.5);
+        assert_eq!(mapped.bottom, 4.5);
     }
 }

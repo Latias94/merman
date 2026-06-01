@@ -240,6 +240,20 @@ compound-padding hypothesis. Prefer new probes around FCoSE relocation center se
 disconnected-component ordering/phase, or top-left-vs-center coordinate transfer before changing
 shared bbox padding rules again.
 
+One small refactor landed during the same lane to support that investigation without changing the
+residual set: Architecture's pre-layout Cytoscape node-bbox extras now convert to
+`manatee::BoundsExtras` through a shared helper in `architecture_metrics.rs` instead of repeating
+field-by-field mapping inside `architecture.rs`. This keeps the "Architecture approximation ->
+FCoSE input extras" seam explicit and easier to audit before further measurement extraction.
+
+Another behavior-preserving extraction followed immediately after: Architecture service bounds in
+the SVG parity renderer now go through a dedicated helper that returns three explicit views of the
+same service geometry: icon-only bounds, root `svg.getBBox()`-style bounds, and Cytoscape
+compound `node.boundingBox()`-style bounds. Previously those two label-bbox approximations were
+interleaved inside one local loop variable. The new split did not aim to change residual counts;
+it makes future root-tail audits much easier because root vs compound measurement policy now has a
+named seam instead of duplicated inline arithmetic.
+
 Additional 2026-06-02 diagnostic result:
 
 - `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` now prints the top-level node/compound/edge/edge-label bbox
@@ -255,6 +269,28 @@ Additional 2026-06-02 diagnostic result:
   `manatee::fcose::bounding_box_center_eles()` versus Cytoscape's `eles.boundingBox()` for
   Architecture, rather than on edge-label geometry or the outer `architecture.rs` helper
   `initial_center`.
+
+Another focused 2026-06-02 result narrowed `stress_architecture_disconnected_islands_046`
+further:
+
+- Running the focused compare with `MANATEE_FCOSE_DEBUG_RELOCATE=1` and
+  `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` shows the Rust FCoSE relocation path is active and
+  deterministic:
+  - run0 `orig_center=(0,8.5)` from the pre-layout bbox
+    `(-82.5,-82.5)-(82.5,99.5)`, then relocate delta `(-21.915432,+11.192230)`.
+  - run1 `orig_center=(0.75,17.75)` from the pre-layout bbox
+    `(-350.507109,-306.235956)-(352.007109,341.735956)`, then relocate delta
+    `(+7.081728,+25.324378)`.
+- Disabling relocation entirely with `MANATEE_FCOSE_DISABLE_RELOCATE=1` does **not** change the
+  focused root residual: the final local SVG remains `823.25 x 775.5` against upstream
+  `823.25 x 768.5`.
+- Therefore this row is not caused by the final `aux.relocateComponent(...)`-style translation.
+  The remaining height drift is produced earlier by the disconnected-component / owner-graph
+  layout solution itself.
+- A follow-up source check against layout-base `LGraph.updateConnected()` also removed one tempting
+  false lead: a single-node owner graph is considered connected upstream because the BFS seed node
+  counts as visited immediately. Do not try to "fix" disconnected component height by forcing
+  isolated child graphs into the gravity set; that would diverge from upstream semantics.
 
 `stress_architecture_batch5_long_titles_and_punct_076` and
 `stress_architecture_batch4_init_small_icons_061` were classified as measurement diagnostics rather

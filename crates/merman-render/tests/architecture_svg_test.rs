@@ -202,6 +202,24 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
 }
 
 #[test]
+fn architecture_long_title_group_rect_stays_within_current_headless_envelope() {
+    let svg = render_architecture_fixture_with_options(
+        "stress_architecture_batch5_long_titles_and_punct_076.mmd",
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-batch5-long".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let pipeline = group_rect(&svg, "architecture-batch5-long-group-pipeline");
+    assert!(
+        pipeline.2 > 470.0 && pipeline.2 < 473.5,
+        "unexpected pipeline group width drift for long-title architecture fixture: {}",
+        pipeline.2
+    );
+}
+
+#[test]
 fn architecture_icon_text_clamp_uses_architecture_font_size() {
     let svg = render_architecture_fixture_with_options(
         "upstream_architecture_docs_service_icon_text.mmd",

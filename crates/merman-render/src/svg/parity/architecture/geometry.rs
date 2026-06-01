@@ -127,10 +127,21 @@ impl<'a> GroupRectComputer<'a> {
         }
         self.visiting.insert(group_id);
 
+        let debug_group = std::env::var("MERMAN_ARCH_DEBUG_GROUP_RECT")
+            .ok()
+            .filter(|value| !value.is_empty());
+        let debug_this_group = debug_group.as_deref() == Some(group_id);
+
         let mut content: Option<Bounds> = None;
         if let Some(svcs) = self.services_in_group.get(group_id) {
             for id in svcs {
                 if let Some(b) = self.service_bounds.get(id) {
+                    if debug_this_group {
+                        eprintln!(
+                            "[arch-group-rect] group={} service={} bounds=({}, {})-({}, {})",
+                            group_id, id, b.min_x, b.min_y, b.max_x, b.max_y
+                        );
+                    }
                     let mut tmp = content;
                     extend_bounds(&mut tmp, b.clone());
                     content = tmp;
@@ -140,6 +151,12 @@ impl<'a> GroupRectComputer<'a> {
         if let Some(junctions) = self.junctions_in_group.get(group_id) {
             for id in junctions {
                 if let Some(b) = self.junction_bounds.get(id) {
+                    if debug_this_group {
+                        eprintln!(
+                            "[arch-group-rect] group={} junction={} bounds=({}, {})-({}, {})",
+                            group_id, id, b.min_x, b.min_y, b.max_x, b.max_y
+                        );
+                    }
                     let mut tmp = content;
                     extend_bounds(&mut tmp, b.clone());
                     content = tmp;
@@ -160,6 +177,12 @@ impl<'a> GroupRectComputer<'a> {
             let child_group_inset = 1.0;
             for child in children {
                 if let Some(b) = self.compute(child) {
+                    if debug_this_group {
+                        eprintln!(
+                            "[arch-group-rect] group={} child-group={} raw=({}, {})-({}, {})",
+                            group_id, child, b.min_x, b.min_y, b.max_x, b.max_y
+                        );
+                    }
                     let b = if (b.max_x - b.min_x) > 2.0 * child_group_inset
                         && (b.max_y - b.min_y) > 2.0 * child_group_inset
                     {
@@ -172,6 +195,12 @@ impl<'a> GroupRectComputer<'a> {
                     } else {
                         b
                     };
+                    if debug_this_group {
+                        eprintln!(
+                            "[arch-group-rect] group={} child-group={} inset=({}, {})-({}, {})",
+                            group_id, child, b.min_x, b.min_y, b.max_x, b.max_y
+                        );
+                    }
                     let mut tmp = content;
                     extend_bounds(&mut tmp, b);
                     content = tmp;
@@ -190,6 +219,24 @@ impl<'a> GroupRectComputer<'a> {
             .is_some_and(|v| !v.is_empty());
         let _extra = ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX;
         let pad = architecture_compound_bbox_padding_px(self.padding_px);
+        if debug_this_group {
+            if let Some(content_bounds) = &content {
+                eprintln!(
+                    "[arch-group-rect] group={} content=({}, {})-({}, {}) pad={}",
+                    group_id,
+                    content_bounds.min_x,
+                    content_bounds.min_y,
+                    content_bounds.max_x,
+                    content_bounds.max_y,
+                    pad
+                );
+            } else {
+                eprintln!(
+                    "[arch-group-rect] group={} content=<empty> pad={}",
+                    group_id, pad
+                );
+            }
+        }
         let b = if let Some(content) = content {
             Bounds {
                 min_x: content.min_x - pad,
@@ -206,6 +253,12 @@ impl<'a> GroupRectComputer<'a> {
                 max_y: self.icon_size_px.max(1.0),
             }
         };
+        if debug_this_group {
+            eprintln!(
+                "[arch-group-rect] group={} final=({}, {})-({}, {})",
+                group_id, b.min_x, b.min_y, b.max_x, b.max_y
+            );
+        }
 
         self.group_rects.insert(group_id, b.clone());
         self.visiting.remove(group_id);

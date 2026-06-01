@@ -1,5 +1,6 @@
 use crate::architecture_metrics::{
     architecture_compound_bbox_padding_px, architecture_measure_cytoscape_node_bbox_extras,
+    architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::config_f64;
 use crate::json::from_value_ref;
@@ -503,15 +504,7 @@ fn layout_architecture_diagram_model(
             bb.min_y -= bounds_extras.top;
             bb.max_y += bounds_extras.bottom;
             node_bbox.insert(n.id, bb);
-            node_bounds_extras.insert(
-                n.id,
-                manatee::BoundsExtras {
-                    left: bounds_extras.left,
-                    right: bounds_extras.right,
-                    top: bounds_extras.top,
-                    bottom: bounds_extras.bottom,
-                },
-            );
+            node_bounds_extras.insert(n.id, architecture_node_bbox_extras_to_manatee(bounds_extras));
         }
 
         // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.

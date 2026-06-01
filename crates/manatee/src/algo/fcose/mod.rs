@@ -2701,6 +2701,7 @@ impl SimGraph {
         None
     }
 
+
     fn reset_edge_ideal_lengths(&mut self) {
         for e in &mut self.edges {
             e.ideal_length = e.base_ideal_length;
@@ -4440,6 +4441,7 @@ mod tests {
             );
         }
     }
+
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
