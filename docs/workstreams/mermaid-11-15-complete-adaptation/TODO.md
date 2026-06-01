@@ -171,7 +171,15 @@ Last updated: 2026-06-01
   then updated an existing stale
   `upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027`
   root override from `376.296875px` to the Mermaid 11.15 `370.53125px` root. Flowchart
-  `parity-root` reports 65 strict root-only mismatches.
+  `parity-root` reports 65 strict root-only mismatches. The image label padding slice then aligned
+  `imageSquare` label sizing and emitted CSS with Mermaid 11.15 `imageSquare.ts` and Flowchart
+  stylesheet behavior: image/icon shape labels include the stylesheet's 2px paragraph padding in
+  the DOM bbox. `upstream_docs_flowchart_parameters_136` now passes strict-root with root
+  overrides disabled. The same slice refreshed stale existing root pins for
+  `stress_flowchart_shape_mix_009` and demo flowchart 010/049 after proving the unpinned renderer
+  was already correct or within a tiny browser/root residual. Structural `parity` remains green,
+  override growth remains within budget, and Flowchart `parity-root` reports 61 strict root-only
+  mismatches.
 
 ## M4 - Upstream Family Decisions
 

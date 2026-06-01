@@ -20,7 +20,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_dense_parallel_edges_002" => {
             Some(("0 0 658.677490234375 697.390625", "658.677"))
         }
-        "stress_flowchart_shape_mix_009" => Some(("0 0 369.66796875 698.21875", "369.668")),
+        "stress_flowchart_shape_mix_009" => Some(("0 0 366.359375 703.21875", "366.359")),
         "stress_flowchart_subgraph_title_margin_extremes_015" => {
             Some(("0 25 806.421875 796", "806.422"))
         }
@@ -57,7 +57,7 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_html_demos_flowchart_flowchart_010"
         | "upstream_html_demos_flowchart_flowchart_049" => {
-            Some(("0 0 2004.41015625 1046", "2004.41"))
+            Some(("0 0 2007.41015625 1046", "2007.41"))
         }
         "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 98.046875 70", "98.0469")),
         "upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005" => {

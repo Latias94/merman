@@ -1020,7 +1020,7 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
                 };
                 let has_label = metrics.width > 0.0 && metrics.height > 0.0;
                 let label_padding = if has_label { 8.0 } else { 0.0 };
-                let label_bbox_w = if has_label { metrics.width } else { 0.0 };
+                let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
                 let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
                 return (
                     image_width.max(label_bbox_w),

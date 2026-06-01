@@ -83,7 +83,12 @@ root. Flowchart `parity-root` is down to 66 strict root-only mismatches. The sty
 refresh then updated an existing stale
 `upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027`
 pin from `376.296875px` to the Mermaid 11.15 `370.53125px` root. Flowchart `parity-root` is down
-to 65 strict root-only mismatches.
+to 65 strict root-only mismatches. The image label padding slice then aligned image-shape label
+layout/rendering with Mermaid 11.15 `imageSquare.ts` and Flowchart stylesheet padding, closing
+`upstream_docs_flowchart_parameters_136` with root overrides disabled. It also refreshed stale
+existing root pins for `stress_flowchart_shape_mix_009` and demo flowchart 010/049 after proving
+their unpinned renderer output was correct or only a tiny browser/root residual. Flowchart
+`parity-root` is down to 61 strict root-only mismatches.
 
 ## Active Task
 
@@ -237,6 +242,13 @@ to 65 strict root-only mismatches.
 - M15C-070 Flowchart styled text root-pin triage found a stale existing root override plus a small
   unpinned root residual. The pin now matches the Mermaid 11.15 `370.53125px` root, and Flowchart
   strict-root mismatch count is down to 65.
+- M15C-070 Flowchart image label padding triage found a real image-shape sizing bug. Mermaid
+  11.15 `imageSquare.ts` uses `labelHelper(...)`'s DOM bbox, and the Flowchart stylesheet applies
+  2px paragraph padding to image/icon shape labels. Local image-square layout/rendering used the
+  unpadded label bbox, making `upstream_docs_flowchart_parameters_136` 4px too narrow. The
+  renderer now includes that padding and the fixture passes strict-root with root overrides
+  disabled. Existing stale pins for `stress_flowchart_shape_mix_009` and demo flowchart 010/049
+  were refreshed to 11.15 roots; Flowchart strict-root mismatch count is down to 61.
 
 ## Known Risks
 
@@ -253,12 +265,12 @@ Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-
 formula, plain `Car` text-metric, demo 016/052 stale-root-pin, bow-tie rectangle,
 window-pane/internal-storage, document/delay, double-circle, lined/tagged-document, and no-label
 curved-trapezoid buckets are closed, and the leading Unicode/punctuation browser text-metric,
-icon root-pin, and styled text root-pin rows are closed. The full shape-alias strict-root sweep now
-passes with root overrides disabled, but strict Flowchart `parity-root` still reports 65 root-only
-mismatches. The next executable step is
-to sample the new top Flowchart residuals: Flowchart parameters, shape-mix, demo flowchart 010/049,
-markdown/html=false new/old shape rows, markdown edge/subgraph root size, and remaining small
-root-rounding rows. Check whether each is a shared Mermaid 11.15 root geometry rule, a text metric
-rule, or only then a scoped root override. After Flowchart stops exposing large shared buckets,
-compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule change before
-adding broad fixture-scoped root pins.
+icon root-pin, styled text root-pin, image label padding, shape-mix pin, and demo 010/049 pin rows
+are closed. The full shape-alias strict-root sweep now passes with root overrides disabled, but
+strict Flowchart `parity-root` still reports 61 root-only mismatches. The next executable step is
+to sample the new top Flowchart residuals: markdown/html=false new/old shape rows,
+markdown edge/subgraph root size, and remaining small root-rounding rows. Check whether each is a
+shared Mermaid 11.15 SVG-label/root sizing rule, a text metric rule, or only then a scoped root
+override. After Flowchart stops exposing large shared buckets, compare
+Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule change before adding
+broad fixture-scoped root pins.

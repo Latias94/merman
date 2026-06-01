@@ -484,6 +484,49 @@ B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
 }
 
 #[test]
+fn flowchart_image_shape_label_bbox_includes_mermaid_padding() {
+    let text = r#"flowchart TD
+A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", pos: "t", h: 60, constraint: "on" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let node = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
+    assert_eq!(node.width, 176.984375);
+    assert_eq!(node.height, 96.0);
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<foreignObject width="176.984375" height="28">"#),
+        "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<image href="https://mermaid.js.org/favicon.svg" width="60" height="60" preserveAspectRatio="none" transform="translate(-30,-12)"/>"#),
+        "expected top image placement to use the padded label bbox: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_shape_data_multiline_markdown_trims_trailing_block_newline() {
     let text = r#"flowchart TB
 A@{

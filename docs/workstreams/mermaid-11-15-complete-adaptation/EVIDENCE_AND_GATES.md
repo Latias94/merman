@@ -823,6 +823,38 @@ git diff --check
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
     still failed as expected with 65 Flowchart strict root-only mismatches, down from 66.
 
+- 2026-06-01 M15C-070 Flowchart image label padding and stale root pins:
+  - Diagnosed `upstream_docs_flowchart_parameters_136` against Mermaid 11.15 `imageSquare.ts` and
+    `diagrams/flowchart/styles.ts`. Mermaid gets the image label bbox from `labelHelper(...)`, and
+    the stylesheet applies `padding: 2px` to `.image-shape p`/`.icon-shape p`. Local image-square
+    layout/rendering used the unpadded bbox, making the label foreignObject `172.984375x24`
+    instead of upstream `176.984375x28` and shifting the top image/label placement by 2px.
+  - Updated image-square layout and SVG rendering to use the padded label bbox, and aligned the
+    generated Flowchart CSS selector with the upstream `.image-shape .label rect` /
+    `.icon-shape .label rect` form.
+  - `cargo nextest run -p merman-render flowchart_image_shape_label_bbox_includes_mermaid_padding`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_docs_flowchart_parameters_136 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - Diagnosed `stress_flowchart_shape_mix_009` as a stale existing root pin: the fixture passed
+    strict-root with root overrides disabled, while the old pin still forced
+    `369.66796875x698.21875`. The pin now matches the Mermaid 11.15 root
+    `366.359375x703.21875`, and the targeted strict-root check passes with root overrides enabled.
+  - Diagnosed demo flowchart 010/049 as stale existing root pins with only tiny unpinned
+    browser/root residuals (`2007.390` local versus `2007.410` upstream). The shared pin now
+    matches the Mermaid 11.15 root `2007.41015625x1046`, and the targeted strict-root check passes
+    with root overrides enabled.
+  - `cargo nextest run -p merman-render flowchart_image_shape_label_bbox_includes_mermaid_padding flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 61 Flowchart strict root-only mismatches, down from 65.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed; root viewport overrides
+    remain at `282` total entries and text lookup overrides remain capped at `495`.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`
