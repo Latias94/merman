@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Theme, type UITheme } from "@/src/store";
-import { useHistory } from "@/src/hooks/useHistory";
 import { useShare } from "@/src/hooks/useShare";
 import {
   exportSVG,
@@ -14,6 +13,10 @@ import {
 import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
+import {
+  createMarkdownImageLink,
+  createMermaidLiveEditorUrl,
+} from "@/src/lib/mermaid-live";
 import { normalizeThemeName } from "@merman/web";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +38,6 @@ import { toast, Toaster } from "sonner";
 import {
   Download,
   Share2,
-  History,
   BookOpen,
   Palette,
   Sun,
@@ -49,9 +51,10 @@ import {
   Languages,
   FileText,
   Code,
+  ExternalLink,
 } from "lucide-react";
 
-const UI_THEME_ICONS: Record<UITheme, React.ReactNode> = {
+const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
   light: <Sun className="size-4" />,
   dark: <Moon className="size-4" />,
   system: <Monitor className="size-4" />,
@@ -62,17 +65,15 @@ export function Toolbar() {
   const {
     code,
     diagramTheme,
+    mermaidConfig,
     setDiagramTheme,
     uiTheme,
     setUITheme,
-    toggleHistory,
     toggleExamples,
-    showHistory,
     showExamples,
     lastRenderTime,
     diagramType,
   } = useAppStore();
-  const { addToHistory } = useHistory();
   const { copyShareUrl } = useShare();
   const { render, renderAscii, getThemes } = useMerman();
   const [isExporting, setIsExporting] = useState(false);
@@ -101,9 +102,9 @@ export function Toolbar() {
 
   // 获取当前 SVG
   const currentSvg = useMemo(() => {
-    const result = render(code, diagramTheme);
+    const result = render(code, diagramTheme, mermaidConfig);
     return result.svg;
-  }, [code, diagramTheme, render]);
+  }, [code, diagramTheme, mermaidConfig, render]);
 
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
@@ -112,9 +113,8 @@ export function Toolbar() {
       return;
     }
     exportSVG(currentSvg, "merman-diagram");
-    addToHistory(code, diagramTheme, t("export.svg"));
     toast.success(t("export.svg") + " - OK");
-  }, [currentSvg, code, diagramTheme, addToHistory, t]);
+  }, [currentSvg, t]);
 
   // 导出 PNG
   const handleExportPNG = useCallback(async () => {
@@ -125,14 +125,13 @@ export function Toolbar() {
     setIsExporting(true);
     try {
       await exportPNG(currentSvg, "merman-diagram", 2);
-      addToHistory(code, diagramTheme, t("export.png"));
       toast.success(t("export.png") + " - OK");
     } catch {
       toast.error(t("export.title") + " failed");
     } finally {
       setIsExporting(false);
     }
-  }, [currentSvg, code, diagramTheme, addToHistory, t]);
+  }, [currentSvg, t]);
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
@@ -140,15 +139,14 @@ export function Toolbar() {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
-    const ascii = renderAscii(code);
+    const ascii = renderAscii(code, diagramTheme, mermaidConfig);
     if (!ascii) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
     exportASCII(ascii, "merman-diagram");
-    addToHistory(code, diagramTheme, t("export.ascii"));
     toast.success(t("export.ascii") + " - OK");
-  }, [code, diagramType, diagramTheme, addToHistory, renderAscii, t]);
+  }, [code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -163,6 +161,21 @@ export function Toolbar() {
       toast.error(t("share.copyFailed"));
     }
   }, [code, t]);
+
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(
+        createMarkdownImageLink(code, diagramTheme, mermaidConfig)
+      );
+      toast.success(t("share.copied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  }, [code, diagramTheme, mermaidConfig, t]);
 
   // 复制 SVG
   const handleCopySVG = useCallback(async () => {
@@ -185,12 +198,24 @@ export function Toolbar() {
       return;
     }
     try {
-      await copyShareUrl(code, diagramTheme);
+      await copyShareUrl(code, diagramTheme, mermaidConfig);
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [code, diagramTheme, copyShareUrl, t]);
+  }, [code, diagramTheme, mermaidConfig, copyShareUrl, t]);
+
+  const handleOpenMermaidLive = useCallback(() => {
+    if (!code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    window.open(
+      createMermaidLiveEditorUrl(code, diagramTheme, mermaidConfig),
+      "_blank",
+      "noopener,noreferrer"
+    );
+  }, [code, diagramTheme, mermaidConfig, t]);
 
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(
@@ -251,21 +276,6 @@ export function Toolbar() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.examples")}</TooltipContent>
-          </Tooltip>
-
-          {/* 历史按钮 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={showHistory ? "secondary" : "ghost"}
-                size="sm"
-                onClick={toggleHistory}
-              >
-                <History className="size-4" />
-                <span className="hidden sm:inline">{t("toolbar.history")}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("toolbar.history")}</TooltipContent>
           </Tooltip>
 
           <BenchDialog />
@@ -349,9 +359,24 @@ export function Toolbar() {
                 <Code className="size-4" />
                 {t("export.copyCode")}
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyMarkdown}>
+                <FileText className="size-4" />
+                {t("export.copyMarkdown")}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t("export.copyMarkdownDesc")}
+                </span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopySVG}>
                 <Copy className="size-4" />
                 Copy SVG
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleOpenMermaidLive}>
+                <ExternalLink className="size-4" />
+                {t("share.openMermaidLive")}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t("share.openMermaidLiveDesc")}
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

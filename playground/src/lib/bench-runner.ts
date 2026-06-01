@@ -29,11 +29,16 @@ export interface MermanRenderResult {
   error: string | null;
 }
 
-export type MermanRenderFn = (source: string, theme: string) => MermanRenderResult;
+export type MermanRenderFn = (
+  source: string,
+  theme: string,
+  configJson: string
+) => MermanRenderResult;
 
 export interface BenchRunOptions {
   source: string;
   theme: string;
+  configJson: string;
   engines: BenchEngine[];
   warmupIterations: number;
   measureIterations: number;
@@ -44,6 +49,7 @@ export interface BenchRunOptions {
 export async function runLocalRenderBench({
   source,
   theme,
+  configJson,
   engines,
   warmupIterations,
   measureIterations,
@@ -57,6 +63,7 @@ export async function runLocalRenderBench({
       engine,
       source,
       theme,
+      configJson,
       iterations: warmupIterations,
       renderMerman,
       signal,
@@ -66,6 +73,7 @@ export async function runLocalRenderBench({
         engine,
         source,
         theme,
+        configJson,
         iterations: measureIterations,
         renderMerman,
         signal,
@@ -124,6 +132,7 @@ interface RunLoopOptions {
   engine: BenchEngine;
   source: string;
   theme: string;
+  configJson: string;
   renderMerman: MermanRenderFn;
   signal?: AbortSignal;
 }
@@ -132,6 +141,7 @@ async function renderOnce({
   engine,
   source,
   theme,
+  configJson,
   renderMerman,
 }: Omit<RunLoopOptions, "signal">): Promise<{
   elapsedMs: number;
@@ -139,7 +149,7 @@ async function renderOnce({
   error: string | null;
 }> {
   if (engine === "mermaid") {
-    const result = await renderMermaidSvg(source, theme);
+    const result = await renderMermaidSvg(source, theme, configJson);
     return {
       elapsedMs: result.renderTime,
       svgLength: result.svg?.length ?? 0,
@@ -148,7 +158,7 @@ async function renderOnce({
   }
 
   const startedAt = performance.now();
-  const result = renderMerman(source, theme);
+  const result = renderMerman(source, theme, configJson);
   return {
     elapsedMs: performance.now() - startedAt,
     svgLength: result.svg?.length ?? 0,

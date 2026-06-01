@@ -32,7 +32,7 @@ const DEFAULT_MEASURE = 30;
 
 export function BenchDialog() {
   const { t } = useTranslation();
-  const { code, diagramTheme } = useAppStore();
+  const { code, diagramTheme, mermaidConfig } = useAppStore();
   const { ready, loading, render } = useMerman();
   const [open, setOpen] = useState(false);
   const [includeMerman, setIncludeMerman] = useState(true);
@@ -72,10 +72,12 @@ export function BenchDialog() {
       const nextResult = await runLocalRenderBench({
         source: code,
         theme: diagramTheme,
+        configJson: mermaidConfig,
         engines,
         warmupIterations,
         measureIterations,
-        renderMerman: (source, theme) => render(source, theme),
+        renderMerman: (source, theme, configJson) =>
+          render(source, theme, configJson),
         signal: controller.signal,
       });
       setResult(nextResult);
@@ -94,6 +96,7 @@ export function BenchDialog() {
   }, [
     code,
     diagramTheme,
+    mermaidConfig,
     disabledReason,
     engines,
     measureIterations,

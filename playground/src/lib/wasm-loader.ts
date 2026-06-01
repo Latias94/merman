@@ -1,14 +1,19 @@
 import {
   asciiSupportedDiagrams,
   initMerman,
+  layoutJson,
+  parseJson,
   SUPPORTED_THEMES,
-  normalizeThemeName,
   renderAscii,
   renderSvg,
   supportedDiagrams,
   themes,
   validate as validateDiagram,
 } from "@merman/web";
+import {
+  DEFAULT_MERMAID_CONFIG,
+  sourceWithConfig,
+} from "@/src/lib/mermaid-config";
 
 export { SUPPORTED_THEMES };
 
@@ -19,8 +24,10 @@ export interface ValidationResult {
 
 export interface MermanWasm {
   init(): Promise<void>;
-  render_svg(code: string, theme: string): string;
-  render_ascii(code: string): string | null;
+  render_svg(code: string, theme: string, configJson?: string): string;
+  render_ascii(code: string, theme?: string, configJson?: string): string | null;
+  parse_json(code: string, theme?: string, configJson?: string): string;
+  layout_json(code: string, theme?: string, configJson?: string): string;
   get_supported_diagrams(): string[];
   get_themes(): string[];
   get_ascii_supported_diagrams(): string[];
@@ -62,16 +69,40 @@ function createWasmAdapter(): MermanWasm {
   return {
     async init() {},
 
-    render_svg(code: string, theme: string): string {
-      return renderSvg(sourceWithTheme(code, theme));
+    render_svg(
+      code: string,
+      theme: string,
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string {
+      return renderSvg(sourceWithConfig(code, theme, configJson));
     },
 
-    render_ascii(code: string): string | null {
+    render_ascii(
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string | null {
       try {
-        return renderAscii(code);
+        return renderAscii(sourceWithConfig(code, theme, configJson));
       } catch {
         return null;
       }
+    },
+
+    parse_json(
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string {
+      return parseJson(sourceWithConfig(code, theme, configJson));
+    },
+
+    layout_json(
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string {
+      return layoutJson(sourceWithConfig(code, theme, configJson));
     },
 
     get_supported_diagrams(): string[] {
@@ -94,34 +125,4 @@ function createWasmAdapter(): MermanWasm {
       };
     },
   };
-}
-
-export function sourceWithTheme(source: string, theme: string): string {
-  const normalizedTheme = normalizeThemeName(theme);
-  if (normalizedTheme === "default" || hasInitDirective(source)) {
-    return source;
-  }
-
-  const directive = `%%{init: {"theme": "${normalizedTheme}"}}%%`;
-  const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  const lines = source.split(/\r?\n/);
-
-  if (lines[0]?.trim() === "---") {
-    const frontmatterEnd = lines.findIndex(
-      (line, index) => index > 0 && line.trim() === "---",
-    );
-    if (frontmatterEnd > 0) {
-      return [
-        ...lines.slice(0, frontmatterEnd + 1),
-        directive,
-        ...lines.slice(frontmatterEnd + 1),
-      ].join(newline);
-    }
-  }
-
-  return `${directive}${newline}${source}`;
-}
-
-function hasInitDirective(source: string): boolean {
-  return /%%\s*\{\s*init\s*:/i.test(source);
 }

@@ -1,13 +1,19 @@
 import { create } from "zustand";
 import type { ThemeName } from "@merman/web";
+import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 
 export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
+export type EditorMode = "code" | "config";
 
 interface AppState {
   // 编辑器状态
   code: string;
   setCode: (code: string) => void;
+  mermaidConfig: string;
+  setMermaidConfig: (config: string) => void;
+  editorMode: EditorMode;
+  setEditorMode: (mode: EditorMode) => void;
 
   // 当前图表类型
   diagramType: string;
@@ -23,8 +29,6 @@ interface AppState {
   isDarkMode: boolean;
 
   // 面板状态
-  showHistory: boolean;
-  toggleHistory: () => void;
   showExamples: boolean;
   toggleExamples: () => void;
 
@@ -63,6 +67,10 @@ export const useAppStore = create<AppState>((set) => ({
   // 编辑器状态
   code: DEFAULT_CODE,
   setCode: (code) => set({ code }),
+  mermaidConfig: DEFAULT_MERMAID_CONFIG,
+  setMermaidConfig: (mermaidConfig) => set({ mermaidConfig }),
+  editorMode: "code",
+  setEditorMode: (editorMode) => set({ editorMode }),
 
   // 当前图表类型
   diagramType: "flowchart",
@@ -81,12 +89,8 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   // 面板状态
-  showHistory: false,
-  toggleHistory: () =>
-    set((state) => ({ showHistory: !state.showHistory, showExamples: false })),
   showExamples: false,
-  toggleExamples: () =>
-    set((state) => ({ showExamples: !state.showExamples, showHistory: false })),
+  toggleExamples: () => set((state) => ({ showExamples: !state.showExamples })),
 
   // 渲染状态
   lastRenderTime: 0,

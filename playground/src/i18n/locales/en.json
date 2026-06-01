@@ -5,7 +5,6 @@
   },
   "toolbar": {
     "examples": "Examples",
-    "history": "History",
     "theme": "Theme",
     "export": "Export",
     "share": "Share",
@@ -24,14 +23,18 @@
     "asciiDesc": "Text art format",
     "asciiNotSupported": "ASCII export not supported for this diagram type",
     "copyCode": "Copy Code",
-    "copyCodeDesc": "Copy Mermaid source code"
+    "copyCodeDesc": "Copy Mermaid source code",
+    "copyMarkdown": "Copy Markdown",
+    "copyMarkdownDesc": "Mermaid.ink image link"
   },
   "share": {
     "title": "Share",
     "copyLink": "Copy Link",
     "copyLinkDesc": "Share via URL with encoded diagram",
     "copied": "Copied!",
-    "copyFailed": "Copy failed"
+    "copyFailed": "Copy failed",
+    "openMermaidLive": "Open in Mermaid Live",
+    "openMermaidLiveDesc": "Official editor"
   },
   "bench": {
     "title": "Render Bench",
@@ -75,18 +78,16 @@
       "git": "Git"
     }
   },
-  "history": {
-    "title": "History",
-    "description": "Your recent diagrams (stored locally)",
-    "empty": "No history yet",
-    "emptyDesc": "Your edited diagrams will appear here",
-    "clear": "Clear All",
-    "confirmClear": "Clear all history?",
-    "load": "Load",
-    "delete": "Delete"
-  },
   "editor": {
-    "placeholder": "Enter your Mermaid code here..."
+    "placeholder": "Enter your Mermaid code here...",
+    "loading": "Loading editor..."
+  },
+  "config": {
+    "valid": "Config OK",
+    "invalidJson": "Invalid JSON",
+    "invalidObject": "Invalid config",
+    "format": "Format config",
+    "reset": "Reset config"
   },
   "preview": {
     "loading": "Loading render engine...",
@@ -104,6 +105,13 @@
     "copySvg": "Copy SVG",
     "copied": "Copied!",
     "compareMode": "Compare",
+    "diagnosticsMode": "Diagnostics",
+    "parseJson": "Parse JSON",
+    "layoutJson": "Layout JSON",
+    "copyJson": "Copy JSON",
+    "runningDiagnostics": "Running diagnostics...",
+    "diagnosticsEmpty": "No diagnostics available",
+    "diagnosticsUnavailable": "Diagnostics unavailable",
     "mermanEngine": "Merman",
     "mermaidEngine": "Mermaid JS",
     "loadingMermaid": "Loading Mermaid JS...",
