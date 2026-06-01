@@ -204,6 +204,15 @@ row from about `-22.5px` to about `-2.5px` while preserving the same 29-row Arch
 set. A tested `+1px` exact-browser bbox tweak was rejected because it increased Architecture root
 mismatches to 31.
 
+A follow-up source check on `stress_architecture_junction_fork_join_026` found that Mermaid
+`getRelativeConstraints(...)` does not skip duplicate queued grid positions when popping from the
+BFS queue. The browser probe reports 9 relative constraints for this fixture, with duplicated
+`join -> db` and `join -> cache` constraints. Rust previously skipped duplicate pops and emitted
+7. The relative-constraint BFS is now extracted into a helper and preserves Mermaid's duplicate-pop
+behavior, with a unit test covering the fork/join diamond. This did not change the remaining
+`+13.976px` root tail, so treat it as source-input parity plus residual classification rather than
+a viewport fix.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -236,6 +245,9 @@ mismatches to 31.
   inference and mirroring Mermaid's endpoint traversal order for group alignment overwrites. The
   custom-init group-padding row improved from about `-22.5px` to about `-2.5px` after switching
   group rect sizing from the old `iconSize / 2` proxy to source-derived `architecture.padding`.
+  Rust also now preserves Mermaid's duplicate queued-position BFS behavior for Architecture
+  relative constraints; this aligns the `junction_fork_join` FCoSE input with the browser probe but
+  does not reduce its remaining `+13.976px` tail.
   Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
   no Architecture root pins.
 
@@ -281,6 +293,9 @@ mismatches to 31.
   evidence justifies a reusable headless approximation.
 - Do not re-add the tested `+1px` Architecture bbox edge adjustment without broad evidence; it
   made two additional root rows fail.
+- Architecture relative placement BFS must process duplicate queued current positions on pop, like
+  Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
+  drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

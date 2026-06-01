@@ -1060,6 +1060,62 @@ Outcome:
 - Architecture remains at 29 root residuals with no root pins, no tolerances, and no
   browser-dependent renderer path.
 
+## M15RV-089 - Architecture Relative Constraint Duplicate BFS Source Order
+
+Fresh source and probe evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts`
+  `getRelativeConstraints(...)` performs BFS over the spatial map by assigning
+  `visited[curr] = 1` on pop, but it does not skip an already-queued duplicate current position.
+  It only checks `!visited[newPos]` before pushing a neighbor and emitting a relative placement
+  constraint.
+- The fixed browser probe for `stress_architecture_junction_fork_join_026` reports 9 relative
+  placement constraints. The duplicated queued `join` position emits `join -> db` and
+  `join -> cache` twice before those neighbor positions are visited.
+- Rust previously used `if !visited_pos.insert(curr) { continue; }`, which skipped duplicate
+  queued positions on pop and emitted only 7 relative placement constraints for the same fixture.
+
+Renderer and test changes:
+
+- `crates/merman-render/src/architecture.rs` now extracts
+  `architecture_relative_placement_constraints(...)` and preserves Mermaid's duplicate-pop BFS
+  behavior.
+- A focused unit test,
+  `architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops`, constructs the
+  fork/join diamond grid and asserts that `join -> db` and `join -> cache` each appear twice.
+
+Fresh validation:
+
+- `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops -- --nocapture`:
+  passed.
+- `cargo test -p merman-render --test architecture_layout_test -- --nocapture`: passed, 5 tests.
+- `cargo test -p merman-render --test architecture_svg_test -- --nocapture`: passed, 3 tests.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_after_relative_bfs_duplicate_source_order.md`:
+  expected failure; the row remains about `+13.976px`, but Rust now feeds the same duplicate
+  relative constraints that Mermaid's source/probe emits.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv089_relative_bfs_duplicate_source_order.md`:
+  passed for the full Architecture matrix.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv089_relative_bfs_duplicate_source_order.md`:
+  expected failure with 29 Architecture root residuals.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 134 unaccepted residuals: Flowchart 61, Architecture 29, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`, total root viewport overrides remain `241`.
+- `cargo fmt -p merman-render --check`: passed.
+- `git diff --check`: passed with only the existing LF/CRLF warnings for workstream JSONL files.
+
+Outcome:
+
+- Architecture FCoSE relative-placement input now matches Mermaid's duplicate queued-position BFS
+  behavior for the fork/join residual. This is a source-consistency fix, not a viewport-count
+  reduction.
+- `stress_architecture_junction_fork_join_026` remains the largest Architecture row at about
+  `+13.976px`; treat its remaining delta as solver/headless layout drift unless a new source rule
+  is found.
+
 ## Gate Set
 
 Run after any code or generated-data change:

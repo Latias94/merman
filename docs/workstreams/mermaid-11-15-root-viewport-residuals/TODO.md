@@ -212,8 +212,11 @@ Last updated: 2026-06-02
   rect sizing now follows `padding + 2.5`, and the duplicate Cytoscape canvas-label width
   approximation was extracted into a shared helper. The custom-init row
   `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` improved from about `-22.5px` to
-  about `-2.5px` without changing the 29-row Architecture failure set. Continue from the remaining
-  larger tails such as `stress_architecture_junction_fork_join_026` (`+13.976px`),
+  about `-2.5px` without changing the 29-row Architecture failure set. A subsequent source check
+  matched Mermaid's relative-constraint BFS duplicate-pop behavior, so `junction_fork_join` now
+  feeds 9 relative constraints like the browser probe instead of Rust's previous 7; this did not
+  change the `+13.976px` viewport tail. Continue from the remaining larger tails such as
+  `stress_architecture_junction_fork_join_026` (`+13.976px`),
   `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
   `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
   browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.

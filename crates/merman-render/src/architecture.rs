@@ -52,6 +52,95 @@ pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_
     font_size_px.max(1.0) * (17.0 / 16.0)
 }
 
+fn architecture_relative_placement_constraints<'a>(
+    spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
+    node_index_by_id: &FxHashMap<&'a str, usize>,
+    gap: f64,
+) -> Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> {
+    let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> = Vec::new();
+
+    for spatial_map in spatial_maps {
+        let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
+        inv.reserve(spatial_map.len().saturating_mul(2));
+        for (id, (x, y)) in spatial_map.iter() {
+            inv.insert((*x, *y), *id);
+        }
+
+        let mut pos_queue: std::collections::VecDeque<(i32, i32)> =
+            std::collections::VecDeque::new();
+        let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
+        visited_pos.reserve(spatial_map.len().saturating_mul(2));
+        pos_queue.push_back((0, 0));
+
+        // Preserve Mermaid's direction iteration order: L, R, T, B.
+        const DIRS: [(char, (i32, i32)); 4] =
+            [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
+
+        while let Some(curr) = pos_queue.pop_front() {
+            // Mermaid marks the current grid position as visited but does not skip duplicate
+            // queued positions on pop. That preserves duplicate relative constraints when a
+            // node is reached through two paths before its neighbors are visited.
+            visited_pos.insert(curr);
+            let Some(&curr_id) = inv.get(&curr) else {
+                continue;
+            };
+            for (dir, (sx, sy)) in DIRS {
+                let new_pos = (curr.0 + sx, curr.1 + sy);
+                let Some(&new_id) = inv.get(&new_pos) else {
+                    continue;
+                };
+                if visited_pos.contains(&new_pos) {
+                    continue;
+                }
+                pos_queue.push_back(new_pos);
+                let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
+                    continue;
+                };
+                let Some(&new_idx) = node_index_by_id.get(new_id) else {
+                    continue;
+                };
+
+                // `ArchitectureDirectionName[dir] = newId`
+                // `ArchitectureDirectionName[getOppositeArchitectureDirection(dir)] = currId`
+                let c = match dir {
+                    'L' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                        left: Some(new_idx),
+                        right: Some(curr_idx),
+                        top: None,
+                        bottom: None,
+                        gap,
+                    },
+                    'R' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                        left: Some(curr_idx),
+                        right: Some(new_idx),
+                        top: None,
+                        bottom: None,
+                        gap,
+                    },
+                    'T' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                        left: None,
+                        right: None,
+                        top: Some(new_idx),
+                        bottom: Some(curr_idx),
+                        gap,
+                    },
+                    'B' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                        left: None,
+                        right: None,
+                        top: Some(curr_idx),
+                        bottom: Some(new_idx),
+                        gap,
+                    },
+                    _ => continue,
+                };
+                relative.push(c);
+            }
+        }
+    }
+
+    relative
+}
+
 fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
     for k in path {
@@ -1094,86 +1183,9 @@ fn layout_architecture_diagram_model(
         // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
         // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
         // input even when the underlying spatial map discovery is approximate.
-        let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> =
-            Vec::new();
         let gap = ideal_edge_length_multiplier * icon_size;
-        for spatial_map in spatial_maps {
-            let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
-            inv.reserve(spatial_map.len().saturating_mul(2));
-            for (id, (x, y)) in spatial_map.iter() {
-                inv.insert((*x, *y), *id);
-            }
-
-            let mut pos_queue: std::collections::VecDeque<(i32, i32)> =
-                std::collections::VecDeque::new();
-            let mut visited_pos: FxHashSet<(i32, i32)> = FxHashSet::default();
-            visited_pos.reserve(spatial_map.len().saturating_mul(2));
-            pos_queue.push_back((0, 0));
-
-            // Preserve Mermaid's direction iteration order: L, R, T, B.
-            const DIRS: [(char, (i32, i32)); 4] =
-                [('L', (-1, 0)), ('R', (1, 0)), ('T', (0, 1)), ('B', (0, -1))];
-
-            while let Some(curr) = pos_queue.pop_front() {
-                if !visited_pos.insert(curr) {
-                    continue;
-                }
-                let Some(&curr_id) = inv.get(&curr) else {
-                    continue;
-                };
-                for (dir, (sx, sy)) in DIRS {
-                    let new_pos = (curr.0 + sx, curr.1 + sy);
-                    let Some(&new_id) = inv.get(&new_pos) else {
-                        continue;
-                    };
-                    if visited_pos.contains(&new_pos) {
-                        continue;
-                    }
-                    pos_queue.push_back(new_pos);
-                    let Some(&curr_idx) = node_index_by_id.get(curr_id) else {
-                        continue;
-                    };
-                    let Some(&new_idx) = node_index_by_id.get(new_id) else {
-                        continue;
-                    };
-
-                    // `ArchitectureDirectionName[dir] = newId`
-                    // `ArchitectureDirectionName[getOppositeArchitectureDirection(dir)] = currId`
-                    let c = match dir {
-                        'L' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                            left: Some(new_idx),
-                            right: Some(curr_idx),
-                            top: None,
-                            bottom: None,
-                            gap,
-                        },
-                        'R' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                            left: Some(curr_idx),
-                            right: Some(new_idx),
-                            top: None,
-                            bottom: None,
-                            gap,
-                        },
-                        'T' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                            left: None,
-                            right: None,
-                            top: Some(new_idx),
-                            bottom: Some(curr_idx),
-                            gap,
-                        },
-                        'B' => manatee::algo::fcose::IndexedRelativePlacementConstraint {
-                            left: None,
-                            right: None,
-                            top: Some(curr_idx),
-                            bottom: Some(new_idx),
-                            gap,
-                        },
-                        _ => continue,
-                    };
-                    relative.push(c);
-                }
-            }
-        }
+        let relative =
+            architecture_relative_placement_constraints(spatial_maps, &node_index_by_id, gap);
 
         // Run `manatee` layout refinement.
         //
@@ -1644,5 +1656,49 @@ mod tests {
         );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
+    }
+
+    #[test]
+    fn architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops() {
+        let mut spatial_map = indexmap::IndexMap::new();
+        spatial_map.insert("ingress", (0, 0));
+        spatial_map.insert("fork", (1, 0));
+        spatial_map.insert("auth", (2, 0));
+        spatial_map.insert("api", (1, -1));
+        spatial_map.insert("join", (2, -1));
+        spatial_map.insert("db", (3, -1));
+        spatial_map.insert("cache", (2, -2));
+
+        let mut node_index_by_id = rustc_hash::FxHashMap::default();
+        for (idx, id) in ["ingress", "auth", "api", "db", "cache", "fork", "join"]
+            .into_iter()
+            .enumerate()
+        {
+            node_index_by_id.insert(id, idx);
+        }
+
+        let constraints = super::architecture_relative_placement_constraints(
+            &[spatial_map],
+            &node_index_by_id,
+            120.0,
+        );
+
+        assert_eq!(constraints.len(), 9);
+        assert_eq!(
+            constraints
+                .iter()
+                .filter(|c| c.left == Some(6) && c.right == Some(3))
+                .count(),
+            2,
+            "Mermaid processes the duplicate queued join position before db is visited",
+        );
+        assert_eq!(
+            constraints
+                .iter()
+                .filter(|c| c.top == Some(6) && c.bottom == Some(4))
+                .count(),
+            2,
+            "Mermaid processes the duplicate queued join position before cache is visited",
+        );
     }
 }
