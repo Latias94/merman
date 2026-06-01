@@ -138,7 +138,13 @@ Last updated: 2026-06-01
   then aligned `win-pane`/`internal-storage`/`window-pane` with Mermaid 11.15 `windowPane.ts`:
   `rectOffset` is `10`, not the old local `5`. Alias set 27 now passes strict-root with root
   overrides disabled, structural `parity` remains green, and Flowchart `parity-root` reports 129
-  strict root-only mismatches.
+  strict root-only mismatches. The document/delay geometry slice then aligned `doc`/`document`
+  with Mermaid 11.15 `waveEdgedRectangle.ts` (`minWidth=14`) and
+  `delay`/`half-rounded-rectangle` with `halfRoundedRectangle.ts` (`minWidth=15`,
+  `minHeight=10`). Alias sets 20 and 21 plus the docs single-delay fixture now pass strict-root
+  with root overrides disabled. A narrow upstream SVG text-width override closes the remaining
+  `half-rounded-rectangle` 1/16px browser metric delta. Structural `parity` remains green, and
+  Flowchart `parity-root` reports 124 strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

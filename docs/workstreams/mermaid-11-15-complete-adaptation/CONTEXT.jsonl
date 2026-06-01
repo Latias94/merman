@@ -22,3 +22,6 @@
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-bow-tie-rectangle.md","reason":"Flowchart bow-tie/stored-data geometry evidence and follow-on strict-root residuals."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/windowPane.ts","reason":"Mermaid 11.15 source for window-pane/internal-storage geometry."}
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-window-pane.md","reason":"Flowchart window-pane/internal-storage geometry evidence and follow-on strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/waveEdgedRectangle.ts","reason":"Mermaid 11.15 source for document/wave-edged rectangle geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/halfRoundedRectangle.ts","reason":"Mermaid 11.15 source for delay/half-rounded rectangle geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-document-delay.md","reason":"Flowchart document/delay geometry evidence and follow-on strict-root residuals."}

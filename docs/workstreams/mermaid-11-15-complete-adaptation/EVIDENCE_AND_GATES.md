@@ -645,6 +645,38 @@ git diff --check
     passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-070 Flowchart document/delay geometry slice:
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset20_020`,
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset21_021`, and
+    `upstream_docs_flowchart_delay_half_rounded_rectangle_094` against Mermaid 11.15 sources.
+    Local `doc`/`document` still used the old `70px` minimum width, while
+    `waveEdgedRectangle.ts` uses `minWidth=14`. Local `delay`/`half-rounded-rectangle` still used
+    old `80x50` root-bounds and geometry constants, while `halfRoundedRectangle.ts` uses
+    `minWidth=15` and `minHeight=10`.
+  - Updated Flowchart layout sizing, SVG shape rendering, edge intersection, and root-bounds
+    reconstruction for document and delay shapes. Also removed the stale delay entry from the
+    curved-trapezoid theoretical-width root-bounds branch.
+  - Added a narrow Flowchart HTML width override for the default-font
+    `half-rounded-rectangle` label (`166.21875px`) because the final alias-set 21 delta was a
+    browser text measurement residual captured in the Mermaid 11.15 upstream SVG, not a shape
+    source-formula issue.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset20_020 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_docs_flowchart_delay_half_rounded_rectangle_094 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset21_021 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed as expected, now only for alias buckets `12`, `29`, `34`, and `38`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 124 Flowchart strict root-only mismatches, down from 129.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
 
 ## Evidence Anchors
 

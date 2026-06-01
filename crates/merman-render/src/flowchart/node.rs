@@ -294,8 +294,8 @@ fn node_render_dimensions(
 
         // Flowchart v2 delay / halfRoundedRectangle (rendering-elements).
         "delay" | "half-rounded-rectangle" => {
-            let min_width = 80.0;
-            let min_height = 50.0;
+            let min_width = 15.0;
+            let min_height = 10.0;
             let w = (text_w + 2.0 * p).max(min_width);
             let h = (text_h + 2.0 * p).max(min_height);
             let radius = h / 2.0;
@@ -408,7 +408,7 @@ fn node_render_dimensions(
             let h = (text_h + 2.0 * p).max(0.0);
             let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude;
-            let min_width = 70.0;
+            let min_width = 14.0;
             let extra_w = if w < min_width {
                 (min_width - w) / 2.0
             } else {

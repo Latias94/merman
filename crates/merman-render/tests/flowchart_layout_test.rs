@@ -916,6 +916,8 @@ Q@{ shape: paper-tape, label: "Label" }
 R@{ shape: docs, label: "Label" }
 S@{ shape: bow-rect, label: "Label" }
 T@{ shape: win-pane, label: "Label" }
+U@{ shape: doc, label: "Label" }
+V@{ shape: delay, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -1221,6 +1223,48 @@ T@{ shape: win-pane, label: "Label" }
             (h + 2.0 * p + rect_offset) as f32 as f64,
             "window pane height",
         );
+    }
+
+    // document / wave-edged rectangle
+    {
+        let n = nodes_by_id["U"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let sampled_wave_extreme = (0..=50)
+            .map(|i| {
+                ((i as f64) / 50.0 * std::f64::consts::TAU * 0.8)
+                    .sin()
+                    .abs()
+            })
+            .fold(0.0, f64::max);
+        assert_close(n.width, w as f32 as f64, "document width");
+        assert_close_eps(
+            n.height,
+            (final_h + wave_amplitude * sampled_wave_extreme) as f32 as f64,
+            0.005,
+            "document height",
+        );
+    }
+
+    // delay / half-rounded rectangle
+    {
+        let n = nodes_by_id["V"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let radius = h / 2.0;
+        let mut min_x = -w / 2.0;
+        let mut max_x = w / 2.0 - radius;
+        let step = std::f64::consts::PI / (50_f64 - 1.0);
+        for i in 0..50 {
+            let angle = std::f64::consts::FRAC_PI_2 + (i as f64) * step;
+            let x = (-w / 2.0 + radius) + radius * angle.cos();
+            min_x = min_x.min(-x);
+            max_x = max_x.max(-x);
+        }
+        assert_close(n.width, (max_x - min_x) as f32 as f64, "delay width");
+        assert_close(n.height, h as f32 as f64, "delay height");
     }
 
     // subroutine

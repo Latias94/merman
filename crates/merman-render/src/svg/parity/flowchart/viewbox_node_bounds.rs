@@ -193,19 +193,12 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                         bottom_hh = 30.0;
                     }
 
-                    // Mermaid `halfRoundedRectangle.ts` and `curvedTrapezoid.ts` draw their rough
-                    // paths from the "theoretical" text+padding width, but Dagre uses the
+                    // Mermaid `curvedTrapezoid.ts` draws its rough path from the
+                    // "theoretical" text+padding width, but Dagre uses the
                     // `updateNodeBounds(...)` bbox which can be slightly narrower.
-                    if matches!(
-                        shape,
-                        "delay" | "curv-trap" | "display" | "curved-trapezoid"
-                    ) {
+                    if matches!(shape, "curv-trap" | "display" | "curved-trapezoid") {
                         if let Some(label_w) = layout_node_label_width_if_known(ctx, n) {
-                            let pre_w = if shape == "delay" {
-                                (label_w + 2.0 * node_padding).max(80.0)
-                            } else {
-                                ((label_w + 2.0 * node_padding) * 1.25).max(80.0)
-                            };
+                            let pre_w = ((label_w + 2.0 * node_padding) * 1.25).max(80.0);
                             left_hw = pre_w / 2.0;
                             right_hw = (n.width - left_hw).max(0.0);
                         }
@@ -220,7 +213,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                         let h = (label_h + 2.0 * node_padding).max(0.0);
                         let wave_amplitude = h / 8.0;
                         let final_h = h + wave_amplitude;
-                        let extra_w = ((70.0 - w).max(0.0)) / 2.0;
+                        let extra_w = ((14.0 - w).max(0.0)) / 2.0;
                         let mut points: Vec<(f64, f64)> = Vec::new();
                         points.push((-w / 2.0 - extra_w, final_h / 2.0));
                         points.extend(generate_full_sine_wave_points(
@@ -394,8 +387,8 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     if matches!(shape, "delay" | "half-rounded-rectangle") {
                         let label_w = n.label_width.unwrap_or(0.0);
                         let label_h = n.label_height.unwrap_or(0.0);
-                        let w = (label_w + 2.0 * node_padding).max(80.0);
-                        let h = (label_h + 2.0 * node_padding).max(50.0);
+                        let w = (label_w + 2.0 * node_padding).max(15.0);
+                        let h = (label_h + 2.0 * node_padding).max(10.0);
                         let radius = h / 2.0;
                         let mut points: Vec<(f64, f64)> = Vec::new();
                         points.push((-w / 2.0, -h / 2.0));

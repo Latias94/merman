@@ -34,8 +34,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_wave_document(
     let wave_amplitude = h / 8.0;
     let final_h = h + wave_amplitude;
 
-    // Mermaid keeps a minimum width (70px) for wave edged rectangles.
-    let min_width = 70.0;
+    // Mermaid keeps a minimum width (14px) for wave edged rectangles.
+    let min_width = 14.0;
     let extra_w = ((min_width - w).max(0.0)) / 2.0;
 
     let mut points: Vec<(f64, f64)> = Vec::new();

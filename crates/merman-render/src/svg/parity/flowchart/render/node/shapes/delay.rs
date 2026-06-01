@@ -25,8 +25,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_delay(
     );
 
     let p = ctx.node_padding;
-    let min_width = 80.0;
-    let min_height = 50.0;
+    let min_width = 15.0;
+    let min_height = 10.0;
     let w = (metrics.width + 2.0 * p).max(min_width);
     let h = (metrics.height + 2.0 * p).max(min_height);
     let radius = h / 2.0;
