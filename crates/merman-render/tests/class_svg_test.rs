@@ -77,11 +77,11 @@ fn class_svg_scopes_text_color_for_html_labels() {
         "expected class SVG to reset HTML label paragraph margins"
     );
     assert!(
-        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#333;}"#),
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#131300;}"#),
         "expected class SVG to make HTML labels self-contained instead of inheriting host page color"
     );
     assert!(
-        svg.contains(r#"#merman .label text{fill:#333;}"#),
+        svg.contains(r#"#merman .label text{fill:#131300;}"#),
         "expected class SVG text labels to get an explicit fill color"
     );
 }

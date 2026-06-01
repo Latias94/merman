@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   loadWasm,
+  SUPPORTED_THEMES,
   type MermanWasm,
   type ValidationResult,
 } from "@/src/lib/wasm-loader";
@@ -79,7 +80,7 @@ export function useMerman() {
 
   const getThemes = useCallback((): string[] => {
     if (!ready || !wasmRef.current) {
-      return ["default", "dark", "forest", "neutral"];
+      return [...SUPPORTED_THEMES];
     }
     return wasmRef.current.get_themes();
   }, [ready]);

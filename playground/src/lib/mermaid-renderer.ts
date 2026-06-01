@@ -1,4 +1,5 @@
 import { sourceWithTheme } from "@/src/lib/wasm-loader";
+import { normalizeThemeName } from "@merman/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
 
@@ -30,14 +31,15 @@ export async function renderMermaidSvg(
 
   try {
     const mermaid = await loadMermaid();
+    const normalizedTheme = normalizeThemeName(theme);
     mermaid.initialize({
       startOnLoad: false,
-      theme: normalizeTheme(theme),
+      theme: normalizedTheme,
       securityLevel: "strict",
     });
 
     const id = `mermaid-compare-${++renderSerial}`;
-    const result = await mermaid.render(id, sourceWithTheme(source, theme));
+    const result = await mermaid.render(id, sourceWithTheme(source, normalizedTheme));
     return {
       svg: result.svg,
       error: null,
@@ -64,11 +66,4 @@ async function loadMermaid(): Promise<MermaidApi> {
       throw error;
     });
   return mermaidPromise;
-}
-
-function normalizeTheme(theme: string): string {
-  if (theme === "dark" || theme === "forest" || theme === "neutral") {
-    return theme;
-  }
-  return "default";
 }

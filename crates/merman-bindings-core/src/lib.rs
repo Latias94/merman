@@ -139,6 +139,10 @@ pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Binding
     }
 }
 
+pub fn supported_themes() -> &'static [&'static str] {
+    merman::supported_themes()
+}
+
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
@@ -411,6 +415,14 @@ mod tests {
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Hello"));
         assert!(svg.contains("World"));
+    }
+
+    #[test]
+    fn supported_themes_exposes_core_theme_surface() {
+        assert_eq!(
+            supported_themes(),
+            &["default", "base", "dark", "forest", "neutral"]
+        );
     }
 
     #[test]

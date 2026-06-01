@@ -1,6 +1,7 @@
 import { create } from "zustand";
+import type { ThemeName } from "@merman/web";
 
-export type Theme = "default" | "dark" | "forest" | "neutral";
+export type Theme = ThemeName;
 export type UITheme = "light" | "dark" | "system";
 
 interface AppState {

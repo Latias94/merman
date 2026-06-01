@@ -7,26 +7,22 @@ pub(super) fn class_css(
     font_size: f64,
 ) -> String {
     let id = escape_xml(diagram_id);
+    let theme = SvgTheme::new(effective_config);
     let font_family = normalize_css_font_family(font_family);
     let font_family = if font_family.is_empty() {
         "\"trebuchet ms\",verdana,arial,sans-serif"
     } else {
         font_family.as_str()
     };
-    let class_text = class_theme_color(
-        effective_config,
+    let class_text = theme.color(
         "classText",
-        &class_theme_color(
-            effective_config,
-            "primaryTextColor",
-            &theme_color(effective_config, "textColor", "#333"),
-        ),
+        &theme.color("primaryTextColor", &theme.color("textColor", "#333")),
     );
-    let note_text = theme_color(effective_config, "noteTextColor", "#333");
-    let line_color = theme_color(effective_config, "lineColor", "#333333");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
-    let text_color = theme_color(effective_config, "textColor", class_text.as_str());
-    let stroke_width = theme_color(effective_config, "strokeWidth", "1");
+    let note_text = theme.color("noteTextColor", "#333");
+    let line_color = theme.color("lineColor", "#333333");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let text_color = theme.color("textColor", class_text.as_str());
+    let stroke_width = theme.color("strokeWidth", "1");
 
     let mut out = String::new();
     let _ = write!(
@@ -108,8 +104,4 @@ pub(super) fn class_css(
         text_color
     );
     out
-}
-
-fn class_theme_color(effective_config: &serde_json::Value, key: &str, fallback: &str) -> String {
-    theme_color(effective_config, key, fallback)
 }

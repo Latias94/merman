@@ -1,12 +1,16 @@
 import {
   asciiSupportedDiagrams,
   initMerman,
+  SUPPORTED_THEMES,
+  normalizeThemeName,
   renderAscii,
   renderSvg,
   supportedDiagrams,
   themes,
   validate as validateDiagram,
 } from "@merman/web";
+
+export { SUPPORTED_THEMES };
 
 export interface ValidationResult {
   valid: boolean;
@@ -93,11 +97,12 @@ function createWasmAdapter(): MermanWasm {
 }
 
 export function sourceWithTheme(source: string, theme: string): string {
-  if (theme === "default" || hasInitDirective(source)) {
+  const normalizedTheme = normalizeThemeName(theme);
+  if (normalizedTheme === "default" || hasInitDirective(source)) {
     return source;
   }
 
-  const directive = `%%{init: {"theme": "${theme}"}}%%`;
+  const directive = `%%{init: {"theme": "${normalizedTheme}"}}%%`;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const lines = source.split(/\r?\n/);
 

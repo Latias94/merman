@@ -13,6 +13,7 @@ import { ExampleGallery } from "./components/ExampleGallery";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
+import { normalizeThemeName } from "@merman/web";
 
 export default function App() {
   const { setCode, setDiagramTheme, uiTheme } = useAppStore();
@@ -23,9 +24,7 @@ export default function App() {
     if (initialData) {
       setCode(initialData.code);
       if (initialData.theme) {
-        setDiagramTheme(
-          initialData.theme as "default" | "dark" | "forest" | "neutral"
-        );
+        setDiagramTheme(normalizeThemeName(initialData.theme));
       }
     }
   }, [initialData, setCode, setDiagramTheme]);

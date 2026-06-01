@@ -51,7 +51,8 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
             CssOverridePolicy::Preserve => svg.into_owned(),
             CssOverridePolicy::StripExistingImportant => strip_css_important(svg.as_ref()),
         };
-        let scoped_css = scope_css(&self.css, ctx.svg_id());
+        let css = decode_mermaid_css_hash_placeholders(&self.css);
+        let scoped_css = scope_css(css.as_ref(), ctx.svg_id());
         inject_style(&mut base, &scoped_css);
         Ok(Cow::Owned(base))
     }
@@ -85,19 +86,40 @@ fn scope_css(css: &str, svg_id: Option<&str>) -> String {
         return css.to_string();
     };
     let scope = format!("#{}", css_escape_id(svg_id));
+    scope_css_block(css, &scope)
+}
+
+fn decode_mermaid_css_hash_placeholders(css: &str) -> Cow<'_, str> {
+    if !css.contains('ﬂ') && !css.contains('¶') {
+        return Cow::Borrowed(css);
+    }
+
+    Cow::Owned(
+        css.replace("ﬂ°°", "#")
+            .replace("ﬂ°", "#")
+            .replace("¶ß", ";"),
+    )
+}
+
+fn scope_css_block(css: &str, scope: &str) -> String {
     let mut out = String::with_capacity(css.len() + scope.len() * 4);
     let mut cursor = 0;
 
     while let Some(rel_open) = css[cursor..].find('{') {
         let open = cursor + rel_open;
-        let selector = &css[cursor..open];
+        let selector_start = css[cursor..open]
+            .rfind(';')
+            .map(|rel| cursor + rel + 1)
+            .unwrap_or(cursor);
+        out.push_str(&scope_css_statement_prefix(&css[cursor..selector_start]));
+        let selector = &css[selector_start..open];
         let Some(close) = find_matching_brace(css, open) else {
             out.push_str(&css[cursor..]);
             return out;
         };
 
         if selector.trim_start().starts_with('@') {
-            out.push_str(&css[cursor..=close]);
+            push_scoped_at_rule(&mut out, selector, &css[open + 1..close], scope);
         } else {
             out.push_str(&scope_selector(selector, &scope));
             out.push(' ');
@@ -110,6 +132,50 @@ fn scope_css(css: &str, svg_id: Option<&str>) -> String {
     out
 }
 
+fn scope_css_statement_prefix(prefix: &str) -> String {
+    let trimmed = prefix.trim_start();
+    if trimmed.starts_with("@import")
+        || trimmed.starts_with("@namespace")
+        || trimmed.starts_with("@charset")
+    {
+        String::new()
+    } else {
+        prefix.to_string()
+    }
+}
+
+fn push_scoped_at_rule(out: &mut String, selector: &str, body: &str, scope: &str) {
+    let name = selector
+        .trim_start()
+        .split(|ch: char| ch.is_whitespace() || ch == '{')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if is_css_keyframes_rule(&name) {
+        out.push_str(selector);
+        out.push('{');
+        out.push_str(body);
+        out.push('}');
+    } else if is_css_grouping_rule(&name) {
+        out.push_str(selector);
+        out.push('{');
+        out.push_str(&scope_css_block(body, scope));
+        out.push('}');
+    }
+}
+
+fn is_css_keyframes_rule(name: &str) -> bool {
+    name == "@keyframes" || name == "@-webkit-keyframes"
+}
+
+fn is_css_grouping_rule(name: &str) -> bool {
+    matches!(
+        name,
+        "@media" | "@supports" | "@layer" | "@scope" | "@container" | "@starting-style"
+    )
+}
+
 fn scope_selector(selector: &str, scope: &str) -> String {
     selector
         .split(',')
@@ -117,12 +183,15 @@ fn scope_selector(selector: &str, scope: &str) -> String {
             let trimmed = part.trim();
             if trimmed.is_empty() {
                 String::new()
-            } else if trimmed.starts_with(scope) {
-                trimmed.to_string()
             } else if trimmed == ":root" || trimmed == "svg" {
                 scope.to_string()
             } else {
-                format!("{scope} {trimmed}")
+                let expanded = trimmed.replace('&', scope);
+                if expanded.starts_with(scope) {
+                    expanded
+                } else {
+                    format!("{scope} {expanded}")
+                }
             }
         })
         .collect::<Vec<_>>()
@@ -197,5 +266,60 @@ mod tests {
 
         assert!(!out.contains("!important"));
         assert!(out.contains("#diagram .node { fill: green; }"));
+    }
+
+    #[test]
+    fn scoped_css_matches_mermaid_ampersand_selector_namespace() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                ":not(&){background:green !important}",
+            ))
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(out.contains("#diagram :not(#diagram) {background:green !important}"));
+    }
+
+    #[test]
+    fn scoped_css_scopes_nested_grouping_at_rules_and_drops_unsupported_rules() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "@import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
+            ))
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(!out.contains("@import"));
+        assert!(out.contains("@media (max-width: 600px) {"));
+        assert!(out.contains("#diagram * { fill: red; }"));
+        assert!(out.contains("@supports selector(h2 > p) {"));
+        assert!(out.contains("#diagram h2 > p { color: red; }"));
+    }
+
+    #[test]
+    fn scoped_css_keeps_keyframes_unscoped_like_mermaid() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "@keyframes dash { to { stroke-dashoffset: 1000; } } .edge { animation: dash 1s; }",
+            ))
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(out.contains("@keyframes dash { to { stroke-dashoffset: 1000; } }"));
+        assert!(out.contains("#diagram .edge { animation: dash 1s; }"));
+    }
+
+    #[test]
+    fn scoped_css_decodes_mermaid_hash_placeholders_as_css_hashes() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(".node { fill: ﬂ°°123456¶ß }"))
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(out.contains("#diagram .node { fill: #123456; }"));
     }
 }
