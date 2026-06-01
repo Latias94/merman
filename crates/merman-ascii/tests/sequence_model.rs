@@ -342,6 +342,7 @@ fn message(from: Option<&str>, to: Option<&str>, message_type: i32) -> SequenceM
         wrap: false,
         activate: false,
         placement: None,
+        central_connection: 0,
     }
 }
 
@@ -448,6 +449,7 @@ fn sequence_multiline_notes_are_explicitly_unsupported() {
         wrap: false,
         activate: false,
         placement: Some(1),
+        central_connection: 0,
     });
 
     assert_unsupported_sequence_model(model, "multiline notes");
