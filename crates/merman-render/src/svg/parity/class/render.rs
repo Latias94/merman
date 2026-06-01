@@ -124,7 +124,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
             .font_family
             .as_deref()
             .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif"),
-        settings.font_size,
+        settings.font_size_css.as_str(),
     );
     out.push_str("<style>");
     out.push_str(&css);

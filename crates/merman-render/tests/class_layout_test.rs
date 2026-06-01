@@ -332,6 +332,91 @@ fn class_layout_nested_namespace_copy_order_keeps_leaf_cluster_vertical() {
 }
 
 #[test]
+fn class_layout_v3_namespace_node_order_matches_mermaid_copy_order() {
+    let layout = load_class_layout_fixture("stress_class_nested_namespaces_cross_edges_008");
+
+    let one_a = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "OneA")
+        .expect("OneA node");
+    let two_b = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "TwoB")
+        .expect("TwoB node");
+    let two_c = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "TwoC")
+        .expect("TwoC node");
+    let one_two = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == "One.Two")
+        .expect("One.Two cluster");
+
+    assert!(
+        two_b.y + 100.0 < two_c.y && two_c.y + 100.0 < one_a.y,
+        "Mermaid v3 copy order should stack TwoB, TwoC, then OneA; got TwoB={}, TwoC={}, OneA={}",
+        two_b.y,
+        two_c.y,
+        one_a.y
+    );
+    assert!(
+        one_two.y + one_two.height / 2.0 < one_a.y,
+        "nested namespace cluster should stay above OneA after recursive extraction"
+    );
+}
+
+#[test]
+fn class_layout_svg_title_wrapping_uses_normal_weight_before_bolder_bbox() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("class")
+        .join("stress_class_svg_font_size_precedence_025.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: std::sync::Arc::new(
+                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+            ),
+            ..LayoutOptions::default()
+        },
+    )
+    .expect("layout ok");
+    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+    let node = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "FontSizeSvgProbe")
+        .expect("FontSizeSvgProbe node");
+
+    // Mermaid class `shapeUtil.ts` passes `font-weight: bolder` on the outer label group, but
+    // `createText.ts` wraps against inner tspans that are still `font-weight=normal`. The final
+    // bbox is then measured after `shapeUtil.ts` removes that inner normal weight.
+    assert!(
+        (node.height - 133.95).abs() <= 1e-6,
+        "title should stay on one line before bolder bbox adjustment; got height {}",
+        node.height
+    );
+    assert!(
+        node.width > 331.0 && node.width < 333.0,
+        "unexpected Mermaid-like width after bolder bbox adjustment: {}",
+        node.width
+    );
+}
+
+#[test]
 fn class_layout_namespace_note_stays_inside_namespace_cluster() {
     let (layout, semantic) = layout_class_text(
         r#"classDiagram

@@ -350,9 +350,12 @@ Fresh evidence from 2026-06-01:
 
 Class source-rule findings:
 
-- Mermaid 11.15 `classRenderer-v2.ts:addNamespaces(...)` inserts each namespace and then
-  immediately inserts that namespace's direct classes and notes. Rust now mirrors that graph
-  insertion/parenting order instead of batching all namespaces before all classes.
+- Early diagnosis against the old `classRenderer-v2.ts:addNamespaces(...)` path was superseded by
+  Mermaid 11.15 source inspection of the active Class renderer. `classDiagram.ts` uses
+  `classRenderer-v3-unified.ts`, which gets graph data through `ClassDB.getData()`. That method
+  emits all namespace group nodes before class, note, and interface nodes. Rust now mirrors that
+  namespace-first source order instead of inserting namespace-owned classes during namespace
+  traversal.
 - Mermaid's Class CSS uses `mainBkg` for node fill and `nodeBorder` for node border. Rust's
   renderer now uses the same variables; this avoids structural stroke mismatches after theme
   expansion makes `primaryBorderColor` differ from `nodeBorder`.
@@ -361,6 +364,15 @@ Class source-rule findings:
   parent cluster node, and `recursiveRender(...)` applies `ranksep: parent.ranksep + 25`. Rust now
   mirrors those rules, keeps the source eligibility rule (`children && !externalConnections`), and
   moves any already-extracted child cluster under a later extracted parent.
+- Mermaid's Class SVG title path wraps text inside `createText(...)` while the inner tspans are
+  still normal weight, then `shapeUtil.ts` applies outer `font-weight: bolder` and removes the
+  inner normal-weight overrides for the final bbox. Rust now wraps Class titles with normal-weight
+  measurement and measures the final label with the existing bolder style.
+- Mermaid's generated Class CSS preserves raw `themeVariables.fontSize` spelling. A numeric
+  `fontSize: 24` becomes `font-size:24`, not `font-size:24px`; browser SVG text sizing does not
+  treat that unitless CSS as a 24px font. Rust now emits the raw CSS spelling while keeping headless
+  text measurement tied to explicit px strings. This deliberately avoids a false exactness fix that
+  would make numeric theme values behave unlike browser SVG text.
 - This task is not root-green. The remaining Class rows include real namespace/layout-root
   differences plus smaller text/root tails. The largest resolved rows are root-green, while
   `upstream_pkgtests_classdiagram_spec_003`, `upstream_html_demos_classchart_class_diagram_demos_010`,
@@ -380,6 +392,46 @@ Fresh unaccepted residual summary after M15RV-060:
 | Journey | 2 | `target/compare/journey_report_parity_root.md` |
 
 Total unaccepted residuals: 278.
+
+Fresh follow-up evidence after the v3 node-order, title-wrap, and CSS font-size correction:
+
+- `cargo test -p merman-render --test class_layout_test`: passed, 16 tests.
+- `cargo test -p merman-render --test class_svg_test`: passed, 18 tests.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_nested_namespaces_cross_edges_008 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_cross_edges_after_v3_order.md`:
+  passed after mirroring `ClassDB.getData()` namespace-first group-node ordering.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_svg_font_size_precedence_025 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_font_size_025_after_title_wrap_normal.md`:
+  expected failure; the row is now a `0.25px` root-width tail (`348px` upstream vs `347.75px`
+  local) after the title-wrap and raw-CSS fixes.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_svg_font_size_px_string_precedence_026 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_font_size_026_after_title_wrap_normal.md`:
+  expected failure; explicit `24px` stays layout-effective and the row is now a `0.25px`
+  root-width tail (`367.25px` upstream vs `367px` local).
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_report_parity_final_m15rv060.md`:
+  passed for the current Class matrix.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_report_parity_root_final_m15rv060.md`:
+  expected failure with 14 raw Class root mismatches. Full-root policy accepts 2 existing Class
+  policy rows, leaving 12 unaccepted Class rows.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 277 unaccepted residuals.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport overrides
+  still at 278 entries and no manual raw SVG/path bridges.
+- `cargo fmt --check`: passed.
+- `git diff --check`: passed with the existing CRLF warning for this workstream's
+  `CONTEXT.jsonl`.
+
+Fresh unaccepted residual summary after the M15RV-060 follow-up:
+
+| Diagram | Unaccepted residuals | Report |
+| --- | ---: | --- |
+| Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
+| Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
+| Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
+| Class | 12 | `target/compare/class_report_parity_root.md` |
+| Timeline | 3 | `target/compare/timeline_report_parity_root.md` |
+| Journey | 2 | `target/compare/journey_report_parity_root.md` |
+
+Total unaccepted residuals: 277.
 
 ## Gate Set
 

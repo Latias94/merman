@@ -73,7 +73,7 @@ Last updated: 2026-06-01
 
 ## M2.5 - Source-Rule Residual Follow-Ups
 
-- [ ] M15RV-060 [owner=codex] [deps=M15RV-040] [scope=crates/merman-render/src/class.rs,crates/merman-render/tests/class_layout_test.rs,target/compare/class_*]
+- [x] M15RV-060 [owner=codex] [deps=M15RV-040] [scope=crates/merman-render/src/class.rs,crates/merman-render/src/svg/parity/class,crates/merman-render/tests/class_layout_test.rs,crates/merman-render/tests/class_svg_test.rs,target/compare/class_*]
   Goal: Reduce the Class namespace/layout-width root bucket with Mermaid source-derived compound
   graph rules instead of root viewport pins.
   Validation: focused Class namespace root compares, `cargo test -p merman-render --test
@@ -81,20 +81,20 @@ Last updated: 2026-06-01
   Review: Keep changes in class graph construction/layout extraction. Do not add Class root
   override tables or per-fixture root constants.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: IN PROGRESS. Rust Class graph construction now mirrors Mermaid `addNamespaces(...)`
-  insertion order for namespace-owned classes/notes, and the recursive extraction path is now
-  aligned with Mermaid 11.15's rendering-util Dagre extractor: child-before-parent `copy(...)`
-  order, moved child extractions under later parent extractions, and recursive
-  `ranksep = parent.ranksep + 25`. `upstream_namespaces_and_generics`,
-  `upstream_pkgtests_classdiagram_spec_006`, and `stress_class_nested_namespaces_many_levels_021`
-  are now Class root-green. `upstream_pkgtests_classdiagram_spec_003` changed from the old wrong
-  horizontal layout (`1014px`) through `444.5px` to a source-aligned vertical compound layout with
-  only a `0.25px` root-width tail (`499.5px` local vs `499.75px` upstream). Class structural parity
-  is green, and the full root gate now leaves 13 unaccepted Class rows.
+  Handoff: DONE_WITH_CONCERNS. Rust Class graph construction now mirrors the active Mermaid 11.15
+  v3 unified path: `ClassDB.getData()` emits namespace group nodes before class/note/interface
+  nodes, and the rendering-util Dagre extractor uses child-before-parent `copy(...)`, moved child
+  extraction reparenting, and recursive `ranksep = parent.ranksep + 25`. SVG Class title wrapping
+  now follows Mermaid's normal-weight `createText(...)` wrap before the outer bolder bbox, and
+  numeric `themeVariables.fontSize` preserves raw CSS spelling without treating unitless CSS as a
+  browser-effective px text size. `stress_class_nested_namespaces_cross_edges_008` is now
+  root-green, Class structural parity is green, and full root evidence now leaves 12 unaccepted
+  Class rows. Remaining Class rows are small SVG text/root tails plus known wider label residuals;
+  do not close them by forcing browser font constants into headless layout.
 
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
@@ -103,6 +103,6 @@ Last updated: 2026-06-01
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 278 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 277 residuals;
   Class and Architecture still contain real layout/root-bounds differences, and Sequence/Flowchart
   still need shared measurement/root policy work.

@@ -770,22 +770,10 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
         }
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
             // Mermaid injects `themeVariables.fontSize` into CSS as `font-size: ${fontSize};`
-            // without forcing a unit. A unitless `font-size: 24` is invalid CSS and gets ignored
-            // (falling back to the browser default 16px), while a value like `"24px"` works and
-            // *does* influence wrapping/sizing (see upstream SVG baselines:
-            // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg` and
-            // `fixtures/upstream-svgs/class/stress_class_svg_font_size_px_string_precedence_026.svg`).
-
-            config_string(effective_config, &["themeVariables", "fontSize"])
-                .and_then(|raw| {
-                    let t = raw.trim().trim_end_matches(';').trim();
-                    let t = t.trim_end_matches("!important").trim();
-                    if !t.ends_with("px") {
-                        return None;
-                    }
-                    t.trim_end_matches("px").trim().parse::<f64>().ok()
-                })
-                .unwrap_or(16.0)
+            // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
+            // affect browser text sizing; a value like `"24px"` does. `calculateTextWidth(...)`
+            // separately keeps using the top-level `config.fontSize` as the wrapping probe.
+            theme_font_size_px_string_only(effective_config).unwrap_or(16.0)
         }
     };
     TextStyle {
@@ -793,6 +781,16 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
         font_size,
         font_weight: None,
     }
+}
+
+fn theme_font_size_px_string_only(effective_config: &Value) -> Option<f64> {
+    let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
+    let t = raw.trim().trim_end_matches(';').trim();
+    let t = t.trim_end_matches("!important").trim();
+    if !t.ends_with("px") {
+        return None;
+    }
+    t.trim_end_matches("px").trim().parse::<f64>().ok()
 }
 
 pub(crate) fn class_html_calculate_text_style(effective_config: &Value) -> TextStyle {
@@ -1063,7 +1061,16 @@ fn class_box_dimensions(
             } else {
                 text.to_string()
             };
-            let mut metrics = measurer.measure_wrapped(&wrapped, style, None, wrap_mode);
+            let mut metrics = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+            {
+                // Keep layout sizing aligned with the SVG renderer, which emits labels through
+                // Mermaid's Markdown-aware `createText(...)` path even for plain class text.
+                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    measurer, &wrapped, style, None, wrap_mode,
+                )
+            } else {
+                measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
+            };
             if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
                 if style.font_size >= 20.0 && metrics.width.is_finite() && metrics.width > 0.0 {
                     // Mermaid classDiagram `addText(...).bbox = text.getBBox()` sometimes reports a
@@ -1158,7 +1165,7 @@ fn class_box_dimensions(
             measurer,
             text_style,
             wrap_probe_font_size,
-            true,
+            false,
         )
     } else {
         title_text.clone()
@@ -1280,14 +1287,6 @@ fn class_box_dimensions(
                 title_metrics.width = crate::text::ceil_to_1_64_px(w);
             }
         }
-    }
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && title_text.trim() == "FontSizeSvgProbe"
-        && text_style.font_size == 16.0
-    {
-        // Upstream class SVG font-size precedence probe: Chromium bbox width for the wrapped bold
-        // title is slightly narrower than our vendored bold approximation.
-        title_metrics.width = 123.265625;
     }
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
@@ -1894,8 +1893,6 @@ fn layout_class_diagram_v2_typed_inner(
     classes_namespace_facades.reserve(model.classes.len());
     let mut inserted_classes: HashSet<String> = HashSet::with_capacity(model.classes.len());
     let mut inserted_notes: HashSet<String> = HashSet::with_capacity(model.notes.len());
-    let notes_by_id: HashMap<&str, &ClassNote> =
-        model.notes.iter().map(|n| (n.id.as_str(), n)).collect();
 
     let is_namespace_facade = |c: &ClassNode| {
         let trimmed_id = c.id.trim();
@@ -1972,9 +1969,9 @@ fn layout_class_diagram_v2_typed_inner(
         };
 
     for &id in &namespace_ids {
-        // Mermaid `addNamespaces(...)` inserts each namespace and then immediately inserts that
-        // namespace's direct classes/notes. Dagre's compound ordering uses this insertion and
-        // child order, so keep it source-aligned instead of batching all namespaces first.
+        // Mermaid 11.15's active Class renderer is the v3 unified path. `ClassDB.getData()`
+        // emits all namespace group nodes before class/note/interface nodes, and Graphlib's
+        // insertion order later feeds the Dagre cluster extraction/copy order.
         g.set_node(id.to_string(), NodeLabel::default());
 
         if let Some(parent) = model
@@ -1986,34 +1983,6 @@ fn layout_class_diagram_v2_typed_inner(
         {
             if model.namespaces.contains_key(parent) {
                 g.set_parent(id.to_string(), parent.to_string());
-            }
-        }
-
-        let Some(ns) = model.namespaces.get(id) else {
-            continue;
-        };
-        for class_id in &ns.class_ids {
-            let Some(c) = model.classes.get(class_id.as_str()) else {
-                continue;
-            };
-            if is_namespace_facade(c) {
-                if !classes_namespace_facades.iter().any(|seen| seen.id == c.id) {
-                    classes_namespace_facades.push(c);
-                }
-                continue;
-            }
-            if inserted_classes.insert(c.id.clone()) {
-                insert_class_node(&mut g, c, &mut class_row_metrics_by_id);
-                g.set_parent(c.id.clone(), id.to_string());
-            }
-        }
-        for note_id in &ns.note_ids {
-            let Some(n) = notes_by_id.get(note_id.as_str()).copied() else {
-                continue;
-            };
-            if inserted_notes.insert(n.id.clone()) {
-                insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
-                g.set_parent(n.id.clone(), id.to_string());
             }
         }
     }
