@@ -557,6 +557,72 @@ Fresh follow-up evidence after repairing the Sequence SVG override generator:
   expected failure with 175 unaccepted residuals: Flowchart 61, Sequence 67, Architecture 30,
   Class 12, Timeline 3, and Journey 2.
 
+## M15RV-085 - Sequence HTML `<br>` / Wrap Evidence Follow-Up
+
+Fresh source findings from 2026-06-02:
+
+- Mermaid 11.15 defines `lineBreakRegex = /<br\s*\/?>/gi` in
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/common/common.ts`, so normal HTML `<br>`,
+  `<br/>`, and `<br />` variants are explicit line breaks before generic word wrapping.
+- `wrapLabel(...)` in `repo-ref/mermaid/packages/mermaid/src/utils.ts` short-circuits when the
+  input contains `<br>`, otherwise it greedily wraps words using `calculateTextWidth(...)`.
+- Sequence message spacing in
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts` still computes
+  widths from `wrapLabel(...)` plus browser-derived `calculateTextDimensions(...)`, while final
+  rendering expands wrapped messages to at least Mermaid's configured width. Notes use the same
+  `wrapLabel(...)` / `calculateTextDimensions(...)` policy when wrapping is enabled.
+
+Generator and measurement changes:
+
+- `crates/xtask/src/cmd/overrides/svg.rs` no longer skips whole Sequence wrap fixtures. It now
+  collects final emitted SVG text samples from `actor`, `messageText`, and `noteText` nodes, so
+  Mermaid's actual emitted labels can be used for final SVG text measurement.
+- The raw model-derived extra seed path still skips wrapped actors/messages/boxes and messages
+  without actor endpoints. That preserves the M15RV-080 separation between final SVG text evidence
+  and incremental wrap probes.
+- `crates/merman-render/src/text/wrap.rs` now has a guarded exact-single-line helper: exact final
+  SVG evidence may suppress wrapping only when the full label fits the current wrap width with a
+  small margin and the final exact width is materially narrower than the smooth wrap probe. This
+  fixed false splits without turning exact final SVG rows into broad prefix-width constants.
+- `crates/merman-render/src/generated/svg_overrides_sequence_11_12_2.rs` was regenerated from the
+  upstream Sequence SVG corpus. The table grew from 891 to 1036 auditable rows, and
+  `crates/xtask/src/cmd/overrides/report.rs` now records that budget explicitly.
+
+Fresh validation:
+
+- `cargo run -p xtask -- gen-svg-overrides --in fixtures\upstream-svgs\sequence --out crates\merman-render\src\generated\svg_overrides_sequence_11_12_2.rs --mode sequence`:
+  passed; regenerated the Sequence SVG text table with final wrap-fixture text nodes included.
+- `cargo test -p merman-render sequence_wrap_uses_exact_single_line_evidence_only_when_it_fits -- --nocapture`:
+  passed.
+- `cargo test -p merman-render sequence_svg_overrides_measure_final_simple_bbox_widths -- --nocapture`:
+  passed.
+- `cargo test -p merman-render sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line -- --nocapture`:
+  passed.
+- Focused root compares passed for the four largest M15RV-085 rows:
+  `stress_br_in_messages_notes_011`, `stress_long_participant_labels_br_031`,
+  `stress_sequence_batch5_wrap_html_br_spans_042`, and `html_br_variants_and_wrap`.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/sequence_report_parity_after_m15rv085_wrap_samples.md`:
+  passed for the full Sequence structural matrix.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_report_parity_root_after_m15rv085_wrap_samples.md`:
+  expected failure with 64 raw Sequence root mismatches, down from 68 after M15RV-080.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with the Sequence SVG text
+  metric budget updated to 1036 rows.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 171 unaccepted residuals: Flowchart 61, Sequence 63, Architecture 30,
+  Class 12, Timeline 3, and Journey 2.
+
+Outcome:
+
+- The four largest Sequence HTML `<br>` / wrap rows are now root-exact.
+- Raw Sequence root mismatches dropped from 68 to 64. In the full all-diagram policy run, the
+  existing accepted `sequence/zed_pr_57644_sequence` row is still accepted, so Sequence has
+  63 unaccepted residuals.
+- Remaining Sequence rows are smaller and better classified: two long left-of note rows at `+7px`,
+  several small line-break/text-measurement width tails, and participant/actor-type height-only
+  tails. These are split into M15RV-087.
+
 ## M15RV-040 Follow-Up - Architecture Root Diagnostics Parity
 
 Fresh evidence from 2026-06-01:

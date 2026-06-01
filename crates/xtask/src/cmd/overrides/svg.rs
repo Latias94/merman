@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use crate::util::*;
 use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -132,20 +132,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
             .any(|a| a.has_tag_name("defs"))
     }
 
-    fn sequence_model_has_wrap(model: &serde_json::Value) -> bool {
-        ["actors", "messages", "notes", "boxes"]
-            .into_iter()
-            .filter_map(|key| model.get(key).and_then(|v| v.as_array()))
-            .flatten()
-            .any(|item| item.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false))
-            || model
-                .get("actors")
-                .and_then(|v| v.as_object())
-                .into_iter()
-                .flat_map(|actors| actors.values())
-                .any(|actor| actor.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false))
-    }
-
     fn sequence_message_has_actor_endpoints(
         model: &serde_json::Value,
         msg: &serde_json::Value,
@@ -163,36 +149,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let sequence_fixtures_dir = crate::cmd::fixtures_root().join("sequence");
-    let sequence_wrap_stems: BTreeSet<String> = if mode == "sequence" {
-        let engine = merman::Engine::new();
-        let parse_opts = merman::ParseOptions {
-            suppress_errors: true,
-        };
-        fs::read_dir(&sequence_fixtures_dir)
-            .ok()
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|entry| {
-                let path = entry.path();
-                if !is_file_with_extension(&path, "mmd") {
-                    return None;
-                }
-                let text = fs::read_to_string(&path).ok()?;
-                let parsed = futures::executor::block_on(engine.parse_diagram(&text, parse_opts))
-                    .ok()
-                    .flatten()?;
-                if !sequence_model_has_wrap(&parsed.model) {
-                    return None;
-                }
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-            })
-            .collect()
-    } else {
-        BTreeSet::new()
-    };
 
     let Ok(entries) = fs::read_dir(&in_dir) else {
         return Err(XtaskError::ReadFile {
@@ -208,14 +164,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     for entry in entries.flatten() {
         let path = entry.path();
         if !is_file_with_extension(&path, "svg") {
-            continue;
-        }
-        if mode == "sequence"
-            && path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .is_some_and(|stem| sequence_wrap_stems.contains(stem))
-        {
             continue;
         }
         let svg = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
@@ -247,10 +195,13 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 "all" => true,
                 // For strict SVG XML parity, sequence layout is extremely sensitive to message
                 // text width (it drives `actor.margin` and thus all x coordinates). We start by
-                // generating overrides from Mermaid's own text measurement. In practice, actor
-                // box sizing is also driven by `calculateTextDimensions(...)`, so include actor
-                // labels as well to avoid drift on long participant ids.
-                "sequence" => tokens.iter().any(|t| matches!(*t, "messageText" | "actor")),
+                // generating overrides from Mermaid's own text measurement. Actor box sizing and
+                // note sizing also route through `calculateTextDimensions(...)`, so include their
+                // emitted text nodes as final SVG measurement evidence without using raw wrap
+                // fixtures as incremental wrap probes below.
+                "sequence" => tokens
+                    .iter()
+                    .any(|t| matches!(*t, "messageText" | "noteText" | "actor")),
                 _ => false,
             };
             if !include {
@@ -314,13 +265,6 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if !is_file_with_extension(&path, "mmd") {
-                    continue;
-                }
-                if path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|stem| sequence_wrap_stems.contains(stem))
-                {
                     continue;
                 }
                 let Ok(text) = fs::read_to_string(&path) else {

@@ -420,6 +420,31 @@ pub fn split_html_br_lines(text: &str) -> Vec<&str> {
     parts
 }
 
+const EXACT_SVG_WRAP_SINGLE_LINE_GUARD_PX: f64 = 4.0;
+
+fn exact_svg_single_line_evidence_fits(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: f64,
+) -> bool {
+    if label.is_empty() || !max_width_px.is_finite() || max_width_px <= 0.0 {
+        return false;
+    }
+
+    let exact_w = measurer
+        .measure_svg_simple_text_bbox_width_px(label, style)
+        .floor()
+        .max(0.0);
+    let probe_w = measurer
+        .measure_svg_simple_text_bbox_width_for_wrap_px(label, style)
+        .floor()
+        .max(0.0);
+
+    exact_w + EXACT_SVG_WRAP_SINGLE_LINE_GUARD_PX <= max_width_px
+        && exact_w + EXACT_SVG_WRAP_SINGLE_LINE_GUARD_PX < probe_w
+}
+
 /// Wraps a label using Mermaid's `wrapLabel(...)` logic, producing wrapped *lines*.
 ///
 /// This is used by Sequence diagrams (Mermaid@11.x) when `wrap: true` is enabled and when actor
@@ -443,6 +468,9 @@ pub fn wrap_label_like_mermaid_lines(
             .into_iter()
             .map(|s| s.to_string())
             .collect();
+    }
+    if exact_svg_single_line_evidence_fits(label, measurer, style, max_width_px) {
+        return vec![label.to_string()];
     }
 
     fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
@@ -539,6 +567,9 @@ pub fn wrap_label_like_mermaid_lines_relaxed(
             .map(|s| s.to_string())
             .collect();
     }
+    if exact_svg_single_line_evidence_fits(label, measurer, style, max_width_px) {
+        return vec![label.to_string()];
+    }
 
     fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
         measurer.measure(s, style).width.round()
@@ -629,6 +660,9 @@ pub fn wrap_label_like_mermaid_lines_floored_bbox(
             .into_iter()
             .map(|s| s.to_string())
             .collect();
+    }
+    if exact_svg_single_line_evidence_fits(label, measurer, style, max_width_px) {
+        return vec![label.to_string()];
     }
 
     fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {

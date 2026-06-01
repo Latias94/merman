@@ -980,11 +980,11 @@ fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let text = "multiline<br \\t/>text";
     let m = measurer.measure_wrapped(text, &style, None, WrapMode::SvgLikeSingleRun);
     assert_eq!(m.line_count, 1);
-    assert_eq!(m.width, 131.0);
+    assert_eq!(m.width, 132.0);
 }
 
 #[test]
-fn sequence_svg_overrides_drive_simple_bbox_width_for_wrap_label_probes() {
+fn sequence_svg_overrides_measure_final_simple_bbox_widths() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
@@ -992,10 +992,10 @@ fn sequence_svg_overrides_drive_simple_bbox_width_for_wrap_label_probes() {
         font_weight: None,
     };
 
-    let prefix = "This is a longer message that should be wrapped by Mermaid's default";
+    let prefix = "This is a longer message that should be wrapped by Mermaid's default behavior";
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px(prefix, &style),
-        464.0
+        511.0
     );
 
     let no_wrap = "This message should not wrap even if it is long long long long long";
@@ -1006,11 +1006,36 @@ fn sequence_svg_overrides_drive_simple_bbox_width_for_wrap_label_probes() {
 
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px("very-long-participant-label", &style),
-        172.0
+        174.0
     );
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px("another-long-participant-label", &style),
         192.0
+    );
+}
+
+#[test]
+fn sequence_wrap_uses_exact_single_line_evidence_only_when_it_fits() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let text = "This is a longer message that should be wrapped by Mermaid's default behavior";
+
+    let exact = measurer.measure_svg_simple_text_bbox_width_px(text, &style);
+    let probe = measurer.measure_svg_simple_text_bbox_width_for_wrap_px(text, &style);
+    assert_eq!(exact, 511.0);
+    assert!(exact + 4.0 < probe);
+
+    let single = wrap_label_like_mermaid_lines_floored_bbox(text, &measurer, &style, exact + 31.0);
+    assert_eq!(single, vec![text.to_string()]);
+
+    let wrapped = wrap_label_like_mermaid_lines_floored_bbox(text, &measurer, &style, 200.0);
+    assert!(
+        wrapped.len() > 1,
+        "narrow labels should still use the normal Mermaid wrapLabel flow"
     );
 }
 

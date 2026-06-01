@@ -34,8 +34,11 @@ Last updated: 2026-06-02
   text/root tails plus bounded layout residuals.
 - Sequence SVG override generation is repaired and the central-connection bucket is closed; raw
   Sequence root residuals dropped from 168 to 68, with 67 unaccepted in the full policy run.
-- Remaining Sequence work is split into M15RV-085 for HTML `<br>` / wrap / note / participant
-  height tails.
+- Sequence HTML `<br>` / wrap evidence is partially closed by M15RV-085: final emitted actor,
+  message, and note text evidence from wrap fixtures is now generated, the four largest wrap rows
+  are root-exact, and the full all-diagram root policy now leaves 63 unaccepted Sequence rows.
+- Remaining Sequence work is split into M15RV-087 for long-note width/height, small line-break
+  width, and actor-type height tails.
 
 ## M3 - Root Policy Closeout
 

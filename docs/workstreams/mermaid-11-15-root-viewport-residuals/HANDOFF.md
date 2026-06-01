@@ -131,25 +131,45 @@ fallback path, and the parity comparator normalizes only those Architecture ID/p
 variants so structural gates do not encode stale fixture-generation details. Architecture
 structural parity and full structural parity are green.
 
+M15RV-085 refined the Sequence wrap evidence policy. Mermaid 11.15 source confirms that
+`lineBreakRegex` splits HTML `<br>` variants before wrapping, while `wrapLabel(...)` short-circuits
+when a label already contains `<br>`. Message and note widths still route through browser-derived
+`calculateTextDimensions(...)`, so the fix stayed in generated evidence and measurement policy
+rather than broad deterministic layout substitution. The Sequence SVG override generator now keeps
+final emitted `actor`, `messageText`, and `noteText` nodes from wrap fixtures, but still filters
+raw wrapped actors/messages/boxes as incremental wrap seeds. A guarded single-line fit helper lets
+exact final SVG text evidence prevent false wrapping only when that exact text fits the current
+wrap width with margin. The four largest HTML `<br>` / wrap rows are root-exact:
+`stress_br_in_messages_notes_011`, `stress_long_participant_labels_br_031`,
+`stress_sequence_batch5_wrap_html_br_spans_042`, and `html_br_variants_and_wrap`. The generated
+Sequence SVG text metric table now has 1036 rows, `report-overrides --check-no-growth` passes, full
+Sequence structural parity is green, and raw Sequence root mismatches dropped from 68 to 64. Full
+all-diagram root policy accepts the existing `sequence/zed_pr_57644_sequence` residual, leaving
+63 unaccepted Sequence rows.
+
 ## Active Task
 
-- Task ID: M15RV-085
+- Task ID: M15RV-087
 - Owner: codex
 - Status: PENDING
-- Goal: Classify and reduce the remaining Sequence HTML `<br>` / wrap / note / participant root
-  tails after the SVG override generator repair.
-- Evidence: start from `target/compare/sequence_report_parity_root_after_sequence_override_cleanup.md`
-  and the latest `target/compare/sequence_report_parity_root.md`.
-- Concern: Do not add string-by-string browser constants. Prefer reusable HTML/wrap source rules,
-  generator-backed evidence, or explicit diagnostic residual policy.
+- Goal: Classify and reduce the remaining Sequence long-note, small line-break width, and
+  actor-type height tails after the M15RV-085 wrap evidence update.
+- Evidence: start from the latest `target/compare/sequence_report_parity_root.md`; top rows are
+  the two long-note residuals at `+7px`, followed by small line-break width tails and
+  participant/actor-type height-only rows.
+- Concern: Do not add root pins or string-by-string constants for the remaining tails unless they
+  come from a reusable generated measurement source. Prefer Mermaid source rules or explicit
+  diagnostic residual policy.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 175.
-- Largest buckets: Sequence 67, Flowchart 61, Architecture 30, Class 12.
+- Total unaccepted full-root residuals: 171.
+- Largest buckets: Sequence 63, Flowchart 61, Architecture 30, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
+- Closed in M15RV-085: Sequence 67 -> 63 unaccepted residuals in the full all-diagram root policy
+  run, with the four largest HTML `<br>` / wrap rows now root-exact.
 
 ## Guardrails
 
@@ -174,3 +194,6 @@ structural parity and full structural parity are green.
 - Treat Architecture diagram-scoped service/node/group IDs and fallback service background path
   spelling as compare-time fixture-churn normalization, not renderer behavior to toggle per
   fixture. Root gates remain the authority for visual viewport impact.
+- For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
+  incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
+  demonstrably fits; it should not become a general prefix-width replacement.

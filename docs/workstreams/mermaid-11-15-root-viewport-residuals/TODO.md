@@ -124,7 +124,7 @@ Last updated: 2026-06-02
   (67 unaccepted after the existing `zed_pr_57644_sequence` policy row). Remaining rows are mostly
   HTML `<br>` / wrap / note / participant height tails, not central-connection semantics.
 
-- [ ] M15RV-085 [owner=codex] [deps=M15RV-080] [scope=crates/merman-render/src/svg/parity/sequence,crates/merman-render/src/text,target/compare/sequence_report_parity_root.md]
+- [x] M15RV-085 [owner=codex] [deps=M15RV-080] [scope=crates/xtask/src/cmd/overrides/svg.rs,crates/merman-render/src/generated/svg_overrides_sequence_11_12_2.rs,crates/merman-render/src/text,target/compare/sequence_report_parity_root.md]
   Goal: Classify and reduce the remaining Sequence HTML `<br>` / wrap / note / participant root
   tails after the SVG override generator repair.
   Validation: focused Sequence `parity-root` compares for the largest remaining rows;
@@ -133,13 +133,37 @@ Last updated: 2026-06-02
   Review: Do not add browser-exact font constants for every string. Prefer reusable wrap/HTML
   source rules, generator-backed evidence, or explicit diagnostic residual policy.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: PENDING. Start from `html_br_variants_and_wrap`,
-  `stress_long_participant_labels_br_031`, `stress_br_in_messages_notes_011`, and
-  `stress_sequence_batch5_wrap_html_br_spans_042`.
+  Handoff: DONE_WITH_CONCERNS. Mermaid source confirms `<br>` splitting and `wrapLabel(...)`
+  short-circuit behavior, while message/note sizing still runs through browser-derived
+  `calculateTextDimensions(...)`. The SVG override generator now collects final emitted
+  `actor`, `messageText`, and `noteText` nodes from wrap fixtures while still filtering raw
+  wrap seeds. The generated Sequence SVG text table grew from 891 to 1036 auditable rows, and the
+  text wrap path now uses exact final SVG evidence only as a guarded single-line fit signal.
+  The four largest HTML `<br>` / wrap rows named above are root-exact, Sequence structural parity
+  is green, and raw Sequence root mismatches dropped from 68 to 64. Full all-diagram root policy
+  accepts the existing `zed_pr_57644_sequence` row, leaving 63 unaccepted Sequence residuals.
+  Remaining rows are long left-of note width/height tails, small line-break width tails, and
+  participant/actor-type height tails.
+
+- [ ] M15RV-087 [owner=codex] [deps=M15RV-085] [scope=crates/merman-render/src/sequence,crates/merman-render/src/text,target/compare/sequence_report_parity_root.md]
+  Goal: Classify and reduce the remaining Sequence long-note, small line-break width, and
+  actor-type height tails after the M15RV-085 wrap evidence update.
+  Validation: focused Sequence `parity-root` compares for
+  `upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019`,
+  `participant_types`, and `stress_participant_types_006`; full Sequence structural/root reports
+  after any source-rule change.
+  Review: Prefer source-derived note/actor geometry rules or explicit diagnostic status. Do not
+  add root pins or per-string constants for the remaining 1-7px tails unless they come from a
+  reusable generated measurement source.
+  Evidence: `EVIDENCE_AND_GATES.md`
+  Handoff: PENDING. Start from `target/compare/sequence_report_parity_root.md`; the largest
+  remaining root deltas are the two long-note rows at `+7px`, followed by small line-break width
+  tails and actor-type height-only rows.
 
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085,M15RV-087] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
@@ -148,6 +172,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 175 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 171 residuals;
   Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
   differences.
