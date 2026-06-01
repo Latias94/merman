@@ -10,7 +10,10 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
-fn render_architecture_fixture(fixture_name: &str) -> String {
+fn render_architecture_fixture_with_options(
+    fixture_name: &str,
+    options: &SvgRenderOptions,
+) -> String {
     let path = workspace_root()
         .join("fixtures")
         .join("architecture")
@@ -31,12 +34,19 @@ fn render_architecture_fixture(fixture_name: &str) -> String {
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
         layout_options.text_measurer.as_ref(),
+        options,
+    )
+    .expect("render SVG")
+}
+
+fn render_architecture_fixture(fixture_name: &str) -> String {
+    render_architecture_fixture_with_options(
+        fixture_name,
         &SvgRenderOptions {
             diagram_id: Some("architecture-crosslinks".to_string()),
             ..Default::default()
         },
     )
-    .expect("render SVG")
 }
 
 fn arrow_transform_after_edge(svg: &str, edge_id: &str) -> String {

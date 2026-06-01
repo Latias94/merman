@@ -476,6 +476,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             padding_px,
             icon_size_px,
             use_max_width,
+            apply_root_overrides: options.apply_root_overrides,
         });
     }
 

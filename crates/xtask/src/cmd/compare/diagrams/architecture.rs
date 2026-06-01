@@ -1,6 +1,10 @@
 //! Per-diagram SVG compare commands.
 
 use crate::XtaskError;
+use crate::cmd::compare::{
+    DEFAULT_ROOT_DELTA_REPORT_LIMIT, RootDelta, RootDeltaReportLimit, parse_root_attrs,
+    parse_root_delta_report_limit, write_root_deltas_report,
+};
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
@@ -12,8 +16,11 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
+    let mut report_root: bool = false;
+    let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
+    let mut apply_root_overrides: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -27,6 +34,16 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
                 filter = args.get(i).map(|s| s.to_string());
             }
             "--check-dom" => check_dom = true,
+            "--report-root" => report_root = true,
+            "--report-root-all" => {
+                report_root = true;
+                root_report_limit = RootDeltaReportLimit::All;
+            }
+            "--report-root-limit" => {
+                i += 1;
+                report_root = true;
+                root_report_limit = parse_root_delta_report_limit(args.get(i).map(String::as_str))?;
+            }
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -38,6 +55,7 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
                     .map(|s| s.trim().to_string())
                     .unwrap_or_else(|| "parity".to_string());
             }
+            "--no-root-overrides" => apply_root_overrides = false,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -64,16 +82,24 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
+    let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
 
     let engine = merman::Engine::new();
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Architecture SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/architecture/*.svg` (pinned Mermaid baseline)\n- Local: `render_architecture_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
-        dom_mode, dom_decimals
+        "# Architecture SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/architecture/*.svg` (pinned Mermaid baseline)\n- Local: `render_architecture_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Root overrides: `{}`\n",
+        dom_mode,
+        dom_decimals,
+        if apply_root_overrides {
+            "enabled"
+        } else {
+            "disabled"
+        }
     );
 
     let mut failures: Vec<String> = Vec::new();
+    let mut root_deltas: Vec<RootDelta> = Vec::new();
     for mmd_path in mmd_files {
         let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
             failures.push(format!("invalid fixture filename {}", mmd_path.display()));
@@ -146,6 +172,7 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
 
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
+            apply_root_overrides,
             ..Default::default()
         };
 
@@ -164,6 +191,25 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
 
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
+
+        if should_report_root {
+            match (
+                parse_root_attrs(&upstream_svg),
+                parse_root_attrs(&local_svg),
+            ) {
+                (Ok(up), Ok(lo)) => root_deltas.push(RootDelta {
+                    stem: stem.to_string(),
+                    max_width_delta: match (up.max_width_px, lo.max_width_px) {
+                        (Some(a), Some(b)) => Some(b - a),
+                        _ => None,
+                    },
+                    upstream: up,
+                    local: lo,
+                }),
+                (Err(e), _) => failures.push(format!("root parse failed for upstream {stem}: {e}")),
+                (_, Err(e)) => failures.push(format!("root parse failed for local {stem}: {e}")),
+            }
+        }
 
         if check_dom {
             let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
@@ -219,6 +265,10 @@ pub(crate) fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskEr
             "\nLocal SVG outputs: `{}`\n",
             out_svg_dir.display()
         );
+    }
+
+    if should_report_root {
+        write_root_deltas_report(&mut report, &mut root_deltas[..], root_report_limit);
     }
 
     if let Some(parent) = out_path.parent() {

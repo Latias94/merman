@@ -12,6 +12,7 @@ pub(super) struct ArchitectureRootViewportContext<'a, M: ArchitectureModelAccess
     pub(super) padding_px: f64,
     pub(super) icon_size_px: f64,
     pub(super) use_max_width: bool,
+    pub(super) apply_root_overrides: bool,
 }
 
 pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
@@ -25,6 +26,7 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
         padding_px,
         icon_size_px,
         use_max_width,
+        apply_root_overrides,
     } = ctx;
 
     let groups_len = model.groups_len();
@@ -102,14 +104,16 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
     let mut max_w_attr = fmt_string(vb_w);
     let mut w_attr = fmt_string(vb_w);
     let mut h_attr = fmt_string(vb_h);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut view_box_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override,
-    );
+    if apply_root_overrides {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut view_box_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override,
+        );
+    }
 
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
     if use_max_width {

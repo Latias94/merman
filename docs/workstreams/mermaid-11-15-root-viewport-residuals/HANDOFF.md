@@ -68,6 +68,15 @@ only explicit `px` strings are layout-effective. Class and Radar call sites that
 local versions of these rules now share the helpers. This was intentionally scoped to Class/Radar;
 other diagrams still need per-source-path checks before using the new helpers.
 
+M15RV-040 also received a diagnostics follow-up. Architecture compare commands now support
+`--report-root`, `--report-root-all`, `--report-root-limit`, and `--no-root-overrides`, matching
+the established root-audit flow used by Flowchart and Sequence. The Architecture renderer now
+threads `SvgRenderOptions.apply_root_overrides` into final root viewport emission, so the CLI
+switch no longer depends on a process-wide environment variable. Fresh focused and all-diagram
+reports prove the path works and emits a `Root Viewport Deltas` table for Architecture. This did
+not change residual counts: Architecture remains at 32 unaccepted root rows, but the bucket is now
+much easier to inspect with the same tooling as the other diagrams.
+
 ## Active Task
 
 - Task ID: M15RV-070
@@ -101,3 +110,6 @@ other diagrams still need per-source-path checks before using the new helpers.
   Architecture rows include real layout/root-bounds differences.
 - Use the shared config helpers for future font-size work only when the Mermaid source path matches
   their policy; otherwise leave diagram-local behavior explicit.
+- Use the new Architecture `--no-root-overrides` / `--report-root-all` path before touching any
+  Architecture root residual. That should be the default evidence source for deciding whether a row
+  is stale-pin, source-rule, or browser-measurement debt.

@@ -471,6 +471,42 @@ Policy extraction:
 Full residual counts are unchanged from M15RV-060: total 277 unaccepted root residuals, with Class
 at 12.
 
+## M15RV-040 Follow-Up - Architecture Root Diagnostics Parity
+
+Fresh evidence from 2026-06-01:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_services_outside_groups_crosslinks_078 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/architecture_crosslinks_no_overrides.md`:
+  expected failure; confirms the new explicit Architecture CLI switch reaches the renderer and
+  emits an all-row root delta table with root overrides disabled.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_all.md`:
+  expected failure with the existing 32 raw Architecture root mismatches, now accompanied by a full
+  `Root Viewport Deltas` section for Architecture itself.
+- `cargo run -p xtask -- compare-all-svgs --diagram architecture --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+  expected failure with a bounded summary pointing at
+  `target/compare/architecture_report_parity_root.md`; this proves `compare-all-svgs` now routes
+  Architecture through the same root-report path as Flowchart, Sequence, State, GitGraph, and
+  Mindmap.
+- `cargo test -p xtask root_parity_failure_summary_keeps_final_error_bounded -- --nocapture`:
+  passed.
+- `cargo test -p xtask parses_root_report_limits -- --nocapture`:
+  passed.
+
+Architecture diagnostics findings:
+
+- Before this follow-up, Architecture parity-root diagnosis was weaker than other root-heavy
+  diagrams: `compare-architecture-svgs` lacked `--report-root*` support and did not expose an
+  explicit `--no-root-overrides` switch even though the lane was already reasoning about pinned vs
+  unpinned Architecture residuals.
+- Architecture now respects `SvgRenderOptions.apply_root_overrides` in the final root viewport
+  emission path instead of relying only on the process-wide
+  `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES` environment variable.
+- This is a diagnostics/deepening change, not a renderer-parity claim. The raw Architecture root
+  bucket remains `32`, and the leading rows are unchanged large layout-root differences such as
+  disconnected components, mixed service forms, and grouped port cases.
+- The immediate benefit is traceability: Architecture root residuals now produce the same sortable
+  `max-width/viewBox` evidence table as the other audited diagrams, which makes later measurement
+  policy extraction or source-rule work less guessy.
+
 ## Gate Set
 
 Run after any code or generated-data change:

@@ -63,3 +63,9 @@
 {"file":"target/compare/radar_numeric_font_size_after_css_font_helper.md","reason":"M15RV-070 focused Radar structural parity evidence for numeric themeVariables.fontSize raw CSS spelling after shared helper extraction."}
 {"file":"target/compare/class_font_size_025_after_css_font_helper.md","reason":"M15RV-070 focused Class structural parity evidence for numeric themeVariables.fontSize after shared helper extraction."}
 {"file":"target/compare/class_font_size_026_after_css_font_helper.md","reason":"M15RV-070 focused Class structural parity evidence for explicit px-string themeVariables.fontSize after shared helper extraction."}
+{"file":"crates/xtask/src/cmd/compare/diagrams/architecture.rs","reason":"M15RV-040 follow-up adds Architecture root delta reporting and explicit CLI control for disabling root overrides."}
+{"file":"crates/xtask/src/cmd/compare/all.rs","reason":"M15RV-040 follow-up routes compare-all Architecture runs through the shared root report CLI surface."}
+{"file":"crates/merman-render/src/svg/parity/architecture.rs","reason":"M15RV-040 follow-up threads SvgRenderOptions.apply_root_overrides into final Architecture root viewport emission."}
+{"file":"crates/merman-render/src/svg/parity/architecture/viewport.rs","reason":"M15RV-040 follow-up makes Architecture root viewport overrides respect the explicit render option instead of environment-only control."}
+{"file":"target/compare/architecture_crosslinks_no_overrides.md","reason":"M15RV-040 follow-up evidence that the Architecture no-root-overrides compare path emits root delta rows and reaches the renderer."}
+{"file":"target/compare/architecture_report_parity_root_all.md","reason":"M15RV-040 follow-up full Architecture root audit with sortable Root Viewport Deltas output."}
