@@ -991,6 +991,75 @@ Outcome:
   `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` at about `-22.5px`; investigate it
   as an iconSize/fontSize/wrap/root-bounds issue before considering residual policy.
 
+## M15RV-089 - Architecture Group Padding And Canvas Label Metrics
+
+Fresh source and probe evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts` styles
+  `.node-group` with `padding: ${db.getConfigField('padding')}px`; the group padding source is the
+  configured Architecture `padding`, not `iconSize / 2`.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts` `drawGroups(...)`
+  reads the Cytoscape `node.boundingBox()` result and emits the group rect from
+  `x1 + iconSize / 2`, `y1 + iconSize / 2`, `width = w`, and `height = h`. The browser/Cytoscape
+  bbox still owns the final 0.5-2.5px lattice tail, but the input style padding is source-owned.
+- The diagnostic browser probe
+  `tools/debug/arch_fcose_browser_probe_fixture_025.js` now parses fixture `%%{init: ...}%%`
+  directives before calling `mermaid.initialize(...)` and reports the effective Architecture
+  `iconSize`, `fontSize`, and `padding`. The previous probe accidentally measured default
+  `iconSize=80` for custom-init fixtures, which made the `padding` question look less clear than
+  it was.
+- Focused browser probe evidence for
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` now reports config
+  `{ iconSize: 40, fontSize: 18, padding: 30 }`, service pre-layout bboxes of about
+  `API Service=101x62`, `Database=84x62`, and `Logs=42x62`, and group pre-layout bboxes of about
+  `left=162x124` and `right=145x124`.
+
+Renderer and test changes:
+
+- `crates/merman-render/src/architecture.rs` now exposes
+  `architecture_cytoscape_canvas_label_metrics(...)` so the layout and SVG root-bound code share
+  the same deterministic Cytoscape canvas-label width approximation instead of carrying duplicate
+  inline scale/rounding logic.
+- `crates/merman-render/src/svg/parity/architecture/geometry.rs` now sizes group rectangles from
+  `architecture.padding + 2.5` instead of the legacy `iconSize / 2 + 2.5` proxy. This preserves the
+  existing headless bbox tail while removing the source-inaccurate `iconSize` dependency.
+- `crates/merman-render/tests/architecture_svg_test.rs` now guards custom-padding behavior with
+  `architecture_group_rect_uses_configured_padding_for_small_icons`, asserting that the custom
+  `padding=30`, `iconSize=40` fixture does not regress to the old `iconSize / 2` group width.
+
+Fresh validation:
+
+- `cargo test -p merman-render --test architecture_svg_test -- --nocapture`: passed, 3 tests.
+- `cargo test -p merman-render --test architecture_layout_test -- --nocapture`: passed, 5 tests.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_init_fontsize_icon_size_wrap_m15rv089_padding_metric_refactor_only.md`:
+  expected failure, but the focused row improved from about `-22.5px` to about `-2.5px`
+  (`325.105px` upstream vs `322.605px` local). Height is effectively aligned
+  (`380.479px` upstream vs `380.604px` local).
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv089_group_padding_metric_refactor_only.md`:
+  expected failure with 29 Architecture root residuals and the same failure set as the previous
+  group-alignment report.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv089_group_padding_metric_refactor_only.md`:
+  passed for the full Architecture matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 134 unaccepted residuals: Flowchart 61, Architecture 29, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`, total root viewport overrides remain `241`.
+- `cargo fmt -p merman-render --check`: passed.
+- `git diff --check`: passed with only the existing LF/CRLF warnings for workstream JSONL files.
+
+Outcome:
+
+- The custom-init padding row is no longer a `-22.5px` source-rule defect; it is a remaining
+  `-2.5px` browser/Cytoscape bbox quantization and headless text-measurement tail.
+- An attempted `+1px` browser-bbox edge adjustment was rejected because it increased the
+  Architecture root mismatch count from 29 to 31 by adding two new residuals. Do not reintroduce
+  that kind of exact-browser tweak without broad generated evidence.
+- Architecture remains at 29 root residuals with no root pins, no tolerances, and no
+  browser-dependent renderer path.
+
 ## Gate Set
 
 Run after any code or generated-data change:

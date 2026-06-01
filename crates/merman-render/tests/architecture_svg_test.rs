@@ -90,6 +90,28 @@ fn service_translate(svg: &str, service_id: &str) -> (f64, f64) {
     (x, y)
 }
 
+fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
+    let pattern = format!(
+        r#"id="{}"[^>]*\bx="([^"]+)"[^>]*\by="([^"]+)"[^>]*\bwidth="([^"]+)"[^>]*\bheight="([^"]+)""#,
+        regex::escape(group_id)
+    );
+    let re = Regex::new(&pattern).expect("valid regex");
+    let caps = re
+        .captures(svg)
+        .unwrap_or_else(|| panic!("missing group rect for {group_id}"));
+    let parse = |idx: usize, label: &str| {
+        caps.get(idx)
+            .and_then(|m| m.as_str().parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("invalid {label} for {group_id}"))
+    };
+    (
+        parse(1, "x"),
+        parse(2, "y"),
+        parse(3, "width"),
+        parse(4, "height"),
+    )
+}
+
 fn assert_close(actual: f64, expected: f64, message: &str) {
     let delta = (actual - expected).abs();
     assert!(
@@ -146,5 +168,23 @@ fn architecture_group_alignment_follows_source_endpoint_traversal_order() {
         api.0,
         cache.0,
         "api/cache should share the final core/data vertical alignment",
+    );
+}
+
+#[test]
+fn architecture_group_rect_uses_configured_padding_for_small_icons() {
+    let svg = render_architecture_fixture_with_options(
+        "stress_architecture_batch6_init_fontsize_icon_size_wrap_093.mmd",
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-padding".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let left = group_rect(&svg, "architecture-padding-group-left");
+    assert!(
+        left.2 >= 158.0,
+        "custom architecture.padding should expand the group rect beyond the legacy iconSize/2 sizing, got width {}",
+        left.2
     );
 }

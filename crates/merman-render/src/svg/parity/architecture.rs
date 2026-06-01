@@ -1,9 +1,9 @@
 use super::*;
 use crate::architecture::{
-    ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
     ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
     architecture_create_text_compound_label_extra_bottom_px,
     architecture_create_text_root_label_extra_bottom_px,
+    architecture_cytoscape_canvas_label_metrics,
 };
 
 mod edges;
@@ -287,10 +287,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
                 //
                 // Approximate Cytoscape `boundingBox()` label extents by applying a small scale
                 // factor and mirroring the observed 0.5px lattice in Chromium.
-                let m = text_measurer.measure(s, &compound_text_style);
-                let mut half =
-                    (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
-                half = (half * 2.0).round() / 2.0;
+                let metrics = architecture_cytoscape_canvas_label_metrics(
+                    s,
+                    &text_measurer,
+                    &compound_text_style,
+                );
+                let half = metrics.half_width;
                 (half, half)
             };
             let label_extra_bottom_compound =
@@ -392,6 +394,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let mut group_rects_computer = GroupRectComputer::new(
         icon_size_px,
+        padding_px,
         &services_in_group,
         &junctions_in_group,
         &child_groups,

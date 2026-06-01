@@ -186,7 +186,7 @@ Last updated: 2026-06-02
   increase from 30 to 32 reflects baseline cleanup exposing current 11.15 root tails; do not
   restore old pins or calibrations to recover the smaller number.
 
-- [ ] M15RV-089 [owner=codex] [deps=M15RV-088] [scope=crates/merman-render/src/architecture.rs,crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root_after_m15rv089_junction_parent_source_rule.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
+- [ ] M15RV-089 [owner=codex] [deps=M15RV-088] [scope=crates/merman-render/src/architecture.rs,crates/merman-render/tests/architecture_svg_test.rs,crates/merman-render/src/svg/parity/architecture,tools/debug/arch_fcose_browser_probe_fixture_025.js,target/compare/architecture_report_parity_root_after_m15rv089_group_padding_metric_refactor_only.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
   Goal: Investigate the top Architecture FCoSE/group-port root residuals now that the 11.15
   upstream baseline and root-pin table are honest.
   Validation: focused Architecture `parity-root` compares for
@@ -207,9 +207,16 @@ Last updated: 2026-06-02
   `stress_architecture_fan_in_out_021`,
   `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, and
   `stress_architecture_deep_nesting_013` are exact, while
-  `stress_architecture_junction_fork_join_026` remains a smaller `+14px` tail. Continue from
-  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-22.5px`) and the remaining
-  text/iconSize/root-bounds tails.
+  `stress_architecture_junction_fork_join_026` remains a smaller `+14px` tail. A follow-up source
+  check showed Architecture group style uses configured `padding`, not `iconSize / 2`; Rust group
+  rect sizing now follows `padding + 2.5`, and the duplicate Cytoscape canvas-label width
+  approximation was extracted into a shared helper. The custom-init row
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` improved from about `-22.5px` to
+  about `-2.5px` without changing the 29-row Architecture failure set. Continue from the remaining
+  larger tails such as `stress_architecture_junction_fork_join_026` (`+13.976px`),
+  `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
+  `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
+  browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.
 
 ## M3 - Policy Closeout
 

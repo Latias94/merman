@@ -78,6 +78,7 @@ pub(super) struct GroupRect<'a> {
 
 pub(super) struct GroupRectComputer<'a> {
     icon_size_px: f64,
+    padding_px: f64,
     services_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
     junctions_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
     child_groups: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
@@ -90,6 +91,7 @@ pub(super) struct GroupRectComputer<'a> {
 impl<'a> GroupRectComputer<'a> {
     pub(super) fn new(
         icon_size_px: f64,
+        padding_px: f64,
         services_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
         junctions_in_group: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
         child_groups: &'a rustc_hash::FxHashMap<&'a str, Vec<&'a str>>,
@@ -98,6 +100,7 @@ impl<'a> GroupRectComputer<'a> {
     ) -> Self {
         Self {
             icon_size_px,
+            padding_px,
             services_in_group,
             junctions_in_group,
             child_groups,
@@ -183,7 +186,7 @@ impl<'a> GroupRectComputer<'a> {
             .get(group_id)
             .is_some_and(|v| !v.is_empty());
         let extra = 2.5;
-        let pad = self.icon_size_px / 2.0 + extra;
+        let pad = self.padding_px + extra;
         let b = if let Some(content) = content {
             Bounds {
                 min_x: content.min_x - pad,

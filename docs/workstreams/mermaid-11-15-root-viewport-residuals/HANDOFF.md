@@ -191,6 +191,19 @@ focused constraints from `horizontal=[[lb, api, api, db]]` / `vertical=[[lb, ext
 `horizontal=[[lb, api]]` / `vertical=[[lb, ext], [api, cache]]`, making
 `stress_architecture_deep_nesting_013` root-exact. Architecture residuals are now 29.
 
+The next Architecture row,
+`stress_architecture_batch6_init_fontsize_icon_size_wrap_093`, turned out to include a smaller
+source-owned group-padding defect rather than a pure text-width issue. Mermaid 11.15
+`architectureRenderer.ts` sets `.node-group` padding from `db.getConfigField('padding')`, while
+Rust had been using `iconSize / 2` as a proxy. The Architecture browser probe was fixed to parse
+fixture `%%{init: ...}%%` directives before `mermaid.initialize(...)`, proving this fixture's
+effective config is `iconSize=40`, `fontSize=18`, `padding=30`. Rust now sizes group rectangles
+from `padding + 2.5`, and the duplicated Cytoscape canvas-label width approximation has been
+extracted into a shared helper used by both layout and SVG root-bound code. This moved the focused
+row from about `-22.5px` to about `-2.5px` while preserving the same 29-row Architecture failure
+set. A tested `+1px` exact-browser bbox tweak was rejected because it increased Architecture root
+mismatches to 31.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -199,7 +212,7 @@ focused constraints from `horizontal=[[lb, api, api, db]]` / `vertical=[[lb, ext
 - Goal: Investigate the top Architecture FCoSE/group-port root residuals after the 11.15 baseline
   refresh and stale Architecture root-pin deletion.
 - Evidence: start from
-  `target/compare/architecture_report_parity_root_after_m15rv089_group_alignment_source_order.md`;
+  `target/compare/architecture_report_parity_root_after_m15rv089_group_padding_metric_refactor_only.md`;
   full root evidence currently reports 29 unaccepted Architecture rows.
 - Concern: Do not add root pins or browser-dependent layout hacks for the remaining rows. The new
   29-row count comes from Mermaid source rules, not from restoring stale baselines or pins.
@@ -220,9 +233,11 @@ focused constraints from `horizontal=[[lb, api, api, db]]` / `vertical=[[lb, ext
   deleted, and stale groups-within-groups calibration was removed. The Architecture bucket is now
   32 honest rows rather than 30 rows mixed with stale baseline/pin artifacts.
 - In progress in M15RV-089: Architecture 32 -> 29 after deleting the non-source junction group
-  inference and mirroring Mermaid's endpoint traversal order for group alignment overwrites. Full
-  all-diagram root policy is now 134 unaccepted residuals, with a clean 11.15 baseline and no
-  Architecture root pins.
+  inference and mirroring Mermaid's endpoint traversal order for group alignment overwrites. The
+  custom-init group-padding row improved from about `-22.5px` to about `-2.5px` after switching
+  group rect sizing from the old `iconSize / 2` proxy to source-derived `architecture.padding`.
+  Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
+  no Architecture root pins.
 
 ## Guardrails
 
@@ -260,6 +275,12 @@ focused constraints from `horizontal=[[lb, api, api, db]]` / `vertical=[[lb, ext
   `ArchitectureDB.getDataStructures()`: walk model nodes, then each node's incident/service edge
   list, and allow later endpoint traversal to overwrite earlier group-pair alignment values. Do
   not simplify this back to a single global edge pass.
+- Architecture group rectangle sizing must use configured `architecture.padding`, not
+  `iconSize / 2`, even though those happen to match at the default `iconSize=80`, `padding=40`.
+  Keep the remaining 0.5-2.5px Cytoscape/browser bbox lattice as diagnostic unless broad generated
+  evidence justifies a reusable headless approximation.
+- Do not re-add the tested `+1px` Architecture bbox edge adjustment without broad evidence; it
+  made two additional root rows fail.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

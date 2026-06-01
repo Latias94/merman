@@ -19,6 +19,12 @@ const requireFromTools = createRequire(path.join(toolsRoot, "package.json"));
 
 const puppeteer = requireFromTools("puppeteer");
 
+function parseInitDirective(code) {
+  const match = code.match(/^\s*%%\{\s*init\s*:\s*(.*?)\s*\}\s*%%/m);
+  if (!match) return {};
+  return JSON.parse(match[1]);
+}
+
 function xorshiftSeedScript(seedStr) {
   return `
 (() => {
@@ -46,6 +52,7 @@ async function main() {
   const fixtureStem = process.argv[2] || "stress_architecture_many_small_groups_025";
   const fixtureMmd = path.join(workspaceRoot, "fixtures", "architecture", `${fixtureStem}.mmd`);
   const code = fs.readFileSync(fixtureMmd, "utf8");
+  const initConfig = parseInitDirective(code);
 
   const mermaidHtmlPath = path.join(
     toolsRoot,
@@ -78,6 +85,7 @@ async function main() {
 
   const browser = await puppeteer.launch({
     headless: "shell",
+    timeout: 120000,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--allow-file-access-from-files"],
   });
   const page = await browser.newPage();
@@ -176,7 +184,7 @@ async function main() {
 
   await page.addScriptTag({ path: fcoseUmd });
 
-  const out = await page.evaluate(async (code) => {
+  const out = await page.evaluate(async (code, initConfig) => {
     const mermaid = globalThis.mermaid;
     const cytoscape = globalThis.cytoscape;
     const cytoscapeFcose = globalThis.cytoscapeFcose;
@@ -187,7 +195,7 @@ async function main() {
     if (!cytoscapeFcose) throw new Error("missing global cytoscapeFcose");
 
     cytoscape.use(cytoscapeFcose);
-    mermaid.initialize({ startOnLoad: false });
+    mermaid.initialize({ startOnLoad: false, ...initConfig });
 
     const parsed = await mermaid.mermaidAPI.getDiagramFromText(code);
     const diag = parsed && (parsed.diagram ?? parsed);
@@ -495,6 +503,11 @@ async function main() {
     });
 
     return {
+      config: {
+        iconSize: db.getConfigField("iconSize"),
+        fontSize: db.getConfigField("fontSize"),
+        padding: db.getConfigField("padding"),
+      },
       constraints: { alignmentConstraint, relativePlacementConstraint },
       stages: globalThis.__archFcoseStages || [],
       final,
@@ -502,7 +515,7 @@ async function main() {
       preLayout,
       layoutElesInfo,
     };
-  }, code);
+  }, code, initConfig);
 
   console.log(JSON.stringify(out, null, 2));
   await browser.close();

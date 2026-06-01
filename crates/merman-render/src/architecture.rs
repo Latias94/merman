@@ -13,6 +13,26 @@ pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
+    pub(crate) width: f64,
+    pub(crate) half_width: f64,
+}
+
+pub(crate) fn architecture_cytoscape_canvas_label_metrics(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &crate::text::TextStyle,
+) -> ArchitectureCytoscapeCanvasLabelMetrics {
+    let m = measurer.measure(label, style);
+    let half_width = (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
+    let half_width = (half_width * 2.0).round() / 2.0;
+    ArchitectureCytoscapeCanvasLabelMetrics {
+        width: m.width,
+        half_width,
+    }
+}
+
 pub(crate) fn architecture_create_text_bbox_height_px(font_size_px: f64, line_count: usize) -> f64 {
     let font_size_px = font_size_px.max(1.0);
     let extra_lines = line_count.max(1).saturating_sub(1) as f64;
@@ -387,7 +407,6 @@ fn layout_architecture_diagram_model(
         if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
             // Cytoscape node labels are canvas text and (by default) do not apply SVG-style
             // word-wrapping. Model them as a single line for relocation-center parity.
-            let m = measurer.measure(title, style);
             // Cytoscape measures labels via canvas metrics; our deterministic metrics table is
             // SVG-oriented and slightly underestimates widths for the default font stack.
             // Calibrate with a small scale factor to match Chromium `node.boundingBox()` values
@@ -396,8 +415,10 @@ fn layout_architecture_diagram_model(
             // In practice, Cytoscape canvas metrics run slightly wider than our SVG-oriented
             // deterministic table, but a small scale factor keeps relocation centers stable
             // without requiring a browser.
-            let label_half =
-                (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
+            let label_metrics = crate::architecture::architecture_cytoscape_canvas_label_metrics(
+                title, measurer, style,
+            );
+            let label_half = label_metrics.half_width;
             half_w = half_w.max(label_half + border);
             // Cytoscape bounding boxes land on 0.5px increments in Chromium; mirror that so
             // relocation centers match upstream baselines more closely.
@@ -408,7 +429,7 @@ fn layout_architecture_diagram_model(
                 eprintln!(
                     "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
                     title,
-                    m.width,
+                    label_metrics.width,
                     label_half,
                     half_w,
                     (half_w - half_icon).max(0.0),
