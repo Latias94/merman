@@ -1,6 +1,8 @@
 use crate::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
+pub(crate) const ARCHITECTURE_LONG_LABEL_WIDTH_SCALE: f64 = 1.01;
+pub(crate) const ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
@@ -26,16 +28,20 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
 ) -> ArchitectureCytoscapeCanvasLabelMetrics {
     let m = measurer.measure(label, style);
     let width = m.width.max(0.0);
-    let scale = if width >= 200.0 {
-        1.01
-    } else {
-        ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
-    };
+    let scale = architecture_cytoscape_canvas_label_width_scale(width);
     let half_width = (width * scale) / 2.0;
     let half_width = (half_width * 2.0).round() / 2.0;
     ArchitectureCytoscapeCanvasLabelMetrics {
         width: m.width,
         half_width,
+    }
+}
+
+pub(crate) fn architecture_cytoscape_canvas_label_width_scale(width_px: f64) -> f64 {
+    if width_px >= ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX {
+        ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+    } else {
+        ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
     }
 }
 
@@ -132,8 +138,11 @@ mod tests {
             super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
             1.055
         );
+        assert_eq!(super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE, 1.01);
+        assert_eq!(super::ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX, 200.0);
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
+        assert_eq!(super::ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, 2.5);
     }
 
     #[test]
@@ -149,5 +158,28 @@ mod tests {
         assert_eq!(mapped.right, 2.5);
         assert_eq!(mapped.top, 3.5);
         assert_eq!(mapped.bottom, 4.5);
+    }
+
+    #[test]
+    fn architecture_canvas_label_scale_switches_at_long_label_threshold() {
+        assert_eq!(
+            super::architecture_cytoscape_canvas_label_width_scale(199.999),
+            super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
+        );
+        assert_eq!(
+            super::architecture_cytoscape_canvas_label_width_scale(200.0),
+            super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+        );
+        assert_eq!(
+            super::architecture_cytoscape_canvas_label_width_scale(320.0),
+            super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+        );
+    }
+
+    #[test]
+    fn architecture_compound_bbox_padding_adds_mermaid_extra_padding() {
+        assert_eq!(super::architecture_compound_bbox_padding_px(0.0), 2.5);
+        assert_eq!(super::architecture_compound_bbox_padding_px(12.0), 14.5);
+        assert_eq!(super::architecture_compound_bbox_padding_px(-7.0), 2.5);
     }
 }

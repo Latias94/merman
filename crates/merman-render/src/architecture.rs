@@ -504,7 +504,10 @@ fn layout_architecture_diagram_model(
             bb.min_y -= bounds_extras.top;
             bb.max_y += bounds_extras.bottom;
             node_bbox.insert(n.id, bb);
-            node_bounds_extras.insert(n.id, architecture_node_bbox_extras_to_manatee(bounds_extras));
+            node_bounds_extras.insert(
+                n.id,
+                architecture_node_bbox_extras_to_manatee(bounds_extras),
+            );
         }
 
         // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.
