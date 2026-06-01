@@ -447,6 +447,32 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         false
     }
 
+    fn architecture_diagram_id(n: roxmltree::Node<'_, '_>) -> Option<String> {
+        for a in n.ancestors() {
+            if a.is_element()
+                && a.tag_name().name() == "svg"
+                && a.attribute("aria-roledescription")
+                    .is_some_and(|v| v == "architecture")
+            {
+                return a.attribute("id").map(str::to_string);
+            }
+        }
+        None
+    }
+
+    fn normalize_architecture_scoped_dom_id(n: roxmltree::Node<'_, '_>, val: &str) -> String {
+        let Some(diagram_id) = architecture_diagram_id(n) else {
+            return val.to_string();
+        };
+        for kind in ["service", "node", "group"] {
+            let prefix = format!("{diagram_id}-{kind}-");
+            if let Some(rest) = val.strip_prefix(&prefix) {
+                return format!("{kind}-{rest}");
+            }
+        }
+        val.to_string()
+    }
+
     if n.is_element() {
         fn is_mindmap_diagram(n: roxmltree::Node<'_, '_>) -> bool {
             for a in n.ancestors() {
@@ -513,6 +539,16 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
 
             in_architecture_svg && in_architecture_edges
+        }
+
+        fn is_architecture_service_node_bkg_path(n: roxmltree::Node<'_, '_>) -> bool {
+            n.tag_name().name() == "path"
+                && has_class_token(n, "node-bkg")
+                && n.ancestors().any(|a| {
+                    a.is_element()
+                        && a.tag_name().name() == "g"
+                        && has_class_token(a, "architecture-service")
+                })
         }
 
         fn is_xychart_bar_data_label_text(n: roxmltree::Node<'_, '_>) -> bool {
@@ -607,6 +643,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                             // semantic attributes.
                             val = "<geom>".to_string();
                             normalized_geom = true;
+                        } else if key == "d" && is_architecture_service_node_bkg_path(n) {
+                            // Architecture fallback service background paths differ between
+                            // historical fixtures and Mermaid 11.15's current `svgDraw.ts`
+                            // spelling. The path is pure geometry; root gates still compare the
+                            // rendered viewport separately.
+                            val = "<architecture-node-bkg>".to_string();
+                            normalized_geom = true;
                         } else if key == "d"
                             && n.tag_name().name() == "path"
                             && n.attribute("class")
@@ -673,6 +716,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 && (val.starts_with("IconifyId") || val.len() <= 2)
             {
                 val = "<icon-id>".to_string();
+            }
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && key == "id"
+                && is_architecture_diagram(n)
+                && !is_architecture_icon_content(n)
+            {
+                val = normalize_architecture_scoped_dom_id(n, &val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
@@ -1443,6 +1493,28 @@ mod tests {
             arrow.attrs.get("transform").map(|s| s.as_str()),
             Some("<geom>")
         );
+    }
+
+    #[test]
+    fn parity_normalizes_architecture_diagram_scoped_dom_ids() {
+        let prefixed = r#"<svg id="diag" aria-roledescription="architecture"><g class="architecture-services"><g id="diag-service-api"><g><path id="diag-node-api" class="node-bkg" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g><g class="architecture-groups"><rect id="diag-group-core" class="node-bkg" x="0" y="0" width="80" height="80"/></g></svg>"#;
+        let bare = r#"<svg id="diag" aria-roledescription="architecture"><g class="architecture-services"><g id="service-api"><g><path id="node-api" class="node-bkg" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g><g class="architecture-groups"><rect id="group-core" class="node-bkg" x="0" y="0" width="80" height="80"/></g></svg>"#;
+
+        let prefixed_dom = dom_signature(prefixed, DomMode::Parity, 3).unwrap();
+        let bare_dom = dom_signature(bare, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(prefixed_dom, bare_dom);
+    }
+
+    #[test]
+    fn parity_normalizes_architecture_service_background_path_spelling() {
+        let old_path = r#"<svg aria-roledescription="architecture"><g class="architecture-services"><g class="architecture-service"><g><path class="node-bkg" id="node-api" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></g></g></g></svg>"#;
+        let new_path = r#"<svg aria-roledescription="architecture"><g class="architecture-services"><g class="architecture-service"><g><path class="node-bkg" id="node-api" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g></svg>"#;
+
+        let old_dom = dom_signature(old_path, DomMode::Parity, 3).unwrap();
+        let new_dom = dom_signature(new_path, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(old_dom, new_dom);
     }
 
     #[test]

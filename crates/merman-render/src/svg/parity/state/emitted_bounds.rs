@@ -1330,18 +1330,17 @@ mod svg_bbox_tests {
 
     #[test]
     fn svg_path_bounds_architecture_service_node_bkg_matches_mermaid_bbox() {
-        // Mermaid architecture service fallback background path (no icon / no iconText):
-        // `M0 ${iconSize} v${-iconSize} q0,-5 5,-5 h${iconSize} q5,0 5,5 v${iconSize} H0 Z`
+        // Mermaid architecture service fallback background path (no icon / no iconText), as of
+        // Mermaid 11.15:
+        // `M0,${iconSize} V5 Q0,0 5,0 H${iconSize - 5} Q${iconSize},0 ${iconSize},5 V${iconSize} Z`
         //
         // With iconSize=80, Chromium getBBox() yields:
-        //   x=0, y=-5, width=90, height=85
-        // which drives the root viewBox when padding=40:
-        //   viewBox="-40 -45 170 165"
-        let d = "M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z";
+        //   x=0, y=0, width=80, height=80
+        let d = "M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z";
         let b = svg_path_bounds_from_d(d).expect("path bounds");
         assert!((b.min_x - 0.0).abs() < 1e-9, "min_x: got {}", b.min_x);
-        assert!((b.min_y - (-5.0)).abs() < 1e-9, "min_y: got {}", b.min_y);
-        assert!((b.max_x - 90.0).abs() < 1e-9, "max_x: got {}", b.max_x);
+        assert!((b.min_y - 0.0).abs() < 1e-9, "min_y: got {}", b.min_y);
+        assert!((b.max_x - 80.0).abs() < 1e-9, "max_x: got {}", b.max_x);
         assert!((b.max_y - 80.0).abs() < 1e-9, "max_y: got {}", b.max_y);
     }
 
@@ -1349,11 +1348,11 @@ mod svg_bbox_tests {
     fn svg_emitted_bounds_attr_lookup_d_does_not_match_id() {
         // Regression test: naive attribute lookup for `d="..."` can match inside `id="..."`.
         // That would cause `<path>` bboxes to be skipped, breaking root viewBox/max-width parity.
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path class="node-bkg" id="node-db" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></svg>"#;
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path class="node-bkg" id="node-db" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></svg>"#;
         let dbg = debug_svg_emitted_bounds(svg).expect("emitted bounds");
         assert!((dbg.bounds.min_x - 0.0).abs() < 1e-9);
-        assert!((dbg.bounds.min_y - (-5.0)).abs() < 1e-9);
-        assert!((dbg.bounds.max_x - 90.0).abs() < 1e-9);
+        assert!((dbg.bounds.min_y - 0.0).abs() < 1e-9);
+        assert!((dbg.bounds.max_x - 80.0).abs() < 1e-9);
         assert!((dbg.bounds.max_y - 80.0).abs() < 1e-9);
     }
 

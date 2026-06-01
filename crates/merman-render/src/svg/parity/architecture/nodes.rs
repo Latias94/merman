@@ -104,9 +104,10 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 (None, None) => {
                     let _ = write!(
                         out,
-                        r#"<path class="node-bkg" id="node-{id}" d="M0 {s} v-{s} q0,-5 5,-5 h{s} q5,0 5,5 v{s} H0 Z"/>"#,
+                        r#"<path class="node-bkg" id="node-{id}" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
                         id = id_esc,
-                        s = fmt(settings.icon_size_px)
+                        s = fmt(settings.icon_size_px),
+                        inner_s = fmt(settings.icon_size_px - 5.0)
                     );
                 }
             }
