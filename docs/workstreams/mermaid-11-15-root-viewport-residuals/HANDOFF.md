@@ -219,6 +219,15 @@ bounds. Final SVG group rectangles had already moved from `iconSize / 2` to conf
 `padding + 2.5`. This is source-consistency work rather than a count reduction: the custom-init
 rows remain in the same residual set, and the remaining drift is label/bbox measurement dominated.
 
+`stress_architecture_batch5_long_titles_and_punct_076` and
+`stress_architecture_batch4_init_small_icons_061` were classified as measurement diagnostics rather
+than patched. Browser probes show the batch5 row is driven by Cytoscape canvas label bbox mismatch:
+the long `Artifacts Storage retention 30d` label is about `223px` wide in Chromium/Cytoscape, while
+the current deterministic scaled estimate is wider. The batch4 small-icon row is instead icon-floor
+dominated (`42x56` browser service bboxes). A single new global label scale would be self-deceptive;
+future work should use generated Architecture canvas-label evidence or a better deterministic
+canvas measurer.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -307,6 +316,9 @@ rows remain in the same residual set, and the remaining drift is label/bbox meas
 - Architecture relative placement BFS must process duplicate queued current positions on pop, like
   Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
   drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
+- Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
+  long labels and batch4 small-icon labels need different treatment; use generated browser-probe
+  evidence or classify the residual honestly.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

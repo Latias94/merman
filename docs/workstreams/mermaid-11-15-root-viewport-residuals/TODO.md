@@ -217,8 +217,10 @@ Last updated: 2026-06-02
   feeds 9 relative constraints like the browser probe instead of Rust's previous 7; this did not
   change the `+13.976px` viewport tail. Layout-side pre-FCoSE group bbox inflation now also uses
   configured `padding + 2.5` instead of the old `iconSize / 2 + 2.5` proxy; this aligns layout and
-  SVG group sizing policy but does not change the current 29-row residual set. Continue from the
-  remaining larger tails such as
+  SVG group sizing policy but does not change the current 29-row residual set. Batch5 long-title
+  and batch4 small-icon probes classify those rows as mixed canvas-label/icon-floor measurement
+  tails; do not tune one global label scale for them. Continue from the remaining larger tails such
+  as
   `stress_architecture_junction_fork_join_026` (`+13.976px`),
   `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
   `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small

@@ -1162,6 +1162,40 @@ Outcome:
   now dominated by canvas label / Cytoscape bbox measurement tails rather than the old
   `iconSize / 2` padding proxy.
 
+## M15RV-089 - Architecture Canvas Label Residual Diagnostics
+
+Fresh diagnostic evidence from 2026-06-02:
+
+- `node tools/debug/arch_fcose_browser_probe_fixture_025.js stress_architecture_batch5_long_titles_and_punct_076`
+  reports browser pre-layout service bboxes of `Runner Linux amd64=155x100`,
+  `Container Registry=139x100`, `Artifacts Storage retention 30d=223x100`, and
+  `Production=83x100`. The upstream SVG places the group rect at about
+  `x=-233.463,width=462.926`; local output is `x=-244.463,width=472.926`.
+- Local `MERMAN_ARCH_DEBUG_CY_BBOX=1` for the same fixture shows the shared canvas-label helper
+  estimating `Artifacts Storage retention 30d` at `half_w=118.5`, while Chromium/Cytoscape's
+  browser bbox is about `111.5` half-width. That over-wide long label explains most of the
+  `+10px` root-width tail.
+- The same debug output shows shorter labels need different behavior: `Runner Linux amd64` and
+  `Container Registry` are closer to the current scaled estimate, while `Production` is dominated
+  by the icon/border floor. A single global scale tweak would improve one row and risk regressing
+  others.
+- `node tools/debug/arch_fcose_browser_probe_fixture_025.js stress_architecture_batch4_init_small_icons_061`
+  reports effective config `{ iconSize: 40, fontSize: 12, padding: 10 }`, browser service bboxes
+  of `42x56`, group pre-layout bbox `65x78`, and final positions
+  `a=(-38.036,59.786)`, `b=(55.536,-33.786)`, `c=(55.536,59.786)`.
+- Local debug for `stress_architecture_batch4_init_small_icons_061` is icon-floor dominated
+  (`half_w=21`, `bottom=14` for labels `A`, `B`, and `C`), so the remaining `-9.288px` root tail is
+  not the same long-label over-scale issue as the batch5 row.
+
+Outcome:
+
+- No renderer change was made for these label residuals. The evidence supports treating them as
+  browser/Cytoscape canvas bbox measurement tails until we have a generated Architecture
+  canvas-label metric source or a better deterministic canvas measurer.
+- Do not replace `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` with a new one-off constant to
+  fix `stress_architecture_batch5_long_titles_and_punct_076`; the probe evidence is mixed by label
+  length and icon floor.
+
 ## Gate Set
 
 Run after any code or generated-data change:
