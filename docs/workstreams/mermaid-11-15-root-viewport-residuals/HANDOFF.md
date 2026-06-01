@@ -254,6 +254,26 @@ interleaved inside one local loop variable. The new split did not aim to change 
 it makes future root-tail audits much easier because root vs compound measurement policy now has a
 named seam instead of duplicated inline arithmetic.
 
+Fresh 2026-06-02 focused probes then narrowed the remaining Architecture label-width family even
+further. Mermaid 11.15 source confirms the Cytoscape layout phase only sees single-line canvas
+`label` + `font-size` on `node[label]`; it does not reuse the final SVG `createText(..., width:
+iconSize * 1.5)` wrapping path for group sizing. That means the current Architecture residuals
+cannot be fixed by feeding root-wrap width back into compound sizing; a direct experiment doing
+that overshot badly and was reverted immediately. Focused baseline rows at this point are:
+
+- `stress_architecture_batch5_long_titles_and_punct_076`: upstream `543px`, local `553px`
+- `stress_architecture_batch4_init_small_icons_061`: upstream `187.75px`, local `178.5px`
+- `stress_architecture_html_titles_and_escapes_041`: upstream `480px`, local `485px`
+- `stress_architecture_unicode_and_xml_escapes_019`: upstream `469.75px`, local `472.75px`
+
+The attempted follow-up that *did* show a useful signal was narrower: reducing the single-line
+canvas width scale only for very long labels moved `batch5_long_titles_and_punct_076` from
+`553px` to `548px` without immediately breaking `batch4_init_small_icons_061`. That experiment was
+also reverted because it had not yet been validated against the broader Architecture bucket, but it
+defines the next realistic avenue: if we continue on this family, use a source-compatible,
+headless-only piecewise approximation for long single-line canvas labels, not a root-wrap
+substitution or a global scale change.
+
 Additional 2026-06-02 diagnostic result:
 
 - `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` now prints the top-level node/compound/edge/edge-label bbox

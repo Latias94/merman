@@ -112,6 +112,14 @@ fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
     )
 }
 
+fn svg_max_width(svg: &str) -> f64 {
+    let re = Regex::new(r#"style="max-width:\s*([^;]+)px;"#).expect("valid regex");
+    re.captures(svg)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("missing max-width in root svg style"))
+}
+
 fn icon_text_line_clamp(svg: &str, service_id: &str) -> i64 {
     let pattern = format!(
         r#"id="{}"[\s\S]*?-webkit-line-clamp:\s*([0-9]+);"#,
@@ -234,4 +242,27 @@ fn architecture_icon_text_clamp_uses_architecture_font_size() {
         clamp, 4,
         "iconText clamp should follow default architecture.fontSize=16 with iconSize=80"
     );
+}
+
+#[test]
+#[ignore = "diagnostic matrix for Architecture root-width experiments"]
+fn architecture_root_width_diagnostic_matrix() {
+    let fixtures = [
+        "stress_architecture_batch5_long_titles_and_punct_076.mmd",
+        "stress_architecture_batch4_init_small_icons_061.mmd",
+        "stress_architecture_html_titles_and_escapes_041.mmd",
+        "stress_architecture_unicode_and_xml_escapes_019.mmd",
+    ];
+
+    for fixture in fixtures {
+        let svg = render_architecture_fixture_with_options(
+            fixture,
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-diagnostic".to_string()),
+                ..Default::default()
+            },
+        );
+        let max_width = svg_max_width(&svg);
+        println!("{fixture}: max-width={max_width}");
+    }
 }
