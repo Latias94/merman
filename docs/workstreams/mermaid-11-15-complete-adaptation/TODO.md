@@ -109,10 +109,11 @@ Last updated: 2026-06-01
   SVG markdown metrics for Dagre sizing; the representative new-shape fixture moved from a
   `+929.090px` root delta to `-1.340px`. The long-name C1/mojibake slice corrected shared
   Flowchart HTML label fallback metrics for preserved C1 controls and updated two 11.15 root pins
-  for the remaining browser-font/root serialization delta; Flowchart `parity-root` now reports 203
-  strict root-only mismatches. The top residuals are shape-alias, hexagon, markdown-subgraph, and
-  small root-rounding buckets rather than the prior long-name or thousand-pixel SVG-markdown
-  shape-sizing buckets.
+  for the remaining browser-font/root serialization delta. The KaTeX CSS math slice then fixed the
+  browser measurement probe so `upstream_docs_math_flowcharts_001` passes strict `parity-root` with
+  root overrides disabled; Flowchart `parity-root` now reports 202 strict root-only mismatches. The
+  top residuals are shape-alias, hexagon, markdown-subgraph, and shape-family geometry/root buckets
+  rather than the prior long-name, docs-math, or thousand-pixel SVG-markdown shape-sizing buckets.
 
 ## M4 - Upstream Family Decisions
 

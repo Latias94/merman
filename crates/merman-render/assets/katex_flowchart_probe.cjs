@@ -13,6 +13,22 @@ function hasKatex(text) {
   return String(text ?? '').includes('$$');
 }
 
+function katexCssPath() {
+  try {
+    return requireFromCwd.resolve('katex/dist/katex.css');
+  } catch {
+    return null;
+  }
+}
+
+async function addKatexCss(page) {
+  const cssPath = katexCssPath();
+  if (!cssPath) {
+    return;
+  }
+  await page.addStyleTag({ path: cssPath });
+}
+
 function renderKatexHtml(text, config) {
   const input = String(text ?? '');
   if (!hasKatex(input)) {
@@ -124,6 +140,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
       deviceScaleFactor: 1,
     });
     await page.goto(url.pathToFileURL(mermaidCliIndexHtml).href);
+    await addKatexCss(page);
     return await page.evaluate(
       (payload) => {
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -223,6 +240,7 @@ async function measureSequenceHtml(html) {
       deviceScaleFactor: 1,
     });
     await page.setContent('<!doctype html><html><body></body></html>');
+    await addKatexCss(page);
     return await page.evaluate((payload) => {
       const SVG_NS = 'http://www.w3.org/2000/svg';
       const XHTML_NS = 'http://www.w3.org/1999/xhtml';

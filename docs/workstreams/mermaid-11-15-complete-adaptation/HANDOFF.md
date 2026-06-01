@@ -24,8 +24,12 @@ Flowchart SVG-markdown shape-layout slice fixed a real Dagre sizing error where 
 markdown node labels were measured unwrapped while the renderer emitted wrapped SVG markdown rows.
 The representative new-shape fixture
 `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006` moved from a
-`+929.090px` root max-width delta to `-1.340px`; Flowchart `parity-root` is still red with 205
-strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias residuals.
+`+929.090px` root max-width delta to `-1.340px`. The long-name C1 slice then closed the old
+long-name/mojibake bucket and updated the two remaining 11.15 root pins. The Flowchart KaTeX CSS
+slice closed `upstream_docs_math_flowcharts_001` without a root pin by loading `katex/dist/katex.css`
+in the browser measurement probe; that fixture now reports `+0.000px` with root overrides disabled.
+Flowchart `parity-root` is still red with 202 strict root-only mismatches, now led by
+shape-alias, hexagon, markdown-subgraph, and shape-family geometry/root buckets.
 
 ## Active Task
 
@@ -117,6 +121,10 @@ strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias res
   residuals. The two long-name Flowchart root pins now match the Mermaid 11.15 roots, text lookup
   overrides stayed at `490`, and `report-overrides --check-no-growth` passes with root overrides at
   `282`.
+- M15C-070 Flowchart math triage found that the Node/Puppeteer KaTeX probe was missing
+  `katex/dist/katex.css`. Loading that stylesheet before browser measurement aligns Mermaid 11.15
+  MathML label metrics; `upstream_docs_math_flowcharts_001` now passes strict `parity-root` with
+  root overrides disabled, and Flowchart strict-root mismatch count is down to 202.
 
 ## Known Risks
 
@@ -130,9 +138,9 @@ strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias res
 ## Next Recommended Action
 
 Continue M15C-070. The Flowchart SVG-markdown shape-layout and long-name C1 buckets are closed, but
-strict Flowchart `parity-root` still reports 203 root-only mismatches. The next executable step is
+strict Flowchart `parity-root` still reports 202 root-only mismatches. The next executable step is
 to sample the new top Flowchart residuals: shape-alias width/height buckets, hexagon root geometry,
-markdown subgraph root size, and small rounding clusters. Check whether each is a shared Mermaid
-11.15 root geometry rule, a text metric rule, or only then a scoped root override. After Flowchart
-stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a cross-family
-11.15 root viewport rule change before adding broad fixture-scoped root pins.
+markdown subgraph root size, and shape-family layout/root clusters. Check whether each is a shared
+Mermaid 11.15 root geometry rule, a text metric rule, or only then a scoped root override. After
+Flowchart stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a
+cross-family 11.15 root viewport rule change before adding broad fixture-scoped root pins.

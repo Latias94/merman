@@ -468,6 +468,32 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     passed.
   - `cargo fmt --check`: passed.
+- 2026-06-01 M15C-070 Flowchart KaTeX CSS math root slice:
+  - Diagnosed `upstream_docs_math_flowcharts_001`, previously the largest Flowchart strict-root
+    residual (`-64.984px` local max-width delta), as a browser measurement environment gap rather
+    than a fixture root-pin problem. The local Node/Puppeteer KaTeX probe rendered MathML in a
+    Mermaid CLI browser shell but did not load `katex/dist/katex.css`, so `.katex` inherited bare
+    MathML metrics instead of Mermaid 11.15's KaTeX CSS font sizing.
+  - Updated `katex_flowchart_probe.cjs` to load the local KaTeX stylesheet before Flowchart and
+    Sequence HTML math measurement. Added a Flowchart browser-shell regression assertion for the
+    matrix label from the docs math fixture; the old probe measured this label around `220px`,
+    while the corrected browser shell measures the Mermaid 11.15 size around `267px`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_docs_math_flowcharts_001 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed. The fixture now reports `+0.000px` root delta with root overrides disabled
+    (`621.953x178.500` upstream and local).
+  - `cargo nextest run -p merman-render node_katex_math_renderer_measures_sanitized_flowchart_browser_shell`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed, now with 202 Flowchart root-only DOM mismatches. The docs math fixture is green;
+    the largest remaining Flowchart residuals are shape-alias, hexagon, markdown-subgraph, and
+    shape-family geometry/root buckets.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed after formatting the Rust regression assertion.
+  - `cargo run -p xtask -- check-alignment`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 
