@@ -51,6 +51,15 @@ pub(super) fn render_flowchart_v2_debug_svg(
     debug_svg::render_flowchart_v2_debug_svg(layout, options)
 }
 
+pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
+    config: &merman_core::MermaidConfig,
+) -> &str {
+    config
+        .get_str("look")
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or("classic")
+}
+
 // Entry points (split from parity.rs).
 
 mod svg_emit;

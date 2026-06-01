@@ -324,15 +324,6 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         ],
     },
     AcceptedRootParityResidual {
-        diagram: "flowchart",
-        stem: "upstream_docs_math_flowcharts_001",
-        fragments: &[
-            "svg: attr `style` mismatch",
-            "upstream=`max-width: 640.25px; background-color: white;`",
-            "local=`max-width: 622px; background-color: white;`",
-        ],
-    },
-    AcceptedRootParityResidual {
         diagram: "sequence",
         stem: "zed_pr_57644_sequence",
         fragments: &[
@@ -477,14 +468,9 @@ dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_rende
 
     #[test]
     fn root_parity_policy_matches_current_strict_root_residuals() {
-        let policy =
-            RootParityResidualPolicy::new(&["flowchart", "sequence", "gitgraph", "mindmap"]);
+        let policy = RootParityResidualPolicy::new(&["sequence", "gitgraph", "mindmap"]);
 
         let residual_lines = [
-            (
-                "flowchart",
-                "dom mismatch for upstream_docs_math_flowcharts_001: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 640.25px; background-color: white;` local=`max-width: 622px; background-color: white;`)",
-            ),
             (
                 "sequence",
                 "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 796px; background-color: white;` local=`max-width: 811px; background-color: white;`)",

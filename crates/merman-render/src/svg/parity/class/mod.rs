@@ -9,6 +9,9 @@ mod bounds;
 mod context;
 use context::{ClassRenderDetails, ClassRenderLookups, emit_class_render_timing};
 
+mod css;
+use css::class_css;
+
 mod debug_svg;
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,
@@ -18,7 +21,7 @@ pub(super) fn render_class_diagram_v2_debug_svg(
 }
 
 mod defs;
-use defs::class_markers;
+use defs::{class_markers, push_class_gradient, push_class_shadow_defs};
 
 mod edge;
 

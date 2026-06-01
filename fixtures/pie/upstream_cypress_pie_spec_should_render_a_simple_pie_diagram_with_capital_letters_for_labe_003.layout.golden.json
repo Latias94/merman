@@ -17,36 +17,36 @@
       "legend_step_y": 22.0,
       "slices": [
         {
-          "label": "NOSE",
-          "value": 45.0,
+          "label": "FRIENDS",
+          "value": 2.0,
           "start_angle": 0.0,
-          "end_angle": 5.655,
+          "end_angle": 0.251,
           "is_full_circle": false,
-          "percent": 90.0,
-          "text_x": 42.876,
-          "text_y": 131.959,
+          "percent": 4.0,
+          "text_x": 17.39,
+          "text_y": -137.656,
           "fill": "#ECECFF"
         },
         {
           "label": "FAMILY",
           "value": 3.0,
-          "start_angle": 5.655,
-          "end_angle": 6.032,
+          "start_angle": 0.251,
+          "end_angle": 0.628,
           "is_full_circle": false,
           "percent": 6.0,
-          "text_x": -59.077,
+          "text_x": 59.077,
           "text_y": -125.545,
           "fill": "#ffffde"
         },
         {
-          "label": "FRIENDS",
-          "value": 2.0,
-          "start_angle": 6.032,
+          "label": "NOSE",
+          "value": 45.0,
+          "start_angle": 0.628,
           "end_angle": 6.283,
           "is_full_circle": false,
-          "percent": 4.0,
-          "text_x": -17.39,
-          "text_y": -137.656,
+          "percent": 90.0,
+          "text_x": -42.876,
+          "text_y": 131.959,
           "fill": "hsl(80, 100%, 56.2745098039%)"
         }
       ],
@@ -54,7 +54,7 @@
         {
           "label": "FRIENDS",
           "value": 2.0,
-          "fill": "hsl(80, 100%, 56.2745098039%)",
+          "fill": "#ECECFF",
           "y": -33.0
         },
         {
@@ -66,7 +66,7 @@
         {
           "label": "NOSE",
           "value": 45.0,
-          "fill": "#ECECFF",
+          "fill": "hsl(80, 100%, 56.2745098039%)",
           "y": 11.0
         }
       ]

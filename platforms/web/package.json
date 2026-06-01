@@ -1,0 +1,41 @@
+{
+  "name": "@merman/web",
+  "version": "0.7.0",
+  "description": "Merman browser integration: WebAssembly renderer and TypeScript helpers.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Latias94/merman.git"
+  },
+  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web#readme",
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "wasm",
+    "svg",
+    "renderer"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:wasm && npm run build:ts",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "build:wasm": "wasm-pack build ../../crates/merman-wasm --target web --out-dir ../../platforms/web/pkg && node scripts/clean-pkg.mjs",
+    "prepack": "node scripts/prepack-check.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "pkg",
+    "src",
+    "README.md"
+  ],
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

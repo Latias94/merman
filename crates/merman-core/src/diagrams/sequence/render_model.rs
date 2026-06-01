@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -54,6 +54,12 @@ pub struct SequenceMessage {
     pub activate: bool,
     #[serde(default)]
     pub placement: Option<i32>,
+    #[serde(
+        rename = "centralConnection",
+        default,
+        skip_serializing_if = "is_zero_i32"
+    )]
+    pub central_connection: i32,
 }
 
 impl SequenceMessage {
@@ -89,16 +95,54 @@ impl SequenceMessagePayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceAutonumber {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub step: Option<i64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_sequence_number"
+    )]
+    pub start: Option<f64>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_sequence_number"
+    )]
+    pub step: Option<f64>,
     #[serde(default = "default_true")]
     pub visible: bool,
 }
 
+fn serialize_optional_sequence_number<S>(
+    value: &Option<f64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(value) => serialize_sequence_number(*value, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
+fn serialize_sequence_number<S>(value: f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if value.is_finite()
+        && value.fract() == 0.0
+        && value >= i64::MIN as f64
+        && value <= i64::MAX as f64
+    {
+        serializer.serialize_i64(value as i64)
+    } else {
+        serializer.serialize_f64(value)
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn is_zero_i32(value: &i32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -28,7 +28,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
     let p = ctx.node_padding;
     let w = (metrics.width + 2.0 * p).max(0.0);
     let h = (metrics.height + 2.0 * p).max(0.0);
-    let wave_amplitude = h / 4.0;
+    let wave_amplitude = if common.look == "neo" {
+        h / 4.0
+    } else {
+        h / 8.0
+    };
     let final_h = h + wave_amplitude;
     let ext = (w / 2.0) * 0.1;
 
@@ -66,7 +70,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_lined_wave_documen
         .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(-wave_amplitude / 2.0),
         escape_attr(&fill_d),
         escape_attr(common.fill_color),

@@ -25,7 +25,7 @@ pub(super) fn render_flowchart_v2_svg(
 #[inline]
 fn section<'a>(
     enabled: bool,
-    dst: &'a mut std::time::Duration,
+    dst: &'a mut web_time::Duration,
 ) -> Option<super::super::timing::TimingGuard<'a>> {
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
 }
@@ -40,7 +40,7 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
 ) -> Result<String> {
     let timing_enabled = super::super::timing::render_timing_enabled();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
 
     render_flowchart_v2_svg_with_config_inner(
         layout,
@@ -67,7 +67,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 ) -> Result<String> {
     let timing_enabled = super::super::timing::render_timing_enabled();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
 
     let model: crate::flowchart::FlowchartV2Model = {
         let _g = section(timing_enabled, &mut timings.deserialize_model);
@@ -92,7 +92,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 struct FlowchartSvgTiming<'a> {
     enabled: bool,
     timings: &'a mut super::super::timing::RenderTimings,
-    total_start: std::time::Instant,
+    total_start: web_time::Instant,
 }
 
 fn render_flowchart_v2_svg_with_config_inner(
@@ -310,7 +310,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     drop(_g_build_ctx);
 
     let mut detail = FlowchartRenderDetails::default();
-    let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
+    let mut viewbox_edge_curve_bounds = web_time::Duration::ZERO;
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
@@ -397,6 +397,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str("<style>");
     out.push_str(&css);
     out.push_str("</style>");
+    push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
 
     let defs = prepare_flowchart_defs(diagram_id, &ctx);
 
@@ -411,6 +412,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     defs.push_extra_markers(&mut out);
     out.push_str("</g>");
+    push_flowchart_gradient(&mut out, diagram_id, effective_config_value);
     if let Some(title) = diagram_title.as_deref() {
         let title_x = title_anchor_x;
         let title_y = -title_top_margin;
@@ -458,4 +460,65 @@ fn render_flowchart_v2_svg_with_config_inner(
         );
     }
     Ok(out)
+}
+
+fn push_flowchart_shadow_defs(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    let flood_color = effective_config_value
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .filter(|theme| theme.contains("dark"))
+        .map(|_| "#FFFFFF")
+        .unwrap_or("#000000");
+    let diagram_id = escape_xml(diagram_id);
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        diagram_id.as_str(),
+        flood_color,
+        diagram_id.as_str(),
+        flood_color
+    );
+}
+
+fn push_flowchart_gradient(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return;
+    }
+
+    let gradient_start =
+        config_string(effective_config_value, &["themeVariables", "gradientStart"])
+            .or_else(|| {
+                config_string(
+                    effective_config_value,
+                    &["themeVariables", "primaryBorderColor"],
+                )
+            })
+            .unwrap_or_else(|| "#9370DB".to_string());
+    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
+        .or_else(|| {
+            config_string(
+                effective_config_value,
+                &["themeVariables", "secondaryBorderColor"],
+            )
+        })
+        .unwrap_or_else(|| gradient_start.clone());
+
+    let diagram_id = escape_xml(diagram_id);
+    let gradient_start = escape_xml(&gradient_start);
+    let gradient_stop = escape_xml(&gradient_stop);
+    let _ = write!(
+        out,
+        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
+        diagram_id.as_str(),
+        gradient_start.as_str(),
+        gradient_stop.as_str()
+    );
 }

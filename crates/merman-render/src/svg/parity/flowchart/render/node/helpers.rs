@@ -80,6 +80,7 @@ fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
 }
 
 pub(super) struct NodeWrapperAttrs<'a> {
+    pub(super) diagram_id: &'a str,
     pub(super) node_id: &'a str,
     pub(super) dom_idx: Option<usize>,
     pub(super) class_attr_base: &'a str,
@@ -90,10 +91,12 @@ pub(super) struct NodeWrapperAttrs<'a> {
     pub(super) y: f64,
     pub(super) tooltip_enabled: bool,
     pub(super) tooltip: &'a str,
+    pub(super) look: &'a str,
 }
 
 pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
     let NodeWrapperAttrs {
+        diagram_id,
         node_id,
         dom_idx,
         class_attr_base,
@@ -104,6 +107,7 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         y,
         tooltip_enabled,
         tooltip,
+        look,
     } = attrs;
 
     if wrapped_in_a {
@@ -114,22 +118,30 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
             crate::svg::parity::util::fmt_into(out, x);
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")">"#);
+            out.push_str(r#")" data-look=""#);
+            escape_xml_into(out, look);
+            out.push_str(r#"">"#);
         } else {
             out.push_str(r#"<a transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")">"#);
+            out.push_str(r#")" data-look=""#);
+            escape_xml_into(out, look);
+            out.push_str(r#"">"#);
         }
         out.push_str(r#"<g class=""#);
         write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id="flowchart-"#);
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push_str(r#"-flowchart-"#);
             escape_xml_into(out, node_id);
             let _ = write!(out, "-{dom_idx}\"");
         } else {
             out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push('-');
             escape_xml_into(out, node_id);
             out.push('"');
         }
@@ -137,27 +149,43 @@ pub(super) fn open_node_wrapper(out: &mut String, attrs: NodeWrapperAttrs<'_>) {
         out.push_str(r#"<g class=""#);
         write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
-            out.push_str(r#"" id="flowchart-"#);
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push_str(r#"-flowchart-"#);
             escape_xml_into(out, node_id);
             let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")""#);
+            out.push_str(r#")" data-look=""#);
+            escape_xml_into(out, look);
+            out.push('"');
         } else {
             out.push_str(r#"" id=""#);
+            escape_xml_into(out, diagram_id);
+            out.push('-');
             escape_xml_into(out, node_id);
             out.push_str(r#"" transform="translate("#);
             crate::svg::parity::util::fmt_into(out, x);
             out.push(',');
             crate::svg::parity::util::fmt_into(out, y);
-            out.push_str(r#")""#);
+            out.push_str(r#")" data-look=""#);
+            escape_xml_into(out, look);
+            out.push('"');
         }
     }
     if tooltip_enabled {
         let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
     }
     out.push('>');
+}
+
+pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str {
+    if label_type == "markdown" {
+        "nodeLabel markdown-node-label"
+    } else {
+        "nodeLabel"
+    }
 }
 
 pub(super) fn timed_node_roughjs<T>(
@@ -167,7 +195,7 @@ pub(super) fn timed_node_roughjs<T>(
 ) -> T {
     if timing_enabled {
         details.node_roughjs_calls += 1;
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let out = f();
         details.node_roughjs += start.elapsed();
         out
@@ -183,7 +211,7 @@ pub(super) fn timed_node_label_html<T>(
 ) -> T {
     if timing_enabled {
         details.node_label_html_calls += 1;
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let out = f();
         details.node_label_html += start.elapsed();
         out

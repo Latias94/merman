@@ -45,8 +45,9 @@ pub(crate) enum Tok {
     Comma,
     Plus,
     Minus,
+    Central,
 
-    Num(i64),
+    Num(f64),
     Actor(String),
     Text(String),
     RestOfLine(String),
@@ -485,6 +486,15 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    fn lex_central_marker(&mut self) -> Option<(usize, Tok, usize)> {
+        let start = self.pos;
+        if self.input[self.pos..].starts_with("()") {
+            self.pos += 2;
+            return Some((start, Tok::Central, self.pos));
+        }
+        None
+    }
+
     fn lex_signal_type(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let rest = &self.input[self.pos..];
@@ -529,17 +539,39 @@ impl<'input> Lexer<'input> {
     fn lex_num(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         let mut end = self.pos;
+        let mut saw_digit = false;
         while let Some(b) = self.input.as_bytes().get(end) {
             if b.is_ascii_digit() {
                 end += 1;
+                saw_digit = true;
                 continue;
             }
             break;
         }
-        if end == start {
+
+        if self.input.as_bytes().get(end) == Some(&b'.') {
+            let decimal_start = end + 1;
+            let mut decimal_end = decimal_start;
+            while let Some(b) = self.input.as_bytes().get(decimal_end) {
+                if b.is_ascii_digit() {
+                    decimal_end += 1;
+                    continue;
+                }
+                break;
+            }
+            let decimal_places = decimal_end - decimal_start;
+            if decimal_places == 0 || decimal_places > 2 {
+                return None;
+            }
+            end = decimal_end;
+        } else if !saw_digit {
             return None;
         }
-        let n: i64 = self.input[start..end].parse().ok()?;
+
+        let n: f64 = self.input[start..end].parse().ok()?;
+        if !n.is_finite() {
+            return None;
+        }
         self.pos = end;
         Some((start, Tok::Num(n), self.pos))
     }
@@ -638,6 +670,24 @@ impl<'input> Lexer<'input> {
         let tok = self.lex_actor()?;
         let after_actor = self.pos;
 
+        if let Tok::Actor(actor) = &tok.1 {
+            if let Some(stripped) = actor.strip_suffix("()") {
+                let mut pos = after_actor;
+                while let Some(b) = self.input.as_bytes().get(pos) {
+                    if *b == b' ' || *b == b'\t' || *b == b'\r' {
+                        pos += 1;
+                        continue;
+                    }
+                    break;
+                }
+                if self.peek_signal_type_at(pos) {
+                    self.pending
+                        .push_back((after_actor - 2, Tok::Central, after_actor));
+                    return Some((tok.0, Tok::Actor(stripped.to_string()), after_actor - 2));
+                }
+            }
+        }
+
         while let Some(b) = self.input.as_bytes().get(self.pos) {
             if *b == b' ' || *b == b'\t' || *b == b'\r' {
                 self.pos += 1;
@@ -646,7 +696,19 @@ impl<'input> Lexer<'input> {
             break;
         }
 
-        let has_signal = self.peek_signal_type_at_current();
+        let has_signal = if self.input[self.pos..].starts_with("()") {
+            let mut pos = self.pos + 2;
+            while let Some(b) = self.input.as_bytes().get(pos) {
+                if *b == b' ' || *b == b'\t' || *b == b'\r' {
+                    pos += 1;
+                    continue;
+                }
+                break;
+            }
+            self.peek_signal_type_at(pos)
+        } else {
+            self.peek_signal_type_at_current()
+        };
         self.pos = after_actor;
         if has_signal {
             Some(tok)
@@ -657,7 +719,11 @@ impl<'input> Lexer<'input> {
     }
 
     fn peek_signal_type_at_current(&self) -> bool {
-        let rest = &self.input[self.pos..];
+        self.peek_signal_type_at(self.pos)
+    }
+
+    fn peek_signal_type_at(&self, pos: usize) -> bool {
+        let rest = &self.input[pos..];
         rest.starts_with("<<-->>")
             || rest.starts_with("<<->>")
             || rest.starts_with("-->>")
@@ -689,6 +755,7 @@ impl<'input> Lexer<'input> {
                 | Tok::Plus
                 | Tok::Minus
                 | Tok::Comma
+                | Tok::Central
         );
     }
 
@@ -745,6 +812,9 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if self.after_signal_type {
+                if let Some(tok) = self.lex_central_marker() {
+                    return self.emit(tok);
+                }
                 if let Some(tok) = self.lex_punct() {
                     return self.emit(tok);
                 }
@@ -754,6 +824,10 @@ impl<'input> Iterator for Lexer<'input> {
                 if let Some(tok) = self.lex_forced_actor_id() {
                     return self.emit(tok);
                 }
+            }
+
+            if let Some(tok) = self.lex_central_marker() {
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_actor_before_signal() {
@@ -786,6 +860,10 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_punct() {
+                return self.emit(tok);
+            }
+
+            if let Some(tok) = self.lex_central_marker() {
                 return self.emit(tok);
             }
 

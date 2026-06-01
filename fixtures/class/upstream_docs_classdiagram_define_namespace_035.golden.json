@@ -72,11 +72,15 @@
     "namespaces": {
       "BaseShapes": {
         "id": "BaseShapes",
+        "label": "BaseShapes",
         "domId": "classId-BaseShapes-0",
         "classIds": [
           "Triangle",
           "Rectangle"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

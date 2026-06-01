@@ -118,7 +118,7 @@ pub(super) fn render_state_node_svg(
         format!("node {}", node.css_classes.trim())
     };
 
-    let style_parse_start = timing_enabled.then(std::time::Instant::now);
+    let style_parse_start = timing_enabled.then(web_time::Instant::now);
     let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut fill_override: Option<&str> = None;
@@ -170,7 +170,7 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "stateEnd" => {
-            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let rough_start = timing_enabled.then(web_time::Instant::now);
             if timing_enabled {
                 details.leaf_roughjs_calls += 2;
                 details.leaf_roughjs_unique.insert(StateRoughCacheKey {
@@ -230,7 +230,7 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "fork" | "join" => {
-            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let rough_start = timing_enabled.then(web_time::Instant::now);
             let key = StateRoughCacheKey {
                 tag: 3,
                 a: w.to_bits(),
@@ -271,7 +271,7 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "choice" => {
-            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let rough_start = timing_enabled.then(web_time::Instant::now);
             let key = StateRoughCacheKey {
                 tag: 4,
                 a: w.to_bits(),
@@ -312,7 +312,7 @@ pub(super) fn render_state_node_svg(
         }
         "note" => {
             let label = state_node_label_text(node);
-            let measure_start = timing_enabled.then(std::time::Instant::now);
+            let measure_start = timing_enabled.then(web_time::Instant::now);
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &ctx.text_style,
@@ -330,7 +330,7 @@ pub(super) fn render_state_node_svg(
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
-            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let rough_start = timing_enabled.then(web_time::Instant::now);
             let key = StateRoughCacheKey {
                 tag: 5,
                 a: w.to_bits(),
@@ -357,7 +357,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let label_html_start = timing_enabled.then(std::time::Instant::now);
+            let label_html_start = timing_enabled.then(web_time::Instant::now);
             let label_html = state_node_label_html(&label);
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
@@ -395,7 +395,7 @@ pub(super) fn render_state_node_svg(
             // Mermaid renders `rectWithTitle` labels as HTML `<span>` (nowrap) with
             // `padding-right: 1px` and no explicit `line-height`, so their measured height matches
             // SVG `getBBox()` (19px at 16px font size) rather than the 1.5em HTML `<p>` height.
-            let measure_start = timing_enabled.then(std::time::Instant::now);
+            let measure_start = timing_enabled.then(web_time::Instant::now);
             let title_metrics =
                 ctx.measurer
                     .measure_wrapped(&title, &ctx.text_style, None, WrapMode::SvgLike);
@@ -437,7 +437,7 @@ pub(super) fn render_state_node_svg(
             let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
             let desc_y = title_h + gap;
             let divider_y = -h / 2.0 + top_pad + title_h + 1.0;
-            let label_html_start = timing_enabled.then(std::time::Instant::now);
+            let label_html_start = timing_enabled.then(web_time::Instant::now);
             let title_html = state_node_label_inline_html(&title);
             let desc_html = state_node_label_inline_html(&desc);
             if let Some(s) = label_html_start {
@@ -526,7 +526,7 @@ pub(super) fn render_state_node_svg(
                 }
             }
 
-            let measure_start = timing_enabled.then(std::time::Instant::now);
+            let measure_start = timing_enabled.then(web_time::Instant::now);
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &measure_style,
@@ -639,7 +639,7 @@ pub(super) fn render_state_node_svg(
             let stroke_attr = stroke_override.unwrap_or("#9370DB");
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
 
-            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let rough_start = timing_enabled.then(web_time::Instant::now);
             let key = StateRoughCacheKey {
                 tag: 6,
                 a: w.to_bits(),
@@ -670,7 +670,7 @@ pub(super) fn render_state_node_svg(
             } else {
                 Some(text_style_attr.as_str())
             };
-            let label_html_start = timing_enabled.then(std::time::Instant::now);
+            let label_html_start = timing_enabled.then(web_time::Instant::now);
             let label_html = state_node_label_html_with_style(&label, label_span_style);
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();

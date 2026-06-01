@@ -11,7 +11,7 @@
       "width": 600.0,
       "height": 400.0,
       "node_width": 10.0,
-      "node_padding": 25.0,
+      "node_padding": 27.0,
       "nodes": [
         {
           "id": "Electricity grid",
@@ -22,8 +22,8 @@
           "value": 245.319,
           "x0": 0.0,
           "x1": 10.0,
-          "y0": 12.298,
-          "y1": 362.298
+          "y0": 13.282,
+          "y1": 359.282
         },
         {
           "id": "Over generation / exports",
@@ -35,7 +35,7 @@
           "x0": 590.0,
           "x1": 600.0,
           "y0": 0.0,
-          "y1": 149.025
+          "y1": 147.321
         },
         {
           "id": "Heating and cooling - homes",
@@ -46,8 +46,8 @@
           "value": 113.726,
           "x0": 590.0,
           "x1": 600.0,
-          "y0": 174.025,
-          "y1": 336.279
+          "y0": 174.321,
+          "y1": 334.722
         },
         {
           "id": "H2 conversion",
@@ -58,7 +58,7 @@
           "value": 27.14,
           "x0": 590.0,
           "x1": 600.0,
-          "y0": 361.279,
+          "y0": 361.722,
           "y1": 400.0
         }
       ],
@@ -68,27 +68,27 @@
           "source": "Electricity grid",
           "target": "Over generation / exports",
           "value": 104.453,
-          "width": 149.025,
-          "y0": 86.81,
-          "y1": 74.512
+          "width": 147.321,
+          "y0": 86.943,
+          "y1": 73.661
         },
         {
           "index": 1.0,
           "source": "Electricity grid",
           "target": "Heating and cooling - homes",
           "value": 113.726,
-          "width": 162.254,
-          "y0": 242.45,
-          "y1": 255.152
+          "width": 160.4,
+          "y0": 240.804,
+          "y1": 254.521
         },
         {
           "index": 2.0,
           "source": "Electricity grid",
           "target": "H2 conversion",
           "value": 27.14,
-          "width": 38.721,
-          "y0": 342.938,
-          "y1": 380.639
+          "width": 38.278,
+          "y0": 340.143,
+          "y1": 380.861
         }
       ]
     }

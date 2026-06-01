@@ -81,14 +81,14 @@ fn c4_type_text_length_px(type_c4_shape: &str) -> Option<f64> {
         "external_container" => Some(112.0),
         "external_container_db" => Some(132.0),
         "external_container_queue" => Some(152.0),
-        "external_person" => Some(99.0),
+        "external_person" => Some(100.0),
         "external_system" => Some(101.0),
         "external_system_db" => Some(121.0),
         "external_system_queue" => Some(141.0),
         "person" => Some(50.0),
-        "system" => Some(51.0),
-        "system_db" => Some(71.0),
-        "system_queue" => Some(91.0),
+        "system" => Some(52.0),
+        "system_db" => Some(72.0),
+        "system_queue" => Some(92.0),
         _ => None,
     }
 }
@@ -299,17 +299,21 @@ pub(super) fn render_c4_diagram_svg_typed(
         "/assets/c4_database_d_11_12_2.txt"
     ));
 
-    out.push_str(
-        r#"<defs><symbol id="computer" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "computer"))
     );
-    out.push_str(
-        &format!(
-            r#"<defs><symbol id="database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
-            escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
-        ),
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "database")),
+        escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
     );
-    out.push_str(
-        r#"<defs><symbol id="clock" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
+    let _ = write!(
+        &mut out,
+        r#"<defs><symbol id="{}" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,
+        escape_attr(&scoped_svg_id(diagram_id, "clock"))
     );
 
     let mut shape_meta: std::collections::HashMap<&str, &C4SvgModelShape> =
@@ -673,10 +677,32 @@ pub(super) fn render_c4_diagram_svg_typed(
         out.push_str("</g>");
     }
 
-    out.push_str(r#"<defs><marker id="arrowhead" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#);
-    out.push_str(r#"<defs><marker id="arrowend" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#);
-    out.push_str(r##"<defs><marker id="crosshead" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##);
-    out.push_str(r#"<defs><marker id="filled-head" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#);
+    let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
+    let arrowend_id = scoped_svg_id(diagram_id, "arrowend");
+    let crosshead_id = scoped_svg_id(diagram_id, "crosshead");
+    let filled_head_id = scoped_svg_id(diagram_id, "filled-head");
+    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>"#,
+        escape_attr(&arrowhead_id)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z"/></marker></defs>"#,
+        escape_attr(&arrowend_id)
+    );
+    let _ = write!(
+        &mut out,
+        r##"<defs><marker id="{}" markerWidth="15" markerHeight="8" orient="auto" refX="16" refY="4"><path fill="black" stroke="#000000" stroke-width="1px" d="M 9,2 V 6 L16,4 Z" style="stroke-dasharray: 0, 0;"/><path fill="none" stroke="#000000" stroke-width="1px" d="M 0,1 L 6,7 M 6,1 L 0,7" style="stroke-dasharray: 0, 0;"/></marker></defs>"##,
+        escape_attr(&crosshead_id)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#,
+        escape_attr(&filled_head_id)
+    );
 
     out.push_str("<g>");
     for (idx, rel) in layout.rels.iter().enumerate() {
@@ -701,10 +727,14 @@ pub(super) fn render_c4_diagram_svg_typed(
                 escape_attr(&stroke_color)
             );
             if rel.rel_type != "rel_b" {
-                out.push_str(r#" marker-end="url(#arrowhead)""#);
+                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                out.push_str(r#" marker-start="url(#arrowend)""#);
+                let _ = write!(
+                    &mut out,
+                    r#" marker-start="{}""#,
+                    escape_attr(&arrowend_url)
+                );
             }
             out.push_str(r#" style="fill: none;"/>"#);
         } else {
@@ -727,10 +757,14 @@ pub(super) fn render_c4_diagram_svg_typed(
                 escape_attr(&d)
             );
             if rel.rel_type != "rel_b" {
-                out.push_str(r#" marker-end="url(#arrowhead)""#);
+                let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&arrowhead_url));
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                out.push_str(r#" marker-start="url(#arrowend)""#);
+                let _ = write!(
+                    &mut out,
+                    r#" marker-start="{}""#,
+                    escape_attr(&arrowend_url)
+                );
             }
             out.push_str("/>");
         }
@@ -826,8 +860,11 @@ mod tests {
             ("component_db", Some(93.0)),
             ("container", Some(63.0)),
             ("external_container_queue", Some(152.0)),
+            ("external_person", Some(100.0)),
             ("person", Some(50.0)),
-            ("system_queue", Some(91.0)),
+            ("system", Some(52.0)),
+            ("system_db", Some(72.0)),
+            ("system_queue", Some(92.0)),
             ("unknown", None),
         ];
 

@@ -238,20 +238,28 @@
     "namespaces": {
       "Core": {
         "id": "Core",
+        "label": "Core",
         "domId": "classId-Core-0",
         "classIds": [
           "CoreResult",
           "CoreError"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       },
       "API": {
         "id": "API",
+        "label": "API",
         "domId": "classId-API-1",
         "classIds": [
           "ApiClient",
           "ApiRequest",
           "ApiResponse"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

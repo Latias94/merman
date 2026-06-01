@@ -4,17 +4,33 @@
     "ClassDiagramV2": {
       "nodes": [
         {
+          "id": "Company",
+          "x": 243.832,
+          "y": 195.0,
+          "width": 487.664,
+          "height": 390.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Company.Project",
+          "x": 243.832,
+          "y": 195.0,
+          "width": 412.664,
+          "height": 320.0,
+          "is_cluster": true
+        },
+        {
           "id": "Company.Project.Module",
-          "x": 146.332,
-          "y": 110.0,
-          "width": 292.664,
+          "x": 243.832,
+          "y": 195.0,
+          "width": 342.664,
           "height": 220.0,
           "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 146.332,
-          "y": 110.0,
+          "x": 243.832,
+          "y": 195.0,
           "width": 217.664,
           "height": 150.0,
           "is_cluster": false
@@ -23,18 +39,60 @@
       "edges": [],
       "clusters": [
         {
+          "id": "Company",
+          "x": 243.832,
+          "y": 195.0,
+          "width": 487.664,
+          "height": 390.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Company",
+          "title_label": {
+            "x": 243.832,
+            "y": 12.0,
+            "width": 58.4,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Company.Project",
+          "x": 243.832,
+          "y": 195.0,
+          "width": 412.664,
+          "height": 320.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Project",
+          "title_label": {
+            "x": 243.832,
+            "y": 47.0,
+            "width": 50.88,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
           "id": "Company.Project.Module",
-          "x": 146.332,
-          "y": 110.0,
-          "width": 292.664,
+          "x": 243.832,
+          "y": 195.0,
+          "width": 342.664,
           "height": 220.0,
           "diff": -15.0,
           "offset_y": 16.5,
-          "title": "Company.Project.Module",
+          "title": "Module",
           "title_label": {
-            "x": 146.332,
-            "y": 12.0,
-            "width": 178.063,
+            "x": 243.832,
+            "y": 97.0,
+            "width": 41.6,
             "height": 24.0
           },
           "requested_dir": null,
@@ -47,8 +105,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 292.664,
-        "max_y": 220.0
+        "max_x": 487.664,
+        "max_y": 390.0
       }
     }
   }

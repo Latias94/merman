@@ -10,24 +10,30 @@ pub(super) struct AltSection<'a> {
 #[derive(Debug, Clone)]
 pub(super) enum SequenceBlock<'a> {
     Alt {
+        control_id: &'a str,
         sections: Vec<AltSection<'a>>,
     },
     Opt {
+        control_id: &'a str,
         raw_label: &'a str,
         message_ids: Vec<&'a str>,
     },
     Break {
+        control_id: &'a str,
         raw_label: &'a str,
         message_ids: Vec<&'a str>,
     },
     Par {
+        control_id: &'a str,
         sections: Vec<AltSection<'a>>,
     },
     Loop {
+        control_id: &'a str,
         raw_label: &'a str,
         message_ids: Vec<&'a str>,
     },
     Critical {
+        control_id: &'a str,
         sections: Vec<AltSection<'a>>,
     },
 }
@@ -99,6 +105,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                         &mut blocks,
                         msg.id.as_str(),
                         SequenceBlock::Loop {
+                            control_id: msg.id.as_str(),
                             raw_label,
                             message_ids: messages,
                         },
@@ -121,6 +128,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                         &mut blocks,
                         msg.id.as_str(),
                         SequenceBlock::Opt {
+                            control_id: msg.id.as_str(),
                             raw_label,
                             message_ids: messages,
                         },
@@ -143,6 +151,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                         &mut blocks,
                         msg.id.as_str(),
                         SequenceBlock::Break {
+                            control_id: msg.id.as_str(),
                             raw_label,
                             message_ids: messages,
                         },
@@ -158,6 +167,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 if let Some(BlockStackEntry::Alt {
                     raw_labels,
                     sections,
+                    ..
                 }) = stack.last_mut()
                 {
                     raw_labels.push(raw_label);
@@ -172,6 +182,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 {
                     let idx = blocks.len();
                     blocks.push(SequenceBlock::Alt {
+                        control_id: msg.id.as_str(),
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id
@@ -189,6 +200,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 if let Some(BlockStackEntry::Par {
                     raw_labels,
                     sections,
+                    ..
                 }) = stack.last_mut()
                 {
                     raw_labels.push(raw_label);
@@ -203,6 +215,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 {
                     let idx = blocks.len();
                     blocks.push(SequenceBlock::Par {
+                        control_id: msg.id.as_str(),
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id
@@ -220,6 +233,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 if let Some(BlockStackEntry::Critical {
                     raw_labels,
                     sections,
+                    ..
                 }) = stack.last_mut()
                 {
                     raw_labels.push(raw_label);
@@ -234,6 +248,7 @@ pub(super) fn collect_sequence_blocks<'a>(
                 {
                     let idx = blocks.len();
                     blocks.push(SequenceBlock::Critical {
+                        control_id: msg.id.as_str(),
                         sections: into_alt_sections(raw_labels, sections),
                     });
                     blocks_by_end_id

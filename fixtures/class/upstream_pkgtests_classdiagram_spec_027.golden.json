@@ -74,10 +74,14 @@
     "namespaces": {
       "space": {
         "id": "space",
+        "label": "space",
         "domId": "classId-space-0",
         "classIds": [
           "Square"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

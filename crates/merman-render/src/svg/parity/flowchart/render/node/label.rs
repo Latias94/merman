@@ -7,7 +7,7 @@ use crate::svg::parity::flowchart::style::FlowchartCompiledStyles;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::flowchart::util::{OptionalStyleXmlAttr, flowchart_html_contains_img_tag};
 use crate::svg::parity::flowchart::write_flowchart_svg_text;
-use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown;
+use crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped;
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::root::flowchart_wrap_svg_text_lines;
@@ -122,16 +122,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         metrics.width = 0.0;
         metrics.height = 0.0;
     }
+    let label_group_class = if common.shape == "note" {
+        "label noteLabel"
+    } else {
+        "label"
+    };
     if !ctx.node_html_labels {
         let _ = write!(
             out,
-            r#"<g class="label" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><g><rect class="background" style="stroke: none"/>"#,
+            label_group_class,
             escape_xml_display(&compiled_styles.label_style),
             fmt_display(label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy)
         );
         if label.label_type == "markdown" {
-            write_flowchart_svg_text_markdown(out, label.text, true);
+            write_flowchart_svg_text_markdown_wrapped(
+                out,
+                label.text,
+                true,
+                ctx.measurer,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+            );
         } else {
             let wrapped = flowchart_wrap_svg_text_lines(
                 ctx.measurer,
@@ -217,13 +230,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         let _ = write!(
             out,
-            r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="{}" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject></g></g>"#,
+            label_group_class,
             escape_xml_display(&compiled_styles.label_style),
             fmt_display(-metrics.width / 2.0 + label.dx),
             fmt_display(-metrics.height / 2.0 + label_dy),
             fmt_display(metrics.width),
             fmt_display(metrics.height),
             escape_xml_display(&div_style),
+            super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,
             label_html
         );

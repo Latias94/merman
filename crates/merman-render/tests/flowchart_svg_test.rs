@@ -66,9 +66,8 @@ fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
 
 #[test]
 fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
-    // We intentionally model FontAwesome icon labels with a clean nominal inline width instead of
-    // browser-specific per-icon advance drift. Exact upstream root parity remains covered by root
-    // viewport guards where that drift matters.
+    // Mermaid 11.15 uses a clean 1.25em inline box for FontAwesome labels instead of
+    // browser-specific per-icon advance drift.
     let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -100,7 +99,7 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .find(|e| e.id == "L_C_F_0")
         .expect("edge L_C_F_0");
     let lbl = edge.label.as_ref().expect("edge label");
-    assert_eq!(lbl.width, 45.03125);
+    assert_eq!(lbl.width, 49.03125);
     assert_eq!(lbl.height, 24.0);
 }
 
@@ -134,7 +133,293 @@ fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
 }
 
 #[test]
-fn flowchart_html_labels_unescape_double_backslashes() {
+fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
+    let text =
+        "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains("<foreignObject "),
+        "expected node label to remain in the HTML label path: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="nodeLabel markdown-node-label""#),
+        "expected markdown node label class in HTML label path: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_classic_hexagon_renders_polygon_container() {
+    let text = "flowchart TB\nA{{\"`**Hex**`\"}}\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.contains(r#"<polygon "#) && svg.contains(r#"class="label-container""#),
+        "expected classic hexagon to render as a polygon label-container: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"<g class="basic label-container"><path "#),
+        "expected classic hexagon not to use the hand-drawn RoughJS path branch: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_no_label_special_shapes_render_outer_path_group() {
+    let text = "flowchart TB\nA@{ shape: stop }\nB@{ shape: lightning-bolt }\nC@{ shape: crossed-circle }\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    assert!(
+        svg.matches(r#"class="outer-path""#).count() >= 3,
+        "expected no-label special shapes to expose Mermaid 11.15 outer-path groups: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
+    let text = r#"flowchart TB
+A@{ shape: hourglass, label: "Hourglass label" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="nodeLabel markdown-node-label"></span>"#),
+        "expected Mermaid 11.15 hourglass to keep markdown label class on the empty label: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_base_theme_renders_root_gradient() {
+    let text = r##"%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#BB2528", "primaryBorderColor": "#7C0000", "secondaryColor": "#006100"}}}%%
+flowchart TB
+A --> B
+"##;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("flowchart_theme_gradient".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<linearGradient id="flowchart_theme_gradient-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
+        "expected Mermaid 11.15 root gradient element: {svg}"
+    );
+    assert!(
+        svg.contains(r##"<stop offset="0%" stop-color="#7C0000" stop-opacity="1"/>"##),
+        "expected gradientStart to use primaryBorderColor: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"<stop offset="100%" stop-color="hsl(120, 60%, 9.0196078431%)" stop-opacity="1"/>"#
+        ),
+        "expected gradientStop to use derived secondaryBorderColor: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_note_shape_renders_note_label_class() {
+    let text = r#"flowchart TB
+A@{ shape: note, label: "Note" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<g class="label noteLabel""#),
+        "expected Mermaid 11.15 note labels to carry the noteLabel class: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_markdown_node_labels_wrap_when_html_labels_false() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"wrappingWidth": 80}}}%%
+flowchart TB
+A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.matches(r#"class="row text-outer-tspan""#).count() > 1,
+        "expected Mermaid 11.15 SVG markdown node labels to wrap into multiple rows: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_plain_subgraph_titles_do_not_wrap_when_html_labels_false() {
+    let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
+flowchart TB
+subgraph A[SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious]
+  x
+end
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    let cluster_start = svg.find(r#"<g class="cluster""#).expect("cluster");
+    let cluster_label_start = svg[cluster_start..]
+        .find(r#"<g class="cluster-label""#)
+        .map(|idx| cluster_start + idx)
+        .expect("cluster label");
+    let cluster_label_end = svg[cluster_label_start..]
+        .find(r#"</text>"#)
+        .map(|idx| cluster_label_start + idx)
+        .expect("cluster label text end");
+    let cluster_label = &svg[cluster_label_start..cluster_label_end];
+
+    assert_eq!(
+        cluster_label.matches("text-outer-tspan").count(),
+        1,
+        "expected Mermaid 11.15 plain SVG subgraph titles to remain one unwrapped row: {cluster_label}"
+    );
+}
+
+#[test]
+fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -157,12 +442,124 @@ fn flowchart_html_labels_unescape_double_backslashes() {
     )
     .expect("render svg");
     assert!(
-        svg.contains("line1\\nline2"),
-        "expected output to contain a single backslash in `\\\\n` escape"
+        svg.contains("<p>line1<br />line2</p>"),
+        "expected Mermaid 11.15 nonMarkdownToHTML to treat decoded `\\\\n` as a line break: {svg}"
     );
     assert!(
-        !svg.contains("line1\\\\nline2"),
-        "expected output to not contain the raw double-backslash input"
+        !svg.contains("line1\\nline2"),
+        "expected output to not contain a literal backslash-n escape"
+    );
+}
+
+#[test]
+fn flowchart_html_single_image_label_uses_paragraph_wrapper() {
+    let text = r#"flowchart TB
+B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="nodeLabel"><p><img "#),
+        "expected Mermaid 11.15 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_image_shape_label_bbox_includes_mermaid_padding() {
+    let text = r#"flowchart TD
+A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", pos: "t", h: 60, constraint: "on" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let node = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
+    assert_eq!(node.width, 176.984375);
+    assert_eq!(node.height, 96.0);
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<foreignObject width="176.984375" height="28">"#),
+        "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<image href="https://mermaid.js.org/favicon.svg" width="60" height="60" preserveAspectRatio="none" transform="translate(-30,-12)"/>"#),
+        "expected top image placement to use the padded label bbox: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_shape_data_multiline_markdown_trims_trailing_block_newline() {
+    let text = r#"flowchart TB
+A@{
+  label: |
+    This is a
+    multiline string
+}
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert_eq!(
+        svg.matches("<br").count(),
+        1,
+        "expected Mermaid 11.15 shapeData block labels to ignore the YAML trailing newline: {svg}"
     );
 }
 
@@ -196,6 +593,39 @@ fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
     assert!(
         !svg.contains("<br />      Second"),
         "expected no source indentation after HTML line break"
+    );
+}
+
+#[test]
+fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
+    let text =
+        "flowchart TB\nA[\"Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')\"]\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(
+            "<p>Remove trailing whitespace<br />src.replace(/}\\s*<br />/g, '}<br />')</p>"
+        ),
+        "expected literal backslash-n sequences to match Mermaid nonMarkdownToHTML line breaks: {svg}"
     );
 }
 
@@ -243,6 +673,39 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
 }
 
 #[test]
+fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
+    let text = "flowchart TB\nA -->|plain edge label| B\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p>plain edge label</p></span>"#),
+        "expected plain HTML edge labels to use Mermaid nonMarkdownToHTML paragraph wrapper: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
     let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
     let engine = Engine::new();
@@ -279,6 +742,12 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
     assert!(
         svg.contains(r#"viewBox="0 0 154.921875 364""#),
         "expected computed root viewBox to include top-level empty subgraph node: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"<g class="node" id="upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015-B""#
+        ),
+        "expected empty subgraph node DOM id to be scoped by the diagram id: {svg}"
     );
 }
 
@@ -396,6 +865,114 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
     assert!(
         svg.contains(r#"class="edgeLabel" style="font-style:italic !important;text-decoration:underline !important;letter-spacing:1px !important;color:#123456 !important""#),
         "expected edge label span to receive Mermaid label styles: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available() {
+    fn render(text: &str) -> String {
+        let engine = Engine::new();
+        let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+
+        let layout_options = LayoutOptions {
+            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        };
+        let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+        let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+            panic!("expected FlowchartV2 layout");
+        };
+
+        render_flowchart_v2_svg(
+            &layout,
+            &out.semantic,
+            &out.meta.effective_config,
+            out.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render svg")
+    }
+
+    fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {
+        let id_attr = format!(r#"id="{edge_id}""#);
+        let id_start = svg.find(&id_attr).expect("edge id");
+        let path_start = svg[..id_start].rfind("<path ").expect("edge path start");
+        let path_end = svg[id_start..].find("/>").expect("edge path end") + id_start;
+        let path = &svg[path_start..path_end];
+        let d_start = path.find(r#"d=""#).expect("edge path d") + r#"d=""#.len();
+        let d_end = path[d_start..].find('"').expect("edge path d end") + d_start;
+        &path[d_start..d_end]
+    }
+
+    let diagram = "flowchart LR\nA --> B\nA --> C\n";
+    let basis_svg = render(diagram);
+    let basis_d = edge_path_d(&basis_svg, "L_A_B_0");
+    assert!(
+        basis_d.contains('C'),
+        "expected default flowchart curve to preserve smooth basis output in Mermaid 11.15: {basis_d}"
+    );
+
+    let rounded_svg = render(&format!(
+        "%%{{init: {{\"flowchart\": {{\"curve\": \"rounded\"}}}}}}%%\n{diagram}"
+    ));
+    let rounded_d = edge_path_d(&rounded_svg, "L_A_B_0");
+    assert!(
+        rounded_d.contains('Q') && !rounded_d.contains('C'),
+        "expected explicit flowchart.curve=rounded to render rounded corners: {rounded_d}"
+    );
+}
+
+#[test]
+fn flowchart_datastore_shape_renders_top_and_bottom_border_rect() {
+    let text = r#"flowchart TB
+D@{ shape: datastore, label: "Datastore" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    let rect_start = svg
+        .find(r#"<rect class="basic label-container""#)
+        .expect("datastore rect");
+    let rect_end = svg[rect_start..].find("/>").expect("rect end") + rect_start;
+    let rect = &svg[rect_start..rect_end];
+    let attr = |name: &str| {
+        let needle = format!(r#"{name}=""#);
+        let start = rect.find(&needle).expect("attribute") + needle.len();
+        let end = rect[start..].find('"').expect("attribute end") + start;
+        &rect[start..end]
+    };
+    let expected_dasharray = format!("{} {}", attr("width"), attr("height"));
+    assert!(
+        attr("stroke-dasharray") == expected_dasharray,
+        "expected datastore rect to hide vertical borders with width/height stroke-dasharray: {svg}"
+    );
+    assert!(
+        !rect.contains("<path"),
+        "expected datastore to render as a dashed-border rect, not bow-tie path: {svg}"
     );
 }
 

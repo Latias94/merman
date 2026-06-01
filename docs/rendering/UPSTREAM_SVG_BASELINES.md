@@ -3,7 +3,11 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.12.3`.
+Baseline version: Mermaid `@11.15.0`.
+
+Historical fixture notes may still mention the baseline version that introduced a fixture or
+normalization rule. The current authoritative baseline is ADR-0001 plus
+`tools/upstreams/REPOS.lock.json`.
 
 ## Why This Exists
 
@@ -40,7 +44,7 @@ If we need tighter 1:1 parity coverage beyond ER, extend the golden strategy in 
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.12.3`.
+to force Mermaid `11.15.0`.
 
 Install:
 
@@ -387,9 +391,9 @@ output (DOM signature comparison):
 Notes:
 
 - `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.3).
-- `fixtures/class/upstream_parser_class_spec.mmd` is excluded because the upstream SVG contains
-  prototype-key rendering artifacts (nested `g.root` / `translate(NaN, ...)`), while `merman`
-  renders deterministically.
+- `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
+  compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
+  `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
 
 Notes:
 
@@ -455,7 +459,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
-- `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN) and duplicated root groups (excluded from `compare-class-svgs`).
+- `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN), duplicated root groups, and missing prototype-key nodes (excluded from `compare-class-svgs` and `compare-svg-xml`).
 - `fixtures/gantt/today_marker_and_axis.mmd`: Mermaid CLI crashes while parsing `topAxis` (`yy.TopAxis is not a function`) (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/gantt/click_loose.mmd` / `fixtures/gantt/click_strict.mmd`: contain non-canonical `click ... href "<url>" "<extra>"` syntax that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/gantt/dateformat_hash_comment_truncates.mmd` / `fixtures/gantt/excludes_hash_comment_truncates.mmd`: rely on `#` inline comment truncation that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).

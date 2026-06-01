@@ -1,0 +1,14 @@
+{"role":"design","path":"docs/workstreams/flowchart-11-15-svg-convergence/DESIGN.md","why":"Defines the Flowchart 11.15 convergence problem, scope, non-goals, and closeout condition."}
+{"role":"execution","path":"docs/workstreams/flowchart-11-15-svg-convergence/TODO.md","why":"Authoritative task ledger for Flowchart 11.15 renderer convergence."}
+{"role":"gates","path":"docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md","why":"Fresh-target and stored-baseline evidence required before claiming progress."}
+{"role":"handoff","path":"docs/workstreams/flowchart-11-15-svg-convergence/HANDOFF.md","why":"Current continuation state for the active Flowchart task."}
+{"role":"parent_workstream","path":"docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md","why":"Umbrella Mermaid 11.15 adaptation scope and baseline claim."}
+{"role":"parent_evidence","path":"docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md","why":"Records why Flowchart was split from M15C-060."}
+{"role":"baseline_policy","path":"docs/rendering/UPSTREAM_SVG_BASELINES.md","why":"Rules for generating and trusting upstream SVG baselines."}
+{"role":"canonical_xml","path":"docs/rendering/SVG_CANONICAL_XML.md","why":"Canonical DOM compare policy used by the Flowchart gates."}
+{"role":"adr","path":"docs/adr/0001-upstream-baseline.md","why":"Baseline authority policy."}
+{"role":"adr","path":"docs/adr/0014-upstream-parity-policy.md","why":"Parity and compatibility policy."}
+{"role":"upstream_reference","path":"repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart","why":"Mermaid 11.15 Flowchart renderer source of truth for DOM surfaces."}
+{"role":"journal","path":"docs/workstreams/flowchart-11-15-svg-convergence/JOURNAL/2026-06-01-f115-elk-policy.md","why":"Records the F115-070 decision to keep flowchart-elk out of the current supported matrix with a narrow SVG XML gate skip."}
+{"role":"journal","path":"docs/workstreams/flowchart-11-15-svg-convergence/JOURNAL/2026-06-01-f115-stored-baseline-refresh.md","why":"Records the F115-080 stored Flowchart baseline refresh and final Flowchart gate evidence."}
+{"role":"policy_code","path":"crates/xtask/src/cmd/upstream_svg_policy.rs","why":"Shared upstream SVG skip policy for unregenerable parser-only baselines and known upstream render gaps."}

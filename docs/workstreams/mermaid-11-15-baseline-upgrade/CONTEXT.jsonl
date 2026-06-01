@@ -1,0 +1,78 @@
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md","reason":"Target state, scope, non-goals, and architecture direction for the 11.15 baseline upgrade."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/TODO.md","reason":"Task ledger and dependency order for executable slices."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/EVIDENCE_AND_GATES.md","reason":"Validation commands and evidence requirements."}
+{"file":"docs/adr/0001-upstream-baseline.md","reason":"Current upstream baseline authority and update policy."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy for upstream-aligned behavior and fixtures."}
+{"file":"docs/adr/0019-generated-default-config.md","reason":"Default config generation and drift policy."}
+{"file":"docs/alignment/STATUS.md","reason":"Current parity dashboard and corpus scope."}
+{"file":"tools/upstreams/REPOS.lock.json","reason":"Pinned upstream refs that must not be advanced before evidence supports the baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/CHANGELOG.md","reason":"Authoritative release delta from Mermaid 11.13.0 through 11.15.0."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/datastore.ts","reason":"Upstream datastore renderer: drawRect plus stroke-dasharray width/height behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes.ts","reason":"Upstream shape aliases: datastore/data-store are distinct from bow-rect/stored-data."}
+{"file":"crates/merman-core/src/diagrams/flowchart/shape_data.rs","reason":"Local flowchart shape-data allow-list for upstream shape names."}
+{"file":"crates/merman-render/src/svg/parity/flowchart/render/node/shapes/datastore.rs","reason":"Local SVG parity renderer for datastore."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/edges.js","reason":"Upstream rounded flowchart edge path generation and basis fallback behavior."}
+{"file":"crates/merman-core/src/generated/default_config.json","reason":"Local generated default config now carries the 11.13 flowchart curve default."}
+{"file":"crates/merman-render/src/svg/parity/flowchart/edge_geom/curve_path.rs","reason":"Local SVG curve selection for flowchart edge paths."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts","reason":"Upstream 11.15 Architecture FCoSE config wiring for randomize, nodeSeparation, idealEdgeLengthMultiplier, edgeElasticity, numIter, and seed."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architecture.spec.ts","reason":"Upstream Architecture config default and override tests for FCoSE knobs."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/config.type.ts","reason":"Upstream ArchitectureDiagramConfig documentation for new FCoSE fields."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream Architecture default values and required config fields."}
+{"file":"docs/workstreams/architecture-indexed-fcose/DESIGN.md","reason":"Existing local indexed FCoSE architecture boundary and constraints for M15-040 changes."}
+{"file":"docs/workstreams/architecture-indexed-fcose/HANDOFF.md","reason":"Completed Architecture indexed FCoSE lane state and follow-on boundaries."}
+{"file":"crates/manatee/src/algo/fcose/mod.rs","reason":"Local indexed FCoSE options and layout behavior extended for Architecture config."}
+{"file":"crates/merman-render/src/architecture.rs","reason":"Local Architecture layout now reads Mermaid 11.15 FCoSE config fields."}
+{"file":"crates/merman-render/tests/architecture_layout_test.rs","reason":"Public parse+layout tests for deterministic defaults and configured Architecture FCoSE changes."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyRenderer.ts","reason":"Upstream Sankey renderer behavior for nodeWidth, nodePadding, labelStyle, and nodeColors."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream Sankey 11.15 config defaults and schema fields."}
+{"file":"crates/merman-render/src/sankey.rs","reason":"Local Sankey layout now reads configured node width and padding."}
+{"file":"crates/merman-render/src/svg/parity/sankey.rs","reason":"Local Sankey SVG now applies nodeColors and outlined labels."}
+{"file":"crates/merman-render/tests/sankey_svg_test.rs","reason":"Public SVG test for configured Sankey colors and outlined labels."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/xychartRenderer.ts","reason":"Upstream xyChart renderer behavior for showDataLabelOutsideBar placement and themed dataLabelColor."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream xyChart showDataLabelOutsideBar schema default."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js","reason":"Upstream theme fallback for xyChart dataLabelColor from primaryTextColor."}
+{"file":"crates/merman-render/src/svg/parity/xychart.rs","reason":"Local xyChart SVG renderer now supports outside bar labels and configured label color."}
+{"file":"crates/merman-render/tests/xychart_svg_test.rs","reason":"Public SVG tests for vertical and horizontal outside bar labels with configured color."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts","reason":"Upstream class namespace stack, ancestor creation, explicit namespace tracking, namespace notes, and compact hierarchicalNamespaces=false behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/parser/classDiagram.jison","reason":"Upstream class grammar allows namespace bodies to contain nested namespaces and notes."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classRenderer-v2.ts","reason":"Upstream class hierarchical and compact namespace rendering behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Upstream class.hierarchicalNamespaces default true and schema field."}
+{"file":"crates/merman-core/src/diagrams/class/db.rs","reason":"Local class namespace stack, ancestor namespace model, namespace notes, and compact hierarchicalNamespaces=false model transform."}
+{"file":"crates/merman-render/src/class.rs","reason":"Local class compound layout parent support for hierarchical namespaces and namespace notes."}
+{"file":"crates/merman-render/tests/class_layout_test.rs","reason":"Public layout tests for hierarchical dotted namespaces, namespace notes, and disabled hierarchical mode."}
+{"file":"crates/merman-render/tests/class_svg_test.rs","reason":"Public SVG tests for hierarchical namespace labels and namespace subgraph rendering."}
+{"file":"repo-ref/mermaid/packages/mermaid/CHANGELOG.md","reason":"Upstream 11.14 PR #7526 duplicate SVG element ID behavior and suffix-selector guidance."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/c4/svgDraw.js","reason":"Upstream c4 marker IDs and marker references are prefixed with the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js","reason":"Upstream user journey arrowhead marker ID uses the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/svgDraw.js","reason":"Upstream timeline arrowhead marker ID uses the diagram SVG ID."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts","reason":"Upstream sequence message marker references include the diagram SVG ID prefix."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/styles.js","reason":"Upstream sequence CSS uses suffix selectors for prefixed marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/util.rs","reason":"Local scoped_svg_id/scoped_svg_url helpers for diagram-prefixed internal SVG IDs."}
+{"file":"crates/merman-render/src/svg/parity/c4.rs","reason":"Local c4 marker definitions and references now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/journey.rs","reason":"Local journey marker definition and reference now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/timeline.rs","reason":"Local timeline marker definition and references now use diagram-scoped marker IDs."}
+{"file":"crates/merman-render/src/svg/parity/sequence/render.rs","reason":"Local sequence base marker defs are scoped by diagram ID before emission."}
+{"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"Local sequence message and autonumber marker references now use diagram-scoped marker URLs."}
+{"file":"crates/merman-render/src/svg/parity/sequence/css.rs","reason":"Local sequence marker CSS now uses suffix-compatible selectors."}
+{"file":"crates/merman-render/tests/svg_internal_id_test.rs","reason":"Public SVG tests for c4, journey, timeline, and sequence diagram-scoped marker IDs."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/eventmodeling/detector.ts","reason":"Upstream Event Modeling detector and header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/wardley/wardleyDetector.ts","reason":"Upstream Wardley Maps detector and wardley-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/treeView/detector.ts","reason":"Upstream TreeView detector and treeView-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/venn/vennDetector.ts","reason":"Upstream Venn detector and venn-beta header for M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa/ishikawaDetector.ts","reason":"Upstream Ishikawa detector for ishikawa and ishikawa-beta headers in the M15-090 new-family scope decision."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/cynefin/cynefinDetector.ts","reason":"Upstream Cynefin detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/railroadDetector.ts","reason":"Upstream Railroad detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/abnfDetector.ts","reason":"Upstream Railroad ABNF detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/ebnfDetector.ts","reason":"Upstream Railroad EBNF detector used to record out-of-scope status for this baseline."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/railroad/pegDetector.ts","reason":"Upstream Railroad PEG detector used to record out-of-scope status for this baseline."}
+{"file":"docs/alignment/STATUS.md","reason":"M15-090 support/defer/out-of-scope matrix for Mermaid 11.15 diagram-family scope."}
+{"file":"docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md","reason":"Alignment gate fix for stale Flowchart KaTeX fixture references found while verifying M15-090."}
+{"file":"tools/mermaid-cli/package.json","reason":"M15-100 local upstream SVG toolchain package pin for Mermaid CLI 11.15.0 and Mermaid 11.15.0 override."}
+{"file":"tools/mermaid-cli/package-lock.json","reason":"M15-100 resolved Mermaid CLI 11.15.0 dependency graph used for local CLI probes and future baseline generation."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/defaultConfig.ts","reason":"M15-100 default-config closeout check; upstream runtime defaults overlay schema defaults and explain schema-only generator drift."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"M15-100 default-config closeout check and generated schema default comparison."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.ts","reason":"M15-100 flowchart default curve verification against upstream runtime behavior."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/edges.js","reason":"M15-100 flowchart CLI probe source for basis and rounded path rendering behavior."}
+{"file":"docs/adr/0019-generated-default-config.md","reason":"M15-100 records schema/defaultConfig overlay limitation discovered during 11.15 baseline closeout."}
+{"file":"crates/merman-ascii/src/sequence/model.rs","reason":"M15-100 workspace closeout fix for sequence decimal autonumber in ASCII rendering."}
+{"file":"crates/merman-ascii/tests/sequence_model.rs","reason":"M15-100 regression coverage for sequence decimal autonumber in ASCII rendering."}

@@ -15,6 +15,34 @@ use rustc_hash::FxHashMap;
 use super::css::sequence_css;
 use super::model::*;
 
+const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_11_15_0: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
+
+fn scoped_sequence_base_defs(diagram_id: &str) -> String {
+    let mut defs = MERMAID_SEQUENCE_BASE_DEFS_11_12_2.to_string();
+    defs.push_str(MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_11_15_0);
+    for local_id in [
+        "computer",
+        "database",
+        "clock",
+        "arrowhead",
+        "crosshead",
+        "filled-head",
+        "sequencenumber",
+        "solidTopArrowHead",
+        "solidBottomArrowHead",
+        "stickTopArrowHead",
+        "stickBottomArrowHead",
+    ] {
+        let bare = format!(r#"id="{local_id}""#);
+        let scoped = format!(
+            r#"id="{}""#,
+            escape_attr(&scoped_svg_id(diagram_id, local_id))
+        );
+        defs = defs.replace(&bare, &scoped);
+    }
+    defs
+}
+
 pub(super) fn render_sequence_diagram_svg(
     layout: &SequenceDiagramLayout,
     semantic: &serde_json::Value,
@@ -143,9 +171,15 @@ fn render_sequence_diagram_svg_inner(
     );
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
-    out.push_str(MERMAID_SEQUENCE_BASE_DEFS_11_12_2);
+    out.push_str(&scoped_sequence_base_defs(diagram_id));
 
-    render_sequence_actor_man_tops(&mut out, model, &nodes_by_id, settings.actor_height);
+    render_sequence_actor_man_tops(
+        &mut out,
+        model,
+        &nodes_by_id,
+        settings.actor_height,
+        diagram_id,
+    );
 
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
@@ -168,6 +202,7 @@ fn render_sequence_diagram_svg_inner(
         math_renderer: options.math_renderer.as_deref(),
         measurer,
         message_align: settings.message_align.as_str(),
+        diagram_id,
         actor_height: settings.actor_height,
         actor_label_font_size: settings.actor_label_font_size,
         sequence_width: settings.sequence_width,
@@ -194,6 +229,7 @@ fn render_sequence_diagram_svg_inner(
             &nodes_by_id,
             settings.actor_height,
             settings.label_box_height,
+            diagram_id,
         );
     }
 

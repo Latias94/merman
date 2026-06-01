@@ -1,6 +1,9 @@
 # Parity Hardening Plan (Post 100% Baseline)
 
-Baseline version: Mermaid `@11.12.3`.
+Current baseline version: Mermaid `@11.15.0`.
+
+Historical note: this plan started at Mermaid `@11.12.3`; many inventory snapshots below preserve
+that original baseline label because they describe past measurements.
 
 As of 2026-02-23:
 

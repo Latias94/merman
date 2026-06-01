@@ -145,20 +145,37 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {
+      "Company": {
+        "id": "Company",
+        "label": "Company",
+        "domId": "classId-Company-0",
+        "classIds": [],
+        "noteIds": [],
+        "parent": null,
+        "explicit": false
+      },
       "Company.Project": {
         "id": "Company.Project",
-        "domId": "classId-Company.Project-0",
+        "label": "Project",
+        "domId": "classId-Company.Project-1",
         "classIds": [
           "User"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "Company",
+        "explicit": true
       },
       "Company.Project.Module": {
         "id": "Company.Project.Module",
-        "domId": "classId-Company.Project.Module-1",
+        "label": "Module",
+        "domId": "classId-Company.Project.Module-2",
         "classIds": [
           "GenericClass",
           "Admin"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "Company.Project",
+        "explicit": true
       }
     },
     "styleClasses": {},

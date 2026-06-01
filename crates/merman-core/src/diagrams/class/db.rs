@@ -283,6 +283,7 @@ struct ClassNote {
     id: String,
     class_id: Option<String>,
     text: String,
+    parent: Option<String>,
 }
 
 impl ClassNote {
@@ -291,6 +292,7 @@ impl ClassNote {
             id: self.id,
             class_id: self.class_id,
             text: self.text,
+            parent: self.parent,
         }
     }
 }
@@ -315,16 +317,24 @@ impl Interface {
 #[derive(Debug, Clone)]
 struct Namespace {
     id: String,
+    label: String,
     dom_id: String,
     class_ids: Vec<String>,
+    note_ids: Vec<String>,
+    parent: Option<String>,
+    explicit: bool,
 }
 
 impl Namespace {
     fn into_typed(self) -> class_typed::Namespace {
         class_typed::Namespace {
             id: self.id,
+            label: self.label,
             dom_id: self.dom_id,
             class_ids: self.class_ids,
+            note_ids: self.note_ids,
+            parent: self.parent,
+            explicit: self.explicit,
         }
     }
 }
@@ -354,6 +364,7 @@ pub(super) struct ClassDb<'a> {
     notes: Vec<ClassNote>,
     interfaces: Vec<Interface>,
     namespaces: IndexMap<String, Namespace>,
+    namespace_stack: Vec<String>,
     style_classes: IndexMap<String, StyleClass>,
     class_counter: usize,
     namespace_counter: usize,
@@ -372,6 +383,7 @@ impl<'a> ClassDb<'a> {
             notes: Vec::new(),
             interfaces: Vec::new(),
             namespaces: IndexMap::new(),
+            namespace_stack: Vec::new(),
             style_classes: IndexMap::new(),
             class_counter: 0,
             namespace_counter: 0,
@@ -620,33 +632,123 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    fn add_note(&mut self, class_id: Option<String>, text: &str) {
-        let note_id = format!("note{}", self.notes.len());
-        self.notes.push(ClassNote {
-            id: note_id,
-            class_id,
-            text: text.to_string(),
-        });
+    fn current_namespace(&self) -> Option<&str> {
+        self.namespace_stack.last().map(String::as_str)
     }
 
-    fn add_namespace(&mut self, id: &str) {
-        if self.namespaces.contains_key(id) {
+    fn resolve_qualified_namespace_id(&self, id: &str) -> String {
+        let id = id.trim();
+        if let Some(prefix) = self.current_namespace() {
+            format!("{prefix}.{id}")
+        } else {
+            id.to_string()
+        }
+    }
+
+    fn namespace_ancestor_ids(qualified_id: &str) -> Vec<String> {
+        let parts: Vec<&str> = qualified_id.split('.').collect();
+        let mut ids = Vec::with_capacity(parts.len());
+        let mut current = String::new();
+        for part in parts {
+            if current.is_empty() {
+                current.push_str(part);
+            } else {
+                current.push('.');
+                current.push_str(part);
+            }
+            ids.push(current.clone());
+        }
+        ids
+    }
+
+    fn add_note(&mut self, class_id: Option<String>, text: &str) {
+        let note_id = format!("note{}", self.notes.len());
+        let parent = self.current_namespace().map(str::to_string);
+        self.notes.push(ClassNote {
+            id: note_id.clone(),
+            class_id,
+            text: text.to_string(),
+            parent: parent.clone(),
+        });
+        if let Some(parent) = parent {
+            if let Some(ns) = self.namespaces.get_mut(&parent) {
+                ns.note_ids.push(note_id);
+            }
+        }
+    }
+
+    fn add_namespace(&mut self, id: &str, label: Option<String>) {
+        let qualified_id = self.resolve_qualified_namespace_id(id);
+        self.namespace_stack.push(qualified_id.clone());
+
+        if self.namespaces.contains_key(&qualified_id) {
+            if let Some(ns) = self.namespaces.get_mut(&qualified_id) {
+                ns.explicit = true;
+                if let Some(label) = label {
+                    ns.label = sanitize_text(&label, self.config);
+                }
+            }
             return;
         }
-        let dom_id = format!("{MERMAID_DOM_ID_PREFIX}{id}-{}", self.namespace_counter);
-        self.namespace_counter += 1;
-        self.namespaces.insert(
-            id.to_string(),
-            Namespace {
-                id: id.to_string(),
-                dom_id,
-                class_ids: Vec::new(),
-            },
-        );
+
+        let parts: Vec<&str> = qualified_id.split('.').collect();
+        let ancestor_ids = Self::namespace_ancestor_ids(&qualified_id);
+        for (idx, current_id) in ancestor_ids.iter().enumerate() {
+            let parent = idx
+                .checked_sub(1)
+                .and_then(|i| ancestor_ids.get(i))
+                .cloned();
+            let is_leaf = idx == ancestor_ids.len() - 1;
+            let node_label = if is_leaf {
+                label
+                    .as_deref()
+                    .map(|s| sanitize_text(s, self.config))
+                    .unwrap_or_else(|| parts[idx].to_string())
+            } else {
+                parts[idx].to_string()
+            };
+
+            if let Some(ns) = self.namespaces.get_mut(current_id) {
+                if is_leaf {
+                    ns.explicit = true;
+                    ns.label = node_label;
+                }
+                if ns.parent.is_none() {
+                    ns.parent = parent;
+                }
+                continue;
+            }
+
+            let dom_id = format!(
+                "{MERMAID_DOM_ID_PREFIX}{current_id}-{}",
+                self.namespace_counter
+            );
+            self.namespace_counter += 1;
+            self.namespaces.insert(
+                current_id.clone(),
+                Namespace {
+                    id: current_id.clone(),
+                    label: node_label,
+                    dom_id,
+                    class_ids: Vec::new(),
+                    note_ids: Vec::new(),
+                    parent,
+                    explicit: is_leaf,
+                },
+            );
+        }
+    }
+
+    fn pop_namespace(&mut self) {
+        self.namespace_stack.pop();
     }
 
     fn add_classes_to_namespace(&mut self, namespace: &str, class_names: &[String]) {
-        if !self.namespaces.contains_key(namespace) {
+        let namespace = self
+            .current_namespace()
+            .map(str::to_string)
+            .unwrap_or_else(|| namespace.to_string());
+        if !self.namespaces.contains_key(&namespace) {
             return;
         }
         let mut ids = Vec::new();
@@ -654,12 +756,16 @@ impl<'a> ClassDb<'a> {
             let (class_name, _) = self.split_class_name_and_type(name);
             self.add_class(name);
             if let Some(c) = self.classes.get_mut(&class_name) {
-                c.parent = Some(namespace.to_string());
+                c.parent = Some(namespace.clone());
             }
             ids.push(class_name);
         }
-        if let Some(ns) = self.namespaces.get_mut(namespace) {
-            ns.class_ids.extend(ids);
+        if let Some(ns) = self.namespaces.get_mut(&namespace) {
+            for id in ids {
+                if !ns.class_ids.contains(&id) {
+                    ns.class_ids.push(id);
+                }
+            }
         }
     }
 
@@ -727,8 +833,8 @@ impl<'a> ClassDb<'a> {
                 Ok(())
             }
 
-            Action::AddNamespace { id } => {
-                self.add_namespace(&id);
+            Action::AddNamespace { id, label } => {
+                self.add_namespace(&id, label);
                 Ok(())
             }
             Action::AddClassesToNamespace {
@@ -736,6 +842,10 @@ impl<'a> ClassDb<'a> {
                 class_ids,
             } => {
                 self.add_classes_to_namespace(&namespace, &class_ids);
+                Ok(())
+            }
+            Action::PopNamespace => {
+                self.pop_namespace();
                 Ok(())
             }
 
@@ -806,7 +916,105 @@ impl<'a> ClassDb<'a> {
         }
     }
 
-    pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
+    fn hierarchical_namespaces_enabled(&self) -> bool {
+        self.config
+            .get_bool("class.hierarchicalNamespaces")
+            .unwrap_or(true)
+    }
+
+    fn resolve_explicit_ancestor_from(
+        namespaces: &IndexMap<String, Namespace>,
+        id: Option<&str>,
+    ) -> Option<String> {
+        let mut current = id.map(str::to_string);
+        while let Some(id) = current {
+            let ns = namespaces.get(id.as_str())?;
+            if ns.explicit {
+                return Some(id);
+            }
+            current = ns.parent.clone();
+        }
+        None
+    }
+
+    fn rebuild_namespace_memberships(&mut self) {
+        for ns in self.namespaces.values_mut() {
+            ns.class_ids.clear();
+            ns.note_ids.clear();
+        }
+        for (id, class_node) in &self.classes {
+            let Some(parent) = class_node.parent.as_deref() else {
+                continue;
+            };
+            if let Some(ns) = self.namespaces.get_mut(parent) {
+                if !ns.class_ids.contains(id) {
+                    ns.class_ids.push(id.clone());
+                }
+            }
+        }
+        for note in &self.notes {
+            let Some(parent) = note.parent.as_deref() else {
+                continue;
+            };
+            if let Some(ns) = self.namespaces.get_mut(parent) {
+                if !ns.note_ids.contains(&note.id) {
+                    ns.note_ids.push(note.id.clone());
+                }
+            }
+        }
+    }
+
+    fn apply_namespace_render_config(&mut self) {
+        if self.hierarchical_namespaces_enabled() {
+            self.rebuild_namespace_memberships();
+            return;
+        }
+
+        let class_parent_updates: Vec<(String, Option<String>)> = self
+            .classes
+            .iter()
+            .map(|(id, class_node)| {
+                (
+                    id.clone(),
+                    Self::resolve_explicit_ancestor_from(
+                        &self.namespaces,
+                        class_node.parent.as_deref(),
+                    ),
+                )
+            })
+            .collect();
+        let note_parent_updates: Vec<(String, Option<String>)> = self
+            .notes
+            .iter()
+            .map(|note| {
+                (
+                    note.id.clone(),
+                    Self::resolve_explicit_ancestor_from(&self.namespaces, note.parent.as_deref()),
+                )
+            })
+            .collect();
+
+        self.namespaces.retain(|_, ns| ns.explicit);
+        for ns in self.namespaces.values_mut() {
+            ns.label = ns.id.clone();
+            ns.parent = None;
+        }
+        for (id, parent) in class_parent_updates {
+            if let Some(class_node) = self.classes.get_mut(&id) {
+                class_node.parent = parent;
+            }
+        }
+        for (id, parent) in note_parent_updates {
+            if let Some(note) = self.notes.iter_mut().find(|note| note.id == id) {
+                note.parent = parent;
+            }
+        }
+        self.rebuild_namespace_memberships();
+    }
+
+    pub(super) fn into_model(mut self, meta: &ParseMetadata) -> Value {
+        self.apply_namespace_render_config();
+
         let mut classes_json = serde_json::Map::with_capacity(self.classes.len());
         for (id, c) in self.classes {
             let methods: Vec<Value> = c.methods.into_iter().map(ClassMember::into_value).collect();
@@ -889,13 +1097,16 @@ impl<'a> ClassDb<'a> {
 
         let mut notes_json = Vec::with_capacity(self.notes.len());
         for n in self.notes {
-            let mut obj = serde_json::Map::with_capacity(3);
+            let mut obj = serde_json::Map::with_capacity(4);
             obj.insert("id".to_string(), Value::String(n.id));
             obj.insert(
                 "class".to_string(),
                 n.class_id.map(Value::String).unwrap_or(Value::Null),
             );
             obj.insert("text".to_string(), Value::String(n.text));
+            if let Some(parent) = n.parent {
+                obj.insert("parent".to_string(), Value::String(parent));
+            }
             notes_json.push(Value::Object(obj));
         }
 
@@ -910,13 +1121,23 @@ impl<'a> ClassDb<'a> {
 
         let mut namespaces_json = serde_json::Map::with_capacity(self.namespaces.len());
         for (k, ns) in self.namespaces {
-            let mut obj = serde_json::Map::with_capacity(3);
+            let mut obj = serde_json::Map::with_capacity(7);
             obj.insert("id".to_string(), Value::String(ns.id));
+            obj.insert("label".to_string(), Value::String(ns.label));
             obj.insert("domId".to_string(), Value::String(ns.dom_id));
             obj.insert(
                 "classIds".to_string(),
                 Value::Array(ns.class_ids.into_iter().map(Value::String).collect()),
             );
+            obj.insert(
+                "noteIds".to_string(),
+                Value::Array(ns.note_ids.into_iter().map(Value::String).collect()),
+            );
+            obj.insert(
+                "parent".to_string(),
+                ns.parent.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert("explicit".to_string(), Value::Bool(ns.explicit));
             namespaces_json.insert(k, Value::Object(obj));
         }
 
@@ -984,7 +1205,9 @@ impl<'a> ClassDb<'a> {
         Value::Object(obj)
     }
 
-    pub(super) fn into_typed_model(self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
+    pub(super) fn into_typed_model(mut self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
+        self.apply_namespace_render_config();
+
         let classes = self
             .classes
             .into_iter()

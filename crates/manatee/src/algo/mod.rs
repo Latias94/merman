@@ -16,7 +16,7 @@ pub struct CoseBilkentOptions {
     pub random_seed: u64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct FcoseOptions {
     pub random_seed: u64,
     /// Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` inside `layoutstop`),
@@ -25,6 +25,12 @@ pub struct FcoseOptions {
     /// When enabled, the Rust port mimics that behavior by performing two consecutive runs while
     /// keeping the RNG stream continuous between runs.
     pub rerun: bool,
+    /// Whether to initialize the layout with FCoSE's spectral/randomized start positions.
+    pub randomize: bool,
+    /// FCoSE spectral start node separation. Used only when `randomize` is enabled.
+    pub node_separation: Option<f64>,
+    /// Maximum FCoSE spring-embedder iterations before the layout stops.
+    pub num_iter: Option<usize>,
     /// Override for layout-base/CoSE `DEFAULT_EDGE_LENGTH` (used for repulsion/grid range, overlap
     /// separation buffer, and convergence thresholds).
     ///
@@ -45,6 +51,23 @@ pub struct FcoseOptions {
     ///
     /// When set, the Rust port uses this value instead of the layout-base bounds center.
     pub relocate_center: Option<(f64, f64)>,
+}
+
+impl Default for FcoseOptions {
+    fn default() -> Self {
+        Self {
+            random_seed: 0,
+            rerun: false,
+            randomize: true,
+            node_separation: None,
+            num_iter: None,
+            default_edge_length: None,
+            alignment_constraint: None,
+            relative_placement_constraint: Vec::new(),
+            compound_padding: None,
+            relocate_center: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

@@ -144,7 +144,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.3)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
         dom_mode,
         dom_decimals,
         text_measurer,
@@ -186,6 +186,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             failures.push(format!("invalid fixture filename {}", mmd_path.display()));
             continue;
         };
+
+        if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason("flowchart", stem) {
+            skipped.push(format!("skipped {stem}: {reason}"));
+            continue;
+        }
 
         let upstream_path = upstream_dir.join(format!("{stem}.svg"));
         let upstream_svg = match fs::read_to_string(&upstream_path) {

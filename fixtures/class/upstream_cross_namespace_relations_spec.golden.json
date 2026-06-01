@@ -160,19 +160,27 @@
     "namespaces": {
       "A": {
         "id": "A",
+        "label": "A",
         "domId": "classId-A-0",
         "classIds": [
           "A1",
           "A2"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       },
       "B": {
         "id": "B",
+        "label": "B",
         "domId": "classId-B-1",
         "classIds": [
           "B1",
           "B2"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

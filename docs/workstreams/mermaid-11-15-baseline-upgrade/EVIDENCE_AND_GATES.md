@@ -1,0 +1,189 @@
+# Mermaid 11.15 Baseline Upgrade - Evidence And Gates
+
+Status: Closed
+Last updated: 2026-05-31
+
+## Smallest Current Repro
+
+```bash
+cargo nextest run -p merman-core sequence
+```
+
+This validates the first planned slice: sequence parser and semantic model compatibility.
+
+## Gate Set
+
+### Targeted Iteration Gates
+
+```bash
+cargo nextest run -p merman-core sequence
+cargo nextest run -p merman-render sequence
+cargo nextest run -p merman-render flowchart
+cargo nextest run -p merman-render sankey
+cargo nextest run -p merman-render xychart
+```
+
+Use the narrowest package/test filter that covers the active task.
+
+### Formatting Gate
+
+```bash
+cargo fmt --check
+```
+
+### Package Gates
+
+```bash
+cargo nextest run -p merman-core
+cargo nextest run -p merman-render
+```
+
+### Broader Closeout Gate
+
+```bash
+cargo nextest run --workspace
+```
+
+If the workspace gate is too slow for a slice, record the narrower command and why it is sufficient
+for that task.
+
+### Review Gate
+
+Run `review-workstream` before accepting task or lane completion. Fresh verification is required
+before marking a task, Codex goal, or lane complete.
+
+## Evidence Anchors
+
+- `repo-ref/mermaid/packages/mermaid/CHANGELOG.md`
+- `docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md`
+- `docs/workstreams/mermaid-11-15-baseline-upgrade/TODO.md`
+- task-specific tests and fixture updates
+
+## Evidence Log
+
+- 2026-05-31: Opened the workstream from the 11.13-11.15 audit. No code gates run yet.
+- 2026-05-31: M15-020 sequence decimal `autonumber` complete.
+  - `cargo nextest run -p merman-core parse_diagram_sequence_autonumber_allows_decimal_start_and_step` failed before implementation with `UnrecognizedToken` for `.1`.
+  - `cargo nextest run -p merman-core parse_diagram_sequence_autonumber` passed: 2 tests.
+  - `cargo nextest run -p merman-core sequence` passed: 31 tests.
+  - `cargo nextest run -p merman-render sequence_autonumber_renders_decimal_sequence_numbers` passed: 1 test.
+  - `cargo nextest run -p merman-render sequence` passed: 15 tests.
+  - `cargo nextest run -p merman-core` passed: 528 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-030 flowchart `datastore` shape support complete.
+  - Upstream check: `datastore` / `data-store` are distinct from `bow-rect` / `stored-data` and render as a rect with `stroke-dasharray=width height`.
+  - `cargo nextest run -p merman-core parse_diagram_flowchart_node_data_shape_data_accepts_datastore` failed before implementation with `No such shape: datastore.`.
+  - `cargo nextest run -p merman-core parse_diagram_flowchart_node_data_shape_data_accepts_datastore` passed: 1 test.
+  - `cargo nextest run -p merman-render flowchart_datastore_shape_renders_top_and_bottom_border_rect` passed: 1 test.
+  - `cargo nextest run -p merman-core flowchart` passed: 94 tests.
+  - `cargo nextest run -p merman-render flowchart` passed: 73 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-031 flowchart rounded curve support complete, with a closeout correction in M15-100.
+  - Initial changelog-based interpretation treated Mermaid 11.13 as a default flowchart curve change from `basis` to `rounded`.
+  - M15-100 CLI probes against Mermaid 11.15.0 superseded that assumption: non-ELK default output still matches explicit `basis` cubic paths, while explicit `flowchart.curve: "rounded"` renders quadratic corner paths.
+  - The original `flowchart_default_curve_renders_rounded_edges_while_basis_remains_available` test proved rounded path generation during the slice, then M15-100 replaced it with `flowchart_default_curve_renders_basis_edges_while_rounded_remains_available`.
+  - `cargo nextest run -p merman-render flowchart` passed: 74 tests.
+  - `cargo nextest run -p merman-core flowchart` passed: 94 tests.
+  - `cargo nextest run -p merman-core config` passed: 9 tests.
+  - `cargo nextest run -p merman-core` passed: 529 tests.
+  - `cargo nextest run -p merman-render` passed: 231 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-040 Architecture FCoSE config exposure complete.
+  - Upstream check: Mermaid 11.15 Architecture defaults include `randomize=false`, `nodeSeparation=75`, `idealEdgeLengthMultiplier=1.5`, `edgeElasticity=0.45`, `numIter=2500`, and `seed=1`.
+  - `cargo nextest run -p merman-core parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides` failed before implementation because `architecture.randomize` was missing from generated defaults.
+  - `cargo nextest run -p merman-render architecture_ideal_edge_length_multiplier_changes_same_group_spacing` failed before implementation because layout still hardcoded the 1.5 multiplier.
+  - `cargo nextest run -p merman-core parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides` passed: 1 test.
+  - `cargo nextest run -p merman-render architecture_ideal_edge_length_multiplier_changes_same_group_spacing` passed: 1 test.
+  - `cargo nextest run -p merman-render architecture_randomize_and_node_separation_change_layout` passed: 1 test.
+  - `cargo nextest run -p merman-render architecture_edge_elasticity_changes_same_group_layout` passed: 1 test.
+  - `cargo nextest run -p merman-render architecture_num_iter_changes_layout_budget` passed: 1 test.
+  - `cargo nextest run -p manatee` passed: 11 tests.
+  - `cargo nextest run -p merman-core architecture` passed: 10 tests.
+  - `cargo nextest run -p merman-core config` passed: 10 tests.
+  - `cargo nextest run -p merman-render architecture` passed: 12 tests.
+  - `cargo nextest run -p merman-core` passed: 530 tests.
+  - `cargo nextest run -p merman-render` passed: 236 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-050 Sankey 11.15 config support complete.
+  - Upstream check: Mermaid 11.15 Sankey defaults include `nodeWidth=10`, `nodePadding=12`, `labelStyle=legacy`, and `nodeColors` as an optional ID-to-color map; renderer adds 15px to node padding when `showValues=true`, uses custom node colors for nodes and link colors, and renders `outlined` labels as background/foreground text.
+  - `cargo nextest run -p merman-render sankey_layout_uses_configured_node_width_and_padding` failed before implementation because layout still hardcoded `nodeWidth=10`.
+  - `cargo nextest run -p merman-render sankey_svg_uses_configured_node_colors_and_outlined_labels` failed before implementation because SVG still used Tableau colors and legacy single labels.
+  - `cargo nextest run -p merman-core parse_sankey_exposes_11_15_config_defaults_and_overrides` failed before implementation because `sankey.nodeWidth` was missing from generated defaults.
+  - `cargo nextest run -p merman-render sankey_layout_uses_configured_node_width_and_padding sankey_node_geometry_constants_match_mermaid sankey_layout_uses_mermaid_node_geometry` passed: 3 tests.
+  - `cargo nextest run -p merman-render sankey_svg_uses_configured_node_colors_and_outlined_labels` passed: 1 test.
+  - `cargo nextest run -p merman-core parse_sankey_exposes_11_15_config_defaults_and_overrides` passed: 1 test.
+  - `cargo nextest run -p merman-render sankey` passed: 4 tests.
+  - `cargo nextest run -p merman-core sankey` passed: 5 tests.
+  - `cargo nextest run -p merman-core config` passed: 11 tests.
+  - `cargo run -p xtask -- update-layout-snapshots --diagram sankey` refreshed Sankey layout goldens for the 11.15 padding baseline.
+  - `cargo nextest run -p merman-core` passed: 531 tests.
+  - `cargo nextest run -p merman-render` passed: 238 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-060 xyChart data-label config support complete.
+  - Upstream check: Mermaid 11.15 xyChart schema defaults `showDataLabelOutsideBar=false`; the renderer uses it to place horizontal bar labels outside with `text-anchor=start` and vertical bar labels above the bar with `dominant-baseline=auto`, and fills data labels from theme `dataLabelColor`.
+  - `cargo nextest run -p merman-render xychart_vertical_bar_data_label_can_render_outside_with_configured_color` failed before implementation because vertical labels still used `dominant-baseline="hanging"` and `fill="black"`.
+  - `cargo nextest run -p merman-core parse_xychart_exposes_11_15_data_label_outside_default_and_override` failed before implementation because `xyChart.showDataLabelOutsideBar` was missing from generated defaults.
+  - `cargo nextest run -p merman-render xychart_vertical_bar_data_label_can_render_outside_with_configured_color` passed: 1 test.
+  - `cargo nextest run -p merman-render xychart_horizontal_bar_data_label_can_render_outside xychart_vertical_bar_data_label_can_render_outside_with_configured_color` passed: 2 tests.
+  - `cargo nextest run -p merman-core parse_xychart_exposes_11_15_data_label_outside_default_and_override` passed: 1 test.
+  - `cargo nextest run -p merman-render xychart` passed: 2 tests.
+  - `cargo nextest run -p merman-core xychart` passed: 17 tests.
+  - `cargo nextest run -p merman-core config` passed: 11 tests.
+  - `cargo nextest run -p merman-core` passed: 532 tests.
+  - `cargo nextest run -p merman-render` passed: 240 tests.
+  - `cargo fmt --check` passed.
+- 2026-05-31: M15-070 class hierarchical namespaces complete.
+  - Upstream check: Mermaid 11.15 class adds hierarchical namespace rendering for dotted names and syntactic nesting; `class.hierarchicalNamespaces` defaults to `true`, while `false` restores the <=11.14 flat dotted namespace behavior. Namespace bodies accept nested namespaces and notes, and namespace notes are parented to the active namespace.
+  - `cargo nextest run -p merman-core parse_diagram_class_hierarchical_dotted_namespace_and_notes parse_diagram_class_nested_namespace_syntax_builds_qualified_parents parse_class_exposes_11_15_hierarchical_namespaces_default_and_override` failed before implementation: `class.hierarchicalNamespaces` was missing from defaults, namespace notes failed to parse, and nested namespace syntax failed to parse.
+  - `cargo nextest run -p merman-render class_layout_dotted_namespace_builds_hierarchical_clusters class_layout_namespace_note_stays_inside_namespace_cluster class_svg_dotted_namespace_titles_use_hierarchical_segment_labels` failed before implementation: dotted namespaces were rendered as one flat cluster, namespace note parsing failed, and SVG output lacked the parent namespace cluster.
+  - `cargo nextest run -p merman-core parse_diagram_class_hierarchical_dotted_namespace_and_notes parse_diagram_class_nested_namespace_syntax_builds_qualified_parents parse_diagram_class_hierarchical_namespaces_can_be_disabled parse_class_exposes_11_15_hierarchical_namespaces_default_and_override` passed: 4 tests.
+  - `cargo nextest run -p merman-render class_layout_dotted_namespace_builds_hierarchical_clusters class_layout_namespace_note_stays_inside_namespace_cluster class_layout_hierarchical_namespaces_false_keeps_flat_dotted_cluster class_svg_dotted_namespace_titles_use_hierarchical_segment_labels` passed: 4 tests.
+  - `cargo nextest run -p merman-core class` passed: 44 tests.
+  - `cargo nextest run -p merman-render class` passed: 27 tests.
+  - `cargo run -p xtask -- update-snapshots` refreshed class semantic goldens; non-class reserialization noise was discarded.
+  - `cargo run -p xtask -- update-layout-snapshots --diagram class` refreshed class layout goldens for hierarchical namespaces.
+  - `cargo nextest run -p merman-core` passed: 536 tests.
+  - `cargo nextest run -p merman-render` passed: 244 tests.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only LF-to-CRLF warnings for `crates/merman-core/src/diagrams/class_grammar.lalrpop` and `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+- 2026-05-31: M15-080 scoped internal SVG marker IDs complete.
+  - Upstream check: Mermaid 11.14 PR #7526 prefixes internal SVG element IDs with the diagram SVG element ID across diagram types; exact marker selectors should move to suffix-compatible selectors such as `[id$="-arrowhead"]`.
+  - `cargo nextest run -p merman-render c4_marker_ids_are_prefixed_with_diagram_svg_id journey_marker_ids_are_prefixed_with_diagram_svg_id timeline_marker_ids_are_prefixed_with_diagram_svg_id sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors` failed before implementation: c4, journey, timeline, and sequence still emitted bare `id="arrowhead"` / `url(#arrowhead)` markers, and sequence CSS used exact `#arrowhead` / `#sequencenumber` selectors.
+  - `cargo nextest run -p merman-render c4_marker_ids_are_prefixed_with_diagram_svg_id journey_marker_ids_are_prefixed_with_diagram_svg_id timeline_marker_ids_are_prefixed_with_diagram_svg_id sequence_marker_ids_are_prefixed_with_diagram_svg_id_and_css_uses_suffix_selectors` passed: 4 tests.
+  - `cargo nextest run -p merman-render sequence` passed: 16 tests.
+  - `cargo nextest run -p merman-render` passed: 248 tests.
+  - `cargo fmt` applied standard formatting after the first `cargo fmt --check` reported two line-wrap diffs.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only the LF-to-CRLF warning for `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+- 2026-05-31: M15-090 new diagram family scope documented.
+  - `npm view mermaid version` returned `11.15.0`, matching the requested target and the local `repo-ref/mermaid/packages/mermaid/package.json`.
+  - Upstream detector/source check covered `eventmodeling`, `wardley-beta`, `treeView-beta`, `venn-beta`, `ishikawa(-beta)`, `cynefin-beta`, and `railroad-*`.
+  - `docs/alignment/STATUS.md` now records support/defer/out-of-scope status so the future 11.15 baseline wording cannot imply unsupported families.
+  - `docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md` records that no new diagram family is promoted into this lane's implementation scope.
+  - First `cargo run -p xtask -- check-alignment` exposed four stale Flowchart KaTeX fixture references in `docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md`.
+  - `docs/alignment/FLOWCHART_UPSTREAM_TEST_COVERAGE.md` now points those references at the existing `*_parser_only_katex` fixture names.
+  - `cargo run -p xtask -- check-alignment` passed after the reference fix.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed.
+- 2026-05-31: M15-100 baseline metadata and closeout complete.
+  - `tools/mermaid-cli/package.json` and `package-lock.json` now pin `@mermaid-js/mermaid-cli@11.15.0` with Mermaid overridden to `11.15.0`.
+  - `npm ls @mermaid-js/mermaid-cli mermaid` in `tools/mermaid-cli` passed and resolved `@mermaid-js/mermaid-cli@11.15.0` plus `mermaid@11.15.0 overridden`.
+  - `node node_modules/@mermaid-js/mermaid-cli/src/cli.js --version` passed and printed `11.15.0`.
+  - `node -e "console.log(require('./node_modules/mermaid/package.json').version)"` passed and printed `11.15.0`.
+  - Mermaid 11.15.0 CLI probes for `flowchart LR` showed default and explicit `curve: "basis"` share the same cubic `C` edge path, while explicit `curve: "rounded"` emits a quadratic `Q` path. Local `default_config.json` was corrected back to `flowchart.curve="basis"`.
+  - Baseline metadata was updated in README, ADR-0001, alignment docs, rendering baseline docs, `tools/upstreams/REPOS.lock.json`, and workstream closeout docs. The 11.15 support claim remains limited to the implemented diagram matrix and the scope table in `docs/alignment/STATUS.md`.
+  - First `cargo nextest run --workspace` exposed a real compile failure in `merman-ascii`: sequence `autonumber.start`/`step` are now `f64`, while the ASCII renderer still stored `AutonumberState` as integers.
+  - `merman-ascii` now stores sequence autonumber state as `f64`, rounds each increment to hundredths, and has regression coverage for decimal start/step labels.
+  - `cargo nextest run -p merman-ascii sequence_autonumber_accepts_decimal_start_and_step` passed: 1 test.
+  - `cargo nextest run -p merman-ascii` passed: 183 tests.
+  - `cargo nextest run -p merman-core` passed: 536 tests.
+  - `cargo nextest run -p merman-render` passed: 248 tests.
+  - `cargo run -p xtask -- check-alignment` passed.
+  - `cargo fmt --check` passed.
+  - `git diff --check` passed with only the LF-to-CRLF warning for `docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl`.
+  - A default Windows `cargo nextest run --workspace` retry failed in the linker with MSVC PDB limit errors (`LNK1318` / `LNK1140`), not with Rust source errors.
+  - Directly passing `/PDB:NONE` as a linker arg was not portable here (`LNK1201`), so the final workspace gate used Cargo profile environment instead.
+  - `$env:CARGO_PROFILE_TEST_DEBUG='0'; $env:CARGO_BUILD_JOBS='2'; cargo nextest run --workspace` passed: 1377 tests, 3 skipped.
+  - `cargo run -p xtask -- verify-generated` failed before default-config comparison because `repo-ref/dompurify/dist/purify.cjs.js` is missing.
+  - `cargo run -p xtask -- gen-default-config --schema repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml --out target/xtask/default_config.m15.actual.json` passed, but `git diff --no-index --exit-code crates/merman-core/src/generated/default_config.json target/xtask/default_config.m15.actual.json` failed. The diff is expected until the generator models Mermaid `src/defaultConfig.ts` overlay semantics and unsupported-family defaults are handled deliberately.
+  - `npm audit --audit-level=critical --omit=optional` failed for the local Mermaid CLI dev toolchain with 7 vulnerabilities: 4 moderate, 2 high, and 1 critical. No audit fix was applied because that could change the upstream rendering toolchain outside this baseline bump.

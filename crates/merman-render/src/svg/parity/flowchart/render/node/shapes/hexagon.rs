@@ -15,24 +15,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
 ) {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
-    let half_width = w / 2.0;
-    let half_height = h / 2.0;
-    let fixed_length = half_height / 2.0;
-    let deduced_width = half_width - fixed_length;
+    let f = if common.look == "neo" { 3.5 } else { 4.0 };
+    let m = h / f;
 
     let pts: Vec<(f64, f64)> = vec![
-        (-deduced_width, -half_height),
-        (0.0, -half_height),
-        (deduced_width, -half_height),
-        (half_width, 0.0),
-        (deduced_width, half_height),
-        (0.0, half_height),
-        (-deduced_width, half_height),
-        (-half_width, 0.0),
+        (m, 0.0),
+        (w - m, 0.0),
+        (w, -h / 2.0),
+        (w - m, -h),
+        (m, -h),
+        (0.0, -h / 2.0),
     ];
     let path_data = path_from_points(&pts);
 
-    if let Some((fill_d, stroke_d)) =
+    let rough_paths = if common.look == "handDrawn" {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -43,8 +39,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
                 common.hand_drawn_seed,
             )
         })
-    {
-        out.push_str(r#"<g class="basic label-container">"#);
+    } else {
+        None
+    };
+
+    if let Some((fill_d, stroke_d)) = rough_paths {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container" transform="translate({},{})">"#,
+            fmt_display(-w / 2.0),
+            fmt_display(h / 2.0)
+        );
         let _ = write!(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -65,25 +70,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     } else {
         let _ = write!(
             out,
-            r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({},{})"{} />"#,
-            fmt_display(-deduced_width),
-            fmt_display(-half_height),
+            r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({},{})"{} />"#,
+            fmt_display(m),
             fmt_display(0.0),
-            fmt_display(-half_height),
-            fmt_display(deduced_width),
-            fmt_display(-half_height),
-            fmt_display(half_width),
+            fmt_display(w - m),
             fmt_display(0.0),
-            fmt_display(deduced_width),
-            fmt_display(half_height),
+            fmt_display(w),
+            fmt_display(-h / 2.0),
+            fmt_display(w - m),
+            fmt_display(-h),
+            fmt_display(m),
+            fmt_display(-h),
             fmt_display(0.0),
-            fmt_display(half_height),
-            fmt_display(-deduced_width),
-            fmt_display(half_height),
-            fmt_display(-half_width),
-            fmt_display(0.0),
-            fmt_display(0.0),
-            fmt_display(0.0),
+            fmt_display(-h / 2.0),
+            fmt_display(-w / 2.0),
+            fmt_display(h / 2.0),
             OptionalStyleAttr(common.style)
         );
     }

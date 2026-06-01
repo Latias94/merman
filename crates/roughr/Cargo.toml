@@ -57,6 +57,10 @@ version = "0.7.0"
 [dependencies.rand]
 version = "0.8"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
+version = "0.2"
+features = ["js"]
+
 [dependencies.svg_path_ops]
 version = "0.11.0"
 

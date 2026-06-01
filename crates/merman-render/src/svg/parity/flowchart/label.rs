@@ -8,6 +8,25 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
+    flowchart_label_html_impl(label, label_type, config, math_renderer, false)
+}
+
+pub(in crate::svg::parity) fn flowchart_edge_label_html(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) -> String {
+    flowchart_label_html_impl(label, label_type, config, math_renderer, true)
+}
+
+fn flowchart_label_html_impl(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    force_non_markdown_paragraph: bool,
+) -> String {
     if label.trim().is_empty() {
         return String::new();
     }
@@ -239,16 +258,23 @@ pub(in crate::svg::parity) fn flowchart_label_html(
         t[end + 1..].trim().is_empty()
     }
 
-    let has_literal_backticks = label_type != "markdown" && label.contains('`');
-    let looks_like_markdown = label_type != "markdown" && !has_literal_backticks && {
-        // Mermaid flowchart-v2 treats `**...**` as Markdown strong inside HTML labels even when the
-        // FlowDB label type is `text`.
-        //
-        // However, edge labels like `-->|`edge **label**`|` keep the surrounding backticks
-        // literally; once backticks are present, Mermaid no longer applies this text-label
-        // Markdown heuristic.
-        label.contains("**") || label.contains("__") || label.contains('*') || label.contains('_')
-    };
+    fn trim_markdown_trailing_newlines(
+        input: std::borrow::Cow<'_, str>,
+    ) -> std::borrow::Cow<'_, str> {
+        if input.ends_with('\n') {
+            std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
+        } else {
+            input
+        }
+    }
+
+    fn replace_non_markdown_html_line_breaks(input: &str) -> String {
+        if input.contains("\\n") || input.contains('\n') {
+            input.replace("\\n", "<br />").replace('\n', "<br />")
+        } else {
+            input.to_string()
+        }
+    }
 
     if let Some(r) = math_renderer {
         if label.contains("$$") {
@@ -456,31 +482,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             } else {
                 decoded
             };
-            let markdown_auto_wrap = config
-                .as_value()
-                .get("markdownAutoWrap")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(true);
-            let html_out = if crate::text::mermaid_markdown_contains_raw_blocks(decoded.as_ref()) {
-                crate::text::mermaid_markdown_to_html_label_fragment(
-                    decoded.as_ref(),
-                    markdown_auto_wrap,
-                )
-            } else {
-                let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
-                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
-            };
-            let html_out = html_out.trim().to_string();
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
-        }
-        _ if looks_like_markdown => {
-            let decoded = decode_mermaid_entities_for_render_text(label);
-            let decoded = if decoded.contains("\\\\") {
-                std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
-            } else {
-                decoded
-            };
+            let decoded = trim_markdown_trailing_newlines(decoded);
             let markdown_auto_wrap = config
                 .as_value()
                 .get("markdownAutoWrap")
@@ -512,7 +514,8 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 label
             };
             let label = label.trim_end_matches('\n');
-            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+            let wants_p = force_non_markdown_paragraph
+                || crate::text::mermaid_markdown_wants_paragraph_wrap(label);
             let label = crate::flowchart::flowchart_normalize_plain_multiline_label_for_html(label);
             let label = label.as_ref();
 
@@ -526,11 +529,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
                 && !label.contains(":fa-")
             {
                 let inner = if wants_p {
-                    if label.contains('\n') {
-                        label.replace('\n', "<br />")
-                    } else {
-                        label.to_string()
-                    }
+                    replace_non_markdown_html_line_breaks(label)
                 } else {
                     label.to_string()
                 };
@@ -541,13 +540,13 @@ pub(in crate::svg::parity) fn flowchart_label_html(
             }
 
             let label = if wants_p {
-                label.replace('\n', "<br />")
+                replace_non_markdown_html_line_breaks(label)
             } else {
                 label.to_string()
             };
             let fixed_img_width = is_single_img_label(&label);
             let label = normalize_flowchart_img_tags(&label, fixed_img_width);
-            let wrapped = if fixed_img_width || !wants_p {
+            let wrapped = if !wants_p {
                 label
             } else {
                 format!("<p>{}</p>", label)
@@ -575,24 +574,95 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
     text: &str,
     include_style: bool,
 ) {
-    // Mirrors Mermaid's SVG text structure when `flowchart.htmlLabels=false`.
-    if include_style {
-        out.push_str(r#"<text y="-10.1" style="">"#);
-    } else {
-        out.push_str(r#"<text y="-10.1">"#);
-    }
+    write_flowchart_svg_text_impl(out, text, include_style, false, true);
+}
 
-    let trimmed = text.trim();
-    if trimmed.len() >= 2 && trimmed.starts_with('`') && trimmed.ends_with('`') {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
-        out.push_str("</text>");
-        return;
+pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
+    out: &mut String,
+    text: &str,
+    include_style: bool,
+) {
+    write_flowchart_svg_text_impl(out, text, include_style, true, true);
+}
+
+fn open_flowchart_svg_text(out: &mut String, include_style: bool, center_text: bool) {
+    // Mirrors Mermaid's SVG text structure when `flowchart.htmlLabels=false`.
+    match (include_style, center_text) {
+        (true, true) => out.push_str(r#"<text y="-10.1" style="" text-anchor="middle">"#),
+        (true, false) => out.push_str(r#"<text y="-10.1" style="">"#),
+        (false, true) => out.push_str(r#"<text y="-10.1" text-anchor="middle">"#),
+        (false, false) => out.push_str(r#"<text y="-10.1">"#),
     }
+}
+
+fn flowchart_outer_tspan_class(include_row_class: bool) -> &'static str {
+    if include_row_class {
+        "row text-outer-tspan"
+    } else {
+        "text-outer-tspan"
+    }
+}
+
+fn write_empty_flowchart_tspan(out: &mut String, center_text: bool, include_row_class: bool) {
+    let outer_class = flowchart_outer_tspan_class(include_row_class);
+    if center_text {
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>"#,
+            outer_class
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"/>"#,
+            outer_class
+        );
+    }
+}
+
+fn open_flowchart_tspan(out: &mut String, idx: usize, center_text: bool, include_row_class: bool) {
+    let text_anchor = if center_text {
+        r#" text-anchor="middle""#
+    } else {
+        ""
+    };
+    let outer_class = flowchart_outer_tspan_class(include_row_class);
+    if idx == 0 {
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"{}>"#,
+            outer_class, text_anchor
+        );
+    } else {
+        // Mermaid sets an absolute `y` for each subsequent line, then uses `dy="1.1em"` as
+        // the line-height increment. This yields `y="1em"` for the 2nd line and `y="2.1em"`
+        // for the 3rd line, etc.
+        let y_em = if idx == 1 {
+            "1em".to_string()
+        } else {
+            format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+        };
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="{}" dy="1.1em"{}>"#,
+            outer_class, y_em, text_anchor
+        );
+    }
+}
+
+fn write_flowchart_svg_text_impl(
+    out: &mut String,
+    text: &str,
+    include_style: bool,
+    center_text: bool,
+    include_row_class: bool,
+) {
+    open_flowchart_svg_text(out, include_style, center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     let allow_simple_markdown = !text.contains('`');
     if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        write_empty_flowchart_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
         return;
     }
@@ -653,23 +723,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
     }
 
     for (idx, line) in lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
-        } else {
-            // Mermaid sets an absolute `y` for each subsequent line, then uses `dy="1.1em"` as
-            // the line-height increment. This yields `y="1em"` for the 2nd line and `y="2.1em"`
-            // for the 3rd line, etc.
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
+        open_flowchart_tspan(out, idx, center_text, include_row_class);
         let words: Vec<String> = split_mermaid_escaped_tag_tokens(line).unwrap_or_else(|| {
             line.split_whitespace()
                 .filter(|s| !s.is_empty())
@@ -755,34 +809,19 @@ fn write_flowchart_svg_text_markdown_lines(
     out: &mut String,
     lines: &[Vec<(String, bool, bool)>],
     include_style: bool,
+    center_text: bool,
+    include_row_class: bool,
 ) {
-    if include_style {
-        out.push_str(r#"<text y="-10.1" style="">"#);
-    } else {
-        out.push_str(r#"<text y="-10.1">"#);
-    }
+    open_flowchart_svg_text(out, include_style, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        write_empty_flowchart_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
         return;
     }
 
     for (idx, words) in lines.iter().enumerate() {
-        if idx == 0 {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
-        } else {
-            let y_em = if idx == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
+        open_flowchart_tspan(out, idx, center_text, include_row_class);
 
         for (word_idx, (word, is_strong, is_em)) in words.iter().enumerate() {
             let font_style = if *is_em { "italic" } else { "normal" };
@@ -814,7 +853,30 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
 ) {
     let markdown = normalized_markdown_label(markdown);
     let lines = markdown_to_svg_word_lines(markdown);
-    write_flowchart_svg_text_markdown_lines(out, &lines, include_style);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false, true);
+}
+
+pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_centered(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+) {
+    let markdown = normalized_markdown_label(markdown);
+    let lines = markdown_to_svg_word_lines(markdown);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true, true);
+}
+
+pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+) {
+    let markdown = normalized_markdown_label(markdown);
+    let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true, true);
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
@@ -827,5 +889,5 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
 ) {
     let markdown = normalized_markdown_label(markdown);
     let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
-    write_flowchart_svg_text_markdown_lines(out, &lines, include_style);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false, true);
 }

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "slug": "mermaid-11-15-complete-adaptation",
+  "title": "Mermaid 11.15 Complete Adaptation",
+  "status": "active",
+  "updated": "2026-06-01",
+  "scope_kind": "execution",
+  "problem": "The repo targets Mermaid 11.15.0 for selected behavior, but full implemented-matrix parity and unsupported-family decisions are not yet closed.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "inventory",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/mermaid-11-15-complete-adaptation/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/mermaid-11-15-complete-adaptation/CONTEXT.jsonl",
+  "gates": [
+    "cargo run -p xtask -- check-alignment",
+    "cargo run -p xtask -- verify-generated",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md",
+    "docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md",
+    "target/compare/*_report_parity.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0001-upstream-baseline.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0019-generated-default-config.md",
+    "docs/adr/0047-layout-golden-snapshots.md",
+    "docs/adr/0050-svg-viewbox-parity.md",
+    "docs/adr/0062-fixture-derived-overrides.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "mermaid-11-15",
+    "svg-parity",
+    "upstream-baselines",
+    "diagram-family-scope"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Continue while work stays within Mermaid 11.15 implemented-matrix parity, upstream SVG baseline authority, and unsupported-family decisions. Split child lanes for new diagram families or large renderer rewrites."
+  }
+}

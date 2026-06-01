@@ -3,7 +3,7 @@ fn node_render_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
 ) -> (f64, f64) {
-    // This function mirrors Mermaid `@11.12.2` node shape sizing rules at the "rendering-elements"
+    // This function mirrors Mermaid `@11.15.0` node shape sizing rules at the "rendering-elements"
     // layer, but uses our headless `TextMeasurer` metrics instead of DOM `getBBox()`.
     //
     // References:
@@ -171,7 +171,7 @@ fn node_render_dimensions(
         "anchor" => (2.001_899_003_982_544, 2.0),
 
         // Default flowchart process node.
-        "squareRect" => (text_w + 4.0 * p, text_h + 2.0 * p),
+        "squareRect" | "data-store" | "datastore" => (text_w + 4.0 * p, text_h + 2.0 * p),
 
         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.
@@ -188,16 +188,12 @@ fn node_render_dimensions(
             (s, s)
         }
 
-        // Hexagon.
+        // Hexagon / prepare. Mermaid 11.15 computes the shoulder from the padded height, then
+        // adds that shoulder on both sides plus the regular horizontal padding.
         "hexagon" | "hex" | "prepare" => {
             let h = text_h + p;
-            let w0 = text_w + 2.5 * p;
-            // Match Mermaid@11.12.2 evaluation order:
-            // `halfWidth = w / 2; m = halfWidth / 6; halfWidth += m; width = 2 * halfWidth`.
-            let mut half_width = w0 / 2.0;
-            let m = half_width / 6.0;
-            half_width += m;
-            (half_width * 2.0, h)
+            let m = h / 4.0;
+            (text_w + 2.0 * m + p, h)
         }
 
         // Stadium/terminator.
@@ -252,7 +248,7 @@ fn node_render_dimensions(
             // by `rectOffset` (only on the top/left edges) after `updateNodeBounds(...)`.
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
-            let rect_offset = 5.0;
+            let rect_offset = 10.0;
             f32_dims(w + rect_offset, h + rect_offset)
         }
 
@@ -265,8 +261,9 @@ fn node_render_dimensions(
 
         // Double circle.
         "doublecircle" | "dbl-circ" | "double-circle" => {
-            // `gap = 5` is hard-coded in Mermaid.
-            let d = text_w + p + 10.0;
+            // Mermaid `doubleCircle.ts`: outer radius is `bbox.width / 2 + padding`;
+            // the inner circle uses a fixed 5px gap.
+            let d = text_w + 2.0 * p;
             (d, d)
         }
 
@@ -298,8 +295,8 @@ fn node_render_dimensions(
 
         // Flowchart v2 delay / halfRoundedRectangle (rendering-elements).
         "delay" | "half-rounded-rectangle" => {
-            let min_width = 80.0;
-            let min_height = 50.0;
+            let min_width = 15.0;
+            let min_height = 10.0;
             let w = (text_w + 2.0 * p).max(min_width);
             let h = (text_h + 2.0 * p).max(min_height);
             let radius = h / 2.0;
@@ -324,17 +321,17 @@ fn node_render_dimensions(
 
         // Flowchart v2 lined cylinder (Disk storage).
         "lin-cyl" | "disk" | "lined-cylinder" => {
-            let w = text_w + p;
+            let w = text_w + 2.0 * p;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
-            let height = text_h + p + 3.0 * ry;
+            let height = text_h + 2.0 * p + 3.0 * ry;
             f32_dims(w, height)
         }
 
         // Flowchart v2 curved trapezoid (Display).
         "curv-trap" | "display" | "curved-trapezoid" => {
-            let min_width = 80.0;
-            let min_height = 20.0;
+            let min_width = 20.0;
+            let min_height = 5.0;
             let w = (text_w + 2.0 * p).mul_add(1.25, 0.0).max(min_width);
             let h = (text_h + 2.0 * p).max(min_height);
             let radius = h / 2.0;
@@ -412,7 +409,7 @@ fn node_render_dimensions(
             let h = (text_h + 2.0 * p).max(0.0);
             let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude;
-            let min_width = 70.0;
+            let min_width = 14.0;
             let extra_w = if w < min_width {
                 (min_width - w) / 2.0
             } else {
@@ -444,10 +441,10 @@ fn node_render_dimensions(
         // Flowchart v2 stacked document (multi-wave edged rectangle).
         "docs" | "documents" | "st-doc" | "stacked-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 4.0;
-            let final_h = h + wave_amplitude;
-            let rect_offset = 5.0;
+            let h = (text_h + 3.0 * p).max(0.0);
+            let wave_amplitude = h / 8.0;
+            let final_h = h + wave_amplitude / 2.0;
+            let rect_offset = 10.0;
             let x = -w / 2.0;
             let y = -final_h / 2.0;
 
@@ -492,11 +489,12 @@ fn node_render_dimensions(
 
         // Flowchart v2 paper-tape / wave rectangle.
         "paper-tape" | "flag" => {
-            let min_width = 100.0;
-            let min_height = 50.0;
-            let w = (text_w + 2.0 * p).max(min_width);
-            let h = (text_h + 2.0 * p).max(min_height);
-            let wave_amplitude = (h * 0.2).min(h / 4.0);
+            // Mermaid 11.15 `waveRectangle.ts`: base width uses horizontal padding twice, but
+            // base height adds the vertical padding once before the two wave bands expand the
+            // final bbox.
+            let w = (text_w + 2.0 * p).max(0.0);
+            let h = (text_h + p).max(0.0);
+            let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude * 2.0;
 
             let mut points: Vec<(f64, f64)> = Vec::new();
@@ -531,7 +529,7 @@ fn node_render_dimensions(
         "lin-doc" | "lined-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 4.0;
+            let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude;
             let extra = (w / 2.0) * 0.1;
 
@@ -590,7 +588,7 @@ fn node_render_dimensions(
         "tag-doc" | "tagged-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 4.0;
+            let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude;
             let extra = (w / 2.0) * 0.1;
             let tag_width = 0.2 * w;
@@ -612,15 +610,15 @@ fn node_render_dimensions(
             let x = -w / 2.0 + extra;
             let y = -final_h / 2.0 - tag_height * 0.4;
             let mut tag_points: Vec<(f64, f64)> = Vec::new();
-            tag_points.push((x + w - tag_width, (y + h) * 1.4));
+            tag_points.push((x + w - tag_width, (y + h) * 1.3));
             tag_points.push((x + w, y + h - tag_height));
             tag_points.push((x + w, (y + h) * 0.9));
             tag_points.extend(generate_full_sine_wave_points(
                 x + w,
-                (y + h) * 1.3,
+                (y + h) * 1.25,
                 x + w - tag_width,
-                (y + h) * 1.5,
-                -h * 0.03,
+                (y + h) * 1.3,
+                -h * 0.02,
                 0.5,
             ));
 
@@ -645,7 +643,7 @@ fn node_render_dimensions(
 
         // Flowchart v2 bow-tie rect (Stored data).
         "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
-            let w = text_w + p + 20.0;
+            let w = text_w + 2.0 * p;
             let h = text_h + p;
             let ry = h / 2.0;
             let rx = ry / (2.5 + h / 50.0);
@@ -1022,7 +1020,7 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
                 };
                 let has_label = metrics.width > 0.0 && metrics.height > 0.0;
                 let label_padding = if has_label { 8.0 } else { 0.0 };
-                let label_bbox_w = if has_label { metrics.width } else { 0.0 };
+                let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
                 let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
                 return (
                     image_width.max(label_bbox_w),

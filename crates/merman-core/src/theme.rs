@@ -2,6 +2,8 @@ use crate::MermaidConfig;
 use ryu_js::Buffer;
 use serde_json::{Map, Value};
 
+pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &["default", "base", "dark", "forest", "neutral"];
+
 #[derive(Debug, Clone, Copy)]
 struct Rgb01 {
     r: f64,
@@ -71,6 +73,14 @@ fn rgb01_to_hex(rgb: Rgb01) -> String {
         g.clamp(0, 255),
         b.clamp(0, 255)
     )
+}
+
+fn invert_rgb01_to_hex(rgb: Rgb01) -> String {
+    rgb01_to_hex(Rgb01 {
+        r: 1.0 - rgb.r,
+        g: 1.0 - rgb.g,
+        b: 1.0 - rgb.b,
+    })
 }
 
 fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
@@ -200,6 +210,37 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
     }
 }
 
+fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
+    match config.as_value().get("themeVariables") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    }
+}
+
+fn mermaid_default_font_family() -> Value {
+    Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string())
+}
+
+fn mk_border_hsl(hsl: Hsl, dark_mode: bool) -> String {
+    fmt_hsl(adjust_hsl(
+        hsl,
+        0.0,
+        -40.0,
+        if dark_mode { 10.0 } else { -10.0 },
+    ))
+}
+
+fn ensure_gradient_theme_defaults(tv: &mut Map<String, Value>) {
+    let primary_border_color =
+        get_truthy_string(tv, "primaryBorderColor").unwrap_or_else(|| "#9370DB".to_string());
+    let secondary_border_color = get_truthy_string(tv, "secondaryBorderColor")
+        .unwrap_or_else(|| primary_border_color.clone());
+
+    set_if_missing(tv, "useGradient", Value::Bool(true));
+    set_if_missing(tv, "gradientStart", Value::String(primary_border_color));
+    set_if_missing(tv, "gradientStop", Value::String(secondary_border_color));
+}
+
 fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &str) {
     let background = get_truthy_string(tv, "background").unwrap_or_else(|| "white".to_string());
     let primary_text = get_truthy_string(tv, "primaryTextColor")
@@ -218,6 +259,7 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
     );
     for key in [
         "titleColor",
+        "dataLabelColor",
         "xAxisTitleColor",
         "xAxisLabelColor",
         "xAxisTickColor",
@@ -241,19 +283,575 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
 pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
     let theme = config.get_str("theme").unwrap_or("default");
     match theme {
+        "default" => apply_default_theme_defaults(config),
         "base" => apply_base_theme_defaults(config),
         "dark" => apply_dark_theme_defaults(config),
         "forest" => apply_forest_theme_defaults(config),
         "neutral" => apply_neutral_theme_defaults(config),
-        _ => {}
+        _ => apply_default_theme_defaults(config),
     }
 }
 
+fn apply_default_theme_defaults(config: &mut MermaidConfig) {
+    let mut tv = theme_variables_map(config);
+
+    // Mermaid 11.12.3: `theme-default` constructor defaults and `updateColors()`.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
+    let default_primary = "#ECECFF";
+    let default_secondary = "#ffffde";
+    let default_primary_hsl = parse_hex_rgb01(default_primary)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 240.0,
+            s_pct: 100.0,
+            l_pct: 96.2745098039,
+        });
+    let default_secondary_hsl = parse_hex_rgb01(default_secondary)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 60.0,
+            s_pct: 100.0,
+            l_pct: 93.5294117647,
+        });
+    let default_tertiary_hsl = adjust_hsl(default_primary_hsl, -160.0, 0.0, 0.0);
+
+    set_if_missing(&mut tv, "background", Value::String("white".to_string()));
+    set_if_missing(
+        &mut tv,
+        "primaryColor",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String(default_secondary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "tertiaryColor",
+        Value::String(fmt_hsl(default_tertiary_hsl)),
+    );
+
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String(mk_border_hsl(default_primary_hsl, false)),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(mk_border_hsl(default_secondary_hsl, false)),
+    );
+    set_if_missing(
+        &mut tv,
+        "tertiaryBorderColor",
+        Value::String(mk_border_hsl(default_tertiary_hsl, false)),
+    );
+
+    set_if_missing(
+        &mut tv,
+        "primaryTextColor",
+        Value::String("#131300".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryTextColor",
+        Value::String("#000021".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "tertiaryTextColor",
+        Value::String(invert_rgb01_to_rgb_string(hsl_to_rgb01(
+            default_tertiary_hsl,
+        ))),
+    );
+
+    set_if_missing(
+        &mut tv,
+        "mainBkg",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondBkg",
+        Value::String(default_secondary.to_string()),
+    );
+    set_if_missing(&mut tv, "lineColor", Value::String("#333333".to_string()));
+    set_if_missing(&mut tv, "border1", Value::String("#9370DB".to_string()));
+    set_if_missing(&mut tv, "border2", Value::String("#aaaa33".to_string()));
+    set_if_missing(
+        &mut tv,
+        "arrowheadColor",
+        Value::String("#333333".to_string()),
+    );
+    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
+    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
+    set_if_missing(
+        &mut tv,
+        "labelBackground",
+        Value::String("rgba(232,232,232, 0.8)".to_string()),
+    );
+    set_if_missing(&mut tv, "textColor", Value::String("#333".to_string()));
+    set_if_missing(&mut tv, "THEME_COLOR_LIMIT", Value::Number(12.into()));
+    set_if_missing(&mut tv, "radius", Value::Number(5.into()));
+    set_if_missing(&mut tv, "strokeWidth", Value::Number(1.into()));
+
+    let main_bkg = get_truthy_string(&tv, "mainBkg").unwrap_or_else(|| default_primary.to_string());
+    let second_bkg =
+        get_truthy_string(&tv, "secondBkg").unwrap_or_else(|| default_secondary.to_string());
+    let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "#333333".to_string());
+    let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#333".to_string());
+    let border1 = get_truthy_string(&tv, "border1").unwrap_or_else(|| "#9370DB".to_string());
+    let border2 = get_truthy_string(&tv, "border2").unwrap_or_else(|| "#aaaa33".to_string());
+    let label_background = get_truthy_string(&tv, "labelBackground")
+        .unwrap_or_else(|| "rgba(232,232,232, 0.8)".to_string());
+    let primary_text_color =
+        get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#131300".to_string());
+
+    // Flowchart and block/class surfaces.
+    set_if_missing(&mut tv, "nodeBkg", Value::String(main_bkg.clone()));
+    set_if_missing(&mut tv, "nodeBorder", Value::String(border1.clone()));
+    set_if_missing(&mut tv, "clusterBkg", Value::String(second_bkg.clone()));
+    set_if_missing(&mut tv, "clusterBorder", Value::String(border2.clone()));
+    set_if_missing(
+        &mut tv,
+        "defaultLinkColor",
+        Value::String(line_color.clone()),
+    );
+    set_if_missing(&mut tv, "titleColor", Value::String(text_color.clone()));
+    set_if_missing(
+        &mut tv,
+        "edgeLabelBackground",
+        Value::String(label_background.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "nodeTextColor",
+        Value::String(primary_text_color.clone()),
+    );
+
+    // Sequence diagram surfaces.
+    set_if_missing(&mut tv, "actorBorder", Value::String(border1.clone()));
+    set_if_missing(&mut tv, "actorBkg", Value::String(main_bkg.clone()));
+    set_if_missing(
+        &mut tv,
+        "actorTextColor",
+        Value::String("black".to_string()),
+    );
+    let actor_text_color =
+        get_truthy_string(&tv, "actorTextColor").unwrap_or_else(|| "black".to_string());
+    set_if_missing(&mut tv, "actorLineColor", Value::String(border1.clone()));
+    set_if_missing(&mut tv, "labelBoxBkgColor", Value::String(main_bkg.clone()));
+    set_if_missing(&mut tv, "signalColor", Value::String(text_color.clone()));
+    set_if_missing(
+        &mut tv,
+        "signalTextColor",
+        Value::String(text_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "labelBoxBorderColor",
+        Value::String(border1.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "labelTextColor",
+        Value::String(actor_text_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "loopTextColor",
+        Value::String(actor_text_color.clone()),
+    );
+    set_if_missing(&mut tv, "noteBorderColor", Value::String(border2.clone()));
+    set_if_missing(
+        &mut tv,
+        "noteBkgColor",
+        Value::String("#fff5ad".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "noteTextColor",
+        Value::String(actor_text_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "activationBorderColor",
+        Value::String("#666".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "activationBkgColor",
+        Value::String("#f4f4f4".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "sequenceNumberColor",
+        Value::String("white".to_string()),
+    );
+    let rect_bkg_color = get_truthy_string(&tv, "tertiaryColor")
+        .map(Value::String)
+        .unwrap_or_else(|| Value::String(fmt_hsl(default_tertiary_hsl)));
+    set_if_missing(&mut tv, "rectBkgColor", rect_bkg_color);
+
+    // Gantt chart surfaces.
+    for (key, value) in [
+        ("sectionBkgColor", "rgba(102, 102, 255, 0.49)"),
+        ("altSectionBkgColor", "white"),
+        ("sectionBkgColor2", "#fff400"),
+        ("excludeBkgColor", "#eeeeee"),
+        ("taskBorderColor", "#534fbc"),
+        ("taskBkgColor", "#8a90dd"),
+        ("taskTextLightColor", "white"),
+        ("taskTextColor", "white"),
+        ("taskTextDarkColor", "black"),
+        ("taskTextOutsideColor", "black"),
+        ("taskTextClickableColor", "#003163"),
+        ("activeTaskBorderColor", "#534fbc"),
+        ("activeTaskBkgColor", "#bfc7ff"),
+        ("gridColor", "lightgrey"),
+        ("doneTaskBkgColor", "lightgrey"),
+        ("doneTaskBorderColor", "grey"),
+        ("critBorderColor", "#ff8888"),
+        ("critBkgColor", "red"),
+        ("todayLineColor", "red"),
+        ("vertLineColor", "navy"),
+        ("noteFontWeight", "normal"),
+        ("fontWeight", "normal"),
+    ] {
+        set_if_missing(&mut tv, key, Value::String(value.to_string()));
+    }
+
+    // C4 and architecture defaults.
+    let primary_border_color = get_truthy_string(&tv, "primaryBorderColor")
+        .unwrap_or_else(|| mk_border_hsl(default_primary_hsl, false));
+    let secondary_border_color = get_truthy_string(&tv, "secondaryBorderColor")
+        .unwrap_or_else(|| mk_border_hsl(default_secondary_hsl, false));
+    set_if_missing(
+        &mut tv,
+        "personBorder",
+        Value::String(primary_border_color.clone()),
+    );
+    set_if_missing(&mut tv, "personBkg", Value::String(main_bkg.clone()));
+    set_if_missing(&mut tv, "archEdgeColor", Value::String(line_color.clone()));
+    set_if_missing(
+        &mut tv,
+        "archEdgeArrowColor",
+        Value::String(line_color.clone()),
+    );
+    set_if_missing(&mut tv, "archEdgeWidth", Value::String("3".to_string()));
+    set_if_missing(
+        &mut tv,
+        "archGroupBorderColor",
+        Value::String(primary_border_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "archGroupBorderWidth",
+        Value::String("2px".to_string()),
+    );
+
+    // ER, state, class, and requirement surfaces.
+    set_if_missing(
+        &mut tv,
+        "rowOdd",
+        Value::String(fmt_hsl(adjust_hsl(default_primary_hsl, 0.0, 0.0, 75.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "rowEven",
+        Value::String(fmt_hsl(adjust_hsl(default_primary_hsl, 0.0, 0.0, 1.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "attributeBackgroundColorOdd",
+        Value::String("#ffffff".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "attributeBackgroundColorEven",
+        Value::String("#f2f2f2".to_string()),
+    );
+    set_if_missing(&mut tv, "labelColor", Value::String("black".to_string()));
+    set_if_missing(
+        &mut tv,
+        "errorBkgColor",
+        Value::String("#552222".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "errorTextColor",
+        Value::String("#552222".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "transitionColor",
+        Value::String(line_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "transitionLabelColor",
+        Value::String(text_color.clone()),
+    );
+    let state_label_color = get_truthy_string(&tv, "stateBkg")
+        .map(Value::String)
+        .unwrap_or_else(|| Value::String(primary_text_color.clone()));
+    set_if_missing(&mut tv, "stateLabelColor", state_label_color);
+    set_if_missing(&mut tv, "stateBkg", Value::String(main_bkg.clone()));
+    let state_bkg = get_truthy_string(&tv, "stateBkg").unwrap_or_else(|| main_bkg.clone());
+    set_if_missing(&mut tv, "labelBackgroundColor", Value::String(state_bkg));
+    let composite_background = get_truthy_string(&tv, "background")
+        .map(Value::String)
+        .unwrap_or_else(|| Value::String("white".to_string()));
+    set_if_missing(&mut tv, "compositeBackground", composite_background);
+    set_if_missing(
+        &mut tv,
+        "altBackground",
+        Value::String("#f0f0f0".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "compositeTitleBackground",
+        Value::String(main_bkg.clone()),
+    );
+    let node_border = get_truthy_string(&tv, "nodeBorder").unwrap_or_else(|| border1.clone());
+    set_if_missing(
+        &mut tv,
+        "compositeBorder",
+        Value::String(node_border.clone()),
+    );
+    set_if_missing(&mut tv, "innerEndBackground", Value::String(node_border));
+    set_if_missing(
+        &mut tv,
+        "specialStateColor",
+        Value::String(line_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "classText",
+        Value::String(primary_text_color.clone()),
+    );
+
+    // Color scale.
+    let primary_hsl = get_truthy_string(&tv, "primaryColor")
+        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+        .unwrap_or(default_primary_hsl);
+    let secondary_hsl = get_truthy_string(&tv, "secondaryColor")
+        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+        .unwrap_or(default_secondary_hsl);
+    let tertiary_hsl = get_truthy_string(&tv, "tertiaryColor")
+        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+        .unwrap_or(default_tertiary_hsl);
+    let c_scales: [Hsl; 12] = [
+        primary_hsl,
+        secondary_hsl,
+        tertiary_hsl,
+        adjust_hsl(primary_hsl, 30.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 60.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 90.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 120.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 150.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 210.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 270.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 300.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 330.0, 0.0, 0.0),
+    ]
+    .map(|base| adjust_hsl(base, 0.0, 0.0, -10.0));
+
+    for (i, v) in c_scales.iter().enumerate() {
+        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(fmt_hsl(*v)));
+    }
+    set_if_missing(
+        &mut tv,
+        "cScalePeer1",
+        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -45.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "cScalePeer2",
+        Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
+    );
+    for (i, c_hsl) in c_scales.iter().enumerate() {
+        set_if_missing(
+            &mut tv,
+            &format!("cScalePeer{i}"),
+            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 0.0, 0.0, -25.0))),
+        );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleInv{i}"),
+            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 180.0, 0.0, 0.0))),
+        );
+        if i == 0 || i == 3 {
+            set_if_missing(
+                &mut tv,
+                &format!("cScaleLabel{i}"),
+                Value::String("#ffffff".to_string()),
+            );
+        }
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleLabel{i}"),
+            Value::String(actor_text_color.clone()),
+        );
+    }
+    set_if_missing(
+        &mut tv,
+        "scaleLabelColor",
+        Value::String(actor_text_color.clone()),
+    );
+
+    // Journey and pie color defaults.
+    for (key, value) in [
+        ("fillType0", fmt_hsl(primary_hsl)),
+        ("fillType1", fmt_hsl(secondary_hsl)),
+        (
+            "fillType2",
+            fmt_hsl(adjust_hsl(primary_hsl, 64.0, 0.0, 0.0)),
+        ),
+        (
+            "fillType3",
+            fmt_hsl(adjust_hsl(secondary_hsl, 64.0, 0.0, 0.0)),
+        ),
+        (
+            "fillType4",
+            fmt_hsl(adjust_hsl(primary_hsl, -64.0, 0.0, 0.0)),
+        ),
+        (
+            "fillType5",
+            fmt_hsl(adjust_hsl(secondary_hsl, -64.0, 0.0, 0.0)),
+        ),
+        (
+            "fillType6",
+            fmt_hsl(adjust_hsl(primary_hsl, 128.0, 0.0, 0.0)),
+        ),
+        (
+            "fillType7",
+            fmt_hsl(adjust_hsl(secondary_hsl, 128.0, 0.0, 0.0)),
+        ),
+        ("pie1", fmt_hsl(primary_hsl)),
+        ("pie2", fmt_hsl(secondary_hsl)),
+        ("pie3", fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
+        ("pie4", fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, -10.0))),
+        ("pie5", fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -30.0))),
+        ("pie6", fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -20.0))),
+        ("pie7", fmt_hsl(adjust_hsl(primary_hsl, 60.0, 0.0, -20.0))),
+        ("pie8", fmt_hsl(adjust_hsl(primary_hsl, -60.0, 0.0, -40.0))),
+        ("pie9", fmt_hsl(adjust_hsl(primary_hsl, 120.0, 0.0, -40.0))),
+        ("pie10", fmt_hsl(adjust_hsl(primary_hsl, 60.0, 0.0, -40.0))),
+        ("pie11", fmt_hsl(adjust_hsl(primary_hsl, -90.0, 0.0, -40.0))),
+        ("pie12", fmt_hsl(adjust_hsl(primary_hsl, 120.0, 0.0, -30.0))),
+    ] {
+        set_if_missing(&mut tv, key, Value::String(value));
+    }
+    for (key, value) in [
+        ("pieTitleTextSize", "25px"),
+        ("pieTitleTextColor", "black"),
+        ("pieSectionTextSize", "17px"),
+        ("pieSectionTextColor", text_color.as_str()),
+        ("pieLegendTextSize", "17px"),
+        ("pieLegendTextColor", "black"),
+        ("pieStrokeColor", "black"),
+        ("pieStrokeWidth", "2px"),
+        ("pieOuterStrokeWidth", "2px"),
+        ("pieOuterStrokeColor", "black"),
+        ("pieOpacity", "0.7"),
+    ] {
+        set_if_missing(&mut tv, key, Value::String(value.to_string()));
+    }
+
+    // Requirement and git surfaces consumed by current renderers.
+    set_if_missing(
+        &mut tv,
+        "requirementBackground",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "requirementBorderColor",
+        Value::String(primary_border_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "requirementBorderSize",
+        Value::String("1".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "requirementTextColor",
+        Value::String(primary_text_color.clone()),
+    );
+    set_if_missing(&mut tv, "relationColor", Value::String(line_color.clone()));
+    set_if_missing(
+        &mut tv,
+        "relationLabelBackground",
+        Value::String(label_background),
+    );
+    set_if_missing(
+        &mut tv,
+        "relationLabelColor",
+        Value::String(actor_text_color.clone()),
+    );
+
+    set_if_missing(&mut tv, "tagLabelColor", Value::String(primary_text_color));
+    set_if_missing(
+        &mut tv,
+        "tagLabelBackground",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "tagLabelBorder",
+        Value::String(primary_border_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "tagLabelFontSize",
+        Value::String("10px".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "commitLabelColor",
+        Value::String("#000021".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "commitLabelBackground",
+        Value::String(default_secondary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "commitLabelFontSize",
+        Value::String("10px".to_string()),
+    );
+
+    set_if_missing(&mut tv, "useGradient", Value::Bool(false));
+    set_if_missing(
+        &mut tv,
+        "gradientStart",
+        Value::String(primary_border_color),
+    );
+    set_if_missing(
+        &mut tv,
+        "gradientStop",
+        Value::String(secondary_border_color),
+    );
+    set_if_missing(
+        &mut tv,
+        "dropShadow",
+        Value::String("drop-shadow(1px 2px 2px rgba(185, 185, 185, 1))".to_string()),
+    );
+
+    ensure_xychart_theme_defaults(
+        &mut tv,
+        "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3",
+    );
+
+    config.set_value("themeVariables", Value::Object(tv));
+}
+
 fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
-    let mut tv = match config.as_value().get("themeVariables") {
-        Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
-    };
+    let mut tv = theme_variables_map(config);
 
     // Mermaid 11.12.2: `theme-dark` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
@@ -282,21 +880,13 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
             if let Some(rgb) = parse_hex_rgb01(&primary_color) {
                 tv.insert(
                     "primaryTextColor".to_string(),
-                    Value::String(rgb01_to_hex(Rgb01 {
-                        r: 1.0 - rgb.r,
-                        g: 1.0 - rgb.g,
-                        b: 1.0 - rgb.b,
-                    })),
+                    Value::String(invert_rgb01_to_hex(rgb)),
                 );
             }
         }
     }
     set_if_missing(&mut tv, "textColor", Value::String("#ccc".to_string()));
-    set_if_missing(
-        &mut tv,
-        "fontFamily",
-        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-    );
+    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
     set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
     set_if_missing(&mut tv, "border1", Value::String("#ccc".to_string()));
     set_if_missing(
@@ -316,6 +906,33 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         Value::String("#a44141".to_string()),
     );
     set_if_missing(&mut tv, "errorTextColor", Value::String("#ddd".to_string()));
+
+    let primary_color =
+        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#1f2020".to_string());
+    let primary_hsl = parse_hex_rgb01(&primary_color)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 180.0,
+            s_pct: 1.5873015873,
+            l_pct: 12.3529411765,
+        });
+    let secondary_hsl = adjust_hsl(primary_hsl, 0.0, 0.0, 16.0);
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String(fmt_hsl(secondary_hsl)),
+    );
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String("#cccccc".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(mk_border_hsl(secondary_hsl, false)),
+    );
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(
         &mut tv,
@@ -357,11 +974,7 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(rgb01_to_hex(Rgb01 {
-                r: 1.0 - rgb.r,
-                g: 1.0 - rgb.g,
-                b: 1.0 - rgb.b,
-            })),
+            Value::String(invert_rgb01_to_hex(rgb)),
         );
 
         // `theme-dark` label scale: `scaleLabelColor`.
@@ -383,10 +996,7 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
 }
 
 fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
-    let mut tv = match config.as_value().get("themeVariables") {
-        Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
-    };
+    let mut tv = theme_variables_map(config);
 
     // Mermaid 11.12.2: `theme-forest` base colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
@@ -412,11 +1022,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         "arrowheadColor",
         Value::String("green".to_string()),
     );
-    set_if_missing(
-        &mut tv,
-        "fontFamily",
-        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-    );
+    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
     set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
     set_if_missing(&mut tv, "titleColor", Value::String("#333".to_string()));
     set_if_missing(
@@ -447,11 +1053,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     if get_truthy_string(&tv, "primaryTextColor").is_none() {
         tv.insert(
             "primaryTextColor".to_string(),
-            Value::String(rgb01_to_hex(Rgb01 {
-                r: 1.0 - primary_rgb.r,
-                g: 1.0 - primary_rgb.g,
-                b: 1.0 - primary_rgb.b,
-            })),
+            Value::String(invert_rgb01_to_hex(primary_rgb)),
         );
     }
 
@@ -508,27 +1110,17 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         .get("darkMode")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let mk_border_delta_l = if dark_mode { 10.0 } else { -10.0 };
     set_if_missing(
         &mut tv,
         "primaryBorderColor",
-        Value::String(fmt_hsl(adjust_hsl(
-            primary_hsl,
-            0.0,
-            -40.0,
-            mk_border_delta_l,
-        ))),
+        Value::String(mk_border_hsl(primary_hsl, dark_mode)),
     );
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(fmt_hsl(adjust_hsl(
-            secondary_hsl,
-            0.0,
-            -40.0,
-            mk_border_delta_l,
-        ))),
+        Value::String(mk_border_hsl(secondary_hsl, dark_mode)),
     );
+    ensure_gradient_theme_defaults(&mut tv);
 
     // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
     let tertiary_hsl = if let Some(v) =
@@ -546,12 +1138,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(
         &mut tv,
         "tertiaryBorderColor",
-        Value::String(fmt_hsl(adjust_hsl(
-            tertiary_hsl,
-            0.0,
-            -40.0,
-            mk_border_delta_l,
-        ))),
+        Value::String(mk_border_hsl(tertiary_hsl, dark_mode)),
     );
 
     // `theme-forest` ends up using black label text (via `actorTextColor`).
@@ -632,10 +1219,7 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
 }
 
 fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
-    let mut tv = match config.as_value().get("themeVariables") {
-        Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
-    };
+    let mut tv = theme_variables_map(config);
 
     // `theme-neutral` constructor defaults.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
@@ -646,11 +1230,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
             if let Some(rgb) = parse_hex_rgb01(&primary_color) {
                 tv.insert(
                     "primaryTextColor".to_string(),
-                    Value::String(rgb01_to_hex(Rgb01 {
-                        r: 1.0 - rgb.r,
-                        g: 1.0 - rgb.g,
-                        b: 1.0 - rgb.b,
-                    })),
+                    Value::String(invert_rgb01_to_hex(rgb)),
                 );
             }
         }
@@ -662,6 +1242,41 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
         "#777",
     ];
+
+    let primary_color =
+        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#eee".to_string());
+    let primary_hsl = parse_hex_rgb01(&primary_color)
+        .map(rgb01_to_hsl)
+        .unwrap_or(Hsl {
+            h_deg: 0.0,
+            s_pct: 0.0,
+            l_pct: 93.3333333333,
+        });
+    let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
+    let secondary_hsl = parse_hex_rgb01(&contrast)
+        .map(rgb01_to_hsl)
+        .map(|hsl| adjust_hsl(hsl, 0.0, 0.0, 55.0))
+        .unwrap_or(Hsl {
+            h_deg: 0.0,
+            s_pct: 0.0,
+            l_pct: 98.9215686275,
+        });
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String(fmt_hsl(secondary_hsl)),
+    );
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String(mk_border_hsl(primary_hsl, false)),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(mk_border_hsl(secondary_hsl, false)),
+    );
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "labelTextColor", Value::String("#333".to_string()));
     set_if_missing(
@@ -695,11 +1310,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(rgb01_to_hex(Rgb01 {
-                r: 1.0 - rgb.r,
-                g: 1.0 - rgb.g,
-                b: 1.0 - rgb.b,
-            })),
+            Value::String(invert_rgb01_to_hex(rgb)),
         );
 
         // `theme-neutral` label scale: `scaleLabelColor`, with special-cased indices.
@@ -729,10 +1340,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
 }
 
 fn apply_base_theme_defaults(config: &mut MermaidConfig) {
-    let mut tv = match config.as_value().get("themeVariables") {
-        Some(Value::Object(m)) => m.clone(),
-        _ => Map::new(),
-    };
+    let mut tv = theme_variables_map(config);
 
     let dark_mode = tv
         .get("darkMode")
@@ -756,11 +1364,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         "primaryTextColor",
         Value::String(if dark_mode { "#eee" } else { "#333" }.to_string()),
     );
-    set_if_missing(
-        &mut tv,
-        "fontFamily",
-        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-    );
+    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
     set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
 
     let primary_text_color = get_truthy_string(&tv, "primaryTextColor")
@@ -803,46 +1407,35 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let primary_border_hsl = if get_truthy_string(&tv, "primaryBorderColor").is_some() {
         None
     } else {
-        Some(adjust_hsl(
-            primary_hsl,
-            0.0,
-            -40.0,
-            if dark_mode { 10.0 } else { -10.0 },
-        ))
+        Some(mk_border_hsl(primary_hsl, dark_mode))
     };
-    if let Some(hsl) = primary_border_hsl {
-        tv.insert(
-            "primaryBorderColor".to_string(),
-            Value::String(fmt_hsl(hsl)),
-        );
+    if let Some(color) = primary_border_hsl {
+        tv.insert("primaryBorderColor".to_string(), Value::String(color));
+    }
+
+    let secondary_border_hsl = if get_truthy_string(&tv, "secondaryBorderColor").is_some() {
+        None
+    } else {
+        Some(mk_border_hsl(secondary_hsl, dark_mode))
+    };
+    if let Some(color) = secondary_border_hsl {
+        tv.insert("secondaryBorderColor".to_string(), Value::String(color));
     }
 
     let tertiary_border_hsl = if get_truthy_string(&tv, "tertiaryBorderColor").is_some() {
         None
     } else {
-        Some(adjust_hsl(
-            tertiary_hsl,
-            0.0,
-            -40.0,
-            if dark_mode { 10.0 } else { -10.0 },
-        ))
+        Some(mk_border_hsl(tertiary_hsl, dark_mode))
     };
-    if let Some(hsl) = tertiary_border_hsl {
-        tv.insert(
-            "tertiaryBorderColor".to_string(),
-            Value::String(fmt_hsl(hsl)),
-        );
+    if let Some(color) = tertiary_border_hsl {
+        tv.insert("tertiaryBorderColor".to_string(), Value::String(color));
     }
 
     if get_truthy_string(&tv, "lineColor").is_none() {
         if let Some(bg_rgb) = parse_hex_rgb01(&background) {
             tv.insert(
                 "lineColor".to_string(),
-                Value::String(rgb01_to_hex(Rgb01 {
-                    r: 1.0 - bg_rgb.r,
-                    g: 1.0 - bg_rgb.g,
-                    b: 1.0 - bg_rgb.b,
-                })),
+                Value::String(invert_rgb01_to_hex(bg_rgb)),
             );
         }
     }
@@ -861,6 +1454,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "tertiaryBorderColor").unwrap_or_else(|| "#aaaa33".to_string());
     let tertiary_color = get_truthy_string(&tv, "tertiaryColor")
         .unwrap_or_else(|| "hsl(80, 100%, 96.2745098039%)".to_string());
+    ensure_gradient_theme_defaults(&mut tv);
 
     set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
     set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
@@ -970,6 +1564,137 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn supported_theme_names_match_core_expansion_surface() {
+        assert_eq!(
+            crate::supported_themes(),
+            &["default", "base", "dark", "forest", "neutral"]
+        );
+    }
+
+    #[test]
+    fn default_theme_populates_mermaid_theme_variables() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "default"
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(tv.get("background").and_then(|v| v.as_str()), Some("white"));
+        assert_eq!(
+            tv.get("primaryColor").and_then(|v| v.as_str()),
+            Some("#ECECFF")
+        );
+        assert_eq!(
+            tv.get("secondaryColor").and_then(|v| v.as_str()),
+            Some("#ffffde")
+        );
+        assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#ECECFF"));
+        assert_eq!(
+            tv.get("nodeBorder").and_then(|v| v.as_str()),
+            Some("#9370DB")
+        );
+        assert_eq!(
+            tv.get("edgeLabelBackground").and_then(|v| v.as_str()),
+            Some("rgba(232,232,232, 0.8)")
+        );
+        assert_eq!(
+            tv.get("classText").and_then(|v| v.as_str()),
+            Some("#131300")
+        );
+        assert_eq!(
+            tv.get("noteTextColor").and_then(|v| v.as_str()),
+            Some("black")
+        );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(240, 60%, 86.2745098039%)")
+        );
+
+        let xy = tv.get("xyChart").and_then(|v| v.as_object()).unwrap();
+        assert_eq!(
+            xy.get("backgroundColor").and_then(|v| v.as_str()),
+            Some("white")
+        );
+        assert_eq!(
+            xy.get("dataLabelColor").and_then(|v| v.as_str()),
+            Some("#131300")
+        );
+    }
+
+    #[test]
+    fn default_theme_preserves_user_overrides_after_derivation() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "default",
+            "themeVariables": {
+                "primaryColor": "#111111",
+                "mainBkg": "#101010",
+                "classText": "#abcdef",
+                "xyChart": {
+                    "titleColor": "red"
+                }
+            }
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(
+            tv.get("primaryColor").and_then(|v| v.as_str()),
+            Some("#111111")
+        );
+        assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#101010"));
+        assert_eq!(tv.get("nodeBkg").and_then(|v| v.as_str()), Some("#101010"));
+        assert_eq!(
+            tv.get("classText").and_then(|v| v.as_str()),
+            Some("#abcdef")
+        );
+        assert_eq!(
+            tv.get("primaryTextColor").and_then(|v| v.as_str()),
+            Some("#131300")
+        );
+
+        let xy = tv.get("xyChart").and_then(|v| v.as_object()).unwrap();
+        assert_eq!(xy.get("titleColor").and_then(|v| v.as_str()), Some("red"));
+        assert_eq!(
+            xy.get("dataLabelColor").and_then(|v| v.as_str()),
+            Some("#131300")
+        );
+    }
+
+    #[test]
+    fn unknown_theme_falls_back_to_default_theme_variables() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "unknown"
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(
+            tv.get("primaryColor").and_then(|v| v.as_str()),
+            Some("#ECECFF")
+        );
+        assert_eq!(
+            tv.get("classText").and_then(|v| v.as_str()),
+            Some("#131300")
+        );
+    }
+
+    #[test]
     fn base_theme_derivation_matches_upstream_fixture_values() {
         let mut cfg = MermaidConfig::from_value(json!({
             "theme": "base",
@@ -995,6 +1720,19 @@ mod tests {
         assert_eq!(
             tv.get("nodeBorder").and_then(|v| v.as_str()),
             Some("hsl(284.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
+        assert_eq!(
+            tv.get("secondaryBorderColor").and_then(|v| v.as_str()),
+            Some("hsl(164.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(284.0816326531, 5.7943925234%, 30.9803921569%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(164.0816326531, 5.7943925234%, 30.9803921569%)")
         );
         assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#411d4e"));
         assert_eq!(
@@ -1049,6 +1787,15 @@ mod tests {
             tv.get("cScalePeer2").and_then(|v| v.as_str()),
             Some("hsl(78.1578947368, 58.4615384615%, 44.5098039216%)")
         );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(78.1578947368, 18.4615384615%, 64.5098039216%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(98.961038961, 60%, 74.9019607843%)")
+        );
     }
 
     #[test]
@@ -1077,6 +1824,11 @@ mod tests {
             tv.get("cScaleLabel1").and_then(|v| v.as_str()),
             Some("lightgrey")
         );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("#cccccc")
+        );
     }
 
     #[test]
@@ -1104,6 +1856,15 @@ mod tests {
         assert_eq!(
             tv.get("cScaleLabel0").and_then(|v| v.as_str()),
             Some("#F4F4F4")
+        );
+        assert_eq!(tv.get("useGradient").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            tv.get("gradientStart").and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 83.3333333333%)")
+        );
+        assert_eq!(
+            tv.get("gradientStop").and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 88.9215686275%)")
         );
     }
 }

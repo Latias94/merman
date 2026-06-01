@@ -121,6 +121,43 @@ Alice->Bob: Hi
 }
 
 #[test]
+fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata(
+        "architecture-beta\n  service a(server)[A]\n",
+        ParseOptions::strict(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let arch = &default.effective_config.as_value()["architecture"];
+    assert_eq!(arch["randomize"], json!(false));
+    assert_eq!(arch["nodeSeparation"], json!(75));
+    assert_eq!(arch["idealEdgeLengthMultiplier"], json!(1.5));
+    assert_eq!(arch["edgeElasticity"], json!(0.45));
+    assert_eq!(arch["numIter"], json!(2500));
+    assert_eq!(arch["seed"], json!(1));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"architecture": {"randomize": true, "nodeSeparation": 120, "idealEdgeLengthMultiplier": 2, "edgeElasticity": 0.6, "numIter": 5000, "seed": 7}}}%%
+architecture-beta
+  service a(server)[A]
+"#,
+        ParseOptions::strict(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let arch = &configured.effective_config.as_value()["architecture"];
+    assert_eq!(arch["randomize"], json!(true));
+    assert_eq!(arch["nodeSeparation"], json!(120));
+    assert_eq!(arch["idealEdgeLengthMultiplier"], json!(2));
+    assert_eq!(arch["edgeElasticity"], json!(0.6));
+    assert_eq!(arch["numIter"], json!(5000));
+    assert_eq!(arch["seed"], json!(7));
+}
+
+#[test]
 fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
@@ -491,6 +528,50 @@ line "Series 2" [2, 3]
 }
 
 #[test]
+fn parse_xychart_exposes_11_15_data_label_outside_default_and_override() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("xychart\nbar [1]", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let xychart = &default.effective_config.as_value()["xyChart"];
+    assert_eq!(xychart["showDataLabel"], json!(false));
+    assert_eq!(xychart["showDataLabelOutsideBar"], json!(false));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"xyChart": {"showDataLabel": true, "showDataLabelOutsideBar": true}}}%%
+xychart
+bar [1]"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let xychart = &configured.effective_config.as_value()["xyChart"];
+    assert_eq!(xychart["showDataLabel"], json!(true));
+    assert_eq!(xychart["showDataLabelOutsideBar"], json!(true));
+}
+
+#[test]
+fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("classDiagram\nclass A", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let class = &default.effective_config.as_value()["class"];
+    assert_eq!(class["hierarchicalNamespaces"], json!(true));
+
+    let configured = block_on(engine.parse_metadata(
+        r#"%%{init: {"class": {"hierarchicalNamespaces": false}}}%%
+classDiagram
+class A"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let class = &configured.effective_config.as_value()["class"];
+    assert_eq!(class["hierarchicalNamespaces"], json!(false));
+}
+
+#[test]
 fn parse_packet_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"
@@ -798,6 +879,33 @@ Target,Done,2.5
     );
     assert_eq!(parsed_json.model["graph"]["links"][1]["value"], json!(2.5));
     assert!(parsed_json.model.get("config").is_some());
+}
+
+#[test]
+fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
+    let engine = Engine::new();
+    let default = block_on(engine.parse_metadata("sankey\nA,B,1", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let sankey = &default.effective_config.as_value()["sankey"];
+    assert_eq!(sankey["nodeWidth"], json!(10));
+    assert_eq!(sankey["nodePadding"], json!(12));
+    assert_eq!(sankey["labelStyle"], json!("legacy"));
+    assert_eq!(sankey["nodeColors"], json!({}));
+
+    let configured = block_on(engine.parse_metadata(
+        r##"%%{init: {"sankey": {"nodeWidth": 24, "nodePadding": 18, "labelStyle": "outlined", "nodeColors": {"A": "#112233"}}}}%%
+sankey
+A,B,1"##,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let sankey = &configured.effective_config.as_value()["sankey"];
+    assert_eq!(sankey["nodeWidth"], json!(24));
+    assert_eq!(sankey["nodePadding"], json!(18));
+    assert_eq!(sankey["labelStyle"], json!("outlined"));
+    assert_eq!(sankey["nodeColors"]["A"], json!("#112233"));
 }
 
 #[test]

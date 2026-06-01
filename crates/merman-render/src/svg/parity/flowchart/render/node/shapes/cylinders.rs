@@ -33,7 +33,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_cylinder(
 
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container" style="{}" transform="translate({},{})"/>"#,
+        r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({},{})"/>"#,
         escape_attr(&path_data),
         escape_attr(common.style),
         fmt(-w / 2.0),
@@ -94,7 +94,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
 
     let _ = write!(
         out,
-        r#"<path d="{}" class="basic label-container" style="{}" transform="translate({},{})"/>"#,
+        r#"<path d="{}" class="basic label-container outer-path" style="{}" transform="translate({},{})"/>"#,
         escape_attr(&path_data),
         escape_attr(common.style),
         fmt(-w / 2.0),

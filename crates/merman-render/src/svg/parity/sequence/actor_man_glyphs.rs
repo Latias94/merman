@@ -8,6 +8,7 @@ pub(super) struct ActorManBottomGlyphMetrics {
 
 struct ActorManGlyphContext<'a> {
     placement_class: &'a str,
+    actor_type: &'a str,
     actor_id: &'a str,
     label: &'a str,
     idx: usize,
@@ -17,6 +18,18 @@ struct ActorManGlyphContext<'a> {
     label_y: f64,
     width: f64,
     height: f64,
+    diagram_id: &'a str,
+}
+
+fn actor_man_participant_data_attrs(ctx: &ActorManGlyphContext<'_>) -> String {
+    if ctx.placement_class != "actor-top" {
+        return String::new();
+    }
+    format!(
+        r#" data-et="participant" data-type="{}" data-id="{}""#,
+        escape_attr(ctx.actor_type),
+        escape_attr(ctx.actor_id)
+    )
 }
 
 pub(super) fn write_actor_man_top_glyph(
@@ -27,6 +40,7 @@ pub(super) fn write_actor_man_top_glyph(
     n: &LayoutNode,
     idx: usize,
     actor_height: f64,
+    diagram_id: &str,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -36,6 +50,7 @@ pub(super) fn write_actor_man_top_glyph(
             out,
             &ActorManGlyphContext {
                 placement_class: "actor-top",
+                actor_type,
                 actor_id,
                 label,
                 idx,
@@ -45,6 +60,7 @@ pub(super) fn write_actor_man_top_glyph(
                 label_y: actor_y + actor_height + 2.5,
                 width: n.width,
                 height: actor_height,
+                diagram_id,
             },
         ),
         "boundary" => {
@@ -55,6 +71,7 @@ pub(super) fn write_actor_man_top_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-top",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -64,6 +81,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -74,6 +92,7 @@ pub(super) fn write_actor_man_top_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-top",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -83,6 +102,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -94,6 +114,7 @@ pub(super) fn write_actor_man_top_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-top",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -103,6 +124,7 @@ pub(super) fn write_actor_man_top_glyph(
                     label_y,
                     width: n.width,
                     height: actor_height,
+                    diagram_id,
                 },
             );
         }
@@ -118,6 +140,7 @@ pub(super) fn write_actor_man_bottom_glyph(
     n: &LayoutNode,
     idx: usize,
     metrics: ActorManBottomGlyphMetrics,
+    diagram_id: &str,
 ) {
     let (_, actor_y) = node_left_top(n);
     let cx = n.x;
@@ -127,6 +150,7 @@ pub(super) fn write_actor_man_bottom_glyph(
             out,
             &ActorManGlyphContext {
                 placement_class: "actor-bottom",
+                actor_type,
                 actor_id,
                 label,
                 idx,
@@ -136,6 +160,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                 label_y: actor_y + metrics.actor_height + 2.5,
                 width: n.width,
                 height: metrics.actor_height,
+                diagram_id,
             },
         ),
         "boundary" => {
@@ -146,6 +171,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-bottom",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -155,6 +181,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -166,6 +193,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-bottom",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -175,6 +203,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -187,6 +216,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                 out,
                 &ActorManGlyphContext {
                     placement_class: "actor-bottom",
+                    actor_type,
                     actor_id,
                     label,
                     idx,
@@ -196,6 +226,7 @@ pub(super) fn write_actor_man_bottom_glyph(
                     label_y,
                     width: n.width,
                     height: footer_h,
+                    diagram_id,
                 },
             );
         }
@@ -211,11 +242,13 @@ fn write_stick_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let arms_x1 = ctx.cx - 18.0;
     let arms_x2 = ctx.cx + 18.0;
     let leg_y = torso_bottom + 15.0;
+    let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}"><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}"{data_attrs}><line id="actor-man-torso{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}"/><line id="actor-man-arms{idx}" x1="{ax1}" y1="{ay}" x2="{ax2}" y2="{ay}"/><line x1="{ax1}" y1="{ly}" x2="{cx}" y2="{y2}"/><line x1="{cx}" y1="{y2}" x2="{lx2}" y2="{ly}"/><circle cx="{cx}" cy="{cy}" r="15" width="{w}" height="{h}"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
+        data_attrs = data_attrs,
         idx = ctx.idx,
         cx = fmt(ctx.cx),
         y1 = fmt(torso_top),
@@ -236,11 +269,13 @@ fn write_stick_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
 fn write_boundary_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let radius = 30.0;
     let x_left = ctx.cx - radius * 2.5;
+    let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,22)"><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0,22)"{data_attrs}><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
+        data_attrs = data_attrs,
         idx = ctx.idx,
         x1 = fmt(x_left),
         x2 = fmt(ctx.cx - 15.0),
@@ -256,11 +291,17 @@ fn write_boundary_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) 
 
 fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let r = 18.0;
+    let marker_id = scoped_svg_id(ctx.diagram_id, "filled-head-control");
+    let marker_url = scoped_svg_url(ctx.diagram_id, "filled-head-control");
+    let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor-man {placement_class}" name="{name}" style="stroke: rgb(147, 112, 219); fill: rgb(236, 236, 255);"{data_attrs}><defs><marker id="{marker_id}" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5" stroke-width="1.2"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" filter=""/><line marker-end="{marker_url}" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
+        data_attrs = data_attrs,
+        marker_id = escape_attr(&marker_id),
+        marker_url = escape_attr(&marker_url),
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
         ly = fmt(ctx.cy - r),
@@ -271,11 +312,13 @@ fn write_control_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
 
 fn write_entity_actor_glyph(out: &mut String, ctx: &ActorManGlyphContext<'_>) {
     let r = 18.0;
+    let data_attrs = actor_man_participant_data_attrs(ctx);
     let _ = write!(
         out,
-        r##"<g class="actor-man {placement_class}" name="{name}" transform="translate(0, 9)"><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+        r##"<g class="actor {placement_class}" name="{name}" transform="translate(0, 9)"{data_attrs}><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
         placement_class = ctx.placement_class,
         name = escape_xml(ctx.actor_id),
+        data_attrs = data_attrs,
         cx = fmt(ctx.cx),
         cy = fmt(ctx.cy),
         w = fmt(ctx.width),

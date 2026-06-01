@@ -224,6 +224,111 @@ pub(super) fn render_block_diagram_svg_model(
         }
     }
 
+    fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+        let id = escape_xml(diagram_id);
+        let theme = SvgTheme::new(effective_config);
+        let font_family = theme.font_family_css();
+        let font_family = font_family.as_str();
+        let font_size = theme.font_size_px();
+        let text_color = theme.color("textColor", "#333");
+        let node_text_color = theme.color("nodeTextColor", text_color.as_str());
+        let title_color = theme.color("titleColor", text_color.as_str());
+        let main_bkg = theme.color("mainBkg", "#ECECFF");
+        let node_border = theme.color("nodeBorder", "#9370DB");
+        let line_color = theme.color("lineColor", "#333333");
+        let arrowhead_color = theme.color("arrowheadColor", line_color.as_str());
+        let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+        let cluster_bkg = theme.color("clusterBkg", "#ffffde");
+        let cluster_border = theme.color("clusterBorder", "#aaaa33");
+
+        let mut out = String::new();
+        let _ = write!(
+            &mut out,
+            r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+            id.as_str(),
+            font_family,
+            fmt(font_size),
+            node_text_color
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .label{{font-family:{};color:{};}}#{} p{{margin:0;}}#{} .label text,#{} span,#{} p{{fill:{};color:{};}}"#,
+            id.as_str(),
+            font_family,
+            node_text_color,
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            node_text_color,
+            node_text_color
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span,#{} .cluster-label p{{color:{};}}"#,
+            id.as_str(),
+            title_color,
+            id.as_str(),
+            id.as_str(),
+            title_color
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            main_bkg,
+            node_border,
+            id.as_str(),
+            id.as_str(),
+            id.as_str()
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .arrowheadPath,#{} .arrowMarkerPath{{fill:{};stroke:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+            id.as_str(),
+            id.as_str(),
+            arrowhead_color,
+            line_color,
+            id.as_str(),
+            line_color,
+            id.as_str(),
+            line_color
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{margin:0;padding:0;display:inline;}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{}}}"#,
+            id.as_str(),
+            edge_label_background,
+            id.as_str(),
+            id.as_str(),
+            edge_label_background,
+            edge_label_background,
+            id.as_str(),
+            edge_label_background
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .node .cluster{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span,#{} .cluster p{{color:{};}}#{} .flowchartTitleText{{text-anchor:middle;font-size:18px;fill:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
+            id.as_str(),
+            cluster_bkg,
+            cluster_border,
+            id.as_str(),
+            title_color,
+            id.as_str(),
+            id.as_str(),
+            title_color,
+            id.as_str(),
+            text_color,
+            id.as_str(),
+            font_family
+        );
+        out
+    }
+
     fn intersect_line(
         p1: &LayoutPoint,
         p2: &LayoutPoint,
@@ -647,7 +752,9 @@ pub(super) fn render_block_diagram_svg_model(
             ..root_svg::SvgRootAttrs::new(diagram_id, "block")
         },
     );
-    out.push_str(r#"<style></style><g/>"#);
+    out.push_str("<style>");
+    out.push_str(&block_css(diagram_id, effective_config));
+    out.push_str("</style><g/>");
 
     let _ = write!(
         &mut out,

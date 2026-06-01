@@ -1,0 +1,6 @@
+{"role":"upstream-renderer","path":"repo-ref/mermaid/packages/mermaid/src/diagrams/pie/pieRenderer.ts","reason":"Defines 11.15 Pie slice order, donut/text radius, legend placement, and highlight class behavior."}
+{"role":"upstream-styles","path":"repo-ref/mermaid/packages/mermaid/src/diagrams/pie/pieStyles.ts","reason":"Defines highlight CSS class semantics."}
+{"role":"upstream-schema","path":"repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml","reason":"Defines Pie config keys and defaults."}
+{"role":"adr","path":"docs/adr/0019-generated-default-config.md","reason":"Defines generated default config source of truth and override policy."}
+{"role":"workstream","path":"docs/workstreams/generated-default-config-parity/","reason":"Recorded why Pie keys were removed until this renderer lane exists."}
+{"role":"alignment","path":"docs/alignment/PIE_UPSTREAM_TEST_COVERAGE.md","reason":"Names Pie fixture and SVG parity coverage."}

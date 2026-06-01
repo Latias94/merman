@@ -10,26 +10,19 @@ pub(in crate::svg::parity) fn flowchart_css(
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> String {
     let id = escape_xml(diagram_id);
-    let stroke = theme_color(effective_config, "lineColor", "#333333");
-    let arrowhead_color = theme_color(effective_config, "arrowheadColor", stroke.as_str());
-    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
-    let text_color = theme_color(effective_config, "textColor", "#333");
-    let title_color = theme_color(effective_config, "titleColor", text_color.as_str());
-    let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
-    let error_text = theme_color(effective_config, "errorTextColor", "#552222");
-    let edge_label_background = theme_color(
-        effective_config,
-        "edgeLabelBackground",
-        "rgba(232,232,232, 0.8)",
-    );
-    let tertiary = theme_color(
-        effective_config,
-        "tertiaryColor",
-        "hsl(80, 100%, 96.2745098039%)",
-    );
-    let cluster_bkg = theme_color(effective_config, "clusterBkg", "#ffffde");
-    let cluster_border = theme_color(effective_config, "clusterBorder", "#aaaa33");
+    let theme = SvgTheme::new(effective_config);
+    let stroke = theme.color("lineColor", "#333333");
+    let arrowhead_color = theme.color("arrowheadColor", stroke.as_str());
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let text_color = theme.color("textColor", "#333");
+    let title_color = theme.color("titleColor", text_color.as_str());
+    let error_bkg = theme.color("errorBkgColor", "#552222");
+    let error_text = theme.color("errorTextColor", "#552222");
+    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+    let tertiary = theme.color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)");
+    let cluster_bkg = theme.color("clusterBkg", "#ffffde");
+    let cluster_border = theme.color("clusterBorder", "#aaaa33");
 
     fn flowchart_label_bkg_from_edge_label_background(edge_label_background: &str) -> String {
         fn parse_hex_channel(hex: &str) -> Option<u8> {
@@ -268,7 +261,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape rect,#{} .image-shape rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
         id.as_str(),
         id.as_str(),
         edge_label_background,

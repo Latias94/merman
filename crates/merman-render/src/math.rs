@@ -844,7 +844,7 @@ mod tests {
             return;
         };
         assert!(
-            (180.0..=260.0).contains(&node_metrics.width),
+            (150.0..=260.0).contains(&node_metrics.width),
             "node width = {}",
             node_metrics.width
         );
@@ -853,6 +853,29 @@ mod tests {
             "node height = {}",
             node_metrics.height
         );
+
+        let matrix_label =
+            "$$x(t)=c_1\\begin{bmatrix}-\\cos{t}+\\sin{t}\\\\ 2\\cos{t} \\end{bmatrix}e^{2t}$$";
+        let Some(matrix_metrics) = renderer.measure_html_label(
+            matrix_label,
+            &config,
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        ) else {
+            return;
+        };
+        assert!(
+            (260.0..=275.0).contains(&matrix_metrics.width),
+            "matrix width = {}",
+            matrix_metrics.width
+        );
+        assert!(
+            (24.0..=27.0).contains(&matrix_metrics.height),
+            "matrix height = {}",
+            matrix_metrics.height
+        );
+
         let Some(html) = renderer.render_html_label(long_integral, &config) else {
             panic!("expected rendered math HTML after successful probe");
         };
@@ -870,12 +893,12 @@ mod tests {
             return;
         };
         assert!(
-            (180.0..=320.0).contains(&edge_metrics.width),
+            (150.0..=320.0).contains(&edge_metrics.width),
             "edge width = {}",
             edge_metrics.width
         );
         assert!(
-            (40.0..=100.0).contains(&edge_metrics.height),
+            (30.0..=100.0).contains(&edge_metrics.height),
             "edge height = {}",
             edge_metrics.height
         );

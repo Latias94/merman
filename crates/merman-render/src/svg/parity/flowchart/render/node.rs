@@ -10,6 +10,7 @@ pub(in crate::svg::parity::flowchart) mod shapes;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
     pub shape: &'a str,
+    pub look: &'a str,
     pub layout_node: &'a crate::model::LayoutNode,
     pub node_classes: &'a [String],
     pub node_styles: &'a [String],
@@ -86,10 +87,12 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         }
         _ => node_classes,
     };
+    let look = flowchart_config_look(ctx.config);
 
     helpers::open_node_wrapper(
         out,
         helpers::NodeWrapperAttrs {
+            diagram_id: ctx.diagram_id,
             node_id,
             dom_idx,
             class_attr_base,
@@ -100,10 +103,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             y,
             tooltip_enabled,
             tooltip,
+            look,
         },
     );
 
-    let style_start = timing_enabled.then(std::time::Instant::now);
+    let style_start = timing_enabled.then(web_time::Instant::now);
     let mut compiled_styles =
         flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
@@ -138,6 +142,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
 
     let common = FlowchartNodeRenderCommon {
         shape,
+        look,
         layout_node,
         node_classes,
         node_styles,

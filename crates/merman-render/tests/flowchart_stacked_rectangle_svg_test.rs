@@ -147,3 +147,55 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
     assert_close(label_x, -label_w / 2.0 - 5.0, "stacked rectangle label x");
     assert_close(label_y, -label_h / 2.0 + 5.0, "stacked rectangle label y");
 }
+
+#[test]
+fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
+    let text = r#"flowchart
+ n0@{ shape: procs, label: "procs" }
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions {
+            apply_root_overrides: false,
+            ..Default::default()
+        },
+    )
+    .expect("render svg");
+
+    let node_start = svg.find(r#"<g class="node default""#).expect("node group");
+    let node_chunk = &svg[node_start..];
+    let label_start = node_chunk.find(r#"<g class="label""#).expect("label group");
+    let shape_chunk = &node_chunk[..label_start];
+
+    assert!(
+        shape_chunk.matches(r#"<g><path "#).count() >= 2,
+        "expected Mermaid 11.15 classic procs to merge each RoughJS layer into a grouped path: {svg}"
+    );
+    assert!(
+        shape_chunk.contains(r#"fill-opacity="1""#)
+            && shape_chunk.contains(r#"stroke-opacity="1""#),
+        "expected merged paths to carry Mermaid 11.15 mergePaths fill/stroke opacity attrs: {svg}"
+    );
+    assert!(
+        !shape_chunk.contains(r#"stroke="none" stroke-width="0""#),
+        "expected classic procs not to expose separate fill/stroke RoughJS paths after mergePaths: {svg}"
+    );
+}

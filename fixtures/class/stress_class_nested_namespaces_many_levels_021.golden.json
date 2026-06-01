@@ -190,21 +190,47 @@
     "notes": [],
     "interfaces": [],
     "namespaces": {
+      "Root": {
+        "id": "Root",
+        "label": "Root",
+        "domId": "classId-Root-0",
+        "classIds": [],
+        "noteIds": [],
+        "parent": null,
+        "explicit": false
+      },
       "Root.A": {
         "id": "Root.A",
-        "domId": "classId-Root.A-0",
+        "label": "A",
+        "domId": "classId-Root.A-1",
         "classIds": [
           "A1",
           "A2"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "Root",
+        "explicit": true
+      },
+      "Root.B": {
+        "id": "Root.B",
+        "label": "B",
+        "domId": "classId-Root.B-2",
+        "classIds": [],
+        "noteIds": [],
+        "parent": "Root",
+        "explicit": false
       },
       "Root.B.B1": {
         "id": "Root.B.B1",
-        "domId": "classId-Root.B.B1-1",
+        "label": "B1",
+        "domId": "classId-Root.B.B1-3",
         "classIds": [
           "B1a",
           "B1b"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "Root.B",
+        "explicit": true
       }
     },
     "styleClasses": {},

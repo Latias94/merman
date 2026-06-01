@@ -82,14 +82,14 @@ pub(super) fn sequence_css(diagram_id: &str, font_size_px: f64) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} #arrowhead path{{fill:#333;stroke:#333;}}"#,
+        r#"#{} [id$="-arrowhead"] path{{fill:#333;stroke:#333;}}"#,
         id
     );
     let _ = write!(&mut out, r#"#{} .sequenceNumber{{fill:white;}}"#, id);
-    let _ = write!(&mut out, r#"#{} #sequencenumber{{fill:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} [id$="-sequencenumber"]{{fill:#333;}}"#, id);
     let _ = write!(
         &mut out,
-        r#"#{} #crosshead path{{fill:#333;stroke:#333;}}"#,
+        r#"#{} [id$="-crosshead"] path{{fill:#333;stroke:#333;}}"#,
         id
     );
     let _ = write!(

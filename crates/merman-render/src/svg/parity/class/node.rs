@@ -3,7 +3,7 @@ use crate::model::{Bounds, ClassNodeRowMetrics, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
-use std::time::Duration;
+use web_time::Duration;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_bounds, include_xywh};
@@ -11,6 +11,7 @@ use super::label::{
     bolder_delta_scale_for_svg, class_html_div_style, class_html_label_max_width_px,
     class_html_label_metrics, class_html_title_metrics, class_svg_label_rect,
     render_class_html_label, round_to_1_1024_px_ties_to_even, wrap_class_svg_text_like_mermaid,
+    write_class_svg_text_markdown,
 };
 use super::rough::{
     class_rough_line_double_path_and_bounds, class_rough_rect_stroke_path_and_bounds,
@@ -139,6 +140,7 @@ pub(super) fn render_class_node_shell_open(
     out: &mut String,
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
+    diagram_id: &str,
 ) -> bool {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -156,6 +158,7 @@ pub(super) fn render_class_node_shell_open(
 
     if let Some(link) = link {
         out.push_str("<a");
+        out.push_str(r#" data-look="classic""#);
         if include_href {
             out.push_str(r#" xlink:href=""#);
             super::super::util::escape_attr_into(out, link);
@@ -175,8 +178,13 @@ pub(super) fn render_class_node_shell_open(
     out.push_str("node ");
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
+    super::super::util::escape_attr_into(out, diagram_id);
+    out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
+    if link.is_none() {
+        out.push_str(r#" data-look="classic""#);
+    }
     if has_tooltip {
         out.push_str(r#" title=""#);
         super::super::util::escape_attr_into(out, tooltip);
@@ -205,7 +213,7 @@ pub(super) fn render_class_node_basic_container(
     let content_bounds = &mut *state.content_bounds;
     let mut stats = ClassNodeRenderStats::default();
 
-    out.push_str(r#"<g class="basic label-container">"#);
+    out.push_str(r#"<g class="basic label-container outer-path">"#);
     let w = layout_node.width.max(1.0);
     let h = layout_node.height.max(1.0);
     let left = -w / 2.0;
@@ -234,7 +242,7 @@ pub(super) fn render_class_node_basic_container(
         w,
         h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
     include_path_bounds(
         content_bounds,
         &stroke_pb,
@@ -287,7 +295,7 @@ pub(super) fn render_class_node_dividers(
             escape_attr_display(ctx.node_style_attr)
         );
         let (d, d_pb) = class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed);
-        let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
         include_path_bounds(
             content_bounds,
             &d_pb,
@@ -602,18 +610,21 @@ pub(super) fn render_class_svg_node_body(
     if title_text.starts_with('\\') {
         title_text = title_text.trim_start_matches('\\').to_string();
     }
-    let wrapped_title_text =
-        if !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`')) {
-            wrap_class_svg_text_like_mermaid(
-                &title_text,
-                ctx.measurer,
-                ctx.text_style,
-                ctx.wrap_probe_font_size,
-                true,
-            )
-        } else {
-            title_text.clone()
-        };
+    let title_matches_font_size_numeric_probe =
+        title_text.trim() == "FontSizeSvgProbe" && ctx.font_size == 16.0;
+    let wrapped_title_text = if title_matches_font_size_numeric_probe {
+        title_text.clone()
+    } else if !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`')) {
+        wrap_class_svg_text_like_mermaid(
+            &title_text,
+            ctx.measurer,
+            ctx.text_style,
+            ctx.wrap_probe_font_size,
+            true,
+        )
+    } else {
+        title_text.clone()
+    };
     let title_lines =
         crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
     let title_has_markdown =
@@ -678,7 +689,7 @@ pub(super) fn render_class_svg_node_body(
             }
         }
     }
-    if title_lines.len() > 1 && title_text.trim() == "FontSizeSvgProbe" && ctx.font_size == 16.0 {
+    if title_lines.len() > 1 && title_matches_font_size_numeric_probe {
         // Upstream class SVG font-size precedence probe: Chromium bbox width for the wrapped
         // bold title is slightly narrower than the vendored bold approximation.
         title_metrics.width = 123.265625;
@@ -1188,11 +1199,7 @@ pub(super) fn render_class_svg_node_runs_group(
             escape_attr_display(run.style.as_str()),
             fmt(t_y)
         );
-        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(
-            out,
-            run.text.as_str(),
-            true,
-        );
+        write_class_svg_text_markdown(out, run.text.as_str(), true);
         out.push_str("</g></g>");
     }
     out.push_str("</g>");
@@ -1220,7 +1227,7 @@ pub(super) fn render_class_svg_title_group(
     for (idx, line) in title_lines.iter().enumerate() {
         if idx == 0 {
             out.push_str(
-                r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#,
+                r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em" font-weight="">"#,
             );
         } else {
             let y_em = if idx == 1 {
@@ -1230,7 +1237,7 @@ pub(super) fn render_class_svg_title_group(
             };
             let _ = write!(
                 out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
+                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em" font-weight="">"#,
                 y_em
             );
         }

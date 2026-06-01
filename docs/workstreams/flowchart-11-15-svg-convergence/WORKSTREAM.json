@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "slug": "flowchart-11-15-svg-convergence",
+  "title": "Flowchart 11.15 SVG Convergence",
+  "status": "active",
+  "updated": "2026-06-01",
+  "scope_kind": "execution",
+  "problem": "Fresh Mermaid 11.15 Flowchart comparison exposes broad SVG DOM drift that cannot be closed by a single stale-baseline refresh.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "milestones",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/MILESTONES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/flowchart-11-15-svg-convergence/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/flowchart-11-15-svg-convergence/CONTEXT.jsonl",
+  "gates": [
+    "cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3",
+    "cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --out fixtures/upstream-svgs",
+    "cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo nextest run -p merman-render flowchart",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md",
+    "docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md",
+    "target/upstream-svgs-11-15-flowchart",
+    "target/compare/flowchart_report.md",
+    "target/compare/xml/xml_report.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0001-upstream-baseline.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0050-svg-viewbox-parity.md",
+    "docs/adr/0062-fixture-derived-overrides.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "mermaid-11-15",
+    "svg-parity",
+    "flowchart",
+    "upstream-baselines"
+  ],
+  "lane_slug": null,
+  "parent_workstream": "docs/workstreams/mermaid-11-15-complete-adaptation",
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Continue while work stays within Flowchart Mermaid 11.15 SVG DOM convergence. Split ELK layout support or other large parser/layout changes if they become the blocking surface."
+  }
+}

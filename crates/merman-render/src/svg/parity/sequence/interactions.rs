@@ -97,32 +97,69 @@ pub(super) fn render_sequence_interaction_overlays(
                 continue;
             };
             match block {
-                SequenceBlock::Alt { sections } => {
-                    render_sectioned_sequence_block(out, "alt", sections, true, &block_ctx);
+                SequenceBlock::Alt {
+                    control_id,
+                    sections,
+                } => {
+                    render_sectioned_sequence_block(
+                        out, control_id, "alt", sections, true, &block_ctx,
+                    );
                 }
-                SequenceBlock::Par { sections } => {
-                    render_sectioned_sequence_block(out, "par", sections, false, &block_ctx);
+                SequenceBlock::Par {
+                    control_id,
+                    sections,
+                } => {
+                    render_sectioned_sequence_block(
+                        out, control_id, "par", sections, false, &block_ctx,
+                    );
                 }
                 SequenceBlock::Loop {
+                    control_id,
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(out, "loop", raw_label, message_ids, &block_ctx);
+                    render_simple_sequence_block(
+                        out,
+                        control_id,
+                        "loop",
+                        raw_label,
+                        message_ids,
+                        &block_ctx,
+                    );
                 }
                 SequenceBlock::Opt {
+                    control_id,
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(out, "opt", raw_label, message_ids, &block_ctx);
+                    render_simple_sequence_block(
+                        out,
+                        control_id,
+                        "opt",
+                        raw_label,
+                        message_ids,
+                        &block_ctx,
+                    );
                 }
                 SequenceBlock::Break {
+                    control_id,
                     raw_label,
                     message_ids,
                 } => {
-                    render_simple_sequence_block(out, "break", raw_label, message_ids, &block_ctx);
+                    render_simple_sequence_block(
+                        out,
+                        control_id,
+                        "break",
+                        raw_label,
+                        message_ids,
+                        &block_ctx,
+                    );
                 }
-                SequenceBlock::Critical { sections } => {
-                    render_critical_sequence_block(out, sections, &block_ctx);
+                SequenceBlock::Critical {
+                    control_id,
+                    sections,
+                } => {
+                    render_critical_sequence_block(out, control_id, sections, &block_ctx);
                 }
             }
         }

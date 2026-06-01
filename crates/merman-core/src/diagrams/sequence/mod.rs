@@ -8,7 +8,7 @@ lalrpop_util::lalrpop_mod!(
     "/diagrams/sequence_grammar.rs"
 );
 
-// Mermaid 11.12.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).
+// Mermaid 11.15.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).
 const LINETYPE_NOTE: i32 = 2;
 const LINETYPE_LOOP_START: i32 = 10;
 const LINETYPE_LOOP_END: i32 = 11;
@@ -31,6 +31,9 @@ const LINETYPE_CRITICAL_END: i32 = 29;
 const LINETYPE_BREAK_START: i32 = 30;
 const LINETYPE_BREAK_END: i32 = 31;
 const LINETYPE_PAR_OVER_START: i32 = 32;
+const LINETYPE_CENTRAL_CONNECTION: i32 = 59;
+const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
+const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
 
 const PLACEMENT_LEFT_OF: i32 = 0;
 const PLACEMENT_RIGHT_OF: i32 = 1;

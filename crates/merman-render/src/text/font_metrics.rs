@@ -197,10 +197,10 @@ impl VendoredFontMetricsTextMeasurer {
 
         if ('\u{80}'..='\u{9f}').contains(&ch) {
             // Mermaid/Chromium preserves C1 control bytes that appear in mojibake labels from
-            // upstream fixtures and measures the rendered replacement glyph, not a narrow Latin
-            // fallback. Treat them as a near-full-em glyph so multiline HTML label widths line up
-            // with browser `getBoundingClientRect()`.
-            return 0.997_8;
+            // upstream fixtures and measures the rendered replacement glyph. Chromium 11.15
+            // reports these glyphs closer to a narrow fallback than a full CJK cell for Flowchart
+            // HTML labels, so keep the fallback near 0.6em.
+            return 0.598_7;
         }
 
         Self::lookup_non_ascii_fallback_em(default_em, ch)
@@ -1232,12 +1232,15 @@ fn vendored_measure_wrapped_impl(
                     continue;
                 }
                 for seg in split_html_min_content_segments(part) {
-                    max_word_w = max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                        profile,
-                        seg.as_str(),
-                        bold,
-                        font_size,
-                    ));
+                    let seg_w = html_width_override_px(&seg).unwrap_or_else(|| {
+                        VendoredFontMetricsTextMeasurer::line_width_px(
+                            profile,
+                            seg.as_str(),
+                            bold,
+                            font_size,
+                        )
+                    });
+                    max_word_w = max_word_w.max(seg_w);
                 }
             }
         }

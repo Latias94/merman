@@ -56,11 +56,18 @@ pub(crate) enum Action {
         signal_type: i32,
         text: String,
         activate: bool,
+        central_connection: i32,
     },
     ActiveStart {
         actor: String,
     },
     ActiveEnd {
+        actor: String,
+    },
+    CentralConnection {
+        actor: String,
+    },
+    CentralConnectionReverse {
         actor: String,
     },
 
@@ -71,8 +78,8 @@ pub(crate) enum Action {
     },
 
     Autonumber {
-        start: Option<i64>,
-        step: Option<i64>,
+        start: Option<f64>,
+        step: Option<f64>,
         visible: bool,
     },
 }

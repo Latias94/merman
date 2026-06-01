@@ -1,12 +1,21 @@
 use crate::Result;
+use crate::config::{config_f64, value_at};
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
 use ryu_js::Buffer;
-use std::cmp::Ordering;
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PieLegendPosition {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Center,
+}
 
 #[derive(Debug, Clone)]
 struct ColorScale {
@@ -243,18 +252,41 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+pub(crate) fn pie_text_position(effective_config: &serde_json::Value) -> f64 {
+    config_f64(effective_config, &["pie", "textPosition"]).unwrap_or(0.75)
+}
+
+pub(crate) fn pie_donut_hole(effective_config: &serde_json::Value) -> f64 {
+    let donut_hole = config_f64(effective_config, &["pie", "donutHole"]).unwrap_or(0.0);
+    if donut_hole > 0.0 && donut_hole <= 0.9 {
+        donut_hole
+    } else {
+        0.0
+    }
+}
+
+pub(crate) fn pie_legend_position(effective_config: &serde_json::Value) -> PieLegendPosition {
+    match value_at(effective_config, &["pie", "legendPosition"]).and_then(|v| v.as_str()) {
+        Some("top") => PieLegendPosition::Top,
+        Some("bottom") => PieLegendPosition::Bottom,
+        Some("left") => PieLegendPosition::Left,
+        Some("center") => PieLegendPosition::Center,
+        _ => PieLegendPosition::Right,
+    }
+}
+
 pub fn layout_pie_diagram(
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_pie_diagram_typed(&model, _effective_config, measurer)
+    layout_pie_diagram_typed(&model, effective_config, measurer)
 }
 
 pub fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let _ = (
@@ -263,7 +295,7 @@ pub fn layout_pie_diagram_typed(
         model.acc_descr.as_deref(),
     );
 
-    // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
+    // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
     let margin: f64 = 40.0;
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_spacing = PIE_LEGEND_SPACING_PX;
@@ -271,10 +303,16 @@ pub fn layout_pie_diagram_typed(
     let center: f64 = 225.0;
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
-    let label_radius = radius.max(0.0) * 0.75;
-    let legend_x = 12.0 * legend_rect_size;
+    let label_radius = radius.max(0.0) * pie_text_position(effective_config);
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
-    let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
+    let legend_position = pie_legend_position(effective_config);
+    let total_legend_height = (model.sections.len() as f64) * legend_step_y;
+    let centered_legend_start_y = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
+    let legend_start_y = match legend_position {
+        PieLegendPosition::Top => -radius,
+        PieLegendPosition::Bottom => radius + legend_step_y,
+        _ => centered_legend_start_y,
+    };
 
     let total: f64 = model
         .sections
@@ -284,22 +322,24 @@ pub fn layout_pie_diagram_typed(
         .sum();
 
     let mut color_scale = ColorScale::new_default();
+    for sec in &model.sections {
+        let _ = color_scale.color_for(&sec.label);
+    }
 
     let mut slices: Vec<PieSliceLayout> = Vec::new();
     if total.is_finite() && total > 0.0 {
-        // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
+        // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
         //
         // - filter out values < 1% (based on the original total)
-        // - sort remaining values by descending value before D3 pie() computes angles
+        // - preserve input order before D3 pie() computes angles (`sort(null)`)
         // - angles are normalized over the filtered set (so drawn slices fill the whole circle)
         // - percentage labels are still computed using the original total
-        let mut pie_sections: Vec<&PieRenderSection> = model
+        let pie_sections: Vec<&PieRenderSection> = model
             .sections
             .iter()
             .filter(|s| s.value.is_finite() && s.value > 0.0)
             .filter(|s| (s.value / total) * 100.0 >= 1.0)
             .collect();
-        pie_sections.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal));
 
         let pie_total: f64 = pie_sections.iter().map(|s| s.value).sum();
         if !pie_sections.is_empty() && pie_total.is_finite() && pie_total > 0.0 {
@@ -389,12 +429,36 @@ pub fn layout_pie_diagram_typed(
     }
 
     let base_w: f64 = center * 2.0;
-    // Mermaid computes:
-    //   totalWidth = pieWidth + MARGIN + LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth
-    // where `pieWidth == height == 450`.
-    let width: f64 =
-        (base_w + margin + legend_rect_size + legend_spacing + max_legend_width).max(1.0);
-    let height: f64 = f64::max(center * 2.0, 1.0);
+    let legend_extra_width = legend_rect_size + legend_spacing + max_legend_width;
+    let centered_legend_x = -max_legend_width / 2.0 - (legend_rect_size + legend_spacing);
+
+    let (width, height, legend_x) = match legend_position {
+        PieLegendPosition::Top => (
+            (base_w + margin).max(1.0),
+            (base_w + total_legend_height).max(1.0),
+            centered_legend_x,
+        ),
+        PieLegendPosition::Bottom => (
+            (base_w + margin).max(1.0),
+            (base_w + total_legend_height).max(1.0),
+            centered_legend_x,
+        ),
+        PieLegendPosition::Left => (
+            (base_w + margin + legend_extra_width).max(1.0),
+            base_w.max(1.0),
+            -radius - (legend_rect_size + legend_spacing),
+        ),
+        PieLegendPosition::Center => (
+            (base_w + margin).max(1.0),
+            base_w.max(1.0),
+            centered_legend_x,
+        ),
+        PieLegendPosition::Right => (
+            (base_w + margin + legend_extra_width).max(1.0),
+            base_w.max(1.0),
+            12.0 * legend_rect_size,
+        ),
+    };
 
     Ok(PieDiagramLayout {
         bounds: Some(Bounds {

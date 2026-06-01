@@ -8,7 +8,7 @@ use super::super::{
     escape_attr, escape_attr_display, escape_xml, escape_xml_display, fmt, fmt_into,
 };
 use super::bounds::include_xywh;
-use super::{ClassSvgModel, ClassSvgNode};
+use super::{ClassSvgInterface, ClassSvgModel, ClassSvgNode, ClassSvgNote};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct ClassNamespaceSubgraphState<'a> {
@@ -19,14 +19,17 @@ pub(super) struct ClassNamespaceSubgraphState<'a> {
 pub(super) fn class_order_ids_for_namespace_subgraphs<'a>(
     ordered_ids: Vec<&'a str>,
     namespace_keys: &[&'a str],
-    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
 ) -> Vec<&'a str> {
     let mut inner: Vec<&str> = Vec::new();
     let mut used: HashSet<&str> = HashSet::new();
 
     for ns_id in namespace_keys {
         for id in &ordered_ids {
-            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            let parent =
+                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
             if parent == Some(*ns_id) && used.insert(*id) {
                 inner.push(*id);
             }
@@ -49,6 +52,25 @@ pub(super) struct ClassNodeRenderOrder<'a> {
     pub clusters_by_id: HashMap<&'a str, &'a LayoutCluster>,
 }
 
+pub(super) fn class_render_parent_for_id<'a>(
+    id: &'a str,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
+) -> Option<&'a str> {
+    if let Some(node) = class_nodes_by_id.get(id) {
+        return node.parent.as_deref();
+    }
+    if let Some(note) = note_by_id.get(id) {
+        return note.parent.as_deref();
+    }
+    iface_by_id.get(id).and_then(|iface| {
+        class_nodes_by_id
+            .get(iface.class_id.as_str())
+            .and_then(|node| node.parent.as_deref())
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ClassNamespaceRenderMode<'a> {
     pub single_namespace_id: Option<&'a str>,
@@ -59,7 +81,8 @@ pub(super) struct ClassNamespaceRenderMode<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ClassNamespaceClusterGroupContext {
+pub(super) struct ClassNamespaceClusterGroupContext<'a> {
+    pub diagram_id: &'a str,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -115,8 +138,13 @@ pub(super) fn class_namespace_render_mode<'a>(
     // - Each namespace cluster is emitted as a nested `<g class="root" ...>` inside
     //   `<g class="nodes">`, with empty `edgePaths/edgeLabels` placeholders.
     // - All relations still render at the outer root level (not inside the namespace subgraphs).
-    let render_namespaces_as_subgraphs =
-        !wrap_nodes_root && namespace_subgraph_render_profile(model);
+    let has_hierarchical_namespace = model.namespaces.values().any(|ns| {
+        ns.parent
+            .as_deref()
+            .is_some_and(|parent| !parent.is_empty())
+    });
+    let render_namespaces_as_subgraphs = !wrap_nodes_root
+        && (has_hierarchical_namespace || namespace_subgraph_render_profile(model));
 
     ClassNamespaceRenderMode {
         single_namespace_id,
@@ -131,9 +159,9 @@ pub(super) fn render_class_namespace_cluster_group(
     out: &mut String,
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
-    ctx: ClassNamespaceClusterGroupContext,
-) -> std::time::Duration {
-    let clusters_start = ctx.timing_enabled.then(std::time::Instant::now);
+    ctx: ClassNamespaceClusterGroupContext<'_>,
+) -> web_time::Duration {
+    let clusters_start = ctx.timing_enabled.then(web_time::Instant::now);
     out.push_str(r#"<g class="clusters">"#);
     for c in clusters {
         let w = c.width.max(1.0);
@@ -162,7 +190,8 @@ pub(super) fn render_class_namespace_cluster_group(
 
         let _ = write!(
             out,
-            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr_display(ctx.diagram_id),
             escape_attr_display(&c.id),
             fmt(left),
             fmt(top),
@@ -179,6 +208,77 @@ pub(super) fn render_class_namespace_cluster_group(
     clusters_start
         .map(|start| start.elapsed())
         .unwrap_or_default()
+}
+
+pub(super) fn class_namespace_root_offset(c: &LayoutCluster) -> (f64, f64) {
+    let w = c.width.max(1.0);
+    let h = c.height.max(1.0);
+    (c.x - w / 2.0 - 8.0, c.y - h / 2.0)
+}
+
+pub(super) fn render_class_namespace_clusters_in_root(
+    out: &mut String,
+    content_bounds: &mut Option<Bounds>,
+    clusters_by_id: &HashMap<&str, &LayoutCluster>,
+    cluster_ids: &[&str],
+    ctx: ClassNamespaceClusterGroupContext<'_>,
+    root_ns_id: &str,
+    root_dx: f64,
+    root_dy: f64,
+) {
+    out.push_str(r#"<g class="clusters">"#);
+    for ns_id in cluster_ids {
+        let Some(c) = clusters_by_id.get(ns_id).copied() else {
+            continue;
+        };
+
+        let w = c.width.max(1.0);
+        let h = c.height.max(1.0);
+        let (left, top) = if *ns_id == root_ns_id {
+            (8.0, 8.0)
+        } else {
+            (
+                c.x - w / 2.0 - root_dx,
+                c.y - h / 2.0 + ctx.content_ty - root_dy,
+            )
+        };
+        include_xywh(
+            content_bounds,
+            left + root_dx + ctx.bounds_dx,
+            top + root_dy + ctx.bounds_dy,
+            w,
+            h,
+        );
+
+        let label_w = c.title_label.width.max(0.0);
+        let label_h = 24.0;
+        let label_x = left + (w - label_w) / 2.0;
+        let label_y = top + c.title_margin_top;
+        include_xywh(
+            content_bounds,
+            label_x + root_dx + ctx.bounds_dx,
+            label_y + root_dy + ctx.bounds_dy,
+            label_w,
+            label_h,
+        );
+
+        let _ = write!(
+            out,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr_display(ctx.diagram_id),
+            escape_attr_display(&c.id),
+            fmt(left),
+            fmt(top),
+            fmt(w),
+            fmt(h),
+            fmt(label_x),
+            fmt(label_y),
+            fmt(label_w),
+            class_text_overrides::class_html_label_max_width_px(),
+            escape_xml_display(&c.title)
+        );
+    }
+    out.push_str("</g>");
 }
 
 fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
@@ -199,7 +299,9 @@ fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
 pub(super) fn build_class_node_render_order<'a>(
     layout: &'a ClassDiagramV2Layout,
     model: &'a ClassSvgModel,
-    class_nodes_by_id: &FxHashMap<&'a str, &ClassSvgNode>,
+    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
+    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
+    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
     wrap_nodes_root: bool,
     single_namespace_id: Option<&'a str>,
     render_namespaces_as_subgraphs: bool,
@@ -248,7 +350,8 @@ pub(super) fn build_class_node_render_order<'a>(
         let mut inner: Vec<&str> = Vec::new();
         let mut outer: Vec<&str> = Vec::new();
         for id in &ordered_ids {
-            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            let parent =
+                class_render_parent_for_id(*id, class_nodes_by_id, note_by_id, iface_by_id);
             if single_namespace_id.is_some_and(|ns| parent == Some(ns)) {
                 inner.push(*id);
             } else {
@@ -273,6 +376,8 @@ pub(super) fn build_class_node_render_order<'a>(
             ordered_ids,
             &namespace_keys,
             class_nodes_by_id,
+            note_by_id,
+            iface_by_id,
         );
     }
 
@@ -290,6 +395,7 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
     state: &mut ClassNamespaceSubgraphState<'a>,
     parent: Option<&'a str>,
     clusters_by_id: &HashMap<&str, &LayoutCluster>,
+    diagram_id: &str,
 ) {
     if parent == state.active_subgraph {
         return;
@@ -334,7 +440,8 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
 
             let _ = write!(
                 out,
-                r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                escape_attr(diagram_id),
                 escape_attr(&c.id),
                 fmt(local_left),
                 fmt(local_top),

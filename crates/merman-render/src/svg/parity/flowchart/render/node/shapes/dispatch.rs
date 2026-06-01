@@ -20,10 +20,9 @@ pub(in super::super) fn render_flowchart_v2_shape(
         // Flowchart v2 shapes with no label group are handled earlier.
 
         // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
-        // label group (via `labelHelper(...)`).
+        // label group via `labelHelper(...)`, preserving the parsed label type.
         "hourglass" | "collate" => {
             label.text = "";
-            label.label_type = "text";
             super::render_hourglass_collate(out, common, details);
         }
 
@@ -60,6 +59,11 @@ pub(in super::super) fn render_flowchart_v2_shape(
         // Flowchart v2 bow tie rectangle (Stored data).
         "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
             super::render_bow_tie_rect(out, ctx, common, label, details);
+        }
+
+        // Flowchart v2 datastore: rectangular node with only top and bottom borders.
+        "datastore" | "data-store" => {
+            super::render_datastore(out, common);
         }
 
         // Flowchart v2 tagged rectangle (Tagged process).
@@ -125,7 +129,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_stacked_rectangle(out, common, label, details);
         }
         "paper-tape" | "flag" => {
-            super::render_paper_tape(out, common, details);
+            super::render_paper_tape(out, ctx, common, label, details);
         }
         "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             super::render_subroutine(out, common);
@@ -149,7 +153,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_double_circle(out, common);
         }
         "roundedRect" | "rounded" | "event" => {
-            super::render_rounded_rect(out, common, details);
+            super::render_rounded_rect(out, ctx, common, details);
         }
         "note" => {
             super::render_note(out, ctx, common, details);

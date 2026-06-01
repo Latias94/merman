@@ -6,31 +6,29 @@ use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt_display;
 
 use super::super::geom::{generate_full_sine_wave_points, path_from_points};
+use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
     out: &mut String,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
-    let min_width = 100.0;
-    let min_height = 50.0;
+    let metrics = helpers::compute_node_label_metrics(
+        ctx,
+        Some(common.layout_node),
+        label.text,
+        label.label_type,
+        common.node_classes,
+        common.node_styles,
+    );
 
-    let base_width = common.layout_node.width.max(1.0);
-    let base_height = common.layout_node.height.max(1.0);
-    let aspect_ratio = base_width / base_height.max(1e-9);
-
-    let mut w = base_width;
-    let mut h = base_height;
-    if w > h * aspect_ratio {
-        h = w / aspect_ratio;
-    } else {
-        w = h * aspect_ratio;
-    }
-    w = w.max(min_width);
-    h = h.max(min_height);
-
-    let wave_amplitude = (h * 0.2).min(h / 4.0);
+    let p = ctx.node_padding;
+    let w = (metrics.width + 2.0 * p).max(0.0);
+    let h = (metrics.height + p).max(0.0);
+    let wave_amplitude = h / 8.0;
     let final_h = h + wave_amplitude * 2.0;
 
     let mut points: Vec<(f64, f64)> = Vec::new();

@@ -71,7 +71,7 @@ fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
     };
 
     let emoji = measurer.measure_wrapped("emoji: 😀😅👍", &style, Some(200.0), WrapMode::HtmlLike);
-    assert_eq!(emoji.width, 111.71875);
+    assert_eq!(emoji.width, 117.625);
     assert_eq!(emoji.height, 24.0);
 
     let rtl = measurer.measure_wrapped("rtl: שלום-עולם", &style, Some(200.0), WrapMode::HtmlLike);
@@ -84,8 +84,17 @@ fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(cjk_hangul.width, 143.75);
+    assert_eq!(cjk_hangul.width, 148.0625);
     assert_eq!(cjk_hangul.height, 24.0);
+
+    let path = measurer.measure_wrapped(
+        "Path: C:\\Temp\\merman\\out.svg (Windows-style)",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(path.width, 203.15625);
+    assert_eq!(path.height, 72.0);
 }
 
 #[test]
@@ -144,8 +153,8 @@ fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
 
 #[test]
 fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
-    // Deliberately model standard FontAwesome icons as a clean nominal 1em inline run instead of
-    // the browser's per-icon font advance.
+    // Model standard FontAwesome icons using Mermaid 11.15's inline FA box width instead of
+    // the browser's per-icon glyph advance.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -161,14 +170,14 @@ fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 45.03125);
+    assert_eq!(m.width, 49.03125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
 
 #[test]
-fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary() {
-    // Mermaid falls back to an empty `<i>` for unregistered custom packs.
+fn flowchart_html_fontawesome_custom_pack_icon_width_uses_nominal_boundary() {
+    // Mermaid 11.15 keeps the inline icon box width even for the documented custom-pack example.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -184,7 +193,7 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary(
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 104.046875);
+    assert_eq!(m.width, 124.046875);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
@@ -192,7 +201,7 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary(
 #[test]
 fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
     // Non-markdown Flowchart icon labels should use the same HTML fragment measurement path as
-    // emitted `<foreignObject>` content, with the same clean nominal icon width boundary.
+    // emitted `<foreignObject>` content, with the same Mermaid 11.15 icon width boundary.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -215,7 +224,36 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
             whole_label_font_style: None,
         },
     );
-    assert_eq!(m.width, 45.03125);
+    assert_eq!(m.width, 49.03125);
+    assert_eq!(m.height, 24.0);
+    assert_eq!(m.line_count, 1);
+}
+
+#[test]
+fn flowchart_label_metrics_plain_car_uses_dom_text_width() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let m = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "Car",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+            whole_label_font_style: None,
+        },
+    );
+    assert_eq!(m.width, 24.203125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
@@ -405,6 +443,11 @@ fn default_font_flowchart_html_width_overrides_match_upstream() {
     let custom = measurer.measure_wrapped("custom", &style, Some(200.0), WrapMode::HtmlLike);
     assert_eq!(custom.width, 51.359375);
     assert_eq!(custom.height, 24.0);
+
+    let stacked_rectangle =
+        measurer.measure_wrapped("stacked-rectangle", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(stacked_rectangle.width, 128.578125);
+    assert_eq!(stacked_rectangle.height, 24.0);
 }
 
 #[test]
@@ -522,7 +565,7 @@ fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(owner_default.width, 141.71875);
+    assert_eq!(owner_default.width, 128.953125);
     assert_eq!(owner_default.height, 24.0);
 
     let owner_courier = measurer.measure_wrapped(
@@ -531,14 +574,25 @@ fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(owner_courier.width, 156.84375);
+    assert_eq!(owner_courier.width, 144.078125);
     assert_eq!(owner_courier.height, 24.0);
 
     let submit = "æ\u{8f}\u{90}äº¤ç\u{94}³è¯·";
+    let submit_default =
+        measurer.measure_wrapped(submit, &default_style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(submit_default.width, 104.140625);
+    assert_eq!(submit_default.height, 24.0);
+
     let submit_courier =
         measurer.measure_wrapped(submit, &courier_style, Some(200.0), WrapMode::HtmlLike);
-    assert_eq!(submit_courier.width, 134.375);
+    assert_eq!(submit_courier.width, 115.21875);
     assert_eq!(submit_courier.height, 24.0);
+
+    let end = "ç»\u{93}æ\u{9d}\u{9f}";
+    let end_default =
+        measurer.measure_wrapped(end, &default_style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(end_default.width, 53.4375);
+    assert_eq!(end_default.height, 24.0);
 }
 
 #[test]

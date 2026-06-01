@@ -1,0 +1,55 @@
+[
+  {
+    "op": "set",
+    "path": ["class", "padding"],
+    "value": 12,
+    "reason": "Local Class parity uses Mermaid's observed class node padding baseline; upstream schema still lists 5."
+  },
+  {
+    "op": "set",
+    "path": ["flowchart", "htmlLabels"],
+    "value": true,
+    "reason": "Normalize the deprecated nullable flowchart htmlLabels schema default to the effective Mermaid baseline used by local renderers."
+  },
+  {
+    "op": "set",
+    "path": ["sankey", "nodeColors"],
+    "value": {},
+    "reason": "Mermaid defaultConfig.ts exposes this key as undefined for configKeys; local JSON uses an empty object as the equivalent default map."
+  },
+  {
+    "op": "remove",
+    "path": ["eventmodeling"],
+    "reason": "Deferred 11.15 diagram family; do not imply default-config support until the family lane is accepted."
+  },
+  {
+    "op": "remove",
+    "path": ["wardley-beta"],
+    "reason": "Deferred 11.15 diagram family; do not imply default-config support until the family lane is accepted."
+  },
+  {
+    "op": "remove",
+    "path": ["treeView"],
+    "reason": "Deferred 11.15 diagram family; do not imply default-config support until the family lane is accepted."
+  },
+  {
+    "op": "remove",
+    "path": ["venn"],
+    "reason": "Deferred 11.15 diagram family; do not imply default-config support until the family lane is accepted."
+  },
+  {
+    "op": "remove",
+    "path": ["ishikawa"],
+    "reason": "Deferred 11.15 diagram family; do not imply default-config support until the family lane is accepted."
+  },
+  {
+    "op": "remove",
+    "path": ["cynefin"],
+    "reason": "Out-of-scope 11.15 diagram family for the current baseline."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad"],
+    "reason": "Out-of-scope 11.15 diagram family for the current baseline."
+  }
+]

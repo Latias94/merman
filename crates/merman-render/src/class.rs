@@ -70,6 +70,17 @@ pub(crate) fn class_namespace_ids_in_decl_order(model: &ClassDiagramModel) -> Ve
     namespaces.into_iter().map(|ns| ns.id.as_str()).collect()
 }
 
+pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a str) -> &'a str {
+    model
+        .namespaces
+        .get(id)
+        .and_then(|ns| {
+            let label = ns.label.trim();
+            (!label.is_empty()).then_some(label)
+        })
+        .unwrap_or(id)
+}
+
 fn class_namespace_child_pairs(model: &ClassDiagramModel) -> HashSet<(&str, &str)> {
     let mut pairs = HashSet::with_capacity(model.classes.len());
     for class in model.classes.values() {
@@ -1964,6 +1975,21 @@ fn layout_class_diagram_v2_typed_inner(
     }
 
     if g.options().compound {
+        for &id in &namespace_ids {
+            let Some(parent) = model
+                .namespaces
+                .get(id)
+                .and_then(|ns| ns.parent.as_deref())
+                .map(str::trim)
+                .filter(|parent| !parent.is_empty())
+            else {
+                continue;
+            };
+            if model.namespaces.contains_key(parent) {
+                g.set_parent(id.to_string(), parent.to_string());
+            }
+        }
+
         // Mermaid assigns parents based on the class' `parent` field (see upstream
         // `addClasses(..., parent)` + `g.setParent(vertex.id, parent)`).
         for c in model.classes.values() {
@@ -1976,6 +2002,20 @@ fn layout_class_diagram_v2_typed_inner(
                 if model.namespaces.contains_key(parent) {
                     g.set_parent(c.id.clone(), parent.to_string());
                 }
+            }
+        }
+
+        for note in &model.notes {
+            let Some(parent) = note
+                .parent
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            if model.namespaces.contains_key(parent) {
+                g.set_parent(note.id.clone(), parent.to_string());
             }
         }
 
@@ -2177,7 +2217,7 @@ fn layout_class_diagram_v2_typed_inner(
         let base_w = ns_node.width.max(1.0);
         let base_h = ns_node.height.max(1.0);
 
-        let title = id.to_string();
+        let title = class_namespace_label(model, id).to_string();
         let (mut tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
         if let Some(width) = class_namespace_known_rendered_width_override_px(&title, &text_style) {
             tw = width;

@@ -79,8 +79,13 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             metrics.height = 0.0;
         }
 
-        let outer_w = image_width.max(metrics.width);
-        let outer_h = image_height + metrics.height + label_padding;
+        // Mermaid's `labelHelper(...)` wraps image labels in `.labelBkg`; the flowchart
+        // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
+        let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
+        let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
+
+        let outer_w = image_width.max(label_bbox_w);
+        let outer_h = image_height + label_bbox_h + label_padding;
 
         let x0 = -image_width / 2.0;
         let y0 = -image_height / 2.0;
@@ -112,9 +117,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         );
 
         let icon_dy = if top_label {
-            metrics.height / 2.0 + label_padding / 2.0
+            label_bbox_h / 2.0 + label_padding / 2.0
         } else {
-            -metrics.height / 2.0 - label_padding / 2.0
+            -label_bbox_h / 2.0 - label_padding / 2.0
         };
         let _ = write!(
             out,
@@ -155,9 +160,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
             });
         let label_dy = if top_label {
-            -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
+            -image_height / 2.0 - label_bbox_h / 2.0 - label_padding / 2.0
         } else {
-            image_height / 2.0 - metrics.height / 2.0 + label_padding / 2.0
+            image_height / 2.0 - label_bbox_h / 2.0 + label_padding / 2.0
         };
         let _ = write!(
             out,
@@ -167,14 +172,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 r#"<foreignObject width="{}" height="{}">"#,
                 r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
                 r#"style="display: table-cell; white-space: nowrap; line-height: 1.5; "#,
-                r#"max-width: {}px; text-align: center;"><span class="nodeLabel">{}</span></div>"#,
+                r#"max-width: {}px; text-align: center;"><span class="{}">{}</span></div>"#,
                 r#"</foreignObject></g>"#
             ),
-            fmt_display(-metrics.width / 2.0),
+            fmt_display(-label_bbox_w / 2.0),
             fmt_display(label_dy),
-            fmt_display(metrics.width),
-            fmt_display(metrics.height),
+            fmt_display(label_bbox_w),
+            fmt_display(label_bbox_h),
             fmt_display(ctx.wrapping_width),
+            super::super::helpers::flowchart_node_label_span_class(label.label_type),
             label_html
         );
 

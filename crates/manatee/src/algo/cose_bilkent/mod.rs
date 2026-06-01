@@ -30,16 +30,16 @@ pub fn layout_indexed(
     let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
     #[derive(Debug, Default, Clone)]
     struct CoseLayoutTimings {
-        total: std::time::Duration,
-        from_indexed: std::time::Duration,
-        flat_forest: std::time::Duration,
-        radial: std::time::Duration,
-        spring: std::time::Duration,
-        transform: std::time::Duration,
-        output: std::time::Duration,
+        total: web_time::Duration,
+        from_indexed: web_time::Duration,
+        flat_forest: web_time::Duration,
+        radial: web_time::Duration,
+        spring: web_time::Duration,
+        transform: web_time::Duration,
+        output: web_time::Duration,
     }
     let mut timings = CoseLayoutTimings::default();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
     for (idx, e) in edges.iter().enumerate() {
         if e.a >= nodes.len() || e.b >= nodes.len() {
@@ -49,33 +49,33 @@ pub fn layout_indexed(
         }
     }
 
-    let from_indexed_start = timing_enabled.then(std::time::Instant::now);
+    let from_indexed_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_indexed(nodes, edges);
     if let Some(s) = from_indexed_start {
         timings.from_indexed = s.elapsed();
     }
 
-    let flat_forest_start = timing_enabled.then(std::time::Instant::now);
+    let flat_forest_start = timing_enabled.then(web_time::Instant::now);
     let forest = sim.get_flat_forest();
     if let Some(s) = flat_forest_start {
         timings.flat_forest = s.elapsed();
     }
     if !forest.is_empty() {
-        let radial_start = timing_enabled.then(std::time::Instant::now);
+        let radial_start = timing_enabled.then(web_time::Instant::now);
         sim.position_nodes_radially(&forest);
         if let Some(s) = radial_start {
             timings.radial = s.elapsed();
         }
     }
 
-    let spring_start = timing_enabled.then(std::time::Instant::now);
+    let spring_start = timing_enabled.then(web_time::Instant::now);
     if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
         sim.run_spring_embedder(timing_enabled);
     }
     if let Some(s) = spring_start {
         timings.spring = s.elapsed();
     }
-    let transform_start = timing_enabled.then(std::time::Instant::now);
+    let transform_start = timing_enabled.then(web_time::Instant::now);
     if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
         sim.transform_to_origin();
     }
@@ -83,7 +83,7 @@ pub fn layout_indexed(
         timings.transform = s.elapsed();
     }
 
-    let output_start = timing_enabled.then(std::time::Instant::now);
+    let output_start = timing_enabled.then(web_time::Instant::now);
     let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
     for n in &sim.nodes {
         out.push(Point {
@@ -119,18 +119,18 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
     #[derive(Debug, Default, Clone)]
     struct CoseLayoutTimings {
-        total: std::time::Duration,
-        from_graph: std::time::Duration,
-        flat_forest: std::time::Duration,
-        radial: std::time::Duration,
-        spring: std::time::Duration,
-        transform: std::time::Duration,
-        output: std::time::Duration,
+        total: web_time::Duration,
+        from_graph: web_time::Duration,
+        flat_forest: web_time::Duration,
+        radial: web_time::Duration,
+        spring: web_time::Duration,
+        transform: web_time::Duration,
+        output: web_time::Duration,
     }
     let mut timings = CoseLayoutTimings::default();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
-    let from_graph_start = timing_enabled.then(std::time::Instant::now);
+    let from_graph_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_graph(graph);
     if let Some(s) = from_graph_start {
         timings.from_graph = s.elapsed();
@@ -142,13 +142,13 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
     // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
-    let flat_forest_start = timing_enabled.then(std::time::Instant::now);
+    let flat_forest_start = timing_enabled.then(web_time::Instant::now);
     let forest = sim.get_flat_forest();
     if let Some(s) = flat_forest_start {
         timings.flat_forest = s.elapsed();
     }
     if !forest.is_empty() {
-        let radial_start = timing_enabled.then(std::time::Instant::now);
+        let radial_start = timing_enabled.then(web_time::Instant::now);
         sim.position_nodes_radially(&forest);
         if let Some(s) = radial_start {
             timings.radial = s.elapsed();
@@ -157,14 +157,14 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
-    let spring_start = timing_enabled.then(std::time::Instant::now);
+    let spring_start = timing_enabled.then(web_time::Instant::now);
     if std::env::var("MANATEE_COSE_SKIP_SPRING").ok().as_deref() != Some("1") {
         sim.run_spring_embedder(timing_enabled);
     }
     if let Some(s) = spring_start {
         timings.spring = s.elapsed();
     }
-    let transform_start = timing_enabled.then(std::time::Instant::now);
+    let transform_start = timing_enabled.then(web_time::Instant::now);
     if std::env::var("MANATEE_COSE_SKIP_TRANSFORM").ok().as_deref() != Some("1") {
         sim.transform_to_origin();
     }
@@ -172,7 +172,7 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         timings.transform = s.elapsed();
     }
 
-    let output_start = timing_enabled.then(std::time::Instant::now);
+    let output_start = timing_enabled.then(web_time::Instant::now);
     let node_count = sim.nodes.len();
     let edge_count = sim.edges.len();
 
@@ -998,25 +998,25 @@ impl SimGraph {
 
         #[derive(Debug, Default, Clone)]
         struct SpringEmbedderTimings {
-            total: std::time::Duration,
-            nodes_to_apply_gravitation: std::time::Duration,
-            update_grid: std::time::Duration,
-            spring_forces: std::time::Duration,
-            repulsion_forces: std::time::Duration,
-            gravitation_forces: std::time::Duration,
-            move_nodes: std::time::Duration,
+            total: web_time::Duration,
+            nodes_to_apply_gravitation: web_time::Duration,
+            update_grid: web_time::Duration,
+            spring_forces: web_time::Duration,
+            repulsion_forces: web_time::Duration,
+            gravitation_forces: web_time::Duration,
+            move_nodes: web_time::Duration,
             iterations: usize,
             active_edges_spring: u64,
             repulsion_pairs_considered: u64,
             repulsion_pairs_in_range: u64,
         }
         let mut timings = SpringEmbedderTimings::default();
-        let total_start = timing_enabled.then(std::time::Instant::now);
+        let total_start = timing_enabled.then(web_time::Instant::now);
 
         // Mermaid's Cytoscape COSE-Bilkent applies gravitational forces only when the graph is
         // disconnected (`calculateNodesToApplyGravitationTo()` collects nodes from non-connected
         // graphs). For a connected mindmap tree this list is empty, so gravity is a no-op.
-        let nodes_with_gravity_start = timing_enabled.then(std::time::Instant::now);
+        let nodes_with_gravity_start = timing_enabled.then(web_time::Instant::now);
         let nodes_with_gravity = self.nodes_to_apply_gravitation();
         if let Some(s) = nodes_with_gravity_start {
             timings.nodes_to_apply_gravitation = s.elapsed();
@@ -1101,7 +1101,7 @@ impl SimGraph {
             let mut total_displacement = 0.0f64;
 
             // Spring forces
-            let spring_start = timing_enabled.then(std::time::Instant::now);
+            let spring_start = timing_enabled.then(web_time::Instant::now);
             for e in &self.edges {
                 if !e.active {
                     continue;
@@ -1157,11 +1157,11 @@ impl SimGraph {
             // - rebuild the grid every `GRID_CALCULATION_CHECK_PERIOD` iterations (when allowed)
             // - cache `node.surrounding` between grid rebuilds
             // - candidate filtering uses *border distances* against `repulsionRange`
-            let repulsion_start = timing_enabled.then(std::time::Instant::now);
+            let repulsion_start = timing_enabled.then(web_time::Instant::now);
             let rebuild_surrounding = total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD == 1;
 
             if rebuild_surrounding {
-                let update_grid_start = timing_enabled.then(std::time::Instant::now);
+                let update_grid_start = timing_enabled.then(web_time::Instant::now);
                 self.update_grid(repulsion_range);
                 if let Some(s) = update_grid_start {
                     timings.update_grid += s.elapsed();
@@ -1248,7 +1248,7 @@ impl SimGraph {
             }
 
             // Gravitation (only for disconnected graphs).
-            let gravitation_start = timing_enabled.then(std::time::Instant::now);
+            let gravitation_start = timing_enabled.then(web_time::Instant::now);
             if !nodes_with_gravity.is_empty() {
                 if let Some((owner_center_x, owner_center_y, estimated_size)) =
                     self.gravitation_context(gravity_range_factor)
@@ -1274,7 +1274,7 @@ impl SimGraph {
             }
 
             // Move nodes
-            let move_start = timing_enabled.then(std::time::Instant::now);
+            let move_start = timing_enabled.then(web_time::Instant::now);
             for n in &mut self.nodes {
                 if !n.active {
                     continue;

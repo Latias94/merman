@@ -8,12 +8,7 @@
     "actorOrder": [
       "Alice",
       "Bob",
-      "Charlie",
-      "()Bob",
-      "Bob()",
-      "Alice()",
-      "()Charlie",
-      "Charlie()"
+      "Charlie"
     ],
     "actors": {
       "Alice": {
@@ -39,46 +34,6 @@
         "type": "participant",
         "links": {},
         "properties": {}
-      },
-      "()Bob": {
-        "name": "()Bob",
-        "description": "()Bob",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Bob()": {
-        "name": "Bob()",
-        "description": "Bob()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Alice()": {
-        "name": "Alice()",
-        "description": "Alice()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "()Charlie": {
-        "name": "()Charlie",
-        "description": "()Charlie",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Charlie()": {
-        "name": "Charlie()",
-        "description": "Charlie()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
       }
     },
     "messages": [
@@ -96,55 +51,133 @@
       {
         "id": "1",
         "from": "Alice",
-        "to": "()Bob",
+        "to": "Bob",
         "message": "Central connection at destination",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": true,
+        "centralConnection": 59
       },
       {
         "id": "2",
-        "from": "Bob()",
-        "to": "Alice",
-        "message": "Reverse central at source",
+        "from": "Bob",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
+        "type": 59,
         "activate": false
       },
       {
         "id": "3",
-        "from": "Alice()",
-        "to": "()Bob",
-        "message": "Dual central connections",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Reverse central at source",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": false,
+        "centralConnection": 60
       },
       {
         "id": "4",
         "from": "Bob",
-        "to": "()Charlie",
-        "message": "Another central connection",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
+        "type": 60,
         "activate": false
       },
       {
         "id": "5",
-        "from": "Charlie()",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Dual central connections",
+        "wrap": false,
+        "type": 0,
+        "activate": true,
+        "centralConnection": 61
+      },
+      {
+        "id": "6",
+        "from": "Bob",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "Bob",
+        "to": "Charlie",
+        "message": "Another central connection",
+        "wrap": false,
+        "type": 0,
+        "activate": true,
+        "centralConnection": 59
+      },
+      {
+        "id": "9",
+        "from": "Charlie",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "Charlie",
         "to": "Alice",
         "message": "Reverse central dotted",
         "wrap": false,
         "type": 1,
+        "activate": false,
+        "centralConnection": 60
+      },
+      {
+        "id": "11",
+        "from": "Charlie",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
         "activate": false
       },
       {
-        "id": "6",
-        "from": "Alice()",
-        "to": "()Bob",
+        "id": "12",
+        "from": "Alice",
+        "to": "Bob",
         "message": "Dual central bidirectional",
         "wrap": false,
         "type": 34,
+        "activate": true,
+        "centralConnection": 61
+      },
+      {
+        "id": "13",
+        "from": "Bob",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 59,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
         "activate": false
       }
     ],

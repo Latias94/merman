@@ -44,7 +44,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_shaded_process(
         .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
     let _ = write!(
         out,
-        r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         escape_attr(&fill_d),
         escape_attr(common.fill_color),
         escape_attr(common.style),

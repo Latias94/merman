@@ -57,7 +57,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
 
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
+                r##"<g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 outer_d,
                 escape_attr(common.fill_color),
                 escape_attr(common.style),
@@ -167,7 +167,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
-                r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
+                r#"<g class="outer-path" transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
                 util::fmt(-width / 2.0),
                 util::fmt(-height),
                 escape_attr(&fill_d),
@@ -260,7 +260,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
 
             let _ = write!(
                 out,
-                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
+                r##"<g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g></g>"##,
                 escape_attr(&circle_d),
                 escape_attr(common.fill_color),
                 escape_attr(common.style),

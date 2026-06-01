@@ -1,0 +1,40 @@
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md","reason":"Umbrella target state, scope, non-goals, and closeout conditions for Mermaid 11.15 complete adaptation."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md","reason":"Task ledger and current executable slices."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md","reason":"Current red/green evidence and required verification gates."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md","reason":"Current 525-mismatch inventory and stale-baseline versus renderer-gap classification."}
+{"file":"docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md","reason":"Prior 11.15 baseline upgrade scope and closeout result."}
+{"file":"docs/workstreams/generated-default-config-parity/DESIGN.md","reason":"Generated artifact verification split and closeout result."}
+{"file":"docs/workstreams/pie-11-15-parity/DESIGN.md","reason":"Closed Pie 11.15 behavior lane and evidence boundaries."}
+{"file":"docs/alignment/STATUS.md","reason":"Implemented matrix, unsupported family decisions, and parity dashboard."}
+{"file":"docs/rendering/UPSTREAM_SVG_BASELINES.md","reason":"Upstream SVG generation and checking workflow."}
+{"file":"docs/adr/0001-upstream-baseline.md","reason":"Baseline authority and version claim."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy authority for supported and deferred behavior."}
+{"file":"tools/upstreams/REPOS.lock.json","reason":"Pinned upstream repository versions for Mermaid and related render dependencies."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-060-er.md","reason":"ER 11.15 renderer convergence evidence and follow-on Class-only state."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-shape-alias-geometry.md","reason":"Flowchart 11.15 shape-alias geometry evidence and next strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/hexagon.ts","reason":"Mermaid 11.15 source for hex/prepare geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/linedCylinder.ts","reason":"Mermaid 11.15 source for lined-cylinder geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/waveRectangle.ts","reason":"Mermaid 11.15 source for paper-tape/flag geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/multiWaveEdgedRectangle.ts","reason":"Mermaid 11.15 source for stacked-document geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-plain-car-root.md","reason":"Flowchart plain Car text-metric evidence; baseline/browser-metric anchored rather than Mermaid source-formula anchored."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-demo-root-pins.md","reason":"Flowchart demo 016/052 stale root-pin refresh evidence for Mermaid 11.15 roots."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/bowTieRect.ts","reason":"Mermaid 11.15 source for bow-tie/stored-data geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-bow-tie-rectangle.md","reason":"Flowchart bow-tie/stored-data geometry evidence and follow-on strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/windowPane.ts","reason":"Mermaid 11.15 source for window-pane/internal-storage geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-window-pane.md","reason":"Flowchart window-pane/internal-storage geometry evidence and follow-on strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/waveEdgedRectangle.ts","reason":"Mermaid 11.15 source for document/wave-edged rectangle geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/halfRoundedRectangle.ts","reason":"Mermaid 11.15 source for delay/half-rounded rectangle geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-document-delay.md","reason":"Flowchart document/delay geometry evidence and follow-on strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/doubleCircle.ts","reason":"Mermaid 11.15 source for double-circle geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-double-circle.md","reason":"Flowchart double-circle geometry evidence and follow-on strict-root residuals."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/linedWaveEdgedRect.ts","reason":"Mermaid 11.15 source for lined-document geometry."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/taggedWaveEdgedRectangle.ts","reason":"Mermaid 11.15 source for tagged-document geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-lined-tagged-document.md","reason":"Flowchart lined/tagged document geometry and stacked-rectangle text metric evidence."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/curvedTrapezoid.ts","reason":"Mermaid 11.15 source for curved-trapezoid/display geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-curved-trapezoid.md","reason":"Flowchart curved-trapezoid geometry evidence and follow-on strict-root residuals."}
+{"file":"fixtures/upstream-svgs/flowchart/stress_flowchart_unicode_punct_in_ids_labels_035.svg","reason":"Mermaid 11.15 browser metric evidence for CJK/Hangul and emoji Flowchart labels."}
+{"file":"fixtures/upstream-svgs/flowchart/stress_flowchart_long_labels_punctuation_unicode_006.svg","reason":"Mermaid 11.15 browser metric evidence for Windows-path HTML min-content width."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-unicode-text-metrics.md","reason":"Flowchart Unicode/punctuation browser text metric evidence and follow-on strict-root residuals."}
+{"file":"crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs","reason":"Flowchart root viewport override inventory for 11.15 strict-root pin refreshes."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-icon-root-pin.md","reason":"Flowchart icon example stale root-pin refresh evidence and follow-on strict-root residuals."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-styled-text-root-pin.md","reason":"Flowchart styled text/color stale root-pin refresh evidence and follow-on strict-root residuals."}

@@ -3,21 +3,21 @@
 //! Mermaid shortens edge paths so markers don't render on top of the line (see
 //! `packages/mermaid/src/utils/lineWithOffset.ts`).
 
+fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
+    match arrow_type {
+        Some("arrow_point") => Some(4.0),
+        Some("dependency") => Some(6.0),
+        Some("lollipop") => Some(13.5),
+        Some("aggregation" | "extension" | "composition") => Some(17.25),
+        _ => None,
+    }
+}
+
 pub(in crate::svg::parity::flowchart) fn line_with_offset_points(
     input: &[crate::model::LayoutPoint],
     arrow_type_start: Option<&str>,
     arrow_type_end: Option<&str>,
 ) -> Vec<crate::model::LayoutPoint> {
-    fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
-        match arrow_type {
-            Some("arrow_point") => Some(4.0),
-            Some("dependency") => Some(6.0),
-            Some("lollipop") => Some(13.5),
-            Some("aggregation" | "extension" | "composition") => Some(17.25),
-            _ => None,
-        }
-    }
-
     fn calculate_delta_and_angle(
         a: &crate::model::LayoutPoint,
         b: &crate::model::LayoutPoint,
@@ -109,6 +109,36 @@ pub(in crate::svg::parity::flowchart) fn line_with_offset_points(
     out
 }
 
+pub(in crate::svg::parity::flowchart) fn rounded_line_with_marker_offsets_points(
+    input: &[crate::model::LayoutPoint],
+    arrow_type_start: Option<&str>,
+    arrow_type_end: Option<&str>,
+) -> Vec<crate::model::LayoutPoint> {
+    let mut out = input.to_vec();
+    if input.len() < 2 {
+        return out;
+    }
+
+    if let Some(offset) = marker_offset_for(arrow_type_start) {
+        let p1 = &input[0];
+        let p2 = &input[1];
+        let angle = (p2.y - p1.y).atan2(p2.x - p1.x);
+        out[0].x = p1.x + offset * angle.cos();
+        out[0].y = p1.y + offset * angle.sin();
+    }
+
+    let n = input.len();
+    if let Some(offset) = marker_offset_for(arrow_type_end) {
+        let p1 = &input[n - 1];
+        let p2 = &input[n - 2];
+        let angle = (p1.y - p2.y).atan2(p1.x - p2.x);
+        out[n - 1].x = p1.x - offset * angle.cos();
+        out[n - 1].y = p1.y - offset * angle.sin();
+    }
+
+    out
+}
+
 pub(in crate::svg::parity::flowchart) fn maybe_snap_shallow_basis_triplet_y_to_f32(
     points: &mut [crate::model::LayoutPoint],
     edge_type: Option<&str>,
@@ -186,4 +216,12 @@ pub(in crate::svg::parity::flowchart) fn line_with_offset_for_edge_type(
 ) -> Vec<crate::model::LayoutPoint> {
     let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge_type);
     line_with_offset_points(input, arrow_type_start, arrow_type_end)
+}
+
+pub(in crate::svg::parity::flowchart) fn rounded_line_with_marker_offsets_for_edge_type(
+    input: &[crate::model::LayoutPoint],
+    edge_type: Option<&str>,
+) -> Vec<crate::model::LayoutPoint> {
+    let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge_type);
+    rounded_line_with_marker_offsets_points(input, arrow_type_start, arrow_type_end)
 }

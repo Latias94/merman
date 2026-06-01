@@ -139,6 +139,10 @@ pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Binding
     }
 }
 
+pub fn supported_themes() -> &'static [&'static str] {
+    merman::supported_themes()
+}
+
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
@@ -163,6 +167,34 @@ pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindin
         .ok_or_else(no_diagram_error)?;
 
     serde_json::to_vec(&layouted).map_err(internal_json_error)
+}
+
+#[cfg(feature = "ascii")]
+pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let source = source_text(source)?;
+    let options = parse_options(options_json)?;
+
+    let parse = if options
+        .parse
+        .as_ref()
+        .and_then(|parse| parse.suppress_errors)
+        .unwrap_or(false)
+    {
+        merman::ParseOptions::lenient()
+    } else {
+        merman::ParseOptions::strict()
+    };
+
+    let renderer = merman::ascii::HeadlessAsciiRenderer::new()
+        .with_parse_options(parse)
+        .with_ascii_options(merman::ascii::AsciiRenderOptions::unicode());
+
+    let rendered = renderer
+        .render_ascii_sync(source)
+        .map_err(classify_ascii_error)?
+        .ok_or_else(no_diagram_error)?;
+
+    Ok(rendered.into_bytes())
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
@@ -321,6 +353,28 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
     }
 }
 
+#[cfg(feature = "ascii")]
+fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
+    match err {
+        merman::ascii::HeadlessAsciiError::Parse(err) => {
+            BindingError::new(BindingStatus::ParseError, err.to_string())
+        }
+        merman::ascii::HeadlessAsciiError::Ascii(err) => match err {
+            merman::ascii::AsciiError::InvalidOption { .. } => {
+                BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+            }
+            merman::ascii::AsciiError::UnsupportedDiagram { .. }
+            | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
+                BindingError::new(BindingStatus::UnsupportedFormat, err.to_string())
+            }
+            merman::ascii::AsciiError::RenderLimitExceeded { .. } => {
+                BindingError::new(BindingStatus::RenderError, err.to_string())
+            }
+            _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
+        },
+    }
+}
+
 fn no_diagram_error() -> BindingError {
     BindingError::new(BindingStatus::NoDiagram, "no Mermaid diagram detected")
 }
@@ -364,6 +418,14 @@ mod tests {
     }
 
     #[test]
+    fn supported_themes_exposes_core_theme_surface() {
+        assert_eq!(
+            supported_themes(),
+            &["default", "base", "dark", "forest", "neutral"]
+        );
+    }
+
+    #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
             "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },
@@ -400,6 +462,17 @@ mod tests {
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn render_ascii_returns_unicode_text() {
+        let text =
+            String::from_utf8(render_ascii(b"flowchart TD\nA[Hello] --> B[World]", b"").unwrap())
+                .unwrap();
+
+        assert!(text.contains("Hello"));
+        assert!(text.contains("World"));
     }
 
     #[test]

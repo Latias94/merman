@@ -487,8 +487,8 @@ pub(super) fn pie_css(diagram_id: &str) -> String {
     let mut out = info_css(diagram_id);
     let _ = write!(
         &mut out,
-        r#"#{} .pieCircle{{stroke:black;stroke-width:2px;opacity:0.7;}}#{} .pieOuterCircle{{stroke:black;stroke-width:2px;fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:25px;fill:black;font-family:{};}}#{} .slice{{font-family:{};fill:#333;font-size:17px;}}#{} .legend text{{fill:black;font-family:{};font-size:17px;}}"#,
-        id, id, id, font, id, font, id, font
+        r#"#{} .pieCircle{{stroke:black;stroke-width:2px;opacity:0.7;}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:black;stroke-width:2px;fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:25px;fill:black;font-family:{};}}#{} .slice{{font-family:{};fill:#333;font-size:17px;}}#{} .legend text{{fill:black;font-family:{};font-size:17px;}}"#,
+        id, id, id, id, id, font, id, font, id, font
     );
     out
 }
@@ -529,8 +529,8 @@ pub(super) fn sankey_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font, id, id, font, id, font
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:#fff;stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:#333;}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font, id, id, font, id, font, id, id, id, id, id, font
     );
     out
 }

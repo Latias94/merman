@@ -80,6 +80,28 @@ add `--skip-mermaid-js`:
 python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
 ```
 
+## Browser comparison with Mermaid JS
+
+Native `merman-cli` results and Mermaid JS browser results should not be treated as the same kind
+of benchmark. The CLI path is useful for native pipeline regressions; the browser path is useful
+for playground and web embedding decisions.
+
+For web-to-web comparisons, measure after both engines are initialized in the same headless
+Chromium session:
+
+- Merman: initialize `@merman/web` once, then measure repeated `renderSvg()` calls.
+- Mermaid JS: initialize Mermaid once, then measure repeated `mermaid.render()` calls.
+- Use the same fixtures, theme, viewport width, warmup window, and measurement window.
+- Keep cold-start numbers separate from steady-state render numbers.
+
+`tools/bench/mermaid_js_bench.cjs` already provides the Mermaid JS side of this comparison through
+the pinned `tools/mermaid-cli` dependency set. A future `@merman/web` browser harness should emit
+the same JSON shape so `tools/bench/compare_mermaid_renderers.py` can report native, WASM, and
+Mermaid JS results without mixing unlike measurements.
+
+For interactive visual comparison rather than timed measurement, see
+`docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
+
 See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary filter and report naming.
 
 ## Stage spot-check (recommended for triage)

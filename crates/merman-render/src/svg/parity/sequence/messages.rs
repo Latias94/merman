@@ -6,6 +6,11 @@ use crate::sequence::{
 };
 use rustc_hash::FxHashMap;
 
+const LINETYPE_CENTRAL_CONNECTION: i32 = 59;
+const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
+const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
+const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
+
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
@@ -14,6 +19,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) message_align: &'a str,
+    pub(super) diagram_id: &'a str,
     pub(super) actor_height: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
@@ -22,10 +28,135 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) loop_text_style: &'a TextStyle,
 }
 
+fn marker_attr(attr_name: &str, diagram_id: &str, local_id: &str) -> String {
+    format!(
+        r#" {attr_name}="{}""#,
+        escape_attr(&scoped_svg_url(diagram_id, local_id))
+    )
+}
+
+fn message_data_attrs(msg_id: &str, from: &str, to: &str) -> String {
+    format!(
+        r#" data-et="message" data-id="i{msg_id}" data-from="{}" data-to="{}""#,
+        escape_attr(from),
+        escape_attr(to)
+    )
+}
+
+fn has_central_connection(msg: &merman_core::diagrams::sequence::SequenceMessage) -> bool {
+    matches!(
+        msg.central_connection,
+        LINETYPE_CENTRAL_CONNECTION
+            | LINETYPE_CENTRAL_CONNECTION_REVERSE
+            | LINETYPE_CENTRAL_CONNECTION_DUAL
+    )
+}
+
+fn is_reverse_arrow_type(msg_type: i32) -> bool {
+    matches!(msg_type, 45 | 46 | 47 | 48 | 55 | 56 | 57 | 58)
+}
+
+fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Option<f64> {
+    ctx.nodes_by_id
+        .get(format!("actor-top-{actor_id}").as_str())
+        .map(|node| node.x)
+}
+
+fn write_central_connection_circles(
+    out: &mut String,
+    ctx: &SequenceMessageRenderContext<'_>,
+    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    from: &str,
+    to: &str,
+    line_y: f64,
+    sequence_number_visible: bool,
+) {
+    if !has_central_connection(msg) {
+        return;
+    }
+
+    let (Some(mut from_center), Some(mut to_center)) =
+        (actor_center_x(ctx, from), actor_center_x(ctx, to))
+    else {
+        return;
+    };
+    let is_left_to_right = from_center <= to_center;
+    let is_reverse = is_reverse_arrow_type(msg.message_type);
+    let circle_offset = |is_left_to_right: bool, is_reverse: bool| {
+        let base_offset = if is_left_to_right {
+            CENTRAL_CONNECTION_CIRCLE_OFFSET
+        } else {
+            -CENTRAL_CONNECTION_CIRCLE_OFFSET
+        };
+        if is_reverse {
+            -base_offset
+        } else {
+            base_offset
+        }
+    };
+
+    if sequence_number_visible {
+        match msg.central_connection {
+            LINETYPE_CENTRAL_CONNECTION => {
+                if is_reverse {
+                    to_center += circle_offset(is_left_to_right, true);
+                }
+            }
+            LINETYPE_CENTRAL_CONNECTION_REVERSE => {
+                if !is_reverse {
+                    from_center += circle_offset(is_left_to_right, false);
+                }
+            }
+            LINETYPE_CENTRAL_CONNECTION_DUAL => {
+                if is_reverse {
+                    to_center += circle_offset(is_left_to_right, true);
+                } else {
+                    from_center += circle_offset(is_left_to_right, false);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    out.push_str("<g>");
+    if matches!(
+        msg.central_connection,
+        LINETYPE_CENTRAL_CONNECTION_REVERSE | LINETYPE_CENTRAL_CONNECTION_DUAL
+    ) {
+        let _ = write!(
+            out,
+            r#"<circle cx="{cx}" cy="{cy}" r="5" width="10" height="10"/>"#,
+            cx = fmt(from_center),
+            cy = fmt(line_y)
+        );
+    }
+    if matches!(
+        msg.central_connection,
+        LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_DUAL
+    ) {
+        let _ = write!(
+            out,
+            r#"<circle cx="{cx}" cy="{cy}" r="5" width="10" height="10"/>"#,
+            cx = fmt(to_center),
+            cy = fmt(line_y)
+        );
+    }
+    out.push_str("</g>");
+}
+
 pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRenderContext<'_>) {
     let mut sequence_number_visible = false;
-    let mut sequence_number: i64 = 1;
-    let mut sequence_number_step: i64 = 1;
+    let mut sequence_number = 1.0;
+    let mut sequence_number_step = 1.0;
+
+    for _ in ctx.model.messages.iter().filter(|msg| {
+        matches!(
+            msg.message_type,
+            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE
+        )
+    }) {
+        out.push_str("<g/>");
+    }
 
     for msg in &ctx.model.messages {
         match msg.message_type {
@@ -44,6 +175,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             }
             // NOTE
             2 => continue,
+            // CENTRAL_CONNECTION / CENTRAL_CONNECTION_REVERSE. Upstream routes these through
+            // the activation drawing path, which leaves an empty group even without a visible
+            // activation rectangle.
+            LINETYPE_CENTRAL_CONNECTION | LINETYPE_CENTRAL_CONNECTION_REVERSE => continue,
             _ => {}
         }
 
@@ -133,19 +268,20 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
         };
 
         let marker_start = match msg.message_type {
-            33 | 34 => Some(r#" marker-start="url(#arrowhead)""#),
+            33 | 34 => Some(marker_attr("marker-start", ctx.diagram_id, "arrowhead")),
             _ => None,
         };
         let marker_end = match msg.message_type {
             // open arrow variants: no marker.
             5 | 6 => None,
             // cross arrow variants
-            3 | 4 => Some(r#" marker-end="url(#crosshead)""#),
+            3 | 4 => Some(marker_attr("marker-end", ctx.diagram_id, "crosshead")),
             // filled-head variants
-            24 | 25 => Some(r#" marker-end="url(#filled-head)""#),
+            24 | 25 => Some(marker_attr("marker-end", ctx.diagram_id, "filled-head")),
             // default arrowhead variants
-            _ => Some(r#" marker-end="url(#arrowhead)""#),
+            _ => Some(marker_attr("marker-end", ctx.diagram_id, "arrowhead")),
         };
+        let data_attrs = message_data_attrs(&msg.id, from, to);
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
         if from == to {
@@ -177,61 +313,97 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     y4 = fmt(y + 20.0)
                 )
             };
-            // Mermaid attaches an `x1` attribute to bidirectional self-reference message paths
-            // when sequence numbers are visible (autonumber), even though the geometry lives in
-            // the `d` attribute. This keeps DOM parity with upstream Cypress baselines.
-            let path_x1 = if sequence_number_visible && marker_start.is_some() {
-                Some(p0.x + 6.0)
+            // Mermaid attaches an `x1` attribute to autonumbered self-reference paths even
+            // though the geometry lives in the `d` attribute.
+            let path_x1 = if sequence_number_visible {
+                Some(if marker_start.is_some() {
+                    p0.x + 6.0
+                } else {
+                    p0.x
+                })
             } else {
                 None
             };
             let _ = write!(
                 out,
-                r#"<path d="{d}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
+                r#"<path d="{d}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
                 d = d,
                 class = class,
-                marker_start = marker_start.unwrap_or(""),
-                marker_end = marker_end.unwrap_or(""),
+                data_attrs = data_attrs,
+                marker_start = marker_start.as_deref().unwrap_or(""),
+                marker_end = marker_end.as_deref().unwrap_or(""),
                 x1 = path_x1
                     .map(|x1| format!(r#" x1="{x1}""#, x1 = fmt(x1)))
                     .unwrap_or_default(),
                 style = style
             );
+            write_central_connection_circles(out, ctx, msg, from, to, y, sequence_number_visible);
         } else {
             let _ = write!(
                 out,
-                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
                 x1 = fmt(p0.x),
                 y1 = fmt(p0.y),
                 x2 = fmt(p1.x),
                 y2 = fmt(p1.y),
                 class = class,
-                marker_start = marker_start.unwrap_or(""),
-                marker_end = marker_end.unwrap_or(""),
+                data_attrs = data_attrs,
+                marker_start = marker_start.as_deref().unwrap_or(""),
+                marker_end = marker_end.as_deref().unwrap_or(""),
                 style = style
+            );
+            write_central_connection_circles(
+                out,
+                ctx,
+                msg,
+                from,
+                to,
+                p0.y,
+                sequence_number_visible,
             );
         }
 
         if sequence_number_visible {
+            let sequence_number_text = format_sequence_number(sequence_number);
+            let font_size = if sequence_number_text.len() > 5 {
+                "7px"
+            } else if sequence_number_text.len() > 3 {
+                "9px"
+            } else {
+                "12px"
+            };
             let x = p0.x;
             let y = p0.y;
             let _ = write!(
                 out,
-                r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="url(#sequencenumber)"/>"#,
+                r#"<line x1="{x}" y1="{y}" x2="{x}" y2="{y}" stroke-width="0" marker-start="{marker_start}"/>"#,
                 x = fmt(x),
                 y = fmt(y),
+                marker_start = escape_attr(&scoped_svg_url(ctx.diagram_id, "sequencenumber")),
             );
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
+                r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="{font_size}" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
                 x = fmt(x),
                 y = fmt(y + 4.0),
-                n = sequence_number,
+                n = sequence_number_text,
             );
-            sequence_number = sequence_number.saturating_add(sequence_number_step);
+            sequence_number = round_sequence_number(sequence_number + sequence_number_step);
         }
 
         let _ = (from, to);
+    }
+}
+
+fn round_sequence_number(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+fn format_sequence_number(value: f64) -> String {
+    if value.is_finite() {
+        value.to_string()
+    } else {
+        String::new()
     }
 }
 

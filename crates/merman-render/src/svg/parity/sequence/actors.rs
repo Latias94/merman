@@ -56,7 +56,7 @@ pub(super) fn render_sequence_bottom_actors(
                 out.push_str("</g>");
             }
             "queue" => {
-                out.push_str("<g>");
+                out.push_str(r#"<g class="actor actor-bottom">"#);
                 write_queue_actor_shape(out, n, actor, "actor-bottom", &label_ctx);
                 out.push_str("</g>");
             }
@@ -113,22 +113,22 @@ pub(super) fn render_sequence_top_actors_and_lifelines(
                 write_actor_man_lifeline(out, idx, top.x, y1, y2, actor_id);
             }
             "collections" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 write_collection_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }
             "queue" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 write_queue_actor_shape(out, top, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }
             "database" => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 write_database_top_actor_shape(out, top, actor, ctx.actor_height, &label_ctx);
                 out.push_str("</g></g>");
             }
             _ => {
-                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id);
+                write_lifeline_root_open(out, idx, top.x, y1, y2, actor_id, actor_type);
                 write_rect_actor_shape(out, top, actor_id, actor, "actor-top", &label_ctx);
                 out.push_str("</g></g>");
             }

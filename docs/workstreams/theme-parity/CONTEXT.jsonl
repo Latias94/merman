@@ -1,0 +1,14 @@
+{"role":"design","path":"docs/workstreams/theme-parity/DESIGN.md","reason":"Authoritative problem, target state, scope, non-goals, and deletion policy for this lane."}
+{"role":"execution","path":"docs/workstreams/theme-parity/TODO.md","reason":"Human-readable task ledger for theme parity refactor slices."}
+{"role":"tasks","path":"docs/workstreams/theme-parity/TASKS.jsonl","reason":"Machine-readable task state matching TODO.md."}
+{"role":"campaigns","path":"docs/workstreams/theme-parity/CAMPAIGNS.jsonl","reason":"Draft campaign bundles for bounded autonomous execution."}
+{"role":"gates","path":"docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md","reason":"Validation commands and evidence anchors."}
+{"role":"handoff","path":"docs/workstreams/theme-parity/HANDOFF.md","reason":"Continuation state for future sessions."}
+{"role":"adr","path":"docs/adr/0063-extensible-svg-output-pipeline.md","reason":"SVG output pipeline extension point relevant to scoped CSS and postprocessing."}
+{"role":"adr","path":"docs/adr/0064-host-styling-svg-postprocessors.md","reason":"Host styling isolation decision relevant to theme CSS and inherited text color."}
+{"role":"adr","path":"docs/adr/0042-rendering-strategy.md","reason":"Rendering architecture baseline for SVG parity work."}
+{"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/themes","reason":"Upstream Mermaid theme preset implementations."}
+{"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/mermaidAPI.ts","reason":"Upstream theme initialization, themeCSS, and CSS scoping behavior."}
+{"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/styles.ts","reason":"Upstream shared style generation entrypoint."}
+{"role":"workstream","path":"docs/workstreams/web-wasm-playground/DESIGN.md","reason":"Existing Web/WASM playground integration and theme UI context."}
+{"role":"workstream","path":"docs/workstreams/fearless-refactor/README.md","reason":"Repository-wide refactor rules and standard gates."}

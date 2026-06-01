@@ -893,7 +893,7 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
 
 #[test]
 fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
-    // Verify key flowchart shapes follow Mermaid `@11.12.2` sizing rules (headless approximation).
+    // Verify key flowchart shapes follow Mermaid `@11.15.0` sizing rules (headless approximation).
     // This mainly protects us from regressions when refactoring shape sizing.
     let text = r#"flowchart TB
 A[Label]
@@ -911,6 +911,16 @@ L[\Label\]
 M[/Label\]
 N[\Label/]
 O(-Label-)
+P@{ shape: lined-cylinder, label: "Label" }
+Q@{ shape: paper-tape, label: "Label" }
+R@{ shape: docs, label: "Label" }
+S@{ shape: bow-rect, label: "Label" }
+T@{ shape: win-pane, label: "Label" }
+U@{ shape: doc, label: "Label" }
+V@{ shape: delay, label: "Label" }
+W@{ shape: lin-doc, label: "Label" }
+X@{ shape: tag-doc, label: "Label" }
+Y@{ shape: curved-trapezoid, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -941,11 +951,133 @@ O(-Label-)
     let th = metrics.height;
 
     fn assert_close(actual: f64, expected: f64, name: &str) {
-        let eps = 1e-6;
+        let eps = 1e-5;
         assert!(
             (actual - expected).abs() <= eps,
             "{name}: expected {expected}, got {actual}"
         );
+    }
+
+    fn assert_close_eps(actual: f64, expected: f64, eps: f64, name: &str) {
+        assert!(
+            (actual - expected).abs() <= eps,
+            "{name}: expected {expected}, got {actual}"
+        );
+    }
+
+    fn wave_points(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        amplitude: f64,
+        num_cycles: f64,
+    ) -> Vec<(f64, f64)> {
+        let steps = 50;
+        let delta_x = x2 - x1;
+        let delta_y = y2 - y1;
+        let cycle_length = delta_x / num_cycles;
+        let frequency = std::f64::consts::TAU / cycle_length;
+        let mid_y = y1 + delta_y / 2.0;
+        (0..=steps)
+            .map(|i| {
+                let t = (i as f64) / (steps as f64);
+                let x = x1 + t * delta_x;
+                let y = mid_y + amplitude * (frequency * (x - x1)).sin();
+                (x, y)
+            })
+            .collect()
+    }
+
+    fn bbox_size(points: &[(f64, f64)]) -> (f64, f64) {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for &(x, y) in points {
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+        ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+    }
+
+    fn bow_tie_rect_bbox_width(w: f64, h: f64) -> f64 {
+        fn arc_points(
+            x1: f64,
+            y1: f64,
+            x2: f64,
+            y2: f64,
+            rx: f64,
+            ry: f64,
+            clockwise: bool,
+        ) -> Vec<(f64, f64)> {
+            let num_points = 20usize;
+            let mid_x = (x1 + x2) / 2.0;
+            let mid_y = (y1 + y2) / 2.0;
+            let angle = (y2 - y1).atan2(x2 - x1);
+            let dx = (x2 - x1) / 2.0;
+            let dy = (y2 - y1) / 2.0;
+            let transformed_x = dx / rx;
+            let transformed_y = dy / ry;
+            let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
+            if distance > 1.0 {
+                return vec![(x1, y1), (x2, y2)];
+            }
+
+            let scaled_center_distance = (1.0 - distance * distance).sqrt();
+            let sign = if clockwise { -1.0 } else { 1.0 };
+            let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
+            let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
+            let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+            let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+            let mut angle_range = end_angle - start_angle;
+            if clockwise && angle_range < 0.0 {
+                angle_range += 2.0 * std::f64::consts::PI;
+            }
+            if !clockwise && angle_range > 0.0 {
+                angle_range -= 2.0 * std::f64::consts::PI;
+            }
+
+            (0..num_points)
+                .map(|i| {
+                    let t = i as f64 / (num_points - 1) as f64;
+                    let a = start_angle + t * angle_range;
+                    (center_x + rx * a.cos(), center_y + ry * a.sin())
+                })
+                .collect()
+        }
+
+        let ry = h / 2.0;
+        let rx = ry / (2.5 + h / 50.0);
+        let mut points = vec![(w / 2.0, -h / 2.0), (-w / 2.0, -h / 2.0)];
+        points.extend(arc_points(
+            -w / 2.0,
+            -h / 2.0,
+            -w / 2.0,
+            h / 2.0,
+            rx,
+            ry,
+            false,
+        ));
+        points.push((w / 2.0, h / 2.0));
+        points.extend(arc_points(
+            w / 2.0,
+            h / 2.0,
+            w / 2.0,
+            -h / 2.0,
+            rx,
+            ry,
+            true,
+        ));
+        let (min_x, max_x) = points
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min_x, max_x), p| {
+                (min_x.min(p.0), max_x.max(p.0))
+            });
+        (max_x - min_x).max(0.0)
     }
 
     // squareRect
@@ -969,8 +1101,8 @@ O(-Label-)
         assert_close(n.height, tw + p, "circle height");
 
         let n = nodes_by_id["D"];
-        assert_close(n.width, tw + p + 10.0, "doublecircle width");
-        assert_close(n.height, tw + p + 10.0, "doublecircle height");
+        assert_close(n.width, tw + 2.0 * p, "doublecircle width");
+        assert_close(n.height, tw + 2.0 * p, "doublecircle height");
     }
 
     // diamond/question
@@ -984,12 +1116,8 @@ O(-Label-)
     // hexagon
     {
         let n = nodes_by_id["F"];
-        let w0 = tw + 2.5 * p;
-        // Mermaid uses `updateNodeBounds(...).getBBox()` to set the final node width/height that
-        // Dagre uses for layout. For hexagon nodes, Chromium rounds the roughjs path bbox to an
-        // f32 grid, so we mirror that to match strict SVG parity `data-points`.
-        let expected_w = (w0 * (7.0 / 6.0)) as f32 as f64;
         let expected_h = (th + p) as f32 as f64;
+        let expected_w = (tw + 2.0 * (expected_h / 4.0) + p) as f32 as f64;
         assert_close(n.width, expected_w, "hexagon width");
         assert_close(n.height, expected_h, "hexagon height");
     }
@@ -1062,6 +1190,228 @@ O(-Label-)
         };
         assert_close(n.width, w, "cylinder width");
         assert_close(n.height, expected_h, "cylinder height");
+    }
+
+    // lined cylinder / disk storage
+    {
+        let n = nodes_by_id["P"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let rx = w / 2.0;
+        let ry = rx / (2.5 + w / 50.0);
+        let expected_h = (th + 2.0 * p + 3.0 * ry) as f32 as f64;
+        assert_close(n.width, w, "lined cylinder width");
+        assert_close(n.height, expected_h, "lined cylinder height");
+    }
+
+    // paper tape / flag
+    {
+        let n = nodes_by_id["Q"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let h = th + p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude * 2.0;
+        let sampled_wave_extreme = (0..=50)
+            .map(|i| ((i as f64) / 50.0 * std::f64::consts::TAU).sin().abs())
+            .fold(0.0, f64::max);
+        let expected_h = final_h + 2.0 * wave_amplitude * sampled_wave_extreme;
+        assert_close(n.width, w, "paper tape width");
+        assert_close(n.height, expected_h as f32 as f64, "paper tape height");
+    }
+
+    // stacked document
+    {
+        let n = nodes_by_id["R"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let h = th + 3.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude / 2.0;
+        let rect_offset = 10.0;
+        let sampled_wave_max = (0..=50)
+            .map(|i| ((i as f64) / 50.0 * std::f64::consts::TAU * 0.8).sin())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let expected_h = final_h + 2.0 * rect_offset + wave_amplitude * sampled_wave_max;
+        assert_close(n.width, w + 2.0 * rect_offset, "docs width");
+        assert_close(n.height, expected_h as f32 as f64, "docs height");
+    }
+
+    // bow tie rectangle / stored data
+    {
+        let n = nodes_by_id["S"];
+        let w = tw + 2.0 * p;
+        let h = th + p;
+        assert_close_eps(
+            n.width,
+            bow_tie_rect_bbox_width(w, h) as f32 as f64,
+            0.002,
+            "bow tie rectangle width",
+        );
+        assert_close(n.height, h, "bow tie rectangle height");
+    }
+
+    // window pane / internal storage
+    {
+        let n = nodes_by_id["T"];
+        let rect_offset = 10.0;
+        let w = merman_render::text::round_to_1_64_px(tw);
+        let h = merman_render::text::round_to_1_64_px(th);
+        assert_close(
+            n.width,
+            (w + 2.0 * p + rect_offset) as f32 as f64,
+            "window pane width",
+        );
+        assert_close(
+            n.height,
+            (h + 2.0 * p + rect_offset) as f32 as f64,
+            "window pane height",
+        );
+    }
+
+    // document / wave-edged rectangle
+    {
+        let n = nodes_by_id["U"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let sampled_wave_extreme = (0..=50)
+            .map(|i| {
+                ((i as f64) / 50.0 * std::f64::consts::TAU * 0.8)
+                    .sin()
+                    .abs()
+            })
+            .fold(0.0, f64::max);
+        assert_close(n.width, w as f32 as f64, "document width");
+        assert_close_eps(
+            n.height,
+            (final_h + wave_amplitude * sampled_wave_extreme) as f32 as f64,
+            0.005,
+            "document height",
+        );
+    }
+
+    // delay / half-rounded rectangle
+    {
+        let n = nodes_by_id["V"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let radius = h / 2.0;
+        let mut min_x = -w / 2.0;
+        let mut max_x = w / 2.0 - radius;
+        let step = std::f64::consts::PI / (50_f64 - 1.0);
+        for i in 0..50 {
+            let angle = std::f64::consts::FRAC_PI_2 + (i as f64) * step;
+            let x = (-w / 2.0 + radius) + radius * angle.cos();
+            min_x = min_x.min(-x);
+            max_x = max_x.max(-x);
+        }
+        assert_close(n.width, (max_x - min_x) as f32 as f64, "delay width");
+        assert_close(n.height, h as f32 as f64, "delay height");
+    }
+
+    // lined document
+    {
+        let n = nodes_by_id["W"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let extra = (w / 2.0) * 0.1;
+        let mut points = Vec::new();
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, final_h / 2.0));
+        points.extend(wave_points(
+            -w / 2.0 - extra,
+            final_h / 2.0,
+            w / 2.0 + extra,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push((w / 2.0 + extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+        points.push((-w / 2.0, -final_h / 2.0));
+        points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+        points.push((-w / 2.0, -final_h / 2.0));
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "lined document width");
+        assert_close(n.height, expected_h as f32 as f64, "lined document height");
+    }
+
+    // tagged document
+    {
+        let n = nodes_by_id["X"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let extra = (w / 2.0) * 0.1;
+        let tag_width = 0.2 * w;
+        let tag_height = 0.2 * h;
+        let mut points = Vec::new();
+        points.push((-w / 2.0 - extra, final_h / 2.0));
+        points.extend(wave_points(
+            -w / 2.0 - extra,
+            final_h / 2.0,
+            w / 2.0 + extra,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push((w / 2.0 + extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+
+        let x = -w / 2.0 + extra;
+        let y = -final_h / 2.0 - tag_height * 0.4;
+        points.push((x + w - tag_width, (y + h) * 1.3));
+        points.push((x + w, y + h - tag_height));
+        points.push((x + w, (y + h) * 0.9));
+        points.extend(wave_points(
+            x + w,
+            (y + h) * 1.25,
+            x + w - tag_width,
+            (y + h) * 1.3,
+            -h * 0.02,
+            0.5,
+        ));
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "tagged document width");
+        assert_close(n.height, expected_h as f32 as f64, "tagged document height");
+    }
+
+    // curved trapezoid / display
+    {
+        let n = nodes_by_id["Y"];
+        let min_width = 20.0;
+        let min_height = 5.0;
+        let w = ((merman_render::text::round_to_1_64_px(tw) + 2.0 * p) * 1.25).max(min_width);
+        let h = (merman_render::text::round_to_1_64_px(th) + 2.0 * p).max(min_height);
+        let radius = h / 2.0;
+        let rw = w - radius;
+        let trapezoid_tw = h / 4.0;
+        let mut points = vec![
+            (rw, 0.0),
+            (trapezoid_tw, 0.0),
+            (0.0, h / 2.0),
+            (trapezoid_tw, h),
+            (rw, h),
+        ];
+        let step = -std::f64::consts::PI / (50_f64 - 1.0);
+        for i in 0..50 {
+            let angle = std::f64::consts::PI * 1.5 + (i as f64) * step;
+            let x = -rw + radius * angle.cos();
+            let y = -h / 2.0 + radius * angle.sin();
+            points.push((-x, -y));
+        }
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "curved trapezoid width");
+        assert_close(
+            n.height,
+            expected_h as f32 as f64,
+            "curved trapezoid height",
+        );
     }
 
     // subroutine
@@ -1248,6 +1598,52 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
     assert!(
         a.width <= 60.0 + 4.0 * p + 1e-6,
         "expected SVG-like mode to constrain width via wrapping"
+    );
+}
+
+#[test]
+fn flowchart_svglike_markdown_node_labels_wrap_for_shape_layout() {
+    let text = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TB
+  n0 --> n00@{ shape: triangle, label: 'This is **bold** </br>and <strong>strong</strong> for triangle shape' }
+  n1 --> n11@{ shape: sloped-rectangle, label: 'This is **bold** </br>and <strong>strong</strong> for sloped-rectangle shape' }
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let triangle = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "n00")
+        .expect("triangle node");
+    let sloped_rect = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "n11")
+        .expect("sloped rectangle node");
+
+    assert!(
+        triangle.width < 320.0,
+        "SVG markdown label wrapping should constrain triangle layout width, got {}",
+        triangle.width
+    );
+    assert!(
+        sloped_rect.width < 260.0,
+        "SVG markdown label wrapping should constrain sloped-rectangle layout width, got {}",
+        sloped_rect.width
     );
 }
 

@@ -34,7 +34,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
     let _ = common.layout_node;
     let w = (metrics.width + 2.0 * p).max(0.0);
     let h = (metrics.height + 2.0 * p).max(0.0);
-    let wave_amplitude = h / 4.0;
+    let wave_amplitude = h / 8.0;
     let tag_width = 0.2 * w;
     let tag_height = 0.2 * h;
     let final_h = h + wave_amplitude;
@@ -60,15 +60,15 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
     let x = -w / 2.0 + ext;
     let y = -final_h / 2.0 - tag_height * 0.4;
     let mut tag_points: Vec<(f64, f64)> = Vec::new();
-    tag_points.push((x + w - tag_width, (y + h) * 1.4));
+    tag_points.push((x + w - tag_width, (y + h) * 1.3));
     tag_points.push((x + w, y + h - tag_height));
     tag_points.push((x + w, (y + h) * 0.9));
     tag_points.extend(generate_full_sine_wave_points(
         x + w,
-        (y + h) * 1.3,
+        (y + h) * 1.25,
         x + w - tag_width,
-        (y + h) * 1.5,
-        -h * 0.03,
+        (y + h) * 1.3,
+        -h * 0.02,
         0.5,
     ));
 
@@ -107,7 +107,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
 
     let _ = write!(
         out,
-        r##"<g class="basic label-container" transform="translate(0,{})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
+        r##"<g class="basic label-container outer-path" transform="translate(0,{})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
         util::fmt(-wave_amplitude / 2.0),
         escape_attr(&wave_fill_d),
         escape_attr(common.fill_color),

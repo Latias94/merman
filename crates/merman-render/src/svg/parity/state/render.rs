@@ -30,10 +30,10 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 ) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
     fn section<'a>(
         enabled: bool,
-        dst: &'a mut std::time::Duration,
+        dst: &'a mut web_time::Duration,
     ) -> Option<super::timing::TimingGuard<'a>> {
         enabled.then(|| super::timing::TimingGuard::new(dst))
     }
@@ -303,7 +303,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         // need placeholder replacement.
         let css = state_css(diagram_id, model, effective_config);
 
-        let viewbox_svg_scan = std::time::Duration::ZERO;
+        let viewbox_svg_scan = web_time::Duration::ZERO;
         let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
         let mut content_bounds = state_viewport_bounds_from_layout(layout).unwrap_or(Bounds {
             min_x: 0.0,
@@ -564,7 +564,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     drop(_g_render_svg);
 
-    let mut viewbox_svg_scan = std::time::Duration::ZERO;
+    let mut viewbox_svg_scan = web_time::Duration::ZERO;
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
     let fast_viewport = matches!(
         std::env::var("MERMAN_STATE_VIEWPORT").as_deref(),
@@ -891,7 +891,7 @@ fn render_state_root(
     }
 
     if ctx.include_nodes {
-        let leaf_start = timing_enabled.then(std::time::Instant::now);
+        let leaf_start = timing_enabled.then(web_time::Instant::now);
         for &id in &ctx.node_order {
             let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
                 continue;
@@ -913,7 +913,7 @@ fn render_state_root(
     }
 
     for child_root in nested {
-        let nested_start = timing_enabled.then(std::time::Instant::now);
+        let nested_start = timing_enabled.then(web_time::Instant::now);
         render_state_root(
             out,
             ctx,

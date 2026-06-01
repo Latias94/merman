@@ -111,6 +111,8 @@ pub struct ClassNote {
     #[serde(rename = "class")]
     pub class_id: Option<String>,
     pub text: String,
+    #[serde(default)]
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -124,11 +126,20 @@ pub struct ClassInterface {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Namespace {
     pub id: String,
+    #[serde(default)]
+    pub label: String,
     #[serde(rename = "domId")]
     pub dom_id: String,
     #[serde(rename = "classIds")]
     #[serde(default)]
     pub class_ids: Vec<String>,
+    #[serde(rename = "noteIds")]
+    #[serde(default)]
+    pub note_ids: Vec<String>,
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub explicit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

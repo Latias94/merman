@@ -1,4 +1,4 @@
-# Root Viewport Overrides (Mermaid@11.12.3)
+# Root Viewport Overrides (Pinned Mermaid Baseline)
 
 This document explains how fixture-scoped root viewport overrides are maintained for
 `parity-root` SVG checks.
@@ -16,7 +16,7 @@ even after layout/renderer parity improvements.
 To keep regression checks deterministic for the pinned upstream baselines, we keep **version-scoped,
 fixture-scoped** overrides.
 
-Baseline version in this repository: Mermaid `@11.12.3`.
+Baseline version in this repository: Mermaid `@11.15.0`.
 
 Note: the generated override module filenames still use `*_11_12_2.rs` for historical reasons, but
 their contents are maintained to match the pinned baseline.
@@ -113,12 +113,15 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
 
-## Current Status (2026-05-11)
+## Current Status (2026-06-01)
 
 Small fixture-scoped root viewport overrides remain in use for the pinned Mermaid baseline. They
 exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces
 deterministic drift that is not yet worth globalizing into layout/render logic.
 
 Current root viewport inventory is tracked by
-`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 753 total
-root viewport entries, including 42 State entries, 48 Mindmap entries, and 31 Architecture entries.
+`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 281 total
+root viewport entries. After the Mermaid 11.15 baseline refresh, full structural `parity` is green
+for the implemented matrix, but `parity-root` still has a broad root-only recalibration set. Do not
+grow these tables before checking whether the residuals share a deterministic 11.15 root viewport
+or measurement-rule change.

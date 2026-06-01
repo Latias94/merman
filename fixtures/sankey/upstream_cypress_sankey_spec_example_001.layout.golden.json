@@ -11,7 +11,7 @@
       "width": 600.0,
       "height": 400.0,
       "node_width": 10.0,
-      "node_padding": 25.0,
+      "node_padding": 27.0,
       "nodes": [
         {
           "id": "sourceNode",

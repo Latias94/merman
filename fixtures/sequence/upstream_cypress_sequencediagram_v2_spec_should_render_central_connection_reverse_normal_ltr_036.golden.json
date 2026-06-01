@@ -8,8 +8,7 @@
     "actorOrder": [
       "Alice",
       "Bob",
-      "Charlie",
-      "Alice()"
+      "Charlie"
     ],
     "actors": {
       "Alice": {
@@ -35,14 +34,6 @@
         "type": "participant",
         "links": {},
         "properties": {}
-      },
-      "Alice()": {
-        "name": "Alice()",
-        "description": "Alice()",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
       }
     },
     "messages": [
@@ -59,47 +50,97 @@
       },
       {
         "id": "1",
-        "from": "Alice()",
+        "from": "Alice",
         "to": "Bob",
         "message": "Circle at source with solid arrow",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": false,
+        "centralConnection": 60
       },
       {
         "id": "2",
-        "from": "Alice()",
-        "to": "Bob",
-        "message": "Circle at source with dotted arrow",
+        "from": "Alice",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 1,
+        "type": 60,
         "activate": false
       },
       {
         "id": "3",
-        "from": "Alice()",
+        "from": "Alice",
         "to": "Bob",
-        "message": "Circle at source with open arrow",
+        "message": "Circle at source with dotted arrow",
         "wrap": false,
-        "type": 5,
-        "activate": false
+        "type": 1,
+        "activate": false,
+        "centralConnection": 60
       },
       {
         "id": "4",
-        "from": "Alice()",
-        "to": "Bob",
-        "message": "Circle at source with cross arrow",
+        "from": "Alice",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 4,
+        "type": 60,
         "activate": false
       },
       {
         "id": "5",
-        "from": "Alice()",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Circle at source with open arrow",
+        "wrap": false,
+        "type": 5,
+        "activate": false,
+        "centralConnection": 60
+      },
+      {
+        "id": "6",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Circle at source with cross arrow",
+        "wrap": false,
+        "type": 4,
+        "activate": false,
+        "centralConnection": 60
+      },
+      {
+        "id": "8",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Alice",
         "to": "Bob",
         "message": "Circle at source with close arrow",
         "wrap": false,
         "type": 25,
+        "activate": false,
+        "centralConnection": 60
+      },
+      {
+        "id": "10",
+        "from": "Alice",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 60,
         "activate": false
       }
     ],

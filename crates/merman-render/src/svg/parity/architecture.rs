@@ -35,7 +35,7 @@ use self::viewport::{ArchitectureRootViewportContext, finalize_architecture_root
 
 fn timing_section<'a>(
     enabled: bool,
-    dst: &'a mut std::time::Duration,
+    dst: &'a mut web_time::Duration,
 ) -> Option<super::timing::TimingGuard<'a>> {
     enabled.then(|| super::timing::TimingGuard::new(dst))
 }
@@ -51,7 +51,7 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
 struct ArchitectureTimingState<'a> {
     enabled: bool,
     timings: &'a mut super::timing::RenderTimings,
-    total_start: std::time::Instant,
+    total_start: web_time::Instant,
 }
 
 pub(super) fn render_architecture_diagram_svg_typed_with_config(
@@ -62,7 +62,7 @@ pub(super) fn render_architecture_diagram_svg_typed_with_config(
 ) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
 
     render_architecture_diagram_svg_with_model(
         ArchitectureRenderRequest {
@@ -88,7 +88,7 @@ pub(super) fn render_architecture_diagram_svg(
 ) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
     let model: ArchitectureModel = {
         let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
         crate::json::from_value_ref(semantic)?
@@ -117,7 +117,7 @@ pub(super) fn render_architecture_diagram_svg_with_config(
 ) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
     let model: ArchitectureModel = {
         let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
         crate::json::from_value_ref(semantic)?
@@ -157,7 +157,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     fn section<'a>(
         enabled: bool,
-        dst: &'a mut std::time::Duration,
+        dst: &'a mut web_time::Duration,
     ) -> Option<super::timing::TimingGuard<'a>> {
         enabled.then(|| super::timing::TimingGuard::new(dst))
     }

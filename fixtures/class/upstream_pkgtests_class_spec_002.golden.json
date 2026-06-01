@@ -32,10 +32,14 @@
     "namespaces": {
       "X": {
         "id": "X",
+        "label": "X",
         "domId": "classId-X-0",
         "classIds": [
           "A"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

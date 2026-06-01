@@ -729,11 +729,7 @@ pub(super) fn render_er_diagram_svg_model(
         rest[..digits_len].parse::<usize>().ok()
     }
 
-    fn er_edge_dom_id(
-        edge_id: &str,
-        relationships: &[crate::er::ErRelationship],
-        elk_suffix: bool,
-    ) -> String {
+    fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
         let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
             return edge_id.to_string();
         };
@@ -753,11 +749,7 @@ pub(super) fn render_er_diagram_svg_model(
         } else {
             format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
         };
-        if elk_suffix {
-            format!("{base}_0")
-        } else {
-            base
-        }
+        base
     }
 
     if is_elk_layout {
@@ -781,7 +773,8 @@ pub(super) fn render_er_diagram_svg_model(
             if e.points.len() < 2 {
                 continue;
             }
-            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships, is_elk_layout);
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
+            let edge_svg_id = format!("{diagram_id}-{edge_dom_id}");
             let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
             let pattern_class = if is_dashed {
                 "edge-pattern-dashed"
@@ -815,9 +808,9 @@ pub(super) fn render_er_diagram_svg_model(
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
                 escape_xml(&d),
-                escape_xml(&edge_dom_id),
+                escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
                 escape_xml(&edge_dom_id),
                 escape_xml(&data_points)
@@ -843,7 +836,7 @@ pub(super) fn render_er_diagram_svg_model(
 
             let rel_text_raw = rel_idx.map(|(_, r)| r.role_a.as_str()).unwrap_or("");
             let rel_text = rel_text_raw.trim();
-            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships, is_elk_layout);
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
 
             let has_label_text = !rel_text.is_empty();
             let has_whitespace_only_label = !rel_text_raw.is_empty() && rel_text.is_empty();
@@ -941,11 +934,12 @@ pub(super) fn render_er_diagram_svg_model(
                     out.push_str("<g>");
                     let _ = write!(
                         &mut out,
-                        r#"<rect class="background" style="" x="-2" y="-1" width="{}" height="{}"/>"#,
+                        r#"<rect class="background" style="" x="{}" y="-1" width="{}" height="{}"/>"#,
+                        fmt(-w / 2.0),
                         fmt(w),
                         fmt(h)
                     );
-                    crate::svg::parity::flowchart::write_flowchart_svg_text(
+                    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
                         &mut out, rel_text, true,
                     );
                     out.push_str("</g></g></g>");
@@ -979,8 +973,10 @@ pub(super) fn render_er_diagram_svg_model(
                         r#" data-id="{}""#,
                         escape_xml_display(&edge_dom_id)
                     );
-                    out.push_str(r#" transform="translate(0, 0)"><g><rect class="background" style="" x="-2" y="-1" width="0" height="0"/>"#);
-                    crate::svg::parity::flowchart::write_flowchart_svg_text(&mut out, "", true);
+                    out.push_str(r#" transform="translate(0, 0)"><g><rect class="background" style="" x="0" y="-1" width="0" height="0"/>"#);
+                    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
+                        &mut out, "", true,
+                    );
                     out.push_str("</g></g></g>");
                 }
             }
@@ -1056,7 +1052,8 @@ pub(super) fn render_er_diagram_svg_model(
         };
         let _ = write!(
             &mut out,
-            r#"<g id="{}" class="{}" transform="translate({}, {})">"#,
+            r#"<g id="{}-{}" class="{}" data-look="classic" transform="translate({}, {})">"#,
+            escape_xml(diagram_id),
             escape_xml(&entity.id),
             escape_xml(&group_class),
             fmt(cx),
@@ -1100,7 +1097,7 @@ pub(super) fn render_er_diagram_svg_model(
                 fmt(lw),
                 fmt(lh),
                 measure.label_max_width_px.max(0),
-                html_label_content(&measure.label_text, "")
+                html_label_content(&measure.label_text, "", true)
             );
             out.push_str("</g>");
             continue;
@@ -1148,11 +1145,20 @@ pub(super) fn render_er_diagram_svg_model(
             format!("{top} {right} {bottom} {left}")
         }
 
-        fn html_label_content(text: &str, span_style_attr: &str) -> String {
+        fn html_label_content(
+            text: &str,
+            span_style_attr: &str,
+            markdown_node_label: bool,
+        ) -> String {
+            let span_class = if markdown_node_label {
+                "nodeLabel markdown-node-label"
+            } else {
+                "nodeLabel"
+            };
             let decoded = decode_mermaid_entities_for_render_text(text);
             let text = decoded.as_ref().trim();
             if text.is_empty() {
-                return format!(r#"<span class="nodeLabel"{}></span>"#, span_style_attr);
+                return format!(r#"<span class="{}"{}></span>"#, span_class, span_style_attr);
             }
 
             let lower = text.to_ascii_lowercase();
@@ -1174,8 +1180,8 @@ pub(super) fn render_er_diagram_svg_model(
             if has_inline_code {
                 let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
                 return format!(
-                    r#"<span class="nodeLabel"{}>{}</span>"#,
-                    span_style_attr, html_out
+                    r#"<span class="{}"{}>{}</span>"#,
+                    span_class, span_style_attr, html_out
                 );
             }
 
@@ -1199,13 +1205,14 @@ pub(super) fn render_er_diagram_svg_model(
                     .replace("<br >", "<br />");
 
                 return format!(
-                    r#"<span class="nodeLabel"{}>{}</span>"#,
-                    span_style_attr, html_out
+                    r#"<span class="{}"{}>{}</span>"#,
+                    span_class, span_style_attr, html_out
                 );
             }
 
             format!(
-                r#"<span class="nodeLabel"{}><p>{}</p></span>"#,
+                r#"<span class="{}"{}><p>{}</p></span>"#,
+                span_class,
                 span_style_attr,
                 escape_xml(text)
             )
@@ -1351,14 +1358,6 @@ pub(super) fn render_er_diagram_svg_model(
             out.trim_end().to_string()
         }
 
-        fn rough_line_path_d(seed: u64, x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            if seed == 0 {
-                return fallback_rough_line_path_d(x0, y0, x1, y1);
-            }
-            let mut s = seed as u32;
-            roughjs46_double_line_path_d(&mut s, x0, y0, x1, y1)
-        }
-
         fn rough_rect_border_path_d(seed: u64, x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             let w = (x1 - x0).max(0.0);
             let h = (y1 - y0).max(0.0);
@@ -1395,8 +1394,17 @@ pub(super) fn render_er_diagram_svg_model(
             )
         }
 
+        fn thin_divider_rect_bounds(x0: f64, y0: f64, x1: f64, y1: f64) -> (f64, f64, f64, f64) {
+            let half = 0.00005;
+            if (y1 - y0).abs() <= (x1 - x0).abs() {
+                (x0, y0 - half, x1, y0 + half)
+            } else {
+                (x0 - half, y0, x0 + half, y1)
+            }
+        }
+
         // Base box (fill + border)
-        let _ = write!(&mut out, r#"<g {}>"#, group_style_attr);
+        let _ = write!(&mut out, r#"<g {} class="outer-path">"#, group_style_attr);
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
@@ -1523,7 +1531,7 @@ pub(super) fn render_er_diagram_svg_model(
             fmt(line_h),
             escape_xml(&label_div_color_prefix),
             name_mw_px.max(0),
-            html_label_content(&measure.label_text, &span_style_attr)
+            html_label_content(&measure.label_text, &span_style_attr, false)
         );
         out.push_str("</div></foreignObject></g>");
 
@@ -1588,7 +1596,7 @@ pub(super) fn render_er_diagram_svg_model(
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
                 type_mw_px.max(0),
-                html_label_content(&row.type_text, &span_style_attr)
+                html_label_content(&row.type_text, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1602,7 +1610,7 @@ pub(super) fn render_er_diagram_svg_model(
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
                 name_mw_px.max(0),
-                html_label_content(&row.name_text, &span_style_attr)
+                html_label_content(&row.name_text, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1620,7 +1628,7 @@ pub(super) fn render_er_diagram_svg_model(
                 }),
                 escape_xml(&label_div_color_prefix),
                 keys_mw_px.max(0),
-                html_label_content(&row.key_text, &span_style_attr)
+                html_label_content(&row.key_text, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1638,7 +1646,7 @@ pub(super) fn render_er_diagram_svg_model(
                 }),
                 escape_xml(&label_div_color_prefix),
                 comment_mw_px.max(0),
-                html_label_content(&row.comment_text, &span_style_attr)
+                html_label_content(&row.comment_text, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1656,12 +1664,36 @@ pub(super) fn render_er_diagram_svg_model(
         // Mermaid `erBox.ts` draws the header separator twice:
         // - once as the explicit "Name line"
         // - once via the later `yOffsets` pass (which always contains `0`)
-        let d_h1 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
-        let d_h2 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
-        let _ = write!(
+        fn write_divider_group(
+            out: &mut String,
+            hand_drawn_seed: u64,
+            x0: f64,
+            y0: f64,
+            x1: f64,
+            y1: f64,
+            fill: &str,
+            divider_path_attrs: &str,
+        ) {
+            let (rx0, ry0, rx1, ry1) = thin_divider_rect_bounds(x0, y0, x1, y1);
+            let _ = write!(
+                out,
+                r#"<g class="divider"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd"/><path d="{}"{} /></g>"#,
+                roughjs46_rect_fill_path_d(rx0, ry0, rx1, ry1),
+                escape_xml(fill),
+                rough_rect_border_path_d(hand_drawn_seed, rx0, ry0, rx1, ry1),
+                divider_path_attrs
+            );
+        }
+
+        write_divider_group(
             &mut out,
-            r#"<g class="divider"><path d="{}"{} /></g>"#,
-            d_h1, divider_path_attrs
+            hand_drawn_seed,
+            box_x0,
+            sep_y,
+            box_x1,
+            sep_y,
+            &box_fill,
+            &divider_path_attrs,
         );
 
         let mut divider_xs: Vec<f64> = Vec::new();
@@ -1673,18 +1705,27 @@ pub(super) fn render_er_diagram_svg_model(
             divider_xs.push(ox + type_col_w + name_col_w + key_col_w);
         }
         for x in divider_xs {
-            let dv = rough_line_path_d(hand_drawn_seed, x, sep_y, x, box_y1);
-            let _ = write!(
+            write_divider_group(
                 &mut out,
-                r#"<g class="divider"><path d="{}"{} /></g>"#,
-                dv, divider_path_attrs
+                hand_drawn_seed,
+                x,
+                sep_y,
+                x,
+                box_y1,
+                &box_fill,
+                &divider_path_attrs,
             );
         }
 
-        let _ = write!(
+        write_divider_group(
             &mut out,
-            r#"<g class="divider"><path d="{}"{} /></g>"#,
-            d_h2, divider_path_attrs
+            hand_drawn_seed,
+            box_x0,
+            sep_y,
+            box_x1,
+            sep_y,
+            &box_fill,
+            &divider_path_attrs,
         );
 
         out.push_str("</g>");
@@ -1694,6 +1735,8 @@ pub(super) fn render_er_diagram_svg_model(
     if !is_elk_layout {
         out.push_str("</g>\n</g>\n");
     }
+
+    push_er_gradient(&mut out, diagram_id, effective_config);
 
     if let Some(title) = diagram_title {
         // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.
@@ -1723,8 +1766,71 @@ pub(super) fn render_er_diagram_svg_model(
         out.push_str("</text>\n");
     }
 
+    push_er_shadow_defs(&mut out, diagram_id, effective_config);
+
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+fn push_er_shadow_defs(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    let flood_color = effective_config_value
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .filter(|theme| theme.contains("dark"))
+        .map(|_| "#FFFFFF")
+        .unwrap_or("#000000");
+    let diagram_id = escape_xml(diagram_id);
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        diagram_id.as_str(),
+        flood_color,
+        diagram_id.as_str(),
+        flood_color
+    );
+}
+
+fn push_er_gradient(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config_value: &serde_json::Value,
+) {
+    if !config_bool(effective_config_value, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return;
+    }
+
+    let gradient_start =
+        config_string(effective_config_value, &["themeVariables", "gradientStart"])
+            .or_else(|| {
+                config_string(
+                    effective_config_value,
+                    &["themeVariables", "primaryBorderColor"],
+                )
+            })
+            .unwrap_or_else(|| "#9370DB".to_string());
+    let gradient_stop = config_string(effective_config_value, &["themeVariables", "gradientStop"])
+        .or_else(|| {
+            config_string(
+                effective_config_value,
+                &["themeVariables", "secondaryBorderColor"],
+            )
+        })
+        .unwrap_or_else(|| gradient_start.clone());
+
+    let diagram_id = escape_xml(diagram_id);
+    let gradient_start = escape_xml(&gradient_start);
+    let gradient_stop = escape_xml(&gradient_stop);
+    let _ = write!(
+        out,
+        r#"<linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient>"#,
+        diagram_id.as_str(),
+        gradient_start.as_str(),
+        gradient_stop.as_str()
+    );
 }
 
 fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &str) -> String {

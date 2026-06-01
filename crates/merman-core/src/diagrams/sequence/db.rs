@@ -9,8 +9,9 @@ use super::render_model::{
     SequenceMessagePayload, SequenceNote,
 };
 use super::{
-    LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_NOTE,
-    PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF,
+    LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
+    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE, PLACEMENT_LEFT_OF, PLACEMENT_OVER,
+    PLACEMENT_RIGHT_OF,
 };
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ struct Message {
     message_type: i32,
     activate: bool,
     placement: Option<i32>,
+    central_connection: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +245,7 @@ impl SequenceDb {
         message_type: i32,
         activate: bool,
         placement: Option<i32>,
+        central_connection: i32,
     ) {
         let msg_text = message.unwrap_or(ParsedText {
             text: String::new(),
@@ -259,6 +262,7 @@ impl SequenceDb {
             message_type,
             activate,
             placement,
+            central_connection,
         });
     }
 
@@ -282,7 +286,7 @@ impl SequenceDb {
         count
     }
 
-    fn add_autonumber(&mut self, start: Option<i64>, step: Option<i64>, visible: bool) {
+    fn add_autonumber(&mut self, start: Option<f64>, step: Option<f64>, visible: bool) {
         self.messages.push(Message {
             id: self.messages.len().to_string(),
             from: None,
@@ -296,6 +300,7 @@ impl SequenceDb {
             message_type: LINETYPE_AUTONUMBER,
             activate: false,
             placement: None,
+            central_connection: 0,
         });
     }
 
@@ -334,6 +339,7 @@ impl SequenceDb {
             message_type: LINETYPE_NOTE,
             activate: false,
             placement: Some(placement),
+            central_connection: 0,
         });
     }
 
@@ -385,7 +391,7 @@ impl SequenceDb {
 
             Action::ControlSignal { signal_type, text } => {
                 let msg = text.as_deref().map(|t| self.parse_message(t));
-                self.add_signal(None, None, msg, signal_type, false, None);
+                self.add_signal(None, None, msg, signal_type, false, None, 0);
                 Ok(())
             }
 
@@ -421,6 +427,7 @@ impl SequenceDb {
                 signal_type,
                 text,
                 activate,
+                central_connection,
             } => {
                 if let Some(last_created) = self.last_created.clone() {
                     if to != last_created {
@@ -439,12 +446,28 @@ impl SequenceDb {
                 }
 
                 let msg = self.parse_message(&text);
-                self.add_signal(Some(from), Some(to), Some(msg), signal_type, activate, None);
+                self.add_signal(
+                    Some(from),
+                    Some(to),
+                    Some(msg),
+                    signal_type,
+                    activate,
+                    None,
+                    central_connection,
+                );
                 Ok(())
             }
 
             Action::ActiveStart { actor } => {
-                self.add_signal(Some(actor), None, None, LINETYPE_ACTIVE_START, false, None);
+                self.add_signal(
+                    Some(actor),
+                    None,
+                    None,
+                    LINETYPE_ACTIVE_START,
+                    false,
+                    None,
+                    0,
+                );
                 Ok(())
             }
             Action::ActiveEnd { actor } => {
@@ -453,7 +476,31 @@ impl SequenceDb {
                         "Trying to inactivate an inactive participant ({actor})"
                     ));
                 }
-                self.add_signal(Some(actor), None, None, LINETYPE_ACTIVE_END, false, None);
+                self.add_signal(Some(actor), None, None, LINETYPE_ACTIVE_END, false, None, 0);
+                Ok(())
+            }
+            Action::CentralConnection { actor } => {
+                self.add_signal(
+                    Some(actor),
+                    None,
+                    None,
+                    LINETYPE_CENTRAL_CONNECTION,
+                    false,
+                    None,
+                    0,
+                );
+                Ok(())
+            }
+            Action::CentralConnectionReverse { actor } => {
+                self.add_signal(
+                    Some(actor),
+                    None,
+                    None,
+                    LINETYPE_CENTRAL_CONNECTION_REVERSE,
+                    false,
+                    None,
+                    0,
+                );
                 Ok(())
             }
 
@@ -617,6 +664,12 @@ impl SequenceDb {
                 obj.insert("wrap".to_string(), Value::Bool(m.wrap));
                 obj.insert("type".to_string(), Value::Number(m.message_type.into()));
                 obj.insert("activate".to_string(), Value::Bool(m.activate));
+                if m.central_connection != 0 {
+                    obj.insert(
+                        "centralConnection".to_string(),
+                        Value::Number(m.central_connection.into()),
+                    );
+                }
                 if let Some(p) = m.placement {
                     obj.insert("placement".to_string(), Value::Number(p.into()));
                 }
@@ -722,6 +775,7 @@ impl SequenceDb {
                 message_type: m.message_type,
                 activate: m.activate,
                 placement: m.placement,
+                central_connection: m.central_connection,
             })
             .collect();
 
@@ -809,6 +863,9 @@ pub(super) fn fast_parse_sequence_signals_only_db(
         }
         // Keep the fast-path strict: semicolons are handled by the full lexer/comment rules.
         if s.contains(';') {
+            return None;
+        }
+        if s.contains("()") {
             return None;
         }
 
@@ -960,6 +1017,7 @@ pub(super) fn fast_parse_sequence_signals_only_db(
             sig.ty,
             activate,
             None,
+            0,
         );
 
         match sig.activation {
@@ -971,6 +1029,7 @@ pub(super) fn fast_parse_sequence_signals_only_db(
                     LINETYPE_ACTIVE_START,
                     false,
                     None,
+                    0,
                 );
             }
             Activation::Minus => {
@@ -984,6 +1043,7 @@ pub(super) fn fast_parse_sequence_signals_only_db(
                     LINETYPE_ACTIVE_END,
                     false,
                     None,
+                    0,
                 );
             }
             Activation::None => {}

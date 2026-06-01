@@ -20,21 +20,14 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_dense_parallel_edges_002" => {
             Some(("0 0 658.677490234375 697.390625", "658.677"))
         }
-        "stress_flowchart_shape_mix_009" => Some(("0 0 369.66796875 698.21875", "369.668")),
+        "stress_flowchart_shape_mix_009" => Some(("0 0 366.359375 703.21875", "366.359")),
         "stress_flowchart_subgraph_title_margin_extremes_015" => {
             Some(("0 25 806.421875 796", "806.422"))
         }
         "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.75 88", "521.75")),
-        "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
-        "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
-        "stress_flowchart_icons_click_security_strict_057" => {
-            Some(("0 0 139.890625 174", "139.891"))
-        }
-        "stress_flowchart_icons_classdef_and_style_058" => Some(("0 0 351.578125 174", "351.578")),
-        "stress_flowchart_icons_subgraph_mixed_061" => Some(("0 0 353.75 274", "353.75")),
-        "stress_flowchart_icons_edge_to_cluster_062" => Some(("0 0 422.078125 244", "422.078")),
+        "stress_flowchart_icons_basic_051" => Some(("0 0 450.78125 278", "450.781")),
         "upstream_docs_flowchart_basic_support_for_fontawesome_234" => {
-            Some(("0 0 438.78125 174", "438.781"))
+            Some(("0 0 450.78125 174", "450.781"))
         }
         "upstream_docs_diagrams_flowchart_code_flow" => {
             Some(("0 0 10468.515625 3129.234375", "10468.5"))
@@ -51,27 +44,30 @@ pub fn lookup_flowchart_root_viewport_override(
             "769.891",
         )),
         "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
-            Some(("0 0 1926.8125 452", "1926.81"))
+            Some(("0 0 1806.8125 452", "1806.81"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006" => {
             Some(("0 -45 2400.640625 645", "2400.64"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007" => {
-            Some(("0 0 2004.41015625 1046", "2004.41"))
+            Some(("0 0 2007.41015625 1046", "2007.41"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
         }
         "upstream_html_demos_flowchart_flowchart_010"
         | "upstream_html_demos_flowchart_flowchart_049" => {
-            Some(("0 0 2004.41015625 1046", "2004.41"))
+            Some(("0 0 2007.41015625 1046", "2007.41"))
         }
-        "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 92.046875 70", "92.0469")),
+        "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 98.046875 70", "98.0469")),
         "upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005" => {
             Some(("0 0 104.6875 368", "104.688"))
         }
         "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034" => {
             Some(("0 0 609.140625 80", "609.141"))
+        }
+        "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
+            Some(("0 0 1896.984375 452", "1896.98"))
         }
         "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
             Some(("0 0 304.046875 734", "304.047"))
@@ -83,7 +79,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 1525.3125 246", "1525.31"))
         }
         "upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027" => {
-            Some(("0 0 376.296875 373.40625", "376.297"))
+            Some(("0 0 370.53125 373.40625", "370.531"))
         }
         "upstream_cypress_flowchart_spec_3_should_render_a_simple_flowchart_with_line_breaks_003" => {
             Some(("0 0 440.03125 737.25", "440.031"))
@@ -114,7 +110,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 -45 2400.640625 645", "2400.64"))
         }
         "upstream_html_demos_flowchart_flowchart_016"
-        | "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 622.921875 70", "622.922")),
+        | "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 640.921875 70", "640.922")),
         "upstream_html_demos_flowchart_flowchart_022"
         | "upstream_html_demos_flowchart_flowchart_055" => Some(("0 0 953.6875 257", "953.688")),
         "upstream_html_demos_flowchart_flowchart_024"

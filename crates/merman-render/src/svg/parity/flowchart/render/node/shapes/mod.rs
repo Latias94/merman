@@ -5,6 +5,7 @@ mod bow_tie_rect;
 mod curly_braces;
 mod curved_trapezoid;
 mod cylinders;
+mod datastore;
 mod delay;
 mod dispatch;
 mod divided_rect;
@@ -40,6 +41,7 @@ pub(in crate::svg::parity::flowchart) use curly_braces::curly_brace_comment_geom
 pub(super) use curly_braces::render_curly_brace_comment;
 pub(super) use curved_trapezoid::render_curved_trapezoid;
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
+pub(super) use datastore::render_datastore;
 pub(super) use delay::render_delay;
 pub(super) use dispatch::render_flowchart_v2_shape;
 pub(super) use divided_rect::render_divided_rect;

@@ -269,10 +269,8 @@ pub fn measure_html_with_flowchart_bold_deltas(
         let prefix = prefix?;
         let icon = icon?;
         let advance_em = match (prefix, icon) {
-            // Mermaid's documented custom-pack example is not registered in the bundled
-            // FontAwesome CSS, so Chromium lays it out as an empty inline element.
-            ("fab", "truck-bold") => 0.0,
-            _ => 1.0,
+            ("fa" | "fab" | "fak" | "fal" | "far" | "fas", _) => 1.25,
+            _ => return None,
         };
 
         Some(round_to_1_64_px(font_size.max(1.0) * advance_em))

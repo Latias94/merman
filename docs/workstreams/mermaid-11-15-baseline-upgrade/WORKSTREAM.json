@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "slug": "mermaid-11-15-baseline-upgrade",
+  "title": "Mermaid 11.15 Baseline Upgrade",
+  "status": "closed",
+  "created": "2026-05-31",
+  "updated": "2026-05-31",
+  "scope_kind": "execution",
+  "problem": "At lane opening, the repository documented Mermaid 11.12.3 parity while the requested target was Mermaid 11.15.0, whose release delta affects existing diagrams and diagram-family coverage.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/mermaid-11-15-baseline-upgrade/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/mermaid-11-15-baseline-upgrade/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/mermaid-11-15-baseline-upgrade/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/mermaid-11-15-baseline-upgrade/CONTEXT.jsonl",
+  "gates": [
+    "cargo fmt --check",
+    "cargo nextest run -p merman-core",
+    "cargo nextest run -p merman-render"
+  ],
+  "evidence": [
+    "docs/workstreams/mermaid-11-15-baseline-upgrade/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0001-upstream-baseline.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0019-generated-default-config.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "upstream-parity",
+    "baseline-upgrade",
+    "parser",
+    "renderer",
+    "fixtures"
+  ],
+  "lane_slug": null,
+  "active_tasks": [],
+  "continue_policy": {
+    "default_action": "split_follow_on",
+    "notes": "Baseline upgrade lane is closed. Split deferred diagram families, generated default-config overlay support, DOMPurify checkout repair, and npm audit remediation into separate workstreams if accepted."
+  }
+}

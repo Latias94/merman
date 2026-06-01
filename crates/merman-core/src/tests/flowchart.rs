@@ -539,6 +539,28 @@ fn parse_diagram_flowchart_node_data_shape_data_whitespace_variants() {
 }
 
 #[test]
+fn parse_diagram_flowchart_node_data_shape_data_accepts_datastore() {
+    let engine = Engine::new();
+
+    for shape in ["datastore", "data-store"] {
+        let diagram = format!("flowchart TB\nD@{{ shape: {shape}, label: \"Datastore\" }}");
+        let res = block_on(engine.parse_diagram(&diagram, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let nodes = res.model["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 1, "diagram: {diagram}");
+        assert_eq!(nodes[0]["id"], json!("D"), "diagram: {diagram}");
+        assert_eq!(nodes[0]["layoutShape"], json!(shape), "diagram: {diagram}");
+        assert_eq!(nodes[0]["label"], json!("Datastore"), "diagram: {diagram}");
+        assert_eq!(
+            nodes[0]["labelType"],
+            json!("markdown"),
+            "diagram: {diagram}"
+        );
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_node_data_shape_data_amp_and_edge_matrix() {
     let engine = Engine::new();
 
@@ -623,6 +645,23 @@ fn parse_diagram_flowchart_node_data_multiple_properties_same_line() {
     assert_eq!(nodes[0]["id"], json!("D"));
     assert_eq!(nodes[0]["layoutShape"], json!("rounded"));
     assert_eq!(nodes[0]["label"], json!("DD"));
+    assert_eq!(nodes[0]["labelType"], json!("markdown"));
+}
+
+#[test]
+fn parse_diagram_flowchart_node_data_label_type_defaults_to_markdown_but_can_be_overridden() {
+    let engine = Engine::new();
+
+    let res = block_on(engine.parse_diagram(
+        "flowchart TB\nA@{ label: \"Default markdown\" }\nB@{ label: \"Plain text\", labelType: text }",
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let nodes = res.model["nodes"].as_array().unwrap();
+    let find = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
+    assert_eq!(find("A")["labelType"], json!("markdown"));
+    assert_eq!(find("B")["labelType"], json!("text"));
 }
 
 #[test]

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "slug": "generated-default-config-parity",
+  "title": "Generated Default Config Parity",
+  "status": "closed",
+  "updated": "2026-05-31",
+  "scope_kind": "execution",
+  "problem": "Generated artifact verification couples default config parity to DOMPurify and other unrelated generated artifacts.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/generated-default-config-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/generated-default-config-parity/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/generated-default-config-parity/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/generated-default-config-parity/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/generated-default-config-parity/CONTEXT.jsonl",
+  "gates": [
+    "cargo nextest run -p xtask",
+    "cargo run -p xtask -- verify-default-config",
+    "cargo run -p xtask -- verify-dompurify-defaults",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/generated-default-config-parity/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0019-generated-default-config.md",
+    "docs/adr/0024-dompurify-default-allowlists-and-generation.md",
+    "docs/adr/0041-snapshot-parity-tests.md"
+  ],
+  "architecture_refs": [
+    "docs/rendering/FEARLESS_REFACTORING_SVG_PARITY.md"
+  ],
+  "capability_tags": [
+    "xtask",
+    "generated-artifacts",
+    "default-config",
+    "dompurify",
+    "mermaid-11-15"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "split-follow-on",
+    "notes": "Closed after GDC-050. Split follow-ons for sanitizer runtime behavior, new diagram families, Pie 11.15 config knobs, or additional generated artifact families."
+  }
+}

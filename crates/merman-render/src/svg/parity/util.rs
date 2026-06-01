@@ -88,6 +88,47 @@ pub(super) fn theme_color(
         .unwrap_or_else(|| fallback.to_string())
 }
 
+pub(super) struct SvgTheme<'a> {
+    effective_config: &'a serde_json::Value,
+}
+
+impl<'a> SvgTheme<'a> {
+    pub(super) fn new(effective_config: &'a serde_json::Value) -> Self {
+        Self { effective_config }
+    }
+
+    pub(super) fn color(&self, key: &str, fallback: &str) -> String {
+        theme_color(self.effective_config, key, fallback)
+    }
+
+    pub(super) fn font_family_css(&self) -> String {
+        let font_family = config_string(self.effective_config, &["themeVariables", "fontFamily"])
+            .or_else(|| config_string(self.effective_config, &["fontFamily"]))
+            .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
+        let font_family = normalize_css_font_family(font_family.as_str());
+        if font_family.is_empty() {
+            r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
+        } else {
+            font_family
+        }
+    }
+
+    pub(super) fn font_size_px(&self) -> f64 {
+        config_f64_css_px(self.effective_config, &["themeVariables", "fontSize"])
+            .or_else(|| config_f64(self.effective_config, &["fontSize"]))
+            .unwrap_or(16.0)
+            .max(1.0)
+    }
+}
+
+pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
+    format!("{diagram_id}-{local_id}")
+}
+
+pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
+    format!("url(#{})", scoped_svg_id(diagram_id, local_id))
+}
+
 pub(super) fn fmt_debug_3dp(v: f64) -> String {
     let mut out = String::new();
     fmt_debug_3dp_into(&mut out, v);

@@ -1,3 +1,4 @@
+use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::model::{
     ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout,
     ErrorDiagramLayout, FlowchartV2Layout, InfoDiagramLayout, LayoutCluster, LayoutNode,
@@ -61,12 +62,12 @@ use state::{
 };
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
-    apply_root_viewport_override, config_bool, config_f64, config_f64_css_px, config_string,
-    decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display, escape_xml,
-    escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
+    SvgTheme, apply_root_viewport_override, config_bool, config_f64, config_f64_css_px,
+    config_string, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
+    escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
     fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string, json_f64,
     json_stringify_points, json_stringify_points_into, normalize_css_font_family, push_points_attr,
-    theme_color,
+    scoped_svg_id, scoped_svg_url, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
@@ -138,6 +139,19 @@ pub fn render_layouted_svg(
 }
 
 pub fn render_layout_svg_parts(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let svg =
+        render_layout_svg_parts_raw(layout, semantic, effective_config, title, measurer, options)?;
+    apply_theme_css(svg, effective_config)
+}
+
+fn render_layout_svg_parts_raw(
     layout: &crate::model::LayoutDiagram,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
@@ -249,6 +263,25 @@ pub fn render_layout_svg_parts(
 }
 
 pub fn render_layout_svg_parts_with_config(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let svg = render_layout_svg_parts_with_config_raw(
+        layout,
+        semantic,
+        effective_config,
+        title,
+        measurer,
+        options,
+    )?;
+    apply_theme_css(svg, effective_config.as_value())
+}
+
+fn render_layout_svg_parts_with_config_raw(
     layout: &crate::model::LayoutDiagram,
     semantic: &serde_json::Value,
     effective_config: &merman_core::MermaidConfig,
@@ -392,6 +425,25 @@ pub fn render_layout_svg_parts_with_config(
 }
 
 pub fn render_layout_svg_parts_for_render_model_with_config(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &merman_core::RenderSemanticModel,
+    effective_config: &merman_core::MermaidConfig,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let svg = render_layout_svg_parts_for_render_model_with_config_raw(
+        layout,
+        semantic,
+        effective_config,
+        title,
+        measurer,
+        options,
+    )?;
+    apply_theme_css(svg, effective_config.as_value())
+}
+
+fn render_layout_svg_parts_for_render_model_with_config_raw(
     layout: &crate::model::LayoutDiagram,
     semantic: &merman_core::RenderSemanticModel,
     effective_config: &merman_core::MermaidConfig,
@@ -597,7 +649,7 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
                 options,
             )
         }
-        (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config(
+        (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config_raw(
             layout,
             semantic,
             effective_config,
@@ -609,6 +661,20 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             message: "semantic model does not match layout diagram type".to_string(),
         }),
     }
+}
+
+fn apply_theme_css(svg: String, effective_config: &serde_json::Value) -> Result<String> {
+    let Some(theme_css) = effective_config
+        .get("themeCSS")
+        .and_then(serde_json::Value::as_str)
+        .filter(|css| !css.trim().is_empty())
+    else {
+        return Ok(svg);
+    };
+
+    let metadata = SvgPostprocessMetadata::from_svg(&svg);
+    let pipeline = SvgPipeline::parity().with_postprocessor(ScopedCssPostprocessor::new(theme_css));
+    pipeline.process_to_string_with_metadata(&svg, &metadata)
 }
 
 pub fn render_flowchart_v2_debug_svg(

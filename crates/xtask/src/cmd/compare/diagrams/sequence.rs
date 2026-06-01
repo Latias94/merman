@@ -11,6 +11,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+fn sequence_fixture_is_skipped_for_svg_compare(stem: &str) -> bool {
+    // Mermaid 11.15 rejects `(end)` as a participant id. Keep the fixture for local parser
+    // coverage, but exclude its stale pre-11.15 SVG from upstream DOM compare gates.
+    stem == "stress_end_keyword_016"
+}
+
 pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
@@ -98,7 +104,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (Mermaid 11.12.3)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n",
+        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (pinned Mermaid baseline)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n",
         dom_mode,
         dom_decimals,
         if sequence_math_renderer.is_some() {
@@ -116,6 +122,12 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
             failures.push(format!("invalid fixture filename {}", mmd_path.display()));
             continue;
         };
+        if sequence_fixture_is_skipped_for_svg_compare(stem) {
+            skipped.push(format!(
+                "skipped {stem}: upstream Mermaid 11.15 cannot regenerate this SVG baseline"
+            ));
+            continue;
+        }
 
         let diagram_id: String = stem
             .chars()

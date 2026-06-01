@@ -517,6 +517,76 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
     out
 }
 
+pub(super) fn curve_rounded_path_d_and_bounds(
+    points: &[LayoutPoint],
+    radius: f64,
+) -> (String, Option<SvgPathBounds>) {
+    (curve_rounded_path_d_impl(points, radius), None)
+}
+
+fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64) -> String {
+    if points.len() < 2 {
+        return String::new();
+    }
+
+    let mut out = String::with_capacity(points.len().saturating_mul(48));
+    let epsilon = 1e-5;
+
+    for (idx, curr) in points.iter().enumerate() {
+        if idx == 0 {
+            emit_cmd_pair_no_bounds(&mut out, 'M', PathPoint::from_layout(curr));
+            continue;
+        }
+        if idx + 1 == points.len() {
+            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
+            continue;
+        }
+
+        let prev = &points[idx - 1];
+        let next = &points[idx + 1];
+
+        let dx1 = curr.x - prev.x;
+        let dy1 = curr.y - prev.y;
+        let dx2 = next.x - curr.x;
+        let dy2 = next.y - curr.y;
+        let len1 = dx1.hypot(dy1);
+        let len2 = dx2.hypot(dy2);
+        if len1 < epsilon || len2 < epsilon {
+            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
+            continue;
+        }
+
+        let nx1 = dx1 / len1;
+        let ny1 = dy1 / len1;
+        let nx2 = dx2 / len2;
+        let ny2 = dy2 / len2;
+        let dot = (nx1 * nx2 + ny1 * ny2).clamp(-1.0, 1.0);
+        let angle = dot.acos();
+        if angle < epsilon || (std::f64::consts::PI - angle).abs() < epsilon {
+            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
+            continue;
+        }
+
+        let cut_len = (radius / (angle / 2.0).sin())
+            .min(len1 / 2.0)
+            .min(len2 / 2.0);
+        let start = PathPoint::new(curr.x - nx1 * cut_len, curr.y - ny1 * cut_len);
+        let end = PathPoint::new(curr.x + nx2 * cut_len, curr.y + ny2 * cut_len);
+
+        emit_cmd_pair_no_bounds(&mut out, 'L', start);
+        out.push('Q');
+        fmt_path_into(&mut out, curr.x);
+        out.push(',');
+        fmt_path_into(&mut out, curr.y);
+        out.push(' ');
+        fmt_path_into(&mut out, end.x);
+        out.push(',');
+        fmt_path_into(&mut out, end.y);
+    }
+
+    out
+}
+
 // Ported from D3 `curveNatural` (d3-shape v3.x).
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: natural }`).

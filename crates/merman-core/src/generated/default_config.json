@@ -1,8 +1,14 @@
 {
   "architecture": {
+    "edgeElasticity": 0.45,
     "fontSize": 16,
     "iconSize": 80,
+    "idealEdgeLengthMultiplier": 1.5,
+    "nodeSeparation": 75,
+    "numIter": 2500,
     "padding": 40,
+    "randomize": false,
+    "seed": 1,
     "useMaxWidth": true
   },
   "arrowMarkerAbsolute": false,
@@ -137,6 +143,7 @@
     "diagramPadding": 20,
     "dividerMargin": 10,
     "hideEmptyMembersBox": false,
+    "hierarchicalNamespaces": true,
     "htmlLabels": false,
     "padding": 12,
     "textHeight": 10,
@@ -185,7 +192,7 @@
   },
   "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
   "fontSize": 16,
-  "forceL\u0065gacyMathML": false,
+  "forceLegacyMathML": false,
   "gantt": {
     "axisFormat": "%Y-%m-%d",
     "barGap": 4,
@@ -273,7 +280,7 @@
     "useMaxWidth": true
   },
   "layout": "dagre",
-  "l\u0065gacyMathML": false,
+  "legacyMathML": false,
   "logLevel": 5,
   "look": "classic",
   "markdownAutoWrap": true,
@@ -295,6 +302,9 @@
     "useMaxWidth": true
   },
   "pie": {
+    "donutHole": 0,
+    "highlightSlice": "",
+    "legendPosition": "right",
     "textPosition": 0.75,
     "useMaxWidth": true
   },
@@ -345,8 +355,12 @@
   },
   "sankey": {
     "height": 400,
+    "labelStyle": "legacy",
     "linkColor": "gradient",
     "nodeAlignment": "justify",
+    "nodeColors": {},
+    "nodePadding": 12,
+    "nodeWidth": 10,
     "prefix": "",
     "showValues": true,
     "suffix": "",
@@ -465,6 +479,7 @@
     "height": 500,
     "plotReservedSpacePercent": 50,
     "showDataLabel": false,
+    "showDataLabelOutsideBar": false,
     "showTitle": true,
     "titleFontSize": 20,
     "titlePadding": 10,

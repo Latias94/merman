@@ -2,9 +2,9 @@
   "name": "merman-upstream-mermaid-cli",
   "private": true,
   "devDependencies": {
-    "@mermaid-js/mermaid-cli": "11.12.0"
+    "@mermaid-js/mermaid-cli": "11.15.0"
   },
   "overrides": {
-    "mermaid": "11.12.3"
+    "mermaid": "11.15.0"
   }
 }

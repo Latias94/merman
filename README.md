@@ -13,16 +13,20 @@ Mermaid, but headless, in Rust.
 
 Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
 
-`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.12.3`).
+`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.15.0`).
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
 changes that affect semantics, layout, or rendering are caught and reviewed.
+
+Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
 ## Choose Your Entry Point
 
 | You want to... | Start with | Notes |
 | --- | --- | --- |
+| Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Static live editor powered by the wasm web package. |
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
+| Embed in a browser or TypeScript app | [`@merman/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
 | Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
 | Work on layout/rendering internals | [`merman-render`](https://crates.io/crates/merman-render) | Low-level layout and SVG stack used by the public `merman` facade. |
@@ -500,10 +504,12 @@ gantt
 
 ## Parity and coverage
 
-- Baseline: Mermaid `@11.12.3`.
+- Baseline: Mermaid `@11.15.0`.
 - Alignment is enforced via upstream SVG DOM baselines plus semantic/layout golden snapshots.
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM, not byte-identical SVG text.
 - Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
+- Mermaid diagram families that are present upstream but not implemented here are listed in
+  [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 - Current coverage and gates: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See [docs/adr/0061-external-diagrams-zenuml.md](https://github.com/Latias94/merman/blob/main/docs/adr/0061-external-diagrams-zenuml.md).
 
@@ -577,6 +583,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Links
 
 - Alignment status: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- Merman Playground: [frankorz.com/merman](https://frankorz.com/merman/)
 - Parity policy: [docs/adr/0014-upstream-parity-policy.md](https://github.com/Latias94/merman/blob/main/docs/adr/0014-upstream-parity-policy.md)
 - Release quality gates: [docs/adr/0050-release-quality-gates.md](https://github.com/Latias94/merman/blob/main/docs/adr/0050-release-quality-gates.md)
 - Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid)

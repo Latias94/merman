@@ -31,6 +31,7 @@ pub(super) use intersect::{
 };
 pub(super) use line_with_offset::{
     line_with_offset_for_edge_type, maybe_snap_shallow_basis_triplet_y_to_f32,
+    rounded_line_with_marker_offsets_for_edge_type,
 };
 pub(super) use rect_clip::{cut_path_at_intersect_into, dedup_consecutive_points_into};
 pub(super) use trace::{

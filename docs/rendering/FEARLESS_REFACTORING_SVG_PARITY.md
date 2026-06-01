@@ -54,8 +54,11 @@ Notes:
   - change risk
   - review time
   - accidental drift across diagrams
-- `xtask verify-generated` can fail due to missing `repo-ref/*` build artifacts, which is confusing
-  when the actual release gates are green.
+- Generated-artifact verification previously needed artifact-specific commands because
+  `xtask verify-generated` could fail due to missing optional `repo-ref/*` build artifacts, which was
+  confusing when the actual release gates were green. The
+  `docs/workstreams/generated-default-config-parity/` lane resolved this for default config and
+  DOMPurify by adding artifact-specific gates and actionable reference-checkout remediation.
 
 ## Proposed architecture (incremental)
 

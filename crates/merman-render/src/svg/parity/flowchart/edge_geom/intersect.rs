@@ -1139,8 +1139,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let min_width = 80.0;
-        let min_height = 20.0;
+        let min_width = 20.0;
+        let min_height = 5.0;
         let w = ((metrics.width + 2.0 * p) * 1.25).max(min_width);
         let h = (metrics.height + 2.0 * p).max(min_height);
         let radius = h / 2.0;
@@ -1177,7 +1177,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = metrics.width + p + 20.0;
+        let w = metrics.width + 2.0 * p;
         let h = metrics.height + p;
         let ry = h / 2.0;
         let rx = ry / (2.5 + h / 50.0);
@@ -1248,7 +1248,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let p = ctx.node_padding;
         let w = metrics.width + 2.0 * p;
         let h = metrics.height + 2.0 * p;
-        let wave_amplitude = h / 4.0;
+        let wave_amplitude = h / 8.0;
         let final_h = h + wave_amplitude;
         let ext = (w / 2.0) * 0.1;
 
@@ -1331,7 +1331,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let h = (metrics.height + 2.0 * p).max(0.0);
         let wave_amplitude = h / 8.0;
         let final_h = h + wave_amplitude;
-        let extra_w = ((70.0 - w).max(0.0)) / 2.0;
+        let extra_w = ((14.0 - w).max(0.0)) / 2.0;
 
         let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
         points.push(crate::model::LayoutPoint {
@@ -1369,8 +1369,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = (metrics.width + 2.0 * p).max(80.0);
-        let h = (metrics.height + 2.0 * p).max(50.0);
+        let w = (metrics.width + 2.0 * p).max(15.0);
+        let h = (metrics.height + 2.0 * p).max(10.0);
         let radius = h / 2.0;
 
         let mut points: Vec<crate::model::LayoutPoint> = Vec::new();
@@ -1571,7 +1571,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let p = ctx.node_padding;
         let w = metrics.width + 2.0 * p;
         let h = metrics.height + 2.0 * p;
-        let rect_offset = 5.0;
+        let rect_offset = 10.0;
         let x = -w / 2.0;
         let y = -h / 2.0;
         let points = vec![

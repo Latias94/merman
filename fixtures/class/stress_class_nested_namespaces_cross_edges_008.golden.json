@@ -110,18 +110,26 @@
     "namespaces": {
       "One": {
         "id": "One",
+        "label": "One",
         "domId": "classId-One-0",
         "classIds": [
           "OneA"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       },
       "One.Two": {
         "id": "One.Two",
+        "label": "Two",
         "domId": "classId-One.Two-1",
         "classIds": [
           "TwoB",
           "TwoC"
-        ]
+        ],
+        "noteIds": [],
+        "parent": "One",
+        "explicit": true
       }
     },
     "styleClasses": {},

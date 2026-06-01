@@ -105,10 +105,14 @@
     "namespaces": {
       "Outer": {
         "id": "Outer",
+        "label": "Outer",
         "domId": "classId-Outer-0",
         "classIds": [
           "Foo"
-        ]
+        ],
+        "noteIds": [],
+        "parent": null,
+        "explicit": true
       }
     },
     "styleClasses": {},

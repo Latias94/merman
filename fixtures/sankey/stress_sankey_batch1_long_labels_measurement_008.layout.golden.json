@@ -11,7 +11,7 @@
       "width": 850.0,
       "height": 380.0,
       "node_width": 10.0,
-      "node_padding": 25.0,
+      "node_padding": 27.0,
       "nodes": [
         {
           "id": "A very long source label with many words for measurement",

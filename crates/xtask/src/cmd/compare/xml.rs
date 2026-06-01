@@ -8,6 +8,26 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str> {
+    if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason(diagram, stem) {
+        return Some(reason);
+    }
+
+    if diagram == "flowchart" && stem == "upstream_html_demos_flowchart_elk_flowchart_elk_001" {
+        return Some(
+            "local Flowchart ELK layout is not implemented; F115-070 treats flowchart-elk as a documented out-of-matrix upstream family until a dedicated ELK layout lane lands",
+        );
+    }
+
+    if diagram == "class" && stem == "upstream_parser_class_spec" {
+        return Some(
+            "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; merman keeps those ids deterministic and compare-class-svgs already excludes this fixture",
+        );
+    }
+
+    None
+}
+
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -82,7 +102,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let workspace_root = crate::cmd::workspace_root();
 
-    let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
+    let node_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
         let node_cwd = crate::cmd::mermaid_cli_root();
         if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
             Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
@@ -305,6 +325,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut mismatches: Vec<(String, String, PathBuf, PathBuf)> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
+    let mut skipped: Vec<(String, &'static str)> = Vec::new();
 
     for diagram in diagrams {
         let upstream_dir = upstream_root.join(&diagram);
@@ -349,6 +370,10 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             let Some(stem) = upstream_path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
+            if let Some(reason) = svg_xml_compare_skip_reason(&diagram, stem) {
+                skipped.push((format!("{diagram}/{stem}"), reason));
+                continue;
+            }
             let fixture_path = fixtures_dir.join(format!("{stem}.mmd"));
             let text = match fs::read_to_string(&fixture_path) {
                 Ok(v) => v,
@@ -389,8 +414,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             };
 
             let mut layout_opts = layout_opts.clone();
-            if diagram == "flowchart" {
-                layout_opts.math_renderer = flowchart_math_renderer.clone();
+            if matches!(diagram.as_str(), "flowchart" | "sequence") {
+                layout_opts.math_renderer = node_math_renderer.clone();
             }
 
             let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
@@ -422,8 +447,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
-            if diagram == "flowchart" {
-                svg_opts.math_renderer = flowchart_math_renderer.clone();
+            if matches!(diagram.as_str(), "flowchart" | "sequence") {
+                svg_opts.math_renderer = node_math_renderer.clone();
             }
             if diagram == "gantt" {
                 if let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
@@ -516,6 +541,14 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             let _ = writeln!(&mut report, "- {m}");
         }
     }
+    if !skipped.is_empty() {
+        let _ = writeln!(&mut report);
+        let _ = writeln!(&mut report, "## Skipped ({})", skipped.len());
+        let _ = writeln!(&mut report);
+        for (item, reason) in &skipped {
+            let _ = writeln!(&mut report, "- {item}: {reason}");
+        }
+    }
 
     fs::write(&report_path, report).map_err(|source| XtaskError::WriteFile {
         path: report_path.display().to_string(),
@@ -596,4 +629,59 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let xml = svgdom::canonical_xml(&svg, mode, decimals).map_err(XtaskError::SvgCompareFailed)?;
     print!("{xml}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::svg_xml_compare_skip_reason;
+
+    #[test]
+    fn svg_xml_compare_skip_reason_keeps_known_sequence_regen_skip() {
+        assert_eq!(
+            svg_xml_compare_skip_reason("sequence", "stress_end_keyword_016"),
+            Some("upstream Mermaid 11.15 rejects `(end)` as a participant id")
+        );
+        assert_eq!(
+            svg_xml_compare_skip_reason("sequence", "stress_end_keyword_015"),
+            None
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_is_narrow_for_flowchart_elk() {
+        let reason = svg_xml_compare_skip_reason(
+            "flowchart",
+            "upstream_html_demos_flowchart_elk_flowchart_elk_001",
+        )
+        .expect("flowchart-elk fixture should be explicitly skipped");
+        assert!(reason.contains("ELK layout is not implemented"));
+        assert_eq!(
+            svg_xml_compare_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
+            None
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_covers_flowchart_parser_only_svg_baselines() {
+        assert_eq!(
+            svg_xml_compare_skip_reason(
+                "flowchart",
+                "upstream_html_demos_flowchart_flowchart_040_parser_only_katex"
+            ),
+            Some(
+                "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture"
+            )
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_covers_class_prototype_key_render_artifact() {
+        let reason = svg_xml_compare_skip_reason("class", "upstream_parser_class_spec")
+            .expect("class prototype-key render artifact should be explicitly skipped");
+        assert!(reason.contains("prototype-key class ids"));
+        assert_eq!(
+            svg_xml_compare_skip_reason("class", "upstream_namespaces_and_generics"),
+            None
+        );
+    }
 }

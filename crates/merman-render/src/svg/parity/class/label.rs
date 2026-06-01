@@ -72,6 +72,26 @@ pub(super) fn render_class_html_label(
     out.push_str("</span>");
 }
 
+pub(super) fn write_class_svg_text_markdown(out: &mut String, markdown: &str, include_style: bool) {
+    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, markdown, include_style);
+}
+
+pub(super) fn write_class_svg_edge_text(out: &mut String, text: &str, include_style: bool) {
+    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(out, text, include_style);
+}
+
+pub(super) fn write_class_svg_edge_text_markdown(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+) {
+    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_centered(
+        out,
+        markdown,
+        include_style,
+    );
+}
+
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
     let max_width_px = max_width_px.max(0);
     if width >= max_width_px as f64 - 0.01 {

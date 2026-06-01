@@ -1,4 +1,4 @@
-use super::{PieDiagramLayout, Result, SvgRenderOptions, root_svg};
+use super::{PieDiagramLayout, Result, SvgRenderOptions, config_string, root_svg};
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
@@ -25,6 +25,14 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     let x = radius * angle.sin();
     let y = -radius * angle.cos();
     (x, y)
+}
+
+fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
+    match config_string(effective_config, &["pie", "highlightSlice"]).as_deref() {
+        Some("hover") => "pieCircle highlightedOnHover".to_string(),
+        Some(target) if target == label => "pieCircle highlighted".to_string(),
+        _ => "pieCircle".to_string(),
+    }
 }
 
 fn apply_empty_pie_root_viewport(
@@ -61,7 +69,7 @@ pub(super) fn render_pie_diagram_svg(
 pub(super) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -152,24 +160,57 @@ pub(super) fn render_pie_diagram_svg_model(
         x = super::fmt(layout.center_x),
         y = super::fmt(layout.center_y)
     );
+
+    let legend_position = crate::pie::pie_legend_position(effective_config);
+    let pie_offset_x = if legend_position == crate::pie::PieLegendPosition::Left {
+        (vb_w - 490.0).max(0.0)
+    } else {
+        0.0
+    };
+    let pie_offset_y = if legend_position == crate::pie::PieLegendPosition::Top {
+        layout.legend_step_y * ((layout.legend_items.len() as f64) + 1.0)
+    } else {
+        0.0
+    };
+    let has_pie_offset = pie_offset_x != 0.0 || pie_offset_y != 0.0;
+    if has_pie_offset {
+        let _ = write!(
+            &mut out,
+            r#"<g transform="translate({x},{y})">"#,
+            x = super::fmt(pie_offset_x),
+            y = super::fmt(pie_offset_y)
+        );
+    }
+
     let _ = write!(
         &mut out,
         r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
         r = super::fmt(layout.outer_radius)
     );
 
+    let inner_radius = crate::pie::pie_donut_hole(effective_config) * layout.radius;
     for slice in &layout.slices {
         let r = layout.radius;
+        let slice_class = pie_slice_class(effective_config, &slice.label);
         if slice.is_full_circle {
-            let d = format!(
-                "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                r = super::fmt(r)
-            );
+            let d = if inner_radius > 0.0 {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}M0,-{ir}A{ir},{ir},0,1,0,0,{ir}A{ir},{ir},0,1,0,0,-{ir}Z",
+                    r = super::fmt(r),
+                    ir = super::fmt(inner_radius)
+                )
+            } else {
+                format!(
+                    "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
+                    r = super::fmt(r)
+                )
+            };
             let _ = write!(
                 &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = super::escape_xml(&slice.fill)
+                fill = super::escape_xml(&slice.fill),
+                class = super::escape_xml(&slice_class)
             );
         } else {
             let (x0, y0) = pie_polar_xy(r, slice.start_angle);
@@ -179,20 +220,40 @@ pub(super) fn render_pie_diagram_svg_model(
             } else {
                 0
             };
-            let d = format!(
-                "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                x0 = super::fmt(x0),
-                y0 = super::fmt(y0),
-                r = super::fmt(r),
-                large = large,
-                x1 = super::fmt(x1),
-                y1 = super::fmt(y1)
-            );
+            let d = if inner_radius > 0.0 {
+                let (ix0, iy0) = pie_polar_xy(inner_radius, slice.start_angle);
+                let (ix1, iy1) = pie_polar_xy(inner_radius, slice.end_angle);
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L{ix1},{iy1}A{ir},{ir},0,{large},0,{ix0},{iy0}Z",
+                    x0 = super::fmt(x0),
+                    y0 = super::fmt(y0),
+                    r = super::fmt(r),
+                    large = large,
+                    x1 = super::fmt(x1),
+                    y1 = super::fmt(y1),
+                    ix1 = super::fmt(ix1),
+                    iy1 = super::fmt(iy1),
+                    ir = super::fmt(inner_radius),
+                    ix0 = super::fmt(ix0),
+                    iy0 = super::fmt(iy0)
+                )
+            } else {
+                format!(
+                    "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
+                    x0 = super::fmt(x0),
+                    y0 = super::fmt(y0),
+                    r = super::fmt(r),
+                    large = large,
+                    x1 = super::fmt(x1),
+                    y1 = super::fmt(y1)
+                )
+            };
             let _ = write!(
                 &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                r#"<path d="{d}" fill="{fill}" class="{class}"/>"#,
                 d = d,
-                fill = super::escape_xml(&slice.fill)
+                fill = super::escape_xml(&slice.fill),
+                class = super::escape_xml(&slice_class)
             );
         }
     }
@@ -205,6 +266,10 @@ pub(super) fn render_pie_diagram_svg_model(
             y = super::fmt(slice.text_y),
             text = super::escape_xml(&format!("{}%", slice.percent))
         );
+    }
+
+    if has_pie_offset {
+        out.push_str("</g>");
     }
 
     match model.title.as_deref() {
