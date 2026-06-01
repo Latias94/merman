@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::architecture::{
+use crate::architecture_metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
     architecture_create_text_bbox_height_px,
 };

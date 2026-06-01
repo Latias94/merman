@@ -7,6 +7,7 @@
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
 
 pub mod architecture;
+pub(crate) mod architecture_metrics;
 pub mod block;
 pub mod c4;
 pub mod class;

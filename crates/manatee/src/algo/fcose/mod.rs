@@ -1401,6 +1401,10 @@ impl SimGraph {
         if self.nodes.is_empty() {
             return None;
         }
+        let debug_bbox = std::env::var("MANATEE_FCOSE_DEBUG_ELES_BBOX")
+            .ok()
+            .as_deref()
+            == Some("1");
 
         // Cytoscape edge bboxes are inflated by a small padding (see `edge.boundingBox()`).
         // Mermaid Architecture baselines empirically match ~2.5px here.
@@ -1414,6 +1418,7 @@ impl SimGraph {
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
         let mut max_y = f64::NEG_INFINITY;
+        let mut debug_rows: Vec<String> = Vec::new();
 
         // Nodes (incl. labels). Cytoscape `eles.boundingBox()` treats compound nodes as wrappers
         // around their child graphs, and `compound-sizing-wrt-labels: include` causes descendant
@@ -1536,6 +1541,17 @@ impl SimGraph {
             min_y = min_y.min(bb.y1);
             max_x = max_x.max(bb.x2);
             max_y = max_y.max(bb.y2);
+            if debug_bbox {
+                let kind = if self.nodes.get(idx).is_some_and(|n| n.is_compound) {
+                    "compound"
+                } else {
+                    "node"
+                };
+                debug_rows.push(format!(
+                    "[manatee-fcose-eles-bbox] run={run_idx} kind={kind} idx={idx} bb=({:.6},{:.6})-({:.6},{:.6})",
+                    bb.x1, bb.y1, bb.x2, bb.y2
+                ));
+            }
         }
 
         // Edges: Cytoscape `eles.boundingBox()` includes edge geometry. For Mermaid Architecture,
@@ -1630,6 +1646,12 @@ impl SimGraph {
                 sx - EDGE_BBOX_PAD,
                 sy - EDGE_BBOX_PAD,
             );
+            if debug_bbox {
+                debug_rows.push(format!(
+                    "[manatee-fcose-eles-bbox] run={run_idx} kind=edge-endpoints edge=({}->{}) src=({:.6},{:.6}) dst=({:.6},{:.6})",
+                    e.a, e.b, sx, sy, tx, ty
+                ));
+            }
             include_point(
                 &mut min_x,
                 &mut min_y,
@@ -1736,6 +1758,12 @@ impl SimGraph {
                     if let Some((mx, my)) = mp {
                         let hw = lw / 2.0;
                         let hh = lh / 2.0;
+                        if debug_bbox {
+                            debug_rows.push(format!(
+                                "[manatee-fcose-eles-bbox] run={run_idx} kind=edge-label edge=({}->{}) center=({:.6},{:.6}) size=({:.6},{:.6})",
+                                e.a, e.b, mx, my, lw, lh
+                            ));
+                        }
                         include_point(
                             &mut min_x,
                             &mut min_y,
@@ -1759,6 +1787,20 @@ impl SimGraph {
 
         if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
             return None;
+        }
+        if debug_bbox {
+            for row in debug_rows {
+                eprintln!("{row}");
+            }
+            eprintln!(
+                "[manatee-fcose-eles-bbox] run={run_idx} total=({:.6},{:.6})-({:.6},{:.6}) center=({:.6},{:.6})",
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+                (min_x + max_x) / 2.0,
+                (min_y + max_y) / 2.0
+            );
         }
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }

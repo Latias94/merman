@@ -332,7 +332,7 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         fragments: &[
             "svg: attr `style` mismatch",
             "upstream=`max-width: 2355.75px; background-color: white;`",
-            "local=`max-width: 2345px; background-color: white;`",
+            "local=`max-width: 2344.92px; background-color: white;`",
         ],
     },
     AcceptedRootParityResidual {
@@ -340,8 +340,8 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         stem: "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037",
         fragments: &[
             "svg: attr `style` mismatch",
-            "upstream=`max-width: 2355.75px; background-color: white;`",
-            "local=`max-width: 2345px; background-color: white;`",
+            "upstream=`max-width: 2355.73px; background-color: white;`",
+            "local=`max-width: 2344.92px; background-color: white;`",
         ],
     },
     AcceptedRootParityResidual {
@@ -479,8 +479,8 @@ mod tests {
     #[test]
     fn root_parity_policy_accepts_exact_recorded_class_residuals() {
         let mut policy = RootParityResidualPolicy::new(&["class"]);
-        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
-dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)";
+        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
+dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.73px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)";
 
         assert!(policy.accept_or_return_remaining("class", msg).is_none());
         assert_eq!(policy.accepted_summaries().len(), 2);
@@ -536,8 +536,8 @@ dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
     #[test]
     fn root_parity_policy_preserves_unexpected_mismatches() {
         let mut policy = RootParityResidualPolicy::new(&["class"]);
-        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
-dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
+        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
+dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.73px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
 dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` mismatch)";
 
         let remaining = policy

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 
-use crate::architecture::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
+use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 
 use super::super::{decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
 

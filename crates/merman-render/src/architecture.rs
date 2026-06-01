@@ -1,3 +1,6 @@
+use crate::architecture_metrics::{
+    architecture_compound_bbox_padding_px, architecture_measure_cytoscape_node_bbox_extras,
+};
 use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
@@ -8,54 +11,6 @@ use merman_core::diagrams::architecture::ArchitectureDiagramRenderModel;
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Deserialize;
 use serde_json::Value;
-
-pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
-pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
-pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
-pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
-    pub(crate) width: f64,
-    pub(crate) half_width: f64,
-}
-
-pub(crate) fn architecture_cytoscape_canvas_label_metrics(
-    label: &str,
-    measurer: &dyn TextMeasurer,
-    style: &crate::text::TextStyle,
-) -> ArchitectureCytoscapeCanvasLabelMetrics {
-    let m = measurer.measure(label, style);
-    let half_width = (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
-    let half_width = (half_width * 2.0).round() / 2.0;
-    ArchitectureCytoscapeCanvasLabelMetrics {
-        width: m.width,
-        half_width,
-    }
-}
-
-pub(crate) fn architecture_create_text_bbox_height_px(font_size_px: f64, line_count: usize) -> f64 {
-    let font_size_px = font_size_px.max(1.0);
-    let extra_lines = line_count.max(1).saturating_sub(1) as f64;
-    font_size_px * ((19.0 / 16.0) + extra_lines * 1.1)
-}
-
-pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
-    font_size_px: f64,
-    line_count: usize,
-) -> f64 {
-    let font_size_px = font_size_px.max(1.0);
-    let extra_lines = line_count.max(1).saturating_sub(1) as f64;
-    font_size_px * ((24.1875 / 16.0) + extra_lines * 1.1)
-}
-
-pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) * (17.0 / 16.0)
-}
-
-pub(crate) fn architecture_compound_bbox_padding_px(padding_px: f64) -> f64 {
-    padding_px.max(0.0) + ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX
-}
 
 fn architecture_relative_placement_constraints<'a>(
     spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
@@ -479,68 +434,6 @@ fn layout_architecture_diagram_model(
         }
     }
 
-    fn measure_cytoscape_node_bbox_extras(
-        title: Option<&str>,
-        measurer: &dyn crate::text::TextMeasurer,
-        style: &crate::text::TextStyle,
-        icon_size: f64,
-        font_size_px: f64,
-    ) -> manatee::BoundsExtras {
-        // Cytoscape `node.boundingBox()` includes a small stroke/padding even when labels are
-        // short enough to fit within the node rect.
-        //
-        // Derived from Chromium/Cytoscape measurements for Mermaid Architecture:
-        // - icon 80x80 at (0,0) => bbox extends to ~±41px horizontally and ~[-41, 41] vertically
-        // - a single-line label adds ~`fontSize + 1` px below the icon, plus the same 1px border
-        let border = 1.0;
-        let half_icon = icon_size / 2.0;
-
-        let mut half_w = half_icon + border;
-        let mut bottom = border;
-
-        if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
-            // Cytoscape node labels are canvas text and (by default) do not apply SVG-style
-            // word-wrapping. Model them as a single line for relocation-center parity.
-            // Cytoscape measures labels via canvas metrics; our deterministic metrics table is
-            // SVG-oriented and slightly underestimates widths for the default font stack.
-            // Calibrate with a small scale factor to match Chromium `node.boundingBox()` values
-            // for Architecture fixtures (notably long service titles like "API Gateway").
-            // Calibrated against Chromium/Cytoscape `boundingBox()` for Architecture labels.
-            // In practice, Cytoscape canvas metrics run slightly wider than our SVG-oriented
-            // deterministic table, but a small scale factor keeps relocation centers stable
-            // without requiring a browser.
-            let label_metrics = crate::architecture::architecture_cytoscape_canvas_label_metrics(
-                title, measurer, style,
-            );
-            let label_half = label_metrics.half_width;
-            half_w = half_w.max(label_half + border);
-            // Cytoscape bounding boxes land on 0.5px increments in Chromium; mirror that so
-            // relocation centers match upstream baselines more closely.
-            half_w = (half_w * 2.0).round() / 2.0;
-            bottom = border + (font_size_px + 1.0).max(0.0);
-
-            if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
-                eprintln!(
-                    "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
-                    title,
-                    label_metrics.width,
-                    label_half,
-                    half_w,
-                    (half_w - half_icon).max(0.0),
-                    bottom,
-                );
-            }
-        }
-
-        let extra_lr = (half_w - half_icon).max(0.0);
-        manatee::BoundsExtras {
-            left: extra_lr,
-            right: extra_lr,
-            top: border,
-            bottom,
-        }
-    }
-
     // Approximate Cytoscape `eles.boundingBox()` in the pre-layout state where nodes are not
     // explicitly positioned (default `{x: 0, y: 0}` in Cytoscape). The returned center is used
     // as our initial coordinate frame so FCoSE's relocation step matches upstream outputs.
@@ -598,7 +491,7 @@ fn layout_architecture_diagram_model(
             // observable as a stable vertical offset (e.g. ~8.5px for single-line service titles).
             let mut bb = BBox::from_rect(node_x, node_y, icon_size, icon_size);
             let title = node_title.get(n.id).copied();
-            let bounds_extras = measure_cytoscape_node_bbox_extras(
+            let bounds_extras = architecture_measure_cytoscape_node_bbox_extras(
                 title,
                 text_measurer,
                 &text_style,
@@ -610,7 +503,15 @@ fn layout_architecture_diagram_model(
             bb.min_y -= bounds_extras.top;
             bb.max_y += bounds_extras.bottom;
             node_bbox.insert(n.id, bb);
-            node_bounds_extras.insert(n.id, bounds_extras);
+            node_bounds_extras.insert(
+                n.id,
+                manatee::BoundsExtras {
+                    left: bounds_extras.left,
+                    right: bounds_extras.right,
+                    top: bounds_extras.top,
+                    bottom: bounds_extras.bottom,
+                },
+            );
         }
 
         // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.
@@ -634,7 +535,7 @@ fn layout_architecture_diagram_model(
 
         let mut group_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
         group_bbox.reserve(model.groups.len().saturating_mul(2));
-        let base_pad = crate::architecture::architecture_compound_bbox_padding_px(padding_px);
+        let base_pad = architecture_compound_bbox_padding_px(padding_px);
         for g in &model.groups {
             let Some(members) = group_to_leaves.get(g.id) else {
                 continue;
@@ -1644,25 +1545,6 @@ fn layout_architecture_diagram_model(
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn architecture_text_constants_match_mermaid() {
-        assert!((super::architecture_create_text_bbox_height_px(16.0, 2) - 36.6).abs() < 1e-9);
-        assert_eq!(
-            super::architecture_create_text_compound_label_extra_bottom_px(16.0),
-            17.0
-        );
-        assert_eq!(
-            super::architecture_create_text_root_label_extra_bottom_px(16.0, 1),
-            24.1875
-        );
-        assert_eq!(
-            super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
-            1.055
-        );
-        assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
-        assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
-    }
-
     #[test]
     fn architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops() {
         let mut spatial_map = indexmap::IndexMap::new();

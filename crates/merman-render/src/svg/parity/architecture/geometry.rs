@@ -1,5 +1,5 @@
 use super::super::{Bounds, fmt};
-use crate::architecture::{
+use crate::architecture_metrics::{
     ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, architecture_compound_bbox_padding_px,
 };
 

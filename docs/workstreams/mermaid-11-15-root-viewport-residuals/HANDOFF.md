@@ -219,6 +219,43 @@ bounds. Final SVG group rectangles had already moved from `iconSize / 2` to conf
 `padding + 2.5`. This is source-consistency work rather than a count reduction: the custom-init
 rows remain in the same residual set, and the remaining drift is label/bbox measurement dominated.
 
+On 2026-06-02, two more focused Architecture probes refined the remaining M15RV-089 direction:
+
+- `stress_architecture_batch5_long_titles_and_punct_076` is not primarily a title-wrap width bug.
+  The local and upstream `pipeline` group rect dimensions match; the residual is a global
+  left/right phase shift of roughly `10px`, so the root `max-width` grows from `543px` upstream to
+  `553px` local.
+- `stress_architecture_disconnected_islands_046` is not a width drift at all. The root width is
+  exact, while the local root height is about `+7.19px` and the disconnected components land in a
+  different vertical phase than upstream.
+- A same-turn experiment changed `manatee`'s pre-layout compound relocation bbox to avoid
+  recursive child-compound padding accumulation inside `bounding_box_center_eles()`. Focused
+  `parity-root` checks for `disconnected_islands_046` and `long_titles_and_punct_076` were
+  unchanged, so that experiment was reverted immediately and should not be repeated as an
+  evidence-free guess.
+
+Current implication: the next promising Architecture follow-up is still in the
+component-relocation / initial-center / Cytoscape phase-alignment family, but not that specific
+compound-padding hypothesis. Prefer new probes around FCoSE relocation center semantics,
+disconnected-component ordering/phase, or top-left-vs-center coordinate transfer before changing
+shared bbox padding rules again.
+
+Additional 2026-06-02 diagnostic result:
+
+- `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` now prints the top-level node/compound/edge/edge-label bbox
+  contributors inside `bounding_box_center_eles()`. Focused probes show the current Architecture
+  phase drift is not primarily edge-label driven:
+  - `stress_architecture_batch5_long_titles_and_punct_076`: run1 `orig_center=(-24,17)` comes from
+    the single top-level compound bbox `(-260.462816,-174.462816)-(212.462816,208.462816)`. The
+    four edge endpoint rows stay inside that compound bbox and do not change the total extents.
+  - `stress_architecture_disconnected_islands_046`: run1 `orig_center=(0.75,17.75)` comes from the
+    union of two top-level compound bboxes plus the root-level isolated node `D`; the single edge
+    endpoint row also stays inside those extents.
+- Therefore, the next aligned probe should focus on how top-level compound bounds are derived in
+  `manatee::fcose::bounding_box_center_eles()` versus Cytoscape's `eles.boundingBox()` for
+  Architecture, rather than on edge-label geometry or the outer `architecture.rs` helper
+  `initial_center`.
+
 `stress_architecture_batch5_long_titles_and_punct_076` and
 `stress_architecture_batch4_init_small_icons_061` were classified as measurement diagnostics rather
 than patched. Browser probes show the batch5 row is driven by Cytoscape canvas label bbox mismatch:
@@ -322,6 +359,25 @@ lands about `3.75px` farther right.
 - The Architecture root override table is intentionally empty. A non-zero Architecture override
   count is a regression unless backed by generated fixture-derived evidence and a workstream
   decision.
+- Class still has a tempting large pair of residuals:
+  `upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037`
+  and
+  `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037`.
+  Fresh 2026-06-02 focused inspection shows these are not structure/viewBox-rule bugs; they are
+  `htmlLabels=true` class title `foreignObject` width underestimates, concentrated in the long
+  punctuation and foreign-language labels (`C12` / `C13`). A temporary experiment proved that
+  adding 12 rendered-width lookup rows to `class_text_overrides_11_12_2.rs` makes both fixtures
+  root-exact, but `report-overrides --check-no-growth` then fails because the text lookup count
+  grows from `495` to `507`. Do not hand-add those rows as a local win. The right follow-up is a
+  Class text-override stale-table audit and/or a generated Class HTML width evidence path that can
+  replace old rows instead of growing the hand-curated table.
+- A quick stale-table audit on 2026-06-02 re-confirmed that the obvious short-label candidates are
+  not low-hanging fruit. The current fixtures/tests still reference entries such as `Docs`,
+  `Cool`, `uses`, `API`, `DB`, and `Server`, and the historical refactor notes already record that
+  several seemingly simple deletions (`User`, `test()`, `+handle(...)`, `+query(...)`,
+  `+request(...)`) caused focused geometry drift or golden churn. Continue this audit only with
+  focused evidence and an explicit delete-one-verify-one loop; do not bulk-prune the table based on
+  text search alone.
 - Architecture junction group membership must come from `junction.in` only. Do not infer group
   parents from neighboring services; Mermaid 11.15 does not do that in `addJunctions(...)`.
 - Architecture `groupAlignments` must be generated in the same endpoint traversal order as

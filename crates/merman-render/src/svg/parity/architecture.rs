@@ -1,5 +1,5 @@
 use super::*;
-use crate::architecture::{
+use crate::architecture_metrics::{
     ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
     architecture_create_text_compound_label_extra_bottom_px,
     architecture_create_text_root_label_extra_bottom_px,

@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use crate::architecture::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
+use crate::architecture_metrics::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 
