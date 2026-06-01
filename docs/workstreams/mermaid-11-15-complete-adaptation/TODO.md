@@ -111,9 +111,14 @@ Last updated: 2026-06-01
   Flowchart HTML label fallback metrics for preserved C1 controls and updated two 11.15 root pins
   for the remaining browser-font/root serialization delta. The KaTeX CSS math slice then fixed the
   browser measurement probe so `upstream_docs_math_flowcharts_001` passes strict `parity-root` with
-  root overrides disabled; Flowchart `parity-root` now reports 202 strict root-only mismatches. The
-  top residuals are shape-alias, hexagon, markdown-subgraph, and shape-family geometry/root buckets
-  rather than the prior long-name, docs-math, or thousand-pixel SVG-markdown shape-sizing buckets.
+  root overrides disabled; Flowchart `parity-root` then reported 202 strict root-only mismatches.
+  The Flowchart shape-alias geometry slice aligned `hex`/`prepare`, `lined-cylinder`,
+  `paper-tape`/`flag`, and `docs`/`stacked-document` sizing/rendering to Mermaid 11.15 source
+  formulas. Targeted strict-root checks for the representative alias fixtures now pass with root
+  overrides disabled, implemented-matrix structural `parity` remains green, and Flowchart
+  `parity-root` now reports 160 strict root-only mismatches. The top residuals are now handdrawn
+  hex/demo roots, small shape-alias buckets (`36`, `27`, `20`, `21`, `12`), delay/root rounding,
+  markdown-subgraph, and shape-family geometry/root buckets.
 
 ## M4 - Upstream Family Decisions
 

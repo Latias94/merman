@@ -129,7 +129,7 @@ pub(in super::super) fn render_flowchart_v2_shape(
             super::render_stacked_rectangle(out, common, label, details);
         }
         "paper-tape" | "flag" => {
-            super::render_paper_tape(out, common, details);
+            super::render_paper_tape(out, ctx, common, label, details);
         }
         "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
             super::render_subroutine(out, common);

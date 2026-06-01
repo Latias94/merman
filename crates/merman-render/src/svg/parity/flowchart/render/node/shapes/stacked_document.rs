@@ -26,12 +26,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_document(
 
     let p = ctx.node_padding;
     let w = metrics.width + 2.0 * p;
-    let h = metrics.height + 2.0 * p;
-    let wave_amplitude = h / 4.0;
-    let final_h = h + wave_amplitude;
+    let h = metrics.height + 3.0 * p;
+    let wave_amplitude = h / 8.0;
+    let final_h = h + wave_amplitude / 2.0;
     let x = -w / 2.0;
     let y = -final_h / 2.0;
-    let rect_offset = 5.0;
+    let rect_offset = 10.0;
 
     label.dx = -rect_offset;
     label.dy = rect_offset - wave_amplitude / 2.0;

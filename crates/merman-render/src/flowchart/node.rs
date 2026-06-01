@@ -3,7 +3,7 @@ fn node_render_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
 ) -> (f64, f64) {
-    // This function mirrors Mermaid `@11.12.2` node shape sizing rules at the "rendering-elements"
+    // This function mirrors Mermaid `@11.15.0` node shape sizing rules at the "rendering-elements"
     // layer, but uses our headless `TextMeasurer` metrics instead of DOM `getBBox()`.
     //
     // References:
@@ -188,16 +188,12 @@ fn node_render_dimensions(
             (s, s)
         }
 
-        // Hexagon.
+        // Hexagon / prepare. Mermaid 11.15 computes the shoulder from the padded height, then
+        // adds that shoulder on both sides plus the regular horizontal padding.
         "hexagon" | "hex" | "prepare" => {
             let h = text_h + p;
-            let w0 = text_w + 2.5 * p;
-            // Match Mermaid@11.12.2 evaluation order:
-            // `halfWidth = w / 2; m = halfWidth / 6; halfWidth += m; width = 2 * halfWidth`.
-            let mut half_width = w0 / 2.0;
-            let m = half_width / 6.0;
-            half_width += m;
-            (half_width * 2.0, h)
+            let m = h / 4.0;
+            (text_w + 2.0 * m + p, h)
         }
 
         // Stadium/terminator.
@@ -324,10 +320,10 @@ fn node_render_dimensions(
 
         // Flowchart v2 lined cylinder (Disk storage).
         "lin-cyl" | "disk" | "lined-cylinder" => {
-            let w = text_w + p;
+            let w = text_w + 2.0 * p;
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
-            let height = text_h + p + 3.0 * ry;
+            let height = text_h + 2.0 * p + 3.0 * ry;
             f32_dims(w, height)
         }
 
@@ -444,10 +440,10 @@ fn node_render_dimensions(
         // Flowchart v2 stacked document (multi-wave edged rectangle).
         "docs" | "documents" | "st-doc" | "stacked-document" => {
             let w = (text_w + 2.0 * p).max(0.0);
-            let h = (text_h + 2.0 * p).max(0.0);
-            let wave_amplitude = h / 4.0;
-            let final_h = h + wave_amplitude;
-            let rect_offset = 5.0;
+            let h = (text_h + 3.0 * p).max(0.0);
+            let wave_amplitude = h / 8.0;
+            let final_h = h + wave_amplitude / 2.0;
+            let rect_offset = 10.0;
             let x = -w / 2.0;
             let y = -final_h / 2.0;
 
@@ -492,11 +488,12 @@ fn node_render_dimensions(
 
         // Flowchart v2 paper-tape / wave rectangle.
         "paper-tape" | "flag" => {
-            let min_width = 100.0;
-            let min_height = 50.0;
-            let w = (text_w + 2.0 * p).max(min_width);
-            let h = (text_h + 2.0 * p).max(min_height);
-            let wave_amplitude = (h * 0.2).min(h / 4.0);
+            // Mermaid 11.15 `waveRectangle.ts`: base width uses horizontal padding twice, but
+            // base height adds the vertical padding once before the two wave bands expand the
+            // final bbox.
+            let w = (text_w + 2.0 * p).max(0.0);
+            let h = (text_h + p).max(0.0);
+            let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude * 2.0;
 
             let mut points: Vec<(f64, f64)> = Vec::new();

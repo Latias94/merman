@@ -494,6 +494,40 @@ git diff --check
   - `cargo fmt --check`: passed after formatting the Rust regression assertion.
   - `cargo run -p xtask -- check-alignment`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-070 Flowchart shape-alias geometry slice:
+  - Diagnosed the leading Flowchart strict-root shape-alias buckets against Mermaid 11.15 source:
+    `hexagon.ts`, `linedCylinder.ts`, `waveRectangle.ts`, and `multiWaveEdgedRectangle.ts`.
+    The local renderer still had several older 11.12-era formulas: hex shoulder derived from
+    width, lined-cylinder using single horizontal/vertical padding, paper-tape min `100x50`
+    geometry with `min(h*0.2,h/4)` waves, and stacked-document `rectOffset=5`/`h/4` waves.
+  - Updated shared Flowchart shape sizing plus SVG shape rendering for `hex`/`hexagon`/`prepare`,
+    `lin-cyl`/`disk`/`lined-cylinder`, `paper-tape`/`flag`, and
+    `docs`/`documents`/`st-doc`/`stacked-document` to Mermaid 11.15 formulas. The stacked-document
+    root bounds helper was updated with the same `multiWaveEdgedRectangle.ts` geometry.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset7_007 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed after the hex/prepare formula update.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset23_023 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed after the lined-cylinder formula update.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset35_035 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed after the paper-tape/flag formula update.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset33_033 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed after the stacked-document formula update.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed. The regression now protects the 11.15 formulas for hex/prepare, lined-cylinder,
+    paper-tape/flag, and stacked-document.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed, but the fixed representative alias buckets disappeared; remaining shape-alias
+    failures are `12`, `20`, `21`, `27`, `29`, `34`, `36`, and `38`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed with 160 Flowchart strict root-only mismatches, down from 202 before this slice.
+    Top residuals now include handdrawn/demo hex roots (`+20.812px`), demo flowchart 016/052
+    (`-18.000px`), shape-alias `36` (`+15.016px`), `27` (`-15.000px`), `20`
+    (`+14.546px`), `21` (`+11.407px`), delay half-rounded rectangle (`+10.438px`), and
+    shape-alias `12` (`-9.969px`).
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

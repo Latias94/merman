@@ -355,10 +355,10 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     if matches!(shape, "docs" | "documents" | "st-doc" | "stacked-document") {
                         let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
                         let w = label_w + 2.0 * node_padding;
-                        let h = label_h + 2.0 * node_padding;
-                        let wave_amplitude = h / 4.0;
-                        let final_h = h + wave_amplitude;
-                        let rect_offset = 5.0;
+                        let h = label_h + 3.0 * node_padding;
+                        let wave_amplitude = h / 8.0;
+                        let final_h = h + wave_amplitude / 2.0;
+                        let rect_offset = 10.0;
                         let y = -final_h / 2.0;
                         let baseline_y = y + final_h + rect_offset;
 

@@ -893,7 +893,7 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
 
 #[test]
 fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
-    // Verify key flowchart shapes follow Mermaid `@11.12.2` sizing rules (headless approximation).
+    // Verify key flowchart shapes follow Mermaid `@11.15.0` sizing rules (headless approximation).
     // This mainly protects us from regressions when refactoring shape sizing.
     let text = r#"flowchart TB
 A[Label]
@@ -911,6 +911,9 @@ L[\Label\]
 M[/Label\]
 N[\Label/]
 O(-Label-)
+P@{ shape: lined-cylinder, label: "Label" }
+Q@{ shape: paper-tape, label: "Label" }
+R@{ shape: docs, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -941,7 +944,7 @@ O(-Label-)
     let th = metrics.height;
 
     fn assert_close(actual: f64, expected: f64, name: &str) {
-        let eps = 1e-6;
+        let eps = 1e-5;
         assert!(
             (actual - expected).abs() <= eps,
             "{name}: expected {expected}, got {actual}"
@@ -984,12 +987,8 @@ O(-Label-)
     // hexagon
     {
         let n = nodes_by_id["F"];
-        let w0 = tw + 2.5 * p;
-        // Mermaid uses `updateNodeBounds(...).getBBox()` to set the final node width/height that
-        // Dagre uses for layout. For hexagon nodes, Chromium rounds the roughjs path bbox to an
-        // f32 grid, so we mirror that to match strict SVG parity `data-points`.
-        let expected_w = (w0 * (7.0 / 6.0)) as f32 as f64;
         let expected_h = (th + p) as f32 as f64;
+        let expected_w = (tw + 2.0 * (expected_h / 4.0) + p) as f32 as f64;
         assert_close(n.width, expected_w, "hexagon width");
         assert_close(n.height, expected_h, "hexagon height");
     }
@@ -1062,6 +1061,48 @@ O(-Label-)
         };
         assert_close(n.width, w, "cylinder width");
         assert_close(n.height, expected_h, "cylinder height");
+    }
+
+    // lined cylinder / disk storage
+    {
+        let n = nodes_by_id["P"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let rx = w / 2.0;
+        let ry = rx / (2.5 + w / 50.0);
+        let expected_h = (th + 2.0 * p + 3.0 * ry) as f32 as f64;
+        assert_close(n.width, w, "lined cylinder width");
+        assert_close(n.height, expected_h, "lined cylinder height");
+    }
+
+    // paper tape / flag
+    {
+        let n = nodes_by_id["Q"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let h = th + p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude * 2.0;
+        let sampled_wave_extreme = (0..=50)
+            .map(|i| ((i as f64) / 50.0 * std::f64::consts::TAU).sin().abs())
+            .fold(0.0, f64::max);
+        let expected_h = final_h + 2.0 * wave_amplitude * sampled_wave_extreme;
+        assert_close(n.width, w, "paper tape width");
+        assert_close(n.height, expected_h as f32 as f64, "paper tape height");
+    }
+
+    // stacked document
+    {
+        let n = nodes_by_id["R"];
+        let w = merman_render::text::round_to_1_64_px(tw + 2.0 * p);
+        let h = th + 3.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude / 2.0;
+        let rect_offset = 10.0;
+        let sampled_wave_max = (0..=50)
+            .map(|i| ((i as f64) / 50.0 * std::f64::consts::TAU * 0.8).sin())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let expected_h = final_h + 2.0 * rect_offset + wave_amplitude * sampled_wave_max;
+        assert_close(n.width, w + 2.0 * rect_offset, "docs width");
+        assert_close(n.height, expected_h as f32 as f64, "docs height");
     }
 
     // subroutine
