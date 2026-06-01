@@ -11,3 +11,8 @@
 {"file":"target/compare/sequence_report_parity_root.md","reason":"Fresh largest Sequence root residual report."}
 {"file":"target/compare/flowchart_report_parity_root.md","reason":"Fresh Flowchart root residual report."}
 {"file":"target/compare/architecture_report_parity_root.md","reason":"Fresh Architecture root residual report."}
+{"file":"target/compare/sequence_central_after_stale_pin_trim.md","reason":"M15RV-020 focused central-connection root residual evidence after stale Sequence pin removal."}
+{"file":"target/compare/sequence_central_cli_no_root_overrides.md","reason":"M15RV-020 evidence that compare-sequence-svgs --no-root-overrides reaches the renderer."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts","reason":"Mermaid 11.15 central-connection offset and circle-placement source rules referenced by M15RV-020."}
+{"file":"crates/merman-render/src/sequence/messages.rs","reason":"Rust Sequence layout central-connection endpoint offsets mirrored from Mermaid source."}
+{"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"Rust Sequence SVG central-connection circle placement mirrored from Mermaid source."}

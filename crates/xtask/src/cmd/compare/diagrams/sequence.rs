@@ -25,6 +25,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
+    let mut apply_root_overrides: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -59,6 +60,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
                     .map(|s| s.trim().to_string())
                     .unwrap_or_else(|| "structure".to_string());
             }
+            "--no-root-overrides" => apply_root_overrides = false,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -104,13 +106,18 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
-        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (pinned Mermaid baseline)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n",
+        "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (pinned Mermaid baseline)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n",
         dom_mode,
         dom_decimals,
         if sequence_math_renderer.is_some() {
             "node-katex"
         } else {
             "none"
+        },
+        if apply_root_overrides {
+            "enabled"
+        } else {
+            "disabled"
         }
     );
 
@@ -204,6 +211,7 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
             math_renderer: sequence_math_renderer.clone(),
+            apply_root_overrides,
             ..Default::default()
         };
 

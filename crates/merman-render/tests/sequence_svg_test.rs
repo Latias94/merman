@@ -47,6 +47,37 @@ fn render_sequence_svg_from_fixture(fixture: &str) -> String {
     render_sequence_svg_from_text(&text)
 }
 
+fn render_sequence_svg_from_fixture_with_options(
+    fixture: &str,
+    options: &SvgRenderOptions,
+) -> String {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(fixture);
+    let text = std::fs::read_to_string(&path).expect("fixture");
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    render_sequence_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        options,
+    )
+    .expect("render svg")
+}
+
 fn render_sequence_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
@@ -68,6 +99,36 @@ fn render_sequence_svg_from_text(text: &str) -> String {
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+#[test]
+fn sequence_root_overrides_can_be_disabled_per_render_options() {
+    let stem = "stress_wrap_directive_and_prefixes_028";
+    let fixture = format!("{stem}.mmd");
+    let enabled = render_sequence_svg_from_fixture_with_options(
+        &fixture,
+        &SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+    let disabled = render_sequence_svg_from_fixture_with_options(
+        &fixture,
+        &SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            apply_root_overrides: false,
+            ..SvgRenderOptions::default()
+        },
+    );
+
+    assert!(
+        enabled.contains("max-width: 1022px;"),
+        "expected retained root override to pin the Sequence root width"
+    );
+    assert!(
+        !disabled.contains("max-width: 1022px;"),
+        "expected disabled root overrides to emit computed Sequence root width"
+    );
 }
 
 #[test]

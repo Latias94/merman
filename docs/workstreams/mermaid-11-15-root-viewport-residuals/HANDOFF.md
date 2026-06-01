@@ -12,18 +12,27 @@ Mermaid 11.15 `parity` passed, while full `parity-root` remained red for root
 `xtask compare-all-svgs --dom-mode parity-root` now produces bounded failure summaries instead of
 attempting to print every residual line in the final error.
 
+M15RV-020 classified the Sequence bucket. Sequence now has a reusable
+`compare-sequence-svgs --no-root-overrides` diagnostic path, and
+`SvgRenderOptions.apply_root_overrides` is respected by the Sequence renderer. Three stale
+11.12-derived Sequence root pins were removed after a pinned-vs-unpinned run showed they were
+making Mermaid 11.15 root output worse. Mermaid 11.15 central-connection source rules were checked
+against `sequenceRenderer.ts`; the Rust layout/render constants already match the upstream
+central-connection offsets, so the remaining central rows are root-bounds/text-measurement
+residuals rather than missing central-connection semantics.
+
 ## Active Task
 
-- Task ID: M15RV-020
+- Task ID: M15RV-030
 - Owner: codex
 - Status: READY
-- Goal: Classify the Sequence root residual bucket first because it is the largest fresh bucket.
-- Evidence: `target/compare/sequence_report_parity_root.md`
+- Goal: Classify the remaining Flowchart root residual bucket after the 11.15 shape-source slices.
+- Evidence: `target/compare/flowchart_report_parity_root.md`
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 309.
-- Largest buckets: Sequence 168, Flowchart 61, Architecture 32, Class 18, C4 15.
+- Total unaccepted full-root residuals: 308.
+- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 18, C4 15.
 - Smaller buckets: Timeline 7, ER 3, Sankey 3, Journey 2.
 
 ## Guardrails

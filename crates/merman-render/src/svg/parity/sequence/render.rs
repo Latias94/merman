@@ -121,7 +121,13 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id);
+    let root_metrics = write_sequence_svg_root_open(
+        &mut out,
+        layout,
+        model,
+        diagram_id,
+        options.apply_root_overrides,
+    );
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());

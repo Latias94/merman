@@ -18,7 +18,7 @@ Last updated: 2026-06-01
 
 ## M1 - Largest Residual Buckets
 
-- [ ] M15RV-020 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/sequence,crates/merman-render/src/text,fixtures/upstream-svgs/sequence,target/compare/sequence_report_parity_root.md]
+- [x] M15RV-020 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/sequence,crates/merman-render/src/text,fixtures/upstream-svgs/sequence,target/compare/sequence_report_parity_root.md]
   Goal: Classify the Sequence root residual bucket and split source-derived lifecycle/frame/text
   rules from browser/root lattice tails.
   Validation: focused `compare-sequence-svgs` checks for any fixed bucket plus full structural
@@ -26,8 +26,10 @@ Last updated: 2026-06-01
   Review: Do not add broad root pins or per-string constants unless generated browser evidence
   proves a reusable measurement fact.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: READY. Fresh report has 169 raw Sequence root mismatches, 168 unaccepted after the
-  existing `zed_pr_57644_sequence` accepted residual.
+  Handoff: DONE. Sequence now has a `--no-root-overrides` diagnostic path; 3 stale root pins were
+  deleted. Fresh full root evidence has 168 raw Sequence mismatches and 167 unaccepted after the
+  existing `zed_pr_57644_sequence` accepted residual. The central-connection source rules match
+  Mermaid 11.15; remaining central rows are root-bounds/text-measurement residuals.
 
 - [ ] M15RV-030 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/flowchart,crates/merman-render/src/svg/parity/flowchart,target/compare/flowchart_report_parity_root.md]
   Goal: Classify the remaining Flowchart root residual bucket after the 11.15 shape-source slices.

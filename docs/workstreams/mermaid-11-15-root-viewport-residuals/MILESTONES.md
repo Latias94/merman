@@ -11,6 +11,8 @@ Last updated: 2026-06-01
 
 ## M1 - Largest Buckets Classified
 
+- Sequence is classified: central-connection source rules match Mermaid 11.15, stale pins were
+  removed, and the remaining bucket is root-bounds/text-measurement residual work.
 - Sequence, Flowchart, Architecture, Class, and C4 residuals are classified by mechanism.
 - Source-derived rules are either implemented or split further.
 - Browser/font lattice tails are not converted into hand-written renderer constants.

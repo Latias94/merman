@@ -44,6 +44,59 @@ Fresh unaccepted residual summary from the full `parity-root` failure:
 
 Total unaccepted residuals: 309.
 
+## M15RV-020 - Sequence Classification
+
+Fresh evidence from 2026-06-01:
+
+- `cargo nextest run -p merman-render sequence_root_overrides_can_be_disabled_per_render_options`:
+  passed.
+- `cargo run -p xtask -- compare-sequence-svgs --filter central_connection --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_central_after_stale_pin_trim.md`:
+  expected failure; all 6 remaining central-connection rows are root-only mismatches.
+- `cargo run -p xtask -- compare-sequence-svgs --filter central_connection --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/sequence_central_cli_no_root_overrides.md`:
+  expected failure; verifies the new CLI diagnostic switch reaches the Sequence renderer.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_report_parity_root_after_stale_pin_trim.md`:
+  expected failure with 168 raw Sequence root mismatches.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport
+  overrides reduced from 282 to 279 total entries; Sequence root overrides reduced to 55 entries.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 308 unaccepted residuals.
+
+Sequence classification:
+
+- Three stale Sequence root pins were deleted:
+  `upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033`,
+  `upstream_cypress_sequencediagram_v2_spec_should_render_central_connections_with_bidirectional_arrows_and_045`,
+  and `upstream_docs_directives_changing_sequence_diagram_config_via_directive_016`.
+- The two stale central-connection pins had been inflating residuals to `+238` and `+941`.
+  After deletion, the central-connection bucket is bounded to `+63`, `+54`, `+49`, `+32`,
+  `+29`, and `+29`.
+- Mermaid 11.15 source check: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+  defines `CENTRAL_CONNECTION_BASE_OFFSET = 4`, `CENTRAL_CONNECTION_BIDIRECTIONAL_OFFSET = 6`,
+  and `CENTRAL_CONNECTION_CIRCLE_OFFSET = 16.5`; Rust layout/render code already mirrors those
+  constants in `crates/merman-render/src/sequence/messages.rs` and
+  `crates/merman-render/src/svg/parity/sequence/messages.rs`.
+- Remaining Sequence root rows are therefore split as root-bounds/text-measurement/browser-lattice
+  residuals, not missing central-connection semantics. Fresh full-root accepted policy removes
+  `sequence/zed_pr_57644_sequence`, leaving 167 unaccepted Sequence rows.
+
+Fresh unaccepted residual summary after M15RV-020:
+
+| Diagram | Unaccepted residuals | Report |
+| --- | ---: | --- |
+| Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
+| Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
+| Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
+| Class | 18 | `target/compare/class_report_parity_root.md` |
+| C4 | 15 | `target/compare/c4_report_parity_root.md` |
+| Timeline | 7 | `target/compare/timeline_report_parity_root.md` |
+| ER | 3 | `target/compare/er_report_parity_root.md` |
+| Sankey | 3 | `target/compare/sankey_report_parity_root.md` |
+| Journey | 2 | `target/compare/journey_report_parity_root.md` |
+
+Total unaccepted residuals: 308.
+
 ## Gate Set
 
 Run after any code or generated-data change:

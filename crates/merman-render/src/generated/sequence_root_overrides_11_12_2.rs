@@ -100,12 +100,6 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_v2_spec_should_render_bidirectional_arrows_with_autonumbering_030" => {
             Some(("-50 -10 715 435", "715"))
         }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033" => {
-            Some(("-50 -10 1203 391", "1203"))
-        }
-        "upstream_cypress_sequencediagram_v2_spec_should_render_central_connections_with_bidirectional_arrows_and_045" => {
-            Some(("-50 -10 1736 435", "1736"))
-        }
         "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_bidirectional_arrows_with_auto_051" => {
             Some(("-79.5 -10 691.5 467", "691.5"))
         }
@@ -117,9 +111,6 @@ pub fn lookup_sequence_root_viewport_override(
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_self_reference_with_normal_arrows_without_autonumb_046" => {
             Some(("-80 -10 692 615", "692"))
-        }
-        "upstream_docs_directives_changing_sequence_diagram_config_via_directive_016" => {
-            Some(("-50 -10 751 364", "751"))
         }
         "upstream_docs_readme_how_does_a_langium_based_parser_work_002" => {
             Some(("-50 -10 1334 503", "1334"))
