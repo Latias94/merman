@@ -37,7 +37,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/mermaid-11-15-root-viewport-residuals/CONTEXT.jsonl",
-  "current_task": "M15RV-050",
+  "current_task": "M15RV-090",
   "gates": [
     "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3",
     "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3",

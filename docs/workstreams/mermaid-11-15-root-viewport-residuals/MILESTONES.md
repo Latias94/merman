@@ -23,8 +23,10 @@ Last updated: 2026-06-01
 ## M2 - Smaller Buckets Classified
 
 - ER, Sankey, Timeline, and Journey residuals are classified.
-- Low-risk source-derived or stale-pin rows are closed.
-- Remaining rows have explicit diagnostic status.
+- Low-risk stale-pin rows are closed: ER and Sankey are root-green, and Timeline was reduced to 3
+  residuals.
+- Remaining Timeline and Journey rows have explicit diagnostic status as unpinned small
+  root-width measurement tails.
 
 ## M3 - Root Policy Closeout
 

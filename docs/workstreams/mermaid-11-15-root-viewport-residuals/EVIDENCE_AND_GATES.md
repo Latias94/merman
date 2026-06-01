@@ -207,6 +207,83 @@ Fresh unaccepted residual summary after M15RV-040:
 
 Total unaccepted residuals: 293.
 
+## M15RV-050 - Smaller Bucket Classification
+
+Fresh evidence from 2026-06-01:
+
+- `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/er_report_parity_root_no_overrides.md`:
+  expected failure with 6 raw ER root mismatches.
+- `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/er_report_parity_root_after_m15rv050.md`:
+  passed after refreshing 3 existing ER root viewport entries to Mermaid 11.15 upstream root
+  values.
+- `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/sankey_report_parity_root_no_overrides.md`:
+  expected failure with 3 raw Sankey root mismatches.
+- `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/sankey_report_parity_root_after_m15rv050.md`:
+  passed after refreshing 3 existing Sankey root viewport entries to Mermaid 11.15 upstream root
+  values.
+- `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/timeline_report_parity_root_no_overrides.md`:
+  expected failure with 10 raw Timeline root mismatches.
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/timeline_report_parity_root_after_m15rv050.md`:
+  expected failure with 3 Timeline root mismatches after refreshing 4 existing root pins.
+- `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/journey_report_parity_root_after_m15rv050.md`:
+  expected failure with 2 Journey root mismatches.
+- Focused structural gates passed:
+  `compare-er-svgs --dom-mode parity`,
+  `compare-sankey-svgs --dom-mode parity`,
+  and `compare-timeline-svgs --dom-mode parity`.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 283 unaccepted residuals. ER and Sankey no longer
+  appear in the unaccepted summary.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport
+  overrides still at 278 total entries; ER has 6 entries, Sankey has 3 entries, and Timeline has
+  8 entries.
+
+ER classification:
+
+- ER's 3 residuals were existing root-pin rows whose old fixture-derived values were stale against
+  Mermaid 11.15. Refreshing those entries closed ER root parity without adding entries.
+
+Sankey classification:
+
+- Sankey's 3 residuals were existing root-pin rows whose viewBox heights were stale against
+  Mermaid 11.15. Refreshing those entries closed Sankey root parity without adding entries.
+
+Timeline classification:
+
+- Four existing Timeline root pins were refreshed to Mermaid 11.15 upstream values:
+  `timeline_stress_common_long_unbroken_words`,
+  `timeline_stress_events_with_entities_and_ampersands`,
+  `timeline_stress_unicode_cjk_and_emoji`, and
+  `timeline_stress_very_long_unbroken_word`.
+- Three Timeline rows remain and were intentionally not converted into new fixture pins:
+  `timeline_stress_accdescr_block_multiline` (`896px` upstream vs `895px` local),
+  `timeline_stress_width_large_and_long_labels` (`896px` upstream vs `895px` local), and
+  `upstream_long_word_wrap` (`961.5px` upstream vs `961px` local). These are small
+  root-width/text-measurement tails.
+
+Journey classification:
+
+- Journey has no root viewport override table. The 2 remaining rows are unpinned small root-width
+  tails: `upstream_cypress_journey_spec_should_maintain_sufficient_space_between_legend_and_diagram_when_007`
+  (`2599.25px` upstream vs `2597.25px` local) and
+  `upstream_cypress_journey_spec_should_wrap_text_on_whitespace_without_adding_hyphens_009`
+  (`884.5px` upstream vs `883.25px` local).
+
+Fresh unaccepted residual summary after M15RV-050:
+
+| Diagram | Unaccepted residuals | Report |
+| --- | ---: | --- |
+| Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
+| Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
+| Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
+| Class | 18 | `target/compare/class_report_parity_root.md` |
+| Timeline | 3 | `target/compare/timeline_report_parity_root.md` |
+| Journey | 2 | `target/compare/journey_report_parity_root.md` |
+
+Total unaccepted residuals: 283.
+
 ## Gate Set
 
 Run after any code or generated-data change:

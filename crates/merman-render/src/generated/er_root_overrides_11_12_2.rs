@@ -8,7 +8,7 @@
 
 pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_html_demos_er_example_001" => Some(("0 -48 1635.14453125 1059.5", "1635.14")),
+        "upstream_html_demos_er_example_001" => Some(("0 -48 1636.14453125 1059.5", "1636.14")),
         "upstream_html_demos_er_multiline_example_001" => {
             Some(("0 0 1121.578125 878.75", "1121.58"))
         }
@@ -17,10 +17,10 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
             Some(("0 0 332.73126220703125 470", "332.731"))
         }
         "upstream_cypress_erdiagram_spec_should_render_edge_labels_correctly_when_flowchart_htmllabels_is_019" => {
-            Some(("0 0 544.371826171875 474", "544.372"))
+            Some(("0 0 547.147216796875 474", "547.147"))
         }
         "upstream_docs_entityrelationshipdiagram_layout_042" => {
-            Some(("4 -48 329.015625 502", "329.016"))
+            Some(("4 -48 334.015625 522", "334.016"))
         }
         _ => None,
     }

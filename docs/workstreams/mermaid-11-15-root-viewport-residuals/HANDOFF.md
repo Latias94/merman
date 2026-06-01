@@ -40,24 +40,28 @@ group/port/disconnected-component layout-root drift rather than stale pins. Clas
 unaccepted residuals after the 2 existing accepted class rows; Class has no root override table,
 and its largest rows are namespace/layout-width residuals.
 
+M15RV-050 classified the smaller ER, Sankey, Timeline, and Journey buckets. ER and Sankey are now
+root-green after refreshing existing fixture-derived root pins to Mermaid 11.15 upstream root
+values. Timeline was reduced from 7 to 3 by refreshing 4 existing root pins; the 3 remaining rows
+are unpinned 0.5-1px root-width tails and were not converted into new fixture pins. Journey
+remains at 2 unpinned 1.25-2px root-width tails and has no root pin table.
+
 ## Active Task
 
-- Task ID: M15RV-050
-- Owner: codex
+- Task ID: M15RV-090
+- Owner: planner
 - Status: READY
-- Goal: Classify the smaller ER, Sankey, Timeline, and Journey residuals and close source-derived
-  rows when cheap and defensible.
-- Evidence: `target/compare/er_report_parity_root.md`,
-  `target/compare/sankey_report_parity_root.md`,
-  `target/compare/timeline_report_parity_root.md`,
-  `target/compare/journey_report_parity_root.md`
+- Goal: Close the root residual lane by either making `parity-root` green or accepting only
+  documented diagnostic residuals with fresh evidence.
+- Evidence: `target/compare/*_report_parity_root.md`
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 293.
+- Total unaccepted full-root residuals: 283.
 - Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 18.
-- Smaller buckets: Timeline 7, ER 3, Sankey 3, Journey 2.
+- Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
+- Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
 
 ## Guardrails
 

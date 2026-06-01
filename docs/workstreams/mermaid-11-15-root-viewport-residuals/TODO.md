@@ -59,14 +59,17 @@ Last updated: 2026-06-01
 
 ## M2 - Smaller Residual Buckets
 
-- [ ] M15RV-050 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/er,crates/merman-render/src/svg/parity/sankey,crates/merman-render/src/svg/parity/timeline,crates/merman-render/src/svg/parity/journey,target/compare]
+- [x] M15RV-050 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/er,crates/merman-render/src/svg/parity/sankey,crates/merman-render/src/svg/parity/timeline,crates/merman-render/src/svg/parity/journey,target/compare]
   Goal: Classify the smaller ER, Sankey, Timeline, and Journey residuals and close source-derived
   rows when cheap and defensible.
   Validation: focused diagram root compares and full structural parity.
   Review: Prefer deleting stale pins or accepting tiny browser-root residuals over adding new
   fixture-like string constants.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: READY. Fresh unaccepted counts are ER=3, Sankey=3, Timeline=7, Journey=2.
+  Handoff: DONE. ER and Sankey are root-green after refreshing existing fixture-derived root pins
+  to Mermaid 11.15 upstream root values. Timeline was reduced from 7 to 3 by refreshing 4 existing
+  root pins; the remaining rows are unpinned 0.5-1px root-width measurement tails. Journey remains
+  at 2 unpinned 1.25-2px root-width measurement tails and has no root pin table.
 
 ## M3 - Policy Closeout
 
