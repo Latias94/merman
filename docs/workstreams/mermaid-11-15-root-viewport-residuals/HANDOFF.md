@@ -213,6 +213,12 @@ behavior, with a unit test covering the fork/join diamond. This did not change t
 `+13.976px` root tail, so treat it as source-input parity plus residual classification rather than
 a viewport fix.
 
+The group-padding source rule now applies in both places that approximate Cytoscape compound
+bounds. Final SVG group rectangles had already moved from `iconSize / 2` to configured
+`architecture.padding`; the pre-layout compound bbox used before FCoSE now also uses
+`padding + 2.5`. This is source-consistency work rather than a count reduction: the custom-init
+rows remain in the same residual set, and the remaining drift is label/bbox measurement dominated.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -248,6 +254,8 @@ a viewport fix.
   Rust also now preserves Mermaid's duplicate queued-position BFS behavior for Architecture
   relative constraints; this aligns the `junction_fork_join` FCoSE input with the browser probe but
   does not reduce its remaining `+13.976px` tail.
+  Pre-layout compound bbox inflation now also uses configured `architecture.padding`, keeping the
+  FCoSE input and final group rectangle code on the same source rule.
   Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
   no Architecture root pins.
 
@@ -291,6 +299,9 @@ a viewport fix.
   `iconSize / 2`, even though those happen to match at the default `iconSize=80`, `padding=40`.
   Keep the remaining 0.5-2.5px Cytoscape/browser bbox lattice as diagnostic unless broad generated
   evidence justifies a reusable headless approximation.
+- The same `architecture.padding` rule applies to the pre-layout compound bbox approximation fed
+  into FCoSE. Do not use `iconSize / 2` as a padding proxy in either layout input or final SVG group
+  rectangles.
 - Do not re-add the tested `+1px` Architecture bbox edge adjustment without broad evidence; it
   made two additional root rows fail.
 - Architecture relative placement BFS must process duplicate queued current positions on pop, like

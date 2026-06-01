@@ -629,7 +629,7 @@ fn layout_architecture_diagram_model(
 
         let mut group_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
         group_bbox.reserve(model.groups.len().saturating_mul(2));
-        let base_pad = (icon_size / 2.0) + 2.5;
+        let base_pad = padding_px + 2.5;
         for g in &model.groups {
             let Some(members) = group_to_leaves.get(g.id) else {
                 continue;

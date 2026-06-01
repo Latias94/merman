@@ -1116,6 +1116,52 @@ Outcome:
   `+13.976px`; treat its remaining delta as solver/headless layout drift unless a new source rule
   is found.
 
+## M15RV-089 - Architecture Pre-Layout Group Padding Source Rule
+
+Fresh source evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts` styles
+  `.node-group` with `padding: ${db.getConfigField('padding')}px` before FCoSE runs.
+- Rust had already switched final SVG group rectangle sizing to `architecture.padding + 2.5`, but
+  the pre-layout compound bbox used for the FCoSE relocation/input approximation still used the old
+  default-only proxy `iconSize / 2 + 2.5`.
+
+Renderer change:
+
+- `crates/merman-render/src/architecture.rs` now uses `padding_px + 2.5` for pre-layout group
+  bbox inflation as well as final SVG group rectangle sizing. This removes a source-inconsistent
+  split between layout input and SVG root-bound input.
+
+Fresh validation:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_init_fontsize_icon_size_wrap_m15rv089_pre_layout_padding.md`:
+  expected failure; the row remains about `-2.5px`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch4_init_small_icons_061 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch4_init_small_icons_m15rv089_pre_layout_padding.md`:
+  expected failure; the row remains about `-9.288px`.
+- `cargo test -p merman-render --test architecture_layout_test -- --nocapture`: passed, 5 tests.
+- `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops -- --nocapture`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv089_pre_layout_padding.md`:
+  passed for the full Architecture matrix.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv089_pre_layout_padding.md`:
+  expected failure with 29 Architecture root residuals.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 134 unaccepted residuals: Flowchart 61, Architecture 29, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`, total root viewport overrides remain `241`.
+- `cargo fmt -p merman-render --check`: passed.
+- `git diff --check`: passed with only the existing LF/CRLF warnings for workstream JSONL files.
+
+Outcome:
+
+- Layout-side and SVG-side Architecture group padding now use the same source-derived config field.
+- This does not reduce the current Architecture residual count; remaining custom-padding rows are
+  now dominated by canvas label / Cytoscape bbox measurement tails rather than the old
+  `iconSize / 2` padding proxy.
+
 ## Gate Set
 
 Run after any code or generated-data change:

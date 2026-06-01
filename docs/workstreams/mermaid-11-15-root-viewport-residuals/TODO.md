@@ -215,7 +215,10 @@ Last updated: 2026-06-02
   about `-2.5px` without changing the 29-row Architecture failure set. A subsequent source check
   matched Mermaid's relative-constraint BFS duplicate-pop behavior, so `junction_fork_join` now
   feeds 9 relative constraints like the browser probe instead of Rust's previous 7; this did not
-  change the `+13.976px` viewport tail. Continue from the remaining larger tails such as
+  change the `+13.976px` viewport tail. Layout-side pre-FCoSE group bbox inflation now also uses
+  configured `padding + 2.5` instead of the old `iconSize / 2 + 2.5` proxy; this aligns layout and
+  SVG group sizing policy but does not change the current 29-row residual set. Continue from the
+  remaining larger tails such as
   `stress_architecture_junction_fork_join_026` (`+13.976px`),
   `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
   `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
