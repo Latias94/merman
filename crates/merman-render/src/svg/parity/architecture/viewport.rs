@@ -58,18 +58,6 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
     let mut vb_w = ((b.max_x - b.min_x) + 2.0 * padding_px).max(1.0);
     let mut vb_h = ((b.max_y - b.min_y) + 2.0 * padding_px).max(1.0);
 
-    apply_default_architecture_root_viewport_calibration(
-        model,
-        ArchitectureRootViewportProfile {
-            groups_len,
-            service_count,
-            junction_count,
-            edges_len,
-        },
-        &mut vb_w,
-        &mut vb_h,
-    );
-
     // Upstream Architecture viewports are driven by browser `getBBox()` + padding, but the
     // underlying geometry comes from a mix of FCoSE layout and SVG transforms. In practice,
     // most root viewBox components land on an `f32` lattice (see long dyadic fractions in
@@ -120,81 +108,4 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
         out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
     }
     out
-}
-
-#[derive(Clone, Copy)]
-struct ArchitectureRootViewportProfile {
-    groups_len: usize,
-    service_count: usize,
-    junction_count: usize,
-    edges_len: usize,
-}
-
-fn apply_default_architecture_root_viewport_calibration<M: ArchitectureModelAccess>(
-    model: &M,
-    profile: ArchitectureRootViewportProfile,
-    _vb_w: &mut f64,
-    vb_h: &mut f64,
-) {
-    if has_accessibility_text(model) {
-        return;
-    }
-
-    // Mermaid@11.12.3 parity-root calibration for profile families that are not represented by
-    // fixture-scoped root overrides. The subtree SVG is stable; only the root `getBBox() + padding`
-    // bucket differs by a small deterministic amount from browser Mermaid.
-    if is_groups_within_groups_profile(model, profile) {
-        *vb_h = (*vb_h - 0.85107421875).max(1.0);
-    }
-}
-
-fn has_accessibility_text<M: ArchitectureModelAccess>(model: &M) -> bool {
-    model
-        .acc_title()
-        .map(str::trim)
-        .is_some_and(|t| !t.is_empty())
-        || model
-            .acc_descr()
-            .map(str::trim)
-            .is_some_and(|t| !t.is_empty())
-}
-
-fn is_groups_within_groups_profile<M: ArchitectureModelAccess>(
-    model: &M,
-    profile: ArchitectureRootViewportProfile,
-) -> bool {
-    if profile.groups_len != 3
-        || profile.service_count != 4
-        || profile.junction_count != 0
-        || profile.edges_len != 3
-    {
-        return false;
-    }
-
-    let mut pair_bt = 0usize;
-    let mut pair_lr = 0usize;
-    let mut pair_rl = 0usize;
-    let mut has_titles = false;
-    let mut has_group_edge_mod = false;
-
-    for edge in model.edges() {
-        match (edge.lhs_dir, edge.rhs_dir) {
-            ('B', 'T') => pair_bt += 1,
-            ('L', 'R') => pair_lr += 1,
-            ('R', 'L') => pair_rl += 1,
-            _ => {}
-        }
-        if edge
-            .title
-            .map(str::trim)
-            .is_some_and(|t: &str| !t.is_empty())
-        {
-            has_titles = true;
-        }
-        if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
-            has_group_edge_mod = true;
-        }
-    }
-
-    pair_bt == 1 && (pair_lr == 2 || pair_rl == 2) && !has_titles && !has_group_edge_mod
 }

@@ -19,6 +19,7 @@ use super::settings::ArchitectureRenderSettings;
 
 pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: &'a mut String,
+    pub(super) diagram_id: &'a str,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
@@ -32,6 +33,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     ctx: &mut ArchitectureNodeRenderContext<'_, M>,
 ) {
     let out = &mut *ctx.out;
+    let diagram_id = ctx.diagram_id;
     let model = ctx.model;
     let node_xy = ctx.node_xy;
     let settings = ctx.settings;
@@ -49,12 +51,13 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         for svc in model.services() {
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
             let y = y + singleton_icon_text_offset_y(singleton_icon_text_service_id, svc.id);
-            let id_esc = escape_xml(svc.id);
+            let service_id_esc = escape_xml(&format!("{diagram_id}-service-{}", svc.id));
+            let node_id_esc = escape_xml(&format!("{diagram_id}-node-{}", svc.id));
 
             let _ = write!(
                 out,
-                r#"<g id="service-{id}" class="architecture-service" transform="translate({x},{y})">"#,
-                id = id_esc,
+                r#"<g id="{id}" class="architecture-service" transform="translate({x},{y})">"#,
+                id = service_id_esc,
                 x = fmt(x),
                 y = fmt(y)
             );
@@ -104,8 +107,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                 (None, None) => {
                     let _ = write!(
                         out,
-                        r#"<path class="node-bkg" id="node-{id}" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
-                        id = id_esc,
+                        r#"<path class="node-bkg" id="{id}" d="M0,{s} V5 Q0,0 5,0 H{inner_s} Q{s},0 {s},5 V{s} Z"/>"#,
+                        id = node_id_esc,
                         s = fmt(settings.icon_size_px),
                         inner_s = fmt(settings.icon_size_px - 5.0)
                     );
@@ -118,11 +121,11 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
 
         for junction in model.junctions() {
             let (x, y) = node_xy.get(junction.id).copied().unwrap_or((0.0, 0.0));
-            let id_esc = escape_xml(junction.id);
+            let id_esc = escape_xml(&format!("{diagram_id}-node-{}", junction.id));
 
             let _ = write!(
                 out,
-                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id="node-{id}" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
+                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id="{id}" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
                 x = fmt(x),
                 y = fmt(y),
                 id = id_esc,
@@ -148,7 +151,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
         out.push_str(r#"<g class="architecture-groups">"#);
 
         for grp in group_rects {
-            let id_esc = escape_xml(grp.id);
+            let group_id_esc = escape_xml(&format!("{}-group-{}", ctx.diagram_id, grp.id));
             let x = grp.x;
             let y = grp.y;
             let w = grp.w;
@@ -159,8 +162,8 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
 
             let _ = write!(
                 out,
-                r#"<rect id="group-{id}" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
-                id = id_esc,
+                r#"<rect id="{id}" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
+                id = group_id_esc,
                 x = fmt(x),
                 y = fmt(y),
                 w = fmt(w.max(1.0)),

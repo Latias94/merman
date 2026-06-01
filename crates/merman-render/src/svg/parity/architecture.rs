@@ -438,6 +438,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
             out: &mut out,
+            diagram_id,
             layout,
             model,
             node_xy: &node_xy,
@@ -453,6 +454,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     {
         let mut node_render_ctx = ArchitectureNodeRenderContext {
             out: &mut out,
+            diagram_id,
             model,
             node_xy: &node_xy,
             settings: &settings,

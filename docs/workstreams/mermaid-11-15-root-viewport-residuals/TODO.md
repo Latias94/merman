@@ -166,7 +166,7 @@ Last updated: 2026-06-02
   `zed_pr_57644_sequence` residual. Remaining rows are long-note and line-break/text-measurement
   tails, not actor-type geometry.
 
-- [ ] M15RV-088 [owner=codex] [deps=M15RV-087,M15RV-040] [scope=crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
+- [x] M15RV-088 [owner=codex] [deps=M15RV-087,M15RV-040] [scope=crates/merman-render/src/svg/parity/architecture,crates/merman-render/src/generated/architecture_root_overrides_11_12_2.rs,fixtures/upstream-svgs/architecture,target/compare/architecture_report_parity_root.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
   Goal: Classify and reduce the remaining Architecture root residual bucket with source-derived
   group/port/disconnected-component root-bound rules where justified.
   Validation: focused Architecture `parity-root` compares with `--report-root-all` and
@@ -176,13 +176,37 @@ Last updated: 2026-06-02
   source rules, stale-pin deletion, or explicit diagnostic status for `foreignObject`/browser bbox
   tails.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: PENDING. Start from `target/compare/architecture_report_parity_root.md`; current full
-  root evidence reports 30 unaccepted Architecture rows, led by disconnected components,
-  mixed-service forms, and grouped port/root-bound cases.
+  Handoff: DONE_WITH_CONCERNS. Fresh Mermaid 11.15 Architecture upstream SVGs were regenerated
+  for all 185 stored fixtures, proving the simple-service 170x165 root and bare-ID examples were
+  stale baseline data rather than renderer bugs. Rust now emits Mermaid 11.15 diagram-scoped
+  edge/service/node/group IDs and the current fallback service background path from
+  `svgDraw.ts`; all 31 stale Architecture root viewport pins and the old groups-within-groups
+  calibration were removed. Architecture structural parity is green, Architecture has zero root
+  override entries, and full root evidence now reports 32 honest Architecture rows. The count
+  increase from 30 to 32 reflects baseline cleanup exposing current 11.15 root tails; do not
+  restore old pins or calibrations to recover the smaller number.
+
+- [ ] M15RV-089 [owner=codex] [deps=M15RV-088] [scope=crates/merman-render/src/svg/parity/architecture,target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md,repo-ref/mermaid/packages/mermaid/src/diagrams/architecture]
+  Goal: Investigate the top Architecture FCoSE/group-port root residuals now that the 11.15
+  upstream baseline and root-pin table are honest.
+  Validation: focused Architecture `parity-root` compares for
+  `stress_architecture_junction_fork_join_026`, `stress_architecture_fan_in_out_021`,
+  `stress_architecture_deep_nesting_013`, and
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, followed by full
+  Architecture structural/root reports and full all-diagram structural parity after any renderer
+  change.
+  Review: Implement only source-derived layout/root-bound rules or reusable headless
+  approximations. Do not add broad Architecture root pins, root tolerances, or browser-dependent
+  font/foreignObject hacks just to reduce the count.
+  Evidence: `EVIDENCE_AND_GATES.md`
+  Handoff: PENDING. Start from
+  `target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md`; the largest row is
+  `stress_architecture_junction_fork_join_026` at roughly `-1551px`, followed by FCoSE/group-port
+  rows around `-108px`, `+106px`, and `+89px`.
 
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085,M15RV-087,M15RV-088] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085,M15RV-087,M15RV-088,M15RV-089] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
@@ -191,6 +215,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 135 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 137 residuals;
   Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
   differences.

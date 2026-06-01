@@ -809,6 +809,85 @@ Fresh structural-hygiene evidence from 2026-06-02:
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
   passed for the full implemented SVG matrix.
 
+## M15RV-088 - Architecture 11.15 Baseline And Scoped IDs
+
+Fresh source and fixture evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/package.json` is Mermaid `11.15.0`; the local reference repo
+  is at revision `9bae92cd3`.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts` is the authority for
+  the emitted Architecture DOM IDs and fallback service background path:
+  `drawEdges(...)` writes edge path IDs as
+  `` `${diagramId}-${getEdgeId(source, target, { prefix: 'L' })}` ``,
+  `drawServices(...)` writes service group IDs as `` `${diagramId}-service-${service.id}` `` and
+  fallback path IDs as `` `${diagramId}-node-${service.id}` ``, `drawJunctions(...)` writes
+  junction rect IDs as `` `${diagramId}-node-${junction.id}` ``, and `drawGroups(...)` writes
+  group rect IDs as `` `${diagramId}-group-${data.id}` ``.
+- The same source path uses the current fallback service background path
+  `` M0,${iconSize} V5 Q0,0 5,0 H${iconSize - 5} Q${iconSize},0 ${iconSize},5 V${iconSize} Z ``.
+  This is source-owned Architecture SVG syntax, not a comparator tolerance.
+- A focused fresh upstream generation for `upstream_architecture_simple_service_spec` produced a
+  `160x160` root and the current scoped IDs/path, while the stored fixture still had the older
+  `170x165` root and bare IDs. That proved the apparent simple-service delta was stale upstream
+  fixture data rather than a Rust layout defect.
+- `cargo run -p xtask -- gen-upstream-svgs --diagram architecture --out target/upstream-svgs-11-15-architecture-m15rv088-full`:
+  regenerated all 185 Architecture upstream SVGs from the current Mermaid 11.15 reference.
+
+Renderer and baseline changes:
+
+- `crates/merman-render/src/svg/parity/architecture/edges.rs` now carries `diagram_id` into the
+  edge renderer and prefixes Architecture edge path IDs the same way as Mermaid `svgDraw.ts`.
+- `crates/merman-render/src/svg/parity/architecture/nodes.rs` now carries `diagram_id` into the
+  node renderer and prefixes service, fallback-node, junction, and group IDs the same way as
+  Mermaid `svgDraw.ts`.
+- The stored `fixtures/upstream-svgs/architecture` corpus was refreshed from the fresh Mermaid
+  11.15 output for all 185 Architecture fixtures. This removes mixed fixture vintages from the
+  Architecture baseline instead of relying on old bare-ID/path variants.
+- `crates/merman-render/src/generated/architecture_root_overrides_11_12_2.rs` no longer contains
+  Architecture root viewport entries. The legacy module filename remains, but the lookup now
+  intentionally returns `None` for Architecture.
+- `crates/merman-render/src/svg/parity/architecture/viewport.rs` no longer applies the old
+  groups-within-groups root viewport calibration. Fresh 11.15 root evidence showed that local
+  calibration introduced deterministic errors; removing it made the affected rows exact to the
+  configured root comparison precision.
+
+Fresh validation:
+
+- `cargo test -p merman-render architecture_diagonal_arrows_follow_the_actual_edge_segment -- --nocapture`:
+  passed.
+- `cargo test -p merman-render architecture_text_constants_match_mermaid -- --nocapture`: passed.
+- `cargo run -p xtask -- compare-svg-xml --check --diagram architecture --upstream-root target/upstream-svgs-11-15-architecture-m15rv088-full --dom-mode parity --dom-decimals 3`:
+  passed after the scoped ID changes.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv088_cleanup.md`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md`:
+  expected failure with 32 Architecture root residuals.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed. Architecture root overrides
+  are now `0`, and total root viewport override entries dropped to `241`.
+- `cargo fmt -p merman-render --check`: passed.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 137 unaccepted residuals: Flowchart 61, Architecture 32, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+
+Outcome:
+
+- Architecture structural parity is green against a fully refreshed Mermaid 11.15 Architecture
+  fixture corpus.
+- The Architecture root override table is intentionally empty. The previous 31 entries were stale
+  Mermaid 11.12-era pins under the current 11.15 baseline.
+- The Architecture root count moved from the pre-refresh 30-row summary to 32 honest rows. This is
+  not a renderer regression; it removes stale fixture/pin/calibration noise and exposes the
+  current 11.15 FCoSE/group-port root-bound residuals.
+- The largest remaining Architecture rows are
+  `stress_architecture_junction_fork_join_026` at about `-1551px`,
+  `stress_architecture_fan_in_out_021` at about `-108px`,
+  `stress_architecture_deep_nesting_013` at about `+106px`, and
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` at about `+89px`.
+  These should be investigated as source/layout/root-bound issues before any diagnostic residual
+  policy is considered.
+
 ## Gate Set
 
 Run after any code or generated-data change:

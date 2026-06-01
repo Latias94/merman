@@ -19,6 +19,7 @@ use crate::model::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: &'a mut String,
+    pub(super) diagram_id: &'a str,
     pub(super) layout: &'a ArchitectureDiagramLayout,
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
@@ -249,6 +250,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
     ctx: &mut ArchitectureEdgeRenderContext<'_, M>,
 ) {
     let out = &mut *ctx.out;
+    let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
     let model = ctx.model;
     let node_xy = ctx.node_xy;
@@ -453,7 +455,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
             }
 
             out.push_str("<g>");
-            let id = edge_id("L", edge.lhs_id, edge.rhs_id, 0);
+            let id = format!("{diagram_id}-{}", edge_id("L", edge.lhs_id, edge.rhs_id, 0));
             let _ = write!(
                 out,
                 r#"<path d="M {sx},{sy} L {mx},{my} L{ex},{ey} " class="edge" id="{id}"/>"#,

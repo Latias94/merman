@@ -76,13 +76,13 @@ fn architecture_diagonal_arrows_follow_the_actual_edge_segment() {
         "stress_architecture_batch5_services_outside_groups_crosslinks_078.mmd",
     );
 
-    let diagonal = arrow_transform_after_edge(&svg, "L_fe_east_api_0");
+    let diagonal = arrow_transform_after_edge(&svg, "architecture-crosslinks-L_fe_east_api_0");
     assert!(
         diagonal.contains("rotate("),
         "expected diagonal Architecture edge arrow to rotate with the edge segment, got {diagonal}"
     );
 
-    let vertical = arrow_transform_after_edge(&svg, "L_fe_west_api_0");
+    let vertical = arrow_transform_after_edge(&svg, "architecture-crosslinks-L_fe_west_api_0");
     assert!(
         !vertical.contains("rotate("),
         "axis-aligned Architecture arrows should keep the Mermaid-compatible translate-only DOM, got {vertical}"

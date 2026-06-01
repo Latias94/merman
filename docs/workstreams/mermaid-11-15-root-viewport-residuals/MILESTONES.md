@@ -41,8 +41,13 @@ Last updated: 2026-06-02
   actor-type geometry, created/destroyed anchors, footer root cursor bounds, and stale Sequence
   root-pin deletion reduced raw Sequence root residuals from 64 to 28. The full all-diagram root
   policy now leaves 27 unaccepted Sequence rows.
-- Remaining source-rule work is split into M15RV-088 for Architecture root-bound residuals. The
-  remaining Sequence rows are long-note and line-break/text-measurement tails.
+- Architecture 11.15 source/baseline cleanup is closed by M15RV-088: all 185 stored Architecture
+  upstream SVGs were refreshed, source-derived diagram-scoped IDs and fallback paths are emitted by
+  Rust, 31 stale Architecture root pins were deleted, and the old groups-within-groups calibration
+  was removed. Architecture structural parity is green and the bucket now has 32 honest root
+  residuals.
+- Remaining Architecture source-rule work is split into M15RV-089 for FCoSE/group-port root-bound
+  residuals. The remaining Sequence rows are long-note and line-break/text-measurement tails.
 
 ## M3 - Root Policy Closeout
 

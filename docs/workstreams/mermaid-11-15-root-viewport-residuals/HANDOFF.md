@@ -156,23 +156,38 @@ focused `--no-root-overrides` checks proved the computed roots were exact. Raw S
 mismatches dropped from 64 to 28, and the full all-diagram root policy leaves 27 unaccepted
 Sequence rows after the accepted `zed_pr_57644_sequence` residual.
 
+M15RV-088 re-grounded Architecture against the current Mermaid 11.15 source and fixture corpus.
+Fresh `gen-upstream-svgs --diagram architecture` output for all 185 stored fixtures proved that
+some apparent root and DOM differences were stale baselines, not Rust renderer regressions. Mermaid
+11.15 `svgDraw.ts` emits diagram-scoped Architecture IDs for edges, services, fallback service
+backgrounds, junctions, and groups, and uses the current absolute fallback service background path.
+Rust now emits those source-derived IDs/paths directly, the 185 stored Architecture upstream SVGs
+were refreshed, and the Architecture comparator no longer needs fixture-vintage ID/path
+normalization for the refreshed corpus. All 31 stale Architecture root viewport pins were deleted,
+and the old 11.12-era groups-within-groups root calibration was removed after fresh 11.15 evidence
+showed it introduced deterministic errors. Architecture structural parity is green, Architecture
+root overrides are now zero, and full root evidence reports 32 unaccepted Architecture rows. This
+is an honest increase from the pre-refresh 30-row count because stale baselines/pins no longer hide
+current 11.15 FCoSE/group-port root tails.
+
 ## Active Task
 
-- Task ID: M15RV-088
+- Task ID: M15RV-089
 - Owner: codex
 - Status: PENDING
-- Goal: Classify and reduce the remaining Architecture root residual bucket with source-derived
-  group/port/disconnected-component root-bound rules where justified.
-- Evidence: start from the latest `target/compare/architecture_report_parity_root.md`; full root
-  evidence currently reports 30 unaccepted Architecture rows.
-- Concern: Do not convert Architecture layout/root-bound rows into broad root pins or tolerances.
-  Use `--report-root-all` and `--no-root-overrides` before deciding stale pin vs source rule vs
-  browser bbox diagnostic residual.
+- Goal: Investigate the top Architecture FCoSE/group-port root residuals after the 11.15 baseline
+  refresh and stale Architecture root-pin deletion.
+- Evidence: start from
+  `target/compare/architecture_report_parity_root_after_m15rv088_cleanup.md`; full root evidence
+  currently reports 32 unaccepted Architecture rows.
+- Concern: Do not recover the old 30-row count by reintroducing stale baselines, root pins, or
+  11.12-era calibrations. Use Mermaid source and focused fixture evidence before changing
+  Architecture layout/root bounds.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 135.
-- Largest buckets: Flowchart 61, Architecture 30, Sequence 27, Class 12.
+- Total unaccepted full-root residuals: 137.
+- Largest buckets: Flowchart 61, Architecture 32, Sequence 27, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -180,6 +195,10 @@ Sequence rows after the accepted `zed_pr_57644_sequence` residual.
   run, with the four largest HTML `<br>` / wrap rows now root-exact.
 - Closed in M15RV-087: Sequence 63 -> 27 unaccepted residuals in the full all-diagram root policy
   run, with actor-type height rows and six stale Sequence root pins removed from the residual set.
+- Closed in M15RV-088: Architecture fixture corpus is refreshed to Mermaid 11.15, diagram-scoped
+  IDs and fallback background paths now come from source rules, all Architecture root pins were
+  deleted, and stale groups-within-groups calibration was removed. The Architecture bucket is now
+  32 honest rows rather than 30 rows mixed with stale baseline/pin artifacts.
 
 ## Guardrails
 
@@ -204,6 +223,13 @@ Sequence rows after the accepted `zed_pr_57644_sequence` residual.
 - Treat Architecture diagram-scoped service/node/group IDs and fallback service background path
   spelling as compare-time fixture-churn normalization, not renderer behavior to toggle per
   fixture. Root gates remain the authority for visual viewport impact.
+- After M15RV-088, the stored Architecture fixture corpus is refreshed to Mermaid 11.15 and the
+  renderer emits scoped IDs directly. Do not re-add compare-time ID/path normalization or
+  Architecture root pins unless a future fixture-source audit proves the corpus has mixed
+  vintages again.
+- The Architecture root override table is intentionally empty. A non-zero Architecture override
+  count is a regression unless backed by generated fixture-derived evidence and a workstream
+  decision.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.
