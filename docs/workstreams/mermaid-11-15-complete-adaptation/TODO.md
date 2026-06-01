@@ -107,9 +107,12 @@ Last updated: 2026-06-01
   mismatch count to 205 and root override inventory to 281 total entries. The SVG-like markdown
   shape-layout slice then fixed the large Flowchart new/old shape geometry drift by using wrapped
   SVG markdown metrics for Dagre sizing; the representative new-shape fixture moved from a
-  `+929.090px` root delta to `-1.340px`. Flowchart `parity-root` still reports 205 strict
-  root-only mismatches, now led by handdrawn/long-name/math/shape-alias buckets rather than the
-  prior thousand-pixel SVG-markdown shape-sizing bucket.
+  `+929.090px` root delta to `-1.340px`. The long-name C1/mojibake slice corrected shared
+  Flowchart HTML label fallback metrics for preserved C1 controls and updated two 11.15 root pins
+  for the remaining browser-font/root serialization delta; Flowchart `parity-root` now reports 203
+  strict root-only mismatches. The top residuals are shape-alias, hexagon, markdown-subgraph, and
+  small root-rounding buckets rather than the prior long-name or thousand-pixel SVG-markdown
+  shape-sizing buckets.
 
 ## M4 - Upstream Family Decisions
 

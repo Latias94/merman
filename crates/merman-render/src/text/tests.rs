@@ -522,7 +522,7 @@ fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(owner_default.width, 141.71875);
+    assert_eq!(owner_default.width, 128.953125);
     assert_eq!(owner_default.height, 24.0);
 
     let owner_courier = measurer.measure_wrapped(
@@ -531,14 +531,25 @@ fn flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(owner_courier.width, 156.84375);
+    assert_eq!(owner_courier.width, 144.078125);
     assert_eq!(owner_courier.height, 24.0);
 
     let submit = "æ\u{8f}\u{90}äº¤ç\u{94}³è¯·";
+    let submit_default =
+        measurer.measure_wrapped(submit, &default_style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(submit_default.width, 104.140625);
+    assert_eq!(submit_default.height, 24.0);
+
     let submit_courier =
         measurer.measure_wrapped(submit, &courier_style, Some(200.0), WrapMode::HtmlLike);
-    assert_eq!(submit_courier.width, 134.375);
+    assert_eq!(submit_courier.width, 115.21875);
     assert_eq!(submit_courier.height, 24.0);
+
+    let end = "ç»\u{93}æ\u{9d}\u{9f}";
+    let end_default =
+        measurer.measure_wrapped(end, &default_style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(end_default.width, 53.4375);
+    assert_eq!(end_default.height, 24.0);
 }
 
 #[test]

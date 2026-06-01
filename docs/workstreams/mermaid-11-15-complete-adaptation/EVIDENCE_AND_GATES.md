@@ -434,6 +434,40 @@ git diff --check
     passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-070 Flowchart long-name C1/root slice:
+  - Diagnosed the next largest Flowchart root bucket as mojibake/C1 text measurement drift in the
+    upstream long-name fixtures. The courier fixture
+    `upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012`
+    had a `+96.050px` unpinned root max-width delta before the fix; the handdrawn/default-font
+    fixture
+    `upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012`
+    had a `+98.490px` unpinned delta and a stale 11.12-era root pin that forced a `+120.000px`
+    default compare delta.
+  - Updated the shared vendored text measurer so preserved C1 controls in Flowchart HTML labels use
+    a narrow Chromium 11.15 fallback near `0.6em` instead of the old near-full-em fallback. This
+    collapses the courier long-name fixture to `+0.270px` unpinned and the handdrawn/default-font
+    fixture to `+2.710px` unpinned without increasing the text override footprint.
+  - Updated the two remaining Flowchart long-name root viewport pins to the Mermaid 11.15 SVG
+    roots (`1896.984375x452`, max-width `1896.98`; `1806.8125x452`, max-width `1806.81`) rather
+    than adding exact text lookup overrides. `cargo run -p xtask -- report-overrides
+    --check-no-growth` passed with text lookup overrides unchanged at `490` entries and root
+    viewport overrides at `282` entries, still below the `286` budget.
+  - `cargo nextest run -p merman-render flowchart_html_c1_controls_measure_like_chromium_replacement_glyphs`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed with 203 Flowchart root-only DOM mismatches. Both long-name rows now report
+    `+0.000px` root delta; the remaining largest buckets are shape-alias, hexagon, markdown
+    subgraph, and small root-rounding residuals.
+  - `cargo nextest run -p merman-render flowchart`: passed, 88 tests.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
 
 ## Evidence Anchors
 

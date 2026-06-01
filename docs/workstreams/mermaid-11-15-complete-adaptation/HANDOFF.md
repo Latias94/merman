@@ -111,6 +111,12 @@ strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias res
   `htmlLabels=false` markdown fixtures were not root-override candidates. They exposed a shared
   layout/render metric split: Dagre used unwrapped markdown widths while render emitted wrapped SVG
   markdown tspans. Local layout now uses the wrapped SVG markdown metric path for shape sizing.
+- M15C-070 Flowchart long-name triage found that preserved mojibake C1 controls were still using
+  an old near-full-em HTML label fallback. The shared fallback is now near `0.6em`, which collapses
+  the long-name courier/default root drift from `+96.050px`/`+98.490px` to small root-only
+  residuals. The two long-name Flowchart root pins now match the Mermaid 11.15 roots, text lookup
+  overrides stayed at `490`, and `report-overrides --check-no-growth` passes with root overrides at
+  `282`.
 
 ## Known Risks
 
@@ -123,10 +129,10 @@ strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias res
 
 ## Next Recommended Action
 
-Continue M15C-070. The Flowchart SVG-markdown shape-layout bucket has been turned into a real
-renderer/layout fix, but strict Flowchart `parity-root` still reports 205 root-only mismatches. The
-next executable step is to sample the new top Flowchart residuals: handdrawn long-name fixtures,
-`upstream_docs_math_flowcharts_001`, and shape-alias width/height buckets. Check whether each is a
-shared Mermaid 11.15 root geometry rule, a text metric rule, or only then a scoped root override.
-After Flowchart stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a
-cross-family 11.15 root viewport rule change before adding broad fixture-scoped root pins.
+Continue M15C-070. The Flowchart SVG-markdown shape-layout and long-name C1 buckets are closed, but
+strict Flowchart `parity-root` still reports 203 root-only mismatches. The next executable step is
+to sample the new top Flowchart residuals: shape-alias width/height buckets, hexagon root geometry,
+markdown subgraph root size, and small rounding clusters. Check whether each is a shared Mermaid
+11.15 root geometry rule, a text metric rule, or only then a scoped root override. After Flowchart
+stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a cross-family
+11.15 root viewport rule change before adding broad fixture-scoped root pins.

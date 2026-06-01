@@ -44,7 +44,7 @@ pub fn lookup_flowchart_root_viewport_override(
             "769.891",
         )),
         "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
-            Some(("0 0 1926.8125 452", "1926.81"))
+            Some(("0 0 1806.8125 452", "1806.81"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006" => {
             Some(("0 -45 2400.640625 645", "2400.64"))
@@ -65,6 +65,9 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034" => {
             Some(("0 0 609.140625 80", "609.141"))
+        }
+        "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
+            Some(("0 0 1896.984375 452", "1896.98"))
         }
         "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
             Some(("0 0 304.046875 734", "304.047"))
