@@ -471,6 +471,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -769,6 +779,7 @@ dependencies = [
  "rustc-hash",
  "serde",
  "serde_json",
+ "web-time",
 ]
 
 [[package]]
@@ -1114,8 +1125,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1831,6 +1844,7 @@ dependencies = [
  "nalgebra",
  "rustc-hash",
  "thiserror 2.0.18",
+ "web-time",
 ]
 
 [[package]]
@@ -1930,6 +1944,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "web-time",
 ]
 
 [[package]]
@@ -1969,6 +1984,7 @@ dependencies = [
  "thiserror 2.0.18",
  "unicode-width",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -1980,6 +1996,18 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "uniffi",
+]
+
+[[package]]
+name = "merman-wasm"
+version = "0.7.0"
+dependencies = [
+ "console_error_panic_hook",
+ "merman-bindings-core",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2869,6 +2897,7 @@ version = "0.12.0"
 dependencies = [
  "derive_builder",
  "euclid",
+ "getrandom 0.2.17",
  "num-traits",
  "palette",
  "plotlib",
@@ -3078,6 +3107,17 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4071,6 +4111,16 @@ name = "web-sys"
 version = "0.3.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "312e32e551d92129218ea9a2452120f4aabc03529ef03e4d0d82fb2780608598"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

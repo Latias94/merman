@@ -14,6 +14,7 @@ categories = ["api-bindings", "visualization"]
 
 [features]
 default = ["render"]
+ascii = ["merman/ascii"]
 render = ["merman/render"]
 ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
 raster = ["merman/raster"]

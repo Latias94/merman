@@ -160,8 +160,8 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-) -> std::time::Duration {
-    let clusters_start = ctx.timing_enabled.then(std::time::Instant::now);
+) -> web_time::Duration {
+    let clusters_start = ctx.timing_enabled.then(web_time::Instant::now);
     out.push_str(r#"<g class="clusters">"#);
     for c in clusters {
         let w = c.width.max(1.0);

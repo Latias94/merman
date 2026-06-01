@@ -1,0 +1,12 @@
+{"role":"adr","path":"docs/adr/0003-workspace-structure.md","reason":"Names `merman-wasm` as the intended future browser binding crate."}
+{"role":"adr","path":"docs/adr/0066-ffi-binding-strategy.md","reason":"Defines `merman-bindings-core` as the safe binding facade below external transports."}
+{"role":"binding_contract","path":"docs/bindings/OPTIONS_JSON.md","reason":"Shared options JSON contract that the WASM and TypeScript layers should reuse."}
+{"role":"release_surface","path":"docs/release/PACKAGE_SURFACES.md","reason":"Records Web/WASM as currently absent and requiring a new package surface."}
+{"role":"reference","path":"repo-ref/RaTeX/crates/ratex-wasm","reason":"Reference wasm-bindgen crate shape and JSON-returning browser API."}
+{"role":"reference","path":"repo-ref/RaTeX/platforms/web","reason":"Reference TypeScript web package, wasm-pack build, and generated pkg handling."}
+{"role":"reference","path":"repo-ref/RaTeX/website/scripts/verify-dist-wasm.mjs","reason":"Reference static output verifier for Pages-style deploys."}
+{"role":"reference","path":"repo-ref/merman-page","reason":"Reference live editor UI to migrate and harden after the WASM package works."}
+{"role":"implementation","path":"crates/merman-wasm","reason":"First-class wasm-bindgen crate that exposes the browser transport surface."}
+{"role":"implementation","path":"platforms/web","reason":"TypeScript package wrapping generated WASM and typed JSON-contract helpers."}
+{"role":"implementation","path":"playground","reason":"Live editor app integrated with the real WASM package."}
+{"role":"dependency","path":"Cargo.toml","reason":"Uses web-time for browser-compatible Instant/Duration across the WASM render chain."}

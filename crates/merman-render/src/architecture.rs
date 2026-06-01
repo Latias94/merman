@@ -278,17 +278,17 @@ fn layout_architecture_diagram_model(
         == Some("1");
     #[derive(Debug, Default, Clone)]
     struct ArchitectureLayoutTimings {
-        total: std::time::Duration,
-        build_adjacency_and_components: std::time::Duration,
-        positions_and_centering: std::time::Duration,
-        emit_nodes: std::time::Duration,
-        manatee_prepare: std::time::Duration,
-        manatee_layout: std::time::Duration,
-        build_edges: std::time::Duration,
-        bounds: std::time::Duration,
+        total: web_time::Duration,
+        build_adjacency_and_components: web_time::Duration,
+        positions_and_centering: web_time::Duration,
+        emit_nodes: web_time::Duration,
+        manatee_prepare: web_time::Duration,
+        manatee_layout: web_time::Duration,
+        build_edges: web_time::Duration,
+        bounds: web_time::Duration,
     }
     let mut timings = ArchitectureLayoutTimings::default();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
@@ -667,7 +667,7 @@ fn layout_architecture_diagram_model(
         }
     }
 
-    let build_adjacency_start = timing_enabled.then(std::time::Instant::now);
+    let build_adjacency_start = timing_enabled.then(web_time::Instant::now);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
@@ -769,13 +769,13 @@ fn layout_architecture_diagram_model(
         timings.build_adjacency_and_components = s.elapsed();
     }
 
-    let positions_start = timing_enabled.then(std::time::Instant::now);
+    let positions_start = timing_enabled.then(web_time::Instant::now);
     if let Some(s) = positions_start {
         timings.positions_and_centering = s.elapsed();
     }
 
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
-    let emit_nodes_start = timing_enabled.then(std::time::Instant::now);
+    let emit_nodes_start = timing_enabled.then(web_time::Instant::now);
     for n in &model.nodes {
         match n.node_type {
             ArchitectureNodeType::Service | ArchitectureNodeType::Junction => {}
@@ -805,7 +805,7 @@ fn layout_architecture_diagram_model(
     }
 
     if use_manatee_layout && !nodes.is_empty() {
-        let manatee_prepare_start = timing_enabled.then(std::time::Instant::now);
+        let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
 
         // Build Mermaid-like FCoSE constraints from the BFS spatial maps.
         //
@@ -1432,7 +1432,7 @@ fn layout_architecture_diagram_model(
             timings.manatee_prepare = s.elapsed();
         }
 
-        let manatee_layout_start = timing_enabled.then(std::time::Instant::now);
+        let manatee_layout_start = timing_enabled.then(web_time::Instant::now);
         let result = manatee::algo::fcose::layout_indexed(&graph, &opts).map_err(|e| {
             Error::InvalidModel {
                 message: format!("manatee layout failed: {e}"),
@@ -1450,7 +1450,7 @@ fn layout_architecture_diagram_model(
         }
     }
 
-    let build_edges_start = timing_enabled.then(std::time::Instant::now);
+    let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
     for n in &nodes {
@@ -1632,7 +1632,7 @@ fn layout_architecture_diagram_model(
         timings.build_edges = s.elapsed();
     }
 
-    let bounds_start = timing_enabled.then(std::time::Instant::now);
+    let bounds_start = timing_enabled.then(web_time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
     if let Some(s) = bounds_start {
         timings.bounds = s.elapsed();

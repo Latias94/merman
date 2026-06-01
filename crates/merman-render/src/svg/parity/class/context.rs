@@ -1,7 +1,7 @@
 use super::super::timing::RenderTimings;
 use super::*;
 use rustc_hash::FxHashMap;
-use std::time::Duration;
+use web_time::Duration;
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct ClassRenderDetails {

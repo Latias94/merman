@@ -599,9 +599,9 @@ pub fn layout_flowchart_v2(
     let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
-    let deserialize_start = timing_enabled.then(std::time::Instant::now);
+    let deserialize_start = timing_enabled.then(web_time::Instant::now);
     let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
     let deserialize = deserialize_start.map(|s| s.elapsed()).unwrap_or_default();
 
@@ -625,7 +625,7 @@ pub fn layout_flowchart_v2_typed(
     let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
     layout_flowchart_v2_with_model(
         model,
@@ -634,7 +634,7 @@ pub fn layout_flowchart_v2_typed(
         math_renderer,
         timing_enabled,
         total_start,
-        std::time::Duration::default(),
+        web_time::Duration::default(),
     )
 }
 
@@ -644,22 +644,22 @@ fn layout_flowchart_v2_with_model(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     timing_enabled: bool,
-    total_start: Option<std::time::Instant>,
-    deserialize: std::time::Duration,
+    total_start: Option<web_time::Instant>,
+    deserialize: web_time::Duration,
 ) -> Result<FlowchartV2Layout> {
     #[derive(Debug, Default, Clone)]
     struct FlowchartLayoutTimings {
-        total: std::time::Duration,
-        deserialize: std::time::Duration,
-        expand_self_loops: std::time::Duration,
-        build_graph: std::time::Duration,
-        extract_clusters: std::time::Duration,
-        dom_order: std::time::Duration,
-        layout_recursive: std::time::Duration,
+        total: web_time::Duration,
+        deserialize: web_time::Duration,
+        expand_self_loops: web_time::Duration,
+        build_graph: web_time::Duration,
+        extract_clusters: web_time::Duration,
+        dom_order: web_time::Duration,
+        layout_recursive: web_time::Duration,
         dagre_calls: u32,
-        dagre_total: std::time::Duration,
-        place_graph: std::time::Duration,
-        build_output: std::time::Duration,
+        dagre_total: web_time::Duration,
+        place_graph: web_time::Duration,
+        build_output: web_time::Duration,
     }
 
     let mut timings = FlowchartLayoutTimings {
@@ -672,7 +672,7 @@ fn layout_flowchart_v2_with_model(
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
-    let expand_self_loops_start = timing_enabled.then(std::time::Instant::now);
+    let expand_self_loops_start = timing_enabled.then(web_time::Instant::now);
     let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
     let mut render_edges: Vec<std::borrow::Cow<'_, FlowEdge>> =
         Vec::with_capacity(model.edges.len() + self_loop_count * 3);
@@ -706,7 +706,7 @@ fn layout_flowchart_v2_with_model(
         timings.expand_self_loops = s.elapsed();
     }
 
-    let build_graph_start = timing_enabled.then(std::time::Instant::now);
+    let build_graph_start = timing_enabled.then(web_time::Instant::now);
 
     let nodesep = config_f64(effective_config_value, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
     let ranksep = config_f64(effective_config_value, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
@@ -1300,7 +1300,7 @@ fn layout_flowchart_v2_with_model(
         Graph<NodeLabel, EdgeLabel, GraphLabel>,
     > = std::collections::HashMap::new();
     if has_subgraphs {
-        let extract_start = timing_enabled.then(std::time::Instant::now);
+        let extract_start = timing_enabled.then(web_time::Instant::now);
         extract_clusters_recursively(
             &mut g,
             &subgraphs_by_id,
@@ -1318,7 +1318,7 @@ fn layout_flowchart_v2_with_model(
     // insertion order per root so the headless SVG matches strict DOM expectations.
     let mut dom_node_order_by_root: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
-    let dom_order_start = timing_enabled.then(std::time::Instant::now);
+    let dom_order_start = timing_enabled.then(web_time::Instant::now);
     dom_node_order_by_root.insert(String::new(), g.node_ids());
     for (id, cg) in &extracted_graphs {
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
@@ -1524,7 +1524,7 @@ fn layout_flowchart_v2_with_model(
         if depth > 10 {
             if ctx.timing_enabled {
                 ctx.timings.dagre_calls += 1;
-                let start = std::time::Instant::now();
+                let start = web_time::Instant::now();
                 dugong::layout_dagreish(graph);
                 ctx.timings.dagre_total += start.elapsed();
             } else {
@@ -1618,7 +1618,7 @@ fn layout_flowchart_v2_with_model(
 
         if ctx.timing_enabled {
             ctx.timings.dagre_calls += 1;
-            let start = std::time::Instant::now();
+            let start = web_time::Instant::now();
             dugong::layout_dagreish(graph);
             ctx.timings.dagre_total += start.elapsed();
         } else {
@@ -1627,7 +1627,7 @@ fn layout_flowchart_v2_with_model(
         apply_mermaid_subgraph_title_shifts(graph, ctx.extracted, ctx.subgraph_id_set, ctx.y_shift);
     }
 
-    let layout_start = timing_enabled.then(std::time::Instant::now);
+    let layout_start = timing_enabled.then(web_time::Instant::now);
     {
         let title_metrics_ctx = ClusterTitleMetricsContext {
             subgraphs_by_id: &subgraphs_by_id,
@@ -1893,7 +1893,7 @@ fn layout_flowchart_v2_with_model(
         std::collections::HashMap::new();
     let mut extracted_cluster_base_widths: std::collections::HashMap<String, f64> =
         std::collections::HashMap::new();
-    let place_start = timing_enabled.then(std::time::Instant::now);
+    let place_start = timing_enabled.then(web_time::Instant::now);
     {
         let place_graph_inputs = PlaceGraphInputs {
             edge_id_by_key: &edge_id_by_key,
@@ -1924,7 +1924,7 @@ fn layout_flowchart_v2_with_model(
         timings.place_graph = s.elapsed();
     }
 
-    let build_output_start = timing_enabled.then(std::time::Instant::now);
+    let build_output_start = timing_enabled.then(web_time::Instant::now);
 
     let mut extra_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();

@@ -8,7 +8,7 @@ use crate::graphlib::{Graph, GraphOptions};
 use crate::{EdgeLabel, GraphLabel, NodeLabel, Point};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Instant;
+use web_time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {

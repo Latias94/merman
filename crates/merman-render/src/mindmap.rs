@@ -373,19 +373,19 @@ fn layout_mindmap_diagram_model(
         == Some("1");
     #[derive(Debug, Default, Clone)]
     struct MindmapLayoutTimings {
-        total: std::time::Duration,
-        measure_nodes: std::time::Duration,
-        manatee: std::time::Duration,
-        build_edges: std::time::Duration,
-        bounds: std::time::Duration,
+        total: web_time::Duration,
+        measure_nodes: web_time::Duration,
+        manatee: web_time::Duration,
+        build_edges: web_time::Duration,
+        bounds: web_time::Duration,
     }
     let mut timings = MindmapLayoutTimings::default();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
-    let measure_nodes_start = timing_enabled.then(std::time::Instant::now);
+    let measure_nodes_start = timing_enabled.then(web_time::Instant::now);
     let mut nodes_sorted: Vec<(i64, &MindmapNodeModel)> = model
         .nodes
         .iter()
@@ -437,7 +437,7 @@ fn layout_mindmap_diagram_model(
     }
 
     if use_manatee_layout {
-        let manatee_start = timing_enabled.then(std::time::Instant::now);
+        let manatee_start = timing_enabled.then(web_time::Instant::now);
         let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
             .iter()
             .map(|n| manatee::algo::cose_bilkent::IndexedNode {
@@ -485,7 +485,7 @@ fn layout_mindmap_diagram_model(
     // Do this regardless of layout backend so parity-root viewport comparisons remain stable.
     shift_nodes_to_positive_bounds(&mut nodes, 15.0);
 
-    let build_edges_start = timing_enabled.then(std::time::Instant::now);
+    let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let mut edges: Vec<LayoutEdge> = Vec::with_capacity(model.edges.len());
     for (e, (sidx, tidx)) in model.edges.iter().zip(edge_indices.iter().copied()) {
         let (sx, sy) = (nodes[sidx].x, nodes[sidx].y);
@@ -512,7 +512,7 @@ fn layout_mindmap_diagram_model(
         timings.build_edges = s.elapsed();
     }
 
-    let bounds_start = timing_enabled.then(std::time::Instant::now);
+    let bounds_start = timing_enabled.then(web_time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
     if let Some(s) = bounds_start {
         timings.bounds = s.elapsed();

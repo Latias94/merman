@@ -52,22 +52,22 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
 #[derive(Debug, Default, Clone)]
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
     pub(in crate::svg::parity::flowchart) root_calls: u32,
-    pub(in crate::svg::parity::flowchart) clusters: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) edges_select: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) edge_paths: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) edge_labels: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) dom_order: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) nodes: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) node_style_compile: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) node_roughjs: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) clusters: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) edges_select: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) edge_paths: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) edge_labels: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) dom_order: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) nodes: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) node_style_compile: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) node_roughjs: web_time::Duration,
     pub(in crate::svg::parity::flowchart) node_roughjs_calls: u32,
-    pub(in crate::svg::parity::flowchart) node_label_html: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) node_label_html: web_time::Duration,
     pub(in crate::svg::parity::flowchart) node_label_html_calls: u32,
-    pub(in crate::svg::parity::flowchart) nested_roots: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) nested_roots: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: web_time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom_calls: u32,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom_skipped_bounds: u32,
 }
@@ -117,7 +117,7 @@ pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
 #[inline]
 pub(in crate::svg::parity::flowchart) fn detail_guard<'a>(
     enabled: bool,
-    dst: &'a mut std::time::Duration,
+    dst: &'a mut web_time::Duration,
 ) -> Option<timing::TimingGuard<'a>> {
     enabled.then(|| timing::TimingGuard::new(dst))
 }

@@ -15,27 +15,27 @@ pub struct OrderOptions {
 
 #[derive(Debug, Default, Clone)]
 struct OrderTimings {
-    total: std::time::Duration,
-    build_nodes_by_rank: std::time::Duration,
-    init_order: std::time::Duration,
-    assign_initial: std::time::Duration,
-    build_layer_graph_cache: std::time::Duration,
-    sweeps: std::time::Duration,
-    sweep_sync_orders: std::time::Duration,
-    sweep_build_layer_graph: std::time::Duration,
-    sweep_sort_subgraph: std::time::Duration,
-    sweep_apply_order: std::time::Duration,
-    sweep_add_constraints: std::time::Duration,
-    build_layer_matrix: std::time::Duration,
-    cross_count: std::time::Duration,
+    total: web_time::Duration,
+    build_nodes_by_rank: web_time::Duration,
+    init_order: web_time::Duration,
+    assign_initial: web_time::Duration,
+    build_layer_graph_cache: web_time::Duration,
+    sweeps: web_time::Duration,
+    sweep_sync_orders: web_time::Duration,
+    sweep_build_layer_graph: web_time::Duration,
+    sweep_sort_subgraph: web_time::Duration,
+    sweep_apply_order: web_time::Duration,
+    sweep_add_constraints: web_time::Duration,
+    build_layer_matrix: web_time::Duration,
+    cross_count: web_time::Duration,
 
-    sort_subgraph_total: std::time::Duration,
-    sort_subgraph_build_movable: std::time::Duration,
-    sort_subgraph_barycenter: std::time::Duration,
-    sort_subgraph_resolve_conflicts: std::time::Duration,
-    sort_subgraph_expand_subgraphs: std::time::Duration,
-    sort_subgraph_sort: std::time::Duration,
-    sort_subgraph_border_adjust: std::time::Duration,
+    sort_subgraph_total: web_time::Duration,
+    sort_subgraph_build_movable: web_time::Duration,
+    sort_subgraph_barycenter: web_time::Duration,
+    sort_subgraph_resolve_conflicts: web_time::Duration,
+    sort_subgraph_expand_subgraphs: web_time::Duration,
+    sort_subgraph_sort: web_time::Duration,
+    sort_subgraph_border_adjust: web_time::Duration,
 }
 
 pub fn order<N, E, G>(g: &mut Graph<N, E, G>, opts: OrderOptions)
@@ -48,13 +48,13 @@ where
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
     let mut timings = OrderTimings::default();
 
     let mut max_rank: i32 = i32::MIN;
     let mut nodes_by_rank: Vec<Vec<usize>> = Vec::new();
 
-    let build_nodes_by_rank_start = timing_enabled.then(std::time::Instant::now);
+    let build_nodes_by_rank_start = timing_enabled.then(web_time::Instant::now);
     g.for_each_node_ix(|v_ix, _id, node| {
         let mut push_rank = |rank: i32| {
             if rank < 0 {
@@ -88,13 +88,13 @@ where
         return;
     }
 
-    let init_order_start = timing_enabled.then(std::time::Instant::now);
+    let init_order_start = timing_enabled.then(web_time::Instant::now);
     let layering = init_order(g);
     if let Some(s) = init_order_start {
         timings.init_order = s.elapsed();
     }
 
-    let assign_initial_start = timing_enabled.then(std::time::Instant::now);
+    let assign_initial_start = timing_enabled.then(web_time::Instant::now);
     assign_order(g, &layering);
     if let Some(s) = assign_initial_start {
         timings.assign_initial = s.elapsed();
@@ -106,7 +106,7 @@ where
 
     let root = create_root_node(g);
 
-    let build_cache_start = timing_enabled.then(std::time::Instant::now);
+    let build_cache_start = timing_enabled.then(web_time::Instant::now);
     let mut layer_graphs_in: Vec<Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
         Vec::with_capacity((max_rank + 1).max(0) as usize);
     let mut layer_graphs_out: Vec<Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
@@ -152,7 +152,7 @@ where
         let bias_right = i % 4 >= 2;
 
         if use_down {
-            let sweep_start = timing_enabled.then(std::time::Instant::now);
+            let sweep_start = timing_enabled.then(web_time::Instant::now);
             sweep(
                 g,
                 &ranks_down,
@@ -166,7 +166,7 @@ where
                 timings.sweeps += s.elapsed();
             }
         } else {
-            let sweep_start = timing_enabled.then(std::time::Instant::now);
+            let sweep_start = timing_enabled.then(web_time::Instant::now);
             sweep(
                 g,
                 &ranks_up,
@@ -181,13 +181,13 @@ where
             }
         }
 
-        let build_layer_matrix_start = timing_enabled.then(std::time::Instant::now);
+        let build_layer_matrix_start = timing_enabled.then(web_time::Instant::now);
         let layering_now = build_layer_matrix_ix(g, max_rank);
         if let Some(s) = build_layer_matrix_start {
             timings.build_layer_matrix += s.elapsed();
         }
 
-        let cross_count_start = timing_enabled.then(std::time::Instant::now);
+        let cross_count_start = timing_enabled.then(web_time::Instant::now);
         let cc = cross_count_ix(g, &layering_now);
         if let Some(s) = cross_count_start {
             timings.cross_count += s.elapsed();
@@ -265,7 +265,7 @@ fn sweep<N, E, G>(
     let mut cg: Graph<(), (), ()> = Graph::new(GraphOptions::default());
 
     for &rank in ranks {
-        let build_lg_start = timing_enabled.then(std::time::Instant::now);
+        let build_lg_start = timing_enabled.then(web_time::Instant::now);
         let Some(lg) = layer_graphs.get_mut(rank as usize) else {
             continue;
         };
@@ -273,13 +273,13 @@ fn sweep<N, E, G>(
             timings.sweep_build_layer_graph += s.elapsed();
         }
 
-        let sync_start = timing_enabled.then(std::time::Instant::now);
+        let sync_start = timing_enabled.then(web_time::Instant::now);
         sync_layer_graph_orders(g, lg, root);
         if let Some(s) = sync_start {
             timings.sweep_sync_orders += s.elapsed();
         }
 
-        let sort_start = timing_enabled.then(std::time::Instant::now);
+        let sort_start = timing_enabled.then(web_time::Instant::now);
         let mut sg_timings = timing_enabled.then(SortSubgraphTimings::default);
         let sorted = if let Some(t) = sg_timings.as_mut() {
             super::barycenter::sort_subgraph_with_timings_ix(lg, root, &cg, bias_right, t)
@@ -299,7 +299,7 @@ fn sweep<N, E, G>(
             timings.sort_subgraph_border_adjust += t.border_adjust;
         }
 
-        let apply_order_start = timing_enabled.then(std::time::Instant::now);
+        let apply_order_start = timing_enabled.then(web_time::Instant::now);
         for (i, &v_ix) in sorted.vs.iter().enumerate() {
             let Some(id) = lg.node_id_by_ix(v_ix) else {
                 continue;
@@ -315,7 +315,7 @@ fn sweep<N, E, G>(
             timings.sweep_apply_order += s.elapsed();
         }
 
-        let constraints_start = timing_enabled.then(std::time::Instant::now);
+        let constraints_start = timing_enabled.then(web_time::Instant::now);
         add_subgraph_constraints_ix(lg, &mut cg, &sorted.vs);
         if let Some(s) = constraints_start {
             timings.sweep_add_constraints += s.elapsed();

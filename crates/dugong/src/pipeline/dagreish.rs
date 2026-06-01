@@ -17,35 +17,35 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     #[derive(Debug, Default, Clone)]
     struct DagreishTimings {
-        total: std::time::Duration,
-        preprocess: std::time::Duration,
-        self_edges_remove: std::time::Duration,
-        acyclic: std::time::Duration,
-        nesting_run: std::time::Duration,
-        rank: std::time::Duration,
-        edge_label_proxies: std::time::Duration,
-        assign_rank_min_max: std::time::Duration,
-        normalize_run: std::time::Duration,
-        compound_border: std::time::Duration,
-        order: std::time::Duration,
-        coord_adjust: std::time::Duration,
-        self_edges_insert: std::time::Duration,
-        layering_y: std::time::Duration,
-        position_x: std::time::Duration,
-        self_edges_position: std::time::Duration,
-        remove_border_nodes: std::time::Duration,
-        normalize_undo: std::time::Duration,
-        translate: std::time::Duration,
-        edge_points: std::time::Duration,
-        acyclic_undo: std::time::Duration,
+        total: web_time::Duration,
+        preprocess: web_time::Duration,
+        self_edges_remove: web_time::Duration,
+        acyclic: web_time::Duration,
+        nesting_run: web_time::Duration,
+        rank: web_time::Duration,
+        edge_label_proxies: web_time::Duration,
+        assign_rank_min_max: web_time::Duration,
+        normalize_run: web_time::Duration,
+        compound_border: web_time::Duration,
+        order: web_time::Duration,
+        coord_adjust: web_time::Duration,
+        self_edges_insert: web_time::Duration,
+        layering_y: web_time::Duration,
+        position_x: web_time::Duration,
+        self_edges_position: web_time::Duration,
+        remove_border_nodes: web_time::Duration,
+        normalize_undo: web_time::Duration,
+        translate: web_time::Duration,
+        edge_points: web_time::Duration,
+        acyclic_undo: web_time::Duration,
     }
 
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
     let mut timings = DagreishTimings::default();
 
     // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
     // (we later materialize label nodes in `normalize::run`).
-    let preprocess_start = timing_enabled.then(std::time::Instant::now);
+    let preprocess_start = timing_enabled.then(web_time::Instant::now);
     g.graph_mut().ranksep /= 2.0;
     let rankdir = g.graph().rankdir;
     g.for_each_edge_mut(|_ek, e| {
@@ -64,7 +64,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // Dagre removes self-loops before ranking/normalization and re-inserts them during positioning
     // via dummy "selfedge" nodes. This avoids invalid rank constraints and gives self-loops a
     // deterministic, spacing-aware offset in BK positioning.
-    let self_edges_remove_start = timing_enabled.then(std::time::Instant::now);
+    let self_edges_remove_start = timing_enabled.then(web_time::Instant::now);
     self_edges::remove_self_edges(g);
     if let Some(s) = self_edges_remove_start {
         timings.self_edges_remove = s.elapsed();
@@ -83,7 +83,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         None
     };
 
-    let acyclic_start = timing_enabled.then(std::time::Instant::now);
+    let acyclic_start = timing_enabled.then(web_time::Instant::now);
     let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
         false
     } else {
@@ -98,7 +98,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // connected graph. Nesting graph connects components (even if there are no explicit
     // subgraphs), preventing network-simplex from panicking on disconnected inputs.
     if g.options().compound {
-        let nesting_start = timing_enabled.then(std::time::Instant::now);
+        let nesting_start = timing_enabled.then(web_time::Instant::now);
         let ran_nesting = if tiny_simple_chain {
             false
         } else {
@@ -117,7 +117,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     //
     // `nesting_graph::run` materializes border nodes and nesting edges; those border nodes are
     // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
-    let rank_start = timing_enabled.then(std::time::Instant::now);
+    let rank_start = timing_enabled.then(web_time::Instant::now);
     if tiny_simple_chain {
         // For the smallest flowcharts (e.g. `A --> B`) network-simplex + ordering overhead
         // dominates total runtime. A deterministic direct rank assignment keeps behavior
@@ -162,7 +162,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
     // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with
     // the correct width/height, letting BK positioning account for edge labels.
-    let edge_proxy_start = timing_enabled.then(std::time::Instant::now);
+    let edge_proxy_start = timing_enabled.then(web_time::Instant::now);
     let mut edge_proxy_nodes: Vec<String> = Vec::new();
     // Only clone edge keys when a proxy is actually needed.
     let mut to_proxy: Vec<(graphlib::EdgeKey, i32)> = Vec::new();
@@ -253,7 +253,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
     if g.options().compound && !tiny_simple_chain {
-        let span_start = timing_enabled.then(std::time::Instant::now);
+        let span_start = timing_enabled.then(web_time::Instant::now);
         let node_ids = g.node_ids();
         for v in node_ids {
             let Some(node) = g.node(&v).cloned() else {
@@ -278,20 +278,20 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         }
     }
 
-    let normalize_run_start = timing_enabled.then(std::time::Instant::now);
+    let normalize_run_start = timing_enabled.then(web_time::Instant::now);
     normalize::run(g);
     if let Some(s) = normalize_run_start {
         timings.normalize_run = s.elapsed();
     }
     if g.options().compound && !tiny_simple_chain {
-        let border_start = timing_enabled.then(std::time::Instant::now);
+        let border_start = timing_enabled.then(web_time::Instant::now);
         parent_dummy_chains::parent_dummy_chains(g);
         add_border_segments::add_border_segments(g);
         if let Some(s) = border_start {
             timings.compound_border = s.elapsed();
         }
     }
-    let order_start = timing_enabled.then(std::time::Instant::now);
+    let order_start = timing_enabled.then(web_time::Instant::now);
     if tiny_simple_chain {
         let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
         g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
@@ -322,7 +322,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
-    let coord_adjust_start = timing_enabled.then(std::time::Instant::now);
+    let coord_adjust_start = timing_enabled.then(web_time::Instant::now);
     coordinate_system::adjust(g);
     if let Some(s) = coord_adjust_start {
         timings.coord_adjust = s.elapsed();
@@ -330,14 +330,14 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     // Insert dummy self-edge nodes after ordering and rankdir transforms, so their sizes match the
     // active coordinate system (TB) and they can influence BK x-positioning.
-    let self_edges_insert_start = timing_enabled.then(std::time::Instant::now);
+    let self_edges_insert_start = timing_enabled.then(web_time::Instant::now);
     self_edges::insert_self_edges(g);
     if let Some(s) = self_edges_insert_start {
         timings.self_edges_insert = s.elapsed();
     }
 
     let rank_sep = g.graph().ranksep;
-    let layering_start = timing_enabled.then(std::time::Instant::now);
+    let layering_start = timing_enabled.then(web_time::Instant::now);
     let layering = util::build_layer_matrix(g);
 
     let mut prev_y: f64 = 0.0;
@@ -361,7 +361,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         timings.layering_y = s.elapsed();
     }
 
-    let position_x_start = timing_enabled.then(std::time::Instant::now);
+    let position_x_start = timing_enabled.then(web_time::Instant::now);
     let xs = position::bk::position_x_with_layering(g, &layering);
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
@@ -371,7 +371,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     // Convert dummy self-edge nodes into self-loop edge point sequences and remove the dummy nodes.
-    let self_edges_position_start = timing_enabled.then(std::time::Instant::now);
+    let self_edges_position_start = timing_enabled.then(web_time::Instant::now);
     self_edges::position_self_edges(g);
     if let Some(s) = self_edges_position_start {
         timings.self_edges_position = s.elapsed();
@@ -381,14 +381,14 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // It sets compound-node geometry (x/y/width/height) from border nodes, then removes all
     // border dummy nodes.
     if g.options().compound && !tiny_simple_chain {
-        let remove_border_start = timing_enabled.then(std::time::Instant::now);
+        let remove_border_start = timing_enabled.then(web_time::Instant::now);
         super::compound::remove_border_nodes(g);
         if let Some(s) = remove_border_start {
             timings.remove_border_nodes = s.elapsed();
         }
     }
 
-    let normalize_undo_start = timing_enabled.then(std::time::Instant::now);
+    let normalize_undo_start = timing_enabled.then(web_time::Instant::now);
     normalize::undo(g);
     coordinate_system::undo(g);
     if let Some(s) = normalize_undo_start {
@@ -397,7 +397,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
     // `translateGraph(...)` behavior.
-    let translate_start = timing_enabled.then(std::time::Instant::now);
+    let translate_start = timing_enabled.then(web_time::Instant::now);
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
     g.for_each_node(|_id, n| {
@@ -454,7 +454,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
     // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
-    let edge_points_start = timing_enabled.then(std::time::Instant::now);
+    let edge_points_start = timing_enabled.then(web_time::Instant::now);
     let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
     for e in edge_keys {
         let Some((sx, sy, sw, sh)) = g
@@ -538,7 +538,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         timings.edge_points = s.elapsed();
     }
 
-    let acyclic_undo_start = timing_enabled.then(std::time::Instant::now);
+    let acyclic_undo_start = timing_enabled.then(web_time::Instant::now);
     if ran_acyclic {
         acyclic::undo(g);
     }

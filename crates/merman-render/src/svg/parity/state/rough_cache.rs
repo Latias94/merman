@@ -4,19 +4,19 @@ use std::sync::{Arc, Mutex, OnceLock};
 #[derive(Debug, Default, Clone)]
 pub(super) struct StateRenderDetails {
     pub(super) root_calls: u32,
-    pub(super) clusters: std::time::Duration,
-    pub(super) edge_paths: std::time::Duration,
-    pub(super) edge_labels: std::time::Duration,
-    pub(super) leaf_nodes: std::time::Duration,
-    pub(super) leaf_nodes_style_parse: std::time::Duration,
-    pub(super) leaf_nodes_roughjs: std::time::Duration,
+    pub(super) clusters: web_time::Duration,
+    pub(super) edge_paths: web_time::Duration,
+    pub(super) edge_labels: web_time::Duration,
+    pub(super) leaf_nodes: web_time::Duration,
+    pub(super) leaf_nodes_style_parse: web_time::Duration,
+    pub(super) leaf_nodes_roughjs: web_time::Duration,
     pub(super) leaf_roughjs_calls: u32,
     pub(super) leaf_roughjs_unique: std::collections::HashSet<StateRoughCacheKey>,
-    pub(super) leaf_nodes_measure: std::time::Duration,
-    pub(super) leaf_nodes_label_html: std::time::Duration,
-    pub(super) leaf_nodes_emit: std::time::Duration,
-    pub(super) nested_roots: std::time::Duration,
-    pub(super) self_loop_placeholders: std::time::Duration,
+    pub(super) leaf_nodes_measure: web_time::Duration,
+    pub(super) leaf_nodes_label_html: web_time::Duration,
+    pub(super) leaf_nodes_emit: web_time::Duration,
+    pub(super) nested_roots: web_time::Duration,
+    pub(super) self_loop_placeholders: web_time::Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,7 +87,7 @@ pub(super) fn state_tls_put_paths(key: StateRoughCacheKey, value: (Arc<String>, 
 #[inline]
 pub(super) fn detail_guard<'a>(
     enabled: bool,
-    dst: &'a mut std::time::Duration,
+    dst: &'a mut web_time::Duration,
 ) -> Option<super::timing::TimingGuard<'a>> {
     enabled.then(|| super::timing::TimingGuard::new(dst))
 }

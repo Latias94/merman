@@ -195,7 +195,7 @@ pub(super) fn timed_node_roughjs<T>(
 ) -> T {
     if timing_enabled {
         details.node_roughjs_calls += 1;
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let out = f();
         details.node_roughjs += start.elapsed();
         out
@@ -211,7 +211,7 @@ pub(super) fn timed_node_label_html<T>(
 ) -> T {
     if timing_enabled {
         details.node_label_html_calls += 1;
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         let out = f();
         details.node_label_html += start.elapsed();
         out

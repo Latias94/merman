@@ -240,15 +240,15 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         let timing_enabled = Self::parse_timing_enabled();
-        let total_start = timing_enabled.then(std::time::Instant::now);
+        let total_start = timing_enabled.then(web_time::Instant::now);
 
-        let preprocess_start = timing_enabled.then(std::time::Instant::now);
+        let preprocess_start = timing_enabled.then(web_time::Instant::now);
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
         let preprocess = preprocess_start.map(|s| s.elapsed());
 
-        let parse_start = timing_enabled.then(std::time::Instant::now);
+        let parse_start = timing_enabled.then(web_time::Instant::now);
         let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
             crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
                 diagram::parse_or_unsupported(
@@ -274,7 +274,7 @@ impl Engine {
                         start.elapsed(),
                         preprocess.unwrap_or_default(),
                         parse,
-                        std::time::Duration::default(),
+                        web_time::Duration::default(),
                         text.len(),
                     );
                 }
@@ -285,7 +285,7 @@ impl Engine {
         };
         let parse = parse_start.map(|s| s.elapsed());
 
-        let sanitize_start = timing_enabled.then(std::time::Instant::now);
+        let sanitize_start = timing_enabled.then(web_time::Instant::now);
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
         let sanitize = sanitize_start.map(|s| s.elapsed());
 
@@ -361,15 +361,15 @@ impl Engine {
         preprocess: impl FnOnce(&Self) -> Result<Option<(String, ParseMetadata)>>,
     ) -> Result<Option<ParsedDiagramRender>> {
         let timing_enabled = Self::parse_timing_enabled();
-        let total_start = timing_enabled.then(std::time::Instant::now);
+        let total_start = timing_enabled.then(web_time::Instant::now);
 
-        let preprocess_start = timing_enabled.then(std::time::Instant::now);
+        let preprocess_start = timing_enabled.then(web_time::Instant::now);
         let Some((code, meta)) = preprocess(self)? else {
             return Ok(None);
         };
         let preprocess = preprocess_start.map(|s| s.elapsed());
 
-        let parse_start = timing_enabled.then(std::time::Instant::now);
+        let parse_start = timing_enabled.then(web_time::Instant::now);
         let parse_res = self.parse_render_semantic_model(&code, &meta);
         let parse = parse_start.map(|s| s.elapsed());
 
@@ -386,7 +386,7 @@ impl Engine {
                         start.elapsed(),
                         preprocess.unwrap_or_default(),
                         parse.unwrap_or_default(),
-                        std::time::Duration::default(),
+                        web_time::Duration::default(),
                         text.len(),
                     );
                 }
@@ -396,7 +396,7 @@ impl Engine {
             }
         };
 
-        let sanitize_start = timing_enabled.then(std::time::Instant::now);
+        let sanitize_start = timing_enabled.then(web_time::Instant::now);
         Self::sanitize_render_semantic_model(&mut model, &meta.effective_config);
         let sanitize = sanitize_start.map(|s| s.elapsed());
 

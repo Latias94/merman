@@ -9,6 +9,7 @@ members = [
   "crates/merman-ffi",
   "crates/merman-render",
   "crates/merman-uniffi",
+  "crates/merman-wasm",
   "crates/dugong",
   "crates/dugong-graphlib",
   "crates/manatee",
@@ -59,14 +60,18 @@ futures = "0.3.31"
 hashbrown = "0.16.1"
 lol_html = "2.7.1"
 url = "2.5.4"
-uuid = { version = "1.12.1", features = ["v4"] }
+uuid = { version = "1.12.1", features = ["v4", "js"] }
 chrono = { version = "0.4.40", features = ["clock"] }
+console_error_panic_hook = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 resvg = "0.46.0"
+serde-wasm-bindgen = "0.6"
 usvg = "0.46.0"
 tiny-skia = "0.11.4"
 svg2pdf = "0.13.0"
 unicode-width = "0.2.2"
+wasm-bindgen = "0.2"
+web-time = "1.1.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
@@ -77,6 +82,7 @@ merman-core = { path = "crates/merman-core", version = "0.7.0" }
 merman-ffi = { path = "crates/merman-ffi", version = "0.7.0" }
 merman-render = { path = "crates/merman-render", version = "0.7.0" }
 merman-uniffi = { path = "crates/merman-uniffi", version = "0.7.0" }
+merman-wasm = { path = "crates/merman-wasm", version = "0.7.0" }
 merman-cli = { path = "crates/merman-cli", version = "0.7.0" }
 dugong = { path = "crates/dugong", version = "0.7.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.7.0" }
