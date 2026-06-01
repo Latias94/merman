@@ -210,6 +210,10 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
     }
 }
 
+fn set_string_if_missing(map: &mut Map<String, Value>, key: &str, value: impl Into<String>) {
+    set_if_missing(map, key, Value::String(value.into()));
+}
+
 fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     match config.as_value().get("themeVariables") {
         Some(Value::Object(m)) => m.clone(),
@@ -864,17 +868,11 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "#161722", "#00296f", "#01629c",
     ];
 
-    // Minimal `theme-dark` seeds needed for diagram render parity when users set `theme: dark`.
-    //
-    // Mermaid's JS theme sets many more variables (and calculates derived values in `updateColors()`).
-    // We seed the commonly-consumed surfaces + xychart palette here; other missing values are left
-    // for future parity work as fixtures demand.
-    set_if_missing(&mut tv, "background", Value::String("#333".to_string()));
-    set_if_missing(
-        &mut tv,
-        "primaryColor",
-        Value::String("#1f2020".to_string()),
-    );
+    // Mermaid's dark theme is not just a palette switch: most readable text colors are derived
+    // from dark surface colors in `updateColors()`. Seed those diagram-facing variables here so
+    // headless renderers do not fall back to default-theme black text on dark backgrounds.
+    set_string_if_missing(&mut tv, "background", "#333");
+    set_string_if_missing(&mut tv, "primaryColor", "#1f2020");
     if get_truthy_string(&tv, "primaryTextColor").is_none() {
         if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
             if let Some(rgb) = parse_hex_rgb01(&primary_color) {
@@ -885,27 +883,18 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
             }
         }
     }
-    set_if_missing(&mut tv, "textColor", Value::String("#ccc".to_string()));
+    set_string_if_missing(&mut tv, "textColor", "#ccc");
     set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
-    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
-    set_if_missing(&mut tv, "border1", Value::String("#ccc".to_string()));
-    set_if_missing(
-        &mut tv,
-        "border2",
-        Value::String("rgba(255, 255, 255, 0.25)".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "labelBackground",
-        Value::String("#181818".to_string()),
-    );
-    set_if_missing(&mut tv, "titleColor", Value::String("#F9FFFE".to_string()));
-    set_if_missing(
-        &mut tv,
-        "errorBkgColor",
-        Value::String("#a44141".to_string()),
-    );
-    set_if_missing(&mut tv, "errorTextColor", Value::String("#ddd".to_string()));
+    set_string_if_missing(&mut tv, "fontSize", "16px");
+    set_string_if_missing(&mut tv, "border1", "#ccc");
+    set_string_if_missing(&mut tv, "border2", "rgba(255, 255, 255, 0.25)");
+    set_string_if_missing(&mut tv, "labelBackground", "#181818");
+    set_string_if_missing(&mut tv, "titleColor", "#F9FFFE");
+    set_if_missing(&mut tv, "THEME_COLOR_LIMIT", Value::Number(12.into()));
+    set_if_missing(&mut tv, "radius", Value::Number(5.into()));
+    set_if_missing(&mut tv, "strokeWidth", Value::Number(1.into()));
+    set_string_if_missing(&mut tv, "errorBkgColor", "#a44141");
+    set_string_if_missing(&mut tv, "errorTextColor", "#ddd");
 
     let primary_color =
         get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#1f2020".to_string());
@@ -932,13 +921,160 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "secondaryBorderColor",
         Value::String(mk_border_hsl(secondary_hsl, false)),
     );
+    let tertiary_hsl = adjust_hsl(primary_hsl, -160.0, 0.0, 0.0);
+    set_string_if_missing(&mut tv, "tertiaryColor", fmt_hsl(tertiary_hsl));
+    set_string_if_missing(
+        &mut tv,
+        "tertiaryBorderColor",
+        mk_border_hsl(tertiary_hsl, false),
+    );
+    set_string_if_missing(
+        &mut tv,
+        "secondaryTextColor",
+        invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)),
+    );
+    set_string_if_missing(
+        &mut tv,
+        "tertiaryTextColor",
+        invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)),
+    );
     ensure_gradient_theme_defaults(&mut tv);
 
-    set_if_missing(
+    let secondary_color =
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| fmt_hsl(secondary_hsl));
+    let secondary_text_color = get_truthy_string(&tv, "secondaryTextColor")
+        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)));
+    let tertiary_color =
+        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| fmt_hsl(tertiary_hsl));
+    let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#333".to_string());
+    let primary_text_color =
+        get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#e0dfdf".to_string());
+    let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#ccc".to_string());
+    let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "lightgrey".to_string());
+    let border1 = get_truthy_string(&tv, "border1").unwrap_or_else(|| "#ccc".to_string());
+    let border2 = get_truthy_string(&tv, "border2")
+        .unwrap_or_else(|| "rgba(255, 255, 255, 0.25)".to_string());
+    let primary_border_color =
+        get_truthy_string(&tv, "primaryBorderColor").unwrap_or_else(|| "#cccccc".to_string());
+    let secondary_border_color = get_truthy_string(&tv, "secondaryBorderColor")
+        .unwrap_or_else(|| mk_border_hsl(secondary_hsl, false));
+
+    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
+    set_string_if_missing(&mut tv, "mainContrastColor", "lightgrey");
+    set_string_if_missing(
         &mut tv,
-        "labelTextColor",
-        Value::String("lightgrey".to_string()),
+        "darkTextColor",
+        "hsl(28.5714285714, 17.3553719008%, 86.2745098039%)",
     );
+    set_string_if_missing(&mut tv, "lineColor", "lightgrey");
+    set_string_if_missing(&mut tv, "arrowheadColor", "lightgrey");
+
+    // Flowchart/block/class surfaces.
+    set_string_if_missing(&mut tv, "nodeBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "nodeBorder", border1.clone());
+    set_string_if_missing(&mut tv, "clusterBkg", secondary_color.clone());
+    set_string_if_missing(&mut tv, "clusterBorder", border2.clone());
+    set_string_if_missing(&mut tv, "defaultLinkColor", line_color.clone());
+    set_string_if_missing(&mut tv, "edgeLabelBackground", "hsl(0, 0%, 34.4117647059%)");
+    set_string_if_missing(&mut tv, "classText", primary_text_color.clone());
+
+    // Sequence diagram and note text must stay light on dark actor/message backgrounds.
+    set_string_if_missing(&mut tv, "actorBorder", border1.clone());
+    set_string_if_missing(&mut tv, "actorBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "actorTextColor", "lightgrey");
+    set_string_if_missing(&mut tv, "actorLineColor", border1.clone());
+    set_string_if_missing(&mut tv, "signalColor", "lightgrey");
+    set_string_if_missing(&mut tv, "signalTextColor", "lightgrey");
+    set_string_if_missing(&mut tv, "labelBoxBkgColor", primary_color.clone());
+    set_string_if_missing(&mut tv, "labelBoxBorderColor", border1.clone());
+    set_string_if_missing(&mut tv, "labelTextColor", "lightgrey");
+    set_string_if_missing(&mut tv, "loopTextColor", "lightgrey");
+    set_string_if_missing(&mut tv, "noteBorderColor", secondary_border_color.clone());
+    set_string_if_missing(&mut tv, "noteBkgColor", secondary_color.clone());
+    set_string_if_missing(&mut tv, "noteTextColor", secondary_text_color.clone());
+    set_string_if_missing(&mut tv, "activationBorderColor", border1);
+    set_string_if_missing(&mut tv, "activationBkgColor", secondary_color.clone());
+    set_string_if_missing(&mut tv, "sequenceNumberColor", "black");
+    set_string_if_missing(&mut tv, "rectBkgColor", tertiary_color.clone());
+
+    // Gantt text colors are deliberately not all the same: completed-task labels use the
+    // inverse of the light completed-task fill, while outside labels stay light on dark canvas.
+    set_string_if_missing(
+        &mut tv,
+        "sectionBkgColor",
+        "hsl(50, 26.087%, 48.2352941176%)",
+    );
+    set_string_if_missing(&mut tv, "altSectionBkgColor", background.clone());
+    set_string_if_missing(&mut tv, "sectionBkgColor2", "#EAE8D9");
+    set_string_if_missing(
+        &mut tv,
+        "excludeBkgColor",
+        "hsl(50, 26.087%, 38.2352941176%)",
+    );
+    set_string_if_missing(&mut tv, "taskBorderColor", "rgba(255, 255, 255, 70)");
+    set_string_if_missing(
+        &mut tv,
+        "taskBkgColor",
+        "hsl(180, 1.5873015873%, 35.3529411765%)",
+    );
+    set_string_if_missing(
+        &mut tv,
+        "taskTextColor",
+        "hsl(28.5714285714, 17.3553719008%, 86.2745098039%)",
+    );
+    set_string_if_missing(&mut tv, "taskTextLightColor", "lightgrey");
+    set_string_if_missing(&mut tv, "taskTextOutsideColor", "lightgrey");
+    set_string_if_missing(&mut tv, "taskTextClickableColor", "#003163");
+    set_string_if_missing(&mut tv, "activeTaskBorderColor", "rgba(255, 255, 255, 50)");
+    set_string_if_missing(&mut tv, "activeTaskBkgColor", "#81B1DB");
+    set_string_if_missing(&mut tv, "gridColor", "lightgrey");
+    set_string_if_missing(&mut tv, "doneTaskBkgColor", "lightgrey");
+    set_string_if_missing(&mut tv, "doneTaskBorderColor", "grey");
+    set_string_if_missing(&mut tv, "critBorderColor", "#E83737");
+    set_string_if_missing(&mut tv, "critBkgColor", "#E83737");
+    set_string_if_missing(&mut tv, "taskTextDarkColor", "#2c2c2c");
+    set_string_if_missing(&mut tv, "todayLineColor", "#DB5757");
+    set_string_if_missing(&mut tv, "vertLineColor", "#00BFFF");
+
+    // C4, architecture, ER, and state surfaces.
+    set_string_if_missing(&mut tv, "personBorder", primary_border_color.clone());
+    set_string_if_missing(&mut tv, "personBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "archEdgeColor", line_color.clone());
+    set_string_if_missing(&mut tv, "archEdgeArrowColor", line_color.clone());
+    set_string_if_missing(&mut tv, "archEdgeWidth", "3");
+    set_string_if_missing(
+        &mut tv,
+        "archGroupBorderColor",
+        primary_border_color.clone(),
+    );
+    set_string_if_missing(&mut tv, "archGroupBorderWidth", "2px");
+    set_string_if_missing(&mut tv, "rowOdd", "hsl(180, 1.5873015873%, 17.3529411765%)");
+    set_string_if_missing(&mut tv, "rowEven", "hsl(180, 1.5873015873%, 2.3529411765%)");
+    set_string_if_missing(&mut tv, "transitionColor", line_color.clone());
+    set_string_if_missing(&mut tv, "transitionLabelColor", text_color.clone());
+    set_string_if_missing(&mut tv, "stateLabelColor", primary_text_color.clone());
+    set_string_if_missing(&mut tv, "stateBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "labelBackgroundColor", primary_color.clone());
+    set_string_if_missing(&mut tv, "compositeBackground", background);
+    set_string_if_missing(&mut tv, "altBackground", "#555");
+    set_string_if_missing(&mut tv, "compositeTitleBackground", primary_color.clone());
+    let composite_border =
+        get_truthy_string(&tv, "nodeBorder").unwrap_or_else(|| "#ccc".to_string());
+    set_string_if_missing(&mut tv, "compositeBorder", composite_border);
+    set_string_if_missing(&mut tv, "innerEndBackground", primary_border_color.clone());
+    set_string_if_missing(&mut tv, "specialStateColor", "#f4f4f4");
+    set_string_if_missing(&mut tv, "attributeBackgroundColorOdd", "hsl(0, 0%, 32%)");
+    set_string_if_missing(&mut tv, "attributeBackgroundColorEven", "hsl(0, 0%, 22%)");
+    set_string_if_missing(&mut tv, "noteFontWeight", "normal");
+    set_string_if_missing(&mut tv, "fontWeight", "normal");
+    set_string_if_missing(
+        &mut tv,
+        "dropShadow",
+        "drop-shadow( 1px 2px 2px rgba(185,185,185,1))",
+    );
+
     // Mermaid's `config.ts` calls `theme-dark.getThemeVariables(conf.themeVariables)` without
     // injecting `darkMode=true`, so `theme-dark.js` falls back to `labelTextColor` here.
     let label_text_color =
@@ -984,6 +1120,25 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
             Value::String(scale_label_color.clone()),
         );
     }
+
+    set_string_if_missing(&mut tv, "pieTitleTextColor", line_color.clone());
+    set_string_if_missing(&mut tv, "pieSectionTextColor", text_color);
+    set_string_if_missing(&mut tv, "pieLegendTextColor", line_color.clone());
+    set_string_if_missing(&mut tv, "branchLabelColor", "#2c2c2c");
+    set_string_if_missing(&mut tv, "gitBranchLabel0", "#2c2c2c");
+    set_string_if_missing(&mut tv, "gitBranchLabel1", "lightgrey");
+    set_string_if_missing(&mut tv, "gitBranchLabel2", "lightgrey");
+    set_string_if_missing(&mut tv, "gitBranchLabel3", "#2c2c2c");
+    for i in 4..8 {
+        set_string_if_missing(&mut tv, &format!("gitBranchLabel{i}"), "lightgrey");
+    }
+    set_string_if_missing(&mut tv, "tagLabelColor", primary_text_color);
+    set_string_if_missing(&mut tv, "tagLabelBackground", primary_color);
+    set_string_if_missing(&mut tv, "tagLabelBorder", primary_border_color);
+    set_string_if_missing(&mut tv, "tagLabelFontSize", "10px");
+    set_string_if_missing(&mut tv, "commitLabelColor", secondary_text_color);
+    set_string_if_missing(&mut tv, "commitLabelBackground", secondary_color);
+    set_string_if_missing(&mut tv, "commitLabelFontSize", "10px");
 
     // `theme-dark` xychart palette + colors.
     // Source: `theme-dark.js`.
@@ -1223,8 +1378,10 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
 
     // `theme-neutral` constructor defaults.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
-    set_if_missing(&mut tv, "background", Value::String("#ffffff".to_string()));
-    set_if_missing(&mut tv, "primaryColor", Value::String("#eee".to_string()));
+    set_string_if_missing(&mut tv, "background", "#ffffff");
+    set_string_if_missing(&mut tv, "primaryColor", "#eee");
+    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
+    set_string_if_missing(&mut tv, "fontSize", "16px");
     if get_truthy_string(&tv, "primaryTextColor").is_none() {
         if let Some(primary_color) = get_truthy_string(&tv, "primaryColor") {
             if let Some(rgb) = parse_hex_rgb01(&primary_color) {
@@ -1261,11 +1418,13 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
             s_pct: 0.0,
             l_pct: 98.9215686275,
         });
+    let tertiary_hsl = adjust_hsl(primary_hsl, -160.0, 0.0, 0.0);
     set_if_missing(
         &mut tv,
         "secondaryColor",
         Value::String(fmt_hsl(secondary_hsl)),
     );
+    set_string_if_missing(&mut tv, "tertiaryColor", fmt_hsl(tertiary_hsl));
     set_if_missing(
         &mut tv,
         "primaryBorderColor",
@@ -1276,14 +1435,151 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "secondaryBorderColor",
         Value::String(mk_border_hsl(secondary_hsl, false)),
     );
+    set_string_if_missing(
+        &mut tv,
+        "tertiaryBorderColor",
+        mk_border_hsl(tertiary_hsl, false),
+    );
+    set_string_if_missing(
+        &mut tv,
+        "secondaryTextColor",
+        invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)),
+    );
+    set_string_if_missing(
+        &mut tv,
+        "tertiaryTextColor",
+        invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)),
+    );
     ensure_gradient_theme_defaults(&mut tv);
 
-    set_if_missing(&mut tv, "labelTextColor", Value::String("#333".to_string()));
-    set_if_missing(
+    let secondary_color =
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| fmt_hsl(secondary_hsl));
+    let tertiary_color =
+        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| fmt_hsl(tertiary_hsl));
+    let secondary_text_color = get_truthy_string(&tv, "secondaryTextColor")
+        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(secondary_hsl)));
+    let tertiary_text_color = get_truthy_string(&tv, "tertiaryTextColor")
+        .unwrap_or_else(|| invert_rgb01_to_rgb_string(hsl_to_rgb01(tertiary_hsl)));
+    let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#ffffff".to_string());
+    let primary_text_color =
+        get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#111111".to_string());
+    let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#000000".to_string());
+    let primary_border_color = get_truthy_string(&tv, "primaryBorderColor")
+        .unwrap_or_else(|| mk_border_hsl(primary_hsl, false));
+    let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
+
+    set_string_if_missing(&mut tv, "textColor", "#000000");
+    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
+    set_string_if_missing(&mut tv, "lineColor", "#666");
+    set_string_if_missing(&mut tv, "border1", "#999");
+    set_string_if_missing(&mut tv, "border2", contrast.clone());
+    set_string_if_missing(&mut tv, "note", "#ffa");
+    set_string_if_missing(&mut tv, "text", "#333");
+    set_string_if_missing(&mut tv, "critical", "#d42");
+    set_string_if_missing(&mut tv, "done", "#bbb");
+    set_string_if_missing(&mut tv, "arrowheadColor", "#333333");
+    set_if_missing(&mut tv, "THEME_COLOR_LIMIT", Value::Number(12.into()));
+    set_if_missing(&mut tv, "radius", Value::Number(5.into()));
+    set_if_missing(&mut tv, "strokeWidth", Value::Number(1.into()));
+
+    // Flowchart/block/class text follows the neutral foreground family, not the default theme's
+    // purple/yellow assumptions.
+    set_string_if_missing(&mut tv, "nodeBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "nodeBorder", "#999");
+    set_string_if_missing(&mut tv, "clusterBkg", secondary_color.clone());
+    set_string_if_missing(&mut tv, "clusterBorder", contrast);
+    set_string_if_missing(&mut tv, "defaultLinkColor", "#666");
+    set_string_if_missing(&mut tv, "titleColor", "#333");
+    set_string_if_missing(&mut tv, "edgeLabelBackground", "white");
+    set_string_if_missing(&mut tv, "classText", primary_text_color.clone());
+
+    // Sequence and note colors.
+    set_string_if_missing(&mut tv, "actorBorder", "hsl(0, 0%, 83%)");
+    set_string_if_missing(&mut tv, "actorBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "actorTextColor", "#333");
+    set_string_if_missing(&mut tv, "actorLineColor", "hsl(0, 0%, 83%)");
+    set_string_if_missing(&mut tv, "signalColor", "#333");
+    set_string_if_missing(&mut tv, "signalTextColor", "#333");
+    set_string_if_missing(&mut tv, "labelBoxBkgColor", primary_color.clone());
+    set_string_if_missing(&mut tv, "labelBoxBorderColor", "hsl(0, 0%, 83%)");
+    set_string_if_missing(&mut tv, "labelTextColor", "#333");
+    set_string_if_missing(&mut tv, "loopTextColor", "#333");
+    set_string_if_missing(&mut tv, "noteBorderColor", "#999");
+    set_string_if_missing(&mut tv, "noteBkgColor", "#666");
+    set_string_if_missing(&mut tv, "noteTextColor", "#fff");
+    set_string_if_missing(&mut tv, "activationBorderColor", "#666");
+    set_string_if_missing(&mut tv, "activationBkgColor", "#f4f4f4");
+    set_string_if_missing(&mut tv, "sequenceNumberColor", "white");
+
+    // Gantt and general text colors.
+    set_string_if_missing(&mut tv, "sectionBkgColor", "hsl(0, 0%, 73.9215686275%)");
+    set_string_if_missing(&mut tv, "altSectionBkgColor", "white");
+    set_string_if_missing(&mut tv, "sectionBkgColor2", "hsl(0, 0%, 73.9215686275%)");
+    set_string_if_missing(&mut tv, "excludeBkgColor", "#eeeeee");
+    set_string_if_missing(&mut tv, "taskBorderColor", "hsl(0, 0%, 34.1176470588%)");
+    set_string_if_missing(&mut tv, "taskBkgColor", "#707070");
+    set_string_if_missing(&mut tv, "taskTextLightColor", "white");
+    set_string_if_missing(&mut tv, "taskTextColor", "white");
+    set_string_if_missing(&mut tv, "taskTextDarkColor", "#333");
+    set_string_if_missing(&mut tv, "taskTextOutsideColor", "#333");
+    set_string_if_missing(&mut tv, "taskTextClickableColor", "#003163");
+    set_string_if_missing(
         &mut tv,
-        "scaleLabelColor",
-        Value::String("#333".to_string()),
+        "activeTaskBorderColor",
+        "hsl(0, 0%, 34.1176470588%)",
     );
+    set_string_if_missing(&mut tv, "activeTaskBkgColor", primary_color.clone());
+    set_string_if_missing(&mut tv, "gridColor", "hsl(0, 0%, 90%)");
+    set_string_if_missing(&mut tv, "doneTaskBkgColor", "#bbb");
+    set_string_if_missing(&mut tv, "doneTaskBorderColor", "#666");
+    set_string_if_missing(&mut tv, "critBkgColor", "#d42");
+    set_string_if_missing(
+        &mut tv,
+        "critBorderColor",
+        "hsl(9.4736842105, 72.1518987342%, 44.5098039216%)",
+    );
+    set_string_if_missing(&mut tv, "todayLineColor", "#d42");
+    set_string_if_missing(&mut tv, "vertLineColor", "#d42");
+
+    // C4, architecture, ER, and state surfaces.
+    set_string_if_missing(&mut tv, "personBorder", primary_border_color.clone());
+    set_string_if_missing(&mut tv, "personBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "archEdgeColor", "#666");
+    set_string_if_missing(&mut tv, "archEdgeArrowColor", "#666");
+    set_string_if_missing(&mut tv, "archEdgeWidth", "3");
+    set_string_if_missing(
+        &mut tv,
+        "archGroupBorderColor",
+        primary_border_color.clone(),
+    );
+    set_string_if_missing(&mut tv, "archGroupBorderWidth", "2px");
+    set_string_if_missing(&mut tv, "rowOdd", "hsl(0, 0%, 100%)");
+    set_string_if_missing(&mut tv, "rowEven", "#f4f4f4");
+    set_string_if_missing(&mut tv, "transitionColor", "#000");
+    set_string_if_missing(&mut tv, "transitionLabelColor", text_color.clone());
+    set_string_if_missing(&mut tv, "stateLabelColor", primary_text_color.clone());
+    set_string_if_missing(&mut tv, "stateBkg", primary_color.clone());
+    set_string_if_missing(&mut tv, "labelBackgroundColor", primary_color.clone());
+    set_string_if_missing(&mut tv, "compositeBackground", background);
+    set_string_if_missing(&mut tv, "altBackground", "#f4f4f4");
+    set_string_if_missing(&mut tv, "compositeTitleBackground", primary_color.clone());
+    set_string_if_missing(&mut tv, "stateBorder", "#000");
+    set_string_if_missing(&mut tv, "innerEndBackground", primary_border_color.clone());
+    set_string_if_missing(&mut tv, "specialStateColor", "#222");
+    set_string_if_missing(&mut tv, "errorBkgColor", tertiary_color);
+    set_string_if_missing(&mut tv, "errorTextColor", tertiary_text_color);
+    set_string_if_missing(&mut tv, "attributeBackgroundColorOdd", "#ffffff");
+    set_string_if_missing(&mut tv, "attributeBackgroundColorEven", "#f2f2f2");
+    set_string_if_missing(&mut tv, "noteFontWeight", "normal");
+    set_string_if_missing(&mut tv, "fontWeight", "normal");
+    set_string_if_missing(
+        &mut tv,
+        "dropShadow",
+        "drop-shadow( 1px 2px 2px rgba(185,185,185,1))",
+    );
+
+    set_string_if_missing(&mut tv, "scaleLabelColor", "#333");
     let scale_label_color =
         get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "#333".to_string());
 
@@ -1328,6 +1624,25 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
             Value::String(scale_label_color.clone()),
         );
     }
+
+    set_string_if_missing(&mut tv, "pieTitleTextColor", "#333");
+    set_string_if_missing(&mut tv, "pieSectionTextColor", text_color);
+    set_string_if_missing(&mut tv, "pieLegendTextColor", "#333");
+    set_string_if_missing(&mut tv, "branchLabelColor", "#333");
+    set_string_if_missing(&mut tv, "gitBranchLabel0", "#333");
+    set_string_if_missing(&mut tv, "gitBranchLabel1", "white");
+    set_string_if_missing(&mut tv, "gitBranchLabel2", "#333");
+    set_string_if_missing(&mut tv, "gitBranchLabel3", "white");
+    for i in 4..8 {
+        set_string_if_missing(&mut tv, &format!("gitBranchLabel{i}"), "#333");
+    }
+    set_string_if_missing(&mut tv, "tagLabelColor", primary_text_color);
+    set_string_if_missing(&mut tv, "tagLabelBackground", primary_color);
+    set_string_if_missing(&mut tv, "tagLabelBorder", primary_border_color);
+    set_string_if_missing(&mut tv, "tagLabelFontSize", "10px");
+    set_string_if_missing(&mut tv, "commitLabelColor", secondary_text_color);
+    set_string_if_missing(&mut tv, "commitLabelBackground", secondary_color);
+    set_string_if_missing(&mut tv, "commitLabelFontSize", "10px");
 
     // `theme-neutral` xychart palette + colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
@@ -1829,6 +2144,32 @@ mod tests {
             tv.get("gradientStart").and_then(|v| v.as_str()),
             Some("#cccccc")
         );
+        assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#1f2020"));
+        assert_eq!(
+            tv.get("lineColor").and_then(|v| v.as_str()),
+            Some("lightgrey")
+        );
+        assert_eq!(
+            tv.get("actorTextColor").and_then(|v| v.as_str()),
+            Some("lightgrey")
+        );
+        assert_eq!(
+            tv.get("classText").and_then(|v| v.as_str()),
+            Some("#e0dfdf")
+        );
+        assert_eq!(
+            tv.get("noteTextColor").and_then(|v| v.as_str()),
+            Some("rgb(183.8476190475, 181.5523809523, 181.5523809523)")
+        );
+        assert_eq!(
+            tv.get("taskTextDarkColor").and_then(|v| v.as_str()),
+            Some("#2c2c2c")
+        );
+        assert_eq!(
+            tv.get("attributeBackgroundColorOdd")
+                .and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 32%)")
+        );
     }
 
     #[test]
@@ -1865,6 +2206,31 @@ mod tests {
         assert_eq!(
             tv.get("gradientStop").and_then(|v| v.as_str()),
             Some("hsl(0, 0%, 88.9215686275%)")
+        );
+        assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#eee"));
+        assert_eq!(
+            tv.get("textColor").and_then(|v| v.as_str()),
+            Some("#000000")
+        );
+        assert_eq!(
+            tv.get("actorTextColor").and_then(|v| v.as_str()),
+            Some("#333")
+        );
+        assert_eq!(
+            tv.get("classText").and_then(|v| v.as_str()),
+            Some("#111111")
+        );
+        assert_eq!(
+            tv.get("noteBkgColor").and_then(|v| v.as_str()),
+            Some("#666")
+        );
+        assert_eq!(
+            tv.get("noteTextColor").and_then(|v| v.as_str()),
+            Some("#fff")
+        );
+        assert_eq!(
+            tv.get("taskTextOutsideColor").and_then(|v| v.as_str()),
+            Some("#333")
         );
     }
 }
