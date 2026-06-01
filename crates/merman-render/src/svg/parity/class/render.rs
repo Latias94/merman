@@ -116,7 +116,19 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     let root_open = write_class_svg_root_open(&mut out, model, diagram_id, aria_roledescription)?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    out.push_str("<style></style>");
+    let css = class_css(
+        diagram_id,
+        effective_config,
+        settings
+            .text_style
+            .font_family
+            .as_deref()
+            .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif"),
+        settings.font_size,
+    );
+    out.push_str("<style>");
+    out.push_str(&css);
+    out.push_str("</style>");
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");

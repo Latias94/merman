@@ -4,6 +4,26 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+fn assert_no_empty_style_elements(name: &str, svg: &str) {
+    let mut cursor = 0;
+    while let Some(rel_start) = svg[cursor..].find("<style") {
+        let tag_start = cursor + rel_start;
+        let Some(rel_tag_end) = svg[tag_start..].find('>') else {
+            panic!("{name}: malformed style start tag");
+        };
+        let content_start = tag_start + rel_tag_end + 1;
+        let Some(rel_close) = svg[content_start..].find("</style>") else {
+            panic!("{name}: malformed style element");
+        };
+        let content_end = content_start + rel_close;
+        assert!(
+            !svg[content_start..content_end].trim().is_empty(),
+            "{name}: rendered SVG contains an empty <style> element"
+        );
+        cursor = content_end + "</style>".len();
+    }
+}
+
 #[test]
 fn pipeline_bench_fixtures_are_benchmarkable() {
     let fixtures_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -73,5 +93,6 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             "{name}: render returned an empty SVG for {:?}",
             parsed.meta.diagram_type
         );
+        assert_no_empty_style_elements(&name, &svg);
     }
 }
