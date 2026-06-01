@@ -35,7 +35,7 @@ The first release set is:
 
 Merman CI keeps publication separate from validation:
 
-- `platform-script-syntax` checks Python and Apple shell entry points.
+- `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
 - `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
 - `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.
 - `apple-ffi-smoke` builds `Merman.xcframework` and validates the root Swift package.

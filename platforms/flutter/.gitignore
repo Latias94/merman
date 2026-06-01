@@ -3,6 +3,7 @@
 /pubspec.lock
 /android/src/main/jniLibs/
 /ios/Merman.xcframework/
+/ios/MermanFFI.xcframework/
 /macos/Libraries/
 /windows/merman_ffi.dll
 /linux/lib/

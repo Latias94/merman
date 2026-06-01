@@ -174,6 +174,7 @@ def main() -> int:
         step("Flutter native packaging scaffold checks")
         bash = require_command("bash")
         for path in [
+            FLUTTER_ROOT / "build-ios.sh",
             FLUTTER_ROOT / "build-desktop.sh",
             FLUTTER_ROOT / "ios" / "merman.podspec",
             FLUTTER_ROOT / "ios" / "Classes" / "MermanFlutterPlugin.swift",
@@ -186,6 +187,7 @@ def main() -> int:
         ]:
             if not path.exists():
                 raise RuntimeError(f"required Flutter packaging file not found: {path}")
+        run([bash, "-n", str(FLUTTER_ROOT / "build-ios.sh")])
         run([bash, "-n", str(FLUTTER_ROOT / "build-desktop.sh")])
 
         step("Dart FFI native smoke")
