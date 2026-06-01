@@ -485,6 +485,23 @@ lands about `3.75px` farther right.
   this row deleted. Continue the stale-table audit in the same explicit one-row-at-a-time style for
   the remaining candidates (`test()`, `+handle(...)`, `+query(...)`, `+request(...)`) instead of
   treating the whole historical caution note as a permanent stop sign.
+- The second delete-one-verify-one pass on 2026-06-02 proved another stale pair: removing
+  `test()` from both `lookup_class_calc_text_width_px` and
+  `lookup_class_rendered_width_px` reduced the Class text lookup budget from `494` to `492`
+  without changing the focused `upstream_cypress_classdiagram_spec_should_handle_an_empty_class_body_with_empty_braces_029`
+  tail (`200.75px -> 201.25px`) and without adding any new Class `parity-root` failures. The full
+  Class root report still remained the same 14 fixtures. Keep those `test()` rows deleted. The
+  remaining audited-next candidates are now `+handle(...)`, `+query(...)`, and
+  `+request(...)`.
+- A follow-up grouped deletion experiment on 2026-06-02 showed that the three remaining method
+  pairs are not yet pure stale rows. Removing `+handle(req: Request) : Response`,
+  `+query(sql: String) : Rows`, and `+request() : Response` did reduce the raw lookup budget to
+  `486`, but it swapped one Class residual rather than preserving the current set: the full
+  `parity-root` report introduced `stress_class_styles_multiple_classdef_016`
+  (`890.25px -> 890.5px`) while dropping another row, so the residual count stayed at 14 but the
+  membership changed. That is not good enough for the stale-table lane. Keep those six method rows
+  for now, and revisit them only with finer-grained one-row-at-a-time probes or generated evidence
+  that explains the style-definition interaction.
 - Architecture junction group membership must come from `junction.in` only. Do not infer group
   parents from neighboring services; Mermaid 11.15 does not do that in `addJunctions(...)`.
 - Architecture `groupAlignments` must be generated in the same endpoint traversal order as
