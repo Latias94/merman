@@ -10,7 +10,6 @@ import { CodeEditor } from "./components/Editor";
 import { Preview } from "./components/Preview";
 import { StatusBar } from "./components/StatusBar";
 import { ExampleGallery } from "./components/ExampleGallery";
-import { HistoryPanel } from "./components/HistoryPanel";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
 import { normalizeThemeName } from "@merman/web";
@@ -62,9 +61,6 @@ export default function App() {
         <main className="flex-1 overflow-hidden relative">
           {/* 示例库覆盖层 */}
           <ExampleGallery />
-
-          {/* 历史记录覆盖层 */}
-          <HistoryPanel />
 
           {/* 可调整大小的面板 */}
           <ResizablePanelGroup

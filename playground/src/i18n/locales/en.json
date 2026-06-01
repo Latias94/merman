@@ -5,7 +5,6 @@
   },
   "toolbar": {
     "examples": "Examples",
-    "history": "History",
     "theme": "Theme",
     "export": "Export",
     "share": "Share",
@@ -74,16 +73,6 @@
       "mindmap": "Mindmap",
       "git": "Git"
     }
-  },
-  "history": {
-    "title": "History",
-    "description": "Your recent diagrams (stored locally)",
-    "empty": "No history yet",
-    "emptyDesc": "Your edited diagrams will appear here",
-    "clear": "Clear All",
-    "confirmClear": "Clear all history?",
-    "load": "Load",
-    "delete": "Delete"
   },
   "editor": {
     "placeholder": "Enter your Mermaid code here..."

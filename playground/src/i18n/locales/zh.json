@@ -5,7 +5,6 @@
   },
   "toolbar": {
     "examples": "示例",
-    "history": "历史",
     "theme": "主题",
     "export": "导出",
     "share": "分享",
@@ -74,16 +73,6 @@
       "mindmap": "思维导图",
       "git": "Git 图"
     }
-  },
-  "history": {
-    "title": "历史记录",
-    "description": "您最近的图表（本地存储）",
-    "empty": "暂无历史记录",
-    "emptyDesc": "您编辑的图表将显示在这里",
-    "clear": "清空全部",
-    "confirmClear": "确认清空所有历史记录？",
-    "load": "加载",
-    "delete": "删除"
   },
   "editor": {
     "placeholder": "在此输入 Mermaid 代码..."

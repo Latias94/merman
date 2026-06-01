@@ -23,8 +23,6 @@ interface AppState {
   isDarkMode: boolean;
 
   // 面板状态
-  showHistory: boolean;
-  toggleHistory: () => void;
   showExamples: boolean;
   toggleExamples: () => void;
 
@@ -81,12 +79,8 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   // 面板状态
-  showHistory: false,
-  toggleHistory: () =>
-    set((state) => ({ showHistory: !state.showHistory, showExamples: false })),
   showExamples: false,
-  toggleExamples: () =>
-    set((state) => ({ showExamples: !state.showExamples, showHistory: false })),
+  toggleExamples: () => set((state) => ({ showExamples: !state.showExamples })),
 
   // 渲染状态
   lastRenderTime: 0,

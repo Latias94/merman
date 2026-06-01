@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Theme, type UITheme } from "@/src/store";
-import { useHistory } from "@/src/hooks/useHistory";
 import { useShare } from "@/src/hooks/useShare";
 import {
   exportSVG,
@@ -35,7 +34,6 @@ import { toast, Toaster } from "sonner";
 import {
   Download,
   Share2,
-  History,
   BookOpen,
   Palette,
   Sun,
@@ -65,14 +63,11 @@ export function Toolbar() {
     setDiagramTheme,
     uiTheme,
     setUITheme,
-    toggleHistory,
     toggleExamples,
-    showHistory,
     showExamples,
     lastRenderTime,
     diagramType,
   } = useAppStore();
-  const { addToHistory } = useHistory();
   const { copyShareUrl } = useShare();
   const { render, renderAscii, getThemes } = useMerman();
   const [isExporting, setIsExporting] = useState(false);
@@ -112,9 +107,8 @@ export function Toolbar() {
       return;
     }
     exportSVG(currentSvg, "merman-diagram");
-    addToHistory(code, diagramTheme, t("export.svg"));
     toast.success(t("export.svg") + " - OK");
-  }, [currentSvg, code, diagramTheme, addToHistory, t]);
+  }, [currentSvg, t]);
 
   // 导出 PNG
   const handleExportPNG = useCallback(async () => {
@@ -125,14 +119,13 @@ export function Toolbar() {
     setIsExporting(true);
     try {
       await exportPNG(currentSvg, "merman-diagram", 2);
-      addToHistory(code, diagramTheme, t("export.png"));
       toast.success(t("export.png") + " - OK");
     } catch {
       toast.error(t("export.title") + " failed");
     } finally {
       setIsExporting(false);
     }
-  }, [currentSvg, code, diagramTheme, addToHistory, t]);
+  }, [currentSvg, t]);
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
@@ -146,9 +139,8 @@ export function Toolbar() {
       return;
     }
     exportASCII(ascii, "merman-diagram");
-    addToHistory(code, diagramTheme, t("export.ascii"));
     toast.success(t("export.ascii") + " - OK");
-  }, [code, diagramType, diagramTheme, addToHistory, renderAscii, t]);
+  }, [code, diagramType, renderAscii, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -251,21 +243,6 @@ export function Toolbar() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.examples")}</TooltipContent>
-          </Tooltip>
-
-          {/* 历史按钮 */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={showHistory ? "secondary" : "ghost"}
-                size="sm"
-                onClick={toggleHistory}
-              >
-                <History className="size-4" />
-                <span className="hidden sm:inline">{t("toolbar.history")}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("toolbar.history")}</TooltipContent>
           </Tooltip>
 
           <BenchDialog />
