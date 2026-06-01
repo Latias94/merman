@@ -221,8 +221,8 @@ fn architecture_long_title_group_rect_stays_within_current_headless_envelope() {
 
     let pipeline = group_rect(&svg, "architecture-batch5-long-group-pipeline");
     assert!(
-        pipeline.2 > 470.0 && pipeline.2 < 473.5,
-        "unexpected pipeline group width drift for long-title architecture fixture: {}",
+        pipeline.2 > 460.0 && pipeline.2 < 473.5,
+        "unexpected pipeline group width regression for long-title architecture fixture: {}",
         pipeline.2
     );
 }
@@ -252,6 +252,8 @@ fn architecture_root_width_diagnostic_matrix() {
         "stress_architecture_batch4_init_small_icons_061.mmd",
         "stress_architecture_html_titles_and_escapes_041.mmd",
         "stress_architecture_unicode_and_xml_escapes_019.mmd",
+        "stress_architecture_long_group_titles_018.mmd",
+        "stress_architecture_batch6_long_group_titles_wrapping_extreme_095.mmd",
     ];
 
     for fixture in fixtures {

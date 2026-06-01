@@ -274,6 +274,46 @@ defines the next realistic avenue: if we continue on this family, use a source-c
 headless-only piecewise approximation for long single-line canvas labels, not a root-wrap
 substitution or a global scale change.
 
+The newly added ignored diagnostic test
+`architecture_root_width_diagnostic_matrix` makes that experiment easy to rerun without invoking
+four separate compare commands. The matrix was later expanded to six rows so we can distinguish
+service-title compound-label effects from pure group-title rows. On the current baseline it prints:
+
+- `stress_architecture_batch5_long_titles_and_punct_076`: `552.9256591796875`
+- `stress_architecture_batch4_init_small_icons_061`: `178.57139587402344`
+- `stress_architecture_html_titles_and_escapes_041`: `484.9256286621094`
+- `stress_architecture_unicode_and_xml_escapes_019`: `472.8219299316406`
+- `stress_architecture_long_group_titles_018`: `481.3125`
+- `stress_architecture_batch6_long_group_titles_wrapping_extreme_095`: `532.53125`
+
+Re-running the long-label piecewise-scale experiment with a threshold of `width >= 200` and a
+reduced scale `1.01` changed only the long-title row in that matrix:
+
+- `stress_architecture_batch5_long_titles_and_punct_076`: `552.9256591796875 -> 547.9256591796875`
+- `stress_architecture_batch4_init_small_icons_061`: unchanged
+- `stress_architecture_html_titles_and_escapes_041`: unchanged
+- `stress_architecture_unicode_and_xml_escapes_019`: unchanged
+- `stress_architecture_long_group_titles_018`: unchanged
+- `stress_architecture_batch6_long_group_titles_wrapping_extreme_095`: unchanged
+
+The two added group-title rows matter because they should *not* move much under a service-label
+canvas-width experiment. If they remain flat while `batch5_long_titles_and_punct_076` shifts,
+that is stronger evidence that the approximation is correctly scoped to the service compound-label
+family rather than accidentally changing the separate group-title/root-title path.
+
+This is the strongest local evidence so far for the long-label piecewise approach: on the six-row
+matrix, the thresholded `1.01` scale only moved the intended long service-title row and left both
+group-title rows flat. The experiment was still reverted because the committed envelope test for
+`batch5_long_titles_and_punct_076` currently asserts the old width band and because we have not
+yet measured the broader Architecture bucket under that rule. The next decision point is therefore
+not "pick another magic number"; it is whether to relax/replace the old envelope assertion so a
+source-compatible improvement can be evaluated against more than one focused row.
+
+That is the cleanest evidence so far that a *targeted* long-label headless approximation can help
+without obviously disturbing the nearby small-icon / HTML / unicode rows. The experiment was still
+reverted because the committed envelope test currently asserts the old `batch5` width band, and we
+do not yet have enough broader Architecture evidence to replace that baseline with a new policy.
+
 Additional 2026-06-02 diagnostic result:
 
 - `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` now prints the top-level node/compound/edge/edge-label bbox

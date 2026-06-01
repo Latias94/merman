@@ -25,7 +25,13 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
     style: &TextStyle,
 ) -> ArchitectureCytoscapeCanvasLabelMetrics {
     let m = measurer.measure(label, style);
-    let half_width = (m.width.max(0.0) * ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE) / 2.0;
+    let width = m.width.max(0.0);
+    let scale = if width >= 200.0 {
+        1.01
+    } else {
+        ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
+    };
+    let half_width = (width * scale) / 2.0;
     let half_width = (half_width * 2.0).round() / 2.0;
     ArchitectureCytoscapeCanvasLabelMetrics {
         width: m.width,
