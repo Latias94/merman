@@ -289,10 +289,12 @@ fn place_left_right_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         }
     }
 
-    placements
+    let mut placements = placements
         .into_iter()
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
-        .collect()
+        .collect::<Vec<_>>();
+    apply_subgraph_direction_overrides(graph, &mut placements);
+    placements
 }
 
 fn should_separate_left_right_roots(
@@ -522,10 +524,216 @@ fn place_top_down_grid_nodes(graph: &AsciiGraph) -> Vec<GridCoord> {
         }
     }
 
-    placements
+    let mut placements = placements
         .into_iter()
         .map(|coord| coord.unwrap_or(GridCoord { x: 0, y: 0 }))
+        .collect::<Vec<_>>();
+    apply_subgraph_direction_overrides(graph, &mut placements);
+    placements
+}
+
+fn apply_subgraph_direction_overrides(graph: &AsciiGraph, placements: &mut [GridCoord]) {
+    for group_index in 0..graph.groups.len() {
+        let Some(group) = graph.groups.get(group_index) else {
+            continue;
+        };
+        let Some(direction) = group.direction else {
+            continue;
+        };
+        if direction == graph.direction.canonical() {
+            continue;
+        }
+        if has_cross_boundary_edges(graph, group_index) {
+            continue;
+        }
+
+        let member_indices = group
+            .nodes
+            .iter()
+            .filter_map(|member| graph.nodes.iter().position(|node| node.id == *member))
+            .collect::<Vec<_>>();
+        if member_indices.len() < 2 {
+            continue;
+        }
+
+        let root_indices = group_root_indices(graph, &member_indices);
+        if root_indices.is_empty() {
+            continue;
+        }
+
+        let start_x = member_indices
+            .iter()
+            .filter_map(|index| placements.get(*index).map(|coord| coord.x))
+            .min()
+            .unwrap_or(0);
+        let start_y = member_indices
+            .iter()
+            .filter_map(|index| placements.get(*index).map(|coord| coord.y))
+            .min()
+            .unwrap_or(0);
+
+        let local = place_group_nodes(graph, &member_indices, &root_indices, direction);
+        for (index, coord) in local {
+            placements[index] = GridCoord {
+                x: start_x + coord.x,
+                y: start_y + coord.y,
+            };
+        }
+    }
+}
+
+fn has_cross_boundary_edges(graph: &AsciiGraph, group_index: usize) -> bool {
+    let Some(group) = graph.groups.get(group_index) else {
+        return false;
+    };
+    let members = group.nodes.iter().collect::<HashSet<_>>();
+    graph.edges.iter().any(|edge| {
+        let from_inside = members.contains(&edge.from);
+        let to_inside = members.contains(&edge.to);
+        from_inside != to_inside
+    })
+}
+
+fn group_root_indices(graph: &AsciiGraph, member_indices: &[usize]) -> Vec<usize> {
+    let member_ids = member_indices
+        .iter()
+        .filter_map(|index| graph.nodes.get(*index))
+        .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
+
+    member_indices
+        .iter()
+        .copied()
+        .filter(|index| {
+            let Some(node) = graph.nodes.get(*index) else {
+                return false;
+            };
+            !graph
+                .edges
+                .iter()
+                .any(|edge| edge.to == node.id && member_ids.contains(edge.from.as_str()))
+        })
         .collect()
+}
+
+fn place_group_nodes(
+    graph: &AsciiGraph,
+    member_indices: &[usize],
+    root_indices: &[usize],
+    direction: GraphDirection,
+) -> HashMap<usize, GridCoord> {
+    let member_ids = member_indices
+        .iter()
+        .filter_map(|index| graph.nodes.get(*index))
+        .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
+    let index_by_id = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.id.as_str(), index))
+        .collect::<HashMap<_, _>>();
+    let mut placements = HashMap::new();
+    let mut occupied = HashSet::new();
+    let mut highest_position_per_level = BTreeMap::<usize, usize>::new();
+
+    for root_index in root_indices {
+        place_group_node(
+            *root_index,
+            0,
+            direction,
+            &mut placements,
+            &mut occupied,
+            &mut highest_position_per_level,
+        );
+    }
+
+    for node_index in member_indices {
+        if !placements.contains_key(node_index) {
+            place_group_node(
+                *node_index,
+                0,
+                direction,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+
+        let Some(parent_coord) = placements.get(node_index).copied() else {
+            continue;
+        };
+        let child_level = match direction {
+            GraphDirection::LeftRight => parent_coord.x + 4,
+            GraphDirection::TopDown => parent_coord.y + 4,
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        };
+        for child_index in graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                graph.nodes[*node_index].id == edge.from && member_ids.contains(edge.to.as_str())
+            })
+            .filter_map(|edge| index_by_id.get(edge.to.as_str()).copied())
+        {
+            if placements.contains_key(&child_index) {
+                continue;
+            }
+            place_group_node(
+                child_index,
+                child_level,
+                direction,
+                &mut placements,
+                &mut occupied,
+                &mut highest_position_per_level,
+            );
+        }
+    }
+
+    placements
+}
+
+fn place_group_node(
+    node_index: usize,
+    level: usize,
+    direction: GraphDirection,
+    placements: &mut HashMap<usize, GridCoord>,
+    occupied: &mut HashSet<(usize, usize)>,
+    highest_position_per_level: &mut BTreeMap<usize, usize>,
+) {
+    let requested = highest_position_per_level
+        .get(&level)
+        .copied()
+        .unwrap_or_default();
+    let coord = match direction {
+        GraphDirection::LeftRight => reserve_grid_spot(
+            occupied,
+            GridCoord {
+                x: level,
+                y: requested,
+            },
+            direction,
+        ),
+        GraphDirection::TopDown => reserve_grid_spot(
+            occupied,
+            GridCoord {
+                x: requested,
+                y: level,
+            },
+            direction,
+        ),
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    };
+    placements.insert(node_index, coord);
+    match direction {
+        GraphDirection::LeftRight => {
+            highest_position_per_level.insert(level, coord.y + 4);
+        }
+        GraphDirection::TopDown => {
+            highest_position_per_level.insert(level, coord.x + 4);
+        }
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    }
 }
 
 fn place_top_down_node(

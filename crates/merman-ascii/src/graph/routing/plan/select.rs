@@ -1,6 +1,6 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{GraphLayout, NodeLayout};
-use super::super::super::model::{AsciiGraphEdge, GraphDirection};
+use super::super::super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection};
 use super::RoutePlan;
 use super::grid::plan_left_right_grid_path_route;
 use super::left_right::{
@@ -16,21 +16,30 @@ use super::top_down::{
 use crate::text::display_width;
 
 #[derive(Debug, Clone, Copy)]
+struct EdgeLocalContext<'a> {
+    _group_id: Option<&'a str>,
+    direction: GraphDirection,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(in crate::graph::routing) struct EdgeRouteRequest<'a> {
+    pub(in crate::graph::routing) graph: &'a AsciiGraph,
     pub(in crate::graph::routing) graph_layout: &'a GraphLayout,
     pub(in crate::graph::routing) edges: &'a [AsciiGraphEdge],
     pub(in crate::graph::routing) from: &'a NodeLayout,
     pub(in crate::graph::routing) to: &'a NodeLayout,
     pub(in crate::graph::routing) edge_index: usize,
     pub(in crate::graph::routing) edge: &'a AsciiGraphEdge,
-    pub(in crate::graph::routing) direction: GraphDirection,
     pub(in crate::graph::routing) charset: &'a GraphCharset,
 }
 
 pub(in crate::graph::routing) fn plan_edge_route(
     request: EdgeRouteRequest<'_>,
 ) -> Option<RoutePlan> {
-    match request.direction.canonical() {
+    match edge_local_context(request.graph, request.edge)
+        .direction
+        .canonical()
+    {
         GraphDirection::LeftRight => plan_left_right_route(request),
         GraphDirection::TopDown => {
             plan_top_down_route(request.from, request.to, request.edge, request.charset)
@@ -133,9 +142,10 @@ fn plan_top_down_route(
 }
 
 pub(in crate::graph::routing) fn route_canvas_extent(
+    graph: &AsciiGraph,
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
-    direction: GraphDirection,
+    _direction: GraphDirection,
 ) -> (usize, usize) {
     let mut width = 0;
     let mut height = 0;
@@ -158,7 +168,7 @@ pub(in crate::graph::routing) fn route_canvas_extent(
         let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
             continue;
         };
-        match direction.canonical() {
+        match edge_local_context(graph, edge).direction.canonical() {
             GraphDirection::LeftRight => {
                 if from.center_y() == to.center_y()
                     && (from.x > to.x || parallel_edge_index(edges, edge_index) > 0)
@@ -182,6 +192,21 @@ pub(in crate::graph::routing) fn route_canvas_extent(
     }
 
     (width, height)
+}
+
+fn edge_local_context<'a>(graph: &'a AsciiGraph, edge: &AsciiGraphEdge) -> EdgeLocalContext<'a> {
+    let group = graph.groups.iter().find(|group| {
+        group.direction.is_some()
+            && group.nodes.iter().any(|node| node == &edge.from)
+            && group.nodes.iter().any(|node| node == &edge.to)
+    });
+
+    EdgeLocalContext {
+        _group_id: group.map(|group| group.id.as_str()),
+        direction: group
+            .and_then(|group| group.direction)
+            .unwrap_or(graph.direction),
+    }
 }
 
 fn has_self_loop(edges: &[AsciiGraphEdge], node_id: &str) -> bool {

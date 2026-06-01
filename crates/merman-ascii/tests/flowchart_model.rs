@@ -518,6 +518,161 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
 }
 
 #[test]
+fn render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges()
+ {
+    let model = merman_core::diagrams::flowchart::FlowchartV2Model {
+        acc_descr: None,
+        acc_title: None,
+        class_defs: Default::default(),
+        direction: Some("TD".to_string()),
+        edge_defaults: None,
+        vertex_calls: Vec::new(),
+        nodes: vec![
+            merman_core::diagrams::flowchart::FlowNode {
+                id: "A".to_string(),
+                label: Some("A".to_string()),
+                label_type: None,
+                layout_shape: None,
+                icon: None,
+                form: None,
+                pos: None,
+                img: None,
+                constraint: None,
+                asset_width: None,
+                asset_height: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                link: None,
+                link_target: None,
+                have_callback: false,
+            },
+            merman_core::diagrams::flowchart::FlowNode {
+                id: "B".to_string(),
+                label: Some("B".to_string()),
+                label_type: None,
+                layout_shape: None,
+                icon: None,
+                form: None,
+                pos: None,
+                img: None,
+                constraint: None,
+                asset_width: None,
+                asset_height: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                link: None,
+                link_target: None,
+                have_callback: false,
+            },
+        ],
+        edges: vec![merman_core::diagrams::flowchart::FlowEdge {
+            id: "L-A-B".to_string(),
+            from: "A".to_string(),
+            to: "B".to_string(),
+            label: None,
+            label_type: None,
+            edge_type: Some("arrow_point".to_string()),
+            stroke: Some("normal".to_string()),
+            interpolate: None,
+            classes: Vec::new(),
+            style: Vec::new(),
+            animate: None,
+            animation: None,
+            length: 1,
+        }],
+        subgraphs: vec![merman_core::diagrams::flowchart::FlowSubgraph {
+            id: "one".to_string(),
+            title: "LR Group".to_string(),
+            dir: Some("LR".to_string()),
+            label_type: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            nodes: vec!["A".to_string(), "B".to_string()],
+        }],
+        tooltips: Default::default(),
+    };
+    let rendered = render_model(
+        &merman_core::RenderSemanticModel::Flowchart(model),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("subgraph direction override should render a local LR layout inside a TD graph");
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-----------------+\n",
+            "|    LR Group     |\n",
+            "|                 |\n",
+            "|                 |\n",
+            "| +---+     +---+ |\n",
+            "| |   |     |   | |\n",
+            "| | A |---->| B | |\n",
+            "| |   |     |   | |\n",
+            "| +---+     +---+ |\n",
+            "|                 |\n",
+            "+-----------------+\n",
+        )
+    );
+}
+
+#[test]
+fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_falls_back_to_global_layout()
+ {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "subgraph one [LR Group]\n",
+            "    direction LR\n",
+            "    A --> B\n",
+            "end\n",
+            "X --> A\n",
+            "B --> Y\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect(
+        "cross-boundary mixed-direction subgraph should render with the current global fallback",
+    );
+
+    assert_eq!(
+        rendered,
+        concat!(
+            "+-------+        \n",
+            "|  LR   |        \n",
+            "|       |        \n",
+            "| Group |        \n",
+            "|       |        \n",
+            "|       |        \n",
+            "| +---+ |   +---+\n",
+            "| |   | |   |   |\n",
+            "| | A | |   | X |\n",
+            "| |   | |   |   |\n",
+            "| +---+ |   +---+\n",
+            "|   |   |        \n",
+            "|   |   |        \n",
+            "|   |   |        \n",
+            "|   |   |        \n",
+            "|   v   |        \n",
+            "| +---+ |        \n",
+            "| |   | |        \n",
+            "| | B | |        \n",
+            "| |   | |        \n",
+            "| +---+ |        \n",
+            "|   |   |        \n",
+            "+---|---+        \n",
+            "    |            \n",
+            "    |            \n",
+            "    v            \n",
+            "  +---+          \n",
+            "  |   |          \n",
+            "  | Y |          \n",
+            "  |   |          \n",
+            "  +---+          \n",
+        )
+    );
+}
+
+#[test]
 fn flowchart_parser_circle_shape_renders_as_round_terminal_shape() {
     let rendered =
         render_flowchart("flowchart LR\nA((A)) --> B", &AsciiRenderOptions::ascii()).unwrap();

@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — TODO
 
-Status: Closed
-Last updated: 2026-05-30
+Status: Active
+Last updated: 2026-06-01
 
 ## M0 — Scope And Evidence Freeze
 
@@ -86,3 +86,18 @@ Last updated: 2026-05-30
   Context: this workstream context manifest.
   Handoff: DONE on 2026-05-30. Final gates passed; no blocking review findings remain. Follow-on
   feature gaps are tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+
+## M7 — Subgraph Local Direction Subset
+
+- [ ] AAD-080 [owner=codex] [deps=AAD-070] [scope=crates/merman-ascii/src/graph,crates/merman-ascii/tests/flowchart_model.rs,crates/merman-ascii/FLOWCHART_SUPPORT.md,crates/merman-ascii/ASCII_GAP_REGISTRY.md,docs/workstreams/ascii-architecture-deepening]
+  Goal: Ship a narrow but honest `FlowSubgraph.dir` subset by supporting local canonical `LR`
+  subgraph layout inside canonical `TD` roots when routed edges remain fully internal to the
+  subgraph, and document the remaining mixed-direction boundary gaps explicitly.
+  Validation: `cargo nextest run -p merman-ascii flowchart subgraph`; `cargo nextest run -p merman-ascii graph_fixture`
+  Review: Ensure routed edges only adopt local direction when both endpoints remain inside the same
+  direction-bearing subgraph, and preserve global fallback for cross-boundary cases.
+  Evidence: parser-backed flowchart model tests for shipped local `LR` behavior and documented
+  fallback coverage for cross-boundary edges.
+  Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`.
+  Handoff: IN PROGRESS on 2026-06-01. Code and tests currently pass local validation; doc and
+  journal closeout still needed before commit.

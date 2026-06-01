@@ -30,13 +30,13 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
     let charset = GraphCharset::for_options(&options);
 
     let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::LeftRight),
         graph_layout: &layout,
         edges: &edges,
         from,
         to,
         edge_index: 1,
         edge: &edges[1],
-        direction: GraphDirection::LeftRight,
         charset: &charset,
     })
     .unwrap();
@@ -55,13 +55,13 @@ fn edge_route_selects_top_down_back_route() {
     let charset = GraphCharset::for_options(&options);
 
     let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
         graph_layout: &layout,
         edges: &[],
         from: &from,
         to: &to,
         edge_index: 0,
         edge: &edge,
-        direction: GraphDirection::TopDown,
         charset: &charset,
     })
     .unwrap();
@@ -76,9 +76,10 @@ fn route_canvas_extent_accounts_for_left_right_back_lane() {
     let to = node("b", 0, 0, 3, 3);
     let layouts = vec![from, to];
     let edges = vec![edge_between("a", "b", None, GraphEdgeArrow::Point)];
+    let graph = test_graph(GraphDirection::LeftRight, &[("a", "b")]);
 
     assert_eq!(
-        route_canvas_extent(&layouts, &edges, GraphDirection::LeftRight),
+        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::LeftRight),
         (14, 5)
     );
 }
@@ -89,10 +90,69 @@ fn route_canvas_extent_accounts_for_top_down_back_label_width() {
     let to = node("b", 0, 0, 3, 3);
     let layouts = vec![from, to];
     let edges = vec![edge_between("a", "b", Some("back"), GraphEdgeArrow::Point)];
+    let graph = test_graph(GraphDirection::TopDown, &[("a", "b")]);
 
     assert_eq!(
-        route_canvas_extent(&layouts, &edges, GraphDirection::TopDown),
+        route_canvas_extent(&graph, &layouts, &edges, GraphDirection::TopDown),
         (9, 0)
+    );
+}
+
+#[test]
+fn route_canvas_extent_uses_local_direction_only_for_internal_subgraph_edges() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("x", "X");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+
+    let layouts = vec![
+        node("x", 8, 0, 3, 3),
+        node("a", 0, 8, 3, 3),
+        node("b", 8, 8, 3, 3),
+    ];
+    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+    let external_edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+
+    assert_eq!(
+        route_canvas_extent(
+            &graph,
+            &layouts,
+            &[internal_edge.clone()],
+            GraphDirection::TopDown
+        ),
+        (0, 0)
+    );
+    assert_eq!(
+        route_canvas_extent(&graph, &layouts, &[external_edge], GraphDirection::TopDown),
+        (0, 0)
+    );
+}
+
+#[test]
+fn internal_subgraph_edge_marks_local_group_context_through_extent_behavior() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let layouts = vec![node("a", 0, 8, 3, 3), node("b", 8, 8, 3, 3)];
+    let internal_edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+
+    assert_eq!(
+        route_canvas_extent(&graph, &layouts, &[internal_edge], GraphDirection::TopDown),
+        (0, 0)
     );
 }
 
@@ -682,6 +742,19 @@ fn left_right_layout(edges: &[(&str, &str)], options: &AsciiRenderOptions) -> Gr
         graph.add_edge(*from, *to);
     }
     layout_graph(&graph, options)
+}
+
+fn test_graph(direction: GraphDirection, edges: &[(&str, &str)]) -> AsciiGraph {
+    let mut graph = AsciiGraph::new(direction);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    if edges.iter().any(|(_, to)| *to == "c") {
+        graph.add_node("c", "C");
+    }
+    for (from, to) in edges {
+        graph.add_edge(*from, *to);
+    }
+    graph
 }
 
 fn layout_node<'a>(layout: &'a GraphLayout, id: &str) -> &'a NodeLayout {

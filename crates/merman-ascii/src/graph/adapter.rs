@@ -56,6 +56,12 @@ pub(crate) fn from_flowchart_model(
         graph.add_group_with_style(
             &subgraph.id,
             &subgraph.title,
+            subgraph
+                .dir
+                .as_deref()
+                .map(parse_direction)
+                .transpose()?
+                .map(GraphDirection::canonical),
             subgraph.nodes.clone(),
             resolve_group_style(model, subgraph),
         );
