@@ -104,7 +104,12 @@ Last updated: 2026-06-01
   sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale expected
   `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been removed. The
   Flowchart FontAwesome 11.15 root slice reduced the Flowchart diagram-specific `parity-root`
-  mismatch count to 205 and root override inventory to 281 total entries.
+  mismatch count to 205 and root override inventory to 281 total entries. The SVG-like markdown
+  shape-layout slice then fixed the large Flowchart new/old shape geometry drift by using wrapped
+  SVG markdown metrics for Dagre sizing; the representative new-shape fixture moved from a
+  `+929.090px` root delta to `-1.340px`. Flowchart `parity-root` still reports 205 strict
+  root-only mismatches, now led by handdrawn/long-name/math/shape-alias buckets rather than the
+  prior thousand-pixel SVG-markdown shape-sizing bucket.
 
 ## M4 - Upstream Family Decisions
 

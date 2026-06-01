@@ -19,7 +19,13 @@ Fresh report triage shows flowchart=229, sequence=168, architecture=32, class=20
 timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale
 `flowchart/upstream_docs_math_flowcharts_001` accepted residual policy entry has been removed.
 The Flowchart FontAwesome 11.15 root slice reduced Flowchart diagram-specific `parity-root`
-mismatches to 205 and root viewport override inventory to 281 total entries.
+mismatches to 205 and root viewport override inventory to 281 total entries. The following
+Flowchart SVG-markdown shape-layout slice fixed a real Dagre sizing error where `htmlLabels=false`
+markdown node labels were measured unwrapped while the renderer emitted wrapped SVG markdown rows.
+The representative new-shape fixture
+`upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006` moved from a
+`+929.090px` root max-width delta to `-1.340px`; Flowchart `parity-root` is still red with 205
+strict root-only mismatches, now led by handdrawn/long-name/math/shape-alias residuals.
 
 ## Active Task
 
@@ -101,6 +107,10 @@ mismatches to 205 and root viewport override inventory to 281 total entries.
   standard and documented custom-pack `fa*` icon tokens use a `1.25em` inline box for layout. The
   slice updated Flowchart root pins for the remaining icon serialization gaps and deleted obsolete
   icon pins now covered by renderer output.
+- M15C-070 Flowchart SVG-markdown shape-layout triage found that the remaining new-shape
+  `htmlLabels=false` markdown fixtures were not root-override candidates. They exposed a shared
+  layout/render metric split: Dagre used unwrapped markdown widths while render emitted wrapped SVG
+  markdown tspans. Local layout now uses the wrapped SVG markdown metric path for shape sizing.
 
 ## Known Risks
 
@@ -113,9 +123,10 @@ mismatches to 205 and root viewport override inventory to 281 total entries.
 
 ## Next Recommended Action
 
-Continue M15C-070. Start by classifying the latest `parity-root` failures into true root-geometry
-gaps versus residual-policy maintenance. The stale Flowchart Math policy entry has already been
-removed and the Flowchart FontAwesome slice reduced Flowchart to 205 root mismatches. The next
-executable step is to sample the remaining Flowchart non-icon buckets, then check whether
-Sequence/Class/C4/Architecture share a Mermaid 11.15 root viewport rule change before adding any
-new fixture-scoped root overrides.
+Continue M15C-070. The Flowchart SVG-markdown shape-layout bucket has been turned into a real
+renderer/layout fix, but strict Flowchart `parity-root` still reports 205 root-only mismatches. The
+next executable step is to sample the new top Flowchart residuals: handdrawn long-name fixtures,
+`upstream_docs_math_flowcharts_001`, and shape-alias width/height buckets. Check whether each is a
+shared Mermaid 11.15 root geometry rule, a text metric rule, or only then a scoped root override.
+After Flowchart stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a
+cross-family 11.15 root viewport rule change before adding broad fixture-scoped root pins.

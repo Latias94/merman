@@ -1252,6 +1252,52 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
 }
 
 #[test]
+fn flowchart_svglike_markdown_node_labels_wrap_for_shape_layout() {
+    let text = r#"---
+config:
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+flowchart TB
+  n0 --> n00@{ shape: triangle, label: 'This is **bold** </br>and <strong>strong</strong> for triangle shape' }
+  n1 --> n11@{ shape: sloped-rectangle, label: 'This is **bold** </br>and <strong>strong</strong> for sloped-rectangle shape' }
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let triangle = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "n00")
+        .expect("triangle node");
+    let sloped_rect = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "n11")
+        .expect("sloped rectangle node");
+
+    assert!(
+        triangle.width < 320.0,
+        "SVG markdown label wrapping should constrain triangle layout width, got {}",
+        triangle.width
+    );
+    assert!(
+        sloped_rect.width < 260.0,
+        "SVG markdown label wrapping should constrain sloped-rectangle layout width, got {}",
+        sloped_rect.width
+    );
+}
+
+#[test]
 fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
     let title = "This is a very long subgraph title that should wrap across multiple lines for layout parity";
     // Subgraph titles only wrap when the label type is `markdown` (Mermaid uses `createText(...)`

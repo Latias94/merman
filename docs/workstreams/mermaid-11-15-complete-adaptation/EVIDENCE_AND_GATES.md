@@ -400,6 +400,40 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
   - `cargo run -p xtask -- check-alignment`: passed.
+- 2026-06-01 M15C-070 Flowchart SVG-markdown shape-layout root slice:
+  - Diagnosed the largest remaining Flowchart new-shape root drift as real layout geometry, not a
+    root override maintenance problem. Representative fixture
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006` used
+    `htmlLabels=false` shapeData markdown labels. Local layout measured the unwrapped markdown
+    line for Dagre while the renderer emitted wrapped SVG markdown rows, making triangle/manual
+    input/tilted-cylinder/flipped-triangle nodes much wider than Mermaid 11.15.
+  - Updated Flowchart label layout metrics so SVG-like markdown labels use the same wrapped word
+    rows that the SVG writer emits before shape sizing. Added
+    `flowchart_svglike_markdown_node_labels_wrap_for_shape_layout` as a regression test; it fails
+    on the old unwrapped behavior and passes after the fix.
+  - `cargo run -p xtask -- debug-flowchart-layout --fixture fixtures/flowchart/upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006.mmd --text-measurer vendored`:
+    after the fix, the representative layout bounds are `1156.197x344.191` and the large shape
+    widths are back near the Mermaid 11.15 geometry (`n00=242.519`, `n11=196.156`, `n22=218.761`,
+    `n33=245.191`) instead of the previous oversized local geometry (`n00=434.722`,
+    `n11=442.234`, `n22=464.839`, `n33=491.269`).
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_cypress_newshapes_spec_newshapessets_newshapesset1_tb_md_html_false_006 --report-root-all --no-root-overrides`:
+    still failed only on root size, but the fixture moved from a broad `+929.090px` local
+    max-width delta to `-1.340px` (`1173.540` upstream vs `1172.200` local). Do not replace this
+    geometry fix with a fixture root pin.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed with 205 Flowchart root-only mismatches. The failure count did not drop because
+    strict root parity requires exact numeric alignment, but the high-delta new-shape/old-shape
+    markdown bucket collapsed: `newshapesset1` max absolute root delta is now `1.340px` and
+    `oldshapes` set3 max absolute root delta is now `1.133px`. The largest Flowchart residuals are
+    now handdrawn/long-name/math/shape-alias style buckets rather than the prior thousand-pixel
+    SVG-markdown shape-sizing drift.
+  - `cargo nextest run -p merman-render flowchart`: passed, 88 tests.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 
