@@ -860,32 +860,44 @@ fn layout_architecture_diagram_model(
         }
 
         // Track how groups connect (used when flattening alignment arrays across groups).
+        //
+        // Mermaid builds this while reducing `this.nodes` and each node's `service.edges` list in
+        // `ArchitectureDB.getDataStructures()`. The same edge can therefore update the map once
+        // per endpoint, and later endpoint traversal overwrites earlier alignment values. Do not
+        // collapse this to a single global edge pass: fixtures with mixed core/data edges rely on
+        // the source traversal order to decide which group alignment survives.
         let mut group_alignments: std::collections::BTreeMap<
             String,
             std::collections::BTreeMap<String, GroupAlignment>,
         > = std::collections::BTreeMap::new();
-        for e in &model.edges {
-            let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
+        for &id in &node_order {
+            let Some(edge_indices) = incident_edges.get(id) else {
                 continue;
             };
-            let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
-                continue;
-            };
-            if lhs_group == rhs_group {
-                continue;
+            for &edge_idx in edge_indices {
+                let e = &model.edges[edge_idx];
+                let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
+                    continue;
+                };
+                let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
+                    continue;
+                };
+                if lhs_group == rhs_group {
+                    continue;
+                }
+                let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
+                if alignment == GroupAlignment::Bend {
+                    continue;
+                }
+                group_alignments
+                    .entry(lhs_group.to_string())
+                    .or_default()
+                    .insert(rhs_group.to_string(), alignment);
+                group_alignments
+                    .entry(rhs_group.to_string())
+                    .or_default()
+                    .insert(lhs_group.to_string(), alignment);
             }
-            let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
-            if alignment == GroupAlignment::Bend {
-                continue;
-            }
-            group_alignments
-                .entry(lhs_group.to_string())
-                .or_default()
-                .insert(rhs_group.to_string(), alignment);
-            group_alignments
-                .entry(rhs_group.to_string())
-                .or_default()
-                .insert(lhs_group.to_string(), alignment);
         }
 
         fn flatten_alignments(

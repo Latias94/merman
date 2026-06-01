@@ -936,6 +936,61 @@ Outcome:
 - The largest remaining Architecture row is now `stress_architecture_deep_nesting_013` at about
   `+106px`. Continue source investigation there before considering residual policy.
 
+## M15RV-089 - Architecture Group Alignment Source Traversal
+
+Fresh source and probe evidence from 2026-06-02:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureDb.ts`
+  `getDataStructures()` updates `groupAlignments` while reducing `this.nodes` and each node's
+  `service.edges` list. This means the same edge can update the group alignment map once per
+  endpoint, and later endpoint traversal overwrites earlier values for the same group pair.
+- A focused browser probe for `stress_architecture_deep_nesting_013` showed Mermaid's effective
+  constraints as `horizontal=[[lb, api]]` and `vertical=[[lb, ext], [api, cache]]`.
+- Rust had collapsed `groupAlignments` to a single global edge pass. For the same fixture, the
+  focused debug output before the fix produced `horizontal=[[0, 1, 1, 3]]` and
+  `vertical=[[0, 5]]`, incorrectly preserving the `core`/`data` alignment as horizontal.
+
+Renderer and test changes:
+
+- `crates/merman-render/src/architecture.rs` now builds Architecture `group_alignments` by
+  walking `node_order`, then each node's incident edge list, matching Mermaid's
+  `this.nodes -> service.edges` traversal and overwrite behavior.
+- `crates/merman-render/tests/architecture_svg_test.rs` now has a regression test for
+  `stress_architecture_deep_nesting_013` that asserts the source-derived visible alignments:
+  `lb/api` share a row, `lb/ext` share a column, and `api/cache` share a column.
+
+Fresh validation:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_deep_nesting_013 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_deep_nesting_m15rv089_group_alignment_source_order_debug.md`:
+  passed; debug constraints are now `horizontal=[[0, 1]]`,
+  `vertical=[[0, 5], [1, 4]]`, and the fixture is root-exact.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_m15rv089_group_alignment_source_order.md`:
+  passed for the full Architecture matrix.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_m15rv089_group_alignment_source_order.md`:
+  expected failure with 29 Architecture root residuals, down from 30 after the junction-parent
+  source rule.
+- `cargo test -p merman-render --test architecture_svg_test -- --nocapture`: passed, 2 tests.
+- `cargo test -p merman-render --test architecture_layout_test -- --nocapture`: passed, 5 tests.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 134 unaccepted residuals: Flowchart 61, Architecture 29, Sequence 27,
+  Class 12, Timeline 3, and Journey 2.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`.
+- `cargo fmt -p merman-render --check`: passed.
+- `git diff --check`: passed.
+
+Outcome:
+
+- `stress_architecture_deep_nesting_013` is root-exact after matching Mermaid's source traversal
+  order for group alignment overwrites.
+- M15RV-089 has now reduced Architecture root residuals from 32 to 29 without adding root pins,
+  tolerances, or browser-dependent font constants.
+- The largest remaining Architecture row is now
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` at about `-22.5px`; investigate it
+  as an iconSize/fontSize/wrap/root-bounds issue before considering residual policy.
+
 ## Gate Set
 
 Run after any code or generated-data change:

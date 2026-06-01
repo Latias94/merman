@@ -199,14 +199,17 @@ Last updated: 2026-06-02
   approximations. Do not add broad Architecture root pins, root tolerances, or browser-dependent
   font/foreignObject hacks just to reduce the count.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: IN_PROGRESS. Mermaid 11.15 `architectureRenderer.ts` shows junction Cytoscape parents
-  come only from `junction.in`; Rust's neighbor-based junction group inference was removed.
-  Architecture structural parity and full all-diagram structural parity remain green. Architecture
-  root residuals dropped from 32 to 30: `stress_architecture_fan_in_out_021` and
-  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` are exact, while
-  `stress_architecture_junction_fork_join_026` shrank from about `-1551px` to about `+14px`.
-  Continue from `stress_architecture_deep_nesting_013` (`+106px`) and the remaining smaller
-  text/root-bounds tails.
+  Handoff: IN_PROGRESS. Mermaid 11.15 source checks closed two Architecture FCoSE input bugs:
+  junction Cytoscape parents now come only from `junction.in`, and group alignment overwrites now
+  follow `ArchitectureDB.getDataStructures()`'s `this.nodes -> service.edges` endpoint traversal
+  instead of a single global edge pass. Architecture structural parity and full all-diagram
+  structural parity remain green. Architecture root residuals dropped from 32 to 29:
+  `stress_architecture_fan_in_out_021`,
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, and
+  `stress_architecture_deep_nesting_013` are exact, while
+  `stress_architecture_junction_fork_join_026` remains a smaller `+14px` tail. Continue from
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-22.5px`) and the remaining
+  text/iconSize/root-bounds tails.
 
 ## M3 - Policy Closeout
 

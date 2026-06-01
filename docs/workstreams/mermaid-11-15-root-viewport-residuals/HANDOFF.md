@@ -181,25 +181,33 @@ structural parity green. Architecture root residuals dropped from 32 to 30:
 `stress_architecture_fan_in_out_021` and
 `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` are root-exact, while
 `stress_architecture_junction_fork_join_026` shrank from about `-1551px` to about `+14px`.
-Remaining Architecture work starts with `stress_architecture_deep_nesting_013` at about `+106px`.
+The next largest row, `stress_architecture_deep_nesting_013`, exposed a second source-backed
+FCoSE input bug. Mermaid 11.15 `ArchitectureDB.getDataStructures()` updates `groupAlignments`
+while reducing `this.nodes` and each node's `service.edges`, so the same edge can update the map
+once per endpoint and later endpoint traversal overwrites earlier group alignment values. Rust had
+collapsed that to one global edge pass, leaving the `core`/`data` alignment horizontal where
+Mermaid's endpoint traversal leaves it vertical. Mirroring the source traversal changed the
+focused constraints from `horizontal=[[lb, api, api, db]]` / `vertical=[[lb, ext]]` to
+`horizontal=[[lb, api]]` / `vertical=[[lb, ext], [api, cache]]`, making
+`stress_architecture_deep_nesting_013` root-exact. Architecture residuals are now 29.
 
 ## Active Task
 
 - Task ID: M15RV-089
 - Owner: codex
-- Status: PENDING
+- Status: IN_PROGRESS
 - Goal: Investigate the top Architecture FCoSE/group-port root residuals after the 11.15 baseline
   refresh and stale Architecture root-pin deletion.
 - Evidence: start from
-  `target/compare/architecture_report_parity_root_after_m15rv089_junction_parent_source_rule.md`;
-  full root evidence currently reports 30 unaccepted Architecture rows.
+  `target/compare/architecture_report_parity_root_after_m15rv089_group_alignment_source_order.md`;
+  full root evidence currently reports 29 unaccepted Architecture rows.
 - Concern: Do not add root pins or browser-dependent layout hacks for the remaining rows. The new
-  30-row count comes from a Mermaid source rule, not from restoring stale baselines or pins.
+  29-row count comes from Mermaid source rules, not from restoring stale baselines or pins.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 135.
-- Largest buckets: Flowchart 61, Architecture 30, Sequence 27, Class 12.
+- Total unaccepted full-root residuals: 134.
+- Largest buckets: Flowchart 61, Architecture 29, Sequence 27, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -211,9 +219,10 @@ Remaining Architecture work starts with `stress_architecture_deep_nesting_013` a
   IDs and fallback background paths now come from source rules, all Architecture root pins were
   deleted, and stale groups-within-groups calibration was removed. The Architecture bucket is now
   32 honest rows rather than 30 rows mixed with stale baseline/pin artifacts.
-- In progress in M15RV-089: Architecture 32 -> 30 after deleting the non-source junction group
-  inference. Full all-diagram root policy is back to 135 unaccepted residuals, but now with a clean
-  11.15 baseline and no Architecture root pins.
+- In progress in M15RV-089: Architecture 32 -> 29 after deleting the non-source junction group
+  inference and mirroring Mermaid's endpoint traversal order for group alignment overwrites. Full
+  all-diagram root policy is now 134 unaccepted residuals, with a clean 11.15 baseline and no
+  Architecture root pins.
 
 ## Guardrails
 
@@ -247,6 +256,10 @@ Remaining Architecture work starts with `stress_architecture_deep_nesting_013` a
   decision.
 - Architecture junction group membership must come from `junction.in` only. Do not infer group
   parents from neighboring services; Mermaid 11.15 does not do that in `addJunctions(...)`.
+- Architecture `groupAlignments` must be generated in the same endpoint traversal order as
+  `ArchitectureDB.getDataStructures()`: walk model nodes, then each node's incident/service edge
+  list, and allow later endpoint traversal to overwrite earlier group-pair alignment values. Do
+  not simplify this back to a single global edge pass.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

@@ -70,6 +70,34 @@ fn arrow_transform_after_edge(svg: &str, edge_id: &str) -> String {
         .unwrap_or_else(|| panic!("missing arrow transform after edge {edge_id}"))
 }
 
+fn service_translate(svg: &str, service_id: &str) -> (f64, f64) {
+    let pattern = format!(
+        r#"id="{}"[^>]*\btransform="translate\(([^,\s]+)[,\s]+([^)]+)\)""#,
+        regex::escape(service_id)
+    );
+    let re = Regex::new(&pattern).expect("valid regex");
+    let caps = re
+        .captures(svg)
+        .unwrap_or_else(|| panic!("missing service transform for {service_id}"));
+    let x = caps
+        .get(1)
+        .and_then(|m| m.as_str().parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("invalid service x transform for {service_id}"));
+    let y = caps
+        .get(2)
+        .and_then(|m| m.as_str().parse::<f64>().ok())
+        .unwrap_or_else(|| panic!("invalid service y transform for {service_id}"));
+    (x, y)
+}
+
+fn assert_close(actual: f64, expected: f64, message: &str) {
+    let delta = (actual - expected).abs();
+    assert!(
+        delta <= 1e-6,
+        "{message}: expected {expected}, got {actual}, delta {delta}"
+    );
+}
+
 #[test]
 fn architecture_diagonal_arrows_follow_the_actual_edge_segment() {
     let svg = render_architecture_fixture(
@@ -86,5 +114,37 @@ fn architecture_diagonal_arrows_follow_the_actual_edge_segment() {
     assert!(
         !vertical.contains("rotate("),
         "axis-aligned Architecture arrows should keep the Mermaid-compatible translate-only DOM, got {vertical}"
+    );
+}
+
+#[test]
+fn architecture_group_alignment_follows_source_endpoint_traversal_order() {
+    let svg = render_architecture_fixture_with_options(
+        "stress_architecture_deep_nesting_013.mmd",
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-deep".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let lb = service_translate(&svg, "architecture-deep-service-lb");
+    let api = service_translate(&svg, "architecture-deep-service-api");
+    let cache = service_translate(&svg, "architecture-deep-service-cache");
+    let ext = service_translate(&svg, "architecture-deep-service-ext");
+
+    assert_close(
+        lb.1,
+        api.1,
+        "lb/api should share Mermaid's horizontal alignment",
+    );
+    assert_close(
+        lb.0,
+        ext.0,
+        "lb/ext should share Mermaid's vertical alignment",
+    );
+    assert_close(
+        api.0,
+        cache.0,
+        "api/cache should share the final core/data vertical alignment",
     );
 }
