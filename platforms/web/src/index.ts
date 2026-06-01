@@ -44,23 +44,35 @@ export interface MermanWasmModule {
 
 export type MermanWasmLoader = () => Promise<MermanWasmModule>;
 
+export interface MermanInitOptions {
+  loader?: MermanWasmLoader;
+  wasm?: unknown;
+}
+
+export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
+
 let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 
-export function initMerman(loader?: MermanWasmLoader): Promise<MermanWasmModule> {
+export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
   if (wasmModule) {
     return Promise.resolve(wasmModule);
   }
   if (initPromise) {
     return initPromise;
   }
-  initPromise = doInit(loader);
+  initPromise = doInit(init).catch((error) => {
+    initPromise = null;
+    throw error;
+  });
   return initPromise;
 }
 
-async function doInit(loader?: MermanWasmLoader): Promise<MermanWasmModule> {
+async function doInit(init?: MermanInitInput): Promise<MermanWasmModule> {
+  const loader = typeof init === "function" ? init : init?.loader;
+  const wasm = typeof init === "function" ? undefined : init?.wasm;
   const module = loader ? await loader() : await defaultLoader();
-  await module.default();
+  await module.default(wasm);
   wasmModule = module;
   return module;
 }
@@ -82,6 +94,38 @@ export function isMermanInitialized(): boolean {
 
 export function renderSvg(source: string, options?: BindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
+}
+
+export function renderSvgElement(
+  source: string,
+  options?: BindingOptions | string
+): SVGSVGElement {
+  if (typeof DOMParser === "undefined" || typeof document === "undefined") {
+    throw new Error("renderSvgElement() requires a browser DOM.");
+  }
+
+  const svgText = renderSvg(source, options);
+  const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  const parseError = parsed.querySelector("parsererror");
+  if (parseError) {
+    throw new Error(parseError.textContent || "Merman rendered invalid SVG.");
+  }
+
+  const svg = parsed.documentElement;
+  if (svg.localName !== "svg") {
+    throw new Error("Merman render output did not contain an SVG root element.");
+  }
+  return document.importNode(svg, true) as unknown as SVGSVGElement;
+}
+
+export function renderSvgToElement(
+  target: Element,
+  source: string,
+  options?: BindingOptions | string
+): SVGSVGElement {
+  const svg = renderSvgElement(source, options);
+  target.replaceChildren(svg);
+  return svg;
 }
 
 export function renderAscii(source: string, options?: BindingOptions | string): string {
