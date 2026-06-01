@@ -54,6 +54,10 @@ export async function renderMermaidSvg(
   }
 }
 
+export async function preloadMermaid(): Promise<void> {
+  await loadMermaid().catch(() => undefined);
+}
+
 async function loadMermaid(): Promise<MermaidApi> {
   if (mermaidPromise) {
     return mermaidPromise;

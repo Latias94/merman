@@ -8,7 +8,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { useMerman } from "@/src/hooks/useMerman";
 import { useAppStore } from "@/src/store";
-import { renderMermaidSvg, MERMAID_JS_VERSION } from "@/src/lib/mermaid-renderer";
+import {
+  preloadMermaid,
+  renderMermaidSvg,
+  MERMAID_JS_VERSION,
+} from "@/src/lib/mermaid-renderer";
 import { exportPNG, exportSVG } from "@/src/lib/export";
 import {
   SvgViewport,
@@ -105,6 +109,9 @@ export function Preview({ className }: PreviewProps) {
   }, []);
 
   const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
+  const warmMermaidRenderer = useCallback(() => {
+    void preloadMermaid();
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -151,6 +158,13 @@ export function Preview({ className }: PreviewProps) {
     setDiagramType,
     setLastRenderTime,
   ]);
+
+  useEffect(() => {
+    if (!code.trim()) return;
+
+    const timeout = window.setTimeout(warmMermaidRenderer, 600);
+    return () => window.clearTimeout(timeout);
+  }, [code, warmMermaidRenderer]);
 
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
@@ -244,6 +258,7 @@ export function Preview({ className }: PreviewProps) {
     <TabBar
       mode={previewMode}
       onModeChange={setPreviewMode}
+      onCompareWarmup={warmMermaidRenderer}
       isAsciiSupported={isAsciiSupported}
       t={t}
       rightContent={rightContent}
@@ -388,12 +403,20 @@ export function Preview({ className }: PreviewProps) {
 interface TabBarProps {
   mode: PreviewMode;
   onModeChange: (mode: PreviewMode) => void;
+  onCompareWarmup: () => void;
   isAsciiSupported: boolean;
   t: (key: string) => string;
   rightContent?: ReactNode;
 }
 
-function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBarProps) {
+function TabBar({
+  mode,
+  onModeChange,
+  onCompareWarmup,
+  isAsciiSupported,
+  t,
+  rightContent,
+}: TabBarProps) {
   return (
     <div className="flex items-center justify-between h-10 px-2 border-b bg-muted/30 shrink-0">
       <div className="flex items-center gap-1">
@@ -421,7 +444,12 @@ function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBa
             <TooltipContent>{t("preview.asciiNotSupported")}</TooltipContent>
           )}
         </Tooltip>
-        <TabButton active={mode === "compare"} onClick={() => onModeChange("compare")}>
+        <TabButton
+          active={mode === "compare"}
+          onClick={() => onModeChange("compare")}
+          onFocus={onCompareWarmup}
+          onPointerEnter={onCompareWarmup}
+        >
           {t("preview.compareMode")}
         </TabButton>
       </div>
@@ -434,13 +462,23 @@ function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBa
 interface TabButtonProps {
   active: boolean;
   onClick(): void;
+  onFocus?: () => void;
+  onPointerEnter?: () => void;
   children: ReactNode;
 }
 
-function TabButton({ active, onClick, children }: TabButtonProps) {
+function TabButton({
+  active,
+  onClick,
+  onFocus,
+  onPointerEnter,
+  children,
+}: TabButtonProps) {
   return (
     <button
       onClick={onClick}
+      onFocus={onFocus}
+      onPointerEnter={onPointerEnter}
       className={cn(
         "px-3 py-1.5 text-sm rounded-md transition-colors",
         active
