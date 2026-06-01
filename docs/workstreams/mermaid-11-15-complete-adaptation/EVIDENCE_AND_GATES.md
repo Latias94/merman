@@ -17,6 +17,24 @@ class=20, c4=15, timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom
 The stale expected `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been
 removed from the compare-all policy.
 
+## Text Measurement Policy Reset
+
+As of 2026-06-01, the Flowchart strict-root tail has reached browser text-measurement residuals
+where adding exact per-string browser widths would overfit the fixture corpus. The active strategy
+is:
+
+- keep implementing source-derived Mermaid rules for shape geometry, parser semantics, config, and
+  renderer DOM structure;
+- keep generated/version-pinned override tables auditable through `cargo run -p xtask -- report-overrides`;
+- avoid adding new hand-written per-string metric constants in renderer call sites unless the value
+  is tied to a documented Mermaid source rule or a generated browser-probe table;
+- treat remaining strict-root rows caused only by browser font / `getBBox()` / `getComputedTextLength()`
+  lattice drift as diagnostic residuals, not as blockers for structural 11.15 adaptation.
+
+Current live override inventory from `cargo run -p xtask -- report-overrides --check-no-growth`:
+root viewport overrides = 282, text metric lookup overrides = 495, SVG text metric table rows = 186,
+and Flowchart font metric table rows = 3774. Override growth check passed.
+
 ## Gate Set
 
 ### Baseline And Artifact Gates
