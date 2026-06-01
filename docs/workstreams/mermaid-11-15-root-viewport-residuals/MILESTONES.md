@@ -15,7 +15,8 @@ Last updated: 2026-06-01
   removed, and the remaining bucket is root-bounds/text-measurement residual work.
 - Flowchart is classified: retained root pins mostly reduce drift, one stale pin was removed, and
   the remaining 61 rows are small SVG text/root BBox measurement tails.
-- Sequence, Flowchart, Architecture, Class, and C4 residuals are classified by mechanism.
+- Architecture, Class, and C4 are classified: C4 is root-green after refreshing existing
+  fixture-derived pins; Architecture and Class remain layout/root-bound residual buckets.
 - Source-derived rules are either implemented or split further.
 - Browser/font lattice tails are not converted into hand-written renderer constants.
 

@@ -20,3 +20,8 @@
 {"file":"target/compare/flowchart_report_parity_root_no_overrides_all.md","reason":"M15RV-030 Flowchart stale-pin diagnostic report with root overrides disabled."}
 {"file":"target/compare/flowchart_newshape4_tb_label_deltas.md","reason":"M15RV-030 focused label metric evidence for the largest Flowchart root residual."}
 {"file":"target/compare/flowchart_multiline_texts_after_stale_pin_trim.md","reason":"M15RV-030 focused evidence after deleting one stale Flowchart root pin."}
+{"file":"crates/merman-render/src/generated/c4_root_overrides_11_12_2.rs","reason":"M15RV-040 refreshed 15 existing C4 root viewport entries from Mermaid 11.15 upstream SVG root values."}
+{"file":"target/compare/c4_report_parity_root_after_refresh.md","reason":"M15RV-040 evidence that C4 root parity is green after refreshing existing root pins."}
+{"file":"target/compare/c4_report_parity_root_no_overrides.md","reason":"M15RV-040 diagnostic evidence that disabling C4 root overrides leaves 35 raw root mismatches."}
+{"file":"target/compare/architecture_report_parity_root_no_overrides.md","reason":"M15RV-040 diagnostic evidence that disabling Architecture root overrides increases raw mismatches to 63."}
+{"file":"target/compare/class_report_parity_root.md","reason":"M15RV-040 Class residual evidence: 20 raw style rows, 18 unaccepted after existing accepted policy rows."}

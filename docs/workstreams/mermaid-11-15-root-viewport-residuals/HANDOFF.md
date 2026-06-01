@@ -30,21 +30,34 @@ Flowchart pins are mostly still paying down root drift. One stale pin
 (`upstream_cypress_flowchart_spec_17_render_multiline_texts_017`) was removed because computed
 bounds are closer to Mermaid 11.15 than the old override.
 
+M15RV-040 classified Architecture, Class, and C4. C4 is now root-green: 15 existing
+fixture-derived root pins were refreshed from the current Mermaid 11.15 upstream SVG root
+`viewBox`/`max-width` values, reducing C4 root residuals from 15 to 0 without increasing override
+count. Disabling C4 root overrides still produces 35 mismatches, so the table is paying down real
+browser-root drift. Architecture remains at 32 unaccepted root residuals; disabling Architecture
+root overrides increases raw mismatches to 63, and the remaining enabled rows are dominated by
+group/port/disconnected-component layout-root drift rather than stale pins. Class remains at 18
+unaccepted residuals after the 2 existing accepted class rows; Class has no root override table,
+and its largest rows are namespace/layout-width residuals.
+
 ## Active Task
 
-- Task ID: M15RV-040
+- Task ID: M15RV-050
 - Owner: codex
 - Status: READY
-- Goal: Classify Architecture, Class, and C4 root residuals into source-rule, root-pin, and
-  diagnostic browser-root buckets.
-- Evidence: `target/compare/architecture_report_parity_root.md`,
-  `target/compare/class_report_parity_root.md`, `target/compare/c4_report_parity_root.md`
+- Goal: Classify the smaller ER, Sankey, Timeline, and Journey residuals and close source-derived
+  rows when cheap and defensible.
+- Evidence: `target/compare/er_report_parity_root.md`,
+  `target/compare/sankey_report_parity_root.md`,
+  `target/compare/timeline_report_parity_root.md`,
+  `target/compare/journey_report_parity_root.md`
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 308.
-- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 18, C4 15.
+- Total unaccepted full-root residuals: 293.
+- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 18.
 - Smaller buckets: Timeline 7, ER 3, Sankey 3, Journey 2.
+- Closed in M15RV-040: C4 15 -> 0.
 
 ## Guardrails
 

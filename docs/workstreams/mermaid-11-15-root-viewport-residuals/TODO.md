@@ -43,14 +43,19 @@ Last updated: 2026-06-01
   still useful. The remaining rows are small root/text-measurement tails: max absolute root width
   delta is about 2.24px, with 60 style mismatches and 1 viewBox mismatch.
 
-- [ ] M15RV-040 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/architecture,crates/merman-render/src/svg/parity/class,crates/merman-render/src/svg/parity/c4,target/compare]
+- [x] M15RV-040 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/architecture,crates/merman-render/src/svg/parity/class,crates/merman-render/src/svg/parity/c4,target/compare]
   Goal: Classify Architecture, Class, and C4 root residuals into source-rule, root-pin, and
   diagnostic browser-root buckets.
   Validation: focused diagram root compares and `report-overrides --check-no-growth`.
   Review: Architecture has large group/port layout-root drifts; do not collapse them into broad
   root tolerances.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: READY. Fresh unaccepted counts are Architecture=32, Class=18, C4=15.
+  Handoff: DONE. C4 is green after refreshing 15 existing fixture-derived root pins to the
+  Mermaid 11.15 upstream root values. Architecture remains at 32 unaccepted root residuals
+  dominated by group/port/disconnected-component layout-root drift; disabling Architecture root
+  pins increases raw mismatches from 32 to 63, so retained pins are still useful. Class has 18
+  unaccepted root residuals after 2 existing accepted policy rows; there is no Class root pin table,
+  and the largest rows are namespace/layout-width residuals rather than stale root pins.
 
 ## M2 - Smaller Residual Buckets
 

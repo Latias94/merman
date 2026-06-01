@@ -134,6 +134,79 @@ Flowchart classification:
   handled through shared measurement work or explicit diagnostic policy, not by hand-written root
   constants.
 
+## M15RV-040 - Architecture, Class, And C4 Classification
+
+Fresh evidence from 2026-06-01:
+
+- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/c4_report_parity_root_after_refresh.md`:
+  passed after refreshing 15 existing C4 root viewport entries to the current Mermaid 11.15
+  upstream SVG root `viewBox`/`max-width` values.
+- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/c4_report_parity_after_m15rv040.md`:
+  passed.
+- `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/c4_report_parity_root_no_overrides.md`:
+  expected failure with 35 raw C4 root mismatches, proving the retained C4 root table still
+  reduces browser-root drift.
+- `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1 cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/architecture_report_parity_root_no_overrides.md`:
+  expected failure with 63 raw Architecture root mismatches; the enabled report has 32 raw
+  mismatches, so retained Architecture root pins are still useful.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 293 unaccepted residuals. C4 no longer appears in the
+  unaccepted summary.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport
+  overrides still at 278 total entries; C4 still has 35 entries.
+- `cargo fmt --check`: passed.
+
+Architecture classification:
+
+- With root overrides enabled, Architecture has 32 root mismatches: 26 `style=max-width`
+  mismatches and 6 `viewBox` mismatches.
+- Disabling Architecture root overrides increases raw mismatches to 63, including very large
+  already-pinned layout drift rows such as `stress_architecture_deep_group_chain_027` and
+  `stress_architecture_junction_fork_join_026`.
+- The remaining enabled Architecture rows are not stale-root-pin candidates. The largest rows are
+  group/port/disconnected-component layout-root differences, for example
+  `stress_architecture_batch6_disconnected_components_with_titles_089` (`-247px`),
+  `stress_architecture_mixed_service_forms_009` (`-183px`),
+  `stress_architecture_batch3_port_pairs_corner_cases_058` (`-177.5px`), and
+  `stress_architecture_many_small_groups_025` (`+151px`).
+- These rows should be handled by Architecture layout/root-bound work, not by broad tolerances or
+  new fixture pins.
+
+Class classification:
+
+- The Class focused report has 20 raw root mismatches, all `style=max-width`; the full root gate
+  already accepts 2 existing policy rows, leaving 18 unaccepted Class residuals.
+- Class has no root viewport override table, so this bucket is not a stale-pin cleanup bucket.
+- The largest rows are namespace/layout-width residuals, for example
+  `upstream_pkgtests_classdiagram_spec_003` and
+  `upstream_html_demos_classchart_class_diagram_demos_010` (`+514.25px` each),
+  `upstream_pkgtests_classdiagram_spec_006` (`+300px`), and the nested namespace fixtures
+  (`+151.5px` each).
+
+C4 classification:
+
+- C4's 15 root residuals were all existing root-pin rows whose old fixture-derived values were
+  off by 1-2px against the Mermaid 11.15 upstream SVG roots.
+- Refreshing those existing rows closed C4 root parity without adding entries. This is a baseline
+  refresh of governed fixture-derived data, not a new renderer-side measurement rule.
+
+Fresh unaccepted residual summary after M15RV-040:
+
+| Diagram | Unaccepted residuals | Report |
+| --- | ---: | --- |
+| Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
+| Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
+| Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
+| Class | 18 | `target/compare/class_report_parity_root.md` |
+| Timeline | 7 | `target/compare/timeline_report_parity_root.md` |
+| ER | 3 | `target/compare/er_report_parity_root.md` |
+| Sankey | 3 | `target/compare/sankey_report_parity_root.md` |
+| Journey | 2 | `target/compare/journey_report_parity_root.md` |
+
+Total unaccepted residuals: 293.
+
 ## Gate Set
 
 Run after any code or generated-data change:
