@@ -248,7 +248,7 @@ fn node_render_dimensions(
             // by `rectOffset` (only on the top/left edges) after `updateNodeBounds(...)`.
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
-            let rect_offset = 5.0;
+            let rect_offset = 10.0;
             f32_dims(w + rect_offset, h + rect_offset)
         }
 

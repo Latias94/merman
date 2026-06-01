@@ -13,8 +13,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_window_pane(
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) {
     // Mermaid `windowPane.ts` (non-handDrawn): RoughJS multi-subpath with `roughness=0` + a
-    // fixed `rectOffset=5` and a translation of `(+2.5, +2.5)`.
-    let rect_offset = 5.0;
+    // fixed `rectOffset=10` and a translation of `(+5, +5)`.
+    let rect_offset = 10.0;
     let out_w = common.layout_node.width.max(1.0);
     let out_h = common.layout_node.height.max(1.0);
     let w = (out_w - rect_offset).max(1.0);

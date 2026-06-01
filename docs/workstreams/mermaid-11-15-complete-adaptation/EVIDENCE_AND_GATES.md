@@ -622,6 +622,29 @@ git diff --check
     passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-070 Flowchart window-pane geometry slice:
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset27_027` against
+    Mermaid 11.15 `windowPane.ts`. Local layout, SVG rendering, and edge intersection still used
+    `rectOffset=5`, while upstream Mermaid 11.15 uses `rectOffset=10` and translates the shape by
+    `rectOffset / 2`. This made each of the three alias-set nodes `5px` too narrow and the row
+    `5px` too short, producing the observed `-15.000px` root width delta.
+  - Updated Flowchart layout sizing, SVG shape rendering, and edge intersection for
+    `win-pane`/`internal-storage`/`window-pane` to use Mermaid 11.15's `rectOffset=10`.
+    `flowchart_node_shape_dimensions_follow_mermaid_rules` now covers the window-pane formula.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset27_027 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed as expected for remaining alias buckets, but alias set 27 disappeared from the
+    mismatch list.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected, now with 129 Flowchart strict root-only mismatches, down from 144.
+    Alias set 27 reports `+0.000px` in the root-delta table.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

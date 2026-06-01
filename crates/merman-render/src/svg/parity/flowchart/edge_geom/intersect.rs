@@ -1571,7 +1571,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         let p = ctx.node_padding;
         let w = metrics.width + 2.0 * p;
         let h = metrics.height + 2.0 * p;
-        let rect_offset = 5.0;
+        let rect_offset = 10.0;
         let x = -w / 2.0;
         let y = -h / 2.0;
         let points = vec![

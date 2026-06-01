@@ -45,7 +45,11 @@ buckets. The bow-tie rectangle geometry slice then aligned
 `bow-rect`/`stored-data`/`bow-tie-rectangle` with Mermaid 11.15 `bowTieRect.ts`: classic mode uses
 `2 * nodePadding` horizontal label padding instead of the old `nodePadding + 20px`. The
 representative alias set 36 and docs stored-data root bucket are closed, structural parity remains
-green, and Flowchart `parity-root` is down to 144 strict root-only mismatches.
+green, and Flowchart `parity-root` is down to 144 strict root-only mismatches. The window-pane
+geometry slice then aligned `win-pane`/`internal-storage`/`window-pane` with Mermaid 11.15
+`windowPane.ts`: `rectOffset` is `10`, not the old local `5`. Alias set 27 now passes strict-root
+with root overrides disabled, structural parity remains green, and Flowchart `parity-root` is down
+to 129 strict root-only mismatches.
 
 ## Active Task
 
@@ -161,6 +165,10 @@ green, and Flowchart `parity-root` is down to 144 strict root-only mismatches.
   `bow-rect`/`stored-data`/`bow-tie-rectangle`; alias set 36 passes strict-root with root overrides
   disabled, the docs stored-data bucket is closed, and Flowchart strict-root mismatch count is down
   to 144.
+- M15C-070 Flowchart window-pane triage found an old `rectOffset` constant. The Rust layout,
+  rendering, and edge intersection paths now follow Mermaid 11.15 `windowPane.ts` for
+  `win-pane`/`internal-storage`/`window-pane`; alias set 27 passes strict-root with root overrides
+  disabled, and Flowchart strict-root mismatch count is down to 129.
 
 ## Known Risks
 
@@ -175,10 +183,11 @@ green, and Flowchart `parity-root` is down to 144 strict root-only mismatches.
 
 Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-alias source
 formula, plain `Car` text-metric, demo 016/052 stale-root-pin, and bow-tie rectangle buckets are
-closed, but strict Flowchart `parity-root` still reports 144 root-only mismatches. The next
-executable step is to sample the new top Flowchart residuals: remaining shape-alias buckets (`27`,
-`20`, `21`, `12`), delay half-rounded rectangle, Unicode punctuation/text-metric stress, markdown
-subgraph root size, and shape-family layout/root clusters. Check whether each is a shared Mermaid
-11.15 root geometry rule, a text metric rule, or only then a scoped root override. After Flowchart
-stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a cross-family
-11.15 root viewport rule change before adding broad fixture-scoped root pins.
+closed, and window-pane/internal-storage buckets are closed, but strict Flowchart `parity-root`
+still reports 129 root-only mismatches. The next executable step is to sample the new top
+Flowchart residuals: remaining shape-alias buckets (`20`, `21`, `12`, `29`, `38`, plus unpinned
+`34`), delay half-rounded rectangle, Unicode punctuation/text-metric stress, markdown subgraph
+root size, and shape-family layout/root clusters. Check whether each is a shared Mermaid 11.15
+root geometry rule, a text metric rule, or only then a scoped root override. After Flowchart stops
+exposing large shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15
+root viewport rule change before adding broad fixture-scoped root pins.

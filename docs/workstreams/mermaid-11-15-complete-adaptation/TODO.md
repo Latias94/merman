@@ -134,7 +134,11 @@ Last updated: 2026-06-01
   Mermaid 11.15 `bowTieRect.ts`: classic mode uses `2 * nodePadding` horizontal label padding
   rather than the old `nodePadding + 20px`. The representative alias fixture and docs stored-data
   bucket are now closed, implemented-matrix structural `parity` remains green, and Flowchart
-  `parity-root` reports 144 strict root-only mismatches.
+  `parity-root` reports 144 strict root-only mismatches. The window-pane/internal-storage slice
+  then aligned `win-pane`/`internal-storage`/`window-pane` with Mermaid 11.15 `windowPane.ts`:
+  `rectOffset` is `10`, not the old local `5`. Alias set 27 now passes strict-root with root
+  overrides disabled, structural `parity` remains green, and Flowchart `parity-root` reports 129
+  strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

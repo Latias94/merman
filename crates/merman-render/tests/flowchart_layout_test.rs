@@ -915,6 +915,7 @@ P@{ shape: lined-cylinder, label: "Label" }
 Q@{ shape: paper-tape, label: "Label" }
 R@{ shape: docs, label: "Label" }
 S@{ shape: bow-rect, label: "Label" }
+T@{ shape: win-pane, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -1202,6 +1203,24 @@ S@{ shape: bow-rect, label: "Label" }
             "bow tie rectangle width",
         );
         assert_close(n.height, h, "bow tie rectangle height");
+    }
+
+    // window pane / internal storage
+    {
+        let n = nodes_by_id["T"];
+        let rect_offset = 10.0;
+        let w = merman_render::text::round_to_1_64_px(tw);
+        let h = merman_render::text::round_to_1_64_px(th);
+        assert_close(
+            n.width,
+            (w + 2.0 * p + rect_offset) as f32 as f64,
+            "window pane width",
+        );
+        assert_close(
+            n.height,
+            (h + 2.0 * p + rect_offset) as f32 as f64,
+            "window pane height",
+        );
     }
 
     // subroutine
