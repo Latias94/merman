@@ -1177,7 +1177,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         };
 
         let p = ctx.node_padding;
-        let w = metrics.width + p + 20.0;
+        let w = metrics.width + 2.0 * p;
         let h = metrics.height + p;
         let ry = h / 2.0;
         let rx = ry / (2.5 + h / 50.0);

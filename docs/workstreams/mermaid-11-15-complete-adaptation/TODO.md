@@ -129,7 +129,12 @@ Last updated: 2026-06-01
   The existing pins now match the Mermaid 11.15 baseline root (`640.921875px`), both targeted
   fixtures pass, override growth remains within budget, and Flowchart `parity-root` reports 146
   strict root-only mismatches. The leading residuals are now the remaining shape-alias and
-  shape-family/root buckets.
+  shape-family/root buckets. The bow-tie/stored-data shape slice then aligned
+  `bow-rect`/`stored-data`/`bow-tie-rectangle` sizing, rendering, and edge intersection with
+  Mermaid 11.15 `bowTieRect.ts`: classic mode uses `2 * nodePadding` horizontal label padding
+  rather than the old `nodePadding + 20px`. The representative alias fixture and docs stored-data
+  bucket are now closed, implemented-matrix structural `parity` remains green, and Flowchart
+  `parity-root` reports 144 strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

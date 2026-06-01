@@ -642,7 +642,7 @@ fn node_render_dimensions(
 
         // Flowchart v2 bow-tie rect (Stored data).
         "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
-            let w = text_w + p + 20.0;
+            let w = text_w + 2.0 * p;
             let h = text_h + p;
             let ry = h / 2.0;
             let rx = ry / (2.5 + h / 50.0);

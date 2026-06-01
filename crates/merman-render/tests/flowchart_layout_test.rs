@@ -914,6 +914,7 @@ O(-Label-)
 P@{ shape: lined-cylinder, label: "Label" }
 Q@{ shape: paper-tape, label: "Label" }
 R@{ shape: docs, label: "Label" }
+S@{ shape: bow-rect, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -949,6 +950,90 @@ R@{ shape: docs, label: "Label" }
             (actual - expected).abs() <= eps,
             "{name}: expected {expected}, got {actual}"
         );
+    }
+
+    fn assert_close_eps(actual: f64, expected: f64, eps: f64, name: &str) {
+        assert!(
+            (actual - expected).abs() <= eps,
+            "{name}: expected {expected}, got {actual}"
+        );
+    }
+
+    fn bow_tie_rect_bbox_width(w: f64, h: f64) -> f64 {
+        fn arc_points(
+            x1: f64,
+            y1: f64,
+            x2: f64,
+            y2: f64,
+            rx: f64,
+            ry: f64,
+            clockwise: bool,
+        ) -> Vec<(f64, f64)> {
+            let num_points = 20usize;
+            let mid_x = (x1 + x2) / 2.0;
+            let mid_y = (y1 + y2) / 2.0;
+            let angle = (y2 - y1).atan2(x2 - x1);
+            let dx = (x2 - x1) / 2.0;
+            let dy = (y2 - y1) / 2.0;
+            let transformed_x = dx / rx;
+            let transformed_y = dy / ry;
+            let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
+            if distance > 1.0 {
+                return vec![(x1, y1), (x2, y2)];
+            }
+
+            let scaled_center_distance = (1.0 - distance * distance).sqrt();
+            let sign = if clockwise { -1.0 } else { 1.0 };
+            let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
+            let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
+            let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+            let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+            let mut angle_range = end_angle - start_angle;
+            if clockwise && angle_range < 0.0 {
+                angle_range += 2.0 * std::f64::consts::PI;
+            }
+            if !clockwise && angle_range > 0.0 {
+                angle_range -= 2.0 * std::f64::consts::PI;
+            }
+
+            (0..num_points)
+                .map(|i| {
+                    let t = i as f64 / (num_points - 1) as f64;
+                    let a = start_angle + t * angle_range;
+                    (center_x + rx * a.cos(), center_y + ry * a.sin())
+                })
+                .collect()
+        }
+
+        let ry = h / 2.0;
+        let rx = ry / (2.5 + h / 50.0);
+        let mut points = vec![(w / 2.0, -h / 2.0), (-w / 2.0, -h / 2.0)];
+        points.extend(arc_points(
+            -w / 2.0,
+            -h / 2.0,
+            -w / 2.0,
+            h / 2.0,
+            rx,
+            ry,
+            false,
+        ));
+        points.push((w / 2.0, h / 2.0));
+        points.extend(arc_points(
+            w / 2.0,
+            h / 2.0,
+            w / 2.0,
+            -h / 2.0,
+            rx,
+            ry,
+            true,
+        ));
+        let (min_x, max_x) = points
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min_x, max_x), p| {
+                (min_x.min(p.0), max_x.max(p.0))
+            });
+        (max_x - min_x).max(0.0)
     }
 
     // squareRect
@@ -1103,6 +1188,20 @@ R@{ shape: docs, label: "Label" }
         let expected_h = final_h + 2.0 * rect_offset + wave_amplitude * sampled_wave_max;
         assert_close(n.width, w + 2.0 * rect_offset, "docs width");
         assert_close(n.height, expected_h as f32 as f64, "docs height");
+    }
+
+    // bow tie rectangle / stored data
+    {
+        let n = nodes_by_id["S"];
+        let w = tw + 2.0 * p;
+        let h = th + p;
+        assert_close_eps(
+            n.width,
+            bow_tie_rect_bbox_width(w, h) as f32 as f64,
+            0.002,
+            "bow tie rectangle width",
+        );
+        assert_close(n.height, h, "bow tie rectangle height");
     }
 
     // subroutine

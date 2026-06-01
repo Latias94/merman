@@ -593,6 +593,35 @@ git diff --check
     passed.
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
+- 2026-06-01 M15C-070 Flowchart bow-tie rectangle geometry slice:
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset36_036` against
+    Mermaid 11.15 `bowTieRect.ts`. Local sizing/rendering still used the older
+    `text_width + nodePadding + 20px` base width, while Mermaid 11.15 classic mode calculates
+    horizontal label padding as `2 * nodePadding` and then lets the sampled bow-tie arcs determine
+    the path bbox. That made each of the three nodes in alias set 36 about `5px` too wide,
+    producing the observed `+15.016px` root delta.
+  - Updated Flowchart layout sizing, SVG rendering, and edge intersection for
+    `bow-rect`/`stored-data`/`bow-tie-rectangle` to use `text_width + 2 * nodePadding` before arc
+    bbox expansion. Added the bow-tie rectangle to
+    `flowchart_node_shape_dimensions_follow_mermaid_rules` so the 11.15 source formula remains
+    covered by a layout regression.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset36_036 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed as expected for remaining alias buckets, but alias set 36 disappeared from the
+    failure list.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected, now with 144 Flowchart strict root-only mismatches, down from 146.
+    The leading residuals are shape-alias `27` (`-15.000px`), `20` (`+14.546px`), `21`
+    (`+11.407px`), newshapesset3 LR no-label (`+10.586px`), delay half-rounded rectangle
+    (`+10.438px`), Unicode punctuation stress (`-10.188px`), and shape-alias `12`
+    (`-9.969px`).
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

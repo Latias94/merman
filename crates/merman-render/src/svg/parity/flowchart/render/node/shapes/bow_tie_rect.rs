@@ -26,7 +26,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_bow_tie_rect(
     );
 
     let p = ctx.node_padding;
-    let w = metrics.width + p + 20.0;
+    let w = metrics.width + 2.0 * p;
     let h = metrics.height + p;
     let ry = h / 2.0;
     let rx = ry / (2.5 + h / 50.0);
