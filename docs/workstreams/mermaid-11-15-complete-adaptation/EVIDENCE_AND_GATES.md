@@ -379,6 +379,27 @@ git diff --check
   - `eventmodeling`, `wardley`, `treeView`, `venn`, and `ishikawa` are deferred follow-on
     diagram-family lanes; `cynefin` and `railroad` remain out of scope unless explicitly promoted
     later.
+- 2026-06-01 M15C-070 Flowchart FontAwesome root slice:
+  - Implemented Mermaid 11.15 Flowchart FontAwesome inline measurement as a `1.25em` icon box for
+    all supported `fa*` prefixes, including the documented `fab:fa-truck-bold` custom-pack example.
+  - Updated the Flowchart root override table to the 11.15 baseline for the remaining icon root
+    pins and deleted obsolete icon pins whose unpinned renderer output now matches `parity-root`.
+    `cargo run -p xtask -- report-overrides --check-no-growth` passed and reports root viewport
+    overrides reduced from 286 to 281 total entries; Flowchart root entries are now 38.
+  - `cargo test -p merman-render flowchart_html_fontawesome -- --nocapture`: passed.
+  - `cargo nextest run -p merman-render fontawesome`: passed, 6 tests.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter icons --report-root-all`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter fontawesome --report-root-all`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed, but the Flowchart `parity-root` mismatch count is now 205, down from the earlier
+    M15C-070 count of 229. Remaining failures are root `style`/`viewBox` only.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
 
 ## Evidence Anchors
 

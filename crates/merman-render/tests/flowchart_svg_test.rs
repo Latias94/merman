@@ -66,9 +66,8 @@ fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
 
 #[test]
 fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
-    // We intentionally model FontAwesome icon labels with a clean nominal inline width instead of
-    // browser-specific per-icon advance drift. Exact upstream root parity remains covered by root
-    // viewport guards where that drift matters.
+    // Mermaid 11.15 uses a clean 1.25em inline box for FontAwesome labels instead of
+    // browser-specific per-icon advance drift.
     let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
@@ -100,7 +99,7 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
         .find(|e| e.id == "L_C_F_0")
         .expect("edge L_C_F_0");
     let lbl = edge.label.as_ref().expect("edge label");
-    assert_eq!(lbl.width, 45.03125);
+    assert_eq!(lbl.width, 49.03125);
     assert_eq!(lbl.height, 24.0);
 }
 

@@ -144,8 +144,8 @@ fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
 
 #[test]
 fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
-    // Deliberately model standard FontAwesome icons as a clean nominal 1em inline run instead of
-    // the browser's per-icon font advance.
+    // Model standard FontAwesome icons using Mermaid 11.15's inline FA box width instead of
+    // the browser's per-icon glyph advance.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -161,14 +161,14 @@ fn flowchart_html_fontawesome_icon_width_uses_nominal_boundary() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 45.03125);
+    assert_eq!(m.width, 49.03125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
 
 #[test]
-fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary() {
-    // Mermaid falls back to an empty `<i>` for unregistered custom packs.
+fn flowchart_html_fontawesome_custom_pack_icon_width_uses_nominal_boundary() {
+    // Mermaid 11.15 keeps the inline icon box width even for the documented custom-pack example.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -184,7 +184,7 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary(
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(m.width, 104.046875);
+    assert_eq!(m.width, 124.046875);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }
@@ -192,7 +192,7 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_uses_empty_inline_boundary(
 #[test]
 fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
     // Non-markdown Flowchart icon labels should use the same HTML fragment measurement path as
-    // emitted `<foreignObject>` content, with the same clean nominal icon width boundary.
+    // emitted `<foreignObject>` content, with the same Mermaid 11.15 icon width boundary.
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
@@ -215,7 +215,7 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
             whole_label_font_style: None,
         },
     );
-    assert_eq!(m.width, 45.03125);
+    assert_eq!(m.width, 49.03125);
     assert_eq!(m.height, 24.0);
     assert_eq!(m.line_count, 1);
 }

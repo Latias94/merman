@@ -102,7 +102,9 @@ Last updated: 2026-06-01
   residuals only. Fresh report triage shows a broader 11.15 root viewport recalibration set:
   flowchart=229, sequence=168, architecture=32, class=20, c4=15, timeline=7, mindmap=4,
   sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale expected
-  `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been removed.
+  `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been removed. The
+  Flowchart FontAwesome 11.15 root slice reduced the Flowchart diagram-specific `parity-root`
+  mismatch count to 205 and root override inventory to 281 total entries.
 
 ## M4 - Upstream Family Decisions
 

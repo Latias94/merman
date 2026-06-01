@@ -120,7 +120,7 @@ exist to pin `viewBox` + `style max-width` when browser `getBBox()` serializatio
 deterministic drift that is not yet worth globalizing into layout/render logic.
 
 Current root viewport inventory is tracked by
-`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 286 total
+`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 281 total
 root viewport entries. After the Mermaid 11.15 baseline refresh, full structural `parity` is green
 for the implemented matrix, but `parity-root` still has a broad root-only recalibration set. Do not
 grow these tables before checking whether the residuals share a deterministic 11.15 root viewport

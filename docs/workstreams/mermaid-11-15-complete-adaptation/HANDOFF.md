@@ -18,6 +18,8 @@ root/viewBox/max-width residuals remain across the implemented matrix.
 Fresh report triage shows flowchart=229, sequence=168, architecture=32, class=20, c4=15,
 timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale
 `flowchart/upstream_docs_math_flowcharts_001` accepted residual policy entry has been removed.
+The Flowchart FontAwesome 11.15 root slice reduced Flowchart diagram-specific `parity-root`
+mismatches to 205 and root viewport override inventory to 281 total entries.
 
 ## Active Task
 
@@ -95,6 +97,10 @@ timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. T
   canonical XML parity was driven from 245 mismatches to zero, stored Class baselines were refreshed
   from the verified fresh output, and `compare-class-svgs`, `compare-svg-xml --diagram class`, and
   full implemented-matrix `parity` now pass.
+- M15C-070 Flowchart FontAwesome root triage found the Mermaid 11.15 inline icon measurement rule:
+  standard and documented custom-pack `fa*` icon tokens use a `1.25em` inline box for layout. The
+  slice updated Flowchart root pins for the remaining icon serialization gaps and deleted obsolete
+  icon pins now covered by renderer output.
 
 ## Known Risks
 
@@ -109,6 +115,7 @@ timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. T
 
 Continue M15C-070. Start by classifying the latest `parity-root` failures into true root-geometry
 gaps versus residual-policy maintenance. The stale Flowchart Math policy entry has already been
-removed; the next executable step is to identify whether the large Flowchart/Sequence/Class/C4/
-Architecture buckets share a Mermaid 11.15 root viewport rule change before adding any new
-fixture-scoped root overrides.
+removed and the Flowchart FontAwesome slice reduced Flowchart to 205 root mismatches. The next
+executable step is to sample the remaining Flowchart non-icon buckets, then check whether
+Sequence/Class/C4/Architecture share a Mermaid 11.15 root viewport rule change before adding any
+new fixture-scoped root overrides.

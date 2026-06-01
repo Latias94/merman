@@ -542,7 +542,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             // Icon labels may share the same normalized text as plain labels. Plain flowchart
             // node labels should keep the raw DOM text width instead of the icon-label width.
             let desired = 24.203125 * (style.font_size / 16.0);
-            let icon_probe = 45.03125 * (style.font_size / 16.0);
+            let icon_probe = 49.03125 * (style.font_size / 16.0);
             if (metrics.width - icon_probe).abs() < 1.0 {
                 metrics.width = crate::text::round_to_1_64_px(desired);
             }
@@ -819,7 +819,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
             if html_labels || label_type == "html" {
                 // Keep the raw label text for layout, then strip HTML tags/entities.
                 //
-                // Note: in Mermaid@11.12.2 flowchart-v2, FontAwesome icon tokens (e.g. `fa:fa-car`)
+                // Note: in Mermaid flowchart-v2, FontAwesome icon tokens (e.g. `fa:fa-car`)
                 // can affect the measured label width even though the exported SVG replaces them
                 // with empty `<i class="fa ..."></i>` nodes (FontAwesome CSS is not embedded).
                 // For strict parity we therefore *do not* rewrite the `fa:` token here.

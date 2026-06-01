@@ -25,16 +25,9 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 25 806.421875 796", "806.422"))
         }
         "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.75 88", "521.75")),
-        "stress_flowchart_icons_basic_051" => Some(("0 0 438.78125 278", "438.781")),
-        "stress_flowchart_icons_in_edge_labels_053" => Some(("0 0 130.6875 326", "130.688")),
-        "stress_flowchart_icons_click_security_strict_057" => {
-            Some(("0 0 139.890625 174", "139.891"))
-        }
-        "stress_flowchart_icons_classdef_and_style_058" => Some(("0 0 351.578125 174", "351.578")),
-        "stress_flowchart_icons_subgraph_mixed_061" => Some(("0 0 353.75 274", "353.75")),
-        "stress_flowchart_icons_edge_to_cluster_062" => Some(("0 0 422.078125 244", "422.078")),
+        "stress_flowchart_icons_basic_051" => Some(("0 0 450.78125 278", "450.781")),
         "upstream_docs_flowchart_basic_support_for_fontawesome_234" => {
-            Some(("0 0 438.78125 174", "438.781"))
+            Some(("0 0 450.78125 174", "450.781"))
         }
         "upstream_docs_diagrams_flowchart_code_flow" => {
             Some(("0 0 10468.515625 3129.234375", "10468.5"))
@@ -57,7 +50,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 -45 2400.640625 645", "2400.64"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007" => {
-            Some(("0 0 2004.41015625 1046", "2004.41"))
+            Some(("0 0 2007.41015625 1046", "2007.41"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
