@@ -1196,6 +1196,51 @@ Outcome:
   fix `stress_architecture_batch5_long_titles_and_punct_076`; the probe evidence is mixed by label
   length and icon floor.
 
+## M15RV-089 - Architecture Group/Port Residual Diagnostics
+
+Fresh diagnostic evidence from 2026-06-02:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_html_titles_and_escapes_041 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_html_titles_and_escapes_parity_probe_m15rv089.md`:
+  passed, confirming the focused row is root-only after parity geometry normalization.
+- A focused browser probe for `stress_architecture_html_titles_and_escapes_041` reports the same
+  alignment and relative-placement constraints as Rust, with browser pre-layout service bboxes of
+  `Web Front Line 2=129x100`, `CDN Cache=92x100`, and `Origin primary=107x100`.
+- Comparing upstream and local SVG output for `stress_architecture_html_titles_and_escapes_041`
+  shows the root width is controlled by the group rectangle, not by edge labels: upstream group
+  rect is about `x=-170.963,width=399.926`, while local is about `x=-172.463,width=404.926`.
+  Service positions and edge-label transforms are only shifted by about `0.5px` in X.
+- Mermaid source inspection of `svgDraw.ts` confirms edge labels are rendered after layout from
+  source/target endpoints and do not feed a separate final group-rect rule. The row is therefore
+  another group/service Cytoscape bbox approximation tail, not an HTML/entity parsing or edge-label
+  source-rule bug.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_group_port_edges_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_group_port_edges_017_m15rv089_start.md`:
+  expected failure; upstream root is about `707.769x542.448`, while local is about
+  `709.238x524.603`.
+- `node tools/debug/arch_fcose_browser_probe_fixture_025.js stress_architecture_group_port_edges_017`
+  reports Mermaid constraints matching Rust debug output: horizontal `[[in1,in2],[out1,ext]]`,
+  vertical `[[in1,out1]]`, and relative constraints `in1 -> in2`, `out1 top -> in1 bottom`, and
+  `ext -> out1`, each with `gap=120`.
+- Local `MERMAN_ARCH_DEBUG_CY_BBOX=1` shows all four service labels in
+  `stress_architecture_group_port_edges_017` are icon-floor dominated (`half_w=41`, `bottom=18`),
+  matching the browser probe's `82x100` service bboxes. The remaining height delta comes from the
+  final FCoSE solution: browser separates the `out1` and `in1` top-left Y positions by about
+  `238.948px`, while local separates them by about `221.103px`.
+- Mermaid source and Rust implementation agree on the group-boundary edge force policy:
+  same-parent edges use `idealEdgeLengthMultiplier * iconSize` and configured `edgeElasticity`;
+  cross-parent edges use `0.5 * iconSize` and `0.001` elasticity. Manatee debug also shows the
+  same alignment/relative input and the expected intergraph edge-length adjustment path.
+
+Outcome:
+
+- No renderer change was made for these two rows. `stress_architecture_html_titles_and_escapes_041`
+  is classified as a group/service Cytoscape bbox measurement tail. `stress_architecture_group_port_edges_017`
+  is classified as a source-input-matched FCoSE solver/compound-bound residual unless future
+  evidence finds a reusable `cytoscape-fcose` rule missing in manatee.
+- The existing Architecture diagonal-arrow behavior remains an intentional merman visual
+  improvement: Mermaid emits translated port-direction polygons, while merman rotates diagonal
+  arrowheads to the routed edge segment. The parity comparator already treats that transform as
+  geometry noise, and root gates still compare the rendered viewport.
+
 ## Gate Set
 
 Run after any code or generated-data change:

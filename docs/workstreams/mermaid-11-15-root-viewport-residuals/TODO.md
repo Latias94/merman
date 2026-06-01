@@ -225,6 +225,11 @@ Last updated: 2026-06-02
   `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
   `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
   browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.
+  Additional focused checks classified `stress_architecture_html_titles_and_escapes_041` as a
+  group/service Cytoscape bbox tail (not an HTML/entity or edge-label source bug), and
+  `stress_architecture_group_port_edges_017` as source-input-matched manatee vs cytoscape-fcose
+  solver/compound-bound drift. Do not tune group-edge shifts, root pins, or one-off metric
+  constants from those rows.
 
 ## M3 - Policy Closeout
 

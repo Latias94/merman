@@ -228,6 +228,17 @@ dominated (`42x56` browser service bboxes). A single new global label scale woul
 future work should use generated Architecture canvas-label evidence or a better deterministic
 canvas measurer.
 
+Two additional Architecture rows were classified without renderer changes. For
+`stress_architecture_html_titles_and_escapes_041`, focused structural parity is green and the
+browser probe constraints match Rust; the `+5px` root tail is controlled by the group rect
+(`399.926px` upstream vs `404.926px` local), not by edge labels or HTML/entity parsing. Treat it as
+another group/service Cytoscape bbox approximation tail. For
+`stress_architecture_group_port_edges_017`, browser and Rust share the same alignment/relative
+constraints and source-derived same-parent/cross-parent edge force policy. All service labels are
+icon-floor dominated (`82x100` browser bboxes), but the final vertical spacing differs by about
+`17.845px`, so this row is best classified as source-input-matched manatee vs cytoscape-fcose
+solver/compound-bound drift unless a future probe finds a reusable missing FCoSE rule.
+
 ## Active Task
 
 - Task ID: M15RV-089
@@ -265,6 +276,8 @@ canvas measurer.
   does not reduce its remaining `+13.976px` tail.
   Pre-layout compound bbox inflation now also uses configured `architecture.padding`, keeping the
   FCoSE input and final group rectangle code on the same source rule.
+  Batch5, batch4-small-icon, html-title/escape, and group-port rows now have focused diagnostic
+  evidence; none justify a renderer-side one-off metric or root pin.
   Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
   no Architecture root pins.
 
@@ -319,6 +332,11 @@ canvas measurer.
 - Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
   long labels and batch4 small-icon labels need different treatment; use generated browser-probe
   evidence or classify the residual honestly.
+- Do not treat `stress_architecture_html_titles_and_escapes_041` as an HTML/entity or edge-label
+  bug. Focused evidence shows the root tail is group-rect / Cytoscape service bbox dominated.
+- Do not tune group-edge shifts from `stress_architecture_group_port_edges_017`; its constraints,
+  service bboxes, and Mermaid source force policy already match, while the remaining height delta
+  comes from the FCoSE solution.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.
