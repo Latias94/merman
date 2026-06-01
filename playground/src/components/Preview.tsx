@@ -44,8 +44,9 @@ interface PreviewProps {
   className?: string;
 }
 
-type PreviewMode = "svg" | "ascii" | "compare";
+type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 type EngineKey = "merman" | "mermaid";
+type DiagnosticKey = "parse" | "layout";
 
 interface CompareArtifact {
   key: EngineKey;
@@ -57,7 +58,18 @@ interface CompareArtifact {
   loading: boolean;
 }
 
+interface DiagnosticArtifact {
+  json: string | null;
+  error: string | null;
+  elapsedMs: number | null;
+}
+
 const ASCII_SUPPORTED_TYPES = ["flowchart", "sequence", "class", "er", "xychart"];
+
+const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
+  parse: { json: null, error: null, elapsedMs: null },
+  layout: { json: null, error: null, elapsedMs: null },
+};
 
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
@@ -69,22 +81,29 @@ export function Preview({ className }: PreviewProps) {
     setDiagramType,
     isDarkMode,
   } = useAppStore();
-  const { ready, loading, render, renderAscii } = useMerman();
+  const { ready, loading, render, renderAscii, parseJson, layoutJson } = useMerman();
   const [svg, setSvg] = useState<string | null>(null);
   const [ascii, setAscii] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
   const [copiedAscii, setCopiedAscii] = useState(false);
+  const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
   const [copiedEngine, setCopiedEngine] = useState<EngineKey | null>(null);
   const [exportingEngine, setExportingEngine] = useState<EngineKey | null>(null);
   const [currentDiagramType, setCurrentDiagramType] = useState<string>("flowchart");
+  const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
+  const [diagnostics, setDiagnostics] =
+    useState<Record<DiagnosticKey, DiagnosticArtifact>>(EMPTY_DIAGNOSTICS);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
   const [mermanRenderTime, setMermanRenderTime] = useState<number | null>(null);
   const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const [mermaidRenderTime, setMermaidRenderTime] = useState<number | null>(null);
   const [mermaidLoading, setMermaidLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const diagnosticsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const svgViewport = useSvgViewport({
     svg,
@@ -209,9 +228,64 @@ export function Preview({ className }: PreviewProps) {
   }, [code, diagramTheme, mermaidConfig, previewMode]);
 
   useEffect(() => {
+    if (diagnosticsDebounceRef.current) {
+      clearTimeout(diagnosticsDebounceRef.current);
+    }
+
+    if (previewMode !== "diagnostics") {
+      setDiagnosticsLoading(false);
+      return;
+    }
+
+    if (!code.trim()) {
+      setDiagnostics(EMPTY_DIAGNOSTICS);
+      setDiagnosticsLoading(false);
+      return;
+    }
+
+    if (!ready) {
+      setDiagnostics(
+        diagnosticsError(
+          loading ? t("preview.loading") : t("preview.diagnosticsUnavailable")
+        )
+      );
+      setDiagnosticsLoading(false);
+      return;
+    }
+
+    setDiagnosticsLoading(true);
+    diagnosticsDebounceRef.current = setTimeout(() => {
+      setDiagnostics({
+        parse: collectDiagnostic(() => parseJson(code, diagramTheme, mermaidConfig)),
+        layout: collectDiagnostic(() => layoutJson(code, diagramTheme, mermaidConfig)),
+      });
+      setDiagnosticsLoading(false);
+    }, 300);
+
+    return () => {
+      if (diagnosticsDebounceRef.current) {
+        clearTimeout(diagnosticsDebounceRef.current);
+      }
+    };
+  }, [
+    code,
+    diagramTheme,
+    layoutJson,
+    loading,
+    mermaidConfig,
+    parseJson,
+    previewMode,
+    ready,
+    t,
+  ]);
+
+  useEffect(() => {
     return () => {
       if (copyTimeoutRef.current) {
         clearTimeout(copyTimeoutRef.current);
+      }
+      if (diagnosticCopyTimeoutRef.current) {
+        clearTimeout(diagnosticCopyTimeoutRef.current);
       }
     };
   }, []);
@@ -242,6 +316,25 @@ export function Preview({ className }: PreviewProps) {
       console.error("Failed to copy SVG:", err);
     }
   }, []);
+
+  const handleCopyDiagnosticJson = useCallback(async () => {
+    const json = diagnostics[diagnosticTab].json;
+    if (!json) return;
+
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopiedDiagnostic(diagnosticTab);
+      if (diagnosticCopyTimeoutRef.current) {
+        clearTimeout(diagnosticCopyTimeoutRef.current);
+      }
+      diagnosticCopyTimeoutRef.current = setTimeout(
+        () => setCopiedDiagnostic(null),
+        2000
+      );
+    } catch (err) {
+      console.error("Failed to copy diagnostics JSON:", err);
+    }
+  }, [diagnosticTab, diagnostics]);
 
   const handleExportSvg = useCallback((engine: EngineKey, value: string | null) => {
     if (!value) return;
@@ -297,7 +390,7 @@ export function Preview({ className }: PreviewProps) {
     );
   }
 
-  if (error && previewMode !== "compare") {
+  if (error && previewMode !== "compare" && previewMode !== "diagnostics") {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
@@ -348,6 +441,25 @@ export function Preview({ className }: PreviewProps) {
               </TooltipContent>
             </Tooltip>
           )}
+          {previewMode === "diagnostics" && (
+            <IconButton
+              label={
+                copiedDiagnostic === diagnosticTab
+                  ? t("preview.copied")
+                  : t("preview.copyJson")
+              }
+              onClick={handleCopyDiagnosticJson}
+              disabled={diagnosticsLoading || !diagnostics[diagnosticTab].json}
+            >
+              {copiedDiagnostic === diagnosticTab ? (
+                <Check className="size-4 text-green-500" />
+              ) : diagnosticsLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+            </IconButton>
+          )}
         </>
       )}
 
@@ -367,6 +479,17 @@ export function Preview({ className }: PreviewProps) {
             onCopySvg={handleCopySvg}
             onExportSvg={handleExportSvg}
             onExportPng={handleExportPng}
+            t={t}
+          />
+        )}
+
+        {previewMode === "diagnostics" && (
+          <DiagnosticsView
+            activeTab={diagnosticTab}
+            diagnostics={diagnostics}
+            loading={diagnosticsLoading}
+            isDarkMode={isDarkMode}
+            onActiveTabChange={setDiagnosticTab}
             t={t}
           />
         )}
@@ -459,6 +582,12 @@ function TabBar({
         >
           {t("preview.compareMode")}
         </TabButton>
+        <TabButton
+          active={mode === "diagnostics"}
+          onClick={() => onModeChange("diagnostics")}
+        >
+          {t("preview.diagnosticsMode")}
+        </TabButton>
       </div>
 
       <div className="flex items-center gap-1">{rightContent}</div>
@@ -495,6 +624,88 @@ function TabButton({
     >
       {children}
     </button>
+  );
+}
+
+function DiagnosticsView({
+  activeTab,
+  diagnostics,
+  loading,
+  isDarkMode,
+  onActiveTabChange,
+  t,
+}: {
+  activeTab: DiagnosticKey;
+  diagnostics: Record<DiagnosticKey, DiagnosticArtifact>;
+  loading: boolean;
+  isDarkMode: boolean;
+  onActiveTabChange(tab: DiagnosticKey): void;
+  t: (key: string) => string;
+}) {
+  const current = diagnostics[activeTab];
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex min-h-10 items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+          <TabButton
+            active={activeTab === "parse"}
+            onClick={() => onActiveTabChange("parse")}
+          >
+            {t("preview.parseJson")}
+          </TabButton>
+          <TabButton
+            active={activeTab === "layout"}
+            onClick={() => onActiveTabChange("layout")}
+          >
+            {t("preview.layoutJson")}
+          </TabButton>
+        </div>
+        <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {loading
+            ? t("preview.runningDiagnostics")
+            : current.elapsedMs !== null
+              ? `${current.elapsedMs.toFixed(1)}ms`
+              : "-"}
+        </p>
+      </div>
+
+      <div className="min-h-0 flex-1">
+        {loading ? (
+          <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
+            {t("preview.runningDiagnostics")}
+          </CenteredMessage>
+        ) : current.error ? (
+          <RenderError message={current.error} t={t} compact />
+        ) : current.json ? (
+          <Editor
+            height="100%"
+            language="json"
+            value={current.json}
+            theme={isDarkMode ? "vs-dark" : "light"}
+            options={{
+              readOnly: true,
+              domReadOnly: true,
+              minimap: { enabled: false },
+              fontSize: 13,
+              fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+              scrollBeyondLastLine: false,
+              wordWrap: "on",
+              renderLineHighlight: "none",
+              selectionHighlight: false,
+              occurrencesHighlight: "off",
+              folding: true,
+              automaticLayout: true,
+              padding: { top: 16, bottom: 16 },
+            }}
+          />
+        ) : (
+          <CenteredMessage icon={<FileCode className="size-8" />}>
+            {t("preview.diagnosticsEmpty")}
+          </CenteredMessage>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -737,4 +948,38 @@ function RenderError({
       </div>
     </div>
   );
+}
+
+function collectDiagnostic(createJson: () => string): DiagnosticArtifact {
+  const start = performance.now();
+
+  try {
+    const json = formatDiagnosticJson(createJson());
+    return {
+      json,
+      error: null,
+      elapsedMs: performance.now() - start,
+    };
+  } catch (err) {
+    return {
+      json: null,
+      error: err instanceof Error ? err.message : String(err),
+      elapsedMs: null,
+    };
+  }
+}
+
+function diagnosticsError(message: string): Record<DiagnosticKey, DiagnosticArtifact> {
+  return {
+    parse: { json: null, error: message, elapsedMs: null },
+    layout: { json: null, error: message, elapsedMs: null },
+  };
+}
+
+function formatDiagnosticJson(rawJson: string): string {
+  try {
+    return `${JSON.stringify(JSON.parse(rawJson), null, 2)}\n`;
+  } catch {
+    return rawJson;
+  }
 }

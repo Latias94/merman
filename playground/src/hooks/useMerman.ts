@@ -111,6 +111,34 @@ export function useMerman() {
     [ready]
   );
 
+  const parseJson = useCallback(
+    (
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string => {
+      if (!ready || !wasmRef.current) {
+        throw new Error(loading ? "WASM 模块加载中..." : "WASM 模块未加载");
+      }
+      return wasmRef.current.parse_json(code, theme, configJson);
+    },
+    [ready, loading]
+  );
+
+  const layoutJson = useCallback(
+    (
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string => {
+      if (!ready || !wasmRef.current) {
+        throw new Error(loading ? "WASM 模块加载中..." : "WASM 模块未加载");
+      }
+      return wasmRef.current.layout_json(code, theme, configJson);
+    },
+    [ready, loading]
+  );
+
   const getAsciiSupportedDiagrams = useCallback((): string[] => {
     if (!ready || !wasmRef.current) {
       return ['flowchart', 'sequence', 'class', 'state', 'er'];
@@ -127,6 +155,8 @@ export function useMerman() {
     getThemes,
     getSupportedDiagrams,
     renderAscii,
+    parseJson,
+    layoutJson,
     getAsciiSupportedDiagrams,
   };
 }

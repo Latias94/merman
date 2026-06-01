@@ -1,6 +1,8 @@
 import {
   asciiSupportedDiagrams,
   initMerman,
+  layoutJson,
+  parseJson,
   SUPPORTED_THEMES,
   renderAscii,
   renderSvg,
@@ -24,6 +26,8 @@ export interface MermanWasm {
   init(): Promise<void>;
   render_svg(code: string, theme: string, configJson?: string): string;
   render_ascii(code: string, theme?: string, configJson?: string): string | null;
+  parse_json(code: string, theme?: string, configJson?: string): string;
+  layout_json(code: string, theme?: string, configJson?: string): string;
   get_supported_diagrams(): string[];
   get_themes(): string[];
   get_ascii_supported_diagrams(): string[];
@@ -83,6 +87,22 @@ function createWasmAdapter(): MermanWasm {
       } catch {
         return null;
       }
+    },
+
+    parse_json(
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string {
+      return parseJson(sourceWithConfig(code, theme, configJson));
+    },
+
+    layout_json(
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string {
+      return layoutJson(sourceWithConfig(code, theme, configJson));
     },
 
     get_supported_diagrams(): string[] {
