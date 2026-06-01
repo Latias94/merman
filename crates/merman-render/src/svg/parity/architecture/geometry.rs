@@ -1,4 +1,7 @@
 use super::super::{Bounds, fmt};
+use crate::architecture::{
+    ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, architecture_compound_bbox_padding_px,
+};
 
 pub(super) fn is_arch_dir_x(dir: char) -> bool {
     matches!(dir, 'L' | 'R')
@@ -185,8 +188,8 @@ impl<'a> GroupRectComputer<'a> {
             .child_groups
             .get(group_id)
             .is_some_and(|v| !v.is_empty());
-        let extra = 2.5;
-        let pad = self.padding_px + extra;
+        let _extra = ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX;
+        let pad = architecture_compound_bbox_padding_px(self.padding_px);
         let b = if let Some(content) = content {
             Bounds {
                 min_x: content.min_x - pad,

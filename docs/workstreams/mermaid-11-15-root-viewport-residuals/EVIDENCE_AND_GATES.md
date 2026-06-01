@@ -258,6 +258,38 @@ Timeline classification:
   `timeline_stress_unicode_cjk_and_emoji`, and
   `timeline_stress_very_long_unbroken_word`.
 - Three Timeline rows remain and were intentionally not converted into new fixture pins:
+
+## M15RV-089 - Architecture Source-Rule Follow-Up
+
+Fresh evidence from 2026-06-02:
+
+- `cargo test -p merman-render architecture::tests -- --nocapture`:
+  passed after the Architecture compound-bbox padding helper extraction.
+- `cargo test -p merman-render --test architecture_svg_test architecture_group_rect_uses_configured_padding_for_small_icons -- --nocapture`:
+  passed.
+- `cargo test -p merman-render --test architecture_svg_test architecture_icon_text_clamp_uses_architecture_font_size -- --nocapture`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --filter upstream_architecture_docs_service_icon_text --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_m15rv089_icontext_doc.md`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_m15rv089_icontext_093.md`:
+  expected failure; this fixture has no `iconText`, so it is not evidence for the iconText clamp path.
+- `cargo run -p xtask -- compare-architecture-svgs --filter upstream_architecture_cypress_fallback_icon --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_m15rv089_fallback_icon.md`:
+  expected failure; the `-0.25px` fallback-icon width tail is unaffected by the iconText clamp path.
+
+Architecture follow-up notes:
+
+- The Architecture compound/group bbox empirical `padding + 2.5` rule is now a shared helper in
+  `crates/merman-render/src/architecture.rs`, reused by both layout and SVG parity geometry.
+  This is a no-behavior-change refactor that reduces the chance of layout/parity drift.
+- Mermaid 11.15 `svgDraw.ts` computes `iconText` line clamp from the DOM-applied `font-size`
+  inside the `foreignObject`, not from the SVG text label font-size path. Rust now follows that
+  policy by using `architecture.fontSize` (`arch_font_size_px`) for `iconText`
+  `-webkit-line-clamp`, instead of the separate SVG text measurement size.
+- The focused docs fixture `upstream_architecture_docs_service_icon_text` remains root-green after
+  this change, so the policy alignment is source-backed and non-regressive.
+- This is not the main explanation for the remaining Architecture root bucket. The current
+  fallback-icon `-0.25px` tail and the larger disconnected/group/FCoSE residuals remain separate
+  issues; do not over-claim this clamp fix as a bucket-wide residual reduction.
   `timeline_stress_accdescr_block_multiline` (`896px` upstream vs `895px` local),
   `timeline_stress_width_large_and_long_labels` (`896px` upstream vs `895px` local), and
   `upstream_long_word_wrap` (`961.5px` upstream vs `961px` local). These are small
@@ -1264,6 +1296,43 @@ Outcome:
   improvement: Mermaid emits translated port-direction polygons, while merman rotates diagonal
   arrowheads to the routed edge segment. The parity comparator already treats that transform as
   geometry noise, and root gates still compare the rendered viewport.
+
+## 2026-06-02 - Class HTML Label Width Investigation
+
+Fresh focused evidence from 2026-06-02:
+
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_diff_labels_037_m15rv091_rendered_widths.md`:
+  failed as expected before any retained change; the row is root-only.
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_diff_labels_handdrawn_037_m15rv091_rendered_widths.md`:
+  failed as expected before any retained change; the row is root-only.
+- A direct upstream/local SVG scrape for the ELK fixture shows the residual is concentrated in
+  HTML title `foreignObject` widths, especially `C12` and `C13`:
+  upstream `183.421875 / 210.578125` vs local `175.375 / 208.6875`, which compounds into the
+  root `max-width` tail (`2355.75px` upstream vs `2344.92px` local).
+- A temporary experiment adding 12 rendered-width entries to
+  `crates/merman-render/src/generated/class_text_overrides_11_12_2.rs` made both
+  `different_text_labels_037` fixtures root-exact, confirming the diagnosis that these are
+  browser-derived HTML label width facts rather than structure/viewBox bugs.
+- `cargo run -p xtask -- report-overrides --check-no-growth` then failed with:
+  `Text metric lookup overrides grew to 507 lookup entries, budget 495`.
+- The experimental lookup additions were removed immediately; no retained renderer/generated-data
+  change remains from this probe.
+
+Outcome:
+
+- The `different_text_labels_037` pair is now classified: it is a real Class HTML title width
+  gap, but the current hand-curated override budget forbids solving it by simply appending 12 more
+  lookup rows.
+- The next aligned follow-up is not another local width constant. It is either:
+  1. a stale-table cleanup that frees override budget while preserving current gates, or
+  2. a generated/auditable Class HTML width evidence path that can replace older manual rows.
+- Until that exists, do not claim Class is closer by hand-growing
+  `class_text_overrides_11_12_2.rs`; that is self-defeating under the repo's no-growth gate.
+- A same-day stale-table reconnaissance did not find safe bulk deletions. The obvious short-label
+  candidates are still present in current fixture/test coverage (`Docs`, `Cool`, `uses`, `API`,
+  `DB`, `Server`), and historical fearless-refactor evidence already records that multiple
+  "small" Class lookup removals caused focused geometry drift or widespread golden churn. Treat
+  future Class table cleanup as a delete-one-verify-one campaign, not a grep-based sweep.
 
 ## Gate Set
 

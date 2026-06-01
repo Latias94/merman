@@ -12,6 +12,7 @@ use serde_json::Value;
 pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
+pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
@@ -50,6 +51,10 @@ pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
 
 pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
     font_size_px.max(1.0) * (17.0 / 16.0)
+}
+
+pub(crate) fn architecture_compound_bbox_padding_px(padding_px: f64) -> f64 {
+    padding_px.max(0.0) + ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX
 }
 
 fn architecture_relative_placement_constraints<'a>(
@@ -629,7 +634,7 @@ fn layout_architecture_diagram_model(
 
         let mut group_bbox: FxHashMap<&str, BBox> = FxHashMap::default();
         group_bbox.reserve(model.groups.len().saturating_mul(2));
-        let base_pad = padding_px + 2.5;
+        let base_pad = crate::architecture::architecture_compound_bbox_padding_px(padding_px);
         for g in &model.groups {
             let Some(members) = group_to_leaves.get(g.id) else {
                 continue;

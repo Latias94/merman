@@ -88,7 +88,11 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     out.push_str(&svg);
                     out.push_str("</g>");
 
-                    let line_clamp = ((settings.icon_size_px - 2.0) / settings.svg_font_size_px)
+                    // Mermaid computes `iconText` clamp from the DOM `font-size` applied to the
+                    // foreignObject content. For Architecture this tracks `architecture.fontSize`,
+                    // not the separate SVG text measurement/font-size path used for service/group
+                    // labels.
+                    let line_clamp = ((settings.icon_size_px - 2.0) / settings.arch_font_size_px)
                         .floor()
                         .max(1.0) as i64;
                     let sanitized =

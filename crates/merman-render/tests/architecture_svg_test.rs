@@ -112,6 +112,18 @@ fn group_rect(svg: &str, group_id: &str) -> (f64, f64, f64, f64) {
     )
 }
 
+fn icon_text_line_clamp(svg: &str, service_id: &str) -> i64 {
+    let pattern = format!(
+        r#"id="{}"[\s\S]*?-webkit-line-clamp:\s*([0-9]+);"#,
+        regex::escape(service_id)
+    );
+    let re = Regex::new(&pattern).expect("valid regex");
+    re.captures(svg)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<i64>().ok())
+        .unwrap_or_else(|| panic!("missing iconText line clamp for {service_id}"))
+}
+
 fn assert_close(actual: f64, expected: f64, message: &str) {
     let delta = (actual - expected).abs();
     assert!(
@@ -186,5 +198,22 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
         left.2 >= 158.0,
         "custom architecture.padding should expand the group rect beyond the legacy iconSize/2 sizing, got width {}",
         left.2
+    );
+}
+
+#[test]
+fn architecture_icon_text_clamp_uses_architecture_font_size() {
+    let svg = render_architecture_fixture_with_options(
+        "upstream_architecture_docs_service_icon_text.mmd",
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-icontext".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let clamp = icon_text_line_clamp(&svg, "architecture-icontext-service-with_icon_text");
+    assert_eq!(
+        clamp, 4,
+        "iconText clamp should follow default architecture.fontSize=16 with iconSize=80"
     );
 }
