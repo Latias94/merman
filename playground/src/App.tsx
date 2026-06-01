@@ -103,7 +103,7 @@ export default function App() {
                     预览
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Ctrl/Cmd + 滚轮缩放
+                    滚轮缩放
                   </span>
                 </div>
                 <Preview className="flex-1 bg-[repeating-conic-gradient(#80808010_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]" />

@@ -113,7 +113,21 @@
 }
 
 /* SVG 预览区域 */
+.preview-container {
+  user-select: none;
+}
+
 .preview-container svg {
-  max-width: 100%;
+  display: block;
+  max-width: none;
   height: auto;
+  user-select: none;
+}
+
+.preview-container svg * {
+  user-select: none;
+}
+
+.preview-container svg text {
+  pointer-events: none;
 }

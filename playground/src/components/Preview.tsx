@@ -7,6 +7,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Maximize2,
   Loader2,
   AlertCircle,
   Copy,
@@ -40,10 +41,12 @@ export function Preview({ className }: PreviewProps) {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isAutoFit, setIsAutoFit] = useState(true);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
   const [copied, setCopied] = useState(false);
   const [currentDiagramType, setCurrentDiagramType] = useState<string>("flowchart");
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // 检测图表类型
@@ -113,29 +116,60 @@ export function Preview({ className }: PreviewProps) {
   }, [previewMode, isAsciiSupported]);
 
   const handleZoomIn = useCallback(() => {
+    setIsAutoFit(false);
     setZoom((z) => Math.min(z * 1.2, 5));
   }, []);
 
   const handleZoomOut = useCallback(() => {
+    setIsAutoFit(false);
     setZoom((z) => Math.max(z / 1.2, 0.1));
   }, []);
 
   const handleReset = useCallback(() => {
+    setIsAutoFit(false);
     setZoom(1);
     setPosition({ x: 0, y: 0 });
   }, []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
-    }
+  const fitToView = useCallback(() => {
+    const container = containerRef.current;
+    const content = contentRef.current;
+    if (!container || !content) return;
+
+    const contentWidth = content.offsetWidth;
+    const contentHeight = content.offsetHeight;
+    if (contentWidth <= 0 || contentHeight <= 0) return;
+
+    const availableWidth = Math.max(container.clientWidth - 48, 1);
+    const availableHeight = Math.max(container.clientHeight - 48, 1);
+    const nextZoom = Math.max(
+      0.1,
+      Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight)
+    );
+
+    setZoom(Number(nextZoom.toFixed(3)));
+    setPosition({ x: 0, y: 0 });
   }, []);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handleFitToView = useCallback(() => {
+    setIsAutoFit(true);
+    fitToView();
+  }, [fitToView]);
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    setIsAutoFit(false);
+    const delta = Math.exp(-e.deltaY * 0.001);
+    setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button === 0) {
+        e.preventDefault();
+        window.getSelection()?.removeAllRanges();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setIsAutoFit(false);
         setIsDragging(true);
         setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
       }
@@ -143,9 +177,11 @@ export function Preview({ className }: PreviewProps) {
     [position]
   );
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (isDragging) {
+        e.preventDefault();
+        window.getSelection()?.removeAllRanges();
         setPosition({
           x: e.clientX - dragStart.x,
           y: e.clientY - dragStart.y,
@@ -155,9 +191,40 @@ export function Preview({ className }: PreviewProps) {
     [isDragging, dragStart]
   );
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging && e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
     setIsDragging(false);
-  }, []);
+  }, [isDragging]);
+
+  useEffect(() => {
+    if (previewMode !== "svg" || !svg) return;
+
+    setIsAutoFit(true);
+    const frame = requestAnimationFrame(fitToView);
+    return () => cancelAnimationFrame(frame);
+  }, [svg, previewMode, fitToView]);
+
+  useEffect(() => {
+    if (previewMode !== "svg" || !svg || !isAutoFit) return;
+
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitToView);
+    });
+
+    observer.observe(container);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [svg, previewMode, isAutoFit, fitToView]);
 
   const handleCopyAscii = useCallback(async () => {
     if (ascii) {
@@ -270,6 +337,14 @@ export function Preview({ className }: PreviewProps) {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" onClick={handleFitToView}>
+                      <Maximize2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("preview.fitToView")}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon-sm" onClick={handleReset}>
                       <RotateCcw className="size-4" />
                     </Button>
@@ -303,28 +378,37 @@ export function Preview({ className }: PreviewProps) {
           <div
             ref={containerRef}
             className={cn(
-              "h-full w-full overflow-hidden cursor-grab",
+              "relative h-full w-full overflow-hidden cursor-grab select-none touch-none",
               isDragging && "cursor-grabbing"
             )}
             onWheel={handleWheel}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onDragStart={(event) => event.preventDefault()}
           >
             <div
-              className="flex items-center justify-center min-h-full min-w-full p-8"
+              className="absolute left-1/2 top-1/2 will-change-transform"
               style={{
-                transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
-                transformOrigin: "center center",
+                transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
               }}
             >
-              {svg && (
-                <div
-                  className="preview-container bg-white rounded-lg shadow-sm p-4"
-                  dangerouslySetInnerHTML={{ __html: svg }}
-                />
-              )}
+              <div
+                className="will-change-transform"
+                style={{
+                  transform: `translate(-50%, -50%) scale(${zoom})`,
+                  transformOrigin: "center center",
+                }}
+              >
+                {svg && (
+                  <div
+                    ref={contentRef}
+                    className="preview-container inline-flex bg-white rounded-lg shadow-sm p-4"
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                )}
+              </div>
             </div>
           </div>
         )}
