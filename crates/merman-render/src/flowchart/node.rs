@@ -261,8 +261,9 @@ fn node_render_dimensions(
 
         // Double circle.
         "doublecircle" | "dbl-circ" | "double-circle" => {
-            // `gap = 5` is hard-coded in Mermaid.
-            let d = text_w + p + 10.0;
+            // Mermaid `doubleCircle.ts`: outer radius is `bbox.width / 2 + padding`;
+            // the inner circle uses a fixed 5px gap.
+            let d = text_w + 2.0 * p;
             (d, d)
         }
 

@@ -677,6 +677,28 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
   - `cargo run -p xtask -- check-alignment`: passed.
+- 2026-06-01 M15C-070 Flowchart double-circle geometry slice:
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset12_012` against
+    Mermaid 11.15 `doubleCircle.ts`. Local layout still used the old
+    `label width + padding + 10px` diameter formula. Mermaid 11.15 computes
+    `outerRadius = bbox.width / 2 + padding`, with the inner circle using a fixed `5px` gap, so
+    the Dagre diameter is `label width + 2 * padding`.
+  - Updated Flowchart layout sizing for `dbl-circ`/`double-circle`/`doublecircle` and the shared
+    shape dimension regression. SVG rendering already consumed the layout width/height, so the
+    emitted outer/inner circle radii followed the corrected formula.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset12_012 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed as expected, now only for alias buckets `29`, `34`, and `38`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 101 Flowchart strict root-only mismatches, down from 124.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
 
 ## Evidence Anchors
 

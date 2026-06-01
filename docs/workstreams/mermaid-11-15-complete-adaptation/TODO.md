@@ -144,7 +144,12 @@ Last updated: 2026-06-01
   `minHeight=10`). Alias sets 20 and 21 plus the docs single-delay fixture now pass strict-root
   with root overrides disabled. A narrow upstream SVG text-width override closes the remaining
   `half-rounded-rectangle` 1/16px browser metric delta. Structural `parity` remains green, and
-  Flowchart `parity-root` reports 124 strict root-only mismatches.
+  Flowchart `parity-root` reports 124 strict root-only mismatches. The double-circle geometry
+  slice then aligned `dbl-circ`/`double-circle` with Mermaid 11.15 `doubleCircle.ts`: outer radius
+  is `bbox.width / 2 + padding`, so Dagre diameter is `label width + 2 * padding`, not the old
+  `label width + padding + 10`. Alias set 12 now passes strict-root with root overrides disabled,
+  structural `parity` remains green, and Flowchart `parity-root` reports 101 strict root-only
+  mismatches.
 
 ## M4 - Upstream Family Decisions
 

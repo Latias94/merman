@@ -1060,8 +1060,8 @@ V@{ shape: delay, label: "Label" }
         assert_close(n.height, tw + p, "circle height");
 
         let n = nodes_by_id["D"];
-        assert_close(n.width, tw + p + 10.0, "doublecircle width");
-        assert_close(n.height, tw + p + 10.0, "doublecircle height");
+        assert_close(n.width, tw + 2.0 * p, "doublecircle width");
+        assert_close(n.height, tw + 2.0 * p, "doublecircle height");
     }
 
     // diamond/question
