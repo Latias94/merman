@@ -167,7 +167,11 @@ Last updated: 2026-06-01
   strict root-only mismatches. The icon root-pin refresh then updated an existing stale
   `upstream_cypress_flowchart_icon_spec_example_002` root override from `92.046875px` to the
   Mermaid 11.15 `98.046875px` root after proving the renderer passes with root overrides disabled.
-  Flowchart `parity-root` reports 66 strict root-only mismatches.
+  Flowchart `parity-root` reports 66 strict root-only mismatches. The styled text root-pin refresh
+  then updated an existing stale
+  `upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027`
+  root override from `376.296875px` to the Mermaid 11.15 `370.53125px` root. Flowchart
+  `parity-root` reports 65 strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

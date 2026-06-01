@@ -804,6 +804,25 @@ git diff --check
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
     still failed as expected with 66 Flowchart strict root-only mismatches, down from 67.
 
+- 2026-06-01 M15C-070 Flowchart styled text root-pin refresh:
+  - Diagnosed
+    `upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027`
+    as a stale existing root pin plus a small unpinned root residual. With root overrides disabled,
+    local output was `370.75px` versus upstream `370.53125px`; with overrides enabled, the old pin
+    still forced `376.296875px`.
+  - Updated the existing Flowchart root override for that fixture to
+    `viewBox="0 0 370.53125 373.40625"` and max-width `370.531`. This does not add root override
+    coverage.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed with only the small unpinned root residual (`370.75px` local versus
+    `370.53125px` upstream).
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all`:
+    passed.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed; root viewport overrides
+    remain at `282` total entries and text lookup entries remain capped at `495`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 65 Flowchart strict root-only mismatches, down from 66.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`

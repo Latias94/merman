@@ -37,3 +37,4 @@
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-unicode-text-metrics.md","reason":"Flowchart Unicode/punctuation browser text metric evidence and follow-on strict-root residuals."}
 {"file":"crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs","reason":"Flowchart root viewport override inventory for 11.15 strict-root pin refreshes."}
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-icon-root-pin.md","reason":"Flowchart icon example stale root-pin refresh evidence and follow-on strict-root residuals."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-styled-text-root-pin.md","reason":"Flowchart styled text/color stale root-pin refresh evidence and follow-on strict-root residuals."}

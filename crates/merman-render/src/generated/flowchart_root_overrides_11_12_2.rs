@@ -79,7 +79,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 1525.3125 246", "1525.31"))
         }
         "upstream_cypress_flowchart_spec_27_set_text_color_of_nodes_and_links_according_to_styles_when_ht_027" => {
-            Some(("0 0 376.296875 373.40625", "376.297"))
+            Some(("0 0 370.53125 373.40625", "370.531"))
         }
         "upstream_cypress_flowchart_spec_3_should_render_a_simple_flowchart_with_line_breaks_003" => {
             Some(("0 0 440.03125 737.25", "440.031"))
