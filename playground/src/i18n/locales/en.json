@@ -75,7 +75,18 @@
       "gantt": "Gantt",
       "pie": "Pie",
       "mindmap": "Mindmap",
-      "git": "Git"
+      "git": "Git",
+      "timeline": "Timeline",
+      "xychart": "XY Chart",
+      "architecture": "Architecture",
+      "block": "Block",
+      "packet": "Packet",
+      "kanban": "Kanban",
+      "quadrant": "Quadrant",
+      "sankey": "Sankey",
+      "radar": "Radar",
+      "treemap": "Treemap",
+      "requirement": "Requirement"
     }
   },
   "editor": {
@@ -150,6 +161,17 @@
     "pie": "Pie Chart",
     "mindmap": "Mindmap",
     "gitgraph": "Git Graph",
+    "timeline": "Timeline",
+    "xychart": "XY Chart",
+    "architecture": "Architecture",
+    "block": "Block",
+    "packet": "Packet",
+    "kanban": "Kanban",
+    "quadrantchart": "Quadrant Chart",
+    "sankey": "Sankey",
+    "radar": "Radar",
+    "treemap": "Treemap",
+    "requirement": "Requirement",
     "unknown": "Unknown"
   }
 }

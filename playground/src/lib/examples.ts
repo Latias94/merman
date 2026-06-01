@@ -39,6 +39,15 @@ export const examples: Example[] = [
     E --> I`,
   },
   {
+    id: "flowchart-datastore",
+    name: "Flowchart Data Store",
+    category: "Flowchart",
+    code: `flowchart LR
+    Source@{ shape: lean-r, label: "Event stream" } --> Load[Normalize]
+    Load --> Store@{ shape: datastore, label: "Warehouse" }
+    Store --> Report@{ shape: doc, label: "Daily report" }`,
+  },
+  {
     id: "sequence-basic",
     name: "Basic Sequence",
     category: "Sequence",
@@ -73,6 +82,20 @@ export const examples: Example[] = [
     S->>C: Push Notification`,
   },
   {
+    id: "sequence-decimal-autonumber",
+    name: "Decimal Autonumber",
+    category: "Sequence",
+    code: `sequenceDiagram
+    autonumber 1.1 0.1
+    participant App
+    participant API
+    participant DB
+    App->>API: Submit request
+    API->>DB: Persist command
+    DB-->>API: Stored
+    API-->>App: Accepted`,
+  },
+  {
     id: "class-basic",
     name: "Basic Class Diagram",
     category: "Class",
@@ -92,6 +115,23 @@ export const examples: Example[] = [
     }
     Animal <|-- Dog
     Animal <|-- Cat`,
+  },
+  {
+    id: "class-nested-namespace",
+    name: "Nested Namespace",
+    category: "Class",
+    code: `classDiagram
+    namespace Platform["Platform Layer"] {
+      namespace FFI {
+        class DartBinding
+        class PythonBinding
+      }
+      namespace Core {
+        class Renderer
+      }
+    }
+    Platform.FFI.DartBinding --> Platform.Core.Renderer : calls
+    Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls`,
   },
   {
     id: "state-basic",
@@ -217,6 +257,136 @@ export const examples: Example[] = [
     section 2025
         Q1 : Playground Release
            : Community Feedback`,
+  },
+  {
+    id: "xychart-render-timing",
+    name: "Render Timing",
+    category: "XY Chart",
+    code: `xychart
+    title "Render timings"
+    x-axis ["Parse", "Layout", "SVG", "PNG"]
+    y-axis "ms" 0 --> 120
+    bar [12, 34, 58, 96]
+    line [10, 28, 50, 85]`,
+  },
+  {
+    id: "architecture-binding-stack",
+    name: "Binding Stack",
+    category: "Architecture",
+    code: `architecture-beta
+    group edge(cloud)[Edge]
+    group core(server)[Core]
+    service browser(internet)[Browser] in edge
+    service api(server)[API] in core
+    service renderer(server)[Renderer] in core
+    service cache(database)[Cache] in core
+    browser:R --> L:api
+    api:R --> L:renderer
+    renderer:B --> T:cache`,
+  },
+  {
+    id: "block-render-pipeline",
+    name: "Render Pipeline",
+    category: "Block",
+    code: `block-beta
+    columns 3
+    source["Source"] parser["Parser"] layout["Layout"]
+    source --> parser
+    parser --> layout
+    layout --> svg["SVG"]`,
+  },
+  {
+    id: "packet-ipv4-header",
+    name: "IPv4 Header",
+    category: "Packet",
+    code: `packet
+    +4: "Version"
+    +4: "IHL"
+    +8: "DSCP"
+    +16: "Total Length"
+    +16: "Identification"
+    +3: "Flags"
+    +13: "Fragment Offset"`,
+  },
+  {
+    id: "kanban-release-work",
+    name: "Release Work",
+    category: "Kanban",
+    code: `kanban
+    backlog[Backlog]
+      api[Define FFI API]@{ assigned: "Core", priority: "High" }
+      docs[Write README]@{ assigned: "Docs", priority: "Low" }
+    progress[In Progress]
+      flutter[Flutter packaging]@{ assigned: "Mobile", priority: "High" }
+    done[Done]
+      ci[CI matrix]@{ assigned: "Infra", priority: "Very Low" }`,
+  },
+  {
+    id: "quadrant-integration-priority",
+    name: "Integration Priority",
+    category: "Quadrant",
+    code: `quadrantChart
+    title Integration Priority
+    x-axis Low Effort --> High Effort
+    y-axis Low Impact --> High Impact
+    quadrant-1 Strategic
+    quadrant-2 Quick Wins
+    quadrant-3 Backlog
+    quadrant-4 Expensive
+    Flutter: [0.35, 0.82]
+    Python: [0.28, 0.68]
+    Event Modeling: [0.72, 0.45]`,
+  },
+  {
+    id: "sankey-render-flow",
+    name: "Render Flow",
+    category: "Sankey",
+    code: `sankey
+    Editor,Parser,8
+    Parser,Layout,7
+    Layout,SVG,6
+    Layout,Diagnostics,3
+    SVG,Export,4`,
+  },
+  {
+    id: "radar-binding-coverage",
+    name: "Binding Coverage",
+    category: "Radar",
+    code: `radar-beta
+    title Binding Coverage
+    axis Rust, WASM, Dart, Python, Swift
+    curve Current{90, 80, 60, 55, 45}
+    curve Target{95, 90, 85, 80, 75}
+    max 100
+    min 0`,
+  },
+  {
+    id: "treemap-package-surface",
+    name: "Package Surface",
+    category: "Treemap",
+    code: `treemap-beta
+    "Bindings"
+      "Rust Core": 40
+      "Web WASM": 25
+      "Flutter": 15
+      "Python": 12
+      "Swift": 8`,
+  },
+  {
+    id: "requirement-ffi-api",
+    name: "FFI API Requirement",
+    category: "Requirement",
+    code: `requirementDiagram
+    requirement ffi_api {
+      id: 1
+      text: Stable parse, layout, and render API
+      risk: medium
+      verifymethod: test
+    }
+    element wasm {
+      type: library
+    }
+    wasm - satisfies -> ffi_api`,
   },
 ];
 
