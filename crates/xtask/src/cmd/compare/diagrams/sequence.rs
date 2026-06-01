@@ -185,11 +185,8 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
         };
 
         let layout_opts = merman_render::LayoutOptions {
-            text_measurer: std::sync::Arc::new(
-                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-            ),
             math_renderer: sequence_math_renderer.clone(),
-            ..Default::default()
+            ..merman_render::LayoutOptions::headless_svg_defaults()
         };
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,

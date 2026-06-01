@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - TODO
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## M0 - Baseline Split
 
@@ -106,9 +106,25 @@ Last updated: 2026-06-01
   the headless measurement rule where only explicit `px` strings are SVG-text effective for Class.
   Class and Radar fixtures stayed structurally green; full residual counts are unchanged.
 
+- [ ] M15RV-080 [owner=codex] [deps=M15RV-020,M15RV-070] [scope=crates/merman-render/src/sequence,crates/merman-render/src/text,crates/xtask/src/cmd/overrides/svg.rs,crates/merman-render/tests/sequence_svg_test.rs,target/compare/sequence_*]
+  Goal: Repair the Sequence SVG text-measurement policy path, or explicitly document the residual
+  if browser-derived `calculateTextDimensions(...)` behavior cannot be approximated without
+  harming broader headless parity.
+  Validation: focused central-connection Sequence tests and `compare-sequence-svgs` root reports;
+  full Sequence/root reports before accepting any measurement-policy change.
+  Review: Do not replace Sequence message spacing with the deterministic measurer just because it
+  improves one fixture; a diagnostic probe improved the focused central row but increased the
+  overall Sequence root mismatch count. Do not refresh the full Sequence SVG override table until
+  the generator itself is proven against fixture-derived browser evidence.
+  Evidence: `EVIDENCE_AND_GATES.md`
+  Handoff: IN_PROGRESS. Source inspection confirmed Mermaid 11.15 still routes Sequence message
+  spacing through `utils.calculateTextDimensions(...)`. Rust central-connection offsets and SVG
+  renderer preservation now have regression tests; the remaining `+63px` focused residual is a
+  headless text-measurement/generator-policy gap.
+
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;

@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - Handoff
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Current State
 
@@ -95,25 +95,41 @@ pinning artifact. Removing that bump made
 `upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_a_reasonable_height_011`
 all root-green, and reduced the aggregate Architecture bucket from 32 to 29 residuals.
 
+M15RV-080 started a Sequence text-measurement policy audit from the central-connection RTL row.
+Mermaid 11.15 source still computes Sequence message spacing through
+`utils.calculateTextDimensions(...)` inside `getMaxMessageWidthPerActor(...)`, then feeds that into
+`calculateActorMargins(...)`; `calculateTextDimensions(...)` measures browser SVG text with both
+`sans-serif` and the configured family, rounds the browser bbox, and chooses the configured family
+unless the sans-serif dimensions are strictly larger. Rust central-connection constants already
+match Mermaid source, and new regression tests prove the default layout centers and first message
+line are preserved by the SVG renderer. The focused headless SVG compare still fails as a root-only
+residual: Mermaid 11.15 upstream root is `965px`, while the Rust headless SVG path emits `1028px`.
+
+Two attempted fixes were explicitly rejected. A diagnostic substitution of deterministic message
+measurement improved this focused row to `995px`, but increased the raw Sequence root mismatch
+count from 168 to 169, so it is not a defensible parity fix. A full `gen-svg-overrides --mode
+sequence` refresh added a much larger override table and made the focused row worse (`1034px`), so
+the generator needs repair before refreshing Sequence SVG text overrides. Refreshing the focused
+upstream SVG with `gen-upstream-svgs` produced no file diff, confirming the `965px` baseline is not
+stale under the current upstream export path.
+
 ## Active Task
 
-- Task ID: M15RV-070
+- Task ID: M15RV-080
 - Owner: codex
-- Status: DONE
-- Goal: Extract shared font-size config helpers for Mermaid raw CSS interpolation and explicit-px
-  SVG text measurement policy.
-- Evidence: `target/compare/radar_font_size_after_css_font_helper.md`,
-  `target/compare/radar_numeric_font_size_after_css_font_helper.md`,
-  `target/compare/class_font_size_025_after_css_font_helper.md`, and
-  `target/compare/class_font_size_026_after_css_font_helper.md`
-- Concern: The helper is not a license to migrate every diagram blindly. Sequence, Architecture,
-  C4, State, and shared CSS paths need source checks because some Mermaid code uses
-  `parseFontSize(...)` or diagram-specific `.style('font-size', value + 'px')` semantics.
+- Status: IN_PROGRESS
+- Goal: Repair the Sequence SVG text-measurement policy path, or explicitly document the residual
+  when browser `calculateTextDimensions(...)` behavior cannot be approximated without harming
+  broader headless parity.
+- Evidence: `target/compare/sequence_central_rtl_033_after_measurement_audit.md` plus the focused
+  Sequence central-connection regression tests in `crates/merman-render/tests/sequence_svg_test.rs`.
+- Concern: Do not replace Sequence spacing with deterministic metrics as a one-row fix. The
+  diagnostic probe showed that this makes the broader Sequence root bucket worse.
 
 ## Fresh Counts
 
 - Total unaccepted full-root residuals: 277.
-- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 12.
+- Largest buckets: Sequence 167, Flowchart 61, Architecture 29, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.

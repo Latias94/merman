@@ -411,6 +411,68 @@ fn sequence_message_font_size_override_matches_mermaid_cli_baselines() {
     );
 }
 
+#[test]
+fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(
+            "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033.mmd",
+        );
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    let actor_center = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .map(|node| node.x)
+            .unwrap_or_else(|| panic!("missing node {id}"))
+    };
+
+    assert_eq!(actor_center("actor-top-Alice"), 75.0);
+    assert_eq!(actor_center("actor-top-Bob"), 443.0);
+    assert_eq!(actor_center("actor-top-Charlie"), 820.0);
+
+    let edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "msg-1")
+        .expect("expected first central-connection edge");
+    assert_eq!(edge.points.len(), 2);
+    assert_eq!(edge.points[0].x, 442.0);
+    assert_eq!(edge.points[1].x, 83.0);
+}
+
+#[test]
+fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
+    let fixture = "upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033.mmd";
+    let svg = render_sequence_svg_from_fixture(fixture);
+
+    assert!(
+        svg.contains(r#"<text x="443" y="32.5""#),
+        "expected Bob top actor center from layout to be preserved in SVG: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<text x="820" y="32.5""#),
+        "expected Charlie top actor center from layout to be preserved in SVG: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<line x1="442" y1="109" x2="83" y2="109""#),
+        "expected first message x positions to stay near layout/golden spacing: {svg}"
+    );
+}
+
 #[cfg(feature = "ratex-math")]
 #[test]
 fn sequence_svg_renders_ratex_math_message_and_note_end_to_end() {

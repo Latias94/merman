@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Starting Evidence
 
@@ -470,6 +470,50 @@ Policy extraction:
 
 Full residual counts are unchanged from M15RV-060: total 277 unaccepted root residuals, with Class
 at 12.
+
+## M15RV-080 - Sequence Text Measurement Policy Audit
+
+Fresh evidence from 2026-06-02:
+
+- `cargo test -p merman-render sequence_central_connection_rtl -- --nocapture`: passed, 2 focused
+  Sequence SVG tests. These tests cover the central-connection RTL fixture's default layout actor
+  centers (`Alice=75`, `Bob=443`, `Charlie=820`) and verify the SVG renderer preserves the first
+  message line coordinates (`442 -> 83`) instead of introducing a render-stage drift.
+- `cargo run -p xtask -- compare-sequence-svgs --filter upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_central_rtl_033_after_measurement_audit.md`:
+  expected failure; the focused row remains a root-only residual at `965px` upstream vs `1028px`
+  local (`+63px`).
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_report_parity_root_m15rv080_measurement_audit.md`:
+  expected failure with 168 Sequence mismatch lines, matching the prior raw Sequence bucket and
+  confirming the compare-path cleanup did not create a new aggregate Sequence drift.
+- `cargo run -p xtask -- gen-upstream-svgs --diagram sequence --filter upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033`:
+  produced no upstream SVG diff, so the `965px` baseline is not stale under the current Mermaid
+  export path.
+
+Source findings:
+
+- Mermaid 11.15 Sequence spacing still routes message labels through
+  `getMaxMessageWidthPerActor(...)` in
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`. That path applies
+  `utils.wrapLabel(...)` when needed, calls `utils.calculateTextDimensions(wrappedMessage,
+  textFont)`, adds `2 * conf.wrapPadding`, then feeds the width into `calculateActorMargins(...)`.
+- Mermaid's `utils.calculateTextDimensions(...)` in
+  `repo-ref/mermaid/packages/mermaid/src/utils.ts` is browser-SVG-dependent: it inserts temporary
+  text, measures `getBBox()`, rounds width and height, probes both `sans-serif` and the configured
+  font family, and chooses the configured family unless the sans-serif dimensions are strictly
+  larger.
+- Rust's central-connection layout/render constants were already aligned with Mermaid source. The
+  remaining central-connection mismatch is therefore a text measurement/root-bounds policy gap, not
+  a missing central-connection semantic rule.
+
+Rejected probes:
+
+- Replacing Sequence actor-spacing message measurement with `DeterministicTextMeasurer` improved
+  the focused central RTL row from `1028px` to `995px`, but increased raw Sequence root mismatches
+  from 168 to 169. This is not a safe fix because it trades one fixture for broader drift.
+- Refreshing the full generated `svg_overrides_sequence_11_12_2.rs` table with
+  `gen-svg-overrides --mode sequence` made the focused row worse (`1034px`) and produced a large
+  generated-table churn. The current Sequence override generator's minimal-diagram inversion needs
+  repair or replacement before a full refresh is defensible.
 
 ## M15RV-040 Follow-Up - Architecture Root Diagnostics Parity
 
