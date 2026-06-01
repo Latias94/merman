@@ -258,7 +258,7 @@ pub(super) fn render_class_edge_groups(
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
 
-    let edge_paths_start = ctx.timing_enabled.then(std::time::Instant::now);
+    let edge_paths_start = ctx.timing_enabled.then(web_time::Instant::now);
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     let mut edge_label_centers: FxHashMap<&str, LayoutPoint> =
         FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
@@ -279,7 +279,7 @@ pub(super) fn render_class_edge_groups(
             });
         }
 
-        let curve_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let curve_start = ctx.timing_enabled.then(web_time::Instant::now);
         let relation = if e.id.starts_with("edgeNote") {
             None
         } else {
@@ -314,7 +314,7 @@ pub(super) fn render_class_edge_groups(
         if let Some(s) = curve_start {
             detail.edge_curve += s.elapsed();
         }
-        let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
         if let Some(pb) = d_pb.as_ref() {
             include_path_bounds(content_bounds, pb, ctx.bounds_dx, ctx.bounds_dy);
         } else {
@@ -325,7 +325,7 @@ pub(super) fn render_class_edge_groups(
             detail.path_bounds_calls += 1;
         }
 
-        let json_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let json_start = ctx.timing_enabled.then(web_time::Instant::now);
         edge_points_json_buf.clear();
         json_stringify_points_into(
             &mut edge_points_json_buf,
@@ -336,7 +336,7 @@ pub(super) fn render_class_edge_groups(
             detail.edge_points_json += s.elapsed();
         }
 
-        let b64_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let b64_start = ctx.timing_enabled.then(web_time::Instant::now);
         edge_points_b64_buf.clear();
         base64::engine::general_purpose::STANDARD
             .encode_string(edge_points_json_buf.as_bytes(), &mut edge_points_b64_buf);
@@ -389,7 +389,7 @@ pub(super) fn render_class_edge_groups(
         detail.edge_paths += s.elapsed();
     }
 
-    let edge_labels_start = ctx.timing_enabled.then(std::time::Instant::now);
+    let edge_labels_start = ctx.timing_enabled.then(web_time::Instant::now);
     out.push_str(r#"<g class="edgeLabels">"#);
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
     for e in ordered_edges.iter().copied() {

@@ -5,7 +5,7 @@
 use super::{OrderEdgeWeight, OrderNodeLabel};
 use crate::graphlib::Graph;
 use rustc_hash::FxHashMap as HashMap;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BarycenterEntry {

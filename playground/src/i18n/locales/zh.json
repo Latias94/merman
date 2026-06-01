@@ -1,0 +1,147 @@
+{
+  "app": {
+    "title": "Merman 演练场",
+    "description": "基于 Rust + WebAssembly 的在线 Mermaid 图表编辑器"
+  },
+  "toolbar": {
+    "examples": "示例",
+    "history": "历史",
+    "theme": "主题",
+    "export": "导出",
+    "share": "分享",
+    "bench": "压测",
+    "language": "语言",
+    "toggleTheme": "切换主题",
+    "viewSource": "在 GitHub 上查看源码"
+  },
+  "export": {
+    "title": "导出",
+    "svg": "导出 SVG",
+    "svgDesc": "矢量格式，可无损缩放",
+    "png": "导出 PNG",
+    "pngDesc": "图片格式，2 倍分辨率",
+    "ascii": "导出 ASCII",
+    "asciiDesc": "文本艺术格式",
+    "asciiNotSupported": "该图表类型不支持 ASCII 导出",
+    "copyCode": "复制代码",
+    "copyCodeDesc": "复制 Mermaid 源代码"
+  },
+  "share": {
+    "title": "分享",
+    "copyLink": "复制链接",
+    "copyLinkDesc": "通过 URL 分享图表",
+    "copied": "已复制！",
+    "copyFailed": "复制失败"
+  },
+  "bench": {
+    "title": "渲染压测",
+    "description": "当前图表，本机浏览器。",
+    "engines": "引擎",
+    "merman": "Merman",
+    "mermaid": "Mermaid JS",
+    "warmup": "预热",
+    "measure": "测量",
+    "run": "运行",
+    "running": "运行中",
+    "cancelled": "已取消",
+    "notReady": "渲染引擎加载中",
+    "empty": "请先输入 Mermaid 代码",
+    "noEngine": "至少选择一个引擎",
+    "noResults": "运行压测后显示结果",
+    "engine": "引擎",
+    "samples": "样本",
+    "median": "中位数",
+    "p95": "p95",
+    "mean": "平均",
+    "min": "最小",
+    "max": "最大",
+    "errors": "错误",
+    "ratio": "Mermaid / Merman"
+  },
+  "examples": {
+    "title": "示例库",
+    "description": "选择一个示例加载到编辑器",
+    "all": "全部",
+    "lines": "行",
+    "categories": {
+      "flowchart": "流程图",
+      "sequence": "时序图",
+      "class": "类图",
+      "state": "状态图",
+      "er": "ER 图",
+      "gantt": "甘特图",
+      "pie": "饼图",
+      "mindmap": "思维导图",
+      "git": "Git 图"
+    }
+  },
+  "history": {
+    "title": "历史记录",
+    "description": "您最近的图表（本地存储）",
+    "empty": "暂无历史记录",
+    "emptyDesc": "您编辑的图表将显示在这里",
+    "clear": "清空全部",
+    "confirmClear": "确认清空所有历史记录？",
+    "load": "加载",
+    "delete": "删除"
+  },
+  "editor": {
+    "placeholder": "在此输入 Mermaid 代码..."
+  },
+  "preview": {
+    "loading": "正在加载渲染引擎...",
+    "error": "渲染错误",
+    "empty": "在左侧输入 Mermaid 代码",
+    "emptyHint": "或从示例中选择一个开始",
+    "mockMode": "模拟模式",
+    "mockModeDesc": "WASM 模块未加载，显示代码预览。",
+    "mockModeHint": "要启用真实渲染，请构建并加载 merman-wasm 模块。",
+    "svgMode": "SVG 预览",
+    "asciiMode": "ASCII 预览",
+    "asciiNotSupported": "该图表类型不支持 ASCII",
+    "asciiNotAvailable": "ASCII 渲染不可用",
+    "copyAscii": "复制 ASCII",
+    "copySvg": "复制 SVG",
+    "copied": "已复制！",
+    "compareMode": "对比",
+    "mermanEngine": "Merman",
+    "mermaidEngine": "Mermaid JS",
+    "loadingMermaid": "正在加载 Mermaid JS...",
+    "exportSvg": "导出 SVG",
+    "exportPng": "导出 PNG",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "reset": "重置视图",
+    "resetZoom": "重置缩放",
+    "fitToView": "适应视图"
+  },
+  "status": {
+    "diagramType": "类型",
+    "lines": "行数",
+    "chars": "字符",
+    "renderTime": "渲染",
+    "theme": "主题",
+    "ready": "就绪",
+    "rendering": "渲染中...",
+    "error": "错误"
+  },
+  "themes": {
+    "default": "默认",
+    "dark": "深色",
+    "forest": "森林",
+    "neutral": "中性",
+    "base": "基础"
+  },
+  "diagramTypes": {
+    "flowchart": "流程图",
+    "sequence": "时序图",
+    "class": "类图",
+    "state": "状态图",
+    "er": "ER 图",
+    "gantt": "甘特图",
+    "pie": "饼图",
+    "mindmap": "思维导图",
+    "gitgraph": "Git 图",
+    "unknown": "未知"
+  }
+}

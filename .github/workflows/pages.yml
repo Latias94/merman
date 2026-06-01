@@ -1,0 +1,102 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/pages.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "platforms/web/**"
+      - "playground/**"
+  pull_request:
+    paths:
+      - ".github/workflows/pages.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "platforms/web/**"
+      - "playground/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build playground
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            platforms/web/package-lock.json
+            playground/package-lock.json
+
+      - name: Install WASM tools
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.108 --locked
+          cargo install wasm-pack --version 0.12.1 --locked
+
+      - name: Install web package dependencies
+        run: npm ci --prefix platforms/web
+
+      - name: Build web package
+        run: npm run build --prefix platforms/web
+
+      - name: Verify web package
+        run: npm run prepack --prefix platforms/web
+
+      - name: Install playground dependencies
+        run: npm ci --prefix playground
+
+      - name: Build playground
+        run: npm run build --prefix playground
+
+      - name: Verify playground dist
+        run: npm run verify:dist --prefix playground
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: playground/dist
+
+  deploy:
+    name: Deploy playground
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

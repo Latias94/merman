@@ -11,24 +11,24 @@ mod spectral;
 
 #[derive(Debug, Default, Clone)]
 struct FcoseLayoutTimings {
-    total: std::time::Duration,
-    from_indexed: std::time::Duration,
-    constraints: std::time::Duration,
+    total: web_time::Duration,
+    from_indexed: web_time::Duration,
+    constraints: web_time::Duration,
     spring: FcoseSpringTimings,
-    translate: std::time::Duration,
-    output: std::time::Duration,
+    translate: web_time::Duration,
+    output: web_time::Duration,
 }
 
 #[derive(Debug, Default, Clone)]
 struct FcoseSpringTimings {
-    total: std::time::Duration,
-    opts_prep: std::time::Duration,
-    spectral: std::time::Duration,
-    root_compound: std::time::Duration,
-    collapse_start_positions: std::time::Duration,
-    pre_constraints: std::time::Duration,
-    constraint_rt: std::time::Duration,
-    iterations: std::time::Duration,
+    total: web_time::Duration,
+    opts_prep: web_time::Duration,
+    spectral: web_time::Duration,
+    root_compound: web_time::Duration,
+    collapse_start_positions: web_time::Duration,
+    pre_constraints: web_time::Duration,
+    constraint_rt: web_time::Duration,
+    iterations: web_time::Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -191,15 +191,15 @@ pub fn layout_indexed(
 
     let timing_enabled = std::env::var("MANATEE_FCOSE_TIMING").ok().as_deref() == Some("1");
     let mut timings = FcoseLayoutTimings::default();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
 
-    let from_indexed_start = timing_enabled.then(std::time::Instant::now);
+    let from_indexed_start = timing_enabled.then(web_time::Instant::now);
     let mut sim = SimGraph::from_indexed(graph);
     if let Some(s) = from_indexed_start {
         timings.from_indexed = s.elapsed();
     }
 
-    let constraints_start = timing_enabled.then(std::time::Instant::now);
+    let constraints_start = timing_enabled.then(web_time::Instant::now);
     let constraints = Constraints::from_indexed_opts(&sim, opts);
     if let Some(s) = constraints_start {
         timings.constraints = s.elapsed();
@@ -261,7 +261,7 @@ pub fn layout_indexed(
             .as_deref()
             == Some("1");
 
-        let spring_start = timing_enabled.then(std::time::Instant::now);
+        let spring_start = timing_enabled.then(web_time::Instant::now);
         spring_stats = sim.run_spring_embedder(
             &constraints,
             opts,
@@ -290,7 +290,7 @@ pub fn layout_indexed(
         let _ = sim.update_bounds();
 
         let new_center = sim.bounding_box_center_rects().unwrap_or((0.0, 0.0));
-        let translate_start = timing_enabled.then(std::time::Instant::now);
+        let translate_start = timing_enabled.then(web_time::Instant::now);
         let disable_relocate = std::env::var("MANATEE_FCOSE_DISABLE_RELOCATE")
             .ok()
             .as_deref()
@@ -315,7 +315,7 @@ pub fn layout_indexed(
         }
     }
 
-    let output_start = timing_enabled.then(std::time::Instant::now);
+    let output_start = timing_enabled.then(web_time::Instant::now);
     let leaf_count = sim.leaf_count;
     let node_count = sim.nodes.len();
     let edge_count = sim.edges.len();
@@ -1941,7 +1941,7 @@ impl SimGraph {
             }
         };
 
-        let opts_prep_start = timing_enabled.then(std::time::Instant::now);
+        let opts_prep_start = timing_enabled.then(web_time::Instant::now);
         // Recompute per-edge ideal lengths (layout-base `FDLayout.calcIdealEdgeLengths`).
         // This must be re-applied on each run because Mermaid runs FCoSE twice.
         //
@@ -2008,7 +2008,7 @@ impl SimGraph {
 
         // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
         // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
-        let spectral_start = timing_enabled.then(std::time::Instant::now);
+        let spectral_start = timing_enabled.then(web_time::Instant::now);
         let mut spectral_applied = false;
         if opts.randomize {
             let node_separation = opts
@@ -2077,7 +2077,7 @@ impl SimGraph {
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if opts.randomize && self.edges.is_empty() && !spectral_applied {
-            let collapse_start = timing_enabled.then(std::time::Instant::now);
+            let collapse_start = timing_enabled.then(web_time::Instant::now);
             self.collapse_start_positions(default_edge_length, rng);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), collapse_start) {
                 t.collapse_start_positions = s.elapsed();
@@ -2096,7 +2096,7 @@ impl SimGraph {
             || !constraints.align_vertical.is_empty()
             || !constraints.relative.is_empty();
         if !disable_pre && has_constraints {
-            let pre_constraints_start = timing_enabled.then(std::time::Instant::now);
+            let pre_constraints_start = timing_enabled.then(web_time::Instant::now);
             handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
             dump_positions("pre_constraints", &self.nodes);
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
@@ -2104,7 +2104,7 @@ impl SimGraph {
             }
         }
 
-        let constraint_rt_start = timing_enabled.then(std::time::Instant::now);
+        let constraint_rt_start = timing_enabled.then(web_time::Instant::now);
         let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
         if let (Some(t), Some(s)) = (timings.as_deref_mut(), constraint_rt_start) {
             t.constraint_rt = s.elapsed();
@@ -2141,7 +2141,7 @@ impl SimGraph {
             .as_deref()
             == Some("1");
 
-        let iterations_start = timing_enabled.then(std::time::Instant::now);
+        let iterations_start = timing_enabled.then(web_time::Instant::now);
         let mut processed: Vec<bool> = vec![false; self.nodes.len()];
         let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
         let all_nodes_in_layout_order = self.all_nodes_layout_order();

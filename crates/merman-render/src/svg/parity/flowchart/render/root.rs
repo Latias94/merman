@@ -278,7 +278,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
             // node DOM element. Recursive clusters render as nested `.root` groups.
             if ctx.recursive_clusters.contains(id) {
-                let nested_start = session.timing_enabled.then(std::time::Instant::now);
+                let nested_start = session.timing_enabled.then(web_time::Instant::now);
                 render_flowchart_root(out, ctx, Some(id), origin_x, origin_y, session);
                 if let Some(s) = nested_start {
                     session.details.nested_roots += s.elapsed();
@@ -287,7 +287,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             continue;
         }
 
-        let node_start = session.timing_enabled.then(std::time::Instant::now);
+        let node_start = session.timing_enabled.then(web_time::Instant::now);
         render_flowchart_node(
             out,
             ctx,

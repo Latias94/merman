@@ -80,7 +80,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let timing_enabled = render_timing_enabled();
-    let total_start = timing_enabled.then(std::time::Instant::now);
+    let total_start = timing_enabled.then(web_time::Instant::now);
     let mut timings = RenderTimings::default();
 
     let mut detail = ClassRenderDetails::default();
@@ -191,7 +191,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     }
 
     // Nodes.
-    let nodes_start = timing_enabled.then(std::time::Instant::now);
+    let nodes_start = timing_enabled.then(web_time::Instant::now);
 
     if wrap_nodes_root {
         out.push_str(r#"<g class="nodes">"#);

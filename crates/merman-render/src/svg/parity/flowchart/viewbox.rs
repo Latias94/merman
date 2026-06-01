@@ -28,7 +28,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBoundsRequest<
     pub font_family: &'borrow str,
     pub title_top_margin: f64,
     pub timing_enabled: bool,
-    pub viewbox_edge_curve_bounds: &'borrow mut std::time::Duration,
+    pub viewbox_edge_curve_bounds: &'borrow mut web_time::Duration,
     pub detail: &'borrow mut FlowchartRenderDetails,
     pub edge_path_cache: &'borrow mut FxHashMap<&'view str, FlowchartEdgePathCacheEntry>,
 }

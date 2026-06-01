@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 fn parse_env_bool(v: &str) -> bool {
     !matches!(

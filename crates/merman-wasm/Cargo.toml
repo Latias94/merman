@@ -1,0 +1,33 @@
+[package]
+name = "merman-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "WebAssembly bindings for merman browser rendering."
+documentation = "https://docs.rs/merman-wasm"
+readme = "README.md"
+keywords = ["mermaid", "diagrams", "wasm", "svg", "headless"]
+categories = ["wasm", "visualization"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["render", "ascii"]
+ascii = ["merman-bindings-core/ascii"]
+render = ["merman-bindings-core/render"]
+ratex-math = ["render", "merman-bindings-core/ratex-math"]
+
+[dependencies]
+console_error_panic_hook.workspace = true
+merman-bindings-core.workspace = true
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

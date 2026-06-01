@@ -3,7 +3,7 @@ use crate::model::{Bounds, ClassNodeRowMetrics, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
 use std::fmt::Write as _;
-use std::time::Duration;
+use web_time::Duration;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_bounds, include_xywh};
@@ -242,7 +242,7 @@ pub(super) fn render_class_node_basic_container(
         w,
         h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
     include_path_bounds(
         content_bounds,
         &stroke_pb,
@@ -295,7 +295,7 @@ pub(super) fn render_class_node_dividers(
             escape_attr_display(ctx.node_style_attr)
         );
         let (d, d_pb) = class_rough_line_double_path_and_bounds(left, y, right, y, rough_seed);
-        let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
         include_path_bounds(
             content_bounds,
             &d_pb,

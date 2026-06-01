@@ -46,6 +46,7 @@ ryu-js.workspace = true
 svgtypes = "0.11"
 url.workspace = true
 unicode-width.workspace = true
+web-time.workspace = true
 
 [dev-dependencies]
 futures.workspace = true

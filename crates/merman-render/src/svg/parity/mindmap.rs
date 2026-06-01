@@ -463,10 +463,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 ) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
     fn section<'a>(
         enabled: bool,
-        dst: &'a mut std::time::Duration,
+        dst: &'a mut web_time::Duration,
     ) -> Option<super::timing::TimingGuard<'a>> {
         enabled.then(|| super::timing::TimingGuard::new(dst))
     }

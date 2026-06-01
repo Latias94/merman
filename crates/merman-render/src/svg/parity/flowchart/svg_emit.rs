@@ -25,7 +25,7 @@ pub(super) fn render_flowchart_v2_svg(
 #[inline]
 fn section<'a>(
     enabled: bool,
-    dst: &'a mut std::time::Duration,
+    dst: &'a mut web_time::Duration,
 ) -> Option<super::super::timing::TimingGuard<'a>> {
     enabled.then(|| super::super::timing::TimingGuard::new(dst))
 }
@@ -40,7 +40,7 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
 ) -> Result<String> {
     let timing_enabled = super::super::timing::render_timing_enabled();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
 
     render_flowchart_v2_svg_with_config_inner(
         layout,
@@ -67,7 +67,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 ) -> Result<String> {
     let timing_enabled = super::super::timing::render_timing_enabled();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
+    let total_start = web_time::Instant::now();
 
     let model: crate::flowchart::FlowchartV2Model = {
         let _g = section(timing_enabled, &mut timings.deserialize_model);
@@ -92,7 +92,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 struct FlowchartSvgTiming<'a> {
     enabled: bool,
     timings: &'a mut super::super::timing::RenderTimings,
-    total_start: std::time::Instant,
+    total_start: web_time::Instant,
 }
 
 fn render_flowchart_v2_svg_with_config_inner(
@@ -310,7 +310,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     drop(_g_build_ctx);
 
     let mut detail = FlowchartRenderDetails::default();
-    let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
+    let mut viewbox_edge_curve_bounds = web_time::Duration::ZERO;
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {

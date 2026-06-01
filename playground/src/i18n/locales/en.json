@@ -1,0 +1,147 @@
+{
+  "app": {
+    "title": "Merman Playground",
+    "description": "Online Mermaid diagram editor powered by Rust + WebAssembly"
+  },
+  "toolbar": {
+    "examples": "Examples",
+    "history": "History",
+    "theme": "Theme",
+    "export": "Export",
+    "share": "Share",
+    "bench": "Bench",
+    "language": "Language",
+    "toggleTheme": "Toggle theme",
+    "viewSource": "View source on GitHub"
+  },
+  "export": {
+    "title": "Export",
+    "svg": "Export SVG",
+    "svgDesc": "Vector format, scalable",
+    "png": "Export PNG",
+    "pngDesc": "Image format, 2x resolution",
+    "ascii": "Export ASCII",
+    "asciiDesc": "Text art format",
+    "asciiNotSupported": "ASCII export not supported for this diagram type",
+    "copyCode": "Copy Code",
+    "copyCodeDesc": "Copy Mermaid source code"
+  },
+  "share": {
+    "title": "Share",
+    "copyLink": "Copy Link",
+    "copyLinkDesc": "Share via URL with encoded diagram",
+    "copied": "Copied!",
+    "copyFailed": "Copy failed"
+  },
+  "bench": {
+    "title": "Render Bench",
+    "description": "Current diagram, local browser.",
+    "engines": "Engines",
+    "merman": "Merman",
+    "mermaid": "Mermaid JS",
+    "warmup": "Warmup",
+    "measure": "Measure",
+    "run": "Run",
+    "running": "Running",
+    "cancelled": "Cancelled",
+    "notReady": "Render engine loading",
+    "empty": "Enter Mermaid code first",
+    "noEngine": "Select at least one engine",
+    "noResults": "Run a bench to see results",
+    "engine": "Engine",
+    "samples": "Samples",
+    "median": "Median",
+    "p95": "p95",
+    "mean": "Mean",
+    "min": "Min",
+    "max": "Max",
+    "errors": "Errors",
+    "ratio": "Mermaid / Merman"
+  },
+  "examples": {
+    "title": "Example Gallery",
+    "description": "Select an example to load into the editor",
+    "all": "All",
+    "lines": "lines",
+    "categories": {
+      "flowchart": "Flowchart",
+      "sequence": "Sequence",
+      "class": "Class",
+      "state": "State",
+      "er": "ER",
+      "gantt": "Gantt",
+      "pie": "Pie",
+      "mindmap": "Mindmap",
+      "git": "Git"
+    }
+  },
+  "history": {
+    "title": "History",
+    "description": "Your recent diagrams (stored locally)",
+    "empty": "No history yet",
+    "emptyDesc": "Your edited diagrams will appear here",
+    "clear": "Clear All",
+    "confirmClear": "Clear all history?",
+    "load": "Load",
+    "delete": "Delete"
+  },
+  "editor": {
+    "placeholder": "Enter your Mermaid code here..."
+  },
+  "preview": {
+    "loading": "Loading render engine...",
+    "error": "Render Error",
+    "empty": "Enter Mermaid code on the left",
+    "emptyHint": "Or select an example to get started",
+    "mockMode": "Mock Mode",
+    "mockModeDesc": "WASM module not loaded. Showing code preview.",
+    "mockModeHint": "To enable real rendering, build and load the merman-wasm module.",
+    "svgMode": "SVG Preview",
+    "asciiMode": "ASCII Preview",
+    "asciiNotSupported": "ASCII not supported for this diagram type",
+    "asciiNotAvailable": "ASCII rendering not available",
+    "copyAscii": "Copy ASCII",
+    "copySvg": "Copy SVG",
+    "copied": "Copied!",
+    "compareMode": "Compare",
+    "mermanEngine": "Merman",
+    "mermaidEngine": "Mermaid JS",
+    "loadingMermaid": "Loading Mermaid JS...",
+    "exportSvg": "Export SVG",
+    "exportPng": "Export PNG",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "reset": "Reset view",
+    "resetZoom": "Reset zoom",
+    "fitToView": "Fit to view"
+  },
+  "status": {
+    "diagramType": "Type",
+    "lines": "Lines",
+    "chars": "Chars",
+    "renderTime": "Render",
+    "theme": "Theme",
+    "ready": "Ready",
+    "rendering": "Rendering...",
+    "error": "Error"
+  },
+  "themes": {
+    "default": "Default",
+    "dark": "Dark",
+    "forest": "Forest",
+    "neutral": "Neutral",
+    "base": "Base"
+  },
+  "diagramTypes": {
+    "flowchart": "Flowchart",
+    "sequence": "Sequence",
+    "class": "Class",
+    "state": "State",
+    "er": "ER Diagram",
+    "gantt": "Gantt",
+    "pie": "Pie Chart",
+    "mindmap": "Mindmap",
+    "gitgraph": "Git Graph",
+    "unknown": "Unknown"
+  }
+}

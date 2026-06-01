@@ -1,6 +1,14 @@
 /target
 .build/
 /node_modules/
+/platforms/web/node_modules/
+/platforms/web/dist/
+/platforms/web/pkg/
+/playground/node_modules/
+/playground/dist/
+/playground/*.tsbuildinfo
+/playground/vite.config.d.ts
+/playground/vite.config.js
 /package-lock.json
 /package.json
 /repo-ref/*

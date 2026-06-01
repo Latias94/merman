@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "slug": "web-wasm-playground",
+  "title": "Web WASM Playground",
+  "status": "active",
+  "updated": "2026-06-01",
+  "scope_kind": "execution",
+  "problem": "Merman has native bindings and a reference playground, but no first-class browser WASM/TypeScript surface or GitHub Pages live editor.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/web-wasm-playground/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/web-wasm-playground/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/web-wasm-playground/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/web-wasm-playground/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/web-wasm-playground/CONTEXT.jsonl",
+  "gates": [
+    "cargo check -p merman-wasm --target wasm32-unknown-unknown",
+    "wasm-pack build crates/merman-wasm --target web --out-dir ../../target/merman-wasm-pkg",
+    "npm run build --prefix platforms/web",
+    "npm run build --prefix playground",
+    "npm run verify:dist --prefix playground"
+  ],
+  "evidence": [
+    "docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0003-workspace-structure.md",
+    "docs/adr/0066-ffi-binding-strategy.md"
+  ],
+  "architecture_refs": [
+    "docs/bindings/OPTIONS_JSON.md",
+    "docs/release/PACKAGE_SURFACES.md"
+  ],
+  "capability_tags": [
+    "wasm",
+    "typescript",
+    "playground",
+    "github-pages"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Continue from the smallest WASM proof through the TypeScript package and playground only while the binding contract remains JSON-based and browser-only."
+  }
+}

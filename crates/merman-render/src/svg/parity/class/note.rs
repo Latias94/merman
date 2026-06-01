@@ -2,7 +2,7 @@ use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
 use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
-use std::time::Duration;
+use web_time::Duration;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgNote;
@@ -118,7 +118,7 @@ pub(super) fn render_class_note_node(
         label_w,
         label_h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(std::time::Instant::now);
+    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
     include_path_bounds(
         content_bounds,
         &note_stroke_pb,
@@ -153,7 +153,7 @@ pub(super) fn render_class_note_node(
             fmt(label_h),
             escape_attr_display(&note_div_style),
         );
-        let sanitize_start = ctx.timing_enabled.then(std::time::Instant::now);
+        let sanitize_start = ctx.timing_enabled.then(web_time::Instant::now);
         let note_html_config = class_note_sanitize_config(
             borrowed_sanitize_config,
             sanitize_config,
