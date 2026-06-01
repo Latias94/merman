@@ -61,6 +61,51 @@ namespace Company.Project.Module {
 }
 
 #[test]
+fn class_svg_scopes_text_color_for_html_labels() {
+    let svg = render_class_svg_from_text(
+        r#"classDiagram
+    class Animal {
+        +String name
+        +int age
+        +makeSound()
+    }
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"#merman p{margin:0;}"#),
+        "expected class SVG to reset HTML label paragraph margins"
+    );
+    assert!(
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#333;}"#),
+        "expected class SVG to make HTML labels self-contained instead of inheriting host page color"
+    );
+    assert!(
+        svg.contains(r#"#merman .label text{fill:#333;}"#),
+        "expected class SVG text labels to get an explicit fill color"
+    );
+}
+
+#[test]
+fn class_svg_honors_configured_class_text_color() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"themeVariables": {"classText": "#123456"}}}%%
+classDiagram
+    class Animal
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#merman .nodeLabel,#merman .edgeLabel{color:#123456;}"#),
+        "expected classText theme variable to drive HTML label color"
+    );
+    assert!(
+        svg.contains(r#"#merman .label text{fill:#123456;}"#),
+        "expected classText theme variable to drive SVG text fill"
+    );
+}
+
+#[test]
 fn class_debug_svg_renders_terminal_labels() {
     let path = workspace_root()
         .join("fixtures")
