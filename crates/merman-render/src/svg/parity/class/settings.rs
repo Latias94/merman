@@ -64,11 +64,14 @@ impl ClassRenderSettings {
             .max(0.0);
         let hide_empty_members_box =
             config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
-        let default_node_fill =
-            config_string(effective_config, &["themeVariables", "primaryColor"])
-                .unwrap_or_else(|| "#ECECFF".to_string());
+        let default_node_fill = config_string(effective_config, &["themeVariables", "mainBkg"])
+            .or_else(|| config_string(effective_config, &["themeVariables", "primaryColor"]))
+            .unwrap_or_else(|| "#ECECFF".to_string());
         let default_node_stroke =
-            config_string(effective_config, &["themeVariables", "primaryBorderColor"])
+            config_string(effective_config, &["themeVariables", "nodeBorder"])
+                .or_else(|| {
+                    config_string(effective_config, &["themeVariables", "primaryBorderColor"])
+                })
                 .unwrap_or_else(|| "#9370DB".to_string());
 
         Self {

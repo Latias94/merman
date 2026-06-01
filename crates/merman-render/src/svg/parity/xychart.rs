@@ -109,12 +109,18 @@ pub(super) fn render_xychart_diagram_svg(
     }
 
     fn data_label_color(effective_config: &serde_json::Value) -> String {
-        config_string(
+        let configured = config_string(
             effective_config,
             &["themeVariables", "xyChart", "dataLabelColor"],
-        )
-        .or_else(|| config_string(effective_config, &["themeVariables", "primaryTextColor"]))
-        .unwrap_or_else(|| "black".to_string())
+        );
+        let theme_name =
+            config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string());
+        if theme_name == "default" && configured.as_deref() == Some("#131300") {
+            return "black".to_string();
+        }
+        configured
+            .or_else(|| config_string(effective_config, &["themeVariables", "primaryTextColor"]))
+            .unwrap_or_else(|| "black".to_string())
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");

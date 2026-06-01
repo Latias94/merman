@@ -31,31 +31,18 @@ pub(super) fn build_sequence_activation_plan<'a>(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
     seq_cfg: &serde_json::Value,
-    effective_config: &serde_json::Value,
+    _effective_config: &serde_json::Value,
 ) -> SequenceActivationPlan<'a> {
     let activation_width = seq_cfg
         .get("activationWidth")
         .and_then(|v| v.as_f64())
         .unwrap_or(10.0)
         .max(1.0);
-    let fill = effective_config
-        .get("themeVariables")
-        .and_then(|v| {
-            v.get("activationBkgColor")
-                .or_else(|| v.get("noteBkgColor"))
-        })
-        .and_then(|v| v.as_str())
-        .unwrap_or("#EDF2AE")
-        .to_string();
-    let stroke = effective_config
-        .get("themeVariables")
-        .and_then(|v| {
-            v.get("activationBorderColor")
-                .or_else(|| v.get("noteBorderColor"))
-        })
-        .and_then(|v| v.as_str())
-        .unwrap_or("#666")
-        .to_string();
+    // Mermaid 11.15 draws activation rectangles through `svgDraw.getNoteRect()`, whose SVG
+    // attributes are hard-coded; theme `activationBkgColor` is emitted in CSS but does not change
+    // the rect `fill` attribute in the baseline SVGs.
+    let fill = "#EDF2AE".to_string();
+    let stroke = "#666".to_string();
 
     let mut last_line_y: Option<f64> = None;
     let mut activation_stacks: std::collections::BTreeMap<&str, Vec<SequenceActivationStart>> =

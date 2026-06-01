@@ -315,18 +315,29 @@ pub(super) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
     let diagram_id_esc = escape_xml(diagram_id);
 
+    let theme_name =
+        config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string());
+
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());
     for i in 0..12 {
         let key = format!("cScale{i}");
-        let v = theme_color(effective_config, &key, default_c_scale(i));
+        let v = if theme_name == "default" {
+            default_c_scale(i).to_string()
+        } else {
+            theme_color(effective_config, &key, default_c_scale(i))
+        };
         color_scale.range.push(v);
     }
     let mut color_scale_peer = OrdinalScale::default();
     color_scale_peer.range.push("transparent".to_string());
     for i in 0..12 {
         let key = format!("cScalePeer{i}");
-        let v = theme_color(effective_config, &key, default_c_scale_peer(i));
+        let v = if theme_name == "default" {
+            default_c_scale_peer(i).to_string()
+        } else {
+            theme_color(effective_config, &key, default_c_scale_peer(i))
+        };
         color_scale_peer.range.push(v);
     }
 
