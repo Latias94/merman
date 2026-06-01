@@ -13,6 +13,10 @@ import {
 import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
+import {
+  createMarkdownImageLink,
+  createMermaidLiveEditorUrl,
+} from "@/src/lib/mermaid-live";
 import { normalizeThemeName } from "@merman/web";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +51,7 @@ import {
   Languages,
   FileText,
   Code,
+  ExternalLink,
 } from "lucide-react";
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
@@ -157,6 +162,21 @@ export function Toolbar() {
     }
   }, [code, t]);
 
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(
+        createMarkdownImageLink(code, diagramTheme, mermaidConfig)
+      );
+      toast.success(t("share.copied"));
+    } catch {
+      toast.error(t("share.copyFailed"));
+    }
+  }, [code, diagramTheme, mermaidConfig, t]);
+
   // 复制 SVG
   const handleCopySVG = useCallback(async () => {
     if (!currentSvg) {
@@ -184,6 +204,18 @@ export function Toolbar() {
       toast.error(t("share.copyFailed"));
     }
   }, [code, diagramTheme, mermaidConfig, copyShareUrl, t]);
+
+  const handleOpenMermaidLive = useCallback(() => {
+    if (!code.trim()) {
+      toast.error(t("share.copyFailed"));
+      return;
+    }
+    window.open(
+      createMermaidLiveEditorUrl(code, diagramTheme, mermaidConfig),
+      "_blank",
+      "noopener,noreferrer"
+    );
+  }, [code, diagramTheme, mermaidConfig, t]);
 
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(
@@ -327,9 +359,24 @@ export function Toolbar() {
                 <Code className="size-4" />
                 {t("export.copyCode")}
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyMarkdown}>
+                <FileText className="size-4" />
+                {t("export.copyMarkdown")}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t("export.copyMarkdownDesc")}
+                </span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopySVG}>
                 <Copy className="size-4" />
                 Copy SVG
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleOpenMermaidLive}>
+                <ExternalLink className="size-4" />
+                {t("share.openMermaidLive")}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {t("share.openMermaidLiveDesc")}
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

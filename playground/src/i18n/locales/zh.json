@@ -23,14 +23,18 @@
     "asciiDesc": "文本艺术格式",
     "asciiNotSupported": "该图表类型不支持 ASCII 导出",
     "copyCode": "复制代码",
-    "copyCodeDesc": "复制 Mermaid 源代码"
+    "copyCodeDesc": "复制 Mermaid 源代码",
+    "copyMarkdown": "复制 Markdown",
+    "copyMarkdownDesc": "Mermaid.ink 图片链接"
   },
   "share": {
     "title": "分享",
     "copyLink": "复制链接",
     "copyLinkDesc": "通过 URL 分享图表",
     "copied": "已复制！",
-    "copyFailed": "复制失败"
+    "copyFailed": "复制失败",
+    "openMermaidLive": "在 Mermaid Live 打开",
+    "openMermaidLiveDesc": "官方编辑器"
   },
   "bench": {
     "title": "渲染压测",
