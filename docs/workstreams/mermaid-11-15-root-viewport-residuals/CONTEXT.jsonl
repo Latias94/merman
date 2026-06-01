@@ -16,3 +16,7 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts","reason":"Mermaid 11.15 central-connection offset and circle-placement source rules referenced by M15RV-020."}
 {"file":"crates/merman-render/src/sequence/messages.rs","reason":"Rust Sequence layout central-connection endpoint offsets mirrored from Mermaid source."}
 {"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"Rust Sequence SVG central-connection circle placement mirrored from Mermaid source."}
+{"file":"target/compare/flowchart_report_parity_root_all.md","reason":"M15RV-030 all-row Flowchart root residual report with root overrides enabled."}
+{"file":"target/compare/flowchart_report_parity_root_no_overrides_all.md","reason":"M15RV-030 Flowchart stale-pin diagnostic report with root overrides disabled."}
+{"file":"target/compare/flowchart_newshape4_tb_label_deltas.md","reason":"M15RV-030 focused label metric evidence for the largest Flowchart root residual."}
+{"file":"target/compare/flowchart_multiline_texts_after_stale_pin_trim.md","reason":"M15RV-030 focused evidence after deleting one stale Flowchart root pin."}

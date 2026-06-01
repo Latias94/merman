@@ -21,13 +21,24 @@ against `sequenceRenderer.ts`; the Rust layout/render constants already match th
 central-connection offsets, so the remaining central rows are root-bounds/text-measurement
 residuals rather than missing central-connection semantics.
 
+M15RV-030 classified the Flowchart bucket. Fresh all-row reports show 61 root mismatches with root
+overrides enabled: 60 `style=max-width` mismatches and 1 `viewBox` mismatch. The largest absolute
+root-width delta is about 2.24px and comes from SVG text measurement drift in markdown/htmlLabels
+false shape fixtures; a focused label report for the largest row showed two node labels at about
+`-0.602px` width each. Disabling Flowchart root overrides increases mismatches to 96, so retained
+Flowchart pins are mostly still paying down root drift. One stale pin
+(`upstream_cypress_flowchart_spec_17_render_multiline_texts_017`) was removed because computed
+bounds are closer to Mermaid 11.15 than the old override.
+
 ## Active Task
 
-- Task ID: M15RV-030
+- Task ID: M15RV-040
 - Owner: codex
 - Status: READY
-- Goal: Classify the remaining Flowchart root residual bucket after the 11.15 shape-source slices.
-- Evidence: `target/compare/flowchart_report_parity_root.md`
+- Goal: Classify Architecture, Class, and C4 root residuals into source-rule, root-pin, and
+  diagnostic browser-root buckets.
+- Evidence: `target/compare/architecture_report_parity_root.md`,
+  `target/compare/class_report_parity_root.md`, `target/compare/c4_report_parity_root.md`
 
 ## Fresh Counts
 

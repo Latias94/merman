@@ -13,6 +13,8 @@ Last updated: 2026-06-01
 
 - Sequence is classified: central-connection source rules match Mermaid 11.15, stale pins were
   removed, and the remaining bucket is root-bounds/text-measurement residual work.
+- Flowchart is classified: retained root pins mostly reduce drift, one stale pin was removed, and
+  the remaining 61 rows are small SVG text/root BBox measurement tails.
 - Sequence, Flowchart, Architecture, Class, and C4 residuals are classified by mechanism.
 - Source-derived rules are either implemented or split further.
 - Browser/font lattice tails are not converted into hand-written renderer constants.

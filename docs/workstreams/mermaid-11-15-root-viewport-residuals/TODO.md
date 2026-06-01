@@ -31,14 +31,17 @@ Last updated: 2026-06-01
   existing `zed_pr_57644_sequence` accepted residual. The central-connection source rules match
   Mermaid 11.15; remaining central rows are root-bounds/text-measurement residuals.
 
-- [ ] M15RV-030 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/flowchart,crates/merman-render/src/svg/parity/flowchart,target/compare/flowchart_report_parity_root.md]
+- [x] M15RV-030 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/flowchart,crates/merman-render/src/svg/parity/flowchart,target/compare/flowchart_report_parity_root.md]
   Goal: Classify the remaining Flowchart root residual bucket after the 11.15 shape-source slices.
   Validation: focused `compare-flowchart-svgs --dom-mode parity-root` checks, with
   `--no-root-overrides` where stale-pin diagnosis is relevant.
   Review: Source-derived Mermaid rules are allowed; new exact browser text constants should be
   generated or rejected as diagnostic residuals.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: READY. Fresh report has 61 Flowchart root mismatches.
+  Handoff: DONE. Fresh report still has 61 Flowchart root mismatches after deleting 1 stale root
+  pin. Disabling Flowchart root overrides increases mismatches to 96, so retained pins are mostly
+  still useful. The remaining rows are small root/text-measurement tails: max absolute root width
+  delta is about 2.24px, with 60 style mismatches and 1 viewBox mismatch.
 
 - [ ] M15RV-040 [owner=codex] [deps=M15RV-010] [scope=crates/merman-render/src/svg/parity/architecture,crates/merman-render/src/svg/parity/class,crates/merman-render/src/svg/parity/c4,target/compare]
   Goal: Classify Architecture, Class, and C4 root residuals into source-rule, root-pin, and

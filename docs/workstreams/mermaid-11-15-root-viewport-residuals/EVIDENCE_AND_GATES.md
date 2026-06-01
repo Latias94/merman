@@ -97,6 +97,43 @@ Fresh unaccepted residual summary after M15RV-020:
 
 Total unaccepted residuals: 308.
 
+## M15RV-030 - Flowchart Classification
+
+Fresh evidence from 2026-06-01:
+
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/flowchart_report_parity_root_all.md`:
+  expected failure with 61 Flowchart root mismatches.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/flowchart_report_parity_root_no_overrides_all.md`:
+  expected failure with 96 Flowchart root mismatches, proving the retained root pins are mostly
+  still reducing root-only drift.
+- `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_newshapes_spec_newshapessets_newshapesset4_tb_md_html_false_030 --report-root-all --report-label-all --out target/compare/flowchart_newshape4_tb_label_deltas.md`:
+  passed and showed the largest root residual has two SVG text node labels with `-0.602px` width
+  deltas each.
+- `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_spec_17_render_multiline_texts_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/flowchart_multiline_texts_after_stale_pin_trim.md`:
+  expected failure; deleting the stale pin improved that fixture from `-1.000px` to `-0.883px`.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/flowchart_report_parity_root_after_stale_pin_trim.md`:
+  expected failure with 61 Flowchart root mismatches after pin deletion.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/flowchart_report_parity_after_m15rv030.md`:
+  passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport
+  overrides reduced from 279 to 278 total entries; Flowchart root overrides reduced to 38 entries.
+
+Flowchart classification:
+
+- One stale Flowchart root pin was deleted:
+  `upstream_cypress_flowchart_spec_17_render_multiline_texts_017`.
+- With root overrides enabled, Flowchart has 61 root mismatches: 60 style/max-width mismatches and
+  1 viewBox mismatch.
+- The enabled-root all-row table has no large source-rule bucket: maximum absolute root width
+  delta is about `2.24px`; 835 rows are exact, 187 are within `0.25px`, and only 2 rows are over
+  `2px`.
+- Disabling Flowchart root overrides increases mismatch count to 96 and introduces larger
+  residuals up to about `22.28px`, so broad pin deletion would be a regression.
+- The dominant residual pattern is SVG text/BBox measurement drift across markdown/htmlLabels
+  false new/old shape fixtures, arrow/line fixtures, and subgraph/title fixtures. These should be
+  handled through shared measurement work or explicit diagnostic policy, not by hand-written root
+  constants.
+
 ## Gate Set
 
 Run after any code or generated-data change:

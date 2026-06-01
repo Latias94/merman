@@ -69,9 +69,6 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
             Some(("0 0 1896.984375 452", "1896.98"))
         }
-        "upstream_cypress_flowchart_spec_17_render_multiline_texts_017" => {
-            Some(("0 0 304.046875 734", "304.047"))
-        }
         "upstream_cypress_flowchart_spec_24_keep_node_label_text_if_already_defined_when_a_style_is_appli_024" => {
             Some(("0 0 410.828125 38", "410.828"))
         }
