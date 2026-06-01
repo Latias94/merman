@@ -254,8 +254,9 @@ Results:
 
 Residual notes:
 
-- GitHub repository settings may still need Pages source set to GitHub Actions before the first
-  successful deployment.
+- First pushed Pages run reached the static artifact gates and failed at `Configure Pages` because
+  GitHub Pages was not enabled for the repository. Enabled Pages with `build_type=workflow` through
+  the GitHub API, then updated Pages actions to their Node 24 compatible major versions.
 - `npm ci --prefix playground` reported two moderate npm audit findings in the playground
   dependency tree; this did not block the Pages artifact gate.
 - Vite still reports the existing large chunk warning for the playground bundle.

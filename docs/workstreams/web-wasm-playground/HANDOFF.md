@@ -41,8 +41,7 @@ integration, and Pages build gate are now in place.
 ## Blockers
 
 - No current WWP-060 blocker recorded.
-- Repository settings may still need GitHub Pages source set to GitHub Actions before the first
-  successful deployment.
+- GitHub Pages has been enabled for the repository with `build_type=workflow`.
 - Tooling note: wasm-pack auto-install of `wasm-bindgen-cli` failed under Rust 1.87 unless the CLI
   was installed with `cargo install wasm-bindgen-cli --version 0.2.108 --locked`.
 - Broader suite note: focused web gates pass. Full package suites still have unrelated existing
