@@ -72,3 +72,11 @@ Last updated: 2026-06-01
   Evidence: docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md
   Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
   Handoff: DONE. Side-by-side compare mode lazy-loads Mermaid JS only after opening Compare; overlay, source diff, pixel diff, and local benchmark controls remain deferred.
+
+- [x] WWP-080 [owner=codex] [deps=WWP-070] [scope=playground,docs/workstreams/web-wasm-playground]
+  Goal: Add a local render bench panel for the current diagram and fix preview blur caused by GPU-promoted SVG transforms.
+  Validation: npm run build --prefix playground, browser smoke that runs a short Merman/Mermaid bench and checks the preview transform path.
+  Review: Bench results must be labeled as local browser measurements, not formal benchmark evidence.
+  Evidence: docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
+  Handoff: DONE. Toolbar Bench dialog runs warmup/measure loops for Merman and Mermaid JS; formal benchmark harness remains separate.

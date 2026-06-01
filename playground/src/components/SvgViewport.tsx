@@ -209,13 +209,14 @@ export function SvgViewport({
     >
       {svg ? (
         <div
-          className="absolute left-1/2 top-1/2 will-change-transform"
+          className="absolute left-1/2 top-1/2"
           style={{
-            transform: `translate3d(${controller.position.x}px, ${controller.position.y}px, 0)`,
+            transform: `translate(${Math.round(controller.position.x)}px, ${Math.round(
+              controller.position.y
+            )}px)`,
           }}
         >
           <div
-            className="will-change-transform"
             style={{
               transform: `translate(-50%, -50%) scale(${controller.zoom})`,
               transformOrigin: "center center",

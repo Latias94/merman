@@ -293,3 +293,38 @@ Results:
   `loadedMermaid=true`, and no console errors.
 - Vite still reports the existing large chunk warning. Mermaid JS is dynamically imported, but its
   own optional diagram chunks are large when the compare mode is used.
+
+### 2026-06-01 - WWP-080 Local Render Bench Panel
+
+Changes:
+
+- Added a toolbar `Bench` dialog for current-diagram local browser timing.
+- Added `bench-runner.ts` with warmup and measurement loops over Merman WASM and Mermaid JS.
+- Added `@radix-ui/react-checkbox` because the existing shadcn checkbox component was not yet
+  backed by a package dependency.
+- Changed SVG viewport transforms from `translate3d` plus `will-change-transform` to plain 2D
+  transforms with rounded pan offsets to avoid browser layer-rasterization blur while zooming.
+
+Commands:
+
+```bash
+npm run build --prefix playground
+```
+
+Browser smoke:
+
+- Started the Vite playground at `http://127.0.0.1:5173/`.
+- Opened the toolbar `Bench` dialog.
+- Ran a short bench with warmup `1` and measure `5`.
+- Confirmed Merman and Mermaid JS rows were present with median/p95 timing columns and zero console
+  errors.
+- Confirmed the active preview viewport no longer used `will-change-transform` or `translate3d` in
+  its transform path.
+- Captured screenshot evidence at `target/playground-bench-smoke.png`.
+
+Results:
+
+- `npm run build --prefix playground` passed, including the postbuild WASM verifier.
+- Headless Chrome smoke passed with Merman and Mermaid JS timing rows, no console errors, and
+  `previewHasWillChange=false`, `previewHasTranslate3d=false`.
+- Vite still reports the existing large chunk warning.

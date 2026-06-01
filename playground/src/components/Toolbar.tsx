@@ -12,6 +12,7 @@ import {
   isAsciiSupported,
 } from "@/src/lib/export";
 import { useMerman } from "@/src/hooks/useMerman";
+import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import { Button } from "@/components/ui/button";
 import {
@@ -258,6 +259,8 @@ export function Toolbar() {
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.history")}</TooltipContent>
           </Tooltip>
+
+          <BenchDialog />
         </div>
 
         {/* 右侧：主题、导出、分享 */}
