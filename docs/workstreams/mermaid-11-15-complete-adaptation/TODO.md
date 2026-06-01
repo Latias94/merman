@@ -116,8 +116,13 @@ Last updated: 2026-06-01
   `paper-tape`/`flag`, and `docs`/`stacked-document` sizing/rendering to Mermaid 11.15 source
   formulas. Targeted strict-root checks for the representative alias fixtures now pass with root
   overrides disabled, implemented-matrix structural `parity` remains green, and Flowchart
-  `parity-root` now reports 160 strict root-only mismatches. The top residuals are now handdrawn
-  hex/demo roots, small shape-alias buckets (`36`, `27`, `20`, `21`, `12`), delay/root rounding,
+  `parity-root` reported 160 strict root-only mismatches. The following plain `Car` text-metric
+  slice proved that the leading handdrawn/demo hex-looking bucket was actually an ordinary text
+  label beside the hex shape being measured with the icon-like vendored width. That slice now keeps
+  plain `Car` at the Mermaid 11.15 DOM text width while preserving FontAwesome icon metrics,
+  removes the representative handdrawn/demo rows, keeps structural `parity` green, and leaves
+  Flowchart `parity-root` at 148 strict root-only mismatches. The top residuals are now demo
+  flowchart 016/052, small shape-alias buckets (`36`, `27`, `20`, `21`, `12`), delay/root rounding,
   markdown-subgraph, and shape-family geometry/root buckets.
 
 ## M4 - Upstream Family Decisions

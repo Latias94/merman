@@ -16,3 +16,4 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/linedCylinder.ts","reason":"Mermaid 11.15 source for lined-cylinder geometry."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/waveRectangle.ts","reason":"Mermaid 11.15 source for paper-tape/flag geometry."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/multiWaveEdgedRectangle.ts","reason":"Mermaid 11.15 source for stacked-document geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-plain-car-root.md","reason":"Flowchart plain Car text-metric evidence; baseline/browser-metric anchored rather than Mermaid source-formula anchored."}

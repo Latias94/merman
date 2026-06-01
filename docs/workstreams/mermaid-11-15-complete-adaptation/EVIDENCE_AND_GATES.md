@@ -529,6 +529,42 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
 
+- 2026-06-01 M15C-070 Flowchart plain `Car` text-metric root slice:
+  - Re-triaged the leading Flowchart strict-root handdrawn/demo hex-looking bucket and found that
+    the hex geometry itself already matched Mermaid 11.15. The actual `+20.812px` drift came from
+    the neighboring plain node label `F[Car]`: upstream Mermaid 11.15 emitted a plain text
+    `foreignObject` width of `24.203125`, while local vendored metrics produced `45.015625` and
+    missed the existing plain `Car` correction that guarded against icon-label width.
+  - This slice is baseline/browser-metric anchored rather than source-formula anchored. Mermaid
+    source does not contain per-word DOM widths such as `Car = 24.203125px`; those come from the
+    browser text measurement path captured in the pinned 11.15 SVG baselines.
+  - Updated Flowchart label layout metrics so plain `Car` labels in HTML-like flowchart text keep
+    the Mermaid 11.15 DOM text width even when the vendored measurer returns the current local
+    probe width. The guard still excludes `fa:` and inline `<i>` icon labels.
+  - Added `flowchart_label_metrics_plain_car_uses_dom_text_width` and re-ran the FontAwesome
+    boundary tests to protect the icon path.
+  - `cargo nextest run -p merman-render flowchart_label_metrics_plain_car_uses_dom_text_width flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary flowchart_html_fontawesome_icon_width_uses_nominal_boundary`:
+    passed, 3 tests.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_handdrawn_spec_fhd14_should_render_hexagons_014 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_flowchart_004 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_graph_003 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed after one 4-minute shell timeout; the successful rerun used a longer timeout and
+    completed in about 224 seconds.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected, now with 148 Flowchart strict root-only mismatches, down from 160.
+    The old handdrawn/demo `Car` rows disappeared from the leading residual set. Current top rows
+    are demo flowchart 016/052 (`-18.000px`), shape-alias `36` (`+15.016px`), `27`
+    (`-15.000px`), `20` (`+14.546px`), `21` (`+11.407px`), newshapesset3 LR no-label
+    (`+10.586px`), delay half-rounded rectangle (`+10.438px`), and Unicode punctuation stress
+    (`-10.188px`).
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`

@@ -554,7 +554,10 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             // node labels should keep the raw DOM text width instead of the icon-label width.
             let desired = 24.203125 * (style.font_size / 16.0);
             let icon_probe = 49.03125 * (style.font_size / 16.0);
-            if (metrics.width - icon_probe).abs() < 1.0 {
+            let vendored_probe = 45.015625 * (style.font_size / 16.0);
+            if (metrics.width - icon_probe).abs() < 1.0
+                || (metrics.width - vendored_probe).abs() < 1.0
+            {
                 metrics.width = crate::text::round_to_1_64_px(desired);
             }
         }

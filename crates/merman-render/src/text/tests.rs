@@ -221,6 +221,35 @@ fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
 }
 
 #[test]
+fn flowchart_label_metrics_plain_car_uses_dom_text_width() {
+    let measurer = VendoredFontMetricsTextMeasurer::default();
+    let style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let cfg = merman_core::MermaidConfig::default();
+
+    let m = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "Car",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &cfg,
+            math_renderer: None,
+            preserve_string_whitespace_height: false,
+            whole_label_font_style: None,
+        },
+    );
+    assert_eq!(m.width, 24.203125);
+    assert_eq!(m.height, 24.0);
+    assert_eq!(m.line_count, 1);
+}
+
+#[test]
 fn flowchart_label_metrics_for_layout_fontawesome_icon_only_lines_match_upstream() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
