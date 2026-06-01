@@ -4156,7 +4156,7 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
             ("This is }", 3.4765625),
             ("This node has a / as text", 11.1064453125),
             ("This node has a \\ as text", 10.9375),
-            ("This ❤ Unicode", 6.9443359375),
+            ("This ❤ Unicode", 7.005859375),
             ("Three", 2.6064453125),
             ("Title With Spaces", 7.7392578125),
             ("Title with dashes - ok", 9.630859375),
