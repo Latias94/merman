@@ -38,3 +38,5 @@
 {"file":"crates/merman-render/src/generated/flowchart_root_overrides_11_12_2.rs","reason":"Flowchart root viewport override inventory for 11.15 strict-root pin refreshes."}
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-icon-root-pin.md","reason":"Flowchart icon example stale root-pin refresh evidence and follow-on strict-root residuals."}
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-styled-text-root-pin.md","reason":"Flowchart styled text/color stale root-pin refresh evidence and follow-on strict-root residuals."}
+{"file":"crates/xtask/src/cmd/compare/all.rs","reason":"Full parity-root bounded failure summaries and accepted-root-residual policy for the 11.15 closeout split."}
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/","reason":"Follow-on workstream for the remaining Mermaid 11.15 root/viewBox/max-width residuals after structural parity closeout."}

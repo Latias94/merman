@@ -2,10 +2,10 @@
   "schema_version": 1,
   "slug": "mermaid-11-15-complete-adaptation",
   "title": "Mermaid 11.15 Complete Adaptation",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-06-01",
   "scope_kind": "execution",
-  "problem": "The repo targets Mermaid 11.15.0 for selected behavior, but full implemented-matrix parity and unsupported-family decisions are not yet closed.",
+  "problem": "The repo targets Mermaid 11.15.0 for the implemented matrix. Structural SVG DOM parity and unsupported-family decisions are closed; root viewport/max-width residuals are split to a follow-on workstream.",
   "authoritative_docs": [
     {
       "role": "design",
@@ -44,7 +44,9 @@
   "evidence": [
     "docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md",
     "docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md",
-    "target/compare/*_report_parity.md"
+    "docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md",
+    "target/compare/*_report_parity.md",
+    "target/compare/*_report_parity_root.md"
   ],
   "adr_refs": [
     "docs/adr/0001-upstream-baseline.md",
@@ -63,7 +65,7 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue while work stays within Mermaid 11.15 implemented-matrix parity, upstream SVG baseline authority, and unsupported-family decisions. Split child lanes for new diagram families or large renderer rewrites."
+    "default_action": "follow_on",
+    "notes": "Closed. Continue root/viewBox/max-width residual work in docs/workstreams/mermaid-11-15-root-viewport-residuals. Split child lanes for new diagram families or large renderer rewrites."
   }
 }

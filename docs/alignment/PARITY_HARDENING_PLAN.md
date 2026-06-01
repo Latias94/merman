@@ -5,11 +5,15 @@ Current baseline version: Mermaid `@11.15.0`.
 Historical note: this plan started at Mermaid `@11.12.3`; many inventory snapshots below preserve
 that original baseline label because they describe past measurements.
 
-As of 2026-02-23:
+As of the 2026-06-01 Mermaid 11.15 complete-adaptation closeout:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: currently failing due to a small set of root-level viewport/style mismatches
-  (notably `pie`, `c4`, and `requirement` `max-width`).
+- `parity-root` full compare: split to
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals` with 309 unaccepted root-only
+  viewport/max-width residuals after accepted policy rows.
+
+Historical note: on 2026-02-23 the full `parity-root` compare was failing due to a smaller set of
+root-level viewport/style mismatches, notably `pie`, `c4`, and `requirement` `max-width`.
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.

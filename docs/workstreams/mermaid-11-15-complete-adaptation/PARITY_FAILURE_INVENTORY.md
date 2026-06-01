@@ -24,7 +24,7 @@ the implemented matrix in `parity` mode. The active residual set has moved to `p
 | Journey | 0 | Stored upstream marker/task-line id drift; fresh 11.15 scopes task-line ids by SVG id. | Green after M15C-040 renderer fix and stored baseline refresh. | None for M15C-040; keep Journey in future full-gate regression checks. |
 | Sankey | 0 | Link `stroke-width` differed in stale stored baselines. | Green after M15C-050 fresh 11.15 check and stored baseline refresh. | None for M15C-050; keep Sankey in future full-gate regression checks. |
 | Class | 0 | Stored baselines were stale and fresh 11.15 exposed a full unified-renderer envelope convergence slice. | Green after renderer fixes and stored baseline refresh. `upstream_parser_class_spec` is skipped as an upstream prototype-key render artifact. | None for structural parity; keep in future full-gate regression checks. |
-| Flowchart | 0 | The stored single MathML mismatch masked a broader 11.15 Flowchart envelope refresh. | Green for supported fixtures after child-lane convergence and stored baseline refresh. `flowchart-elk` is out of the current headless matrix. | None for structural parity; root-only residuals remain in M15C-070. |
+| Flowchart | 0 | The stored single MathML mismatch masked a broader 11.15 Flowchart envelope refresh. | Green for supported fixtures after child-lane convergence and stored baseline refresh. `flowchart-elk` is out of the current headless matrix. | None for structural parity; root-only residuals are split to `docs/workstreams/mermaid-11-15-root-viewport-residuals`. |
 | XYChart | 0 | Data-label color mismatch was stale baseline drift. | Green after targeted 11.15 baseline refresh. | None for structural parity; keep in future full-gate regression checks. |
 
 ## Immediate Split
@@ -80,4 +80,5 @@ Flowchart work in this umbrella lane is root-only.
 3. M15C-040 batch B: rerun full `parity` and recalculate mismatch counts.
 4. M15C-050: refresh Sankey after fresh 11.15 output proves local renderer parity.
 5. M15C-060: address the remaining Class, Flowchart, ER, and XYChart mismatches.
-6. M15C-070: close or split the root/viewBox/max-width residual set exposed by `parity-root`.
+6. M15C-070: closed by splitting the remaining root/viewBox/max-width residual set exposed by
+   `parity-root` to `docs/workstreams/mermaid-11-15-root-viewport-residuals`.

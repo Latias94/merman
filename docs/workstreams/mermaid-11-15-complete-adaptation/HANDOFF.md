@@ -1,11 +1,11 @@
 # Mermaid 11.15 Complete Adaptation - Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-01
 
 ## Current State
 
-The umbrella campaign is open. The repo baseline points at Mermaid `11.15.0`, generated artifacts
+The umbrella campaign is closed. The repo baseline points at Mermaid `11.15.0`, generated artifacts
 verify, and the Pie 11.15 lane is closed. M15C-030 removed active 11.12.3 report labels. M15C-040
 has landed renderer fixes for Sequence central connections, Sequence 11.15 metadata, C4 scoped
 symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 11.15 DOM
@@ -13,8 +13,10 @@ differences, Timeline scoped node ids, and the Sankey 11.15 baseline refresh. M1
 closed: XYChart, Flowchart, ER, and Class have all been refreshed or converged against Mermaid
 11.15 stored baselines. M15C-080 upstream-family decisions are recorded in
 `docs/alignment/STATUS.md`; no unsupported 11.15 family was promoted into this campaign. Full
-implemented-matrix SVG DOM `parity` now passes. The active remainder is M15C-070 `parity-root`:
-root/viewBox/max-width residuals remain across the implemented matrix.
+implemented-matrix SVG DOM `parity` now passes. M15C-070 split the remaining `parity-root`
+root/viewBox/max-width residuals to
+`docs/workstreams/mermaid-11-15-root-viewport-residuals` because they are root-only browser
+measurement residuals, not structural 11.15 DOM parity failures.
 Fresh report triage shows flowchart=229, sequence=168, architecture=32, class=20, c4=15,
 timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale
 `flowchart/upstream_docs_math_flowcharts_001` accepted residual policy entry has been removed.
@@ -92,18 +94,13 @@ their unpinned renderer output was correct or only a tiny browser/root residual.
 
 ## Active Task
 
-- Task ID: M15C-070
-- Owner: codex
-- Files: `crates/xtask/src/cmd/compare`, `crates/merman-render/src/svg/parity`,
-  `docs/workstreams/mermaid-11-15-complete-adaptation`
-- Validation: full implemented-matrix `parity` and `parity-root` gates plus targeted renderer tests
-  for any root-geometry fixes.
-- Status: IN_PROGRESS
-- Review: Structural `parity` is green. `parity-root` is red for root-only residuals and should be
-  triaged separately from Class 11.15 structural convergence. Flowchart remains delegated to
-  `docs/workstreams/flowchart-11-15-svg-convergence`; its supported structural matrix is green,
-  while `flowchart-elk` remains a documented out-of-matrix skip until a dedicated ELK lane.
-- Evidence: `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
+- Task ID: none.
+- Status: CLOSED.
+- Follow-on: continue root/viewBox/max-width residual work in
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals`, starting with M15RV-020 Sequence
+  classification.
+- Evidence: `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md` and
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md`.
 
 ## Decisions Since Last Update
 
@@ -261,16 +258,9 @@ their unpinned renderer output was correct or only a tiny browser/root residual.
 
 ## Next Recommended Action
 
-Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-alias source
-formula, plain `Car` text-metric, demo 016/052 stale-root-pin, bow-tie rectangle,
-window-pane/internal-storage, document/delay, double-circle, lined/tagged-document, and no-label
-curved-trapezoid buckets are closed, and the leading Unicode/punctuation browser text-metric,
-icon root-pin, styled text root-pin, image label padding, shape-mix pin, and demo 010/049 pin rows
-are closed. The full shape-alias strict-root sweep now passes with root overrides disabled, but
-strict Flowchart `parity-root` still reports 61 root-only mismatches. The next executable step is
-to sample the new top Flowchart residuals: markdown/html=false new/old shape rows,
-markdown edge/subgraph root size, and remaining small root-rounding rows. Check whether each is a
-shared Mermaid 11.15 SVG-label/root sizing rule, a text metric rule, or only then a scoped root
-override. After Flowchart stops exposing large shared buckets, compare
-Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule change before adding
-broad fixture-scoped root pins.
+Do not continue this parent lane for root-only work. Use
+`docs/workstreams/mermaid-11-15-root-viewport-residuals` instead, starting with M15RV-020
+Sequence classification. The closeout residual set is sequence=168, flowchart=61,
+architecture=32, class=18, c4=15, timeline=7, er=3, sankey=3, and journey=2 unaccepted
+`parity-root` rows. Prefer Mermaid source-derived layout/root rules first, generated browser-probe
+tables second, and diagnostic residual acceptance over new hand-written exact per-string constants.

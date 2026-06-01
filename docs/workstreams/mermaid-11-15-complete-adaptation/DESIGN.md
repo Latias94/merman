@@ -1,7 +1,7 @@
 # Mermaid 11.15 Complete Adaptation
 
-Status: Active
-Last updated: 2026-05-31
+Status: Closed
+Last updated: 2026-06-01
 
 ## Why This Lane Exists
 
@@ -107,3 +107,8 @@ This lane can close when:
 - relevant package/workspace tests have fresh evidence,
 - deferred/out-of-scope diagram family decisions are recorded in `docs/alignment/STATUS.md`,
 - and all remaining work is either complete, split, or explicitly deferred.
+
+Closeout note, 2026-06-01: the implemented matrix is green in structural SVG DOM `parity` mode
+against Mermaid `11.15.0` stored baselines. Root `<svg>` viewport/max-width residuals are split to
+`docs/workstreams/mermaid-11-15-root-viewport-residuals` because they are a separate browser bbox /
+font lattice approximation problem, not a blocker for the 11.15 structural adaptation claim.

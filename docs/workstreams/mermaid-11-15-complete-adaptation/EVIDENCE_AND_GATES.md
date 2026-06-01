@@ -1,6 +1,6 @@
 # Mermaid 11.15 Complete Adaptation - Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-01
 
 ## Smallest Current Repro
@@ -9,13 +9,16 @@ Last updated: 2026-06-01
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 ```
 
-As of 2026-06-01, implemented-matrix structural parity is green:
-`cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` passed.
-The remaining smallest repro is now root-only viewport/max-width parity. Fresh `parity-root`
-report triage shows raw root-only residuals across flowchart=229, sequence=168, architecture=32,
-class=20, c4=15, timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows.
-The stale expected `flowchart/upstream_docs_math_flowcharts_001` residual policy entry has been
-removed from the compare-all policy.
+No structural implemented-matrix repro remains in this parent lane. As of closeout on 2026-06-01,
+`cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` passes
+against Mermaid 11.15 stored baselines.
+
+The command above is the follow-on root-only repro. It now fails normally with bounded per-diagram
+summaries and fresh reports instead of crashing while aggregating a large residual set. The
+remaining unaccepted `parity-root` residuals are split to
+`docs/workstreams/mermaid-11-15-root-viewport-residuals`: sequence=168, flowchart=61,
+architecture=32, class=18, c4=15, timeline=7, er=3, sankey=3, and journey=2. Existing accepted
+root-policy residuals cover class=2, sequence=1, gitgraph=1, and mindmap=4 rows.
 
 ## Text Measurement Policy Reset
 
@@ -873,13 +876,34 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
 
+- 2026-06-01 M15C-090 closeout gate refresh:
+  - `cargo fmt --check`: passed.
+  - `cargo nextest run -p xtask root_parity`: passed, 5 tests. This covers the accepted
+    root-residual policy and the bounded final-error summary for large `parity-root` failures.
+  - `cargo run -p xtask -- verify-generated`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed. Live inventory remains
+    root viewport overrides = 282, text metric lookup overrides = 495, SVG text metric table rows
+    = 186, and Flowchart font metric table rows = 3774.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed for the implemented Mermaid 11.15 matrix.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    failed normally, as split follow-on evidence, with bounded per-diagram summaries and fresh
+    reports instead of crashing. Unaccepted residuals: sequence=168, flowchart=61,
+    architecture=32, class=18, c4=15, timeline=7, er=3, sankey=3, journey=2. Accepted policy rows:
+    class=2, sequence=1, gitgraph=1, mindmap=4.
+  - `git diff --check`: passed with a line-ending warning for
+    `docs/workstreams/mermaid-11-15-complete-adaptation/CONTEXT.jsonl` only.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`
 - `docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md`
 - `docs/workstreams/mermaid-11-15-complete-adaptation/PARITY_FAILURE_INVENTORY.md`
+- `docs/workstreams/mermaid-11-15-root-viewport-residuals/`
 - `docs/workstreams/flowchart-11-15-svg-convergence/`
 - `docs/alignment/STATUS.md`
 - `docs/rendering/UPSTREAM_SVG_BASELINES.md`
 - `tools/upstreams/REPOS.lock.json`
 - `target/compare/*_report_parity.md`
+- `target/compare/*_report_parity_root.md`

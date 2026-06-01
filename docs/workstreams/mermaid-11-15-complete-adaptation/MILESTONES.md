@@ -1,6 +1,6 @@
 # Mermaid 11.15 Complete Adaptation - Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-01
 
 ## M0 - Scope And Evidence Freeze
@@ -44,9 +44,9 @@ Exit criteria:
 - `parity-root` is green or any residual root-only work is explicitly split.
 - Package/workspace tests relevant to changed code are green.
 
-Status: in progress. Full `parity` DOM compare is green for the implemented matrix. `parity-root`
-is still red for root/viewBox/max-width residuals across the implemented matrix; current largest
-buckets are Flowchart, Sequence, Architecture, Class, and C4.
+Status: complete. Full `parity` DOM compare is green for the implemented matrix. `parity-root`
+still has root/viewBox/max-width residuals across the implemented matrix, so that work is split to
+`docs/workstreams/mermaid-11-15-root-viewport-residuals` with fresh residual counts and reports.
 
 ## M4 - Upstream Family Decisions
 
@@ -70,4 +70,5 @@ Exit criteria:
 - Final evidence gates are recorded.
 - `WORKSTREAM.json` and `HANDOFF.md` reflect closed or split status.
 
-Status: not started.
+Status: complete. The umbrella lane is closed; all remaining work is either complete, explicitly
+deferred, or split to the root viewport residual lane.

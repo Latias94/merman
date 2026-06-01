@@ -3,6 +3,7 @@
 use crate::XtaskError;
 use std::collections::BTreeSet;
 use std::fs;
+use std::path::Path;
 
 use super::diagrams::*;
 use super::{RootDeltaReportLimit, parse_root_delta_report_limit};
@@ -185,6 +186,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
             filter.as_deref(),
         );
+        let mut report_path = None;
 
         // Avoid overwriting reports across multiple runs (e.g. `parity` then `parity-root`).
         // When a dom mode is specified, we emit mode-suffixed reports:
@@ -192,13 +194,10 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if let Some(ref mode) = dom_mode {
             let mode = dom_mode_slug(mode);
             if !mode.is_empty() {
+                let path = compare_dir.join(format!("{diagram}_report_{mode}.md"));
                 cmd_args.push("--out".to_string());
-                cmd_args.push(
-                    compare_dir
-                        .join(format!("{diagram}_report_{mode}.md"))
-                        .display()
-                        .to_string(),
-                );
+                cmd_args.push(path.display().to_string());
+                report_path = Some(path);
             }
         }
 
@@ -269,7 +268,11 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             Err(XtaskError::SvgCompareFailed(msg)) => {
                 if let Some(policy) = root_parity_policy.as_mut() {
                     if let Some(remaining) = policy.accept_or_return_remaining(diagram, &msg) {
-                        failures.push(format!("{diagram}: svg compare failed:\n{remaining}"));
+                        failures.push(summarize_root_parity_failure(
+                            diagram,
+                            &remaining,
+                            report_path.as_deref(),
+                        ));
                     }
                 } else {
                     failures.push(format!("{diagram}: {}", XtaskError::SvgCompareFailed(msg)));
@@ -295,6 +298,24 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
     }
+}
+
+fn summarize_root_parity_failure(diagram: &str, msg: &str, report_path: Option<&Path>) -> String {
+    let lines: Vec<&str> = msg.lines().filter(|line| !line.trim().is_empty()).collect();
+    let mismatch_count = lines
+        .iter()
+        .filter(|line| line.trim_start().starts_with("dom mismatch for "))
+        .count();
+    let count = if mismatch_count > 0 {
+        mismatch_count
+    } else {
+        lines.len()
+    };
+    let first = lines.first().copied().unwrap_or("no mismatch details");
+    let report = report_path
+        .map(|path| format!("; report={}", path.display()))
+        .unwrap_or_default();
+    format!("{diagram}: {count} unaccepted parity-root DOM mismatch(es){report}; first: {first}")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -464,6 +485,25 @@ dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_rende
         assert!(policy.accept_or_return_remaining("class", msg).is_none());
         assert_eq!(policy.accepted_summaries().len(), 2);
         assert!(policy.missing_failures().is_empty());
+    }
+
+    #[test]
+    fn root_parity_failure_summary_keeps_final_error_bounded() {
+        let msg = "dom mismatch for a: upstream=a local=b (svg: attr `style` mismatch)\n\
+dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
+
+        let summary = summarize_root_parity_failure(
+            "flowchart",
+            msg,
+            Some(std::path::Path::new(
+                "target/compare/flowchart_report_parity_root.md",
+            )),
+        );
+
+        assert!(summary.contains("flowchart: 2 unaccepted parity-root DOM mismatch"));
+        assert!(summary.contains("target/compare/flowchart_report_parity_root.md"));
+        assert!(summary.contains("first: dom mismatch for a:"));
+        assert!(!summary.contains("dom mismatch for b:"));
     }
 
     #[test]

@@ -127,8 +127,12 @@ refreshed Architecture root viewport overrides for the new fixture IDs, keeping 
 As of 2026-02-26, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM
 mismatches for the current fixture set (diagram subtree parity).
 
-Root viewport parity (`--dom-mode parity-root`) is not currently enforced by `xtask verify` and has known
-root-level `style="max-width: ..."` mismatches for some fixtures (notably `pie`, `c4`, and `requirement`).
+Root viewport parity (`--dom-mode parity-root`) is not currently enforced by `xtask verify`.
+As of the 2026-06-01 Mermaid 11.15 complete-adaptation closeout, the full implemented matrix is
+green in structural `parity` mode, while root-only `viewBox` / `style max-width` residuals are
+tracked separately in `docs/workstreams/mermaid-11-15-root-viewport-residuals`. The starting
+unaccepted residual set for that lane is sequence=168, flowchart=61, architecture=32, class=18,
+c4=15, timeline=7, er=3, sankey=3, and journey=2.
 
 Recent progress (2026-02-16): imported an additional batch of Architecture stress fixtures (with upstream SVG
 baselines), expanding coverage for cross-group edges, labeled ports, icon-text fallbacks, and long edge label

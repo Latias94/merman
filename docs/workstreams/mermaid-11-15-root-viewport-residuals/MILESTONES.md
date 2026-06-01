@@ -1,0 +1,28 @@
+# Mermaid 11.15 Root Viewport Residuals - Milestones
+
+Status: Active
+Last updated: 2026-06-01
+
+## M0 - Baseline Split
+
+- `compare-all-svgs --dom-mode parity-root` fails normally with bounded summaries.
+- Fresh per-diagram root reports exist under `target/compare/*_report_parity_root.md`.
+- The root lane is split from Mermaid 11.15 structural adaptation.
+
+## M1 - Largest Buckets Classified
+
+- Sequence, Flowchart, Architecture, Class, and C4 residuals are classified by mechanism.
+- Source-derived rules are either implemented or split further.
+- Browser/font lattice tails are not converted into hand-written renderer constants.
+
+## M2 - Smaller Buckets Classified
+
+- ER, Sankey, Timeline, and Journey residuals are classified.
+- Low-risk source-derived or stale-pin rows are closed.
+- Remaining rows have explicit diagnostic status.
+
+## M3 - Root Policy Closeout
+
+- Full `parity` remains green.
+- Full `parity-root` is green or fails only with accepted diagnostic residual policy entries.
+- Override no-growth passes.

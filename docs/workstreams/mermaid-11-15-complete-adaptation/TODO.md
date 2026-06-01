@@ -1,6 +1,6 @@
 # Mermaid 11.15 Complete Adaptation - TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-01
 
 ## M0 - Scope And Evidence Freeze
@@ -89,7 +89,7 @@ Last updated: 2026-06-01
 
 ## M3 - Full Implemented-Matrix Gates
 
-- [ ] M15C-070 [owner=codex] [deps=M15C-050,M15C-060] [scope=crates,fixtures,docs/workstreams/mermaid-11-15-complete-adaptation]
+- [x] M15C-070 [owner=codex] [deps=M15C-050,M15C-060] [scope=crates,fixtures,docs/workstreams/mermaid-11-15-complete-adaptation]
   Goal: Make the full implemented-matrix parity gate authoritative for Mermaid 11.15.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
   `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`;
@@ -97,7 +97,7 @@ Last updated: 2026-06-01
   Review: `parity-root` failures may be split only with fresh evidence and explicit non-goal wording.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/alignment/PARITY_HARDENING_PLAN.md`.
-  Handoff: IN_PROGRESS. `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  Handoff: DONE. `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
   now passes for the implemented matrix. `parity-root` is still red for root/viewBox/max-width
   residuals only. Fresh report triage shows a broader 11.15 root viewport recalibration set:
   flowchart=229, sequence=168, architecture=32, class=20, c4=15, timeline=7, mindmap=4,
@@ -179,7 +179,12 @@ Last updated: 2026-06-01
   `stress_flowchart_shape_mix_009` and demo flowchart 010/049 after proving the unpinned renderer
   was already correct or within a tiny browser/root residual. Structural `parity` remains green,
   override growth remains within budget, and Flowchart `parity-root` reports 61 strict root-only
-  mismatches.
+  mismatches. The final M15C-070 closeout step made the full `parity-root` gate fail normally with
+  bounded per-diagram summaries instead of crashing on the large residual set, then split the
+  remaining root-only work to `docs/workstreams/mermaid-11-15-root-viewport-residuals`. Fresh
+  full-root evidence records 309 unaccepted residuals after existing accepted policy entries:
+  sequence=168, flowchart=61, architecture=32, class=18, c4=15, timeline=7, er=3, sankey=3, and
+  journey=2.
 
 ## M4 - Upstream Family Decisions
 
@@ -199,10 +204,14 @@ Last updated: 2026-06-01
 
 ## M5 - Closeout
 
-- [ ] M15C-090 [owner=planner] [deps=M15C-070,M15C-080] [scope=docs/workstreams/mermaid-11-15-complete-adaptation,docs/alignment]
+- [x] M15C-090 [owner=planner] [deps=M15C-070,M15C-080] [scope=docs/workstreams/mermaid-11-15-complete-adaptation,docs/alignment]
   Goal: Close the campaign or split remaining 11.15 work into narrower lanes.
   Validation: Fresh closeout gates recorded in `EVIDENCE_AND_GATES.md`.
   Review: `review-workstream` and `verify-rust-workstream` before completion.
   Evidence: `EVIDENCE_AND_GATES.md`, `WORKSTREAM.json`
   Context: this workstream.
-  Handoff: Not started.
+  Handoff: DONE. The Mermaid 11.15 complete-adaptation campaign is closed for the implemented
+  matrix: structural SVG DOM parity is green against Mermaid 11.15 stored baselines, unsupported
+  upstream family decisions are recorded in `docs/alignment/STATUS.md`, and the remaining
+  root/viewBox/max-width residuals are split to
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals`.

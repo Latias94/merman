@@ -1,0 +1,13 @@
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/DESIGN.md","reason":"Problem statement, scope, measurement-surface policy, and closeout condition for root residual work."}
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/TODO.md","reason":"Task ledger and current executable root residual slices."}
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md","reason":"Fresh root residual inventory and required gates."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md","reason":"Parent 11.15 adaptation gate evidence and split decision."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/TODO.md","reason":"Parent task ledger that split this lane from M15C-070/M15C-090."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Authority for upstream parity scope and accepted/deferred behavior."}
+{"file":"docs/adr/0049-vendored-font-metrics-for-headless-parity.md","reason":"Headless browser/font metric strategy."}
+{"file":"docs/adr/0050-svg-viewbox-parity.md","reason":"Root viewBox parity policy."}
+{"file":"docs/adr/0051-baseline-derived-font-metrics.md","reason":"Baseline-derived text measurement strategy."}
+{"file":"docs/adr/0062-fixture-derived-overrides.md","reason":"Override governance and paydown policy."}
+{"file":"target/compare/sequence_report_parity_root.md","reason":"Fresh largest Sequence root residual report."}
+{"file":"target/compare/flowchart_report_parity_root.md","reason":"Fresh Flowchart root residual report."}
+{"file":"target/compare/architecture_report_parity_root.md","reason":"Fresh Architecture root residual report."}

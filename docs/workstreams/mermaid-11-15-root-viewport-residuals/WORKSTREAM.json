@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "slug": "mermaid-11-15-root-viewport-residuals",
+  "title": "Mermaid 11.15 Root Viewport Residuals",
+  "status": "active",
+  "updated": "2026-06-01",
+  "scope_kind": "execution",
+  "problem": "The implemented Mermaid 11.15 diagram matrix is structurally green, but full parity-root still has root viewBox/max-width residuals driven by browser bbox/font/layout lattice behavior.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/TODO.md"
+    },
+    {
+      "role": "tasks",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/TASKS.jsonl"
+    },
+    {
+      "role": "campaigns",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/CAMPAIGNS.jsonl"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/mermaid-11-15-root-viewport-residuals/CONTEXT.jsonl",
+  "current_task": "M15RV-020",
+  "gates": [
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3",
+    "cargo run -p xtask -- report-overrides --check-no-growth",
+    "cargo fmt --check",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md",
+    "target/compare/*_report_parity_root.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0049-vendored-font-metrics-for-headless-parity.md",
+    "docs/adr/0050-svg-viewbox-parity.md",
+    "docs/adr/0051-baseline-derived-font-metrics.md",
+    "docs/adr/0062-fixture-derived-overrides.md"
+  ],
+  "architecture_refs": [],
+  "capability_tags": [
+    "mermaid-11-15",
+    "svg-parity",
+    "root-viewport",
+    "text-measurement"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Classify root-only residuals before adding lookup data. Prefer source-derived layout/root rules; treat browser font lattice tails as diagnostic unless generated and auditable."
+  }
+}
