@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - Milestones
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## M0 - Baseline Split
 
@@ -27,6 +27,15 @@ Last updated: 2026-06-01
   residuals.
 - Remaining Timeline and Journey rows have explicit diagnostic status as unpinned small
   root-width measurement tails.
+
+## M2.5 - Source/Measurement Follow-Ups
+
+- Class namespace/layout-width source rules are partially closed; remaining Class rows are small
+  text/root tails plus bounded layout residuals.
+- Sequence SVG override generation is repaired and the central-connection bucket is closed; raw
+  Sequence root residuals dropped from 168 to 68, with 67 unaccepted in the full policy run.
+- Remaining Sequence work is split into M15RV-085 for HTML `<br>` / wrap / note / participant
+  height tails.
 
 ## M3 - Root Policy Closeout
 

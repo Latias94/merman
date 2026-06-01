@@ -1475,6 +1475,24 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         width
     }
 
+    fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let Some(table) = self.lookup_table(style) else {
+            return self
+                .fallback
+                .measure_svg_simple_text_bbox_width_for_wrap_px(text, style);
+        };
+
+        let font_size = style.font_size.max(1.0);
+        let mut width: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            let (l, r) = Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang(
+                table, &line, font_size,
+            );
+            width = width.max((l + r).max(0.0));
+        }
+        width
+    }
+
     fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         let t = text.trim_end();
         if t.is_empty() {

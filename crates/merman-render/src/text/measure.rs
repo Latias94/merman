@@ -64,6 +64,16 @@ pub trait TextMeasurer {
         (l + r).max(0.0)
     }
 
+    /// Measures simple SVG text for wrap decisions.
+    ///
+    /// Some implementations carry fixture-derived exact text-width overrides for final layout
+    /// sizing. Those can be too sharp for incremental `wrapLabel(...)` probes, where changing one
+    /// candidate prefix width changes the emitted DOM line structure. Implementations may override
+    /// this to use their smoother base font model for wrap decisions.
+    fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_simple_text_bbox_width_px(text, style)
+    }
+
     /// Measures the bbox height for Mermaid `drawSimpleText(...).getBBox().height`-style probes.
     ///
     /// Upstream Mermaid uses `<text>.getBBox()` for some diagrams (notably `gitGraph` commit/tag

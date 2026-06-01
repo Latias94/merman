@@ -60,7 +60,7 @@ impl OverrideCategory {
         match self {
             OverrideCategory::RootViewport => 286,
             OverrideCategory::TextLookup => 495,
-            OverrideCategory::SvgTextMetrics => 186,
+            OverrideCategory::SvgTextMetrics => 891,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::HandCuratedHelpers => 0,
             OverrideCategory::RawPathBridge => 0,

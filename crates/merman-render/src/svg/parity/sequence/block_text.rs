@@ -143,22 +143,16 @@ fn wrap_svg_text_line(
         return vec![line.to_string()];
     }
 
-    // Mermaid's frame-label wrapping behaves as if the available width were slightly smaller
-    // than the raw `frame_x2 - (frame_x1 + label_box_width)` span, especially for narrow
-    // (single-actor-ish) frames. Apply a small pad only in that regime to avoid over-wrapping
-    // wide frames like `critical` headers.
-    let pad = if max_width <= 160.0 {
-        15.0
-    } else if max_width <= 230.0 {
-        8.0
-    } else {
-        0.0
-    };
-    let max_width = (max_width - pad).max(1.0);
+    // Browser SVG bbox wrapping is a little tighter than the vendored font model for narrow
+    // Sequence frame labels. Keep this bounded to narrow frames; wider loop labels such as
+    // `[Authentication check]` fit upstream and must not be forced to wrap.
+    let narrow_frame_pad = if max_width <= 160.0 { 15.0 } else { 0.0 };
+    let max_width = (max_width - narrow_frame_pad).max(1.0);
 
     fn svg_bbox_width_px(measurer: &dyn TextMeasurer, style: &TextStyle, text: &str) -> f64 {
-        let (l, r) = measurer.measure_svg_text_bbox_x(text, style);
-        (l + r).max(0.0)
+        measurer
+            .measure_svg_simple_text_bbox_width_for_wrap_px(text, style)
+            .max(0.0)
     }
 
     let mut tokens = VecDeque::from(split_line_to_words(line));

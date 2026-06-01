@@ -106,7 +106,7 @@ Last updated: 2026-06-02
   the headless measurement rule where only explicit `px` strings are SVG-text effective for Class.
   Class and Radar fixtures stayed structurally green; full residual counts are unchanged.
 
-- [ ] M15RV-080 [owner=codex] [deps=M15RV-020,M15RV-070] [scope=crates/merman-render/src/sequence,crates/merman-render/src/text,crates/xtask/src/cmd/overrides/svg.rs,crates/merman-render/tests/sequence_svg_test.rs,target/compare/sequence_*]
+- [x] M15RV-080 [owner=codex] [deps=M15RV-020,M15RV-070] [scope=crates/merman-render/src/sequence,crates/merman-render/src/text,crates/xtask/src/cmd/overrides/svg.rs,crates/merman-render/tests/sequence_svg_test.rs,target/compare/sequence_*]
   Goal: Repair the Sequence SVG text-measurement policy path, or explicitly document the residual
   if browser-derived `calculateTextDimensions(...)` behavior cannot be approximated without
   harming broader headless parity.
@@ -117,14 +117,29 @@ Last updated: 2026-06-02
   overall Sequence root mismatch count. Do not refresh the full Sequence SVG override table until
   the generator itself is proven against fixture-derived browser evidence.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: IN_PROGRESS. Source inspection confirmed Mermaid 11.15 still routes Sequence message
-  spacing through `utils.calculateTextDimensions(...)`. Rust central-connection offsets and SVG
-  renderer preservation now have regression tests; the remaining `+63px` focused residual is a
-  headless text-measurement/generator-policy gap.
+  Handoff: DONE_WITH_CONCERNS. The Sequence SVG override generator now uses the same default
+  Puppeteer browser path as `mmdc`, skips wrap-sensitive fixtures and non-endpoint message seeds,
+  and regenerates 891 auditable SVG text rows. Central-connection RTL root parity is exact, full
+  Sequence structural parity is green, and raw Sequence root mismatches dropped from 168 to 68
+  (67 unaccepted after the existing `zed_pr_57644_sequence` policy row). Remaining rows are mostly
+  HTML `<br>` / wrap / note / participant height tails, not central-connection semantics.
+
+- [ ] M15RV-085 [owner=codex] [deps=M15RV-080] [scope=crates/merman-render/src/svg/parity/sequence,crates/merman-render/src/text,target/compare/sequence_report_parity_root.md]
+  Goal: Classify and reduce the remaining Sequence HTML `<br>` / wrap / note / participant root
+  tails after the SVG override generator repair.
+  Validation: focused Sequence `parity-root` compares for the largest remaining rows;
+  `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`;
+  full `compare-all-svgs --dom-mode parity`.
+  Review: Do not add browser-exact font constants for every string. Prefer reusable wrap/HTML
+  source rules, generator-backed evidence, or explicit diagnostic residual policy.
+  Evidence: `EVIDENCE_AND_GATES.md`
+  Handoff: PENDING. Start from `html_br_variants_and_wrap`,
+  `stress_long_participant_labels_br_031`, `stress_br_in_messages_notes_011`, and
+  `stress_sequence_batch5_wrap_html_br_spans_042`.
 
 ## M3 - Policy Closeout
 
-- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
+- [ ] M15RV-090 [owner=planner] [deps=M15RV-020,M15RV-030,M15RV-040,M15RV-050,M15RV-060,M15RV-070,M15RV-080,M15RV-085] [scope=docs/workstreams/mermaid-11-15-root-viewport-residuals,crates/xtask/src/cmd/compare/all.rs]
   Goal: Close the root residual lane by either making `parity-root` green or accepting only
   documented diagnostic residuals with fresh evidence.
   Validation: `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
@@ -133,6 +148,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 277 residuals;
-  Class and Architecture still contain real layout/root-bounds differences, and Sequence/Flowchart
-  still need shared measurement/root policy work.
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 175 residuals;
+  Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
+  differences.

@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use crate::util::*;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -132,6 +132,68 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
             .any(|a| a.has_tag_name("defs"))
     }
 
+    fn sequence_model_has_wrap(model: &serde_json::Value) -> bool {
+        ["actors", "messages", "notes", "boxes"]
+            .into_iter()
+            .filter_map(|key| model.get(key).and_then(|v| v.as_array()))
+            .flatten()
+            .any(|item| item.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false))
+            || model
+                .get("actors")
+                .and_then(|v| v.as_object())
+                .into_iter()
+                .flat_map(|actors| actors.values())
+                .any(|actor| actor.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false))
+    }
+
+    fn sequence_message_has_actor_endpoints(
+        model: &serde_json::Value,
+        msg: &serde_json::Value,
+    ) -> bool {
+        let Some(actors) = model.get("actors").and_then(|v| v.as_object()) else {
+            return false;
+        };
+        let Some(from) = msg.get("from").and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let Some(to) = msg.get("to").and_then(|v| v.as_str()) else {
+            return false;
+        };
+        actors.contains_key(from) && actors.contains_key(to)
+    }
+
+    let sequence_fixtures_dir = crate::cmd::fixtures_root().join("sequence");
+    let sequence_wrap_stems: BTreeSet<String> = if mode == "sequence" {
+        let engine = merman::Engine::new();
+        let parse_opts = merman::ParseOptions {
+            suppress_errors: true,
+        };
+        fs::read_dir(&sequence_fixtures_dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                if !is_file_with_extension(&path, "mmd") {
+                    return None;
+                }
+                let text = fs::read_to_string(&path).ok()?;
+                let parsed = futures::executor::block_on(engine.parse_diagram(&text, parse_opts))
+                    .ok()
+                    .flatten()?;
+                if !sequence_model_has_wrap(&parsed.model) {
+                    return None;
+                }
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+
     let Ok(entries) = fs::read_dir(&in_dir) else {
         return Err(XtaskError::ReadFile {
             path: in_dir.display().to_string(),
@@ -146,6 +208,14 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     for entry in entries.flatten() {
         let path = entry.path();
         if !is_file_with_extension(&path, "svg") {
+            continue;
+        }
+        if mode == "sequence"
+            && path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|stem| sequence_wrap_stems.contains(stem))
+        {
             continue;
         }
         let svg = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
@@ -228,22 +298,29 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    // For Mermaid `sequenceDiagram`, text widths are computed from the *encoded* Mermaid source
-    // (after `encodeEntities(...)`), not from the final decoded SVG glyphs. To match upstream,
-    // include raw strings extracted from our pinned fixture corpus as additional override seeds.
+    // For Mermaid `sequenceDiagram`, actor spacing is driven by `getMaxMessageWidthPerActor(...)`.
+    // That path sees raw model strings (after Mermaid entity handling), not always the final
+    // decoded SVG glyph nodes. Include only the actor labels and messages that participate in
+    // that spacing calculation; block labels, titles, and other draw-only text must not sharpen
+    // wrap decisions through this generated table.
     if mode == "sequence" {
-        let fixtures_dir = crate::cmd::fixtures_root().join("sequence");
-
         let engine = merman::Engine::new();
         let parse_opts = merman::ParseOptions {
             suppress_errors: true,
         };
 
         let mut extra: Vec<String> = Vec::new();
-        if let Ok(entries) = fs::read_dir(&fixtures_dir) {
+        if let Ok(entries) = fs::read_dir(&sequence_fixtures_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if !is_file_with_extension(&path, "mmd") {
+                    continue;
+                }
+                if path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|stem| sequence_wrap_stems.contains(stem))
+                {
                     continue;
                 }
                 let Ok(text) = fs::read_to_string(&path) else {
@@ -258,6 +335,9 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 let m = &parsed.model;
                 if let Some(actors) = m.get("actors").and_then(|v| v.as_object()) {
                     for a in actors.values() {
+                        if a.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            continue;
+                        }
                         if let Some(s) = a.get("description").and_then(|v| v.as_str()) {
                             extra.push(s.to_string());
                         }
@@ -265,27 +345,26 @@ pub(crate) fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 }
                 if let Some(msgs) = m.get("messages").and_then(|v| v.as_array()) {
                     for msg in msgs {
-                        if let Some(s) = msg.get("message").and_then(|v| v.as_str()) {
-                            extra.push(s.to_string());
+                        if !sequence_message_has_actor_endpoints(m, msg) {
+                            continue;
                         }
-                    }
-                }
-                if let Some(notes) = m.get("notes").and_then(|v| v.as_array()) {
-                    for note in notes {
-                        if let Some(s) = note.get("message").and_then(|v| v.as_str()) {
+                        if msg.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            continue;
+                        }
+                        if let Some(s) = msg.get("message").and_then(|v| v.as_str()) {
                             extra.push(s.to_string());
                         }
                     }
                 }
                 if let Some(boxes) = m.get("boxes").and_then(|v| v.as_array()) {
                     for b in boxes {
+                        if b.get("wrap").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            continue;
+                        }
                         if let Some(s) = b.get("name").and_then(|v| v.as_str()) {
                             extra.push(s.to_string());
                         }
                     }
-                }
-                if let Some(title) = m.get("title").and_then(|v| v.as_str()) {
-                    extra.push(title.to_string());
                 }
             }
         }
@@ -753,19 +832,22 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
         None
     }
 
-    let browser_exe = if let Some(p) = browser_exe.as_deref() {
-        p.to_path_buf()
+    let node_cwd = crate::cmd::mermaid_cli_root();
+    let browser_exe = if mode == "sequence" {
+        // mmdc lets Puppeteer pick its bundled headless shell. Sequence message widths are
+        // sensitive enough that forcing a system Chrome/Edge executable changes actor spacing.
+        browser_exe
+    } else if let Some(p) = browser_exe {
+        Some(p)
     } else if cfg!(windows) {
-        detect_windows_browser_exe().ok_or_else(|| {
+        Some(detect_windows_browser_exe().ok_or_else(|| {
             XtaskError::SvgCompareFailed("no supported browser found for svg measurement".into())
-        })?
+        })?)
     } else {
         return Err(XtaskError::SvgCompareFailed(
             "browser measurement requires --browser-exe on this platform".into(),
         ));
     };
-
-    let node_cwd = crate::cmd::mermaid_cli_root();
 
     // font_key => (text => (size_key, left_em, right_em))
     let mut best_by_font: BTreeMap<String, BTreeMap<String, (usize, f64, f64)>> = BTreeMap::new();
@@ -798,7 +880,7 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
             }
             let raw = infer_sequence_message_dimensions_width_px_via_mermaid_layout(
                 &node_cwd,
-                Some(&browser_exe),
+                browser_exe.as_deref(),
                 &strings,
             )?;
             let widths = raw.iter().map(|m| m.width_px).collect::<Vec<_>>();
@@ -852,7 +934,9 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
 
         let metrics = measure_svg_text_bbox_metrics_via_browser(
             &node_cwd,
-            &browser_exe,
+            browser_exe.as_deref().ok_or_else(|| {
+                XtaskError::SvgCompareFailed("browser measurement requires --browser-exe".into())
+            })?,
             &font_family_raw,
             font_size_px,
             &text_anchor,

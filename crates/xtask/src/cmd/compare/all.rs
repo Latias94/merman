@@ -348,9 +348,9 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         diagram: "sequence",
         stem: "zed_pr_57644_sequence",
         fragments: &[
-            "svg: attr `style` mismatch",
-            "upstream=`max-width: 796px; background-color: white;`",
-            "local=`max-width: 811px; background-color: white;`",
+            "svg: attr `viewBox` mismatch",
+            "upstream=`<n> <n> 796 1096`",
+            "local=`<n> <n> 796 1126`",
         ],
     },
     AcceptedRootParityResidual {
@@ -513,7 +513,7 @@ dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
         let residual_lines = [
             (
                 "sequence",
-                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 796px; background-color: white;` local=`max-width: 811px; background-color: white;`)",
+                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `viewBox` mismatch upstream=`<n> <n> 796 1096` local=`<n> <n> 796 1126`)",
             ),
             (
                 "gitgraph",

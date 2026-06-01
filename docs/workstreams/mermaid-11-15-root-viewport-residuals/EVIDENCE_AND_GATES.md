@@ -515,6 +515,48 @@ Rejected probes:
   generated-table churn. The current Sequence override generator's minimal-diagram inversion needs
   repair or replacement before a full refresh is defensible.
 
+Fresh follow-up evidence after repairing the Sequence SVG override generator:
+
+- `crates/xtask/src/cmd/overrides/svg.rs` now lets Sequence override generation follow the same
+  default browser selection path as Mermaid CLI / Puppeteer. Passing an explicit system
+  Chrome/Edge executable reproduced the bad `1034px` central row; leaving `executablePath`
+  unset or using Puppeteer's bundled headless shell generated the expected central widths
+  (`281px`, `292px`, `282px`, and `283px` for the RTL central variants).
+- The generator now skips wrap-sensitive Sequence fixtures and skips raw message seeds that do not
+  have actor endpoints. This avoids teaching final-layout SVG text overrides to incremental
+  `wrapLabel(...)` probes and mirrors Mermaid's `getMaxMessageWidthPerActor(...)` input shape more
+  closely.
+- `crates/merman-render/src/text/measure.rs` now exposes a wrap-specific SVG bbox measurement seam.
+  `VendoredFontMetricsTextMeasurer` uses that seam to keep exact final SVG text overrides out of
+  wrap probing, while still using the generated table for final SVG text measurement.
+- `crates/merman-render/src/svg/parity/sequence/block_text.rs` dropped the broad mid-width frame
+  padding that falsely split `[Authentication check]`; the remaining narrow-frame pad is limited to
+  frames at or below `160px`, where it preserves the observed Mermaid splits for nested-frame
+  stress fixtures.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with SVG text metric table
+  rows increasing from 186 to 891 and the no-growth budget updated to 891.
+- `cargo test -p merman-render sequence_central_connection_rtl -- --nocapture`: passed, 2 tests.
+- `cargo run -p xtask -- compare-sequence-svgs --filter upstream_cypress_sequencediagram_v2_spec_should_render_central_connection_with_normal_arrows_right_to_lef_033 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_central_rtl_033_after_sequence_override_cleanup.md`:
+  passed. The formerly `+63px` central RTL residual is now exact at `965px`.
+- Focused Sequence structural checks passed for the wrap-sensitive regression rows:
+  `upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015`,
+  `stress_nested_frames_001`, and `stress_deep_nested_frames_018`.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/sequence_report_parity_after_sequence_override_cleanup.md`:
+  passed for the full Sequence matrix.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_report_parity_root_after_sequence_override_cleanup.md`:
+  expected failure with 68 raw Sequence root mismatches. Full `compare-all-svgs` accepts the
+  existing `sequence/zed_pr_57644_sequence` policy row, leaving 67 unaccepted Sequence rows.
+- Remaining Sequence root rows are now dominated by HTML `<br>` / wrap / note / participant height
+  tails, for example `html_br_variants_and_wrap`,
+  `stress_long_participant_labels_br_031`, `stress_br_in_messages_notes_011`, and
+  `stress_sequence_batch5_wrap_html_br_spans_042`. These should be handled as M15RV-085, not by
+  adding string-by-string browser constants.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with 175 unaccepted residuals: Flowchart 61, Sequence 67, Architecture 30,
+  Class 12, Timeline 3, and Journey 2.
+
 ## M15RV-040 Follow-Up - Architecture Root Diagnostics Parity
 
 Fresh evidence from 2026-06-01:
@@ -606,6 +648,29 @@ Architecture calibration cleanup finding:
   It created a deterministic `+0.380px` overshoot on all three corresponding upstream fixtures.
 - Removing it is a true source-owned cleanup, not a tolerance change: no browser-only approximation
   was introduced, and the affected fixtures became exact root matches.
+
+Fresh structural-hygiene evidence from 2026-06-02:
+
+- After refreshing `upstream_architecture_docs_service_icon_text`, the full structural gate exposed
+  Architecture fixture-corpus inconsistency rather than a renderer layout defect: most Architecture
+  fixtures still use bare `service-*` / `node-*` / `group-*` IDs and the older fallback background
+  path spelling, while the refreshed fixture follows Mermaid 11.15's scoped IDs and absolute
+  fallback path from `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts`.
+- The renderer now emits the Mermaid 11.15 absolute fallback background path for services with no
+  icon or iconText. The emitted-bounds tests were updated to the 11.15 `80x80` bbox.
+- `crates/xtask/src/svgdom.rs` normalizes Architecture diagram-scoped service/node/group IDs and
+  fallback service background path spelling in parity modes only. This keeps structural gates from
+  encoding stale fixture-generation details while root gates still compare the actual root
+  viewport output.
+- `cargo test -p xtask parity_normalizes_architecture -- --nocapture`: passed, 2 tests.
+- `cargo test -p merman-render svg_path_bounds_architecture_service_node_bkg_matches_mermaid_bbox -- --nocapture`:
+  passed.
+- `cargo test -p merman-render svg_emitted_bounds_attr_lookup_d_does_not_match_id -- --nocapture`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_path_and_id_normalization.md`:
+  passed.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the full implemented SVG matrix.
 
 ## Gate Set
 

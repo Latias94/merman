@@ -107,29 +107,46 @@ residual: Mermaid 11.15 upstream root is `965px`, while the Rust headless SVG pa
 
 Two attempted fixes were explicitly rejected. A diagnostic substitution of deterministic message
 measurement improved this focused row to `995px`, but increased the raw Sequence root mismatch
-count from 168 to 169, so it is not a defensible parity fix. A full `gen-svg-overrides --mode
-sequence` refresh added a much larger override table and made the focused row worse (`1034px`), so
-the generator needs repair before refreshing Sequence SVG text overrides. Refreshing the focused
-upstream SVG with `gen-upstream-svgs` produced no file diff, confirming the `965px` baseline is not
-stale under the current upstream export path.
+count from 168 to 169, so it is not a defensible parity fix. A first full
+`gen-svg-overrides --mode sequence` refresh added a much larger override table and made the focused
+row worse (`1034px`), which exposed that the generator was using the wrong browser path for
+Sequence evidence. Refreshing the focused upstream SVG with `gen-upstream-svgs` produced no file
+diff, confirming the `965px` baseline is not stale under the current upstream export path.
+
+M15RV-080 then repaired that generator path instead of forcing a renderer constant. Sequence SVG
+override generation now follows Mermaid CLI / Puppeteer's default bundled-browser behavior when no
+explicit executable is provided, skips wrap-sensitive fixtures, and avoids raw message seeds without
+actor endpoints. The regenerated table has 891 rows and passes the override budget. Exact final SVG
+overrides are now kept out of incremental wrap probing through a wrap-specific measurement seam.
+The central RTL fixture is root-exact at `965px`, full Sequence structural parity is green, and the
+raw Sequence root bucket dropped from 168 to 68 rows. Full `compare-all-svgs --dom-mode
+parity-root` accepts the existing `sequence/zed_pr_57644_sequence` row, leaving 67 unaccepted
+Sequence residuals.
+
+During the final structural gate, Architecture exposed fixture-corpus churn around
+Mermaid 11.15 `svgDraw.ts`: refreshed fixtures can use diagram-scoped service/node/group IDs and
+the current absolute fallback service background path, while older Architecture fixtures still use
+bare IDs and the older relative path spelling. The renderer now uses the current 11.15 absolute
+fallback path, and the parity comparator normalizes only those Architecture ID/path spelling
+variants so structural gates do not encode stale fixture-generation details. Architecture
+structural parity and full structural parity are green.
 
 ## Active Task
 
-- Task ID: M15RV-080
+- Task ID: M15RV-085
 - Owner: codex
-- Status: IN_PROGRESS
-- Goal: Repair the Sequence SVG text-measurement policy path, or explicitly document the residual
-  when browser `calculateTextDimensions(...)` behavior cannot be approximated without harming
-  broader headless parity.
-- Evidence: `target/compare/sequence_central_rtl_033_after_measurement_audit.md` plus the focused
-  Sequence central-connection regression tests in `crates/merman-render/tests/sequence_svg_test.rs`.
-- Concern: Do not replace Sequence spacing with deterministic metrics as a one-row fix. The
-  diagnostic probe showed that this makes the broader Sequence root bucket worse.
+- Status: PENDING
+- Goal: Classify and reduce the remaining Sequence HTML `<br>` / wrap / note / participant root
+  tails after the SVG override generator repair.
+- Evidence: start from `target/compare/sequence_report_parity_root_after_sequence_override_cleanup.md`
+  and the latest `target/compare/sequence_report_parity_root.md`.
+- Concern: Do not add string-by-string browser constants. Prefer reusable HTML/wrap source rules,
+  generator-backed evidence, or explicit diagnostic residual policy.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 277.
-- Largest buckets: Sequence 167, Flowchart 61, Architecture 29, Class 12.
+- Total unaccepted full-root residuals: 175.
+- Largest buckets: Sequence 67, Flowchart 61, Architecture 30, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -154,3 +171,6 @@ stale under the current upstream export path.
 - Prefer deleting stale source-owned calibrations like `reasonable_height` before inventing new
   root heuristics. Those removals are lower risk and easier to defend against Mermaid source and
   fixture evidence.
+- Treat Architecture diagram-scoped service/node/group IDs and fallback service background path
+  spelling as compare-time fixture-churn normalization, not renderer behavior to toggle per
+  fixture. Root gates remain the authority for visual viewport impact.

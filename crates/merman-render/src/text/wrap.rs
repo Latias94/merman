@@ -448,7 +448,7 @@ pub fn wrap_label_like_mermaid_lines(
     fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
         // Upstream uses `calculateTextWidth(...)` which rounds the SVG bbox width.
         measurer
-            .measure_svg_simple_text_bbox_width_px(s, style)
+            .measure_svg_simple_text_bbox_width_for_wrap_px(s, style)
             .round()
     }
 
@@ -633,7 +633,7 @@ pub fn wrap_label_like_mermaid_lines_floored_bbox(
 
     fn w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
         measurer
-            .measure_svg_simple_text_bbox_width_px(s, style)
+            .measure_svg_simple_text_bbox_width_for_wrap_px(s, style)
             .floor()
     }
 
