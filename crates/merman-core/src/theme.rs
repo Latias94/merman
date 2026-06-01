@@ -1,8 +1,24 @@
 use crate::MermaidConfig;
 use ryu_js::Buffer;
 use serde_json::{Map, Value};
+use std::sync::OnceLock;
 
-pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &["default", "base", "dark", "forest", "neutral"];
+pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
+    "default",
+    "base",
+    "dark",
+    "forest",
+    "neutral",
+    "neo",
+    "neo-dark",
+    "redux",
+    "redux-dark",
+    "redux-color",
+    "redux-dark-color",
+];
+
+// Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.15.0.
+static UPSTREAM_THEME_VARIABLES: OnceLock<Value> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
 struct Rgb01 {
@@ -221,6 +237,62 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     }
 }
 
+fn upstream_theme_variables() -> &'static Map<String, Value> {
+    UPSTREAM_THEME_VARIABLES
+        .get_or_init(|| {
+            serde_json::from_str(include_str!("generated/theme_variables_11_15_0.json"))
+                .expect("generated Mermaid theme variable snapshot JSON is valid")
+        })
+        .as_object()
+        .expect("generated Mermaid theme variable snapshot root is an object")
+}
+
+fn upstream_theme_snapshot(theme: &str) -> Option<&'static Map<String, Value>> {
+    upstream_theme_variables().get(theme)?.as_object()
+}
+
+fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map<String, Value>) {
+    for (key, default_value) in defaults {
+        match (target.get_mut(key), default_value) {
+            (Some(Value::Object(target_map)), Value::Object(default_map)) => {
+                merge_theme_variable_defaults(target_map, default_map);
+            }
+            (Some(Value::Null), _) => {
+                target.insert(key.clone(), default_value.clone());
+            }
+            (Some(Value::String(current)), _) if current.trim().is_empty() => {
+                target.insert(key.clone(), default_value.clone());
+            }
+            (None, _) => {
+                target.insert(key.clone(), default_value.clone());
+            }
+            _ => {}
+        }
+    }
+}
+
+fn finish_theme_defaults(
+    config: &mut MermaidConfig,
+    theme: &str,
+    mut tv: Map<String, Value>,
+    has_user_theme_variables: bool,
+) {
+    if let Some(snapshot) = upstream_theme_snapshot(theme) {
+        if has_user_theme_variables {
+            merge_theme_variable_defaults(&mut tv, snapshot);
+        } else {
+            tv = snapshot.clone();
+        }
+    }
+    config.set_value("themeVariables", Value::Object(tv));
+}
+
+fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
+    let tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
+    finish_theme_defaults(config, theme, tv, has_user_theme_variables);
+}
+
 fn mermaid_default_font_family() -> Value {
     Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string())
 }
@@ -285,19 +357,23 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
 }
 
 pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
-    let theme = config.get_str("theme").unwrap_or("default");
-    match theme {
+    let theme = config.get_str("theme").unwrap_or("default").to_string();
+    match theme.as_str() {
         "default" => apply_default_theme_defaults(config),
         "base" => apply_base_theme_defaults(config),
         "dark" => apply_dark_theme_defaults(config),
         "forest" => apply_forest_theme_defaults(config),
         "neutral" => apply_neutral_theme_defaults(config),
+        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color" => {
+            apply_snapshot_theme_defaults(config, theme.as_str())
+        }
         _ => apply_default_theme_defaults(config),
     }
 }
 
 fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
 
     // Mermaid 11.12.3: `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
@@ -851,11 +927,12 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3",
     );
 
-    config.set_value("themeVariables", Value::Object(tv));
+    finish_theme_defaults(config, "default", tv, has_user_theme_variables);
 }
 
 fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
 
     // Mermaid 11.12.2: `theme-dark` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
@@ -1147,11 +1224,12 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22",
     );
 
-    config.set_value("themeVariables", Value::Object(tv));
+    finish_theme_defaults(config, "dark", tv, has_user_theme_variables);
 }
 
 fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
 
     // Mermaid 11.12.2: `theme-forest` base colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
@@ -1197,11 +1275,11 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     );
 
     let Some(primary_color) = get_truthy_string(&tv, "primaryColor") else {
-        config.set_value("themeVariables", Value::Object(tv));
+        finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
         return;
     };
     let Some(primary_rgb) = parse_hex_rgb01(&primary_color) else {
-        config.set_value("themeVariables", Value::Object(tv));
+        finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
         return;
     };
     let primary_hsl = rgb01_to_hsl(primary_rgb);
@@ -1370,11 +1448,12 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         "#CDE498,#FF6B6B,#A0D2DB,#D7BDE2,#F0F0F0,#FFC3A0,#7FD8BE,#FF9A8B,#FAF3E0,#FFF176",
     );
 
-    config.set_value("themeVariables", Value::Object(tv));
+    finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
 }
 
 fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
 
     // `theme-neutral` constructor defaults.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
@@ -1651,11 +1730,12 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "#EEE,#6BB8E4,#8ACB88,#C7ACD6,#E8DCC2,#FFB2A8,#FFF380,#7E8D91,#FFD8B1,#FAF3E0",
     );
 
-    config.set_value("themeVariables", Value::Object(tv));
+    finish_theme_defaults(config, "neutral", tv, has_user_theme_variables);
 }
 
 fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
 
     let dark_mode = tv
         .get("darkMode")
@@ -1870,7 +1950,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
     );
 
-    config.set_value("themeVariables", Value::Object(tv));
+    finish_theme_defaults(config, "base", tv, has_user_theme_variables);
 }
 
 #[cfg(test)]
@@ -1882,8 +1962,39 @@ mod tests {
     fn supported_theme_names_match_core_expansion_surface() {
         assert_eq!(
             crate::supported_themes(),
-            &["default", "base", "dark", "forest", "neutral"]
+            &[
+                "default",
+                "base",
+                "dark",
+                "forest",
+                "neutral",
+                "neo",
+                "neo-dark",
+                "redux",
+                "redux-dark",
+                "redux-color",
+                "redux-dark-color"
+            ]
         );
+    }
+
+    #[test]
+    fn supported_theme_defaults_match_upstream_snapshot() {
+        for &theme in SUPPORTED_THEME_NAMES {
+            let mut cfg = MermaidConfig::from_value(json!({
+                "theme": theme
+            }));
+            apply_theme_defaults(&mut cfg);
+
+            let actual = cfg
+                .as_value()
+                .get("themeVariables")
+                .and_then(|v| v.as_object())
+                .unwrap();
+            let expected = upstream_theme_snapshot(theme).unwrap();
+
+            assert_eq!(actual, expected, "theme {theme}");
+        }
     }
 
     #[test]

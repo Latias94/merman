@@ -27,6 +27,12 @@ export const SUPPORTED_THEMES = [
   "dark",
   "forest",
   "neutral",
+  "neo",
+  "neo-dark",
+  "redux",
+  "redux-dark",
+  "redux-color",
+  "redux-dark-color",
 ] as const;
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
