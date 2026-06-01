@@ -284,6 +284,74 @@ Fresh unaccepted residual summary after M15RV-050:
 
 Total unaccepted residuals: 283.
 
+## M15RV-060 - Class Namespace Compound Layout Follow-Up
+
+Fresh evidence from 2026-06-01:
+
+- `cargo test -p merman-render --test class_layout_test`: passed, 12 tests.
+- `cargo run -p xtask -- compare-class-svgs --filter basic --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_basic_after_nodeborder_fix.md`:
+  passed after the Class renderer switched its default node fill/stroke source to Mermaid's
+  `mainBkg`/`nodeBorder` variables instead of `primaryColor`/`primaryBorderColor`.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_report_parity_after_namespace_compound.md`:
+  passed for the current Class matrix.
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_pkgtests_classdiagram_spec_003 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_pkgtests_003_after_namespace_compound.md`:
+  expected failure; the fixture is no longer the old wrong horizontal layout (`1014px` local
+  max-width) and now renders as a vertical compound layout (`444.5px` local vs `499.75px`
+  upstream).
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_nested_namespaces_cross_edges_008 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_stress_nested_cross_edges_after_namespace_compound.md`:
+  expected failure; the LR nested namespace fixture now renders near the upstream vertical stack
+  (`277.75px` local vs `257.5px` upstream).
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_report_parity_root_after_namespace_compound.md`:
+  expected failure with 32 raw Class root mismatches in the current worktree.
+- `cargo test -p merman-core theme`: passed, 9 tests, after the theme snapshot merge test was
+  updated to require exact equality for snapshot-only themes and key coverage for hand-derived
+  existing themes.
+- `cargo run -p xtask -- compare-sequence-svgs --filter activation_explicit --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/sequence_activation_after_theme_snapshot_merge.md`:
+  passed after Sequence activation rect attributes were realigned with Mermaid
+  `svgDraw.getNoteRect()`.
+- `cargo run -p xtask -- compare-treemap-svgs --filter stress_treemap_font_size_precedence_001 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/treemap_font_size_after_theme_snapshot.md`:
+  passed after the default-theme Treemap color-scale renderer path was kept on the SVG baseline
+  defaults.
+- `cargo run -p xtask -- compare-xychart-svgs --filter upstream_cypress_xychart_spec_should_render_a_single_bar_with_label_for_a_vertical_xy_chart_026 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/xychart_label_after_theme_snapshot.md`:
+  passed after default-theme XYChart data labels were kept on the SVG baseline color.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix in the current worktree.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport overrides
+  still at 278 entries.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 293 unaccepted residuals.
+- `cargo fmt --check`: passed.
+- `git diff --check`: passed with a line-ending warning for this workstream's `CONTEXT.jsonl`.
+
+Class source-rule findings:
+
+- Mermaid 11.15 `classRenderer-v2.ts:addNamespaces(...)` inserts each namespace and then
+  immediately inserts that namespace's direct classes and notes. Rust now mirrors that graph
+  insertion/parenting order instead of batching all namespaces before all classes.
+- Mermaid's Class CSS uses `mainBkg` for node fill and `nodeBorder` for node border. Rust's
+  renderer now uses the same variables; this avoids structural stroke mismatches after theme
+  expansion makes `primaryBorderColor` differ from `nodeBorder`.
+- The nested namespace extraction rule is intentionally rankdir-aware. For TB graphs, a parent
+  cluster with a direct external child cluster stays in the surrounding compound graph; for LR
+  graphs, the parent can still be extracted so Mermaid's recursive TB/LR rankdir flip produces the
+  upstream-style vertical stack.
+- This task is not root-green. The remaining Class rows include real namespace/layout-root
+  differences plus smaller text/root tails, so M15RV-090 must not close by accepting this whole
+  current Class residual set.
+
+Fresh unaccepted residual summary after M15RV-060:
+
+| Diagram | Unaccepted residuals | Report |
+| --- | ---: | --- |
+| Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
+| Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
+| Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
+| Class | 28 | `target/compare/class_report_parity_root.md` |
+| Timeline | 3 | `target/compare/timeline_report_parity_root.md` |
+| Journey | 2 | `target/compare/journey_report_parity_root.md` |
+
+Total unaccepted residuals: 293.
+
 ## Gate Set
 
 Run after any code or generated-data change:

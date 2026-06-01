@@ -32,3 +32,13 @@
 {"file":"target/compare/sankey_report_parity_root_after_m15rv050.md","reason":"M15RV-050 evidence that Sankey root parity is green after refreshing existing root pins."}
 {"file":"target/compare/timeline_report_parity_root_after_m15rv050.md","reason":"M15RV-050 evidence that Timeline root residuals are reduced to 3 unpinned small width tails."}
 {"file":"target/compare/journey_report_parity_root_after_m15rv050.md","reason":"M15RV-050 evidence that Journey retains 2 unpinned small width tails and has no root pin table."}
+{"file":"crates/merman-render/src/class.rs","reason":"M15RV-060 Class graph construction and compound extraction changes mirroring Mermaid addNamespaces order and rankdir-aware namespace extraction behavior."}
+{"file":"crates/merman-render/src/svg/parity/class/settings.rs","reason":"M15RV-060 Class renderer source-rule fix for Mermaid mainBkg/nodeBorder default node styling."}
+{"file":"crates/merman-render/tests/class_layout_test.rs","reason":"M15RV-060 regression test for nested namespace cross-edge compound layout."}
+{"file":"target/compare/class_pkgtests_003_after_namespace_compound.md","reason":"M15RV-060 focused Class evidence: 003 changed from wrong horizontal root width to vertical compound layout but remains root-red."}
+{"file":"target/compare/class_stress_nested_cross_edges_after_namespace_compound.md","reason":"M15RV-060 focused Class evidence for LR nested namespace cross-edge rankdir behavior."}
+{"file":"target/compare/class_report_parity_after_namespace_compound.md","reason":"M15RV-060 Class structural parity evidence after namespace compound and nodeBorder fixes."}
+{"file":"target/compare/class_report_parity_root_after_namespace_compound.md","reason":"M15RV-060 current Class root residual evidence after namespace compound and nodeBorder fixes."}
+{"file":"target/compare/sequence_activation_after_theme_snapshot_merge.md","reason":"M15RV-060 structural guard evidence for Mermaid source-aligned Sequence activation rect fill under expanded theme variables."}
+{"file":"target/compare/treemap_font_size_after_theme_snapshot.md","reason":"M15RV-060 structural guard evidence for default-theme Treemap color-scale behavior under expanded theme variables."}
+{"file":"target/compare/xychart_label_after_theme_snapshot.md","reason":"M15RV-060 structural guard evidence for default-theme XYChart data-label color behavior under expanded theme variables."}

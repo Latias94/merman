@@ -221,6 +221,40 @@ namespace Company.Project.Module {
 }
 
 #[test]
+fn class_layout_nested_namespace_cross_edge_stays_in_parent_compound() {
+    let layout = load_class_layout_fixture("upstream_pkgtests_classdiagram_spec_003");
+
+    let admin = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "Admin")
+        .expect("Admin node");
+    let report = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "Report")
+        .expect("Report node");
+    let module = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == "Company.Project.Module")
+        .expect("module cluster");
+
+    assert!(
+        report.y > admin.y + 100.0,
+        "nested namespace cross-edge should stack Report below Admin"
+    );
+    assert!(
+        (report.x - admin.x).abs() < 25.0,
+        "nested namespace cross-edge should stay vertically aligned"
+    );
+    assert!(
+        module.height > module.width,
+        "module cluster should stay in the surrounding TB compound layout"
+    );
+}
+
+#[test]
 fn class_layout_namespace_note_stays_inside_namespace_cluster() {
     let (layout, semantic) = layout_class_text(
         r#"classDiagram

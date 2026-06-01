@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
+type ClassNote = merman_core::models::class_diagram::ClassNote;
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
@@ -145,7 +146,8 @@ fn prepare_graph(
     // Reference: Mermaid@11.12.2 `mermaid-graphlib.js` extractor + `recursiveRender`:
     // - eligible cluster: has children, and no edge crosses its descendant boundary
     // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
-    // - subgraph rank spacing uses `ranksep = parent.ranksep + 25`
+    // - recursive render copies the parent graph's `ranksep`/`nodesep` into the subgraph before
+    //   layout
     // - margins are fixed at 8
 
     let cluster_ids: Vec<String> = graph
@@ -181,10 +183,24 @@ fn prepare_graph(
     }
 
     let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
+    let graph_rankdir = graph.graph().rankdir;
     let candidate_clusters: Vec<String> = graph
         .node_ids()
         .into_iter()
-        .filter(|id| !graph.children(id).is_empty() && !external.get(id).copied().unwrap_or(false))
+        .filter(|id| {
+            !graph.children(id).is_empty()
+                && !external.get(id).copied().unwrap_or(false)
+                // When a TB parent contains direct nodes plus a direct child cluster that cannot
+                // be extracted, Dugong otherwise places the direct node beside that child cluster.
+                // Mermaid/Dagre keeps the surrounding compound stack vertical for these Class
+                // namespace cases. In LR graphs, extraction is still needed because Mermaid flips
+                // the extracted subgraph back to TB.
+                && (graph_rankdir != RankDir::TB
+                    || !graph.children(id).into_iter().any(|child| {
+                        !graph.children(child).is_empty()
+                            && external.get(child).copied().unwrap_or(false)
+                    }))
+        })
         .collect();
 
     for cluster_id in candidate_clusters {
@@ -204,7 +220,7 @@ fn prepare_graph(
         let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
-        subgraph.graph_mut().ranksep = ranksep + 25.0;
+        subgraph.graph_mut().ranksep = ranksep;
         subgraph.graph_mut().marginx = 8.0;
         subgraph.graph_mut().marginy = 8.0;
 
@@ -1853,20 +1869,16 @@ fn layout_class_diagram_v2_typed_inner(
         ..Default::default()
     });
 
-    for &id in &namespace_ids {
-        // Mermaid class namespaces enter the Dagre graph as compound/group nodes without an eager
-        // title-sized bbox. The visible title width is reconciled later during SVG emission.
-        g.set_node(id.to_string(), NodeLabel::default());
-    }
-
-    let mut classes_primary: Vec<&ClassNode> = Vec::new();
     let mut classes_namespace_facades: Vec<&ClassNode> = Vec::new();
-    classes_primary.reserve(model.classes.len());
     classes_namespace_facades.reserve(model.classes.len());
+    let mut inserted_classes: HashSet<String> = HashSet::with_capacity(model.classes.len());
+    let mut inserted_notes: HashSet<String> = HashSet::with_capacity(model.notes.len());
+    let notes_by_id: HashMap<&str, &ClassNote> =
+        model.notes.iter().map(|n| (n.id.as_str(), n)).collect();
 
-    for c in model.classes.values() {
+    let is_namespace_facade = |c: &ClassNode| {
         let trimmed_id = c.id.trim();
-        let is_namespace_facade = trimmed_id.split_once('.').is_some_and(|(ns, short)| {
+        trimmed_id.split_once('.').is_some_and(|(ns, short)| {
             let ns = ns.trim();
             let short = short.trim();
             model.namespaces.contains_key(ns)
@@ -1878,14 +1890,8 @@ fn layout_class_diagram_v2_typed_inner(
                 && c.members.is_empty()
                 && c.methods.is_empty()
                 && namespace_child_pairs.contains(&(ns, short))
-        });
-
-        if is_namespace_facade {
-            classes_namespace_facades.push(c);
-        } else {
-            classes_primary.push(c);
-        }
-    }
+        })
+    };
 
     let class_box_measure_ctx = ClassBoxMeasureCtx {
         measurer,
@@ -1898,19 +1904,121 @@ fn layout_class_diagram_v2_typed_inner(
         capture_row_metrics,
     };
 
-    for c in classes_primary {
-        let (w, h, row_metrics) = class_box_dimensions(c, &class_box_measure_ctx);
-        if let Some(rm) = row_metrics {
-            class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
+    let insert_class_node =
+        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+         c: &ClassNode,
+         class_row_metrics_by_id: &mut FxHashMap<String, Arc<ClassNodeRowMetrics>>| {
+            let (w, h, row_metrics) = class_box_dimensions(c, &class_box_measure_ctx);
+            if let Some(rm) = row_metrics {
+                class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
+            }
+            g.set_node(
+                c.id.clone(),
+                NodeLabel {
+                    width: w,
+                    height: h,
+                    ..Default::default()
+                },
+            );
+        };
+
+    let insert_note_node =
+        |g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+         n: &ClassNote,
+         node_label_metrics_by_id: &mut HashMap<String, (f64, f64)>| {
+            let (w, h, metrics) = note_dimensions(
+                &n.text,
+                measurer,
+                &text_style,
+                wrap_mode_note,
+                class_padding,
+                note_html_config,
+            );
+            if capture_note_label_metrics {
+                node_label_metrics_by_id.insert(
+                    n.id.clone(),
+                    (metrics.width.max(0.0), metrics.height.max(0.0)),
+                );
+            }
+            g.set_node(
+                n.id.clone(),
+                NodeLabel {
+                    width: w.max(1.0),
+                    height: h.max(1.0),
+                    ..Default::default()
+                },
+            );
+        };
+
+    for &id in &namespace_ids {
+        // Mermaid `addNamespaces(...)` inserts each namespace and then immediately inserts that
+        // namespace's direct classes/notes. Dagre's compound ordering uses this insertion and
+        // child order, so keep it source-aligned instead of batching all namespaces first.
+        g.set_node(id.to_string(), NodeLabel::default());
+
+        if let Some(parent) = model
+            .namespaces
+            .get(id)
+            .and_then(|ns| ns.parent.as_deref())
+            .map(str::trim)
+            .filter(|parent| !parent.is_empty())
+        {
+            if model.namespaces.contains_key(parent) {
+                g.set_parent(id.to_string(), parent.to_string());
+            }
         }
-        g.set_node(
-            c.id.clone(),
-            NodeLabel {
-                width: w,
-                height: h,
-                ..Default::default()
-            },
-        );
+
+        let Some(ns) = model.namespaces.get(id) else {
+            continue;
+        };
+        for class_id in &ns.class_ids {
+            let Some(c) = model.classes.get(class_id.as_str()) else {
+                continue;
+            };
+            if is_namespace_facade(c) {
+                if !classes_namespace_facades.iter().any(|seen| seen.id == c.id) {
+                    classes_namespace_facades.push(c);
+                }
+                continue;
+            }
+            if inserted_classes.insert(c.id.clone()) {
+                insert_class_node(&mut g, c, &mut class_row_metrics_by_id);
+                g.set_parent(c.id.clone(), id.to_string());
+            }
+        }
+        for note_id in &ns.note_ids {
+            let Some(n) = notes_by_id.get(note_id.as_str()).copied() else {
+                continue;
+            };
+            if inserted_notes.insert(n.id.clone()) {
+                insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
+                g.set_parent(n.id.clone(), id.to_string());
+            }
+        }
+    }
+
+    for c in model.classes.values() {
+        if inserted_classes.contains(c.id.as_str()) {
+            continue;
+        }
+        if is_namespace_facade(c) {
+            if !classes_namespace_facades.iter().any(|seen| seen.id == c.id) {
+                classes_namespace_facades.push(c);
+            }
+            continue;
+        }
+        inserted_classes.insert(c.id.clone());
+        insert_class_node(&mut g, c, &mut class_row_metrics_by_id);
+        if let Some(parent) = c
+            .parent
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            if model.namespaces.contains_key(parent) {
+                g.set_parent(c.id.clone(), parent.to_string());
+            }
+        }
     }
 
     // Interface nodes (lollipop syntax).
@@ -1928,31 +2036,34 @@ fn layout_class_diagram_v2_typed_inner(
                 ..Default::default()
             },
         );
+        if let Some(cls) = model.classes.get(iface.class_id.as_str()) {
+            if let Some(parent) = cls
+                .parent
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                if model.namespaces.contains_key(parent) {
+                    g.set_parent(iface.id.clone(), parent.to_string());
+                }
+            }
+        }
     }
 
     for n in &model.notes {
-        let (w, h, metrics) = note_dimensions(
-            &n.text,
-            measurer,
-            &text_style,
-            wrap_mode_note,
-            class_padding,
-            note_html_config,
-        );
-        if capture_note_label_metrics {
-            node_label_metrics_by_id.insert(
-                n.id.clone(),
-                (metrics.width.max(0.0), metrics.height.max(0.0)),
-            );
+        if inserted_notes.insert(n.id.clone()) {
+            insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
+            if let Some(parent) = n
+                .parent
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                if model.namespaces.contains_key(parent) {
+                    g.set_parent(n.id.clone(), parent.to_string());
+                }
+            }
         }
-        g.set_node(
-            n.id.clone(),
-            NodeLabel {
-                width: w.max(1.0),
-                height: h.max(1.0),
-                ..Default::default()
-            },
-        );
     }
 
     // Mermaid's namespace-qualified facade nodes can be introduced implicitly by relations
@@ -1960,18 +2071,9 @@ fn layout_class_diagram_v2_typed_inner(
     // insertion-order-late vertices so Dagre's `initOrder` matches upstream in ambiguous
     // note-vs-facade ordering cases.
     for c in classes_namespace_facades {
-        let (w, h, row_metrics) = class_box_dimensions(c, &class_box_measure_ctx);
-        if let Some(rm) = row_metrics {
-            class_row_metrics_by_id.insert(c.id.clone(), Arc::new(rm));
+        if inserted_classes.insert(c.id.clone()) {
+            insert_class_node(&mut g, c, &mut class_row_metrics_by_id);
         }
-        g.set_node(
-            c.id.clone(),
-            NodeLabel {
-                width: w,
-                height: h,
-                ..Default::default()
-            },
-        );
     }
 
     if g.options().compound {

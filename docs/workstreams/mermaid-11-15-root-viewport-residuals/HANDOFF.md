@@ -46,19 +46,32 @@ values. Timeline was reduced from 7 to 3 by refreshing 4 existing root pins; the
 are unpinned 0.5-1px root-width tails and were not converted into new fixture pins. Journey
 remains at 2 unpinned 1.25-2px root-width tails and has no root pin table.
 
+M15RV-060 started the Class source-rule follow-up. The focused repro
+`upstream_pkgtests_classdiagram_spec_003` showed that the previous local output laid out `Admin`
+and `Report` horizontally inside nested namespaces (`1014px` local max-width vs `499.75px`
+upstream). Mermaid source inspection found that `classRenderer-v2.ts:addNamespaces(...)` inserts a
+namespace's direct classes/notes during namespace traversal, while Rust had batched all namespaces
+before all classes. Rust now mirrors that insertion/parenting order and uses a rankdir-aware
+cluster extraction rule: TB parent clusters with a direct external child cluster stay in the
+surrounding compound graph, while LR parent clusters can still be extracted so the recursive rankdir
+flip produces the upstream vertical stack. The focused row now renders vertically (`444.5px` local
+vs `499.75px` upstream), so the original horizontal-layout failure is fixed, but the row is not
+root-green yet. Class structural parity is green after the Class renderer was corrected to use
+Mermaid's `mainBkg`/`nodeBorder` defaults for node styling.
+
 ## Active Task
 
-- Task ID: M15RV-090
-- Owner: planner
-- Status: READY
-- Goal: Close the root residual lane by either making `parity-root` green or accepting only
-  documented diagnostic residuals with fresh evidence.
-- Evidence: `target/compare/*_report_parity_root.md`
+- Task ID: M15RV-060
+- Owner: codex
+- Status: IN PROGRESS
+- Goal: Reduce the Class namespace/layout-width root bucket with Mermaid source-derived compound
+  graph rules instead of root viewport pins.
+- Evidence: `target/compare/class_pkgtests_003_after_namespace_compound.md`
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 283.
-- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 18.
+- Total unaccepted full-root residuals: 293.
+- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 28.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -69,3 +82,11 @@ remains at 2 unpinned 1.25-2px root-width tails and has no root pin table.
 - Do not add hand-written per-string browser metric constants at renderer call sites.
 - Prefer Mermaid source rules, generated browser-probe tables, or explicit diagnostic residual
   policy entries.
+- Do not close M15RV-090 by accepting the current residual set. The remaining Class and
+  Architecture rows include real layout/root-bounds differences.
+- Current worktree note: there is unrelated theme snapshot/platform work in
+  `crates/merman-core/src/theme.rs`,
+  `crates/merman-core/src/generated/theme_variables_11_15_0.json`, and
+  `platforms/web/src/index.ts`. Do not stage it with Class layout work unless its owner asks for
+  that. The Class renderer-side `nodeBorder` fix is separate and is required for Class structural
+  parity with the expanded default theme variables.
