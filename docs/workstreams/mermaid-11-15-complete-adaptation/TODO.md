@@ -149,7 +149,14 @@ Last updated: 2026-06-01
   is `bbox.width / 2 + padding`, so Dagre diameter is `label width + 2 * padding`, not the old
   `label width + padding + 10`. Alias set 12 now passes strict-root with root overrides disabled,
   structural `parity` remains green, and Flowchart `parity-root` reports 101 strict root-only
-  mismatches.
+  mismatches. The lined/tagged document slice then aligned `lin-doc`/`lined-document` with
+  Mermaid 11.15 `linedWaveEdgedRect.ts` and `tag-doc`/`tagged-document` with
+  `taggedWaveEdgedRectangle.ts`: classic lined documents use `h / 8` wave amplitude, and tagged
+  documents use the 11.15 tag sine constants. Alias sets 29 and 38 now pass strict-root with root
+  overrides disabled. Alias set 34 was a 1/64px upstream SVG/browser text metric residual for the
+  `stacked-rectangle` label, so it is captured as a narrow Flowchart HTML width override. The full
+  `shape_alias` strict-root sweep now passes with root overrides disabled, structural `parity`
+  remains green, and Flowchart `parity-root` reports 71 strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

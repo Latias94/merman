@@ -434,6 +434,11 @@ fn default_font_flowchart_html_width_overrides_match_upstream() {
     let custom = measurer.measure_wrapped("custom", &style, Some(200.0), WrapMode::HtmlLike);
     assert_eq!(custom.width, 51.359375);
     assert_eq!(custom.height, 24.0);
+
+    let stacked_rectangle =
+        measurer.measure_wrapped("stacked-rectangle", &style, Some(200.0), WrapMode::HtmlLike);
+    assert_eq!(stacked_rectangle.width, 128.578125);
+    assert_eq!(stacked_rectangle.height, 24.0);
 }
 
 #[test]

@@ -146,6 +146,8 @@ pub fn lookup_flowchart_html_width_px(
         ("trebuchetms,verdana,arial,sans-serif", "new window-pane shape") => Some(175.5625),
         // `fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset21_021.svg`
         ("trebuchetms,verdana,arial,sans-serif", "half-rounded-rectangle") => Some(166.21875),
+        // `fixtures/upstream-svgs/flowchart/upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034.svg`
+        ("trebuchetms,verdana,arial,sans-serif", "stacked-rectangle") => Some(128.578125),
         _ => None,
     }
 }

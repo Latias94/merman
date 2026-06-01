@@ -61,7 +61,14 @@ strict root-only mismatches. The double-circle geometry slice then aligned
 `bbox.width / 2 + padding`, so the Dagre diameter is `label width + 2 * padding` rather than the
 old local `label width + padding + 10`. Alias set 12 now passes strict-root with root overrides
 disabled, structural parity remains green, and Flowchart `parity-root` is down to 101 strict
-root-only mismatches.
+root-only mismatches. The lined/tagged document slice then aligned `lin-doc`/`lined-document` with
+Mermaid 11.15 `linedWaveEdgedRect.ts` and `tag-doc`/`tagged-document` with
+`taggedWaveEdgedRectangle.ts`: classic lined documents use `h / 8` wave amplitude, and tagged
+documents use the 11.15 tag sine constants. Alias sets 29 and 38 now pass strict-root with root
+overrides disabled. Alias set 34 was a 1/64px upstream SVG/browser text metric residual for the
+`stacked-rectangle` label, so it is captured as a narrow Flowchart HTML width override. The full
+`shape_alias` strict-root sweep now passes with root overrides disabled, structural parity remains
+green, and Flowchart `parity-root` is down to 71 strict root-only mismatches.
 
 ## Active Task
 
@@ -192,6 +199,13 @@ root-only mismatches.
   follows Mermaid 11.15 `doubleCircle.ts` for `dbl-circ`/`double-circle`/`doublecircle`; alias set
   12 passes strict-root with root overrides disabled, and Flowchart strict-root mismatch count is
   down to 101.
+- M15C-070 Flowchart lined/tagged document triage found old wave/tag formulas. The Rust layout,
+  SVG rendering, root-bounds, and tagged-document edge intersection paths now follow Mermaid 11.15
+  `linedWaveEdgedRect.ts` and `taggedWaveEdgedRectangle.ts`; alias sets 29 and 38 pass
+  strict-root with root overrides disabled. The remaining alias set 34 delta was a 1/64px browser
+  metric residual for `stacked-rectangle`, so it is captured as a Flowchart HTML width override.
+  The full `shape_alias` strict-root sweep passes with root overrides disabled, and Flowchart
+  strict-root mismatch count is down to 71.
 
 ## Known Risks
 
@@ -206,11 +220,12 @@ root-only mismatches.
 
 Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-alias source
 formula, plain `Car` text-metric, demo 016/052 stale-root-pin, and bow-tie rectangle buckets are
-closed, and window-pane/internal-storage, document/delay, and double-circle buckets are closed, but
-strict Flowchart `parity-root` still reports 101 root-only mismatches. The next executable step is
-to sample the new top Flowchart residuals: remaining shape-alias buckets (`29`, `38`, plus
-unpinned `34`), Unicode punctuation/text-metric stress, markdown subgraph root size, and
-shape-family layout/root clusters. Check whether each is a shared Mermaid 11.15 root geometry rule,
-a text metric rule, or only then a scoped root override. After Flowchart stops exposing large
-shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule
-change before adding broad fixture-scoped root pins.
+closed, and window-pane/internal-storage, document/delay, double-circle, and lined/tagged-document
+buckets are closed. The full shape-alias strict-root sweep now passes with root overrides disabled,
+but strict Flowchart `parity-root` still reports 71 root-only mismatches. The next executable step
+is to sample the new top Flowchart residuals: no-label new shape geometry/root buckets, Unicode
+punctuation/text-metric stress, markdown edge/subgraph root size, icon-only roots, and remaining
+small root-rounding rows. Check whether each is a shared Mermaid 11.15 root geometry rule, a text
+metric rule, or only then a scoped root override. After Flowchart stops exposing large shared
+buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule change
+before adding broad fixture-scoped root pins.

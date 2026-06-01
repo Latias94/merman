@@ -113,12 +113,6 @@ fn layout_node_label_width_if_known(ctx: &FlowchartRenderCtx<'_>, n: &LayoutNode
         .or_else(|| measure_flowchart_layout_node_label(ctx, n).map(|metrics| metrics.width))
 }
 
-fn layout_node_label_height_or_zero(ctx: &FlowchartRenderCtx<'_>, n: &LayoutNode) -> f64 {
-    n.label_height
-        .or_else(|| measure_flowchart_layout_node_label(ctx, n).map(|metrics| metrics.height))
-        .unwrap_or(0.0)
-}
-
 pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<'data, F>(
     ctx: &FlowchartRenderCtx<'data>,
     nodes: &[LayoutNode],
@@ -245,7 +239,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                         let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
                         let w = (label_w + 2.0 * node_padding).max(0.0);
                         let h = (label_h + 2.0 * node_padding).max(0.0);
-                        let wave_amplitude = h / 4.0;
+                        let wave_amplitude = h / 8.0;
                         let final_h = h + wave_amplitude;
                         let extra = (w / 2.0) * 0.1;
                         let mut points: Vec<(f64, f64)> = Vec::new();
@@ -280,11 +274,78 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     // base label box, then `updateNodeBounds(...)` stores a slightly shorter outer
                     // bbox. The rendered wave is also vertically asymmetric.
                     if matches!(shape, "tag-doc" | "tagged-document") {
-                        let label_h = layout_node_label_height_or_zero(ctx, n);
+                        let (label_w, label_h) = layout_node_label_size_or_zero(ctx, n);
+                        let w = (label_w + 2.0 * node_padding).max(0.0);
                         let h = (label_h + 2.0 * node_padding).max(0.0);
-                        let wave_amplitude = h / 4.0;
-                        top_hh = h / 2.0 + wave_amplitude;
-                        bottom_hh = (n.height - top_hh).max(0.0);
+                        let wave_amplitude = h / 8.0;
+                        let final_h = h + wave_amplitude;
+                        let extra = (w / 2.0) * 0.1;
+                        let tag_width = 0.2 * w;
+                        let tag_height = 0.2 * h;
+
+                        let mut wave_points: Vec<(f64, f64)> = Vec::new();
+                        wave_points.push((-w / 2.0 - extra, final_h / 2.0));
+                        wave_points.extend(generate_full_sine_wave_points(
+                            -w / 2.0 - extra,
+                            final_h / 2.0,
+                            w / 2.0 + extra,
+                            final_h / 2.0,
+                            wave_amplitude,
+                            0.8,
+                        ));
+                        wave_points.push((w / 2.0 + extra, -final_h / 2.0));
+                        wave_points.push((-w / 2.0 - extra, -final_h / 2.0));
+
+                        let x = -w / 2.0 + extra;
+                        let y = -final_h / 2.0 - tag_height * 0.4;
+                        let mut tag_points: Vec<(f64, f64)> = Vec::new();
+                        tag_points.push((x + w - tag_width, (y + h) * 1.3));
+                        tag_points.push((x + w, y + h - tag_height));
+                        tag_points.push((x + w, (y + h) * 0.9));
+                        tag_points.extend(generate_full_sine_wave_points(
+                            x + w,
+                            (y + h) * 1.25,
+                            x + w - tag_width,
+                            (y + h) * 1.3,
+                            -h * 0.02,
+                            0.5,
+                        ));
+
+                        let wave_path_data =
+                            crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                &wave_points,
+                            );
+                        let tag_path_data =
+                            crate::svg::parity::roughjs_common::closed_path_d_from_points(
+                                &tag_points,
+                            );
+                        let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> =
+                            None;
+                        for pb in [
+                            rough_svg_path_bounds(&wave_path_data),
+                            rough_svg_path_bounds(&tag_path_data),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            bounds = Some(match bounds {
+                                Some(mut acc) => {
+                                    acc.min_x = acc.min_x.min(pb.min_x);
+                                    acc.min_y = acc.min_y.min(pb.min_y);
+                                    acc.max_x = acc.max_x.max(pb.max_x);
+                                    acc.max_y = acc.max_y.max(pb.max_y);
+                                    acc
+                                }
+                                None => pb,
+                            });
+                        }
+                        if let Some(pb) = bounds {
+                            let y_shift = -wave_amplitude / 2.0;
+                            left_hw = (-pb.min_x).max(0.0);
+                            right_hw = pb.max_x.max(0.0);
+                            top_hh = (-(pb.min_y + y_shift)).max(0.0);
+                            bottom_hh = (pb.max_y + y_shift).max(0.0);
+                        }
                     }
 
                     // Mermaid computes the root viewport from the rendered DOM bbox. Curly

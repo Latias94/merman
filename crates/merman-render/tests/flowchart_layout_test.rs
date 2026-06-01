@@ -918,6 +918,8 @@ S@{ shape: bow-rect, label: "Label" }
 T@{ shape: win-pane, label: "Label" }
 U@{ shape: doc, label: "Label" }
 V@{ shape: delay, label: "Label" }
+W@{ shape: lin-doc, label: "Label" }
+X@{ shape: tag-doc, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -960,6 +962,44 @@ V@{ shape: delay, label: "Label" }
             (actual - expected).abs() <= eps,
             "{name}: expected {expected}, got {actual}"
         );
+    }
+
+    fn wave_points(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        amplitude: f64,
+        num_cycles: f64,
+    ) -> Vec<(f64, f64)> {
+        let steps = 50;
+        let delta_x = x2 - x1;
+        let delta_y = y2 - y1;
+        let cycle_length = delta_x / num_cycles;
+        let frequency = std::f64::consts::TAU / cycle_length;
+        let mid_y = y1 + delta_y / 2.0;
+        (0..=steps)
+            .map(|i| {
+                let t = (i as f64) / (steps as f64);
+                let x = x1 + t * delta_x;
+                let y = mid_y + amplitude * (frequency * (x - x1)).sin();
+                (x, y)
+            })
+            .collect()
+    }
+
+    fn bbox_size(points: &[(f64, f64)]) -> (f64, f64) {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for &(x, y) in points {
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+        ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
     }
 
     fn bow_tie_rect_bbox_width(w: f64, h: f64) -> f64 {
@@ -1265,6 +1305,78 @@ V@{ shape: delay, label: "Label" }
         }
         assert_close(n.width, (max_x - min_x) as f32 as f64, "delay width");
         assert_close(n.height, h as f32 as f64, "delay height");
+    }
+
+    // lined document
+    {
+        let n = nodes_by_id["W"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let extra = (w / 2.0) * 0.1;
+        let mut points = Vec::new();
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, final_h / 2.0));
+        points.extend(wave_points(
+            -w / 2.0 - extra,
+            final_h / 2.0,
+            w / 2.0 + extra,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push((w / 2.0 + extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+        points.push((-w / 2.0, -final_h / 2.0));
+        points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+        points.push((-w / 2.0, -final_h / 2.0));
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "lined document width");
+        assert_close(n.height, expected_h as f32 as f64, "lined document height");
+    }
+
+    // tagged document
+    {
+        let n = nodes_by_id["X"];
+        let w = merman_render::text::round_to_1_64_px(tw) + 2.0 * p;
+        let h = merman_render::text::round_to_1_64_px(th) + 2.0 * p;
+        let wave_amplitude = h / 8.0;
+        let final_h = h + wave_amplitude;
+        let extra = (w / 2.0) * 0.1;
+        let tag_width = 0.2 * w;
+        let tag_height = 0.2 * h;
+        let mut points = Vec::new();
+        points.push((-w / 2.0 - extra, final_h / 2.0));
+        points.extend(wave_points(
+            -w / 2.0 - extra,
+            final_h / 2.0,
+            w / 2.0 + extra,
+            final_h / 2.0,
+            wave_amplitude,
+            0.8,
+        ));
+        points.push((w / 2.0 + extra, -final_h / 2.0));
+        points.push((-w / 2.0 - extra, -final_h / 2.0));
+
+        let x = -w / 2.0 + extra;
+        let y = -final_h / 2.0 - tag_height * 0.4;
+        points.push((x + w - tag_width, (y + h) * 1.3));
+        points.push((x + w, y + h - tag_height));
+        points.push((x + w, (y + h) * 0.9));
+        points.extend(wave_points(
+            x + w,
+            (y + h) * 1.25,
+            x + w - tag_width,
+            (y + h) * 1.3,
+            -h * 0.02,
+            0.5,
+        ));
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "tagged document width");
+        assert_close(n.height, expected_h as f32 as f64, "tagged document height");
     }
 
     // subroutine

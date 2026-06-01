@@ -699,6 +699,41 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
   - `cargo run -p xtask -- check-alignment`: passed.
+- 2026-06-01 M15C-070 Flowchart lined/tagged document geometry slice:
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset29_029` and
+    `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset38_038` against Mermaid 11.15
+    `linedWaveEdgedRect.ts` and `taggedWaveEdgedRectangle.ts`. Local layout/render/root-bounds
+    paths still used old `h / 4` wave amplitude for classic lined/tagged documents, while Mermaid
+    11.15 classic uses `h / 8`. The local tagged-document tag path also still had old tag sine
+    constants (`1.4`, `1.3`, `1.5`, `-h * 0.03`) instead of the 11.15 source constants
+    (`1.3`, `1.25`, `1.3`, `-h * 0.02`).
+  - Updated Flowchart layout sizing, SVG shape rendering, tagged-document edge intersection, and
+    root-bounds reconstruction for lined/tagged document shapes. The root-bounds path now unions
+    the rough wave and tag paths for tagged-document instead of using the stale asymmetric height
+    shortcut.
+  - Diagnosed `upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034` after 29/38
+    were green. Its remaining delta was a 1/64px browser text measurement residual for the
+    `stacked-rectangle` label (`128.578125px` upstream versus `128.59375px` local), so it is
+    captured as a narrow Flowchart HTML width override rather than a shape geometry change.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset29_029 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset38_038 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter shape_alias --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo nextest run -p merman-render default_font_flowchart_html_width_overrides_match_upstream flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 71 Flowchart strict root-only mismatches, down from 101.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
+  - `cargo run -p xtask -- check-alignment`: passed.
 
 ## Evidence Anchors
 
