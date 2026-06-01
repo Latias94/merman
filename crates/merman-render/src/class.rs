@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_f64, config_f64_css_px, config_f64_explicit_css_px};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -773,7 +773,8 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
             // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
             // affect browser text sizing; a value like `"24px"` does. `calculateTextWidth(...)`
             // separately keeps using the top-level `config.fontSize` as the wrapping probe.
-            theme_font_size_px_string_only(effective_config).unwrap_or(16.0)
+            config_f64_explicit_css_px(effective_config, &["themeVariables", "fontSize"])
+                .unwrap_or(16.0)
         }
     };
     TextStyle {
@@ -781,16 +782,6 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
         font_size,
         font_weight: None,
     }
-}
-
-fn theme_font_size_px_string_only(effective_config: &Value) -> Option<f64> {
-    let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
-    let t = raw.trim().trim_end_matches(';').trim();
-    let t = t.trim_end_matches("!important").trim();
-    if !t.ends_with("px") {
-        return None;
-    }
-    t.trim_end_matches("px").trim().parse::<f64>().ok()
 }
 
 pub(crate) fn class_html_calculate_text_style(effective_config: &Value) -> TextStyle {

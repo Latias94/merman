@@ -61,17 +61,27 @@ styling. The SVG Class text path now wraps titles with normal-weight `createText
 before the final outer bolder bbox, and it preserves raw numeric `themeVariables.fontSize` CSS
 spelling without treating unitless CSS as a headless 24px text size.
 
+M15RV-070 extracted the font-size policy that M15RV-060 made explicit. `config_css_number_or_string(...)`
+now captures Mermaid stylesheet interpolation where JSON numeric theme values are emitted without
+adding `px`, and `config_f64_explicit_css_px(...)` captures the Class SVG measurement rule where
+only explicit `px` strings are layout-effective. Class and Radar call sites that already carried
+local versions of these rules now share the helpers. This was intentionally scoped to Class/Radar;
+other diagrams still need per-source-path checks before using the new helpers.
+
 ## Active Task
 
-- Task ID: M15RV-060
+- Task ID: M15RV-070
 - Owner: codex
-- Status: DONE_WITH_CONCERNS
-- Goal: Reduce the Class namespace/layout-width root bucket with Mermaid source-derived compound
-  graph rules instead of root viewport pins.
-- Evidence: `target/compare/class_report_parity_root_final_m15rv060.md`
-- Concern: Remaining Class rows are small SVG text/root tails plus known wider label residuals.
-  They should be handled through shared headless measurement policy or explicit diagnostic policy,
-  not by forcing browser font constants into renderer call sites.
+- Status: DONE
+- Goal: Extract shared font-size config helpers for Mermaid raw CSS interpolation and explicit-px
+  SVG text measurement policy.
+- Evidence: `target/compare/radar_font_size_after_css_font_helper.md`,
+  `target/compare/radar_numeric_font_size_after_css_font_helper.md`,
+  `target/compare/class_font_size_025_after_css_font_helper.md`, and
+  `target/compare/class_font_size_026_after_css_font_helper.md`
+- Concern: The helper is not a license to migrate every diagram blindly. Sequence, Architecture,
+  C4, State, and shared CSS paths need source checks because some Mermaid code uses
+  `parseFontSize(...)` or diagram-specific `.style('font-size', value + 'px')` semantics.
 
 ## Fresh Counts
 
@@ -89,3 +99,5 @@ spelling without treating unitless CSS as a headless 24px text size.
   policy entries.
 - Do not close M15RV-090 by accepting the current residual set. The remaining Class and
   Architecture rows include real layout/root-bounds differences.
+- Use the shared config helpers for future font-size work only when the Mermaid source path matches
+  their policy; otherwise leave diagram-local behavior explicit.

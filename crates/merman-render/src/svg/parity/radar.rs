@@ -21,27 +21,6 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
             .unwrap_or_else(|| fallback.to_string())
     }
 
-    fn theme_var_number_as_string(
-        cfg: &serde_json::Value,
-        path: &[&str],
-        fallback: &str,
-    ) -> String {
-        let mut cur = cfg;
-        for key in path {
-            cur = match cur.get(*key) {
-                Some(v) => v,
-                None => return fallback.to_string(),
-            };
-        }
-        if let Some(s) = cur.as_str() {
-            return s.to_string();
-        }
-        if let Some(n) = json_f64(cur) {
-            return fmt_string(n);
-        }
-        fallback.to_string()
-    }
-
     fn default_c_scale(i: usize) -> &'static str {
         match i {
             0 => "hsl(240, 100%, 76.2745098039%)",
@@ -62,8 +41,11 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| default_font.to_string());
-    let base_font_size =
-        theme_var_number_as_string(effective_config, &["themeVariables", "fontSize"], "16px");
+    let base_font_size = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "fontSize"],
+    )
+    .unwrap_or_else(|| "16px".to_string());
     let base_text_color =
         theme_var_string(effective_config, &["themeVariables", "textColor"], "#333");
     let error_bkg_color = theme_var_string(

@@ -34,11 +34,18 @@ impl ClassRenderSettings {
             // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
             // affect browser text sizing; a value like `"24px"` does. Keep the raw CSS spelling
             // separately for emitted CSS parity.
-            theme_font_size_px_string_only(effective_config).unwrap_or(16.0)
+            crate::config::config_f64_explicit_css_px(
+                effective_config,
+                &["themeVariables", "fontSize"],
+            )
+            .unwrap_or(16.0)
         }
         .max(1.0);
-        let font_size_css =
-            theme_font_size_css_value(effective_config).unwrap_or_else(|| "16px".to_string());
+        let font_size_css = crate::config::config_css_number_or_string(
+            effective_config,
+            &["themeVariables", "fontSize"],
+        )
+        .unwrap_or_else(|| "16px".to_string());
         let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
             .unwrap_or(16.0)
             .max(1.0);
@@ -94,25 +101,4 @@ impl ClassRenderSettings {
             default_node_stroke,
         }
     }
-}
-
-fn theme_font_size_css_value(effective_config: &serde_json::Value) -> Option<String> {
-    let value = effective_config.get("themeVariables")?.get("fontSize")?;
-    if let Some(raw) = value.as_str() {
-        let t = raw.trim().trim_end_matches(';').trim();
-        return (!t.is_empty()).then(|| t.to_string());
-    }
-
-    let font_size = crate::config::json_f64_css_px(value)?.max(1.0);
-    Some(fmt(font_size).to_string())
-}
-
-fn theme_font_size_px_string_only(effective_config: &serde_json::Value) -> Option<f64> {
-    let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
-    let t = raw.trim().trim_end_matches(';').trim();
-    let t = t.trim_end_matches("!important").trim();
-    if !t.ends_with("px") {
-        return None;
-    }
-    t.trim_end_matches("px").trim().parse::<f64>().ok()
 }

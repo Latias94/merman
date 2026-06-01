@@ -433,6 +433,44 @@ Fresh unaccepted residual summary after the M15RV-060 follow-up:
 
 Total unaccepted residuals: 277.
 
+## M15RV-070 - Shared Font-Size CSS/Measurement Policy Helper
+
+Fresh evidence from 2026-06-01:
+
+- `cargo test -p merman-render config::tests`: passed, including shared config helper coverage.
+- `cargo test -p merman-render --test class_svg_test class_svg_preserves_numeric_theme_font_size_css_spelling`:
+  passed.
+- `cargo run -p xtask -- compare-radar-svgs --filter stress_radar_font_size_precedence_001 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/radar_font_size_after_css_font_helper.md`:
+  passed for the Radar px-string theme font-size fixture after migrating to the shared raw-CSS
+  helper.
+- `cargo run -p xtask -- compare-radar-svgs --filter upstream_radar_theme_override_colon_header_spec --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/radar_numeric_font_size_after_css_font_helper.md`:
+  passed for the Radar numeric theme font-size fixture; numeric values still emit unitless CSS like
+  upstream Mermaid.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_svg_font_size_precedence_025 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_font_size_025_after_css_font_helper.md`:
+  passed for the Class numeric theme font-size structural fixture.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_svg_font_size_px_string_precedence_026 --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_font_size_026_after_css_font_helper.md`:
+  passed for the Class explicit px-string theme font-size structural fixture.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport overrides
+  still at 278 entries and no manual raw SVG/path bridges.
+- `cargo fmt --check`: passed.
+- `git diff --check`: passed with the existing CRLF warning for this workstream's
+  `CONTEXT.jsonl`.
+
+Policy extraction:
+
+- `config_css_number_or_string(...)` represents Mermaid stylesheet interpolation: string values are
+  emitted as trimmed CSS values, and JSON numbers are formatted as numbers without adding `px`.
+- `config_f64_explicit_css_px(...)` represents the headless measurement rule needed by Class SVG
+  text: only explicit `px` strings are treated as browser-effective SVG text sizes. JSON numbers and
+  unitless strings remain CSS-output facts, not measurement facts.
+- Radar already had a local helper with the raw CSS interpolation behavior; it now uses the shared
+  config helper. Other diagrams still need source checks before migration because several Mermaid
+  paths use `parseFontSize(...)`, diagram-specific config fields, or explicit `.style('font-size',
+  value + 'px')` rules.
+
+Full residual counts are unchanged from M15RV-060: total 277 unaccepted root residuals, with Class
+at 12.
+
 ## Gate Set
 
 Run after any code or generated-data change:

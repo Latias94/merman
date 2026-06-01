@@ -4,7 +4,7 @@
 
 use std::borrow::Cow;
 
-pub(super) use crate::config::{config_f64, config_f64_css_px, json_f64};
+pub(super) use crate::config::{config_f64, config_f64_css_px};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
