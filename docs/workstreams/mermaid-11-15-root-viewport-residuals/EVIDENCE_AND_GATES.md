@@ -322,6 +322,31 @@ Fresh evidence from 2026-06-01:
   expected failure with bounded summary and 293 unaccepted residuals.
 - `cargo fmt --check`: passed.
 - `git diff --check`: passed with a line-ending warning for this workstream's `CONTEXT.jsonl`.
+- `cargo test -p merman-render --test class_layout_test`: passed, 14 tests, after adding
+  regression coverage for LR namespace cross-edge extraction and child-before-parent namespace
+  extraction.
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_namespaces_and_generics --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_namespaces_generics_final.md`:
+  passed after aligning the Class extractor with Mermaid 11.15's child-first copy order and
+  recursive `ranksep + 25` behavior.
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_pkgtests_classdiagram_spec_006 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_pkgtests_006_final.md`:
+  passed after moved child extractions were reparented under later parent extractions.
+- `cargo run -p xtask -- compare-class-svgs --filter stress_class_nested_namespaces_many_levels_021 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_many_levels_nested_move.md`:
+  passed.
+- `cargo run -p xtask -- compare-class-svgs --filter upstream_pkgtests_classdiagram_spec_003 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_pkgtests_003_final.md`:
+  expected failure; the fixture now has only a `0.25px` root width tail (`499.5px` local vs
+  `499.75px` upstream).
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_report_parity_root_after_v3_compound.md`:
+  expected failure with 15 raw Class root mismatches.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_report_parity_after_v3_compound.md`:
+  passed for the current Class matrix.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed for the implemented matrix.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed with root viewport overrides
+  still at 278 entries.
+- `cargo fmt --check`: passed.
+- `git diff --check`: passed.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+  expected failure with bounded summary and 278 unaccepted residuals.
 
 Class source-rule findings:
 
@@ -331,13 +356,17 @@ Class source-rule findings:
 - Mermaid's Class CSS uses `mainBkg` for node fill and `nodeBorder` for node border. Rust's
   renderer now uses the same variables; this avoids structural stroke mismatches after theme
   expansion makes `primaryBorderColor` differ from `nodeBorder`.
-- The nested namespace extraction rule is intentionally rankdir-aware. For TB graphs, a parent
-  cluster with a direct external child cluster stays in the surrounding compound graph; for LR
-  graphs, the parent can still be extracted so Mermaid's recursive TB/LR rankdir flip produces the
-  upstream-style vertical stack.
+- Mermaid 11.15's default Class renderer uses the shared `rendering-util` Dagre path, not the old
+  class `dagre-wrapper` behavior. Its `copy(...)` traversal copies child clusters before their
+  parent cluster node, and `recursiveRender(...)` applies `ranksep: parent.ranksep + 25`. Rust now
+  mirrors those rules, keeps the source eligibility rule (`children && !externalConnections`), and
+  moves any already-extracted child cluster under a later extracted parent.
 - This task is not root-green. The remaining Class rows include real namespace/layout-root
-  differences plus smaller text/root tails, so M15RV-090 must not close by accepting this whole
-  current Class residual set.
+  differences plus smaller text/root tails. The largest resolved rows are root-green, while
+  `upstream_pkgtests_classdiagram_spec_003`, `upstream_html_demos_classchart_class_diagram_demos_010`,
+  `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`,
+  and `upstream_html_demos_classchart_class_diagram_demos_011` are now `0.25px` root-width tails.
+  M15RV-090 must not close by accepting this whole current Class residual set.
 
 Fresh unaccepted residual summary after M15RV-060:
 
@@ -346,11 +375,11 @@ Fresh unaccepted residual summary after M15RV-060:
 | Sequence | 167 | `target/compare/sequence_report_parity_root.md` |
 | Flowchart | 61 | `target/compare/flowchart_report_parity_root.md` |
 | Architecture | 32 | `target/compare/architecture_report_parity_root.md` |
-| Class | 28 | `target/compare/class_report_parity_root.md` |
+| Class | 13 | `target/compare/class_report_parity_root.md` |
 | Timeline | 3 | `target/compare/timeline_report_parity_root.md` |
 | Journey | 2 | `target/compare/journey_report_parity_root.md` |
 
-Total unaccepted residuals: 293.
+Total unaccepted residuals: 278.
 
 ## Gate Set
 

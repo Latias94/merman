@@ -83,11 +83,14 @@ Last updated: 2026-06-01
   Evidence: `EVIDENCE_AND_GATES.md`
   Handoff: IN PROGRESS. Rust Class graph construction now mirrors Mermaid `addNamespaces(...)`
   insertion order for namespace-owned classes/notes, and the recursive extraction path is now
-  rankdir-aware for parent clusters whose direct child cluster has an external boundary-crossing
-  edge. `upstream_pkgtests_classdiagram_spec_003` changed from a wrong horizontal root width
-  (`1014px`) to a vertical compound layout (`444.5px` local vs `499.75px` upstream), while
-  `stress_class_nested_namespaces_cross_edges_008` now sits at `277.75px` local vs `257.5px`
-  upstream. Class structural parity is green, but the Class root bucket is not.
+  aligned with Mermaid 11.15's rendering-util Dagre extractor: child-before-parent `copy(...)`
+  order, moved child extractions under later parent extractions, and recursive
+  `ranksep = parent.ranksep + 25`. `upstream_namespaces_and_generics`,
+  `upstream_pkgtests_classdiagram_spec_006`, and `stress_class_nested_namespaces_many_levels_021`
+  are now Class root-green. `upstream_pkgtests_classdiagram_spec_003` changed from the old wrong
+  horizontal layout (`1014px`) through `444.5px` to a source-aligned vertical compound layout with
+  only a `0.25px` root-width tail (`499.5px` local vs `499.75px` upstream). Class structural parity
+  is green, and the full root gate now leaves 13 unaccepted Class rows.
 
 ## M3 - Policy Closeout
 
@@ -100,6 +103,6 @@ Last updated: 2026-06-01
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 293 residuals;
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 278 residuals;
   Class and Architecture still contain real layout/root-bounds differences, and Sequence/Flowchart
   still need shared measurement/root policy work.

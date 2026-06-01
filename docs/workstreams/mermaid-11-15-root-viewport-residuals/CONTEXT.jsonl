@@ -42,3 +42,6 @@
 {"file":"target/compare/sequence_activation_after_theme_snapshot_merge.md","reason":"M15RV-060 structural guard evidence for Mermaid source-aligned Sequence activation rect fill under expanded theme variables."}
 {"file":"target/compare/treemap_font_size_after_theme_snapshot.md","reason":"M15RV-060 structural guard evidence for default-theme Treemap color-scale behavior under expanded theme variables."}
 {"file":"target/compare/xychart_label_after_theme_snapshot.md","reason":"M15RV-060 structural guard evidence for default-theme XYChart data-label color behavior under expanded theme variables."}
+{"file":"target/compare/class_report_parity_root_after_v3_compound.md","reason":"M15RV-060 Class root evidence after Mermaid 11.15 rendering-util Dagre compound extraction alignment; 15 raw Class root mismatches remain, 13 unaccepted in full root after accepted policy rows."}
+{"file":"target/compare/class_namespaces_generics_final.md","reason":"M15RV-060 focused Class root-green evidence for LR namespace cross-edge extraction after child-first copy and recursive ranksep alignment."}
+{"file":"target/compare/class_pkgtests_006_final.md","reason":"M15RV-060 focused Class root-green evidence for nested namespace child-before-parent extraction and moved child extraction reparenting."}

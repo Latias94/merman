@@ -121,6 +121,26 @@ fn extract_descendants(
     }
 }
 
+fn extract_cluster_copy_order(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+    root_id: &str,
+    out: &mut Vec<String>,
+) {
+    // Mirrors Mermaid's `copy(...)`: children are copied before the non-root cluster node itself.
+    // That order decides which nested cluster is extracted first in later recursive passes.
+    for child in graph.children(cluster_id) {
+        if graph.children(child).is_empty() {
+            out.push(child.to_string());
+        } else {
+            extract_cluster_copy_order(graph, child, root_id, out);
+        }
+    }
+    if cluster_id != root_id {
+        out.push(cluster_id.to_string());
+    }
+}
+
 fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ancestor: &str) -> bool {
     descendants
         .get(ancestor)
@@ -139,15 +159,17 @@ fn prepare_graph(
         });
     }
 
-    // Mermaid's dagre-wrapper performs a pre-pass that extracts clusters *without* external
-    // connections into their own subgraphs, toggles their rankdir (TB <-> LR), and renders them
-    // recursively to obtain concrete cluster geometry before laying out the parent graph.
+    // Mermaid 11.15's default Class renderer uses the shared Dagre rendering-util path. Its
+    // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
+    // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
+    // geometry before laying out the parent graph.
     //
-    // Reference: Mermaid@11.12.2 `mermaid-graphlib.js` extractor + `recursiveRender`:
+    // Reference: Mermaid@11.15.0 `rendering-util/layout-algorithms/dagre`:
     // - eligible cluster: has children, and no edge crosses its descendant boundary
     // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
-    // - recursive render copies the parent graph's `ranksep`/`nodesep` into the subgraph before
-    //   layout
+    // - `copy(...)` walks child clusters first and copies a non-root cluster node after its
+    //   children, so child extractions may later be moved under an extracted parent
+    // - recursive render copies `nodesep` and sets child `ranksep = parent.ranksep + 25`
     // - margins are fixed at 8
 
     let cluster_ids: Vec<String> = graph
@@ -183,23 +205,13 @@ fn prepare_graph(
     }
 
     let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
-    let graph_rankdir = graph.graph().rankdir;
     let candidate_clusters: Vec<String> = graph
         .node_ids()
         .into_iter()
         .filter(|id| {
-            !graph.children(id).is_empty()
-                && !external.get(id).copied().unwrap_or(false)
-                // When a TB parent contains direct nodes plus a direct child cluster that cannot
-                // be extracted, Dugong otherwise places the direct node beside that child cluster.
-                // Mermaid/Dagre keeps the surrounding compound stack vertical for these Class
-                // namespace cases. In LR graphs, extraction is still needed because Mermaid flips
-                // the extracted subgraph back to TB.
-                && (graph_rankdir != RankDir::TB
-                    || !graph.children(id).into_iter().any(|child| {
-                        !graph.children(child).is_empty()
-                            && external.get(child).copied().unwrap_or(false)
-                    }))
+            let has_children = !graph.children(id).is_empty();
+            let is_external = external.get(id).copied().unwrap_or(false);
+            has_children && !is_external
         })
         .collect();
 
@@ -217,7 +229,7 @@ fn prepare_graph(
         let nodesep = graph.graph().nodesep;
         let ranksep = graph.graph().ranksep;
 
-        let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
+        let (mut subgraph, moved_set) = extract_cluster_graph(&cluster_id, &mut graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
         subgraph.graph_mut().ranksep = ranksep;
@@ -225,6 +237,11 @@ fn prepare_graph(
         subgraph.graph_mut().marginy = 8.0;
 
         let mut prepared = prepare_graph(subgraph, depth + 1)?;
+        for moved_id in &moved_set {
+            if let Some(child_prepared) = extracted.remove(moved_id) {
+                prepared.extracted.insert(moved_id.clone(), child_prepared);
+            }
+        }
         prepared.injected_cluster_root_id = Some(cluster_id.clone());
         extracted.insert(cluster_id, prepared);
     }
@@ -239,7 +256,7 @@ fn prepare_graph(
 fn extract_cluster_graph(
     cluster_id: &str,
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
+) -> Result<(Graph<NodeLabel, EdgeLabel, GraphLabel>, HashSet<String>)> {
     if graph.children(cluster_id).is_empty() {
         return Err(Error::InvalidModel {
             message: format!("cluster has no children: {cluster_id}"),
@@ -247,9 +264,7 @@ fn extract_cluster_graph(
     }
 
     let mut descendants: Vec<String> = Vec::new();
-    extract_descendants(graph, cluster_id, &mut descendants);
-    descendants.sort();
-    descendants.dedup();
+    extract_cluster_copy_order(graph, cluster_id, cluster_id, &mut descendants);
 
     let moved_set: HashSet<String> = descendants.iter().cloned().collect();
 
@@ -290,7 +305,7 @@ fn extract_cluster_graph(
         let _ = graph.remove_node(id);
     }
 
-    Ok(sub)
+    Ok((sub, moved_set))
 }
 
 #[derive(Debug, Clone)]
@@ -551,13 +566,19 @@ fn layout_prepared(
                 message: format!("missing extracted cluster graph: {id}"),
             });
         };
+        let parent_ranksep = prepared.graph.graph().ranksep;
+        let parent_nodesep = prepared.graph.graph().nodesep;
+        sub.graph.graph_mut().ranksep = parent_ranksep + 25.0;
+        sub.graph.graph_mut().nodesep = parent_nodesep;
         let (sub_frag, sub_bounds) = layout_prepared(sub, node_label_metrics_by_id)?;
 
         // Mermaid injects the extracted cluster root back into the recursive child graph before
-        // Dagre layout (`recursiveRender(..., parentCluster)`), then measures the rendered root
-        // `<g class="root">` bbox via `updateNodeBounds(...)`. Mirror that by injecting the
-        // extracted cluster root into the recursive layout graph up front, so the returned bounds
-        // already include the cluster padding/label geometry that Mermaid measures.
+        // Dagre layout (`recursiveRender(..., parentCluster)`). In the 11.15 rendering-util
+        // renderer, that same recursive step also applies `ranksep: parent.ranksep + 25` while
+        // preserving `nodesep`. It then measures the rendered root `<g class="root">` bbox via
+        // `updateNodeBounds(...)`. Mirror that by injecting the extracted cluster root into the
+        // recursive layout graph up front, so the returned bounds already include the cluster
+        // padding/label geometry that Mermaid measures.
         extracted_fragments.insert(id, (sub_frag, sub_bounds));
     }
 
