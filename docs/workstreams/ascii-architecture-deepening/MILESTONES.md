@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — Milestones
 
-Status: Closed
-Last updated: 2026-05-30
+Status: Active
+Last updated: 2026-06-02
 
 ## M0 — Scope And Evidence Freeze
 
@@ -92,3 +92,38 @@ Closeout result:
 - Completed on 2026-05-30.
 - All five architecture targets landed.
 - Final package, format, clippy, and whitespace gates passed.
+
+## M7 — Local Subgraph Direction Subset
+
+Exit criteria:
+
+- A bounded `FlowSubgraph.dir` subset is shipped for canonical `LR` subgraphs inside canonical `TD`
+  roots.
+- Internal subgraph edges adopt the local direction.
+- Support docs and the gap registry describe the shipped subset and remaining work precisely.
+
+Primary gates:
+
+- `cargo nextest run -p merman-ascii flowchart subgraph`
+- `cargo nextest run -p merman-ascii graph_fixture`
+
+Closeout result:
+
+- Completed on 2026-06-01.
+- Landed as commit `3dbd5a3b`.
+
+## M8 — Cross-Boundary Mixed-Direction Routing Seam
+
+Exit criteria:
+
+- Cross-boundary edges are classified explicitly by routing context instead of relying on layout
+  fallback.
+- At least one shipped boundary-routing slice exists for the reopened `A-GRAPH-010` family.
+- Route planning remains testable before painting, with dedicated tests for entering/leaving a
+  direction-bearing subgraph.
+
+Primary gates:
+
+- targeted route-plan tests for boundary classification and segment planning
+- `cargo nextest run -p merman-ascii flowchart subgraph`
+- `cargo nextest run -p merman-ascii flowchart`

@@ -1,12 +1,18 @@
 use super::super::layout::{GridCoord, NodeLayout};
 
-pub(super) fn route_grid_path(
+pub(super) fn route_grid_path_with_ports(
     layouts: &[NodeLayout],
     from: &NodeLayout,
     to: &NodeLayout,
+    start_override: Option<Port>,
+    end_override: Option<Port>,
 ) -> Option<(Vec<GridCoord>, Port, Port)> {
     let (preferred_start, preferred_end, alternative_start, alternative_end) =
         determine_left_right_ports(from, to);
+    let preferred_start = start_override.unwrap_or(preferred_start);
+    let preferred_end = end_override.unwrap_or(preferred_end);
+    let alternative_start = start_override.unwrap_or(alternative_start);
+    let alternative_end = end_override.unwrap_or(alternative_end);
     let preferred_path = find_grid_path(
         layouts,
         from.grid_for_port(preferred_start),

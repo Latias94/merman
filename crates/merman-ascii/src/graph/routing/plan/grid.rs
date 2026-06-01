@@ -2,7 +2,9 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
-use super::super::path::{Port, StepDirection, merge_grid_path, route_grid_path, step_direction};
+use super::super::path::{
+    Port, StepDirection, merge_grid_path, route_grid_path_with_ports, step_direction,
+};
 use super::{
     PlannedRouteCell, RoutePlan, edge_arrow_cell, edge_line_cell, planned_label_on_canvas_lines,
     route_cell,
@@ -15,7 +17,25 @@ pub(super) fn plan_left_right_grid_path_route(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
-    let (path, start_port, end_port) = route_grid_path(&graph_layout.nodes, from, to)?;
+    plan_left_right_grid_path_route_with_ports(graph_layout, from, to, edge, charset, None, None)
+}
+
+pub(super) fn plan_left_right_grid_path_route_with_ports(
+    graph_layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    edge: &AsciiGraphEdge,
+    charset: &GraphCharset,
+    start_port: Option<Port>,
+    end_port: Option<Port>,
+) -> Option<RoutePlan> {
+    let (path, start_port, end_port) = route_grid_path_with_ports(
+        &graph_layout.nodes,
+        from,
+        to,
+        start_port,
+        end_port,
+    )?;
     if path.len() < 2 {
         return None;
     }

@@ -101,3 +101,17 @@ Last updated: 2026-06-01
   Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `crates/merman-ascii/FLOWCHART_SUPPORT.md`.
   Handoff: IN PROGRESS on 2026-06-01. Code and tests currently pass local validation; doc and
   journal closeout still needed before commit.
+
+## M8 — Cross-Boundary Mixed-Direction Routing Seam
+
+- [ ] AAD-090 [owner=codex] [deps=AAD-080] [scope=crates/merman-ascii/src/graph/routing,crates/merman-ascii/tests/flowchart_model.rs,docs/workstreams/ascii-architecture-deepening]
+  Goal: Introduce an explicit route-planning seam for edges that enter or leave a direction-bearing
+  subgraph, starting with context classification and one bounded root `TD` / local `LR` strategy.
+  Validation: targeted route-plan tests; `cargo nextest run -p merman-ascii flowchart subgraph`; `cargo nextest run -p merman-ascii flowchart`
+  Review: Mixed-direction boundary behavior must be owned by routing context and planned segments,
+  not by layout-only heuristics that incidentally move unrelated nodes.
+  Evidence: route-plan classification tests, parser-backed subgraph boundary tests, and updated
+  design/evidence docs.
+  Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `docs/workstreams/ascii-architecture-deepening/DESIGN.md`, `F:\\SourceCodes\\Rust\\merman\\repo-ref\\beautiful-mermaid\\src\\layout-engine.ts`.
+  Handoff: IN PROGRESS on 2026-06-02. Design clarified; next implementation step is to extract
+  boundary context classification before route painting.

@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening
 
-Status: Closed
-Last updated: 2026-05-30
+Status: Active
+Last updated: 2026-06-02
 
 ## Why This Lane Exists
 
@@ -117,4 +117,88 @@ This lane can close when:
 - redundant implementations are removed where the new module supersedes them;
 - final gates are recorded in `EVIDENCE_AND_GATES.md`.
 
-Closed on 2026-05-30 after all five target concepts landed and final gates passed.
+## Reopened Follow-On
+
+This lane was closed on 2026-05-30 after the original five deepening targets landed, then resumed
+for follow-on ASCII graph architecture work that still fits this lane's purpose: making flowchart
+direction behavior deeper, more local, and less dependent on global-layout accidents.
+
+The first reopened slice, AAD-080, shipped a bounded `FlowSubgraph.dir` subset:
+
+- canonical `LR` subgraphs inside canonical `TD` roots;
+- local direction applies only to edges whose endpoints both stay inside the same subgraph;
+- support docs and the ASCII gap registry now document this subset honestly.
+
+The next follow-on is not another local heuristic in `layout.rs`. It is a routing-seam expansion:
+cross-boundary mixed-direction flowchart routing for edges that enter or leave a direction-bearing
+subgraph.
+
+## Cross-Boundary Direction Design
+
+### Problem
+
+The current graph stack has enough information to place nodes with a local subgraph direction and to
+route purely internal edges with that local direction. It does not yet have a first-class model for
+an edge whose path crosses the boundary between:
+
+- a root graph using one canonical direction, and
+- a subgraph using another canonical direction.
+
+Without that model, one of two bad outcomes happens:
+
+- the renderer falls back to global root behavior and loses the local direction semantics; or
+- layout-layer heuristics try to simulate routing intent by moving unrelated nodes.
+
+Both outcomes are architecture debt. Mixed-direction boundary routing belongs in the route-planning
+seam, not as accidental placement side effects.
+
+### Desired Properties
+
+The follow-on implementation should satisfy these constraints:
+
+- local subgraph direction remains authoritative for the internal segment of a cross-boundary edge;
+- the root direction remains authoritative for the external segment outside the subgraph;
+- the boundary transition is explicit, testable, and deterministic;
+- label placement stays attached to a specific planned segment instead of depending on whatever
+  segment happens to be longest after painting;
+- route planning remains separable from canvas mutation.
+
+### Proposed Seam
+
+Extend graph routing around three explicit concepts:
+
+1. `EdgeBoundaryContext`
+   Describes whether an edge is:
+   - fully internal to a direction-bearing subgraph,
+   - fully external to such a subgraph,
+   - entering a direction-bearing subgraph,
+   - leaving a direction-bearing subgraph,
+   - or crossing between two different direction-bearing subgraphs.
+
+2. `BoundaryAnchor`
+   Represents the planned entry/exit side of a subgraph box for a mixed-direction edge. This is a
+   routing concern, not a node-placement concern.
+
+3. `SegmentedRoutePlan`
+   Allows a route to be composed from internal, boundary, and external segments before painting.
+   The existing `RoutePlan` can remain the painted-cell output, but planning should be able to
+   assemble it from named segments first.
+
+### Implementation Order
+
+The next implementation slice should stay narrow:
+
+1. classify boundary context in `graph::routing::plan::select`;
+2. introduce one planned boundary-anchor strategy for the shipped subset:
+   root `TD` + local `LR` subgraph;
+3. support entering and leaving one direction-bearing subgraph;
+4. keep subgraph-to-subgraph mixed-direction routing as a documented follow-on unless it naturally
+   falls out of the same seam.
+
+### Why This Beats More Layout Heuristics
+
+`beautiful-mermaid` solves this class of problem by explicitly separating internal edges,
+cross-hierarchy edges, and boundary ports. `merman-ascii` does not need to copy ELK hierarchy
+handling, but it does need the same architectural idea: cross-boundary direction is an edge-routing
+problem. Treating it as node-placement special casing makes behavior fragile and harder to extend to
+nested subgraphs or label lanes later.

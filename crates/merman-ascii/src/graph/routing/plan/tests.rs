@@ -1,4 +1,4 @@
-use super::grid::plan_left_right_grid_path_route;
+use super::grid::{plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports};
 use super::left_right::{
     plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
     plan_left_right_down_then_right_route, plan_left_right_reverse_over_self_loop_route,
@@ -16,6 +16,7 @@ use crate::graph::model::{
     AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
     GraphNodeShape, GraphNodeStyle,
 };
+use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
@@ -154,6 +155,224 @@ fn internal_subgraph_edge_marks_local_group_context_through_extent_behavior() {
         route_canvas_extent(&graph, &layouts, &[internal_edge], GraphDirection::TopDown),
         (0, 0)
     );
+}
+
+#[test]
+fn edge_boundary_context_classifies_external_internal_entering_and_leaving_edges() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("x", "X");
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("y", "Y");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("x", "y", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::External {
+            direction: GraphDirection::TopDown
+        }
+    );
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("a", "b", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Internal {
+            group_id: "one",
+            direction: GraphDirection::LeftRight
+        }
+    );
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("x", "a", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Entering {
+            group_id: "one",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+    assert_eq!(
+        edge_boundary_context(&graph, &edge_between("b", "y", None, GraphEdgeArrow::Point)),
+        EdgeBoundaryContext::Leaving {
+            group_id: "one",
+            root_direction: GraphDirection::TopDown,
+            local_direction: GraphDirection::LeftRight
+        }
+    );
+}
+
+#[test]
+fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("x", "X");
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let layout = layout_graph(&graph, &options);
+    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let from = layout_node(&layout, "x");
+    let to = layout_node(&layout, "a");
+
+    let plan = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .expect("entering boundary route should use the grid path stub");
+
+    let expected = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset)
+        .expect("grid path should exist");
+    assert_eq!(plan, expected);
+}
+
+#[test]
+fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("y", "Y");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let layout = layout_graph(&graph, &options);
+    let edge = edge_between("b", "y", None, GraphEdgeArrow::Point);
+    let from = layout_node(&layout, "b");
+    let to = layout_node(&layout, "y");
+
+    let plan = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .expect("leaving boundary route should use the grid path stub");
+
+    let expected = plan_left_right_grid_path_route_with_ports(
+        &layout,
+        from,
+        to,
+        &edge,
+        &charset,
+        Some(crate::graph::routing::path::Port::Right),
+        Some(crate::graph::routing::path::Port::Right),
+    )
+    .expect("grid path should exist");
+    assert_eq!(plan, expected);
+}
+
+#[test]
+fn entering_boundary_route_uses_explicit_left_boundary_ports() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("x", "X");
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let layout = layout_graph(&graph, &options);
+    let edge = edge_between("x", "a", None, GraphEdgeArrow::Point);
+    let from = layout_node(&layout, "x");
+    let to = layout_node(&layout, "a");
+
+    let expected = plan_left_right_grid_path_route_with_ports(
+        &layout,
+        from,
+        to,
+        &edge,
+        &charset,
+        Some(crate::graph::routing::path::Port::Right),
+        Some(crate::graph::routing::path::Port::Left),
+    )
+    .expect("grid path should exist");
+
+    let actual = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .expect("entering boundary route should use explicit left boundary ports");
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_node("y", "Y");
+    graph.add_group_with_style(
+        "one",
+        "LR Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".to_string(), "b".to_string()],
+        Default::default(),
+    );
+    let layout = layout_graph(&graph, &options);
+    let edge = edge_between("b", "y", None, GraphEdgeArrow::Point);
+    let from = layout_node(&layout, "b");
+    let to = layout_node(&layout, "y");
+
+    let expected = plan_left_right_grid_path_route_with_ports(
+        &layout,
+        from,
+        to,
+        &edge,
+        &charset,
+        Some(crate::graph::routing::path::Port::Right),
+        Some(crate::graph::routing::path::Port::Right),
+    )
+    .expect("grid path should exist");
+
+    let actual = plan_edge_route(EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: std::slice::from_ref(&edge),
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .expect("leaving boundary route should use explicit right boundary ports");
+    assert_eq!(actual, expected);
 }
 
 #[test]
