@@ -61,8 +61,14 @@ const ASCII_SUPPORTED_TYPES = ["flowchart", "sequence", "class", "er", "xychart"
 
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
-  const { code, diagramTheme, setLastRenderTime, setDiagramType, isDarkMode } =
-    useAppStore();
+  const {
+    code,
+    diagramTheme,
+    mermaidConfig,
+    setLastRenderTime,
+    setDiagramType,
+    isDarkMode,
+  } = useAppStore();
   const { ready, loading, render, renderAscii } = useMerman();
   const [svg, setSvg] = useState<string | null>(null);
   const [ascii, setAscii] = useState<string | null>(null);
@@ -124,14 +130,14 @@ export function Preview({ className }: PreviewProps) {
         setCurrentDiagramType(diagramType);
         setDiagramType(diagramType);
 
-        const result = render(code, diagramTheme);
+        const result = render(code, diagramTheme, mermaidConfig);
         setSvg(result.svg);
         setError(result.error);
         setMermanRenderTime(result.error ? null : result.renderTime);
         setLastRenderTime(result.renderTime);
 
         if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
-          setAscii(renderAscii(code));
+          setAscii(renderAscii(code, diagramTheme, mermaidConfig));
         } else {
           setAscii(null);
         }
@@ -152,6 +158,7 @@ export function Preview({ className }: PreviewProps) {
     code,
     detectDiagramType,
     diagramTheme,
+    mermaidConfig,
     ready,
     render,
     renderAscii,
@@ -186,7 +193,7 @@ export function Preview({ className }: PreviewProps) {
     let cancelled = false;
     setMermaidLoading(true);
     const timeout = setTimeout(() => {
-      void renderMermaidSvg(code, diagramTheme).then((result) => {
+      void renderMermaidSvg(code, diagramTheme, mermaidConfig).then((result) => {
         if (cancelled) return;
         setMermaidSvg(result.svg);
         setMermaidError(result.error);
@@ -199,7 +206,7 @@ export function Preview({ className }: PreviewProps) {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [code, diagramTheme, previewMode]);
+  }, [code, diagramTheme, mermaidConfig, previewMode]);
 
   useEffect(() => {
     return () => {

@@ -1,4 +1,8 @@
-import { sourceWithTheme } from "@/src/lib/wasm-loader";
+import {
+  DEFAULT_MERMAID_CONFIG,
+  buildMermaidConfig,
+  sourceWithConfig,
+} from "@/src/lib/mermaid-config";
 import { normalizeThemeName } from "@merman/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
@@ -16,8 +20,9 @@ interface MermaidApi {
 
 interface MermaidConfig {
   startOnLoad: boolean;
-  theme: string;
-  securityLevel: "strict";
+  securityLevel?: "strict" | "loose" | "antiscript" | "sandbox";
+  theme?: string;
+  [key: string]: unknown;
 }
 
 let mermaidPromise: Promise<MermaidApi> | null = null;
@@ -25,21 +30,28 @@ let renderSerial = 0;
 
 export async function renderMermaidSvg(
   source: string,
-  theme: string
+  theme: string,
+  configJson = DEFAULT_MERMAID_CONFIG
 ): Promise<MermaidRenderResult> {
   const startTime = performance.now();
 
   try {
     const mermaid = await loadMermaid();
     const normalizedTheme = normalizeThemeName(theme);
+    const effectiveConfig = buildMermaidConfig(configJson, normalizedTheme);
     mermaid.initialize({
+      ...effectiveConfig,
       startOnLoad: false,
-      theme: normalizedTheme,
-      securityLevel: "strict",
+      securityLevel:
+        (effectiveConfig.securityLevel as MermaidConfig["securityLevel"]) ??
+        "strict",
     });
 
     const id = `mermaid-compare-${++renderSerial}`;
-    const result = await mermaid.render(id, sourceWithTheme(source, normalizedTheme));
+    const result = await mermaid.render(
+      id,
+      sourceWithConfig(source, normalizedTheme, configJson)
+    );
     return {
       svg: result.svg,
       error: null,

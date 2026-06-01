@@ -75,7 +75,15 @@
     }
   },
   "editor": {
-    "placeholder": "Enter your Mermaid code here..."
+    "placeholder": "Enter your Mermaid code here...",
+    "loading": "Loading editor..."
+  },
+  "config": {
+    "valid": "Config OK",
+    "invalidJson": "Invalid JSON",
+    "invalidObject": "Invalid config",
+    "format": "Format config",
+    "reset": "Reset config"
   },
   "preview": {
     "loading": "Loading render engine...",

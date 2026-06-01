@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, type Theme, type UITheme } from "@/src/store";
 import { useShare } from "@/src/hooks/useShare";
@@ -49,7 +49,7 @@ import {
   Code,
 } from "lucide-react";
 
-const UI_THEME_ICONS: Record<UITheme, React.ReactNode> = {
+const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
   light: <Sun className="size-4" />,
   dark: <Moon className="size-4" />,
   system: <Monitor className="size-4" />,
@@ -60,6 +60,7 @@ export function Toolbar() {
   const {
     code,
     diagramTheme,
+    mermaidConfig,
     setDiagramTheme,
     uiTheme,
     setUITheme,
@@ -96,9 +97,9 @@ export function Toolbar() {
 
   // 获取当前 SVG
   const currentSvg = useMemo(() => {
-    const result = render(code, diagramTheme);
+    const result = render(code, diagramTheme, mermaidConfig);
     return result.svg;
-  }, [code, diagramTheme, render]);
+  }, [code, diagramTheme, mermaidConfig, render]);
 
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
@@ -133,14 +134,14 @@ export function Toolbar() {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
-    const ascii = renderAscii(code);
+    const ascii = renderAscii(code, diagramTheme, mermaidConfig);
     if (!ascii) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
     exportASCII(ascii, "merman-diagram");
     toast.success(t("export.ascii") + " - OK");
-  }, [code, diagramType, renderAscii, t]);
+  }, [code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -177,12 +178,12 @@ export function Toolbar() {
       return;
     }
     try {
-      await copyShareUrl(code, diagramTheme);
+      await copyShareUrl(code, diagramTheme, mermaidConfig);
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [code, diagramTheme, copyShareUrl, t]);
+  }, [code, diagramTheme, mermaidConfig, copyShareUrl, t]);
 
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(

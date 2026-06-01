@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -7,15 +7,24 @@ import {
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toolbar } from "./components/Toolbar";
 import { CodeEditor } from "./components/Editor";
+import { ConfigEditor } from "./components/ConfigEditor";
 import { Preview } from "./components/Preview";
 import { StatusBar } from "./components/StatusBar";
 import { ExampleGallery } from "./components/ExampleGallery";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
 import { normalizeThemeName } from "@merman/web";
+import { cn } from "@/lib/utils";
 
 export default function App() {
-  const { setCode, setDiagramTheme, uiTheme } = useAppStore();
+  const {
+    setCode,
+    setDiagramTheme,
+    setMermaidConfig,
+    editorMode,
+    setEditorMode,
+    uiTheme,
+  } = useAppStore();
   const { initialData } = useShare();
 
   // 从 URL 加载分享的数据
@@ -25,8 +34,11 @@ export default function App() {
       if (initialData.theme) {
         setDiagramTheme(normalizeThemeName(initialData.theme));
       }
+      if (initialData.config !== undefined) {
+        setMermaidConfig(initialData.config);
+      }
     }
-  }, [initialData, setCode, setDiagramTheme]);
+  }, [initialData, setCode, setDiagramTheme, setMermaidConfig]);
 
   // 应用 UI 主题
   useEffect(() => {
@@ -76,14 +88,29 @@ export default function App() {
             >
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    编辑器
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <EditorModeButton
+                      active={editorMode === "code"}
+                      onClick={() => setEditorMode("code")}
+                    >
+                      Code
+                    </EditorModeButton>
+                    <EditorModeButton
+                      active={editorMode === "config"}
+                      onClick={() => setEditorMode("config")}
+                    >
+                      Config
+                    </EditorModeButton>
+                  </div>
                   <span className="text-xs text-muted-foreground">
-                    Mermaid 语法
+                    {editorMode === "code" ? "Mermaid" : "JSON"}
                   </span>
                 </div>
-                <CodeEditor className="flex-1" />
+                {editorMode === "code" ? (
+                  <CodeEditor className="flex-1" />
+                ) : (
+                  <ConfigEditor className="flex-1" />
+                )}
               </div>
             </ResizablePanel>
 
@@ -111,5 +138,29 @@ export default function App() {
         <StatusBar />
       </div>
     </TooltipProvider>
+  );
+}
+
+function EditorModeButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick(): void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+      )}
+    >
+      {children}
+    </button>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 import {
   loadWasm,
   SUPPORTED_THEMES,
@@ -42,7 +43,11 @@ export function useMerman() {
   }, []);
 
   const render = useCallback(
-    (code: string, theme: string): RenderResult => {
+    (
+      code: string,
+      theme: string,
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): RenderResult => {
       if (!ready || !wasmRef.current) {
         return {
           svg: null,
@@ -54,7 +59,7 @@ export function useMerman() {
       const startTime = performance.now();
 
       try {
-        const svg = wasmRef.current.render_svg(code, theme);
+        const svg = wasmRef.current.render_svg(code, theme, configJson);
         const renderTime = performance.now() - startTime;
         return { svg, error: null, renderTime };
       } catch (e) {
@@ -93,11 +98,15 @@ export function useMerman() {
   }, [ready]);
 
   const renderAscii = useCallback(
-    (code: string): string | null => {
+    (
+      code: string,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG
+    ): string | null => {
       if (!ready || !wasmRef.current) {
         return null;
       }
-      return wasmRef.current.render_ascii(code);
+      return wasmRef.current.render_ascii(code, theme, configJson);
     },
     [ready]
   );

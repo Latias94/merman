@@ -75,7 +75,15 @@
     }
   },
   "editor": {
-    "placeholder": "在此输入 Mermaid 代码..."
+    "placeholder": "在此输入 Mermaid 代码...",
+    "loading": "正在加载编辑器..."
+  },
+  "config": {
+    "valid": "配置可用",
+    "invalidJson": "JSON 无效",
+    "invalidObject": "配置无效",
+    "format": "格式化配置",
+    "reset": "重置配置"
   },
   "preview": {
     "loading": "正在加载渲染引擎...",
