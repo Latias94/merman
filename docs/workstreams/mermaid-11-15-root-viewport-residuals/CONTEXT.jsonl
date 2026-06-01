@@ -69,3 +69,5 @@
 {"file":"crates/merman-render/src/svg/parity/architecture/viewport.rs","reason":"M15RV-040 follow-up makes Architecture root viewport overrides respect the explicit render option instead of environment-only control."}
 {"file":"target/compare/architecture_crosslinks_no_overrides.md","reason":"M15RV-040 follow-up evidence that the Architecture no-root-overrides compare path emits root delta rows and reaches the renderer."}
 {"file":"target/compare/architecture_report_parity_root_all.md","reason":"M15RV-040 follow-up full Architecture root audit with sortable Root Viewport Deltas output."}
+{"file":"fixtures/upstream-svgs/architecture/upstream_architecture_docs_service_icon_text.svg","reason":"2026-06-02 refresh proved the old Architecture iconText docs baseline was stale; current Mermaid baseline is about 453.944px wide, not 343.884px."}
+{"file":"target/compare/architecture_report_parity_root.md","reason":"Canonical post-refresh Architecture aggregate report; shows the iconText docs residual collapsed from +120px stale-baseline noise to a +10.145px real iconText root-bounds tail."}

@@ -507,6 +507,37 @@ Architecture diagnostics findings:
   `max-width/viewBox` evidence table as the other audited diagrams, which makes later measurement
   policy extraction or source-rule work less guessy.
 
+Fresh follow-up evidence from 2026-06-02:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter upstream_architecture_docs_service_icon_text --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_docs_service_icon_text_fresh.md`:
+  initially failed with a `+120.204px` root width delta (`343.884px` upstream vs `464.089px`
+  local), which was too large to be a plausible headless text-measurement tail for a three-service
+  docs example.
+- `cargo run -p xtask -- gen-upstream-svgs --diagram architecture --filter upstream_architecture_docs_service_icon_text`:
+  refreshed the pinned Mermaid baseline for that single Architecture fixture.
+- Fresh file inspection of
+  `fixtures/upstream-svgs/architecture/upstream_architecture_docs_service_icon_text.svg`
+  now shows Mermaid's current baseline root at `453.9440612792969px` instead of the stale
+  `343.88421630859375px`.
+- `cargo run -p xtask -- compare-all-svgs --diagram architecture --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+  still fails at 32 unaccepted Architecture residuals, but the refreshed
+  `target/compare/architecture_report_parity_root.md` now reports
+  `upstream_architecture_docs_service_icon_text` as a much smaller `+10.145px` residual
+  (`453.944px` upstream vs `464.089px` local).
+
+Architecture stale-baseline finding:
+
+- `upstream_architecture_docs_service_icon_text` was not a renderer-side `+120px` bug. The large
+  delta came from a stale pinned upstream SVG baseline that predated the current Mermaid 11.15
+  Architecture iconText output.
+- After refreshing only that upstream SVG, the residual collapsed into a smaller iconText
+  `foreignObject` / root-bounds tail. This is still a real parity gap, but it is now in the right
+  category: browser-driven iconText bbox approximation, not a gross Architecture layout failure.
+- Because Mermaid's `svgDraw.ts` computes Architecture service size from
+  `serviceElem.node().getBBox()` after inserting `foreignObject` HTML, any future fix here should
+  be treated as an explicit headless approximation problem and justified with iconText-specific
+  probe evidence rather than with broad Architecture layout changes.
+
 ## Gate Set
 
 Run after any code or generated-data change:

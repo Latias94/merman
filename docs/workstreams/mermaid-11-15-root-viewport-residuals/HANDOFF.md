@@ -77,6 +77,15 @@ reports prove the path works and emits a `Root Viewport Deltas` table for Archit
 not change residual counts: Architecture remains at 32 unaccepted root rows, but the bucket is now
 much easier to inspect with the same tooling as the other diagrams.
 
+On 2026-06-02, that diagnostics path immediately exposed a stale Architecture upstream baseline:
+`upstream_architecture_docs_service_icon_text`. The old pinned upstream SVG claimed a
+`343.884px` root width while both fresh Mermaid CLI output and the local renderer were in the
+`454-464px` range. Refreshing just that upstream SVG via `gen-upstream-svgs --diagram architecture
+--filter upstream_architecture_docs_service_icon_text` collapsed the apparent `+120px` residual
+into a smaller `+10.145px` iconText root-bounds tail. This is important: do not treat that row as
+evidence of a gross Architecture layout bug anymore. It is now an iconText `foreignObject` bbox
+approximation problem.
+
 ## Active Task
 
 - Task ID: M15RV-070
@@ -113,3 +122,7 @@ much easier to inspect with the same tooling as the other diagrams.
 - Use the new Architecture `--no-root-overrides` / `--report-root-all` path before touching any
   Architecture root residual. That should be the default evidence source for deciding whether a row
   is stale-pin, source-rule, or browser-measurement debt.
+- Recheck `target/compare/architecture_report_parity_root.md` after any upstream SVG refresh before
+  reasoning from older focused reports; stale focused reports can still show the pre-refresh
+  `+120px` iconText row even after the canonical aggregate report has moved to the refreshed
+  `+10px` residual.
