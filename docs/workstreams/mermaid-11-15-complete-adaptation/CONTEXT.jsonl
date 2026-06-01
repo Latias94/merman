@@ -30,3 +30,5 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/linedWaveEdgedRect.ts","reason":"Mermaid 11.15 source for lined-document geometry."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/taggedWaveEdgedRectangle.ts","reason":"Mermaid 11.15 source for tagged-document geometry."}
 {"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-lined-tagged-document.md","reason":"Flowchart lined/tagged document geometry and stacked-rectangle text metric evidence."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/curvedTrapezoid.ts","reason":"Mermaid 11.15 source for curved-trapezoid/display geometry."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/JOURNAL/2026-06-01-m15c-070-flowchart-curved-trapezoid.md","reason":"Flowchart curved-trapezoid geometry evidence and follow-on strict-root residuals."}

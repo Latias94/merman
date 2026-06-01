@@ -26,8 +26,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curved_trapezoid(
     );
 
     let p = ctx.node_padding;
-    let min_width = 80.0;
-    let min_height = 20.0;
+    let min_width = 20.0;
+    let min_height = 5.0;
     let w = ((metrics.width + 2.0 * p) * 1.25).max(min_width);
     let h = (metrics.height + 2.0 * p).max(min_height);
     let radius = h / 2.0;

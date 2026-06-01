@@ -192,7 +192,7 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     // `updateNodeBounds(...)` bbox which can be slightly narrower.
                     if matches!(shape, "curv-trap" | "display" | "curved-trapezoid") {
                         if let Some(label_w) = layout_node_label_width_if_known(ctx, n) {
-                            let pre_w = ((label_w + 2.0 * node_padding) * 1.25).max(80.0);
+                            let pre_w = ((label_w + 2.0 * node_padding) * 1.25).max(20.0);
                             left_hw = pre_w / 2.0;
                             right_hw = (n.width - left_hw).max(0.0);
                         }

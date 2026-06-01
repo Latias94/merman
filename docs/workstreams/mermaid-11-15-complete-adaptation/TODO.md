@@ -156,7 +156,12 @@ Last updated: 2026-06-01
   overrides disabled. Alias set 34 was a 1/64px upstream SVG/browser text metric residual for the
   `stacked-rectangle` label, so it is captured as a narrow Flowchart HTML width override. The full
   `shape_alias` strict-root sweep now passes with root overrides disabled, structural `parity`
-  remains green, and Flowchart `parity-root` reports 71 strict root-only mismatches.
+  remains green, and Flowchart `parity-root` reports 71 strict root-only mismatches. The
+  curved-trapezoid/display slice then aligned local `curv-trap`/`display`/`curved-trapezoid`
+  minimum geometry constants with Mermaid 11.15 `curvedTrapezoid.ts` (`minWidth=20`,
+  `minHeight=5`), closing the no-label `newshapesset3` LR/TB root bucket with root overrides
+  disabled. Structural `parity` remains green, and Flowchart `parity-root` reports 69 strict
+  root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

@@ -920,6 +920,7 @@ U@{ shape: doc, label: "Label" }
 V@{ shape: delay, label: "Label" }
 W@{ shape: lin-doc, label: "Label" }
 X@{ shape: tag-doc, label: "Label" }
+Y@{ shape: curved-trapezoid, label: "Label" }
 "#;
 
     let engine = Engine::new();
@@ -1377,6 +1378,40 @@ X@{ shape: tag-doc, label: "Label" }
         let (expected_w, expected_h) = bbox_size(&points);
         assert_close(n.width, expected_w as f32 as f64, "tagged document width");
         assert_close(n.height, expected_h as f32 as f64, "tagged document height");
+    }
+
+    // curved trapezoid / display
+    {
+        let n = nodes_by_id["Y"];
+        let min_width = 20.0;
+        let min_height = 5.0;
+        let w = ((merman_render::text::round_to_1_64_px(tw) + 2.0 * p) * 1.25).max(min_width);
+        let h = (merman_render::text::round_to_1_64_px(th) + 2.0 * p).max(min_height);
+        let radius = h / 2.0;
+        let rw = w - radius;
+        let trapezoid_tw = h / 4.0;
+        let mut points = vec![
+            (rw, 0.0),
+            (trapezoid_tw, 0.0),
+            (0.0, h / 2.0),
+            (trapezoid_tw, h),
+            (rw, h),
+        ];
+        let step = -std::f64::consts::PI / (50_f64 - 1.0);
+        for i in 0..50 {
+            let angle = std::f64::consts::PI * 1.5 + (i as f64) * step;
+            let x = -rw + radius * angle.cos();
+            let y = -h / 2.0 + radius * angle.sin();
+            points.push((-x, -y));
+        }
+
+        let (expected_w, expected_h) = bbox_size(&points);
+        assert_close(n.width, expected_w as f32 as f64, "curved trapezoid width");
+        assert_close(
+            n.height,
+            expected_h as f32 as f64,
+            "curved trapezoid height",
+        );
     }
 
     // subroutine

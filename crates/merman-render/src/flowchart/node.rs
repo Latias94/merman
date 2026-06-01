@@ -330,8 +330,8 @@ fn node_render_dimensions(
 
         // Flowchart v2 curved trapezoid (Display).
         "curv-trap" | "display" | "curved-trapezoid" => {
-            let min_width = 80.0;
-            let min_height = 20.0;
+            let min_width = 20.0;
+            let min_height = 5.0;
             let w = (text_w + 2.0 * p).mul_add(1.25, 0.0).max(min_width);
             let h = (text_h + 2.0 * p).max(min_height);
             let radius = h / 2.0;

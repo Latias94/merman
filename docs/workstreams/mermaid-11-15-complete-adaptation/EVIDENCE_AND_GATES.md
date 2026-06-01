@@ -735,6 +735,31 @@ git diff --check
   - `git diff --check`: passed.
   - `cargo run -p xtask -- check-alignment`: passed.
 
+- 2026-06-01 M15C-070 Flowchart curved-trapezoid geometry slice:
+  - Diagnosed the no-label `newshapesset3` strict-root residuals against Mermaid 11.15
+    `curvedTrapezoid.ts`. Local layout, rendering, edge intersection, and root-bounds paths still
+    used older minimum geometry constants (`80x20`), while Mermaid 11.15 uses `minWidth=20` and
+    `minHeight=5`.
+  - Updated Flowchart sizing, SVG shape rendering, root-bounds reconstruction, and edge
+    intersection geometry for `curv-trap`/`display`/`curved-trapezoid` to use the 11.15 constants.
+    `flowchart_node_shape_dimensions_follow_mermaid_rules` now covers the curved-trapezoid source
+    formula.
+  - `cargo nextest run -p merman-render flowchart_node_shape_dimensions_follow_mermaid_rules`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_nolabel_065 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_nolabel_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter newshapesset3_ --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    still failed as expected only for
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset3_lr_md_html_false_070` and
+    `upstream_cypress_newshapes_spec_newshapessets_newshapesset3_tb_md_html_false_022`, which are
+    markdown/html=false residuals rather than the no-label curved-trapezoid minimum-size bucket.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 69 Flowchart strict root-only mismatches, down from 71.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`
