@@ -46,32 +46,47 @@ values. Timeline was reduced from 7 to 3 by refreshing 4 existing root pins; the
 are unpinned 0.5-1px root-width tails and were not converted into new fixture pins. Journey
 remains at 2 unpinned 1.25-2px root-width tails and has no root pin table.
 
-M15RV-060 started the Class source-rule follow-up. The focused repro
+M15RV-060 continued the Class source-rule follow-up. The focused repro
 `upstream_pkgtests_classdiagram_spec_003` showed that the previous local output laid out `Admin`
 and `Report` horizontally inside nested namespaces (`1014px` local max-width vs `499.75px`
-upstream). Mermaid source inspection found that `classRenderer-v2.ts:addNamespaces(...)` inserts a
-namespace's direct classes/notes during namespace traversal, while Rust had batched all namespaces
-before all classes. Rust now mirrors that insertion/parenting order and uses a rankdir-aware
-cluster extraction rule: TB parent clusters with a direct external child cluster stay in the
-surrounding compound graph, while LR parent clusters can still be extracted so the recursive rankdir
-flip produces the upstream vertical stack. The focused row now renders vertically (`444.5px` local
-vs `499.75px` upstream), so the original horizontal-layout failure is fixed, but the row is not
-root-green yet. Class structural parity is green after the Class renderer was corrected to use
-Mermaid's `mainBkg`/`nodeBorder` defaults for node styling.
+upstream). Mermaid 11.15 source inspection replaced the earlier v2 assumption with the active v3
+unified path: `classDiagram.ts` uses `classRenderer-v3-unified.ts`, `ClassDB.getData()` emits all
+namespace group nodes before class/note/interface nodes, and the shared rendering-util Dagre
+extractor uses child-before-parent `copy(...)`, moved child extraction reparenting, and recursive
+`ranksep: parent.ranksep + 25`. Rust now mirrors those source rules. `upstream_namespaces_and_generics`,
+`upstream_pkgtests_classdiagram_spec_006`, `stress_class_nested_namespaces_many_levels_021`, and
+`stress_class_nested_namespaces_cross_edges_008` are root-green. Class structural parity is green
+after the Class renderer was corrected to use Mermaid's `mainBkg`/`nodeBorder` defaults for node
+styling. The SVG Class text path now wraps titles with normal-weight `createText(...)` measurement
+before the final outer bolder bbox, and it preserves raw numeric `themeVariables.fontSize` CSS
+spelling without treating unitless CSS as a headless 24px text size.
+
+M15RV-070 extracted the font-size policy that M15RV-060 made explicit. `config_css_number_or_string(...)`
+now captures Mermaid stylesheet interpolation where JSON numeric theme values are emitted without
+adding `px`, and `config_f64_explicit_css_px(...)` captures the Class SVG measurement rule where
+only explicit `px` strings are layout-effective. Class and Radar call sites that already carried
+local versions of these rules now share the helpers. This was intentionally scoped to Class/Radar;
+other diagrams still need per-source-path checks before using the new helpers.
 
 ## Active Task
 
-- Task ID: M15RV-060
+- Task ID: M15RV-070
 - Owner: codex
-- Status: IN PROGRESS
-- Goal: Reduce the Class namespace/layout-width root bucket with Mermaid source-derived compound
-  graph rules instead of root viewport pins.
-- Evidence: `target/compare/class_pkgtests_003_after_namespace_compound.md`
+- Status: DONE
+- Goal: Extract shared font-size config helpers for Mermaid raw CSS interpolation and explicit-px
+  SVG text measurement policy.
+- Evidence: `target/compare/radar_font_size_after_css_font_helper.md`,
+  `target/compare/radar_numeric_font_size_after_css_font_helper.md`,
+  `target/compare/class_font_size_025_after_css_font_helper.md`, and
+  `target/compare/class_font_size_026_after_css_font_helper.md`
+- Concern: The helper is not a license to migrate every diagram blindly. Sequence, Architecture,
+  C4, State, and shared CSS paths need source checks because some Mermaid code uses
+  `parseFontSize(...)` or diagram-specific `.style('font-size', value + 'px')` semantics.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 293.
-- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 28.
+- Total unaccepted full-root residuals: 277.
+- Largest buckets: Sequence 167, Flowchart 61, Architecture 32, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -84,9 +99,5 @@ Mermaid's `mainBkg`/`nodeBorder` defaults for node styling.
   policy entries.
 - Do not close M15RV-090 by accepting the current residual set. The remaining Class and
   Architecture rows include real layout/root-bounds differences.
-- Current worktree note: there is unrelated theme snapshot/platform work in
-  `crates/merman-core/src/theme.rs`,
-  `crates/merman-core/src/generated/theme_variables_11_15_0.json`, and
-  `platforms/web/src/index.ts`. Do not stage it with Class layout work unless its owner asks for
-  that. The Class renderer-side `nodeBorder` fix is separate and is required for Class structural
-  parity with the expanded default theme variables.
+- Use the shared config helpers for future font-size work only when the Mermaid source path matches
+  their policy; otherwise leave diagram-local behavior explicit.

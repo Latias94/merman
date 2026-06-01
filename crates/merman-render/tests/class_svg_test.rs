@@ -753,3 +753,28 @@ fn class_svg_relation_only_generic_nodes_keep_type_suffix() {
         "expected relation-only generic classes to keep Mermaid-matching type suffixes"
     );
 }
+
+#[test]
+fn class_svg_preserves_numeric_theme_font_size_css_spelling() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"fontSize": 10, "themeVariables": {"fontSize": 24}, "htmlLabels": false} }%%
+classDiagram
+  class FontSizeSvgProbe {
+    +veryLongMethodNameToForceMeasurement()
+  }
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24;fill:"#
+        ),
+        "numeric themeVariables.fontSize should be emitted like Mermaid's raw CSS value"
+    );
+    assert!(
+        !svg.contains(
+            r#"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:24px;fill:"#
+        ),
+        "numeric themeVariables.fontSize must not be rewritten as a px string"
+    );
+}

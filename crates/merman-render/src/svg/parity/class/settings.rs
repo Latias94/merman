@@ -4,6 +4,7 @@ pub(super) struct ClassRenderSettings {
     pub(super) diagram_use_html_labels: bool,
     pub(super) edge_use_html_labels: bool,
     pub(super) font_size: f64,
+    pub(super) font_size_css: String,
     pub(super) wrap_probe_font_size: f64,
     pub(super) html_calc_text_style: TextStyle,
     pub(super) line_height: f64,
@@ -30,11 +31,21 @@ impl ClassRenderSettings {
             16.0
         } else {
             // Mermaid injects `themeVariables.fontSize` into CSS as `font-size: ${fontSize};`
-            // without forcing a unit. Unitless values are invalid CSS, while `"24px"` works and
-            // influences wrapping/sizing.
-            theme_font_size_px_string_only(effective_config).unwrap_or(16.0)
+            // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
+            // affect browser text sizing; a value like `"24px"` does. Keep the raw CSS spelling
+            // separately for emitted CSS parity.
+            crate::config::config_f64_explicit_css_px(
+                effective_config,
+                &["themeVariables", "fontSize"],
+            )
+            .unwrap_or(16.0)
         }
         .max(1.0);
+        let font_size_css = crate::config::config_css_number_or_string(
+            effective_config,
+            &["themeVariables", "fontSize"],
+        )
+        .unwrap_or_else(|| "16px".to_string());
         let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
             .unwrap_or(16.0)
             .max(1.0);
@@ -78,6 +89,7 @@ impl ClassRenderSettings {
             diagram_use_html_labels,
             edge_use_html_labels,
             font_size,
+            font_size_css,
             wrap_probe_font_size,
             html_calc_text_style,
             line_height,
@@ -89,14 +101,4 @@ impl ClassRenderSettings {
             default_node_stroke,
         }
     }
-}
-
-fn theme_font_size_px_string_only(effective_config: &serde_json::Value) -> Option<f64> {
-    let raw = config_string(effective_config, &["themeVariables", "fontSize"])?;
-    let t = raw.trim().trim_end_matches(';').trim();
-    let t = t.trim_end_matches("!important").trim();
-    if !t.ends_with("px") {
-        return None;
-    }
-    t.trim_end_matches("px").trim().parse::<f64>().ok()
 }

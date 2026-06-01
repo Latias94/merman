@@ -3,7 +3,8 @@ use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
 use super::{
-    PlannedRouteCell, PlannedRouteCellKind, RoutePlan, edge_arrow_cell, edge_line_cell,
+    PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
+    edge_line_cell,
     planned_label, route_cell,
 };
 
@@ -29,12 +30,14 @@ pub(super) fn plan_top_down_direct_route(
         },
         ch: charset.down_connector,
         kind: PlannedRouteCellKind::EdgeLine,
+        segment: PlannedRouteSegment::Direct,
     });
     for y in start..end {
         cells.push(PlannedRouteCell {
             coord: CanvasCoord { x, y },
             ch: line,
             kind: PlannedRouteCellKind::RouteCell,
+            segment: PlannedRouteSegment::Direct,
         });
     }
     cells.push(PlannedRouteCell {
@@ -47,6 +50,7 @@ pub(super) fn plan_top_down_direct_route(
             GraphEdgeArrow::Open => PlannedRouteCellKind::RouteCell,
             GraphEdgeArrow::Point => PlannedRouteCellKind::EdgeArrow,
         },
+        segment: PlannedRouteSegment::Direct,
     });
 
     let labels = planned_label(

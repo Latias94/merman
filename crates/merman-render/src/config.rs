@@ -35,12 +35,52 @@ pub(crate) fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
     value_at(cfg, path).and_then(json_f64_css_px)
 }
 
+pub(crate) fn json_f64_explicit_css_px(value: &Value) -> Option<f64> {
+    value.as_str().and_then(parse_explicit_css_px_to_f64)
+}
+
+pub(crate) fn config_f64_explicit_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    value_at(cfg, path).and_then(json_f64_explicit_css_px)
+}
+
+pub(crate) fn json_css_number_or_string(value: &Value) -> Option<String> {
+    if let Some(raw) = value.as_str() {
+        let text = normalize_css_raw_value_text(raw);
+        return (!text.is_empty()).then(|| text.to_string());
+    }
+
+    let value = json_f64(value)?;
+    value.is_finite().then(|| {
+        let text = value.to_string();
+        if text == "-0" { "0".to_string() } else { text }
+    })
+}
+
+pub(crate) fn config_css_number_or_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    value_at(cfg, path).and_then(json_css_number_or_string)
+}
+
 fn parse_css_px_to_f64(text: &str) -> Option<f64> {
-    let text = text.trim().trim_end_matches(';').trim();
-    let text = text.trim_end_matches("!important").trim();
+    let text = normalize_css_value_text(text);
     let text = text.strip_suffix("px").unwrap_or(text).trim();
     let value = text.parse::<f64>().ok()?;
     value.is_finite().then_some(value)
+}
+
+fn parse_explicit_css_px_to_f64(text: &str) -> Option<f64> {
+    let text = normalize_css_value_text(text);
+    let text = text.strip_suffix("px")?.trim();
+    let value = text.parse::<f64>().ok()?;
+    value.is_finite().then_some(value)
+}
+
+fn normalize_css_value_text(text: &str) -> &str {
+    let text = text.trim().trim_end_matches(';').trim();
+    text.trim_end_matches("!important").trim()
+}
+
+fn normalize_css_raw_value_text(text: &str) -> &str {
+    text.trim().trim_end_matches(';').trim()
 }
 
 #[cfg(test)]
@@ -84,5 +124,38 @@ mod tests {
         assert_eq!(json_f64_css_px(&json!("24px !important;")), Some(24.0));
         assert_eq!(json_f64_css_px(&json!("24pt")), None);
         assert_eq!(json_f64_css_px(&json!("NaNpx")), None);
+    }
+
+    #[test]
+    fn json_f64_explicit_css_px_accepts_only_px_strings() {
+        assert_eq!(json_f64_explicit_css_px(&json!(24)), None);
+        assert_eq!(json_f64_explicit_css_px(&json!("24")), None);
+        assert_eq!(json_f64_explicit_css_px(&json!("24px")), Some(24.0));
+        assert_eq!(
+            json_f64_explicit_css_px(&json!("24px !important;")),
+            Some(24.0)
+        );
+        assert_eq!(json_f64_explicit_css_px(&json!("24pt")), None);
+    }
+
+    #[test]
+    fn json_css_number_or_string_keeps_mermaid_style_interpolation_spelling() {
+        assert_eq!(
+            json_css_number_or_string(&json!(24)),
+            Some("24".to_string())
+        );
+        assert_eq!(
+            json_css_number_or_string(&json!(24.5)),
+            Some("24.5".to_string())
+        );
+        assert_eq!(
+            json_css_number_or_string(&json!(" 24px; ")),
+            Some("24px".to_string())
+        );
+        assert_eq!(
+            json_css_number_or_string(&json!("24px !important;")),
+            Some("24px !important".to_string())
+        );
+        assert_eq!(json_css_number_or_string(&json!(true)), None);
     }
 }

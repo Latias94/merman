@@ -4,7 +4,7 @@ pub(super) fn class_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
     font_family: &str,
-    font_size: f64,
+    font_size_css: &str,
 ) -> String {
     let id = escape_xml(diagram_id);
     let theme = SvgTheme::new(effective_config);
@@ -27,10 +27,10 @@ pub(super) fn class_css(
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
         id.as_str(),
         font_family,
-        fmt(font_size),
+        font_size_css,
         class_text
     );
     let _ = write!(

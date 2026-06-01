@@ -610,21 +610,18 @@ pub(super) fn render_class_svg_node_body(
     if title_text.starts_with('\\') {
         title_text = title_text.trim_start_matches('\\').to_string();
     }
-    let title_matches_font_size_numeric_probe =
-        title_text.trim() == "FontSizeSvgProbe" && ctx.font_size == 16.0;
-    let wrapped_title_text = if title_matches_font_size_numeric_probe {
-        title_text.clone()
-    } else if !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`')) {
-        wrap_class_svg_text_like_mermaid(
-            &title_text,
-            ctx.measurer,
-            ctx.text_style,
-            ctx.wrap_probe_font_size,
-            true,
-        )
-    } else {
-        title_text.clone()
-    };
+    let wrapped_title_text =
+        if !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`')) {
+            wrap_class_svg_text_like_mermaid(
+                &title_text,
+                ctx.measurer,
+                ctx.text_style,
+                ctx.wrap_probe_font_size,
+                false,
+            )
+        } else {
+            title_text.clone()
+        };
     let title_lines =
         crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
     let title_has_markdown =
@@ -689,12 +686,6 @@ pub(super) fn render_class_svg_node_body(
             }
         }
     }
-    if title_lines.len() > 1 && title_matches_font_size_numeric_probe {
-        // Upstream class SVG font-size precedence probe: Chromium bbox width for the wrapped
-        // bold title is slightly narrower than the vendored bold approximation.
-        title_metrics.width = 123.265625;
-    }
-
     // Annotation group: Mermaid only renders the first annotation.
     let mut annotation_runs: Vec<ClassSvgNodeLabelRun> = Vec::new();
     let mut annotation_rect: Option<Rect> = None;

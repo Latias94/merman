@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — Evidence And Gates
 
-Status: Closed
-Last updated: 2026-05-30
+Status: Active
+Last updated: 2026-06-02
 
 ## Smallest Current Repro
 
@@ -37,6 +37,24 @@ cargo nextest run -p merman-ascii flowchart
 ```
 
 Proves graph route planning and painting preserve supported flowchart behavior.
+
+### Subgraph Direction Gate
+
+```bash
+cargo nextest run -p merman-ascii flowchart subgraph
+cargo nextest run -p merman-ascii graph_fixture
+```
+
+Proves the shipped local-direction subset and copied-fixture inventory stay consistent.
+
+### Boundary Routing Gate
+
+```bash
+cargo nextest run -p merman-ascii flowchart subgraph
+```
+
+Proves cross-boundary mixed-direction routing slices with parser-backed subgraph fixtures and
+targeted route-plan tests once M8 work lands.
 
 ### Relation Graph Gate
 
@@ -115,3 +133,11 @@ and residual risks in this file or a journal note.
   and `git diff --check`.
 - 2026-05-30 — AAD-070 review found no blocking workstream compliance or code-quality findings.
   Residual route/feature expansion risk is intentionally tracked in `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+- 2026-06-01 — AAD-080 resumed the lane to ship the first honest `FlowSubgraph.dir` subset:
+  canonical `LR` subgraphs inside canonical `TD` roots for fully internal routed edges.
+  Passed `cargo nextest run -p merman-ascii flowchart subgraph`,
+  `cargo nextest run -p merman-ascii graph_fixture`, and `git diff --check`.
+- 2026-06-02 — Investigated cross-boundary mixed-direction routing against
+  `repo-ref/beautiful-mermaid/src/layout-engine.ts`. Confirmed the next durable step is a boundary
+  routing seam rather than more layout heuristics. Experimental layout-only attempts were discarded
+  instead of being kept as unstable debt.

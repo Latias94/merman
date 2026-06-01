@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_f64, config_f64_css_px, config_f64_explicit_css_px};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -121,6 +121,26 @@ fn extract_descendants(
     }
 }
 
+fn extract_cluster_copy_order(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+    root_id: &str,
+    out: &mut Vec<String>,
+) {
+    // Mirrors Mermaid's `copy(...)`: children are copied before the non-root cluster node itself.
+    // That order decides which nested cluster is extracted first in later recursive passes.
+    for child in graph.children(cluster_id) {
+        if graph.children(child).is_empty() {
+            out.push(child.to_string());
+        } else {
+            extract_cluster_copy_order(graph, child, root_id, out);
+        }
+    }
+    if cluster_id != root_id {
+        out.push(cluster_id.to_string());
+    }
+}
+
 fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ancestor: &str) -> bool {
     descendants
         .get(ancestor)
@@ -139,15 +159,17 @@ fn prepare_graph(
         });
     }
 
-    // Mermaid's dagre-wrapper performs a pre-pass that extracts clusters *without* external
-    // connections into their own subgraphs, toggles their rankdir (TB <-> LR), and renders them
-    // recursively to obtain concrete cluster geometry before laying out the parent graph.
+    // Mermaid 11.15's default Class renderer uses the shared Dagre rendering-util path. Its
+    // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
+    // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
+    // geometry before laying out the parent graph.
     //
-    // Reference: Mermaid@11.12.2 `mermaid-graphlib.js` extractor + `recursiveRender`:
+    // Reference: Mermaid@11.15.0 `rendering-util/layout-algorithms/dagre`:
     // - eligible cluster: has children, and no edge crosses its descendant boundary
     // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
-    // - recursive render copies the parent graph's `ranksep`/`nodesep` into the subgraph before
-    //   layout
+    // - `copy(...)` walks child clusters first and copies a non-root cluster node after its
+    //   children, so child extractions may later be moved under an extracted parent
+    // - recursive render copies `nodesep` and sets child `ranksep = parent.ranksep + 25`
     // - margins are fixed at 8
 
     let cluster_ids: Vec<String> = graph
@@ -183,23 +205,13 @@ fn prepare_graph(
     }
 
     let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
-    let graph_rankdir = graph.graph().rankdir;
     let candidate_clusters: Vec<String> = graph
         .node_ids()
         .into_iter()
         .filter(|id| {
-            !graph.children(id).is_empty()
-                && !external.get(id).copied().unwrap_or(false)
-                // When a TB parent contains direct nodes plus a direct child cluster that cannot
-                // be extracted, Dugong otherwise places the direct node beside that child cluster.
-                // Mermaid/Dagre keeps the surrounding compound stack vertical for these Class
-                // namespace cases. In LR graphs, extraction is still needed because Mermaid flips
-                // the extracted subgraph back to TB.
-                && (graph_rankdir != RankDir::TB
-                    || !graph.children(id).into_iter().any(|child| {
-                        !graph.children(child).is_empty()
-                            && external.get(child).copied().unwrap_or(false)
-                    }))
+            let has_children = !graph.children(id).is_empty();
+            let is_external = external.get(id).copied().unwrap_or(false);
+            has_children && !is_external
         })
         .collect();
 
@@ -217,7 +229,7 @@ fn prepare_graph(
         let nodesep = graph.graph().nodesep;
         let ranksep = graph.graph().ranksep;
 
-        let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
+        let (mut subgraph, moved_set) = extract_cluster_graph(&cluster_id, &mut graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
         subgraph.graph_mut().ranksep = ranksep;
@@ -225,6 +237,11 @@ fn prepare_graph(
         subgraph.graph_mut().marginy = 8.0;
 
         let mut prepared = prepare_graph(subgraph, depth + 1)?;
+        for moved_id in &moved_set {
+            if let Some(child_prepared) = extracted.remove(moved_id) {
+                prepared.extracted.insert(moved_id.clone(), child_prepared);
+            }
+        }
         prepared.injected_cluster_root_id = Some(cluster_id.clone());
         extracted.insert(cluster_id, prepared);
     }
@@ -239,7 +256,7 @@ fn prepare_graph(
 fn extract_cluster_graph(
     cluster_id: &str,
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
+) -> Result<(Graph<NodeLabel, EdgeLabel, GraphLabel>, HashSet<String>)> {
     if graph.children(cluster_id).is_empty() {
         return Err(Error::InvalidModel {
             message: format!("cluster has no children: {cluster_id}"),
@@ -247,9 +264,7 @@ fn extract_cluster_graph(
     }
 
     let mut descendants: Vec<String> = Vec::new();
-    extract_descendants(graph, cluster_id, &mut descendants);
-    descendants.sort();
-    descendants.dedup();
+    extract_cluster_copy_order(graph, cluster_id, cluster_id, &mut descendants);
 
     let moved_set: HashSet<String> = descendants.iter().cloned().collect();
 
@@ -290,7 +305,7 @@ fn extract_cluster_graph(
         let _ = graph.remove_node(id);
     }
 
-    Ok(sub)
+    Ok((sub, moved_set))
 }
 
 #[derive(Debug, Clone)]
@@ -551,13 +566,19 @@ fn layout_prepared(
                 message: format!("missing extracted cluster graph: {id}"),
             });
         };
+        let parent_ranksep = prepared.graph.graph().ranksep;
+        let parent_nodesep = prepared.graph.graph().nodesep;
+        sub.graph.graph_mut().ranksep = parent_ranksep + 25.0;
+        sub.graph.graph_mut().nodesep = parent_nodesep;
         let (sub_frag, sub_bounds) = layout_prepared(sub, node_label_metrics_by_id)?;
 
         // Mermaid injects the extracted cluster root back into the recursive child graph before
-        // Dagre layout (`recursiveRender(..., parentCluster)`), then measures the rendered root
-        // `<g class="root">` bbox via `updateNodeBounds(...)`. Mirror that by injecting the
-        // extracted cluster root into the recursive layout graph up front, so the returned bounds
-        // already include the cluster padding/label geometry that Mermaid measures.
+        // Dagre layout (`recursiveRender(..., parentCluster)`). In the 11.15 rendering-util
+        // renderer, that same recursive step also applies `ranksep: parent.ranksep + 25` while
+        // preserving `nodesep`. It then measures the rendered root `<g class="root">` bbox via
+        // `updateNodeBounds(...)`. Mirror that by injecting the extracted cluster root into the
+        // recursive layout graph up front, so the returned bounds already include the cluster
+        // padding/label geometry that Mermaid measures.
         extracted_fragments.insert(id, (sub_frag, sub_bounds));
     }
 
@@ -749,21 +770,10 @@ fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle 
         }
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
             // Mermaid injects `themeVariables.fontSize` into CSS as `font-size: ${fontSize};`
-            // without forcing a unit. A unitless `font-size: 24` is invalid CSS and gets ignored
-            // (falling back to the browser default 16px), while a value like `"24px"` works and
-            // *does* influence wrapping/sizing (see upstream SVG baselines:
-            // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg` and
-            // `fixtures/upstream-svgs/class/stress_class_svg_font_size_px_string_precedence_026.svg`).
-
-            config_string(effective_config, &["themeVariables", "fontSize"])
-                .and_then(|raw| {
-                    let t = raw.trim().trim_end_matches(';').trim();
-                    let t = t.trim_end_matches("!important").trim();
-                    if !t.ends_with("px") {
-                        return None;
-                    }
-                    t.trim_end_matches("px").trim().parse::<f64>().ok()
-                })
+            // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
+            // affect browser text sizing; a value like `"24px"` does. `calculateTextWidth(...)`
+            // separately keeps using the top-level `config.fontSize` as the wrapping probe.
+            config_f64_explicit_css_px(effective_config, &["themeVariables", "fontSize"])
                 .unwrap_or(16.0)
         }
     };
@@ -1042,7 +1052,16 @@ fn class_box_dimensions(
             } else {
                 text.to_string()
             };
-            let mut metrics = measurer.measure_wrapped(&wrapped, style, None, wrap_mode);
+            let mut metrics = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
+            {
+                // Keep layout sizing aligned with the SVG renderer, which emits labels through
+                // Mermaid's Markdown-aware `createText(...)` path even for plain class text.
+                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    measurer, &wrapped, style, None, wrap_mode,
+                )
+            } else {
+                measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
+            };
             if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
                 if style.font_size >= 20.0 && metrics.width.is_finite() && metrics.width > 0.0 {
                     // Mermaid classDiagram `addText(...).bbox = text.getBBox()` sometimes reports a
@@ -1137,7 +1156,7 @@ fn class_box_dimensions(
             measurer,
             text_style,
             wrap_probe_font_size,
-            true,
+            false,
         )
     } else {
         title_text.clone()
@@ -1259,14 +1278,6 @@ fn class_box_dimensions(
                 title_metrics.width = crate::text::ceil_to_1_64_px(w);
             }
         }
-    }
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && title_text.trim() == "FontSizeSvgProbe"
-        && text_style.font_size == 16.0
-    {
-        // Upstream class SVG font-size precedence probe: Chromium bbox width for the wrapped bold
-        // title is slightly narrower than our vendored bold approximation.
-        title_metrics.width = 123.265625;
     }
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
@@ -1873,8 +1884,6 @@ fn layout_class_diagram_v2_typed_inner(
     classes_namespace_facades.reserve(model.classes.len());
     let mut inserted_classes: HashSet<String> = HashSet::with_capacity(model.classes.len());
     let mut inserted_notes: HashSet<String> = HashSet::with_capacity(model.notes.len());
-    let notes_by_id: HashMap<&str, &ClassNote> =
-        model.notes.iter().map(|n| (n.id.as_str(), n)).collect();
 
     let is_namespace_facade = |c: &ClassNode| {
         let trimmed_id = c.id.trim();
@@ -1951,9 +1960,9 @@ fn layout_class_diagram_v2_typed_inner(
         };
 
     for &id in &namespace_ids {
-        // Mermaid `addNamespaces(...)` inserts each namespace and then immediately inserts that
-        // namespace's direct classes/notes. Dagre's compound ordering uses this insertion and
-        // child order, so keep it source-aligned instead of batching all namespaces first.
+        // Mermaid 11.15's active Class renderer is the v3 unified path. `ClassDB.getData()`
+        // emits all namespace group nodes before class/note/interface nodes, and Graphlib's
+        // insertion order later feeds the Dagre cluster extraction/copy order.
         g.set_node(id.to_string(), NodeLabel::default());
 
         if let Some(parent) = model
@@ -1965,34 +1974,6 @@ fn layout_class_diagram_v2_typed_inner(
         {
             if model.namespaces.contains_key(parent) {
                 g.set_parent(id.to_string(), parent.to_string());
-            }
-        }
-
-        let Some(ns) = model.namespaces.get(id) else {
-            continue;
-        };
-        for class_id in &ns.class_ids {
-            let Some(c) = model.classes.get(class_id.as_str()) else {
-                continue;
-            };
-            if is_namespace_facade(c) {
-                if !classes_namespace_facades.iter().any(|seen| seen.id == c.id) {
-                    classes_namespace_facades.push(c);
-                }
-                continue;
-            }
-            if inserted_classes.insert(c.id.clone()) {
-                insert_class_node(&mut g, c, &mut class_row_metrics_by_id);
-                g.set_parent(c.id.clone(), id.to_string());
-            }
-        }
-        for note_id in &ns.note_ids {
-            let Some(n) = notes_by_id.get(note_id.as_str()).copied() else {
-                continue;
-            };
-            if inserted_notes.insert(n.id.clone()) {
-                insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
-                g.set_parent(n.id.clone(), id.to_string());
             }
         }
     }

@@ -1,6 +1,6 @@
 use super::charset::GraphCharset;
 use super::layout::{CanvasCoord, GraphLayout, NodeLayout};
-use super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeStyle};
+use super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeStyle};
 use crate::canvas::{Canvas, CanvasColor};
 use crate::color::{AsciiColorRole, AsciiRgb};
 
@@ -37,11 +37,12 @@ impl<'a> RouteDrawing<'a> {
 }
 
 pub(super) fn edge_canvas_extent(
+    graph: &AsciiGraph,
     layouts: &[NodeLayout],
     edges: &[AsciiGraphEdge],
     direction: GraphDirection,
 ) -> (usize, usize) {
-    route_canvas_extent(layouts, edges, direction)
+    route_canvas_extent(graph, layouts, edges, direction)
 }
 
 pub(super) fn transform_routed_label(
@@ -58,11 +59,12 @@ pub(super) fn transform_routed_label(
 
 pub(super) fn draw_edge(
     drawing: &mut RouteDrawing<'_>,
+    graph: &AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     edge_index: usize,
     edge: &AsciiGraphEdge,
-    direction: GraphDirection,
+    _direction: GraphDirection,
     charset: &GraphCharset,
 ) {
     let layouts = &graph_layout.nodes;
@@ -77,13 +79,13 @@ pub(super) fn draw_edge(
         (edge.style.line.is_some() || edge.style.arrow.is_some()).then(|| drawing.canvas.clone());
 
     if let Some(plan) = plan_edge_route(EdgeRouteRequest {
+        graph,
         graph_layout,
         edges,
         from,
         to,
         edge_index,
         edge,
-        direction,
         charset,
     }) {
         paint_route_plan(drawing, &plan);
