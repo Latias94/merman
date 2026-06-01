@@ -616,8 +616,8 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
 }
 
 #[test]
-fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_falls_back_to_global_layout()
- {
+fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_records_boundary_aware_baseline()
+{
     let rendered = render_flowchart(
         concat!(
             "flowchart TD\n",
@@ -630,9 +630,7 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_falls_
         ),
         &AsciiRenderOptions::ascii(),
     )
-    .expect(
-        "cross-boundary mixed-direction subgraph should render with the current global fallback",
-    );
+    .expect("cross-boundary mixed-direction subgraph should render through the boundary-aware seam");
 
     assert_eq!(
         rendered,
@@ -648,24 +646,24 @@ fn flowchart_parser_subgraph_direction_override_with_cross_boundary_edges_falls_
             "| | A | |   | X |\n",
             "| |   | |   |   |\n",
             "| +---+ |   +---+\n",
-            "|   |   |        \n",
-            "|   |   |        \n",
+            "|   ^   |     |  \n",
+            "|   +---------+  \n",
             "|   |   |        \n",
             "|   |   |        \n",
             "|   v   |        \n",
             "| +---+ |        \n",
             "| |   | |        \n",
-            "| | B | |        \n",
-            "| |   | |        \n",
-            "| +---+ |        \n",
-            "|   |   |        \n",
-            "+---|---+        \n",
-            "    |            \n",
-            "    |            \n",
-            "    v            \n",
-            "  +---+          \n",
-            "  |   |          \n",
-            "  | Y |          \n",
+            "| | B |--+       \n",
+            "| |   | ||       \n",
+            "| +---+ ||       \n",
+            "|       ||       \n",
+            "+-------+|       \n",
+            "         |       \n",
+            "         |       \n",
+            "         |       \n",
+            "  +---+  |       \n",
+            "  |   |  |       \n",
+            "  | Y |<-+       \n",
             "  |   |          \n",
             "  +---+          \n",
         )
