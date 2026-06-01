@@ -286,8 +286,11 @@ service-title compound-label effects from pure group-title rows. On the current 
 - `stress_architecture_long_group_titles_018`: `481.3125`
 - `stress_architecture_batch6_long_group_titles_wrapping_extreme_095`: `532.53125`
 
-Re-running the long-label piecewise-scale experiment with a threshold of `width >= 200` and a
-reduced scale `1.01` changed only the long-title row in that matrix:
+That long-label piecewise-scale rule is now active in
+`architecture_cytoscape_canvas_label_metrics(...)`: when the measured single-line title width is
+`>= 200px`, Rust uses scale `1.01` instead of the generic `1.055` Cytoscape canvas-label
+approximation. Re-running the six-row diagnostic matrix with that rule shows only the intended long
+service-title row moves:
 
 - `stress_architecture_batch5_long_titles_and_punct_076`: `552.9256591796875 -> 547.9256591796875`
 - `stress_architecture_batch4_init_small_icons_061`: unchanged
@@ -296,23 +299,17 @@ reduced scale `1.01` changed only the long-title row in that matrix:
 - `stress_architecture_long_group_titles_018`: unchanged
 - `stress_architecture_batch6_long_group_titles_wrapping_extreme_095`: unchanged
 
-The two added group-title rows matter because they should *not* move much under a service-label
-canvas-width experiment. If they remain flat while `batch5_long_titles_and_punct_076` shifts,
-that is stronger evidence that the approximation is correctly scoped to the service compound-label
-family rather than accidentally changing the separate group-title/root-title path.
+The focused root compare confirms the same improvement at the viewport level:
+`stress_architecture_batch5_long_titles_and_punct_076` moved from `+10.000px` to `+5.000px`
+against the Mermaid 11.15 root width while the nearby small-icon / HTML / unicode rows stayed at
+their previous values. The two added group-title rows matter because they should *not* move much
+under a service-label canvas-width experiment; their flat readings are the current evidence that
+the approximation is scoped to the service compound-label family rather than the separate
+group-title/root-title path.
 
-This is the strongest local evidence so far for the long-label piecewise approach: on the six-row
-matrix, the thresholded `1.01` scale only moved the intended long service-title row and left both
-group-title rows flat. The experiment was still reverted because the committed envelope test for
-`batch5_long_titles_and_punct_076` currently asserts the old width band and because we have not
-yet measured the broader Architecture bucket under that rule. The next decision point is therefore
-not "pick another magic number"; it is whether to relax/replace the old envelope assertion so a
-source-compatible improvement can be evaluated against more than one focused row.
-
-That is the cleanest evidence so far that a *targeted* long-label headless approximation can help
-without obviously disturbing the nearby small-icon / HTML / unicode rows. The experiment was still
-reverted because the committed envelope test currently asserts the old `batch5` width band, and we
-do not yet have enough broader Architecture evidence to replace that baseline with a new policy.
+This means the long-label piecewise rule is no longer a hypothetical experiment or reverted branch:
+it is the current committed headless approximation. Continue treating it as a reusable,
+Architecture-specific Cytoscape canvas-label policy seam rather than as a fixture-tuned root pin.
 
 Additional 2026-06-02 diagnostic result:
 
@@ -356,10 +353,15 @@ further:
 `stress_architecture_batch4_init_small_icons_061` were classified as measurement diagnostics rather
 than patched. Browser probes show the batch5 row is driven by Cytoscape canvas label bbox mismatch:
 the long `Artifacts Storage retention 30d` label is about `223px` wide in Chromium/Cytoscape, while
-the current deterministic scaled estimate is wider. The batch4 small-icon row is instead icon-floor
-dominated (`42x56` browser service bboxes). A single new global label scale would be self-deceptive;
-future work should use generated Architecture canvas-label evidence or a better deterministic
-canvas measurer.
+the current deterministic scaled estimate is still wider even after the committed long-label
+piecewise rule. The batch4 small-icon row is instead icon-floor dominated (`42x56` browser service
+bboxes). A single new global label scale would still be self-deceptive; future work should use
+generated Architecture canvas-label evidence or a better deterministic canvas measurer.
+
+Fresh focused 2026-06-02 rechecks also show the three `reasonable_height` fixtures are not
+root-green: each still carries the same `+0.380px` width / tiny height rounding tail
+(`1859.440px -> 1859.820px` max-width). Treat those rows as part of the honest residual set unless
+a source-compatible rounding rule closes the whole family.
 
 Two additional Architecture rows were classified without renderer changes. For
 `stress_architecture_html_titles_and_escapes_041`, focused structural parity is green and the
@@ -474,6 +476,15 @@ lands about `3.75px` farther right.
   `+request(...)`) caused focused geometry drift or golden churn. Continue this audit only with
   focused evidence and an explicit delete-one-verify-one loop; do not bulk-prune the table based on
   text search alone.
+- The first delete-one-verify-one pass on 2026-06-02 proved one real stale row: removing the
+  rendered-width override `(16, true, "User") => Some(33.765625)` reduced the Class text lookup
+  budget from `495` to `494` without adding any new Class `parity-root` failures or changing the
+  existing 14-row Class residual set. Focused checks for `upstream_pkgtests_classdiagram_spec_003`
+  and `upstream_html_demos_classchart_class_diagram_demos_010` stayed at their pre-existing
+  `499.75px -> 499.5px` tails, and the full Class root report remained the same 14 fixtures. Keep
+  this row deleted. Continue the stale-table audit in the same explicit one-row-at-a-time style for
+  the remaining candidates (`test()`, `+handle(...)`, `+query(...)`, `+request(...)`) instead of
+  treating the whole historical caution note as a permanent stop sign.
 - Architecture junction group membership must come from `junction.in` only. Do not infer group
   parents from neighboring services; Mermaid 11.15 does not do that in `addJunctions(...)`.
 - Architecture `groupAlignments` must be generated in the same endpoint traversal order as
@@ -493,8 +504,14 @@ lands about `3.75px` farther right.
   Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
   drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
 - Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
-  long labels and batch4 small-icon labels need different treatment; use generated browser-probe
-  evidence or classify the residual honestly.
+  long labels and batch4 small-icon labels need different treatment. The current piecewise
+  long-label branch (`>= 200px -> 1.01`) is already committed because it improved the targeted
+  batch5 row without moving the nearby matrix rows; further changes still need broader generated
+  browser-probe evidence or an honestly documented residual class.
+- Do not claim `reasonable_height` is root-green. Fresh 2026-06-02 focused parity-root checks still
+  show the three `reasonable_height` fixtures at `+0.380px` width / tiny height rounding tails
+  (`1859.440px -> 1859.820px` max-width), so they remain part of the honest Architecture residual
+  set unless a source-compatible rounding rule closes them for the whole family.
 - Do not treat `stress_architecture_html_titles_and_escapes_041` as an HTML/entity or edge-label
   bug. Focused evidence shows the root tail is group-rect / Cytoscape service bbox dominated.
 - Do not tune group-edge shifts from `stress_architecture_group_port_edges_017`; its constraints,

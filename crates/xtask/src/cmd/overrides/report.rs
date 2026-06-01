@@ -470,6 +470,13 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
     }
 
     if file_name.contains("_text_overrides_") {
+        if file_name == "class_text_overrides_11_12_2.rs" {
+            let class_entries = classify_class_text_override_file(&file_name, text);
+            if !class_entries.is_empty() {
+                return class_entries;
+            }
+        }
+
         let lookup_entries = count_some_match_arms(text) + count_static_override_table_rows(text);
         if lookup_entries > 0 {
             return vec![OverrideFootprintEntry {
@@ -489,6 +496,28 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
     }
 
     Vec::new()
+}
+
+fn classify_class_text_override_file(file_name: &str, text: &str) -> Vec<OverrideFootprintEntry> {
+    let mut entries = Vec::new();
+    for (fn_name, label) in [
+        ("lookup_class_calc_text_width_px", "calc text width entries"),
+        ("lookup_class_rendered_width_px", "rendered width entries"),
+        ("lookup_class_namespace_width_px", "namespace width entries"),
+        ("lookup_class_note_width_px", "note width entries"),
+    ] {
+        let count = count_some_match_arms_in_function(text, fn_name);
+        if count == 0 {
+            continue;
+        }
+        entries.push(OverrideFootprintEntry {
+            file_name: format!("{file_name}::{fn_name}"),
+            category: OverrideCategory::TextLookup,
+            count,
+            unit: label,
+        });
+    }
+    entries
 }
 
 fn print_category(entries: &[OverrideFootprintEntry], category: OverrideCategory) {
@@ -574,6 +603,13 @@ fn count_some_match_arms(text: &str) -> usize {
     count_matches(re, text)
 }
 
+fn count_some_match_arms_in_function(text: &str, fn_name: &str) -> usize {
+    let Some(body) = extract_function_body(text, fn_name) else {
+        return 0;
+    };
+    count_some_match_arms(body)
+}
+
 fn count_tuple_rows(text: &str) -> usize {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r#"(?m)^\s*\("#).expect("valid regex"));
@@ -627,12 +663,34 @@ fn count_matches(re: &Regex, text: &str) -> usize {
     re.find_iter(text).count()
 }
 
+fn extract_function_body<'a>(text: &'a str, fn_name: &str) -> Option<&'a str> {
+    let fn_marker = format!("fn {fn_name}(");
+    let start = text.find(&fn_marker)?;
+    let body_start = text[start..].find('{')? + start + 1;
+    let body = &text[body_start..];
+    let mut depth = 1i32;
+    for (idx, ch) in body.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&body[..idx]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         OverrideCategory, OverrideFootprintEntry, check_override_no_growth,
-        classify_generated_override_file, count_manual_bridge_functions, count_some_match_arms,
-        count_static_override_table_rows, count_visible_functions,
+        classify_class_text_override_file, classify_generated_override_file,
+        count_manual_bridge_functions, count_some_match_arms, count_some_match_arms_in_function,
+        count_static_override_table_rows, count_visible_functions, extract_function_body,
         find_root_viewport_lookup_violations, pinned_mermaid_baseline_label, report_path_name,
     };
     use std::fs;
@@ -712,6 +770,75 @@ static OTHER_ROWS: &[(u16, &str, f64)] = &[
 "#;
 
         assert_eq!(count_static_override_table_rows(text), 2);
+    }
+
+    #[test]
+    fn counts_some_match_arms_only_within_named_function() {
+        let text = r#"
+pub fn lookup_a() -> Option<i32> {
+    match 1 {
+        1 => Some(1),
+        _ => None,
+    }
+}
+
+pub fn lookup_b() -> Option<i32> {
+    match 2 {
+        2 => {
+            Some(2)
+        }
+        _ => None,
+    }
+}
+"#;
+
+        assert_eq!(count_some_match_arms_in_function(text, "lookup_a"), 1);
+        assert_eq!(count_some_match_arms_in_function(text, "lookup_b"), 1);
+    }
+
+    #[test]
+    fn extracts_function_body_for_classification() {
+        let text = r#"
+pub fn lookup_sample() -> Option<i32> {
+    if true {
+        return Some(1);
+    }
+    None
+}
+"#;
+
+        let body = extract_function_body(text, "lookup_sample").expect("body");
+        assert!(body.contains("return Some(1);"));
+        assert!(!body.contains("pub fn"));
+    }
+
+    #[test]
+    fn class_text_override_file_reports_per_lookup_section() {
+        let text = r#"
+pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<i64> {
+    match (font_size_px, text.trim()) {
+        (16, "A") => Some(10),
+        _ => None,
+    }
+}
+
+pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &str) -> Option<f64> {
+    match (font_size_px, is_bold, text.trim()) {
+        (16, true, "B") => Some(20.0),
+        (16, false, "C") => {
+            Some(21.0)
+        }
+        _ => None,
+    }
+}
+"#;
+
+        let entries = classify_class_text_override_file("class_text_overrides_11_12_2.rs", text);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].file_name, "class_text_overrides_11_12_2.rs::lookup_class_calc_text_width_px");
+        assert_eq!(entries[0].count, 1);
+        assert_eq!(entries[1].file_name, "class_text_overrides_11_12_2.rs::lookup_class_rendered_width_px");
+        assert_eq!(entries[1].count, 2);
     }
 
     #[test]

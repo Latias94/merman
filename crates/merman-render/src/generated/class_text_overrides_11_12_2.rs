@@ -206,7 +206,6 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
         (16, true, "Driver") => Some(46.359375),
         (16, true, "Outer.Foo") => Some(73.765625),
         (16, true, "Person") => Some(50.0625),
-        (16, true, "User") => Some(33.765625),
         (16, true, "Admin") => Some(47.390625),
         (16, true, "Foo1") => Some(36.078125),
         (16, true, "Foo") => Some(26.703125),

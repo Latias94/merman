@@ -210,7 +210,7 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
 }
 
 #[test]
-fn architecture_long_title_group_rect_stays_within_current_headless_envelope() {
+fn architecture_long_title_group_rect_uses_narrower_long_label_canvas_approximation() {
     let svg = render_architecture_fixture_with_options(
         "stress_architecture_batch5_long_titles_and_punct_076.mmd",
         &SvgRenderOptions {
@@ -222,7 +222,7 @@ fn architecture_long_title_group_rect_stays_within_current_headless_envelope() {
     let pipeline = group_rect(&svg, "architecture-batch5-long-group-pipeline");
     assert!(
         pipeline.2 > 460.0 && pipeline.2 < 473.5,
-        "unexpected pipeline group width regression for long-title architecture fixture: {}",
+        "unexpected pipeline group width regression for long-title architecture fixture after the narrower long-label canvas approximation: {}",
         pipeline.2
     );
 }

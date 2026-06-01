@@ -217,12 +217,16 @@ Last updated: 2026-06-02
   feeds 9 relative constraints like the browser probe instead of Rust's previous 7; this did not
   change the `+13.976px` viewport tail. Layout-side pre-FCoSE group bbox inflation now also uses
   configured `padding + 2.5` instead of the old `iconSize / 2 + 2.5` proxy; this aligns layout and
-  SVG group sizing policy but does not change the current 29-row residual set. Batch5 long-title
-  and batch4 small-icon probes classify those rows as mixed canvas-label/icon-floor measurement
-  tails; do not tune one global label scale for them. Continue from the remaining larger tails such
+  SVG group sizing policy but does not change the current 29-row residual set. The committed
+  piecewise long-label canvas approximation (`measured width >= 200px -> scale 1.01`) reduces
+  `stress_architecture_batch5_long_titles_and_punct_076` from `+10px` to `+5px` without moving the
+  nearby diagnostic matrix rows, while batch4 small-icon remains an icon-floor dominated tail; do
+  not tune one global label scale for them. Fresh focused checks also show the three
+  `reasonable_height` fixtures still carry a shared `+0.380px` width rounding tail, so they are not
+  root-green. Continue from the remaining larger tails such
   as
   `stress_architecture_junction_fork_join_026` (`+13.976px`),
-  `stress_architecture_batch5_long_titles_and_punct_076` (`+10px`), and
+  `stress_architecture_batch5_long_titles_and_punct_076` (`+5px`), and
   `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
   browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.
   Additional focused checks classified `stress_architecture_html_titles_and_escapes_041` as a
