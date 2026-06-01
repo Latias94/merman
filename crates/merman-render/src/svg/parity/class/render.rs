@@ -4,7 +4,10 @@ use super::groups::{
     render_class_cluster_edge_groups,
 };
 use super::namespace::{ClassNamespaceRenderMode, class_namespace_render_mode};
-use super::nodes::{ClassNodesRenderContext, ClassNodesRenderState, render_class_nodes};
+use super::nodes::{
+    ClassNodesRenderContext, ClassNodesRenderState, render_class_namespace_subgraph_body,
+    render_class_nodes,
+};
 use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_root_open};
 use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox_attrs};
@@ -162,6 +165,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
         marker_url_prefix: &marker_url_prefix,
+        diagram_id,
         content_tx,
         content_ty,
         edge_use_html_labels: settings.edge_use_html_labels,
@@ -172,17 +176,6 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         out.push_str(r#"<g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/>"#);
     } else if render_namespaces_as_subgraphs {
         out.push_str(r#"<g class="clusters"/>"#);
-        render_class_cluster_edge_groups(
-            ClassClusterEdgeGroupsRenderState {
-                out: &mut out,
-                content_bounds: &mut content_bounds,
-                detail: &mut detail,
-            },
-            &group_ctx,
-            0.0,
-            0.0,
-            false,
-        );
     } else {
         render_class_cluster_edge_groups(
             ClassClusterEdgeGroupsRenderState {
@@ -199,9 +192,9 @@ fn render_class_diagram_v2_svg_model_impl_inner(
 
     // Nodes.
     let nodes_start = timing_enabled.then(std::time::Instant::now);
-    out.push_str(r#"<g class="nodes">"#);
 
     if wrap_nodes_root {
+        out.push_str(r#"<g class="nodes">"#);
         let _ = write!(
             &mut out,
             r#"<g class="root" transform="translate({}, {})">"#,
@@ -222,40 +215,60 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         out.push_str(r#"<g class="nodes">"#);
     }
 
-    render_class_nodes(
-        ClassNodesRenderState {
-            out: &mut out,
-            content_bounds: &mut content_bounds,
-            detail: &mut detail,
-            sanitize_config: &mut sanitize_config,
-            borrowed_sanitize_config,
-        },
-        &ClassNodesRenderContext {
-            layout,
-            model,
-            class_nodes_by_id: &class_nodes_by_id,
-            note_by_id: &note_by_id,
-            iface_by_id: &iface_by_id,
-            settings: &settings,
-            effective_config,
-            diagram_id,
-            measurer,
-            content_tx,
-            content_ty,
-            timing_enabled,
-            wrap_nodes_root,
-            single_namespace_id,
-            render_namespaces_as_subgraphs,
-            nodes_root_dx,
-            nodes_root_dy,
-        },
-    );
-    out.push_str("</g>"); // outer nodes
+    let nodes_ctx = ClassNodesRenderContext {
+        layout,
+        model,
+        class_nodes_by_id: &class_nodes_by_id,
+        note_by_id: &note_by_id,
+        iface_by_id: &iface_by_id,
+        settings: &settings,
+        effective_config,
+        diagram_id,
+        measurer,
+        content_tx,
+        content_ty,
+        timing_enabled,
+        wrap_nodes_root,
+        single_namespace_id,
+        render_namespaces_as_subgraphs,
+        nodes_root_dx,
+        nodes_root_dy,
+    };
+    if render_namespaces_as_subgraphs {
+        render_class_namespace_subgraph_body(
+            ClassNodesRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+                sanitize_config: &mut sanitize_config,
+                borrowed_sanitize_config,
+            },
+            &nodes_ctx,
+            &group_ctx,
+        );
+    } else {
+        if !wrap_nodes_root {
+            out.push_str(r#"<g class="nodes">"#);
+        }
+        render_class_nodes(
+            ClassNodesRenderState {
+                out: &mut out,
+                content_bounds: &mut content_bounds,
+                detail: &mut detail,
+                sanitize_config: &mut sanitize_config,
+                borrowed_sanitize_config,
+            },
+            &nodes_ctx,
+        );
+        out.push_str("</g>"); // outer nodes
+    }
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
     if let Some(s) = nodes_start {
         detail.nodes += s.elapsed();
     }
+
+    push_class_gradient(&mut out, diagram_id, effective_config);
 
     drop(render_guard);
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
@@ -295,6 +308,7 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         viewbox_attrs.max_w_attr.as_str(),
     );
 
+    push_class_shadow_defs(&mut out, diagram_id, effective_config);
     out.push_str("</svg>");
     drop(finalize_guard);
 

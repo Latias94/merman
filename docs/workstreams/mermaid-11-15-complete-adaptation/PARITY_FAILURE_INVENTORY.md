@@ -11,8 +11,8 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decim
 
 Initial result on 2026-05-31: failed with 525 DOM mismatches across 8 diagram groups.
 
-Current result after the M15C-050 Sankey baseline refresh on 2026-06-01: failed with 11 DOM
-mismatches across 3 diagram groups: class=9, flowchart=1, xychart=1.
+Current result after the M15C-060 Class convergence and baseline refresh on 2026-06-01: passed for
+the implemented matrix in `parity` mode. The active residual set has moved to `parity-root`.
 
 ## Summary
 
@@ -23,9 +23,9 @@ mismatches across 3 diagram groups: class=9, flowchart=1, xychart=1.
 | C4 | 0 | Stored upstream marker/base symbol drift; fresh 11.15 also changed scoped base symbol ids and selected type-label text lengths. | Green after M15C-040 renderer fixes and stored baseline refresh. | None for M15C-040; keep C4 in future full-gate regression checks. |
 | Journey | 0 | Stored upstream marker/task-line id drift; fresh 11.15 scopes task-line ids by SVG id. | Green after M15C-040 renderer fix and stored baseline refresh. | None for M15C-040; keep Journey in future full-gate regression checks. |
 | Sankey | 0 | Link `stroke-width` differed in stale stored baselines. | Green after M15C-050 fresh 11.15 check and stored baseline refresh. | None for M15C-050; keep Sankey in future full-gate regression checks. |
-| Class | 9 | Hierarchical namespace DOM differs: local nested groups versus old upstream namespace structure. | Likely expected 11.15 behavior compared against stale baseline. | Regenerate/check Class 11.15 baselines; keep local hierarchy unless fresh upstream disproves it. |
-| Flowchart | 1 | MathML `columnalign` extra attribute under KaTeX/MathML output. | Targeted renderer or normalizer gap after baseline freshness is confirmed. | Reproduce with fresh 11.15 upstream output for `upstream_docs_math_flowcharts_001`. |
-| XYChart | 1 | Data label `fill` differs: upstream `black`, local configured theme color. | Likely 11.15 config/baseline drift or theme precedence bug. | Reproduce with fresh 11.15 upstream output for the config fixture. |
+| Class | 0 | Stored baselines were stale and fresh 11.15 exposed a full unified-renderer envelope convergence slice. | Green after renderer fixes and stored baseline refresh. `upstream_parser_class_spec` is skipped as an upstream prototype-key render artifact. | None for structural parity; keep in future full-gate regression checks. |
+| Flowchart | 0 | The stored single MathML mismatch masked a broader 11.15 Flowchart envelope refresh. | Green for supported fixtures after child-lane convergence and stored baseline refresh. `flowchart-elk` is out of the current headless matrix. | None for structural parity; root-only residuals remain in M15C-070. |
+| XYChart | 0 | Data-label color mismatch was stale baseline drift. | Green after targeted 11.15 baseline refresh. | None for structural parity; keep in future full-gate regression checks. |
 
 ## Immediate Split
 
@@ -51,24 +51,26 @@ probes are green after scoped-id and C4 type-label fixes, and their stored basel
 refreshed. Timeline is also green after matching Mermaid 11.15 scoped node ids and refreshing stored
 Timeline baselines.
 
-Current `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` split after
-Sequence/C4/Journey/Timeline/Sankey refresh: class=9, flowchart=1, xychart=1.
+Current `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` result after
+Sequence/C4/Journey/Timeline/Sankey/XYChart/Flowchart/ER/Class refresh and convergence: passed.
 
 ### Needs fresh 11.15 baseline before code changes
 
 - class
 - xychart
 
-Class and XYChart already had targeted 11.15 behavior changes. Treat the current mismatches as
-unproven until fresh upstream 11.15 baselines are generated or checked. Sankey was in this bucket
-and is now green after a fresh 11.15 baseline refresh.
+Class and XYChart already had targeted 11.15 behavior changes. This bucket proved why apparent
+stored-fixture mismatches must be checked against fresh upstream 11.15 output before being treated
+as renderer defects. Sankey, XYChart, and Class were in this bucket and are now green after fresh
+11.15 baseline evidence and targeted refreshes or renderer convergence.
 
 ### Likely targeted code/normalizer issue
 
 - flowchart MathML `columnalign`
 
-This is a single fixture and may be either renderer output drift or DOM compare normalization drift.
-Do not batch it with marker-ID baseline refresh.
+This initially looked like a single fixture, but fresh Mermaid 11.15 output exposed a broader
+Flowchart convergence lane. The supported Flowchart matrix is now structurally green; remaining
+Flowchart work in this umbrella lane is root-only.
 
 ## Recommended Batch Order
 
@@ -77,4 +79,5 @@ Do not batch it with marker-ID baseline refresh.
 2. M15C-040 batch A: regenerate/check sequence, timeline, C4, and Journey 11.15 upstream SVGs.
 3. M15C-040 batch B: rerun full `parity` and recalculate mismatch counts.
 4. M15C-050: refresh Sankey after fresh 11.15 output proves local renderer parity.
-5. M15C-060: address the remaining Class, Flowchart, and XYChart mismatches.
+5. M15C-060: address the remaining Class, Flowchart, ER, and XYChart mismatches.
+6. M15C-070: close or split the root/viewBox/max-width residual set exposed by `parity-root`.

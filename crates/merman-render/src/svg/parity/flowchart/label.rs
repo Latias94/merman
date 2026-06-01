@@ -574,7 +574,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text(
     text: &str,
     include_style: bool,
 ) {
-    write_flowchart_svg_text_impl(out, text, include_style, false);
+    write_flowchart_svg_text_impl(out, text, include_style, false, true);
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
@@ -582,7 +582,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
     text: &str,
     include_style: bool,
 ) {
-    write_flowchart_svg_text_impl(out, text, include_style, true);
+    write_flowchart_svg_text_impl(out, text, include_style, true, true);
 }
 
 fn open_flowchart_svg_text(out: &mut String, include_style: bool, center_text: bool) {
@@ -595,27 +595,43 @@ fn open_flowchart_svg_text(out: &mut String, include_style: bool, center_text: b
     }
 }
 
-fn write_empty_flowchart_tspan(out: &mut String, center_text: bool) {
-    if center_text {
-        out.push_str(
-            r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>"#,
-        );
+fn flowchart_outer_tspan_class(include_row_class: bool) -> &'static str {
+    if include_row_class {
+        "row text-outer-tspan"
     } else {
-        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        "text-outer-tspan"
     }
 }
 
-fn open_flowchart_tspan(out: &mut String, idx: usize, center_text: bool) {
+fn write_empty_flowchart_tspan(out: &mut String, center_text: bool, include_row_class: bool) {
+    let outer_class = flowchart_outer_tspan_class(include_row_class);
+    if center_text {
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/>"#,
+            outer_class
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"/>"#,
+            outer_class
+        );
+    }
+}
+
+fn open_flowchart_tspan(out: &mut String, idx: usize, center_text: bool, include_row_class: bool) {
     let text_anchor = if center_text {
         r#" text-anchor="middle""#
     } else {
         ""
     };
+    let outer_class = flowchart_outer_tspan_class(include_row_class);
     if idx == 0 {
         let _ = write!(
             out,
-            r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"{}>"#,
-            text_anchor
+            r#"<tspan class="{}" x="0" y="-0.1em" dy="1.1em"{}>"#,
+            outer_class, text_anchor
         );
     } else {
         // Mermaid sets an absolute `y` for each subsequent line, then uses `dy="1.1em"` as
@@ -628,8 +644,8 @@ fn open_flowchart_tspan(out: &mut String, idx: usize, center_text: bool) {
         };
         let _ = write!(
             out,
-            r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em"{}>"#,
-            y_em, text_anchor
+            r#"<tspan class="{}" x="0" y="{}" dy="1.1em"{}>"#,
+            outer_class, y_em, text_anchor
         );
     }
 }
@@ -639,13 +655,14 @@ fn write_flowchart_svg_text_impl(
     text: &str,
     include_style: bool,
     center_text: bool,
+    include_row_class: bool,
 ) {
     open_flowchart_svg_text(out, include_style, center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     let allow_simple_markdown = !text.contains('`');
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_flowchart_tspan(out, center_text);
+        write_empty_flowchart_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
         return;
     }
@@ -706,7 +723,7 @@ fn write_flowchart_svg_text_impl(
     }
 
     for (idx, line) in lines.iter().enumerate() {
-        open_flowchart_tspan(out, idx, center_text);
+        open_flowchart_tspan(out, idx, center_text, include_row_class);
         let words: Vec<String> = split_mermaid_escaped_tag_tokens(line).unwrap_or_else(|| {
             line.split_whitespace()
                 .filter(|s| !s.is_empty())
@@ -793,17 +810,18 @@ fn write_flowchart_svg_text_markdown_lines(
     lines: &[Vec<(String, bool, bool)>],
     include_style: bool,
     center_text: bool,
+    include_row_class: bool,
 ) {
     open_flowchart_svg_text(out, include_style, center_text);
 
     if lines.len() == 1 && lines[0].is_empty() {
-        write_empty_flowchart_tspan(out, center_text);
+        write_empty_flowchart_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
         return;
     }
 
     for (idx, words) in lines.iter().enumerate() {
-        open_flowchart_tspan(out, idx, center_text);
+        open_flowchart_tspan(out, idx, center_text, include_row_class);
 
         for (word_idx, (word, is_strong, is_em)) in words.iter().enumerate() {
             let font_style = if *is_em { "italic" } else { "normal" };
@@ -835,7 +853,17 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown(
 ) {
     let markdown = normalized_markdown_label(markdown);
     let lines = markdown_to_svg_word_lines(markdown);
-    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false, true);
+}
+
+pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_centered(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+) {
+    let markdown = normalized_markdown_label(markdown);
+    let lines = markdown_to_svg_word_lines(markdown);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true, true);
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered(
@@ -848,7 +876,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_centered
 ) {
     let markdown = normalized_markdown_label(markdown);
     let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
-    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, true, true);
 }
 
 pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
@@ -861,5 +889,5 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped(
 ) {
     let markdown = normalized_markdown_label(markdown);
     let lines = markdown_to_wrapped_svg_word_lines(measurer, markdown, style, max_width_px);
-    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false);
+    write_flowchart_svg_text_markdown_lines(out, &lines, include_style, false, true);
 }

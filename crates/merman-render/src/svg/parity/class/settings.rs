@@ -19,8 +19,8 @@ impl ClassRenderSettings {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
         let diagram_use_html_labels =
             config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
-        let edge_use_html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"])
-            .or_else(|| config_bool(effective_config, &["htmlLabels"]))
+        let edge_use_html_labels = config_bool(effective_config, &["htmlLabels"])
+            .or_else(|| config_bool(effective_config, &["flowchart", "htmlLabels"]))
             .unwrap_or(true);
         let font_size = if diagram_use_html_labels {
             // Mermaid class diagram labels are rendered via HTML `<foreignObject>`. Mermaid CLI

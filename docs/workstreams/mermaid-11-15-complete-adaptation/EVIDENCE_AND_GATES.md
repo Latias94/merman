@@ -6,12 +6,14 @@ Last updated: 2026-06-01
 ## Smallest Current Repro
 
 ```bash
-cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 ```
 
-As of 2026-06-01 this fails only for the current Class remainder. Flowchart and ER have been
-removed from the full-gate failure set after their stored Mermaid 11.15 baseline refreshes and
-renderer convergence slices.
+As of 2026-06-01, implemented-matrix structural parity is green:
+`cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` passed.
+The remaining smallest repro is now root-only viewport/max-width parity. The latest `parity-root`
+run still fails for residuals outside the Class structural slice, mainly ER, Flowchart, C4, and
+Architecture, and also reports one stale expected Flowchart Math residual policy entry.
 
 ## Gate Set
 
@@ -314,6 +316,46 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     failed only for Class with 14 DOM mismatches. ER no longer appears in the full-gate failure set.
+- 2026-06-01 M15C-060 Class 11.15 renderer convergence and stored baseline refresh:
+  - `cargo run -p xtask -- gen-upstream-svgs --diagram class --out target/upstream-svgs-11-15-class`:
+    generated 245 fresh Mermaid 11.15 Class SVGs. Mermaid 11.15 timed out for
+    `upstream_parser_class_spec`, which remains excluded from Class DOM/XML compares because
+    upstream renders prototype-key artifacts with invalid/missing nodes.
+  - Initial fresh Class full-corpus compare exposed stale stored-baseline masking: 245 canonical XML
+    mismatches before renderer convergence. The mismatch count was reduced through targeted
+    11.15 fixes: 245 -> 72 -> 37 -> 15 -> 11 -> 2 -> 0.
+  - Implemented the Mermaid 11.15 Class unified-renderer envelope: root drop-shadow defs, updated
+    marker defs including margin variants, theme gradient defs, scoped node/interface/note/edge ids,
+    `data-look="classic"`, markdown row/text label DOM, `htmlLabels` precedence, centered SVG edge
+    labels, 11.15 cardinality terminal foreignObject DOM, and namespace/root-group rendering that
+    distinguishes explicit dotted namespace hierarchies, partial namespace subgraphs, and flat
+    multi-namespace diagrams.
+  - `cargo check -p merman-render`: passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram class --filter namespace --upstream-root target/upstream-svgs-11-15-class --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram class --upstream-root target/upstream-svgs-11-15-class --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/xml/xml_report.md` reports `Mismatches (0)`.
+  - Stored Class baselines were refreshed from the verified fresh 11.15 target for 245 SVGs. The
+    stale `upstream_parser_class_spec.svg` remains in `fixtures/upstream-svgs/class` only as a
+    documented excluded upstream artifact.
+  - `cargo test -p merman-render --test class_svg_test`: passed, 15 tests.
+  - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo run -p xtask -- compare-svg-xml --check --diagram class --dom-mode parity --dom-decimals 3`:
+    passed; `target/compare/xml/xml_report.md` reports `Mismatches (0)`.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed for the implemented matrix.
+  - `cargo run -p xtask -- check-alignment`: passed.
+  - `cargo run -p xtask -- verify-generated`: initially failed because the prior Flowchart 11.15
+    baseline refresh left one generated font metric stale. Regenerated with
+    `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16 --preserve-layout-from crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs`,
+    then `cargo run -p xtask -- verify-generated` passed.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`:
+    failed. This is now the active M15C-070 residual set and is root/viewBox/max-width-only for
+    diagrams outside the Class structural slice, mainly ER, Flowchart, C4, and Architecture. The
+    run also reported that the root parity residual policy still expects
+    `flowchart/upstream_docs_math_flowcharts_001`, which was not observed and should be removed or
+    updated with fresh root-closeout evidence.
 
 ## Evidence Anchors
 

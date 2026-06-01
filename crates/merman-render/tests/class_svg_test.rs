@@ -45,9 +45,9 @@ namespace Company.Project.Module {
 "#,
     );
 
-    assert!(svg.contains(r#"id="Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
@@ -154,9 +154,9 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
     )
     .expect("svg render ok");
 
-    assert!(svg.contains(r#"id="Company" data-look="classic""#));
-    assert!(svg.contains(r#"id="Company.Project" data-look="classic""#));
-    assert!(svg.contains(r#"id="Company.Project.Module" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
+    assert!(svg.contains(r#"id="merman-Company.Project.Module" data-look="classic""#));
     assert!(
         svg.contains("<p>Company</p>")
             && svg.contains("<p>Project</p>")
@@ -206,7 +206,7 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
         "expected nested namespace wrapper to keep Mermaid's -8px root translation"
     );
     assert!(
-        svg.contains(r#"</g><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes">"#),
+        svg.contains(r#"</g><g class="edgeLabels"></g><g class="edgePaths"></g><g class="nodes">"#),
         "expected nested namespace wrapper placeholders to keep Mermaid order"
     );
     assert!(
@@ -247,8 +247,12 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
     )
     .expect("svg render ok");
 
-    assert!(svg.contains(r#"id="Root.A" data-look="classic""#));
-    assert!(svg.contains(r#"id="Root.B.B1" data-look="classic""#));
+    assert!(svg.contains(
+        r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="classic""#
+    ));
+    assert!(svg.contains(
+        r#"id="stress_class_nested_namespaces_many_levels_021-Root.B.B1" data-look="classic""#
+    ));
     assert!(
         svg.contains("<p>A</p>") && svg.contains("<p>B1</p>"),
         "expected rendered dotted namespace clusters to use path-segment labels"
@@ -384,28 +388,28 @@ fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
         (
             "upstream_annotations_in_brackets_spec.mmd",
             &[
-                r#"id="classId-Class1-0" transform="translate(72.1171875, 92)""#,
+                r#"id="merman-classId-Class1-0" data-look="classic" transform="translate(72.1171875, 92)""#,
                 r#"<path d="M-64.1171875 -84 L64.1171875 -84 L64.1171875 84 L-64.1171875 84""#,
             ],
         ),
         (
             "stress_class_interfaces_and_abstracts_007.mmd",
             &[
-                r#"id="classId-IService-0" transform="translate(61.171875, 83)""#,
+                r#"id="merman-classId-IService-0" data-look="classic" transform="translate(61.171875, 83)""#,
                 r#"<path d="M-53.171875 -54 L53.171875 -54 L53.171875 54 L-53.171875 54""#,
             ],
         ),
         (
             "stress_class_member_separators_and_annotations_009.mmd",
             &[
-                r#"id="classId-Data-0" transform="translate(145.48828125, 292)""#,
+                r#"id="merman-classId-Data-0" data-look="classic" transform="translate(145.48828125, 292)""#,
                 r#"<path d="M-137.48828125 -108 L137.48828125 -108 L137.48828125 108 L-137.48828125 108""#,
             ],
         ),
         (
             "stress_class_enums_and_interfaces_mix_023.mmd",
             &[
-                r#"id="classId-Status-0" transform="translate(485.59765625, 104)""#,
+                r#"id="merman-classId-Status-0" data-look="classic" transform="translate(485.59765625, 104)""#,
                 r#"<path d="M-76.28515625 -96 L76.28515625 -96 L76.28515625 96 L-76.28515625 96""#,
             ],
         ),
@@ -479,8 +483,8 @@ fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
     .expect("svg render ok");
 
     assert!(
-        svg.contains(r#"<foreignObject style="width: 36px; height: 12px;">"#)
-            && svg.contains(r#"<span class="edgeLabel">many</span>"#),
+        svg.contains(r#"<foreignObject width="36" height="12">"#)
+            && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
         "expected `many` cardinality terminal to keep Mermaid width sizing"
     );
 }

@@ -18,7 +18,7 @@ pub(super) fn render_class_diagram_v2_debug_svg(
 }
 
 mod defs;
-use defs::class_markers;
+use defs::{class_markers, push_class_gradient, push_class_shadow_defs};
 
 mod edge;
 

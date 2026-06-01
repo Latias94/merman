@@ -391,9 +391,9 @@ output (DOM signature comparison):
 Notes:
 
 - `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.3).
-- `fixtures/class/upstream_parser_class_spec.mmd` is excluded because the upstream SVG contains
-  prototype-key rendering artifacts (nested `g.root` / `translate(NaN, ...)`), while `merman`
-  renders deterministically.
+- `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
+  compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
+  `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
 
 Notes:
 
@@ -459,7 +459,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
-- `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN) and duplicated root groups (excluded from `compare-class-svgs`).
+- `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN), duplicated root groups, and missing prototype-key nodes (excluded from `compare-class-svgs` and `compare-svg-xml`).
 - `fixtures/gantt/today_marker_and_axis.mmd`: Mermaid CLI crashes while parsing `topAxis` (`yy.TopAxis is not a function`) (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/gantt/click_loose.mmd` / `fixtures/gantt/click_strict.mmd`: contain non-canonical `click ... href "<url>" "<extra>"` syntax that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/gantt/dateformat_hash_comment_truncates.mmd` / `fixtures/gantt/excludes_hash_comment_truncates.mmd`: rely on `#` inline comment truncation that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).

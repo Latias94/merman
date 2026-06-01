@@ -2,7 +2,10 @@ use super::ClassSvgRelation;
 use super::bounds::{include_path_bounds, include_path_d, include_xywh};
 use super::context::ClassRenderDetails;
 use super::defs::class_marker_name;
-use super::label::{class_html_div_style, render_class_html_label};
+use super::label::{
+    class_html_div_style, render_class_html_label, write_class_svg_edge_text,
+    write_class_svg_edge_text_markdown,
+};
 use crate::entities::decode_entities_minimal_cow;
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
@@ -23,6 +26,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub relations_by_id: &'a FxHashMap<&'a str, &'a ClassSvgRelation>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub marker_url_prefix: &'a str,
+    pub diagram_id: &'a str,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -353,8 +357,9 @@ pub(super) fn render_class_edge_groups(
 
         let _ = write!(
             out,
-            r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            r#"<path d="{}" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
             escape_attr_display(&d),
+            escape_attr_display(ctx.diagram_id),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
@@ -589,7 +594,7 @@ pub(super) fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        crate::svg::parity::flowchart::write_flowchart_svg_text(out, "", false);
+        write_class_svg_edge_text(out, "", false);
         out.push_str("</g></g>");
     } else if let Some(lbl) = label {
         let _ = write!(
@@ -603,7 +608,7 @@ pub(super) fn render_class_edge_label_group(
             fmt(lbl.width.max(0.0)),
             fmt(lbl.height.max(0.0)),
         );
-        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, trimmed, true);
+        write_class_svg_edge_text_markdown(out, trimmed, true);
         out.push_str("</g></g></g>");
     } else {
         out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
@@ -612,7 +617,7 @@ pub(super) fn render_class_edge_label_group(
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
             escape_attr_display(dom_id)
         );
-        crate::svg::parity::flowchart::write_flowchart_svg_text(out, trimmed, false);
+        write_class_svg_edge_text(out, trimmed, false);
         out.push_str("</g></g>");
     }
 }
@@ -642,7 +647,7 @@ pub(super) fn render_class_edge_terminal_group(
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel"><p>"#,
             fmt(x),
             fmt(y),
             fmt(width),
@@ -650,11 +655,11 @@ pub(super) fn render_class_edge_terminal_group(
             class_text_overrides::class_html_span_padding_right_px(),
         );
         escape_xml_into(out, trimmed);
-        out.push_str("</span></div></foreignObject></g></g>");
+        out.push_str("</p></span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel"><p>"#,
             fmt(x),
             fmt(y),
             fmt(width),
@@ -662,7 +667,7 @@ pub(super) fn render_class_edge_terminal_group(
             class_text_overrides::class_html_span_padding_right_px(),
         );
         escape_xml_into(out, trimmed);
-        out.push_str("</span></div></foreignObject></g>");
+        out.push_str(r#"</p></span></div></foreignObject><g class="inner" transform="translate(0, 0)"/></g>"#);
     }
 }
 
@@ -673,14 +678,12 @@ pub(super) fn class_edge_dom_id_into(
 ) {
     out.clear();
     if edge.id.starts_with("edgeNote") {
-        // Mermaid numbers note edges as `edgeNote<N>` where `<N>` follows the `note<N-1>` id.
-        // (This is independent from the relation edge counter.)
         if let Some(note_idx) = edge
             .from
             .strip_prefix("note")
             .and_then(|rest| rest.parse::<usize>().ok())
         {
-            let _ = write!(out, "edgeNote{}", note_idx + 1);
+            let _ = write!(out, "edgeNote{note_idx}");
             return;
         }
         out.push_str(edge.id.as_str());

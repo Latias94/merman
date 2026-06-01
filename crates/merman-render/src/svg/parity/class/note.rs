@@ -133,7 +133,8 @@ pub(super) fn render_class_note_node(
         let note_div_style = class_note_html_div_style(label_w, 200);
         let _ = write!(
             out,
-            r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
+            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
+            escape_attr_display(ctx.diagram_id),
             escape_attr_display(&note.id),
             fmt(position.node_tx),
             fmt(position.node_ty),
@@ -168,7 +169,8 @@ pub(super) fn render_class_note_node(
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(
             out,
-            r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            escape_attr_display(ctx.diagram_id),
             escape_attr_display(&note.id),
             fmt(position.node_tx),
             fmt(position.node_ty),
@@ -217,14 +219,14 @@ fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, st
 
     let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
     if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
         return;
     }
 
     for (idx, words) in lines.iter().enumerate() {
         if idx == 0 {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+            out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
         } else {
             let y_em = if idx == 1 {
                 "1em".to_string()
@@ -233,7 +235,7 @@ fn write_class_svg_text_markdown_with_style(out: &mut String, markdown: &str, st
             };
             let _ = write!(
                 out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
+                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
                 y_em
             );
         }

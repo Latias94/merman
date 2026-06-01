@@ -19,6 +19,12 @@ fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str
         );
     }
 
+    if diagram == "class" && stem == "upstream_parser_class_spec" {
+        return Some(
+            "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; merman keeps those ids deterministic and compare-class-svgs already excludes this fixture",
+        );
+    }
+
     None
 }
 
@@ -665,6 +671,17 @@ mod tests {
             Some(
                 "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture"
             )
+        );
+    }
+
+    #[test]
+    fn svg_xml_compare_skip_reason_covers_class_prototype_key_render_artifact() {
+        let reason = svg_xml_compare_skip_reason("class", "upstream_parser_class_spec")
+            .expect("class prototype-key render artifact should be explicitly skipped");
+        assert!(reason.contains("prototype-key class ids"));
+        assert_eq!(
+            svg_xml_compare_skip_reason("class", "upstream_namespaces_and_generics"),
+            None
         );
     }
 }

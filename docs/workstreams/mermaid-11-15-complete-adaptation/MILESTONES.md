@@ -32,9 +32,9 @@ Exit criteria:
 - XYChart and Flowchart Math single-fixture deltas are closed or split.
 - ER 11.15 renderer-envelope deltas are closed against refreshed 11.15 baselines.
 
-Status: in progress. Sequence, C4, Journey, Timeline, Sankey, XYChart, Flowchart supported
-fixtures, and ER are green against Mermaid 11.15 stored baselines. Current M2 remainder is Class
-with 14 DOM mismatches.
+Status: complete. Sequence, C4, Journey, Timeline, Sankey, XYChart, Flowchart supported fixtures,
+ER, and Class are green against Mermaid 11.15 stored baselines. `upstream_parser_class_spec`
+remains a documented Class upstream render artifact skip.
 
 ## M3 - Full Implemented-Matrix Gates
 
@@ -44,7 +44,8 @@ Exit criteria:
 - `parity-root` is green or any residual root-only work is explicitly split.
 - Package/workspace tests relevant to changed code are green.
 
-Status: not started.
+Status: in progress. Full `parity` DOM compare is green for the implemented matrix. `parity-root`
+is still red for root/viewBox/max-width residuals, mainly ER, Flowchart, C4, and Architecture.
 
 ## M4 - Upstream Family Decisions
 

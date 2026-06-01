@@ -67,7 +67,7 @@ Last updated: 2026-06-01
   Stored Sankey SVG baselines were refreshed and the Sankey stored gate now passes. The current full
   `parity` gate is red only for class=9, flowchart=1, xychart=1.
 
-- [ ] M15C-060 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/class,fixtures/upstream-svgs/xychart,fixtures/upstream-svgs/flowchart,fixtures/upstream-svgs/er,crates/merman-render/src/svg/parity,docs/workstreams/flowchart-11-15-svg-convergence]
+- [x] M15C-060 [owner=codex] [deps=M15C-040] [scope=fixtures/upstream-svgs/class,fixtures/upstream-svgs/xychart,fixtures/upstream-svgs/flowchart,fixtures/upstream-svgs/er,crates/merman-render/src/svg/parity,docs/workstreams/flowchart-11-15-svg-convergence]
   Goal: Close the remaining Class, XYChart, Flowchart, and ER parity deltas after 11.15 baselines
   are authoritative.
   Validation: Targeted compare commands for class, xychart, flowchart, and er in `parity` mode plus
@@ -75,16 +75,17 @@ Last updated: 2026-06-01
   Review: Split a child lane if any one diagram turns into a larger renderer convergence effort.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus diagram-specific alignment docs.
-  Handoff: IN_PROGRESS. XYChart was stale baseline drift and has a refreshed targeted 11.15
-  baseline. Class has 9 real fresh 11.15 namespace/DOM failures. Flowchart was not a single
+  Handoff: DONE. XYChart was stale baseline drift and has a refreshed targeted 11.15
+  baseline. Class expanded from 14 stored DOM mismatches to a 245-SVG fresh 11.15 renderer
+  convergence slice, then was fixed and refreshed. Flowchart was not a single
   MathML baseline issue: fresh Mermaid 11.15 output exposed 594 flowchart DOM mismatches plus one
   unsupported `flowchart-elk` fixture, so Flowchart is split to
   `docs/workstreams/flowchart-11-15-svg-convergence`. The Flowchart child lane later made the
   supported Flowchart matrix green and refreshed stored Flowchart baselines; the remaining
   `flowchart-elk` fixture is a documented out-of-matrix skip. ER also expanded from a stale-looking
   single stored mismatch into a full 101-fixture 11.15 renderer envelope refresh; ER is now green
-  against stored Mermaid 11.15 SVGs. Current M15C-060 remainder is Class, now 14 stored DOM
-  mismatches after the Flowchart and ER baseline refreshes.
+  against stored Mermaid 11.15 SVGs. Class is now green against fresh and stored Mermaid 11.15 SVGs;
+  `upstream_parser_class_spec` remains a documented upstream render artifact skip.
 
 ## M3 - Full Implemented-Matrix Gates
 
@@ -96,7 +97,10 @@ Last updated: 2026-06-01
   Review: `parity-root` failures may be split only with fresh evidence and explicit non-goal wording.
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/alignment/PARITY_HARDENING_PLAN.md`.
-  Handoff: Not started.
+  Handoff: IN_PROGRESS. `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  now passes for the implemented matrix. `parity-root` is still red for root/viewBox/max-width
+  residuals outside the Class structural slice, mainly ER, Flowchart, C4, and Architecture, and the
+  root residual policy still contains one stale expected Flowchart Math fixture entry.
 
 ## M4 - Upstream Family Decisions
 

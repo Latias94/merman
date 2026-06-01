@@ -81,7 +81,8 @@ pub(super) struct ClassNamespaceRenderMode<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct ClassNamespaceClusterGroupContext {
+pub(super) struct ClassNamespaceClusterGroupContext<'a> {
+    pub diagram_id: &'a str,
     pub content_tx: f64,
     pub content_ty: f64,
     pub bounds_dx: f64,
@@ -137,8 +138,13 @@ pub(super) fn class_namespace_render_mode<'a>(
     // - Each namespace cluster is emitted as a nested `<g class="root" ...>` inside
     //   `<g class="nodes">`, with empty `edgePaths/edgeLabels` placeholders.
     // - All relations still render at the outer root level (not inside the namespace subgraphs).
-    let render_namespaces_as_subgraphs =
-        !wrap_nodes_root && namespace_subgraph_render_profile(model);
+    let has_hierarchical_namespace = model.namespaces.values().any(|ns| {
+        ns.parent
+            .as_deref()
+            .is_some_and(|parent| !parent.is_empty())
+    });
+    let render_namespaces_as_subgraphs = !wrap_nodes_root
+        && (has_hierarchical_namespace || namespace_subgraph_render_profile(model));
 
     ClassNamespaceRenderMode {
         single_namespace_id,
@@ -153,7 +159,7 @@ pub(super) fn render_class_namespace_cluster_group(
     out: &mut String,
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
-    ctx: ClassNamespaceClusterGroupContext,
+    ctx: ClassNamespaceClusterGroupContext<'_>,
 ) -> std::time::Duration {
     let clusters_start = ctx.timing_enabled.then(std::time::Instant::now);
     out.push_str(r#"<g class="clusters">"#);
@@ -184,7 +190,8 @@ pub(super) fn render_class_namespace_cluster_group(
 
         let _ = write!(
             out,
-            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr_display(ctx.diagram_id),
             escape_attr_display(&c.id),
             fmt(left),
             fmt(top),
@@ -201,6 +208,77 @@ pub(super) fn render_class_namespace_cluster_group(
     clusters_start
         .map(|start| start.elapsed())
         .unwrap_or_default()
+}
+
+pub(super) fn class_namespace_root_offset(c: &LayoutCluster) -> (f64, f64) {
+    let w = c.width.max(1.0);
+    let h = c.height.max(1.0);
+    (c.x - w / 2.0 - 8.0, c.y - h / 2.0)
+}
+
+pub(super) fn render_class_namespace_clusters_in_root(
+    out: &mut String,
+    content_bounds: &mut Option<Bounds>,
+    clusters_by_id: &HashMap<&str, &LayoutCluster>,
+    cluster_ids: &[&str],
+    ctx: ClassNamespaceClusterGroupContext<'_>,
+    root_ns_id: &str,
+    root_dx: f64,
+    root_dy: f64,
+) {
+    out.push_str(r#"<g class="clusters">"#);
+    for ns_id in cluster_ids {
+        let Some(c) = clusters_by_id.get(ns_id).copied() else {
+            continue;
+        };
+
+        let w = c.width.max(1.0);
+        let h = c.height.max(1.0);
+        let (left, top) = if *ns_id == root_ns_id {
+            (8.0, 8.0)
+        } else {
+            (
+                c.x - w / 2.0 - root_dx,
+                c.y - h / 2.0 + ctx.content_ty - root_dy,
+            )
+        };
+        include_xywh(
+            content_bounds,
+            left + root_dx + ctx.bounds_dx,
+            top + root_dy + ctx.bounds_dy,
+            w,
+            h,
+        );
+
+        let label_w = c.title_label.width.max(0.0);
+        let label_h = 24.0;
+        let label_x = left + (w - label_w) / 2.0;
+        let label_y = top + c.title_margin_top;
+        include_xywh(
+            content_bounds,
+            label_x + root_dx + ctx.bounds_dx,
+            label_y + root_dy + ctx.bounds_dy,
+            label_w,
+            label_h,
+        );
+
+        let _ = write!(
+            out,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr_display(ctx.diagram_id),
+            escape_attr_display(&c.id),
+            fmt(left),
+            fmt(top),
+            fmt(w),
+            fmt(h),
+            fmt(label_x),
+            fmt(label_y),
+            fmt(label_w),
+            class_text_overrides::class_html_label_max_width_px(),
+            escape_xml_display(&c.title)
+        );
+    }
+    out.push_str("</g>");
 }
 
 fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
@@ -317,6 +395,7 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
     state: &mut ClassNamespaceSubgraphState<'a>,
     parent: Option<&'a str>,
     clusters_by_id: &HashMap<&str, &LayoutCluster>,
+    diagram_id: &str,
 ) {
     if parent == state.active_subgraph {
         return;
@@ -361,7 +440,8 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
 
             let _ = write!(
                 out,
-                r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                escape_attr(diagram_id),
                 escape_attr(&c.id),
                 fmt(local_left),
                 fmt(local_top),
