@@ -465,6 +465,26 @@ mod svg_pipeline_tests {
         assert!(svg.contains("title=Host Pipeline"));
         assert!(svg.contains("id=host-style"));
     }
+
+    #[test]
+    fn render_svg_sync_applies_scoped_theme_css_once() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("theme-css");
+        let source = r##"%%{init: {"themeCSS": ".node rect { fill: #123456; } @media (max-width: 600px) { text { fill: #654321; } }"}}%%
+flowchart TD
+  A[Hello] --> B[World]
+"##;
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert_eq!(
+            svg.matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+        assert!(svg.contains("#theme-css .node rect { fill: #123456; }"));
+        assert!(svg.contains("@media (max-width: 600px) {"));
+        assert!(svg.contains("#theme-css text { fill: #654321; }"));
+    }
 }
 
 /// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.

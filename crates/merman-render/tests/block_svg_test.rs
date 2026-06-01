@@ -36,7 +36,7 @@ fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
         "expected block SVG to emit scoped CSS instead of an empty style element"
     );
     assert!(
-        svg.contains(r#"#merman .label text,#merman span,#merman p{fill:#333;color:#333;}"#),
+        svg.contains(r#"#merman .label text,#merman span,#merman p{fill:#131300;color:#131300;}"#),
         "expected block HTML/SVG labels to avoid inheriting host page text color"
     );
     assert!(

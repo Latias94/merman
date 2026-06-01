@@ -226,33 +226,20 @@ pub(super) fn render_block_diagram_svg_model(
 
     fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
         let id = escape_xml(diagram_id);
-        let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string(effective_config, &["fontFamily"]))
-            .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-        let font_family = normalize_css_font_family(font_family.as_str());
-        let font_family = if font_family.is_empty() {
-            r#""trebuchet ms",verdana,arial,sans-serif"#
-        } else {
-            font_family.as_str()
-        };
-        let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_f64(effective_config, &["fontSize"]))
-            .unwrap_or(16.0)
-            .max(1.0);
-        let text_color = theme_color(effective_config, "textColor", "#333");
-        let node_text_color = theme_color(effective_config, "nodeTextColor", text_color.as_str());
-        let title_color = theme_color(effective_config, "titleColor", text_color.as_str());
-        let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
-        let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-        let line_color = theme_color(effective_config, "lineColor", "#333333");
-        let arrowhead_color = theme_color(effective_config, "arrowheadColor", line_color.as_str());
-        let edge_label_background = theme_color(
-            effective_config,
-            "edgeLabelBackground",
-            "rgba(232,232,232, 0.8)",
-        );
-        let cluster_bkg = theme_color(effective_config, "clusterBkg", "#ffffde");
-        let cluster_border = theme_color(effective_config, "clusterBorder", "#aaaa33");
+        let theme = SvgTheme::new(effective_config);
+        let font_family = theme.font_family_css();
+        let font_family = font_family.as_str();
+        let font_size = theme.font_size_px();
+        let text_color = theme.color("textColor", "#333");
+        let node_text_color = theme.color("nodeTextColor", text_color.as_str());
+        let title_color = theme.color("titleColor", text_color.as_str());
+        let main_bkg = theme.color("mainBkg", "#ECECFF");
+        let node_border = theme.color("nodeBorder", "#9370DB");
+        let line_color = theme.color("lineColor", "#333333");
+        let arrowhead_color = theme.color("arrowheadColor", line_color.as_str());
+        let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+        let cluster_bkg = theme.color("clusterBkg", "#ffffde");
+        let cluster_border = theme.color("clusterBorder", "#aaaa33");
 
         let mut out = String::new();
         let _ = write!(

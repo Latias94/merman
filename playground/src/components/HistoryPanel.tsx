@@ -13,6 +13,7 @@ import { X, Trash2, Clock, FileCode } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
 import { getCurrentLanguage } from "@/src/i18n";
+import { normalizeThemeName } from "@merman/web";
 
 export function HistoryPanel() {
   const { t } = useTranslation();
@@ -23,7 +24,7 @@ export function HistoryPanel() {
 
   const handleSelectHistory = (item: (typeof history)[0]) => {
     setCode(item.code);
-    setDiagramTheme(item.theme as "default" | "dark" | "forest" | "neutral");
+    setDiagramTheme(normalizeThemeName(item.theme));
     toggleHistory();
   };
 

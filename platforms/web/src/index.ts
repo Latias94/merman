@@ -21,6 +21,24 @@ export interface BindingOptions {
   svg?: SvgOptions;
 }
 
+export const SUPPORTED_THEMES = [
+  "default",
+  "base",
+  "dark",
+  "forest",
+  "neutral",
+] as const;
+
+export type ThemeName = (typeof SUPPORTED_THEMES)[number];
+
+export function isThemeName(theme: string): theme is ThemeName {
+  return (SUPPORTED_THEMES as readonly string[]).includes(theme);
+}
+
+export function normalizeThemeName(theme: string | null | undefined): ThemeName {
+  return theme && isThemeName(theme) ? theme : "default";
+}
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -160,8 +178,8 @@ export function asciiSupportedDiagrams(): string[] {
   return getMerman().asciiSupportedDiagrams();
 }
 
-export function themes(): string[] {
-  return getMerman().themes();
+export function themes(): ThemeName[] {
+  return getMerman().themes().map(normalizeThemeName);
 }
 
 export function abiVersion(): number {

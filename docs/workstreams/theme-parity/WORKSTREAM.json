@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "slug": "theme-parity",
+  "title": "Theme Parity Refactor",
+  "status": "complete",
+  "updated": "2026-06-01",
+  "scope_kind": "execution",
+  "problem": "Merman's theme support is partial: default theme variables are not expanded, renderer fallback logic is duplicated, and Web/WASM theme lists are maintained separately.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/theme-parity/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/theme-parity/TODO.md"
+    },
+    {
+      "role": "tasks",
+      "path": "docs/workstreams/theme-parity/TASKS.jsonl"
+    },
+    {
+      "role": "campaigns",
+      "path": "docs/workstreams/theme-parity/CAMPAIGNS.jsonl"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/theme-parity/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/theme-parity/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/theme-parity/CONTEXT.jsonl",
+  "current_task": null,
+  "gates": [
+    "cargo fmt",
+    "cargo nextest run -p merman-core theme",
+    "cargo nextest run -p merman-render block_svg class_svg flowchart_svg",
+    "cargo check -p merman-wasm --target wasm32-unknown-unknown",
+    "npm run build --prefix platforms/web",
+    "npm run build --prefix playground",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3"
+  ],
+  "evidence": [
+    "docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0042-rendering-strategy.md",
+    "docs/adr/0063-extensible-svg-output-pipeline.md",
+    "docs/adr/0064-host-styling-svg-postprocessors.md"
+  ],
+  "architecture_refs": [
+    "docs/rendering/SVG_OUTPUT_PIPELINE.md",
+    "docs/rendering/UPSTREAM_SVG_BASELINES.md",
+    "docs/workstreams/fearless-refactor/README.md"
+  ],
+  "capability_tags": [
+    "theme",
+    "svg",
+    "wasm",
+    "playground",
+    "mermaid-parity"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "split-follow-up",
+    "notes": "Theme refactor lane is complete. Follow up separately for broad theme fixtures, neo/redux theme families, and remaining diagram-specific resolver migrations."
+  }
+}

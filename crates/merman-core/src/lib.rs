@@ -33,6 +33,10 @@ pub use diagram::{
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
+pub fn supported_themes() -> &'static [&'static str] {
+    theme::SUPPORTED_THEME_NAMES
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
     pub suppress_errors: bool,

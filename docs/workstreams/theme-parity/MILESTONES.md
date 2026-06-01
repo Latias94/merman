@@ -1,0 +1,54 @@
+# Theme Parity Refactor - Milestones
+
+Status: Complete
+Last updated: 2026-06-01
+
+## M0 - Scope Freeze
+
+Exit criteria:
+
+- Workstream artifacts exist and agree.
+- Mermaid source comparison is captured in DESIGN.md.
+- First executable task is ready.
+
+## M1 - Core Theme Expansion
+
+Exit criteria:
+
+- `theme: default` populates common Mermaid theme variables in core.
+- User overrides keep precedence.
+- Existing `base/dark/forest/neutral` assertions still pass.
+- Narrow core nextest gate passes.
+
+## M2 - Render Resolver Cleanup
+
+Exit criteria:
+
+- Class, block, and flowchart SVG CSS read common theme values through a shared resolver.
+- Redundant fallback code covered by core defaults is removed.
+- Text color remains scoped inside SVG output under hostile host-page CSS.
+
+## M3 - API And Playground Theme Surface
+
+Exit criteria:
+
+- WASM, TypeScript wrapper, playground store, toolbar, history, share links, and Mermaid compare mode
+  agree on the supported theme list.
+- Unknown theme values degrade to `default`.
+- Frontend build gates pass.
+
+## M4 - Follow-Up Split
+
+Exit criteria:
+
+- Broad theme fixture expansion is explicitly split from this lane.
+- Remaining diagram-specific resolver migration is documented as follow-up work.
+- `neo/redux` theme families are deferred into a separate design lane.
+
+## M5 - Closeout
+
+Exit criteria:
+
+- CHANGELOG records theme refactor and user-visible theme behavior changes.
+- `neo/redux` support is either deferred explicitly or moved to a follow-on workstream.
+- Final verification evidence is recorded.

@@ -14,6 +14,7 @@ import {
 import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
+import { normalizeThemeName } from "@merman/web";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -73,17 +74,24 @@ export function Toolbar() {
   } = useAppStore();
   const { addToHistory } = useHistory();
   const { copyShareUrl } = useShare();
-  const { render, renderAscii } = useMerman();
+  const { render, renderAscii, getThemes } = useMerman();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
 
-  // 获取主题选项
-  const THEME_OPTIONS: { value: Theme; label: string }[] = [
-    { value: "default", label: t("themes.default") },
-    { value: "dark", label: t("themes.dark") },
-    { value: "forest", label: t("themes.forest") },
-    { value: "neutral", label: t("themes.neutral") },
-  ];
+  const themeOptions: { value: Theme; label: string }[] = useMemo(() => {
+    const seen = new Set<Theme>();
+    return getThemes()
+      .map(normalizeThemeName)
+      .filter((theme) => {
+        if (seen.has(theme)) return false;
+        seen.add(theme);
+        return true;
+      })
+      .map((theme) => ({
+        value: theme,
+        label: t(`themes.${theme}`, { defaultValue: theme }),
+      }));
+  }, [getThemes, t]);
 
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("themes.default") },
@@ -291,9 +299,9 @@ export function Toolbar() {
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup
                 value={diagramTheme}
-                onValueChange={(v) => setDiagramTheme(v as Theme)}
+                onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
               >
-                {THEME_OPTIONS.map((option) => (
+                {themeOptions.map((option) => (
                   <DropdownMenuRadioItem key={option.value} value={option.value}>
                     {option.label}
                   </DropdownMenuRadioItem>

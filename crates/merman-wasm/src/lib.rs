@@ -117,7 +117,7 @@ pub fn supported_diagrams() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn themes() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&["default", "dark", "forest", "neutral"])
+    serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 

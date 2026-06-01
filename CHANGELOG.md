@@ -41,6 +41,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   including warmups, configurable iterations, and summarized results.
 - Added the `@merman/web` browser package surface for TypeScript/WASM integrations, including
   configurable initialization and SVG element render helpers.
+- Added a single supported-theme surface across core, bindings, WASM, `@merman/web`, and the
+  playground, including the Mermaid `base` theme.
+- Added scoped Mermaid `themeCSS` handling for rendered SVG output, including namespace handling
+  for common nested CSS rules.
 - Added GitHub Pages CI for the playground and a built-dist WASM artifact check for deployment
   safety.
 - Added web benchmark guidance for deciding when Merman-vs-Mermaid JS comparisons are meaningful
@@ -54,12 +58,20 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Improved playground SVG preview interactions: panning no longer selects diagram text, preview
   sizing fits the available pane more consistently, wheel zoom works directly inside the preview,
   and zoomed SVGs render more sharply.
+- Expanded Mermaid-compatible default theme handling so `theme: default` now populates core
+  `themeVariables` before SVG rendering, including Mermaid's default class/block text color.
+- Centralized SVG theme-variable resolution for Class, Block, and Flowchart styles so renderers use
+  the same derived theme values.
+- Normalized playground theme selection, shared URLs, history, and Mermaid compare mode through the
+  `@merman/web` theme helpers.
 
 ### Fixed
 
 - Fixed Class and Block diagram SVG labels so HTML and SVG text get diagram-scoped colors instead
   of inheriting light text from dark host pages; labels remain visible in the playground and
   exported SVG.
+- Fixed CSS hash colors in Mermaid directive-driven `themeCSS` so encoded `#...;` values are
+  restored before SVG style injection.
 
 ## [0.6.0] - 2026-05-28
 
