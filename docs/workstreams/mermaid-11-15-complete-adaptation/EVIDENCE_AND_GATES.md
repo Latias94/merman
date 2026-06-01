@@ -369,6 +369,16 @@ git diff --check
   - Removed the stale accepted root residual policy entry for
     `flowchart/upstream_docs_math_flowcharts_001`; it no longer appears after the Flowchart 11.15
     Math baseline refresh.
+- 2026-06-01 M15C-080 upstream family decisions:
+  - `Get-ChildItem repo-ref/mermaid/packages/mermaid/src/diagrams -Directory`: confirmed the
+    Mermaid 11.15 upstream diagram directory set includes `eventmodeling`, `wardley`, `treeView`,
+    `venn`, `ishikawa`, `cynefin`, and `railroad` in addition to implemented families.
+  - `docs/alignment/STATUS.md` records final 11.15 support decisions for these families. No family
+    is promoted in this campaign because none has local parser/model/layout/render/fixture/SVG
+    baseline coverage.
+  - `eventmodeling`, `wardley`, `treeView`, `venn`, and `ishikawa` are deferred follow-on
+    diagram-family lanes; `cynefin` and `railroad` remain out of scope unless explicitly promoted
+    later.
 
 ## Evidence Anchors
 

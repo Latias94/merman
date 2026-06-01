@@ -79,7 +79,10 @@ Notes:
 The `mermaid-11-15-baseline-upgrade` workstream selected existing-diagram compatibility as the
 baseline bump path. The 11.15 baseline covers the diagram matrix above plus the implemented
 11.13-11.15 deltas for those diagrams; it does not imply support for every upstream diagram
-directory.
+directory. M15C-080 final decision check was refreshed on 2026-06-01 against
+`repo-ref/mermaid/packages/mermaid/src/diagrams`; no new upstream family is promoted into the
+implemented matrix without a child workstream because the families below still have no local parser,
+semantic model, layout, renderer, fixtures, or upstream SVG baselines.
 
 | Upstream header or id | Upstream source | Local 11.15 status | Decision |
 |---|---|---|---|

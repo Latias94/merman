@@ -106,7 +106,7 @@ Last updated: 2026-06-01
 
 ## M4 - Upstream Family Decisions
 
-- [ ] M15C-080 [owner=planner] [deps=M15C-020] [scope=docs/alignment/STATUS.md,docs/workstreams]
+- [x] M15C-080 [owner=planner] [deps=M15C-020] [scope=docs/alignment/STATUS.md,docs/workstreams]
   Goal: Record final 11.15 decisions for upstream families not in the implemented matrix:
   `eventmodeling`, `wardley`, `treeView`, `venn`, `ishikawa`, `cynefin`, and `railroad`.
   Validation: `cargo run -p xtask -- check-alignment`; new child workstreams exist for promoted
@@ -114,7 +114,11 @@ Last updated: 2026-06-01
   Review: The main baseline claim must not imply support for deferred families.
   Evidence: `docs/alignment/STATUS.md`
   Context: this workstream plus `repo-ref/mermaid/packages/mermaid/src/diagrams`.
-  Handoff: Not started.
+  Handoff: DONE. `docs/alignment/STATUS.md` now records the 2026-06-01 final decision check
+  against `repo-ref/mermaid/packages/mermaid/src/diagrams`. No family was promoted in this
+  campaign, so no child workstreams are required yet. `eventmodeling`, `wardley`, `treeView`,
+  `venn`, and `ishikawa` are deferred follow-on diagram-family lanes; `cynefin` and `railroad`
+  remain out of scope unless explicitly promoted later.
 
 ## M5 - Closeout
 

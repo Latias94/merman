@@ -11,8 +11,10 @@ has landed renderer fixes for Sequence central connections, Sequence 11.15 metad
 symbols/type labels, Journey scoped task-line ids, the remaining full Sequence 11.15 DOM
 differences, Timeline scoped node ids, and the Sankey 11.15 baseline refresh. M15C-060 is now
 closed: XYChart, Flowchart, ER, and Class have all been refreshed or converged against Mermaid
-11.15 stored baselines. Full implemented-matrix SVG DOM `parity` now passes. The active remainder is
-M15C-070 `parity-root`: root/viewBox/max-width residuals remain across the implemented matrix.
+11.15 stored baselines. M15C-080 upstream-family decisions are recorded in
+`docs/alignment/STATUS.md`; no unsupported 11.15 family was promoted into this campaign. Full
+implemented-matrix SVG DOM `parity` now passes. The active remainder is M15C-070 `parity-root`:
+root/viewBox/max-width residuals remain across the implemented matrix.
 Fresh report triage shows flowchart=229, sequence=168, architecture=32, class=20, c4=15,
 timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. The stale
 `flowchart/upstream_docs_math_flowcharts_001` accepted residual policy entry has been removed.
@@ -37,6 +39,9 @@ timeline=7, mindmap=4, sankey=3, journey=2, and er=4 table `dom ok = no` rows. T
 - Use this lane as an umbrella campaign, not as a monolithic implementation workstream.
 - Make `parity` authoritative before `parity-root`.
 - Treat new upstream diagram families as child-lane candidates.
+- M15C-080 confirmed the unsupported Mermaid 11.15 family decisions:
+  `eventmodeling`, `wardley`, `treeView`, `venn`, and `ishikawa` are deferred follow-on lanes;
+  `cynefin` and `railroad` remain out of scope unless explicitly promoted later.
 - M15C-020 classified the current 525 DOM mismatches in `PARITY_FAILURE_INVENTORY.md`.
 - M15C-030 removed active compare/report metadata that hard-coded Mermaid 11.12.3.
 - M15C-040 sequence probe found one real renderer/model gap beyond stale SVG baselines:

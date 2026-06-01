@@ -57,7 +57,10 @@ Exit criteria:
 - Promoted families have child workstreams.
 - Deferred or out-of-scope families are visible in `docs/alignment/STATUS.md`.
 
-Status: not started.
+Status: complete. `docs/alignment/STATUS.md` records the 2026-06-01 final decision check against
+`repo-ref/mermaid/packages/mermaid/src/diagrams`. No family was promoted in this campaign:
+`eventmodeling`, `wardley`, `treeView`, `venn`, and `ishikawa` are deferred follow-on lanes;
+`cynefin` and `railroad` remain out of scope unless explicitly promoted later.
 
 ## M5 - Closeout
 
