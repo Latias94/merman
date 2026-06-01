@@ -123,7 +123,13 @@ Last updated: 2026-06-01
   removes the representative handdrawn/demo rows, keeps structural `parity` green, and leaves
   Flowchart `parity-root` at 148 strict root-only mismatches. The top residuals are now demo
   flowchart 016/052, small shape-alias buckets (`36`, `27`, `20`, `21`, `12`), delay/root rounding,
-  markdown-subgraph, and shape-family geometry/root buckets.
+  markdown-subgraph, and shape-family geometry/root buckets. The demo flowchart 016/052 slice then
+  proved those two rows were stale root pins, not renderer geometry: with root overrides disabled
+  they were only `+0.922px` off, while the active pin still forced the old `622.921875px` root.
+  The existing pins now match the Mermaid 11.15 baseline root (`640.921875px`), both targeted
+  fixtures pass, override growth remains within budget, and Flowchart `parity-root` reports 146
+  strict root-only mismatches. The leading residuals are now the remaining shape-alias and
+  shape-family/root buckets.
 
 ## M4 - Upstream Family Decisions
 

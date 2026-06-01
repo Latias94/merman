@@ -35,9 +35,13 @@ strict-root checks for alias sets 7, 23, 35, and 33 pass with root overrides dis
 geometry: local plain `Car` labels were retaining a vendored icon-like width instead of the Mermaid
 11.15 browser DOM text width. The representative handdrawn/demo rows now pass with root overrides
 disabled, structural implemented-matrix `parity` remains green, and Flowchart `parity-root` is
-still red with 148 strict root-only mismatches. The top residuals are now demo flowchart 016/052,
-the remaining smaller shape-alias buckets, delay/root rounding, markdown-subgraph, and
-shape-family geometry/root buckets.
+still red with 148 strict root-only mismatches. The demo flowchart 016/052 slice then identified
+two stale root pins: unpinned renderer output was only `+0.922px` away, but the active pins still
+forced the old `622.921875px` root. The existing pins now match the Mermaid 11.15 root
+`640.921875px`, both targeted fixtures pass, override growth remains within budget, and Flowchart
+`parity-root` is down to 146 strict root-only mismatches. The top residuals are now the remaining
+smaller shape-alias buckets, delay/root rounding, markdown-subgraph, and shape-family geometry/root
+buckets.
 
 ## Active Task
 
@@ -143,6 +147,11 @@ shape-family geometry/root buckets.
   the Mermaid 11.15 browser DOM text width `24.203125px`. This is baseline/browser-metric anchored,
   not a Mermaid shape-source formula. The guard excludes `fa:` and inline `<i>` icon labels, the
   FontAwesome boundary tests still pass, and Flowchart strict-root mismatch count is down to 148.
+- M15C-070 Flowchart demo 016/052 triage found stale root pins rather than a renderer geometry
+  problem. With root overrides disabled, both fixtures were within `+0.922px` of the 11.15 root;
+  the active old pins forced `622.921875px`. The existing pins now use the pinned 11.15 root
+  `640.921875px`, no override growth was introduced, and Flowchart strict-root mismatch count is
+  down to 146.
 
 ## Known Risks
 
@@ -156,11 +165,11 @@ shape-family geometry/root buckets.
 ## Next Recommended Action
 
 Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-alias source
-formula, and plain `Car` text-metric buckets are closed, but strict Flowchart `parity-root` still
-reports 148 root-only mismatches. The next executable step is to sample the new top Flowchart
-residuals: demo flowchart 016/052, remaining shape-alias buckets (`36`, `27`, `20`, `21`, `12`),
-delay half-rounded rectangle, Unicode punctuation/text-metric stress, markdown subgraph root size,
-and shape-family layout/root clusters. Check whether each is a shared Mermaid 11.15 root geometry
-rule, a text metric rule, or only then a scoped root override. After Flowchart stops exposing large
-shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule
-change before adding broad fixture-scoped root pins.
+formula, plain `Car` text-metric, and demo 016/052 stale-root-pin buckets are closed, but strict
+Flowchart `parity-root` still reports 146 root-only mismatches. The next executable step is to
+sample the new top Flowchart residuals: remaining shape-alias buckets (`36`, `27`, `20`, `21`,
+`12`), delay half-rounded rectangle, Unicode punctuation/text-metric stress, markdown subgraph root
+size, and shape-family layout/root clusters. Check whether each is a shared Mermaid 11.15 root
+geometry rule, a text metric rule, or only then a scoped root override. After Flowchart stops
+exposing large shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root
+viewport rule change before adding broad fixture-scoped root pins.

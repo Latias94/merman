@@ -564,6 +564,35 @@ git diff --check
   - `cargo fmt --check`: passed.
   - `git diff --check`: passed.
   - `cargo run -p xtask -- check-alignment`: passed.
+- 2026-06-01 M15C-070 Flowchart demo 016/052 stale root-pin slice:
+  - Diagnosed the next top Flowchart strict-root rows
+    `upstream_html_demos_flowchart_flowchart_016` and
+    `upstream_html_demos_flowchart_flowchart_052`. With root overrides enabled, both fixtures used
+    an old local root pin of `622.921875px` and failed against the Mermaid 11.15 baseline
+    `640.921875px` root.
+  - Re-running both fixtures with `--no-root-overrides` showed the renderer itself was close to the
+    11.15 baseline (`+0.922px` root drift), so this was not a shared geometry regression. The
+    remaining unpinned drift is a small icon-label browser metric residual; the active failure was
+    caused by a stale pin.
+  - Updated the existing root override entry for both fixtures to the pinned Mermaid 11.15 baseline
+    root (`viewBox="0 0 640.921875 70"`, max-width `640.922`). This updates an existing pin rather
+    than adding new override coverage.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_flowchart_016 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart_flowchart_052 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all`:
+    passed.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed; root viewport overrides
+    remain at 282 total entries and Flowchart remains at 39 entries.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected, now with 146 Flowchart strict root-only mismatches, down from 148.
+    The leading residuals are shape-alias `36` (`+15.016px`), `27` (`-15.000px`), `20`
+    (`+14.546px`), `21` (`+11.407px`), newshapesset3 LR no-label (`+10.586px`), delay
+    half-rounded rectangle (`+10.438px`), Unicode punctuation stress (`-10.188px`), and
+    shape-alias `12` (`-9.969px`).
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+  - `cargo fmt --check`: passed.
+  - `git diff --check`: passed.
 
 ## Evidence Anchors
 

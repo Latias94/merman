@@ -110,7 +110,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 -45 2400.640625 645", "2400.64"))
         }
         "upstream_html_demos_flowchart_flowchart_016"
-        | "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 622.921875 70", "622.922")),
+        | "upstream_html_demos_flowchart_flowchart_052" => Some(("0 0 640.921875 70", "640.922")),
         "upstream_html_demos_flowchart_flowchart_022"
         | "upstream_html_demos_flowchart_flowchart_055" => Some(("0 0 953.6875 257", "953.688")),
         "upstream_html_demos_flowchart_flowchart_024"
