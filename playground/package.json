@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "node scripts/verify-dist-wasm.mjs",
     "preview": "vite preview",
+    "verify:dist": "node scripts/verify-dist-wasm.mjs",
     "lint": "eslint ."
   },
   "dependencies": {

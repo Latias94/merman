@@ -49,6 +49,20 @@ npm run build --prefix playground
 
 This proves the live editor can ship as a static app.
 
+### WWP-050 Pages Gate
+
+```bash
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+npm run prepack --prefix platforms/web
+npm ci --prefix playground
+npm run build --prefix playground
+npm run verify:dist --prefix playground
+```
+
+This proves the Pages workflow can rebuild generated WASM artifacts locally, build the static
+playground, and fail the deploy artifact if the WASM binary or JS shim is absent.
+
 ### Broader Closeout Gate
 
 Use focused gates plus relevant Rust package checks instead of `cargo nextest run --workspace`;
@@ -197,3 +211,51 @@ Residual notes:
   (`markdown` vs expected `text`).
 - Those two failures are outside the WWP-040 WASM/playground integration path and need separate
   baseline triage before being used as regressions for this lane.
+
+### 2026-06-01 - WWP-050 GitHub Pages Build
+
+Changes:
+
+- Added `.github/workflows/pages.yml`.
+- Added `playground/scripts/verify-dist-wasm.mjs`.
+- Wired the verifier into `playground` as `postbuild` and `verify:dist`.
+- Updated workstream context, handoff, TODO, milestones, and journal notes for WWP-050.
+
+Commands:
+
+```bash
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+npm run prepack --prefix platforms/web
+npm ci --prefix playground
+npm run build --prefix playground
+npm run verify:dist --prefix playground
+```
+
+Negative verifier probe:
+
+```bash
+# Temporarily move playground/dist/assets/*.wasm away, run:
+npm run verify:dist --prefix playground
+# Then restore the WASM file.
+```
+
+Results:
+
+- The first local workflow-equivalent run failed at `npm ci --prefix playground` with a Windows
+  `EPERM unlink` on `lightningcss.win32-x64-msvc.node` because the local Vite preview was still
+  running and held a native module file lock.
+- After stopping the preview process, the full workflow-equivalent command passed.
+- `npm run build --prefix playground` now runs the postbuild verifier and passed.
+- `npm run verify:dist --prefix playground` passed and reported:
+  `assets/merman_wasm_bg-BccmGt3e.wasm` and `assets/merman_wasm-CW0mGF3B.js`.
+- The negative verifier probe failed as expected with exit code 1 when the generated `.wasm` file
+  was temporarily absent, then the file was restored.
+
+Residual notes:
+
+- GitHub repository settings may still need Pages source set to GitHub Actions before the first
+  successful deployment.
+- `npm ci --prefix playground` reported two moderate npm audit findings in the playground
+  dependency tree; this did not block the Pages artifact gate.
+- Vite still reports the existing large chunk warning for the playground bundle.

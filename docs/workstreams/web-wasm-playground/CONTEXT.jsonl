@@ -10,3 +10,5 @@
 {"role":"implementation","path":"platforms/web","reason":"TypeScript package wrapping generated WASM and typed JSON-contract helpers."}
 {"role":"implementation","path":"playground","reason":"Live editor app integrated with the real WASM package."}
 {"role":"dependency","path":"Cargo.toml","reason":"Uses web-time for browser-compatible Instant/Duration across the WASM render chain."}
+{"role":"implementation","path":".github/workflows/pages.yml","reason":"GitHub Pages workflow that rebuilds generated WASM artifacts instead of relying on checked-in outputs."}
+{"role":"implementation","path":"playground/scripts/verify-dist-wasm.mjs","reason":"Static dist verifier that fails when the generated WASM binary or JS shim is absent from the deploy artifact."}

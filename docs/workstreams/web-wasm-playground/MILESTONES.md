@@ -80,6 +80,10 @@ Primary evidence:
 - `.github/workflows/pages.yml`
 - dist verifier output
 
+Status: complete. The Pages workflow builds `platforms/web`, builds `playground`, verifies the
+static dist contains the generated WASM binary and JS shim, and uploads `playground/dist` for
+GitHub Pages deployment.
+
 ## M5 - Closeout
 
 Exit criteria:

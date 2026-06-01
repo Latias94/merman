@@ -6,16 +6,16 @@ Last updated: 2026-06-01
 ## Current State
 
 The lane is open. Scope is frozen around a browser WASM crate, TypeScript package, playground
-integration, and Pages workflow. The formal WASM crate, TypeScript web package, and live editor
-integration are now in place.
+integration, and Pages workflow. The formal WASM crate, TypeScript web package, live editor
+integration, and Pages build gate are now in place.
 
 ## Active Task
 
-- Task ID: WWP-050
-- Owner: unassigned
-- Files: `.github/workflows`, `playground`, `platforms/web`, `docs`
-- Validation: local workflow-equivalent build command and dist WASM verifier
-- Status: NEEDS_CONTEXT
+- Task ID: WWP-060
+- Owner: planner
+- Files: `docs/workstreams/web-wasm-playground`, `docs/release`
+- Validation: verify-rust-workstream records fresh final gate evidence
+- Status: READY
 - Review: pending
 - Evidence: `docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md`
 
@@ -27,6 +27,10 @@ integration are now in place.
   `@merman/web`.
 - Switched runtime timing in the browser render chain from `std::time` to `web-time` after browser
   smoke exposed a wasm `Instant::now()` panic.
+- Added `.github/workflows/pages.yml` to rebuild generated WASM artifacts, build the Vite
+  playground, verify `playground/dist`, and deploy via GitHub Pages.
+- Added `playground/scripts/verify-dist-wasm.mjs` and wired it to `postbuild`/`verify:dist` so
+  missing WASM fails local and CI static builds.
 - Use `merman-bindings-core` as the browser backend boundary.
 - Use `wasm-bindgen` plus a hand-written TypeScript wrapper instead of UniFFI or C ABI for browser consumers.
 - Defer npm publishing and raster/PDF browser output until the core SVG/JSON package and playground work.
@@ -36,7 +40,9 @@ integration are now in place.
 
 ## Blockers
 
-- No current WWP-050 blocker recorded.
+- No current WWP-060 blocker recorded.
+- Repository settings may still need GitHub Pages source set to GitHub Actions before the first
+  successful deployment.
 - Tooling note: wasm-pack auto-install of `wasm-bindgen-cli` failed under Rust 1.87 unless the CLI
   was installed with `cargo install wasm-bindgen-cli --version 0.2.108 --locked`.
 - Broader suite note: focused web gates pass. Full package suites still have unrelated existing
@@ -45,5 +51,5 @@ integration are now in place.
 
 ## Next Recommended Action
 
-- Implement WWP-050: add a GitHub Pages workflow and a local dist verifier that proves the static
-  artifact contains the generated WASM binary and JS shim.
+- Run closeout for WWP-060: verify the recorded gate set, review the workstream, and either close
+  the lane or split npm publishing, raster/PDF export, and broader browser QA into follow-ons.

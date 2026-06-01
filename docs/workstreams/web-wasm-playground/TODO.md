@@ -44,13 +44,14 @@ Last updated: 2026-06-01
 
 ## M4 - GitHub Pages Build
 
-- [ ] WWP-050 [owner=unassigned] [deps=WWP-040] [scope=.github/workflows,playground,platforms/web,docs]
+- [x] WWP-050 [owner=codex] [deps=WWP-040] [scope=.github/workflows,playground,platforms/web,docs]
   Goal: Add a Pages workflow and static artifact verification so deploys fail when WASM is absent.
   Validation: local workflow-equivalent build command and dist WASM verifier.
   Review: CI must not depend on checked-in generated WASM artifacts.
   Evidence: workflow file, verifier output, EVIDENCE_AND_GATES.md
   Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
-  Handoff: Note whether GitHub Pages settings still need repository configuration.
+  Handoff: DONE. Added a GitHub Pages workflow plus postbuild/static dist verifier; repository Pages
+  settings should use GitHub Actions as the source if not already configured.
 
 ## M5 - Closeout
 
