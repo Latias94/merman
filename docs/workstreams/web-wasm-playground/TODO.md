@@ -62,3 +62,13 @@ Last updated: 2026-06-01
   Evidence: docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
   Handoff: Summarize residual risks in HANDOFF.md.
+
+## Follow-ons
+
+- [x] WWP-070 [owner=codex] [deps=WWP-050] [scope=playground,docs/workstreams/web-wasm-playground]
+  Goal: Add an optional Mermaid JS compare mode to the playground with lazy Mermaid loading and a side-by-side SVG view.
+  Validation: npm run build --prefix playground, browser smoke that opens Compare mode and observes both Merman and Mermaid SVG panes.
+  Review: Mermaid JS must not be part of the default page load path.
+  Evidence: docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md
+  Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
+  Handoff: DONE. Side-by-side compare mode lazy-loads Mermaid JS only after opening Compare; overlay, source diff, pixel diff, and local benchmark controls remain deferred.

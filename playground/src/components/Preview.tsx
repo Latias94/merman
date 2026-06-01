@@ -1,7 +1,20 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useMerman } from "@/src/hooks/useMerman";
 import { useAppStore } from "@/src/store";
+import { renderMermaidSvg, MERMAID_JS_VERSION } from "@/src/lib/mermaid-renderer";
+import { exportPNG, exportSVG } from "@/src/lib/export";
+import {
+  SvgViewport,
+  useSvgViewport,
+  type SvgViewportController,
+} from "@/src/components/SvgViewport";
 import { cn } from "@/lib/utils";
 import {
   ZoomIn,
@@ -11,7 +24,9 @@ import {
   Loader2,
   AlertCircle,
   Copy,
-  Check
+  Check,
+  FileCode,
+  ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,50 +40,72 @@ interface PreviewProps {
   className?: string;
 }
 
-type PreviewMode = "svg" | "ascii";
+type PreviewMode = "svg" | "ascii" | "compare";
+type EngineKey = "merman" | "mermaid";
 
-// ASCII 支持的图表类型
+interface CompareArtifact {
+  key: EngineKey;
+  title: string;
+  version: string;
+  svg: string | null;
+  error: string | null;
+  renderTime: number | null;
+  loading: boolean;
+}
+
 const ASCII_SUPPORTED_TYPES = ["flowchart", "sequence", "class", "er", "xychart"];
 
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
-  const { code, diagramTheme, setLastRenderTime, setDiagramType, isDarkMode } = useAppStore();
+  const { code, diagramTheme, setLastRenderTime, setDiagramType, isDarkMode } =
+    useAppStore();
   const { ready, loading, render, renderAscii } = useMerman();
   const [svg, setSvg] = useState<string | null>(null);
   const [ascii, setAscii] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [isAutoFit, setIsAutoFit] = useState(true);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
-  const [copied, setCopied] = useState(false);
+  const [copiedAscii, setCopiedAscii] = useState(false);
+  const [copiedEngine, setCopiedEngine] = useState<EngineKey | null>(null);
+  const [exportingEngine, setExportingEngine] = useState<EngineKey | null>(null);
   const [currentDiagramType, setCurrentDiagramType] = useState<string>("flowchart");
-  const containerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [mermanRenderTime, setMermanRenderTime] = useState<number | null>(null);
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
+  const [mermaidError, setMermaidError] = useState<string | null>(null);
+  const [mermaidRenderTime, setMermaidRenderTime] = useState<number | null>(null);
+  const [mermaidLoading, setMermaidLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 检测图表类型
-  const detectDiagramType = useCallback((code: string): string => {
-    const firstLine = code.trim().split('\n')[0]?.toLowerCase() || '';
-    if (firstLine.startsWith('flowchart') || firstLine.startsWith('graph')) return 'flowchart';
-    if (firstLine.startsWith('sequencediagram')) return 'sequence';
-    if (firstLine.startsWith('classdiagram')) return 'class';
-    if (firstLine.startsWith('statediagram')) return 'state';
-    if (firstLine.startsWith('erdiagram')) return 'er';
-    if (firstLine.startsWith('gantt')) return 'gantt';
-    if (firstLine.startsWith('pie')) return 'pie';
-    if (firstLine.startsWith('mindmap')) return 'mindmap';
-    if (firstLine.startsWith('gitgraph')) return 'gitgraph';
-    if (firstLine.startsWith('timeline')) return 'timeline';
-    return 'unknown';
+  const svgViewport = useSvgViewport({
+    svg,
+    enabled: previewMode === "svg",
+  });
+  const mermanCompareViewport = useSvgViewport({
+    svg,
+    enabled: previewMode === "compare",
+  });
+  const mermaidCompareViewport = useSvgViewport({
+    svg: mermaidSvg,
+    enabled: previewMode === "compare",
+  });
+
+  const detectDiagramType = useCallback((source: string): string => {
+    const firstLine = source.trim().split("\n")[0]?.toLowerCase() || "";
+    if (firstLine.startsWith("flowchart") || firstLine.startsWith("graph")) return "flowchart";
+    if (firstLine.startsWith("sequencediagram")) return "sequence";
+    if (firstLine.startsWith("classdiagram")) return "class";
+    if (firstLine.startsWith("statediagram")) return "state";
+    if (firstLine.startsWith("erdiagram")) return "er";
+    if (firstLine.startsWith("gantt")) return "gantt";
+    if (firstLine.startsWith("pie")) return "pie";
+    if (firstLine.startsWith("mindmap")) return "mindmap";
+    if (firstLine.startsWith("gitgraph")) return "gitgraph";
+    if (firstLine.startsWith("timeline")) return "timeline";
+    return "unknown";
   }, []);
 
-  // 检查是否支持 ASCII
   const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
 
-  // 防抖渲染
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -76,21 +113,18 @@ export function Preview({ className }: PreviewProps) {
 
     debounceRef.current = setTimeout(() => {
       if (ready && code.trim()) {
-        // 检测图表类型
         const diagramType = detectDiagramType(code);
         setCurrentDiagramType(diagramType);
         setDiagramType(diagramType);
 
-        // 渲染 SVG
         const result = render(code, diagramTheme);
         setSvg(result.svg);
         setError(result.error);
+        setMermanRenderTime(result.error ? null : result.renderTime);
         setLastRenderTime(result.renderTime);
 
-        // 如果支持 ASCII，也渲染 ASCII
         if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
-          const asciiResult = renderAscii(code);
-          setAscii(asciiResult);
+          setAscii(renderAscii(code));
         } else {
           setAscii(null);
         }
@@ -98,6 +132,7 @@ export function Preview({ className }: PreviewProps) {
         setSvg(null);
         setAscii(null);
         setError(null);
+        setMermanRenderTime(null);
       }
     }, 300);
 
@@ -106,168 +141,130 @@ export function Preview({ className }: PreviewProps) {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [code, diagramTheme, ready, render, renderAscii, setLastRenderTime, setDiagramType, detectDiagramType]);
+  }, [
+    code,
+    detectDiagramType,
+    diagramTheme,
+    ready,
+    render,
+    renderAscii,
+    setDiagramType,
+    setLastRenderTime,
+  ]);
 
-  // 如果切换到 ASCII 模式但不支持，自动切回 SVG
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
       setPreviewMode("svg");
     }
-  }, [previewMode, isAsciiSupported]);
+  }, [isAsciiSupported, previewMode]);
 
-  const handleZoomIn = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom((z) => Math.min(z * 1.2, 5));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom((z) => Math.max(z / 1.2, 0.1));
-  }, []);
-
-  const handleReset = useCallback(() => {
-    setIsAutoFit(false);
-    setZoom(1);
-    setPosition({ x: 0, y: 0 });
-  }, []);
-
-  const fitToView = useCallback(() => {
-    const container = containerRef.current;
-    const content = contentRef.current;
-    if (!container || !content) return;
-
-    const contentWidth = content.offsetWidth;
-    const contentHeight = content.offsetHeight;
-    if (contentWidth <= 0 || contentHeight <= 0) return;
-
-    const availableWidth = Math.max(container.clientWidth - 48, 1);
-    const availableHeight = Math.max(container.clientHeight - 48, 1);
-    const nextZoom = Math.max(
-      0.1,
-      Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight)
-    );
-
-    setZoom(Number(nextZoom.toFixed(3)));
-    setPosition({ x: 0, y: 0 });
-  }, []);
-
-  const handleFitToView = useCallback(() => {
-    setIsAutoFit(true);
-    fitToView();
-  }, [fitToView]);
-
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setIsAutoFit(false);
-    const delta = Math.exp(-e.deltaY * 0.001);
-    setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
-  }, []);
-
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.button === 0) {
-        e.preventDefault();
-        window.getSelection()?.removeAllRanges();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        setIsAutoFit(false);
-        setIsDragging(true);
-        setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+  useEffect(() => {
+    if (previewMode !== "compare" || !code.trim()) {
+      setMermaidLoading(false);
+      if (!code.trim()) {
+        setMermaidSvg(null);
+        setMermaidError(null);
+        setMermaidRenderTime(null);
       }
-    },
-    [position]
-  );
-
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (isDragging) {
-        e.preventDefault();
-        window.getSelection()?.removeAllRanges();
-        setPosition({
-          x: e.clientX - dragStart.x,
-          y: e.clientY - dragStart.y,
-        });
-      }
-    },
-    [isDragging, dragStart]
-  );
-
-  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (isDragging && e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      return;
     }
-    setIsDragging(false);
-  }, [isDragging]);
 
-  useEffect(() => {
-    if (previewMode !== "svg" || !svg) return;
-
-    setIsAutoFit(true);
-    const frame = requestAnimationFrame(fitToView);
-    return () => cancelAnimationFrame(frame);
-  }, [svg, previewMode, fitToView]);
-
-  useEffect(() => {
-    if (previewMode !== "svg" || !svg || !isAutoFit) return;
-
-    const container = containerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
-
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fitToView);
-    });
-
-    observer.observe(container);
+    let cancelled = false;
+    setMermaidLoading(true);
+    const timeout = setTimeout(() => {
+      void renderMermaidSvg(code, diagramTheme).then((result) => {
+        if (cancelled) return;
+        setMermaidSvg(result.svg);
+        setMermaidError(result.error);
+        setMermaidRenderTime(result.renderTime);
+        setMermaidLoading(false);
+      });
+    }, 300);
 
     return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
+      cancelled = true;
+      clearTimeout(timeout);
     };
-  }, [svg, previewMode, isAutoFit, fitToView]);
+  }, [code, diagramTheme, previewMode]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleCopyAscii = useCallback(async () => {
-    if (ascii) {
-      try {
-        await navigator.clipboard.writeText(ascii);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (err) {
-        console.error("Failed to copy:", err);
-      }
+    if (!ascii) return;
+
+    try {
+      await navigator.clipboard.writeText(ascii);
+      setCopiedAscii(true);
+      setTimeout(() => setCopiedAscii(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy ASCII:", err);
     }
   }, [ascii]);
 
-  // 加载状态
+  const handleCopySvg = useCallback(async (engine: EngineKey, value: string | null) => {
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedEngine(engine);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => setCopiedEngine(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy SVG:", err);
+    }
+  }, []);
+
+  const handleExportSvg = useCallback((engine: EngineKey, value: string | null) => {
+    if (!value) return;
+    exportSVG(value, `merman-compare-${engine}`);
+  }, []);
+
+  const handleExportPng = useCallback(async (engine: EngineKey, value: string | null) => {
+    if (!value) return;
+
+    setExportingEngine(engine);
+    try {
+      await exportPNG(value, `merman-compare-${engine}`, 2);
+    } catch (err) {
+      console.error("Failed to export PNG:", err);
+    } finally {
+      setExportingEngine(null);
+    }
+  }, []);
+
+  const renderTabBar = (rightContent?: ReactNode) => (
+    <TabBar
+      mode={previewMode}
+      onModeChange={setPreviewMode}
+      isAsciiSupported={isAsciiSupported}
+      t={t}
+      rightContent={rightContent}
+    />
+  );
+
   if (loading) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
-        <TabBar
-          mode={previewMode}
-          onModeChange={setPreviewMode}
-          isAsciiSupported={false}
-          t={t}
-        />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <Loader2 className="size-8 animate-spin" />
-            <span className="text-sm">{t("preview.loading")}</span>
-          </div>
-        </div>
+        {renderTabBar()}
+        <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+          {t("preview.loading")}
+        </CenteredMessage>
       </div>
     );
   }
 
-  // 空状态
   if (!code.trim()) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
-        <TabBar
-          mode={previewMode}
-          onModeChange={setPreviewMode}
-          isAsciiSupported={false}
-          t={t}
-        />
+        {renderTabBar()}
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted-foreground">
             <p className="text-sm">{t("preview.empty")}</p>
@@ -278,142 +275,80 @@ export function Preview({ className }: PreviewProps) {
     );
   }
 
-  // 错误状态
-  if (error) {
+  if (error && previewMode !== "compare") {
     return (
       <div className={cn("flex flex-col h-full", className)}>
-        <TabBar
-          mode={previewMode}
-          onModeChange={setPreviewMode}
-          isAsciiSupported={isAsciiSupported}
-          t={t}
-        />
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="max-w-md text-center">
-            <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="size-6 text-destructive" />
-            </div>
-            <h3 className="font-medium text-foreground mb-2">{t("preview.error")}</h3>
-            <p className="text-sm text-muted-foreground font-mono bg-muted/50 p-3 rounded-md">
-              {error}
-            </p>
-          </div>
-        </div>
+        {renderTabBar()}
+        <RenderError message={error} t={t} />
       </div>
     );
   }
 
+  const mermanArtifact: CompareArtifact = {
+    key: "merman",
+    title: t("preview.mermanEngine"),
+    version: "WASM",
+    svg,
+    error,
+    renderTime: svg ? mermanRenderTime : null,
+    loading: false,
+  };
+  const mermaidArtifact: CompareArtifact = {
+    key: "mermaid",
+    title: t("preview.mermaidEngine"),
+    version: MERMAID_JS_VERSION,
+    svg: mermaidSvg,
+    error: mermaidError,
+    renderTime: mermaidRenderTime,
+    loading: mermaidLoading,
+  };
+
   return (
     <div className={cn("flex flex-col h-full", className)}>
-      {/* 顶部标签栏 */}
-      <TabBar
-        mode={previewMode}
-        onModeChange={setPreviewMode}
-        isAsciiSupported={isAsciiSupported}
-        t={t}
-        rightContent={
-          <>
-            {/* SVG 模式的缩放控制 */}
-            {previewMode === "svg" && (
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" onClick={handleZoomOut}>
-                      <ZoomOut className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("preview.zoomOut")}</TooltipContent>
-                </Tooltip>
-                <span className="text-xs text-muted-foreground w-12 text-center tabular-nums">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" onClick={handleZoomIn}>
-                      <ZoomIn className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("preview.zoomIn")}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" onClick={handleFitToView}>
-                      <Maximize2 className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("preview.fitToView")}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" onClick={handleReset}>
-                      <RotateCcw className="size-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("preview.reset")}</TooltipContent>
-                </Tooltip>
-              </div>
-            )}
+      {renderTabBar(
+        <>
+          {previewMode === "svg" && (
+            <ViewportControls controller={svgViewport} t={t} />
+          )}
+          {previewMode === "ascii" && ascii && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-sm" onClick={handleCopyAscii}>
+                  {copiedAscii ? (
+                    <Check className="size-4 text-green-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {copiedAscii ? t("preview.copied") : t("preview.copyAscii")}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </>
+      )}
 
-            {/* ASCII 模式的复制按钮 */}
-            {previewMode === "ascii" && ascii && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={handleCopyAscii}>
-                    {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {copied ? t("preview.copied") : t("preview.copyAscii")}
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </>
-        }
-      />
-
-      {/* 预览内容区 */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
-        {/* SVG 预览模式 */}
         {previewMode === "svg" && (
-          <div
-            ref={containerRef}
-            className={cn(
-              "relative h-full w-full overflow-hidden cursor-grab select-none touch-none",
-              isDragging && "cursor-grabbing"
-            )}
-            onWheel={handleWheel}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            onDragStart={(event) => event.preventDefault()}
-          >
-            <div
-              className="absolute left-1/2 top-1/2 will-change-transform"
-              style={{
-                transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
-              }}
-            >
-              <div
-                className="will-change-transform"
-                style={{
-                  transform: `translate(-50%, -50%) scale(${zoom})`,
-                  transformOrigin: "center center",
-                }}
-              >
-                {svg && (
-                  <div
-                    ref={contentRef}
-                    className="preview-container inline-flex bg-white rounded-lg shadow-sm p-4"
-                    dangerouslySetInnerHTML={{ __html: svg }}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
+          <SvgViewport svg={svg} controller={svgViewport} />
         )}
 
-        {/* ASCII 预览模式 */}
+        {previewMode === "compare" && (
+          <CompareView
+            mermanArtifact={mermanArtifact}
+            mermaidArtifact={mermaidArtifact}
+            mermanController={mermanCompareViewport}
+            mermaidController={mermaidCompareViewport}
+            copiedEngine={copiedEngine}
+            exportingEngine={exportingEngine}
+            onCopySvg={handleCopySvg}
+            onExportSvg={handleExportSvg}
+            onExportPng={handleExportPng}
+            t={t}
+          />
+        )}
+
         {previewMode === "ascii" && (
           <div className="h-full w-full">
             {ascii ? (
@@ -450,31 +385,21 @@ export function Preview({ className }: PreviewProps) {
   );
 }
 
-// 标签栏组件
 interface TabBarProps {
   mode: PreviewMode;
   onModeChange: (mode: PreviewMode) => void;
   isAsciiSupported: boolean;
   t: (key: string) => string;
-  rightContent?: React.ReactNode;
+  rightContent?: ReactNode;
 }
 
 function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBarProps) {
   return (
     <div className="flex items-center justify-between h-10 px-2 border-b bg-muted/30 shrink-0">
-      {/* 左侧标签 */}
       <div className="flex items-center gap-1">
-        <button
-          onClick={() => onModeChange("svg")}
-          className={cn(
-            "px-3 py-1.5 text-sm rounded-md transition-colors",
-            mode === "svg"
-              ? "bg-background text-foreground shadow-sm font-medium"
-              : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-          )}
-        >
+        <TabButton active={mode === "svg"} onClick={() => onModeChange("svg")}>
           SVG
-        </button>
+        </TabButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -485,7 +410,8 @@ function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBa
                 mode === "ascii"
                   ? "bg-background text-foreground shadow-sm font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-                !isAsciiSupported && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
+                !isAsciiSupported &&
+                  "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
               )}
             >
               ASCII
@@ -495,11 +421,274 @@ function TabBar({ mode, onModeChange, isAsciiSupported, t, rightContent }: TabBa
             <TooltipContent>{t("preview.asciiNotSupported")}</TooltipContent>
           )}
         </Tooltip>
+        <TabButton active={mode === "compare"} onClick={() => onModeChange("compare")}>
+          {t("preview.compareMode")}
+        </TabButton>
       </div>
 
-      {/* 右侧工具 */}
-      <div className="flex items-center gap-1">
-        {rightContent}
+      <div className="flex items-center gap-1">{rightContent}</div>
+    </div>
+  );
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick(): void;
+  children: ReactNode;
+}
+
+function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "px-3 py-1.5 text-sm rounded-md transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm font-medium"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ViewportControls({
+  controller,
+  t,
+}: {
+  controller: SvgViewportController;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <IconButton label={t("preview.zoomOut")} onClick={controller.zoomOut}>
+        <ZoomOut className="size-4" />
+      </IconButton>
+      <span className="text-xs text-muted-foreground w-12 text-center tabular-nums">
+        {Math.round(controller.zoom * 100)}%
+      </span>
+      <IconButton label={t("preview.zoomIn")} onClick={controller.zoomIn}>
+        <ZoomIn className="size-4" />
+      </IconButton>
+      <IconButton label={t("preview.fitToView")} onClick={controller.fitToView}>
+        <Maximize2 className="size-4" />
+      </IconButton>
+      <IconButton label={t("preview.reset")} onClick={controller.reset}>
+        <RotateCcw className="size-4" />
+      </IconButton>
+    </div>
+  );
+}
+
+function CompareView({
+  mermanArtifact,
+  mermaidArtifact,
+  mermanController,
+  mermaidController,
+  copiedEngine,
+  exportingEngine,
+  onCopySvg,
+  onExportSvg,
+  onExportPng,
+  t,
+}: {
+  mermanArtifact: CompareArtifact;
+  mermaidArtifact: CompareArtifact;
+  mermanController: SvgViewportController;
+  mermaidController: SvgViewportController;
+  copiedEngine: EngineKey | null;
+  exportingEngine: EngineKey | null;
+  onCopySvg(engine: EngineKey, svg: string | null): void;
+  onExportSvg(engine: EngineKey, svg: string | null): void;
+  onExportPng(engine: EngineKey, svg: string | null): void;
+  t: (key: string) => string;
+}) {
+  return (
+    <div className="h-full overflow-auto p-3">
+      <div className="grid min-h-full grid-cols-1 gap-3 xl:grid-cols-2">
+        <ComparePane
+          artifact={mermanArtifact}
+          controller={mermanController}
+          copied={copiedEngine === "merman"}
+          exporting={exportingEngine === "merman"}
+          onCopySvg={onCopySvg}
+          onExportSvg={onExportSvg}
+          onExportPng={onExportPng}
+          t={t}
+        />
+        <ComparePane
+          artifact={mermaidArtifact}
+          controller={mermaidController}
+          copied={copiedEngine === "mermaid"}
+          exporting={exportingEngine === "mermaid"}
+          onCopySvg={onCopySvg}
+          onExportSvg={onExportSvg}
+          onExportPng={onExportPng}
+          t={t}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ComparePane({
+  artifact,
+  controller,
+  copied,
+  exporting,
+  onCopySvg,
+  onExportSvg,
+  onExportPng,
+  t,
+}: {
+  artifact: CompareArtifact;
+  controller: SvgViewportController;
+  copied: boolean;
+  exporting: boolean;
+  onCopySvg(engine: EngineKey, svg: string | null): void;
+  onExportSvg(engine: EngineKey, svg: string | null): void;
+  onExportPng(engine: EngineKey, svg: string | null): void;
+  t: (key: string) => string;
+}) {
+  const hasSvg = Boolean(artifact.svg);
+
+  return (
+    <section className="flex min-h-[320px] flex-col overflow-hidden rounded-md border bg-background xl:min-h-0">
+      <div className="border-b bg-muted/30 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium">{artifact.title}</span>
+            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              {artifact.version}
+            </span>
+          </div>
+          <p className="shrink-0 text-xs text-muted-foreground">
+            {artifact.loading
+              ? t("preview.loadingMermaid")
+              : artifact.renderTime !== null
+                ? `${artifact.renderTime.toFixed(1)}ms`
+                : "-"}
+          </p>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {hasSvg && <ViewportControls controller={controller} t={t} />}
+          {!hasSvg && <div />}
+          <div className="flex items-center gap-1">
+            <IconButton
+              label={copied ? t("preview.copied") : t("preview.copySvg")}
+              onClick={() => onCopySvg(artifact.key, artifact.svg)}
+              disabled={!hasSvg}
+            >
+              {copied ? (
+                <Check className="size-4 text-green-500" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+            </IconButton>
+            <IconButton
+              label={t("preview.exportSvg")}
+              onClick={() => onExportSvg(artifact.key, artifact.svg)}
+              disabled={!hasSvg}
+            >
+              <FileCode className="size-4" />
+            </IconButton>
+            <IconButton
+              label={t("preview.exportPng")}
+              onClick={() => onExportPng(artifact.key, artifact.svg)}
+              disabled={!hasSvg || exporting}
+            >
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageIcon className="size-4" />
+              )}
+            </IconButton>
+          </div>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1">
+        {artifact.loading ? (
+          <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
+            {t("preview.loadingMermaid")}
+          </CenteredMessage>
+        ) : artifact.error ? (
+          <RenderError message={artifact.error} t={t} compact />
+        ) : (
+          <SvgViewport
+            svg={artifact.svg}
+            controller={controller}
+            empty={
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {t("preview.empty")}
+              </div>
+            }
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick(): void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon-sm" onClick={onClick} disabled={disabled}>
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CenteredMessage({
+  icon,
+  children,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center">
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        {icon}
+        <span className="text-sm">{children}</span>
+      </div>
+    </div>
+  );
+}
+
+function RenderError({
+  message,
+  t,
+  compact = false,
+}: {
+  message: string;
+  t: (key: string) => string;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center p-6">
+      <div className={cn("text-center", compact ? "max-w-sm" : "max-w-md")}>
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
+          <AlertCircle className="size-6 text-destructive" />
+        </div>
+        <h3 className="mb-2 font-medium text-foreground">{t("preview.error")}</h3>
+        <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+          {message}
+        </p>
       </div>
     </div>
   );

@@ -260,3 +260,36 @@ Residual notes:
 - `npm ci --prefix playground` reported two moderate npm audit findings in the playground
   dependency tree; this did not block the Pages artifact gate.
 - Vite still reports the existing large chunk warning for the playground bundle.
+
+### 2026-06-01 - WWP-070 Mermaid Compare Mode
+
+Changes:
+
+- Added `mermaid@11.15.0` as a playground dependency.
+- Added a lazy Mermaid JS renderer wrapper for side-by-side browser comparison.
+- Extracted the SVG pan/zoom surface into a reusable `SvgViewport` component.
+- Added a `Compare` preview tab with Merman and Mermaid JS panes, render timing, copy SVG, export
+  SVG, and export PNG actions.
+- Documented the comparison design in `MERMAID_COMPARE_MODE.md`.
+
+Commands:
+
+```bash
+npm run build --prefix playground
+```
+
+Browser smoke:
+
+- Started the Vite playground at `http://127.0.0.1:5173/`.
+- Loaded the default diagram, opened the `Compare` tab, and confirmed two `.preview-container svg`
+  elements were present.
+- Confirmed Mermaid JS was not loaded before opening `Compare`, and was loaded after opening it.
+- Captured screenshot evidence at `target/playground-compare-smoke.png`.
+
+Results:
+
+- `npm run build --prefix playground` passed, including the postbuild WASM verifier.
+- Headless Chrome smoke passed with `totalSvgCount=2`, `hasMerman=true`, `hasMermaid=true`,
+  `loadedMermaid=true`, and no console errors.
+- Vite still reports the existing large chunk warning. Mermaid JS is dynamically imported, but its
+  own optional diagram chunks are large when the compare mode is used.

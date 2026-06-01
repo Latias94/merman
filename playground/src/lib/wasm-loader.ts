@@ -92,7 +92,7 @@ function createWasmAdapter(): MermanWasm {
   };
 }
 
-function sourceWithTheme(source: string, theme: string): string {
+export function sourceWithTheme(source: string, theme: string): string {
   if (theme === "default" || hasInitDirective(source)) {
     return source;
   }
