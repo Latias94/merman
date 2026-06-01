@@ -71,7 +71,7 @@ fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
     };
 
     let emoji = measurer.measure_wrapped("emoji: 😀😅👍", &style, Some(200.0), WrapMode::HtmlLike);
-    assert_eq!(emoji.width, 111.71875);
+    assert_eq!(emoji.width, 117.625);
     assert_eq!(emoji.height, 24.0);
 
     let rtl = measurer.measure_wrapped("rtl: שלום-עולם", &style, Some(200.0), WrapMode::HtmlLike);
@@ -84,8 +84,17 @@ fn flowchart_html_unicode_block_fallback_widths_match_upstream() {
         Some(200.0),
         WrapMode::HtmlLike,
     );
-    assert_eq!(cjk_hangul.width, 143.75);
+    assert_eq!(cjk_hangul.width, 148.0625);
     assert_eq!(cjk_hangul.height, 24.0);
+
+    let path = measurer.measure_wrapped(
+        "Path: C:\\Temp\\merman\\out.svg (Windows-style)",
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(path.width, 203.15625);
+    assert_eq!(path.height, 72.0);
 }
 
 #[test]

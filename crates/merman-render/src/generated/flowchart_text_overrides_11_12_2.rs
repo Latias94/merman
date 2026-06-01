@@ -97,6 +97,11 @@ pub fn lookup_flowchart_html_width_px(
         // `fixtures/flowchart/upstream_docs_flowchart_text_special_characters_spec.mmd`
         ("trebuchetms,verdana,arial,sans-serif", ",.?!+-*ز") => Some(51.46875),
         ("trebuchetms,verdana,arial,sans-serif", "special characters") => Some(129.9375),
+        // `fixtures/flowchart/stress_flowchart_unicode_punct_in_ids_labels_035.mmd`
+        ("trebuchetms,verdana,arial,sans-serif", "中文 / 日本語 / 한글") => Some(148.0625),
+        ("trebuchetms,verdana,arial,sans-serif", "emoji: 😀😅👍") => Some(117.625),
+        // `fixtures/flowchart/stress_flowchart_long_labels_punctuation_unicode_006.mmd`
+        ("trebuchetms,verdana,arial,sans-serif", "C:\\Temp\\merman\\out.svg") => Some(203.15625),
         // `fixtures/flowchart/upstream_docs_flowchart_shapes_nodes_spec.mmd`
         ("trebuchetms,verdana,arial,sans-serif", "Rounded") => Some(61.296875),
         // `fixtures/flowchart/stress_flowchart_subgraph_boundary_edges_008.mmd`

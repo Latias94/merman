@@ -73,7 +73,10 @@ geometry slice then aligned `curv-trap`/`display`/`curved-trapezoid` with Mermai
 `curvedTrapezoid.ts`: local minimum geometry constants were still `80x20`, while upstream uses
 `20x5`. The no-label `newshapesset3` LR/TB rows now pass strict-root with root overrides disabled,
 structural parity remains green, and Flowchart `parity-root` is down to 69 strict root-only
-mismatches.
+mismatches. The Unicode text-metric slice then closed the two largest text residuals by anchoring
+CJK/Hangul, emoji, and Windows-path HTML min-content widths to the Mermaid 11.15 SVG browser
+metrics. Structural parity remains green, and Flowchart `parity-root` is down to 67 strict
+root-only mismatches.
 
 ## Active Task
 
@@ -216,6 +219,10 @@ mismatches.
   `curvedTrapezoid.ts` for `curv-trap`/`display`/`curved-trapezoid`; the no-label
   `newshapesset3` LR/TB fixtures pass strict-root with root overrides disabled, and Flowchart
   strict-root mismatch count is down to 69.
+- M15C-070 Flowchart Unicode text-metric triage found browser metric drift rather than a source
+  formula issue. CJK/Hangul, emoji, and Windows-path HTML min-content widths are now anchored to
+  the Mermaid 11.15 stored SVG metrics; the two targeted stress fixtures pass strict-root with root
+  overrides disabled, and Flowchart strict-root mismatch count is down to 67.
 
 ## Known Risks
 
@@ -231,11 +238,12 @@ mismatches.
 Continue M15C-070. The Flowchart SVG-markdown shape-layout, long-name C1, shape-alias source
 formula, plain `Car` text-metric, demo 016/052 stale-root-pin, bow-tie rectangle,
 window-pane/internal-storage, document/delay, double-circle, lined/tagged-document, and no-label
-curved-trapezoid buckets are closed. The full shape-alias strict-root sweep now passes with root
-overrides disabled, but strict Flowchart `parity-root` still reports 69 root-only mismatches. The
-next executable step is to sample the new top Flowchart residuals: Unicode punctuation/text-metric
-stress, markdown/html=false new-shape rows, markdown edge/subgraph root size, icon-only roots, and
-remaining small root-rounding rows. Check whether each is a shared Mermaid 11.15 root geometry
-rule, a text metric rule, or only then a scoped root override. After Flowchart stops exposing large
-shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule
-change before adding broad fixture-scoped root pins.
+curved-trapezoid buckets are closed, and the leading Unicode/punctuation browser text-metric rows
+are closed. The full shape-alias strict-root sweep now passes with root overrides disabled, but
+strict Flowchart `parity-root` still reports 67 root-only mismatches. The next executable step is
+to sample the new top Flowchart residuals: icon-only root metrics, styled-text/root size,
+Flowchart parameters, shape-mix, demo flowchart 010/049, markdown/html=false new-shape rows,
+markdown edge/subgraph root size, and remaining small root-rounding rows. Check whether each is a
+shared Mermaid 11.15 root geometry rule, a text metric rule, or only then a scoped root override.
+After Flowchart stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a
+cross-family 11.15 root viewport rule change before adding broad fixture-scoped root pins.

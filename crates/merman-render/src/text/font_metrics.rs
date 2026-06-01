@@ -1232,12 +1232,15 @@ fn vendored_measure_wrapped_impl(
                     continue;
                 }
                 for seg in split_html_min_content_segments(part) {
-                    max_word_w = max_word_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
-                        profile,
-                        seg.as_str(),
-                        bold,
-                        font_size,
-                    ));
+                    let seg_w = html_width_override_px(&seg).unwrap_or_else(|| {
+                        VendoredFontMetricsTextMeasurer::line_width_px(
+                            profile,
+                            seg.as_str(),
+                            bold,
+                            font_size,
+                        )
+                    });
+                    max_word_w = max_word_w.max(seg_w);
                 }
             }
         }

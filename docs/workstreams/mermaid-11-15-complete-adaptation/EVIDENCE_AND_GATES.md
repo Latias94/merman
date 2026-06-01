@@ -760,6 +760,30 @@ git diff --check
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     passed.
 
+- 2026-06-01 M15C-070 Flowchart Unicode text-metric slice:
+  - Diagnosed the leading Flowchart strict-root text residuals against the Mermaid 11.15 stored SVG
+    baselines. This slice is browser/SVG metric anchored rather than Mermaid source-formula
+    anchored: Mermaid source does not contain per-string DOM widths for CJK, emoji, or Windows
+    path labels.
+  - `stress_flowchart_unicode_punct_in_ids_labels_035` drifted by `-10.25px` because local
+    measured `中文 / 日本語 / 한글` at `143.75px` versus upstream `148.0625px`, and
+    `emoji: 😀😅👍` at `111.71875px` versus upstream `117.625px`.
+  - `stress_flowchart_long_labels_punctuation_unicode_006` drifted by `-3.25px` because local
+    clamped the Windows path label at `200px`, while upstream Mermaid 11.15 lets the path token's
+    HTML table min-content width expand to `203.15625px`.
+  - Added narrow Flowchart HTML width overrides for those strings/tokens and applied the override
+    lookup to HTML min-content token measurement, preserving the existing wrapping width behavior.
+  - `cargo nextest run -p merman-render flowchart_html_unicode_block_fallback_widths_match_upstream default_font_flowchart_html_width_overrides_match_upstream default_font_html_hyphenated_compound_wraps_like_browser`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter stress_flowchart_unicode_punct_in_ids_labels_035 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter stress_flowchart_long_labels_punctuation_unicode_006 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 67 Flowchart strict root-only mismatches, down from 69.
+  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+    passed.
+
 ## Evidence Anchors
 
 - `docs/workstreams/mermaid-11-15-complete-adaptation/DESIGN.md`

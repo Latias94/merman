@@ -161,7 +161,10 @@ Last updated: 2026-06-01
   minimum geometry constants with Mermaid 11.15 `curvedTrapezoid.ts` (`minWidth=20`,
   `minHeight=5`), closing the no-label `newshapesset3` LR/TB root bucket with root overrides
   disabled. Structural `parity` remains green, and Flowchart `parity-root` reports 69 strict
-  root-only mismatches.
+  root-only mismatches. The Unicode text-metric slice then closed the two largest text residuals
+  by anchoring CJK/Hangul, emoji, and Windows-path HTML min-content widths to the Mermaid 11.15 SVG
+  browser metrics. Structural `parity` remains green, and Flowchart `parity-root` reports 67
+  strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 
