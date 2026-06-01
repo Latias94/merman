@@ -164,7 +164,10 @@ Last updated: 2026-06-01
   root-only mismatches. The Unicode text-metric slice then closed the two largest text residuals
   by anchoring CJK/Hangul, emoji, and Windows-path HTML min-content widths to the Mermaid 11.15 SVG
   browser metrics. Structural `parity` remains green, and Flowchart `parity-root` reports 67
-  strict root-only mismatches.
+  strict root-only mismatches. The icon root-pin refresh then updated an existing stale
+  `upstream_cypress_flowchart_icon_spec_example_002` root override from `92.046875px` to the
+  Mermaid 11.15 `98.046875px` root after proving the renderer passes with root overrides disabled.
+  Flowchart `parity-root` reports 66 strict root-only mismatches.
 
 ## M4 - Upstream Family Decisions
 

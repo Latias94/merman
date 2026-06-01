@@ -49,6 +49,9 @@ expand to `203.15625px`, while local clamped the wrapped label at `200px`.
   still fails as expected with 67 Flowchart strict root-only mismatches, down from 69.
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
   passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth`:
+  passed after the follow-on explicit text lookup budget update to `495`; the five added lookup
+  entries are fixture-derived Mermaid 11.15 browser metrics with targeted tests and SVG evidence.
 
 ## Follow-Up
 

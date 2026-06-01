@@ -76,7 +76,10 @@ structural parity remains green, and Flowchart `parity-root` is down to 69 stric
 mismatches. The Unicode text-metric slice then closed the two largest text residuals by anchoring
 CJK/Hangul, emoji, and Windows-path HTML min-content widths to the Mermaid 11.15 SVG browser
 metrics. Structural parity remains green, and Flowchart `parity-root` is down to 67 strict
-root-only mismatches.
+root-only mismatches. The icon root-pin refresh then proved
+`upstream_cypress_flowchart_icon_spec_example_002` passes strict-root with root overrides disabled
+and refreshed its existing stale root pin from `92.046875px` to the Mermaid 11.15 `98.046875px`
+root. Flowchart `parity-root` is down to 66 strict root-only mismatches.
 
 ## Active Task
 
@@ -223,6 +226,10 @@ root-only mismatches.
   formula issue. CJK/Hangul, emoji, and Windows-path HTML min-content widths are now anchored to
   the Mermaid 11.15 stored SVG metrics; the two targeted stress fixtures pass strict-root with root
   overrides disabled, and Flowchart strict-root mismatch count is down to 67.
+- M15C-070 Flowchart icon root-pin triage found a stale root override rather than a renderer gap.
+  `upstream_cypress_flowchart_icon_spec_example_002` passes strict-root with root overrides
+  disabled; the existing root pin now matches the Mermaid 11.15 `98.046875px` root, and Flowchart
+  strict-root mismatch count is down to 66.
 
 ## Known Risks
 
@@ -240,10 +247,10 @@ formula, plain `Car` text-metric, demo 016/052 stale-root-pin, bow-tie rectangle
 window-pane/internal-storage, document/delay, double-circle, lined/tagged-document, and no-label
 curved-trapezoid buckets are closed, and the leading Unicode/punctuation browser text-metric rows
 are closed. The full shape-alias strict-root sweep now passes with root overrides disabled, but
-strict Flowchart `parity-root` still reports 67 root-only mismatches. The next executable step is
-to sample the new top Flowchart residuals: icon-only root metrics, styled-text/root size,
-Flowchart parameters, shape-mix, demo flowchart 010/049, markdown/html=false new-shape rows,
-markdown edge/subgraph root size, and remaining small root-rounding rows. Check whether each is a
-shared Mermaid 11.15 root geometry rule, a text metric rule, or only then a scoped root override.
-After Flowchart stops exposing large shared buckets, compare Sequence/Class/C4/Architecture for a
-cross-family 11.15 root viewport rule change before adding broad fixture-scoped root pins.
+strict Flowchart `parity-root` still reports 66 root-only mismatches. The next executable step is
+to sample the new top Flowchart residuals: styled-text/root size, Flowchart parameters, shape-mix,
+demo flowchart 010/049, markdown/html=false new/old shape rows, markdown edge/subgraph root size,
+and remaining small root-rounding rows. Check whether each is a shared Mermaid 11.15 root geometry
+rule, a text metric rule, or only then a scoped root override. After Flowchart stops exposing large
+shared buckets, compare Sequence/Class/C4/Architecture for a cross-family 11.15 root viewport rule
+change before adding broad fixture-scoped root pins.

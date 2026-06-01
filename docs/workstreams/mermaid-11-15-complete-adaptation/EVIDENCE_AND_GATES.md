@@ -783,6 +783,26 @@ git diff --check
     still failed as expected with 67 Flowchart strict root-only mismatches, down from 69.
   - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     passed.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed after the follow-on explicit
+    text lookup budget update to `495`; the five added lookup entries are fixture-derived
+    Mermaid 11.15 browser metrics with targeted tests and SVG evidence.
+
+- 2026-06-01 M15C-070 Flowchart icon root-pin refresh:
+  - Diagnosed `upstream_cypress_flowchart_icon_spec_example_002` as a stale root pin. With root
+    overrides disabled, the fixture passed strict-root against Mermaid 11.15. With overrides
+    enabled, the existing pin still forced the old `92.046875px` root instead of the 11.15
+    `98.046875px` root.
+  - Updated the existing Flowchart root override for that fixture to
+    `viewBox="0 0 98.046875 70"` and max-width `98.0469`. This refreshes one existing pin and
+    does not add root override coverage.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_icon_spec_example_002 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all --no-root-overrides`:
+    passed.
+  - `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_cypress_flowchart_icon_spec_example_002 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --report-label-all`:
+    passed.
+  - `cargo run -p xtask -- report-overrides --check-no-growth`: passed; root viewport overrides
+    remain at `282` total entries and text lookup entries are now capped at `495`.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all`:
+    still failed as expected with 66 Flowchart strict root-only mismatches, down from 67.
 
 ## Evidence Anchors
 
