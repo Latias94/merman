@@ -828,6 +828,27 @@ Focused verification:
 - `cargo test -p merman-render radar_css_honors_top_level_style_overrides`
 - `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Eighth slice outcome:
+
+- Audited pinned Mermaid 11.15 Block style provider:
+  - `packages/mermaid/src/diagrams/block/styles.ts`
+- Block already consumed most theme variables, but composite cluster CSS used raw `clusterBkg` and
+  `clusterBorder` values. Mermaid 11.15 fades those colors for `.node .cluster`, which affects the
+  visual weight and readability of nested block regions.
+- Block cluster CSS now applies `css_rgba_fade(clusterBkg, 0.5)` and
+  `css_rgba_fade(clusterBorder, 0.2)` when colors are parseable, with fallback to the configured
+  value for unresolved runtime CSS expressions.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/block.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/block.rs)
+- [crates/merman-render/tests/block_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/block_svg_test.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render block_svg_fades_cluster_theme_colors --test block_svg_test`
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

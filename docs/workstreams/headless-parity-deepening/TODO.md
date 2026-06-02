@@ -162,6 +162,7 @@ Last updated: 2026-06-02
   rules. A later ER slice fixed stale default-theme CSS for entity boxes, labels, relationship
   lines, markers, and edge-label backgrounds while explicitly skipping inert upstream rules that
   require local SVG attributes we do not emit yet. A Radar slice fixed top-level `radar.*` style
-  overrides that were parsed but not emitted into CSS. Continue by scanning supported diagrams for
-  blank output, hidden labels, black blocks, lost theme colors, and other functional renderability
-  failures before returning to fine root residual work.
+  overrides that were parsed but not emitted into CSS. A Block slice fixed composite cluster fade
+  CSS for nested block readability. Continue by scanning supported diagrams for blank output,
+  hidden labels, black blocks, lost theme colors, and other functional renderability failures before
+  returning to fine root residual work.

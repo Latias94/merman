@@ -209,6 +209,9 @@ Current repository reality to preserve:
     `radar.*` style options before `themeVariables.radar.*`, matching Mermaid 11.15's
     `cleanAndMerge(themeVariables.radar, radar)` behavior for axis, graticule, curve, and legend
     styling.
+  - An eighth HPD-080 slice fixed Block composite cluster theme CSS. Nested block clusters now use
+    source-backed `fade(clusterBkg, 0.5)` and `fade(clusterBorder, 0.2)` semantics where colors are
+    parseable, preserving the configured color only for unresolved runtime CSS expressions.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

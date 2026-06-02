@@ -240,6 +240,8 @@ pub(super) fn render_block_diagram_svg_model(
         let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
         let cluster_bkg = theme.color("clusterBkg", "#ffffde");
         let cluster_border = theme.color("clusterBorder", "#aaaa33");
+        let cluster_bkg = css_rgba_fade(&cluster_bkg, 0.5).unwrap_or(cluster_bkg);
+        let cluster_border = css_rgba_fade(&cluster_border, 0.2).unwrap_or(cluster_border);
 
         let mut out = String::new();
         let _ = write!(

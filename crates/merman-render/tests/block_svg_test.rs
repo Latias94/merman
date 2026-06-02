@@ -59,3 +59,22 @@ block
         "expected nodeTextColor theme variable to drive block label color"
     );
 }
+
+#[test]
+fn block_svg_fades_cluster_theme_colors() {
+    let svg = render_block_svg_from_text(
+        r##"%%{init: {"themeVariables": {"clusterBkg": "#112233", "clusterBorder": "#445566"}}}%%
+block
+  block
+    A["Alpha"]
+  end
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#merman .node .cluster{fill:rgba(17, 34, 51, 0.5);stroke:rgba(68, 85, 102, 0.2);stroke-width:1px;}"#
+        ),
+        "expected block composite cluster CSS to follow Mermaid 11.15 fade() colors"
+    );
+}
