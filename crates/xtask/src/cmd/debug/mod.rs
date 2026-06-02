@@ -2,6 +2,7 @@
 
 mod architecture;
 mod dagre;
+mod dagre_reference;
 mod flowchart;
 mod mindmap;
 mod svg;

@@ -86,7 +86,28 @@ Last updated: 2026-06-02
   The current candidate split is Architecture Cytoscape bbox phase modeling: leaf default
   `node.boundingBox()`, child `updateCompoundBounds()` contribution, final group
   `node.boundingBox()`, and manatee relocation bbox currently cannot be represented by one global
-  label/padding formula without broad root regressions.
+  label/padding formula without broad root regressions. The dugong-adjacent source audit has also
+  begun: `repo-ref/dagre` and `repo-ref/graphlib` are now checked out to their pinned commits,
+  `dugong-graphlib` has a Graphlib coverage ledger, exposed Graphlib helper algorithm tests are
+  ported, and the Dagre reference harness is executable again against the installed Mermaid
+  `11.15.0` / `dagre-d3-es@7.0.14` toolchain. The next useful dugong slice is public Graphlib
+  `Graph` API coverage, not unused shortest-path algorithms. The first public Graph API slice is
+  now underway: basic options/node/edge/compound behavior is covered and parent-cycle assignment is
+  guarded, while non-compound `setParent(...)` throw semantics remain an explicit open API-shape
+  decision. The next Graph API slice also covers source-backed edge/adjacency queries (`sinks`,
+  predecessor/successor/neighbor queries, `isLeaf`, in/out/node edge filters, and remove-edge
+  neighbor updates), while preserving the open missing-node and chainable-mutator API-shape
+  differences instead of forcing JS ergonomics into Rust. A follow-up edge-invariant slice now
+  tightens simple-graph named-edge behavior to match upstream Graphlib: setting a named edge on a
+  non-multigraph panics, and named queries/removals no longer alias the unnamed edge. ARCH-022's
+  first Dagre reference adapter slice is also landed: `dagre_reference.rs` now owns the Rust-side
+  reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
+  delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
+  composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
+  service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
+  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. This keeps SVG
+  root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
+  preserves the known 26 Architecture root residuals.
 
 ## M5 - Semantic / Render Unification Pilot
 

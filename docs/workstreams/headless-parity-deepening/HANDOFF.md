@@ -106,3 +106,42 @@ Current repository reality to preserve:
     fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`,
     `cytoscape_group_child_bounds`). This did not change behavior: structural Architecture parity
     is green, and `parity-root` remains the expected 26 mismatches.
+  - `repo-ref/dagre` and `repo-ref/graphlib` are now present and checked out to the pinned
+    lockfile commits, so dugong/graphlib source-backed audits no longer have to proceed from stale
+    assumptions.
+  - `dugong-graphlib` now has an explicit upstream coverage ledger in
+    `docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md`. The first direct Graphlib source-test slice
+    ports the exposed helper algorithms (`components`, `findCycles`, `preorder`, `postorder`) and
+    tightens missing-root traversal behavior to panic like upstream Graphlib throws.
+  - `tools/dagre-harness/run.mjs` now imports `dagre-d3-es` from the installed
+    `tools/mermaid-cli/node_modules` baseline and is executable again. A focused State `basic`
+    Dagre layout comparison reported zero node and edge delta.
+  - The next dugong-adjacent audit should target the public Graphlib `Graph` API subset used by
+    `dugong` and Mermaid-facing renderers. Do not spend HPD-050 budget implementing unused
+    shortest-path algorithms unless a real Mermaid/Dagre path needs them.
+  - That public Graphlib `Graph` API audit has started. The first `graph-test.js` slice now covers
+    options, labels, node/edge basics, named multiedges, compound parent moves, root children, and
+    remove-node cleanup. `set_parent_ix(...)` now enforces the upstream tree invariant by panicking
+    if a parent assignment would create a cycle. The non-compound `setParent(...)` throw remains an
+    open Rust API-shape decision.
+  - The next public Graph API slice covers source-backed edge/adjacency queries: `sinks`,
+    predecessor/successor/neighbor queries, `isLeaf`, `inEdges`, `outEdges`, `nodeEdges`, and
+    remove-edge neighbor count behavior. New Rust API seams are limited to `sinks`, `is_leaf`, and
+    `node_edges_between`, because those map to existing Graphlib behavior and real graph consumers.
+    Missing-node `undefined` returns and JS chainable mutators remain documented Rust/JS API-shape
+    differences, not hidden parity claims.
+  - A follow-up Graphlib edge-invariant slice now matches upstream's non-multigraph named-edge
+    guard: named edge insertion panics on simple graphs, and named lookup/removal does not alias the
+    unnamed edge. Renderer graph construction that uses edge names is already multigraph-based, so
+    this should be treated as a source-backed invariant fix rather than a rendering tune.
+  - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
+    Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
+    `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and
+    acts as a graph producer/command wrapper. Basic, composite, and internal-cluster State Dagre
+    comparisons all reported zero node and edge delta after the extraction. Do not broaden this to
+    other diagrams until a real Dagre-backed residual audit needs that producer.
+  - Architecture Cytoscape service-label measurement now has a shared
+    `ArchitectureCytoscapeServiceLabelExtension` seam used by both FCoSE node `BoundsExtras` and
+    SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
+    preserving the known 26 Architecture root residuals; SVG root `createText(...)` measurement
+    remains separate from Cytoscape compound-child label measurement.

@@ -422,3 +422,182 @@ Focused verification:
   passed.
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_phase_names_refactor.md`
   expected failure remains `26` Architecture root mismatches.
+
+Ninth slice Dugong / Graphlib audit:
+
+- Cloned `repo-ref/dagre` and `repo-ref/graphlib`, then checked them out to the lockfile commits:
+  - Dagre: `ba986662394f8f3ed608717194e5958f3386ce01`
+  - Graphlib: `380d5efa1f4ab0904539f046bdba583d14ac2add`
+- Added
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  so Graphlib test coverage is no longer only an implicit assumption behind Dagre coverage.
+- Ported the currently exposed Graphlib helper algorithm cases from upstream:
+  `components`, `findCycles`, `preorder`, and `postorder`.
+- Tightened `dugong_graphlib::alg::{preorder, postorder}` so missing roots panic instead of
+  silently traversing a non-existent root, matching upstream Graphlib's invalid-root throw
+  behavior in Rust form.
+- Fixed
+  [tools/dagre-harness/run.mjs](/F:/SourceCodes/Rust/merman/tools/dagre-harness/run.mjs)
+  to import `dagre-d3-es` from `tools/mermaid-cli/node_modules`, which makes the reference runner
+  executable in the current repository layout.
+- Updated
+  [tools/dagre-harness/README.md](/F:/SourceCodes/Rust/merman/tools/dagre-harness/README.md)
+  so it describes the pinned Mermaid `11.15.0` / `dagre-d3-es@7.0.14` toolchain instead of the old
+  11.12-era package facts.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+- `node tools/dagre-harness/run.mjs --help`
+- `cargo run -p xtask -- compare-dagre-layout --fixture basic --out-dir target/compare/dagre-layout-hpd050-graphlib-audit`
+
+Verification notes:
+
+- `cargo run -p xtask -- compare-dagre-layout --help` still returns `Error: Usage`; that is the
+  command's existing lack of help output, not a harness import failure.
+- The focused `compare-dagre-layout` run for `fixtures/state/basic.mmd` completed and reported
+  `max node delta: 0.000000` and `max edge delta: 0.000000`.
+- This slice does not claim full Graphlib parity. The next useful audit target is the public
+  `Graph` API subset consumed by `dugong` and Mermaid-facing renderers, not unused shortest-path
+  algorithms.
+
+Tenth slice Graphlib Graph core coverage:
+
+- Added
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  as the first direct source-test slice from `repo-ref/graphlib/test/graph-test.js`.
+- Covered current public Rust API equivalents for initial options, graph labels, node defaults,
+  source queries, edge creation/update, named multiedges, path edges, parent/child moves, root
+  children, and remove-node cleanup.
+- Tightened `Graph::set_parent_ix(...)` so assigning a node under its own descendant panics with
+  `set_parent would create a cycle`, matching upstream Graphlib's tree-invariant throw in Rust
+  form.
+- Updated
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  to classify `test/graph-test.js` as partially ported and list the mapped cases.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+- `cargo test -p merman-render --test flowchart_layout_test`
+- `cargo test -p merman-render --test state_layout_test`
+- `cargo test -p merman-render --test class_layout_test`
+- `cargo test -p merman-render --test er_layout_test`
+- `cargo test -p dugong --tests`
+
+Verification notes:
+
+- The invalid non-compound `setParent(...)` upstream throw remains a deliberate open API-shape
+  decision; current Rust methods still no-op on non-compound graphs. Do not change that casually
+  without auditing downstream callers.
+
+Eleventh slice Graphlib edge-query coverage:
+
+- Extended the direct `repo-ref/graphlib/test/graph-test.js` coverage in
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  to cover `sinks`, `predecessors`, `successors`, `neighbors`, `isLeaf`, `inEdges`, `outEdges`,
+  `nodeEdges`, and remove-edge adjacency updates.
+- Added Rust API seams for source-backed Graphlib behavior that previously had no public equivalent:
+  `Graph::sinks(...)`, `Graph::is_leaf(...)`, and `Graph::node_edges_between(...)`.
+- Updated
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  so this slice is mapped to pinned upstream case names and the remaining JS/Rust API-shape
+  differences are explicit.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+
+Verification notes:
+
+- Missing-node query behavior is intentionally not claimed as identical: upstream JS returns
+  `undefined` for several query methods, while the current Rust collection API returns empty
+  vectors.
+- Upstream chainability for `removeEdge(...)` is not copied into Rust; tests cover the state and
+  adjacency effects that matter to consumers.
+
+Twelfth slice Graphlib edge invariant coverage:
+
+- Tightened [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs)
+  so `set_edge_named(..., Some(name), ...)` on a non-multigraph panics instead of silently
+  discarding the name.
+- Edge lookup/removal views now keep the supplied name even for non-multigraphs, so
+  `has_edge("a", "b", Some("name"))`, `edge(...)`, and `remove_edge(...)` no longer alias the
+  unnamed simple edge.
+- Added direct graph-test coverage for edge-key listing, directed vs. undirected edge lookup,
+  missing edge lookup, named-edge rejection, named edge removal, and undirected remove-edge
+  endpoint normalization.
+- Production Mermaid-facing named-edge graph construction had already been audited as multigraph
+  based, so this is an invariant fix rather than a forced renderer behavior change.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+- `cargo test -p merman-render --test flowchart_layout_test`
+- `cargo test -p merman-render --test state_layout_test`
+- `cargo test -p merman-render --test class_layout_test`
+- `cargo test -p merman-render --test er_layout_test`
+
+Thirteenth slice Dagre reference adapter extraction:
+
+- Extracted
+  [crates/xtask/src/cmd/debug/dagre_reference.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/dagre_reference.rs)
+  as the Rust-side adapter for the Dagre JS reference harness.
+- The adapter now owns the reference input JSON schema, Rust output snapshots, JS harness
+  invocation, JS output parsing, max node/edge delta calculation, and the compound-edge endpoint
+  normalization mirrored from `tools/dagre-harness/run.mjs`.
+- `compare-dagre-layout` remains State-only in this slice. It now acts as a graph producer plus
+  command wrapper, which keeps future Dagre-backed audits from copying the reference machinery.
+- Added a unit test for compound-edge normalization so the extracted adapter is covered below the
+  command-smoke level.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo check -p xtask`
+- `cargo test -p xtask compound_edge_normalization_moves_edges_to_non_cluster_child`
+- `cargo test -p xtask`
+- `node tools/dagre-harness/run.mjs --help`
+- `cargo run -p xtask -- compare-dagre-layout --fixture basic --out-dir target\compare\dagre-layout-hpd050-reference-adapter`
+- `cargo run -p xtask -- compare-dagre-layout --fixture stress_state_composite_with_external_edges_028 --out-dir target\compare\dagre-layout-hpd050-reference-adapter-composite`
+- `cargo run -p xtask -- compare-dagre-layout --fixture stress_state_composite_with_external_edges_028 --cluster state-Big-7 --out-dir target\compare\dagre-layout-hpd050-reference-adapter-cluster`
+
+Verification notes:
+
+- The three focused layout comparisons all reported `max node delta: 0.000000` and
+  `max edge delta: 0.000000`.
+- This is an ARCH-022 seam cleanup, not a claim that the Dagre reference adapter now supports every
+  diagram family. Add non-State graph producers only when a source-backed residual audit needs one.
+
+Fourteenth slice Architecture Cytoscape label-extension seam:
+
+- Added `ArchitectureCytoscapeServiceLabelExtension` in
+  [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+  so FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation share the same
+  Cytoscape service-label half-width and compound-label bottom-extension calculation.
+- Kept SVG root `createText(...)` measurement separate from Cytoscape compound-child label
+  measurement. This is a phase split, not a root-width tune.
+- Added focused unit coverage for the shared extension and empty-title behavior.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-render architecture_cytoscape_service_label_extension_centralizes_compound_label_phase --lib`
+- `cargo test -p merman-render architecture_text_constants_match_mermaid --lib`
+- `cargo test -p merman-render architecture_fcose_node_bounds_extras_feed_label_bounds --lib`
+- `cargo test -p merman-render architecture_node_bbox_extras_convert_to_manatee_bounds_extras --lib`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_hpd050_cy_label_extension.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd050_cy_label_extension.md`
+
+Verification notes:
+
+- Architecture structural parity remained green.
+- Architecture parity-root remained the expected 26 mismatches.
+- The root report top rows remained the known residual front, led by `junction_fork_join_026`,
+  `batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`, and
+  `batch6_init_fontsize_icon_size_wrap_093`.

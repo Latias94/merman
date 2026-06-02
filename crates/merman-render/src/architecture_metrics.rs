@@ -25,6 +25,13 @@ pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
     pub(crate) applied_scale: f64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchitectureCytoscapeServiceLabelExtension {
+    pub(crate) metrics: ArchitectureCytoscapeCanvasLabelMetrics,
+    pub(crate) half_width: f64,
+    pub(crate) bottom_extension_px: f64,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ArchitectureNodeBBoxExtras {
     pub(crate) left: f64,
@@ -90,6 +97,21 @@ pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
     padding_px.max(0.0) + ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX
 }
 
+pub(crate) fn architecture_cytoscape_service_label_extension(
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    font_size_px: f64,
+) -> Option<ArchitectureCytoscapeServiceLabelExtension> {
+    let title = title.map(str::trim).filter(|t| !t.is_empty())?;
+    let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
+    Some(ArchitectureCytoscapeServiceLabelExtension {
+        metrics,
+        half_width: metrics.half_width,
+        bottom_extension_px: architecture_create_text_compound_label_extra_bottom_px(font_size_px),
+    })
+}
+
 pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -103,20 +125,21 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     let mut half_w = half_icon + border;
     let mut bottom = border;
 
-    if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
-        let label_metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
-        let label_half = label_metrics.half_width;
+    if let Some(label_extension) =
+        architecture_cytoscape_service_label_extension(title, measurer, style, font_size_px)
+    {
+        let label_half = label_extension.half_width;
         half_w = half_w.max(label_half + border);
         half_w = (half_w * 2.0).round() / 2.0;
-        bottom = border + (font_size_px + 1.0).max(0.0);
+        bottom = border + label_extension.bottom_extension_px;
 
         if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
             eprintln!(
                 "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
-                title,
-                label_metrics.width,
+                title.map(str::trim).unwrap_or(""),
+                label_extension.metrics.width,
                 label_half,
-                label_metrics.applied_scale,
+                label_extension.metrics.applied_scale,
                 half_w,
                 (half_w - half_icon).max(0.0),
                 bottom,
@@ -187,11 +210,16 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let metrics =
-            architecture_cytoscape_canvas_label_metrics(title, text_measurer, compound_text_style);
-        let compound_half_width = metrics.half_width;
-        let label_extra_bottom_compound =
-            architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
+        let Some(cytoscape_label_extension) = architecture_cytoscape_service_label_extension(
+            Some(title),
+            text_measurer,
+            compound_text_style,
+            arch_font_size_px,
+        ) else {
+            unreachable!("trimmed non-empty title should produce a Cytoscape label extension");
+        };
+        let compound_half_width = cytoscape_label_extension.half_width;
+        let label_extra_bottom_compound = cytoscape_label_extension.bottom_extension_px;
 
         let cx = x + icon_size_px / 2.0;
         let text_left_root = cx - bbox_left_root;
@@ -223,7 +251,7 @@ where
                 bbox_left_root,
                 bbox_right_root,
                 label_extra_bottom_root,
-                metrics.half_width,
+                cytoscape_label_extension.half_width,
                 label_extra_bottom_compound,
                 emitted_icon_bounds.min_x,
                 emitted_icon_bounds.min_y,
@@ -336,6 +364,43 @@ mod tests {
         assert_eq!(
             super::architecture_layout_canvas_label_width_scale(320.0),
             super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
+        );
+    }
+
+    #[test]
+    fn architecture_cytoscape_service_label_extension_centralizes_compound_label_phase() {
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 12.0,
+            font_weight: None,
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+
+        let extension = super::architecture_cytoscape_service_label_extension(
+            Some("API gateway"),
+            &measurer,
+            &style,
+            12.0,
+        )
+        .expect("non-empty title has a Cytoscape label extension");
+        let direct_metrics =
+            super::architecture_cytoscape_canvas_label_metrics("API gateway", &measurer, &style);
+
+        assert_eq!(extension.metrics.width, direct_metrics.width);
+        assert_eq!(extension.half_width, direct_metrics.half_width);
+        assert_eq!(
+            extension.metrics.applied_scale,
+            direct_metrics.applied_scale
+        );
+        assert_eq!(extension.bottom_extension_px, 13.0);
+        assert!(
+            super::architecture_cytoscape_service_label_extension(
+                Some("   "),
+                &measurer,
+                &style,
+                12.0
+            )
+            .is_none()
         );
     }
 
