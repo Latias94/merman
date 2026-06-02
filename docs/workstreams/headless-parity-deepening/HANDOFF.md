@@ -192,10 +192,11 @@ Current repository reality to preserve:
     service-bounds switch.
   - Fresh 2026-06-03 classification confirms the Architecture family structural report is green
     and the root-only report has `25` mismatches. The next residual audits should start from
-    `junction_fork_join_026` (`+13.976px`), the `+5px` group/service bbox rows
-    (`batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`), the
-    `unicode_and_xml_escapes_019` / `nested_groups_002` compound-bounds class, and
-    `group_port_edges_017`. Do not reopen `batch4_init_small_icons_061`,
+    the `+5px` group/service bbox rows (`batch5_long_titles_and_punct_076`,
+    `html_titles_and_escapes_041`) and any fresh report regression. The
+    `junction_fork_join_026`, `unicode_and_xml_escapes_019` / `nested_groups_002`
+    compound-bounds class, and `group_port_edges_017` are classified below. Do not reopen
+    `batch4_init_small_icons_061`,
     `batch4_init_fontsize_wrap_063`, `edge_label_corner_cases_012`, `fan_in_out_021`,
     `deep_nesting_013`, `batch6_junctions_multi_split_with_group_edges_087`, or
     `disconnected_islands_046` unless a fresh report regresses.
@@ -209,6 +210,13 @@ Current repository reality to preserve:
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
     `batch5_long_titles_and_punct_076` residual rows.
+  - A follow-up `junction_fork_join_026` finalElements and FCoSE input audit reconfirmed that the
+    stored upstream fixture is reproducible and the manual probe still does not reproduce the CLI
+    fixture. Browser/Rust constraints match pinned Mermaid source: junction parents come from
+    `junction.in`, duplicate relative-placement rows are preserved, and same/cross-parent edge
+    ideal lengths/elasticities match the source callbacks. Keep this row classified as
+    source-input-matched manatee-vs-Cytoscape FCoSE solution/internal phase residual. The next real
+    move would be a `cytoscape-fcose` / `cose-base` reference harness, not renderer or root tuning.
   - A follow-up `group_port_edges_017` finalElements audit reconfirmed this is not a group-edge
     shift or SVG path emission bug. Local X spread is about `1.468px` wider, and local Y spacing is
     about `17.845px` more compressed than the browser/Cytoscape result, matching the root deltas.

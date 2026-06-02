@@ -764,6 +764,32 @@ Architecture final bbox probe enhancement (2026-06-03):
 - Use this probe output for future Architecture bbox-phase audits before changing renderer or
   manatee math.
 
+Architecture junction finalElements audit (2026-06-03):
+
+- Re-audited `stress_architecture_junction_fork_join_026`, still the largest active Architecture
+  root residual, with current `finalElements`, Edge-backed upstream regeneration, and Rust-side
+  FCoSE constraint / edge-length debug.
+- Current focused compare remains expected-fail at upstream `2808.127x2557.535` vs local
+  `2822.102x2545.033`; root width is wider by `13.976px` and height is shorter by `12.502px`.
+- Fresh Edge-backed `check-upstream-svgs` reproduced the stored upstream SVG, so this is not stale
+  fixture drift.
+- Browser probe config matches Mermaid 11.15 Architecture defaults for this row:
+  `iconSize=80`, `fontSize=16`, `padding=40`, `randomize=false`, `nodeSeparation=75`,
+  `idealEdgeLengthMultiplier=1.5`, `edgeElasticity=0.45`, and `numIter=2500`.
+- Browser and Rust constraints match pinned `architectureRenderer.ts`: junction parents come only
+  from `junction.in`, the fixture's junctions are unparented, horizontal and vertical alignment
+  arrays include the duplicated `join` entries, and relative-placement output keeps duplicate
+  `join -> db` / `join -> cache` rows.
+- Rust edge debug confirms the source-backed FCoSE callback inputs: one same-parent edge uses base
+  ideal length `120` with elasticity `0.45`, while the remaining cross-group edges use base ideal
+  length `40` with elasticity `0.001`. Manatee then performs its internal intergraph ideal-length
+  phase; auditing that phase requires a source-backed `cytoscape-fcose` / `cose-base` reference
+  harness, not a fixture constant.
+- Classification stays source-input-matched manatee-vs-Cytoscape FCoSE solution/internal phase
+  residual with a manual-probe / CLI-harness split. Do not tune junction parents, duplicate
+  relative constraints, group rect translation, edge path emission, root finalization, or text/group
+  constants for this row alone.
+
 Architecture group-port finalElements audit (2026-06-03):
 
 - Re-audited `stress_architecture_group_port_edges_017` with the enhanced finalElements probe.
