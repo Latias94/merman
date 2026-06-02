@@ -11,6 +11,7 @@ pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
     pub(crate) width: f64,
     pub(crate) half_width: f64,
+    pub(crate) applied_scale: f64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -34,6 +35,7 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
     ArchitectureCytoscapeCanvasLabelMetrics {
         width: m.width,
         half_width,
+        applied_scale: scale,
     }
 }
 
@@ -90,10 +92,11 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
 
         if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
             eprintln!(
-                "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
+                "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
                 title,
                 label_metrics.width,
                 label_half,
+                label_metrics.applied_scale,
                 half_w,
                 (half_w - half_icon).max(0.0),
                 bottom,
@@ -158,6 +161,26 @@ mod tests {
         assert_eq!(mapped.right, 2.5);
         assert_eq!(mapped.top, 3.5);
         assert_eq!(mapped.bottom, 4.5);
+    }
+
+    #[test]
+    fn architecture_canvas_label_metrics_report_applied_scale() {
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let metrics = super::architecture_cytoscape_canvas_label_metrics(
+            "This is a deliberately long architecture label probe",
+            &measurer,
+            &style,
+        );
+        assert!(metrics.width > 0.0);
+        assert!(
+            metrics.applied_scale == super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
+                || metrics.applied_scale == super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+        );
     }
 
     #[test]

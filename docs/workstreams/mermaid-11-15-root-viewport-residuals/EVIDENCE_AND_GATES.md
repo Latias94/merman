@@ -1334,6 +1334,34 @@ Outcome:
   "small" Class lookup removals caused focused geometry drift or widespread golden churn. Treat
   future Class table cleanup as a delete-one-verify-one campaign, not a grep-based sweep.
 
+## 2026-06-02 - Architecture Long-Label Scale Observability
+
+Fresh focused evidence from 2026-06-02:
+
+- `crates/merman-render/src/architecture_metrics.rs` now records the applied Cytoscape canvas-label
+  width scale inside `ArchitectureCytoscapeCanvasLabelMetrics`, and the debug output reports that
+  scale explicitly. This is an observability-only seam; no width math changed in this pass.
+- `cargo test -p merman-render architecture_text_constants_match_mermaid -- --nocapture`:
+  passed.
+- `cargo test -p merman-render architecture_canvas_label_metrics_report_applied_scale -- --nocapture`:
+  passed, covering the new metrics seam directly.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/architecture_batch5_long_titles_probe_after_scale_observability.md`:
+  still fails with the same focused root tail as before this pass:
+  upstream `543px`, local `548px` (`+5px`).
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch4_init_small_icons_061 --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/architecture_batch4_small_icons_probe_after_scale_observability.md`:
+  still fails with the same focused small-icon tail as before this pass:
+  upstream `187.75px`, local `178.5px` (`-9.25px`).
+
+Outcome:
+
+- This pass intentionally did not move the residual counts. It makes the current headless
+  approximation easier to inspect and reason about before any future attempt to narrow the
+  long-label branch.
+- The stable `+5px` / `-9.25px` focused rows confirm that the new seam did not silently perturb the
+  Architecture bbox policy.
+- Future changes to the long-label branch should be framed as narrowing or replacing the current
+  `>=200px -> 1.01` approximation, not as another opaque global constant tweak.
+
 ## Gate Set
 
 Run after any code or generated-data change:
