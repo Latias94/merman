@@ -102,3 +102,7 @@ Current repository reality to preserve:
     expanded the full Architecture root mismatch count from `26` to `47`, so it was rejected and
     reverted. The next real fix needs a phase-specific bbox model rather than a single global group
     padding/label-width rule.
+  - The first safe follow-up to that finding is now landed: Architecture service bounds estimate
+    fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`,
+    `cytoscape_group_child_bounds`). This did not change behavior: structural Architecture parity
+    is green, and `parity-root` remains the expected 26 mismatches.

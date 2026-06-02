@@ -269,9 +269,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             |line, style| text_measurer.measure_svg_text_bbox_x(line, style),
         );
         let b_full = if svc.in_group.is_some() {
-            estimate.compound_bounds.clone()
+            estimate.cytoscape_group_child_bounds.clone()
         } else {
-            estimate.root_bounds.clone()
+            estimate.svg_root_bounds.clone()
         };
         // Group rectangles (compound nodes) are sized by Cytoscape to include service labels, so
         // extending the root `getBBox()` estimate with *in-group* label bounds can double-count
@@ -282,9 +282,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         service_bounds.insert(svc.id, b_full.clone());
         if svc.in_group.is_none() {
             // For top-level services, approximate Chromium `getBBox()` via the root label model.
-            extend_bounds(&mut content_bounds, estimate.root_bounds);
+            extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
         } else {
-            extend_bounds(&mut content_bounds, estimate.icon_bounds);
+            extend_bounds(&mut content_bounds, estimate.emitted_icon_bounds);
         }
     }
 

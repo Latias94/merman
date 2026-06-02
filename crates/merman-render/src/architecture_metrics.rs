@@ -10,9 +10,12 @@ pub(crate) const ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureServiceBoundsEstimate {
-    pub(crate) icon_bounds: Bounds,
-    pub(crate) root_bounds: Bounds,
-    pub(crate) compound_bounds: Bounds,
+    // Actual emitted icon bounds used when grouped service labels should not affect root getBBox.
+    pub(crate) emitted_icon_bounds: Bounds,
+    // Approximation of Mermaid's final SVG getBBox() for top-level services.
+    pub(crate) svg_root_bounds: Bounds,
+    // Approximation of the child bounds that Cytoscape compounds use for group sizing.
+    pub(crate) cytoscape_group_child_bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -158,14 +161,14 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
 where
     TLine: std::fmt::Debug,
 {
-    let icon_bounds = Bounds {
+    let emitted_icon_bounds = Bounds {
         min_x: x,
         min_y: y,
         max_x: x + icon_size_px,
         max_y: y + icon_size_px,
     };
-    let mut root_bounds = icon_bounds.clone();
-    let mut compound_bounds = icon_bounds.clone();
+    let mut svg_root_bounds = emitted_icon_bounds.clone();
+    let mut cytoscape_group_child_bounds = emitted_icon_bounds.clone();
     let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
         .ok()
         .filter(|value| !value.is_empty());
@@ -199,22 +202,22 @@ where
         let text_right_compound = cx + compound_half_width;
         let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
 
-        root_bounds = Bounds {
-            min_x: root_bounds.min_x.min(text_left_root),
-            min_y: root_bounds.min_y,
-            max_x: root_bounds.max_x.max(text_right_root),
-            max_y: root_bounds.max_y.max(text_bottom_root),
+        svg_root_bounds = Bounds {
+            min_x: svg_root_bounds.min_x.min(text_left_root),
+            min_y: svg_root_bounds.min_y,
+            max_x: svg_root_bounds.max_x.max(text_right_root),
+            max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        compound_bounds = Bounds {
-            min_x: compound_bounds.min_x.min(text_left_compound),
-            min_y: compound_bounds.min_y,
-            max_x: compound_bounds.max_x.max(text_right_compound),
-            max_y: compound_bounds.max_y.max(text_bottom_compound),
+        cytoscape_group_child_bounds = Bounds {
+            min_x: cytoscape_group_child_bounds.min_x.min(text_left_compound),
+            min_y: cytoscape_group_child_bounds.min_y,
+            max_x: cytoscape_group_child_bounds.max_x.max(text_right_compound),
+            max_y: cytoscape_group_child_bounds.max_y.max(text_bottom_compound),
         };
 
         if debug_service.as_deref() == Some(title) {
             eprintln!(
-                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} compound_bottom={} icon_bounds=({}, {})-({}, {}) compound_bounds=({}, {})-({}, {}) root_bounds=({}, {})-({}, {})",
+                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} emitted_icon_bounds=({}, {})-({}, {}) group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
                 title,
                 lines,
                 bbox_left_root,
@@ -222,26 +225,26 @@ where
                 label_extra_bottom_root,
                 metrics.half_width,
                 label_extra_bottom_compound,
-                icon_bounds.min_x,
-                icon_bounds.min_y,
-                icon_bounds.max_x,
-                icon_bounds.max_y,
-                compound_bounds.min_x,
-                compound_bounds.min_y,
-                compound_bounds.max_x,
-                compound_bounds.max_y,
-                root_bounds.min_x,
-                root_bounds.min_y,
-                root_bounds.max_x,
-                root_bounds.max_y,
+                emitted_icon_bounds.min_x,
+                emitted_icon_bounds.min_y,
+                emitted_icon_bounds.max_x,
+                emitted_icon_bounds.max_y,
+                cytoscape_group_child_bounds.min_x,
+                cytoscape_group_child_bounds.min_y,
+                cytoscape_group_child_bounds.max_x,
+                cytoscape_group_child_bounds.max_y,
+                svg_root_bounds.min_x,
+                svg_root_bounds.min_y,
+                svg_root_bounds.max_x,
+                svg_root_bounds.max_y,
             );
         }
     }
 
     ArchitectureServiceBoundsEstimate {
-        icon_bounds,
-        root_bounds,
-        compound_bounds,
+        emitted_icon_bounds,
+        svg_root_bounds,
+        cytoscape_group_child_bounds,
     }
 }
 
