@@ -141,3 +141,27 @@ and residual risks in this file or a journal note.
   `repo-ref/beautiful-mermaid/src/layout-engine.ts`. Confirmed the next durable step is a boundary
   routing seam rather than more layout heuristics. Experimental layout-only attempts were discarded
   instead of being kept as unstable debt.
+- 2026-06-02 — Added route-plan coverage for TD same-rank merge edges and Unicode turn-glyph
+  direction correctness after a reported flowchart branch/merge regression. Added parser-backed
+  coverage for `flowchart TD` branch merging so the `B -->|No| D` bend uses a connected `┐` and
+  the `C --> D` same-rank edge is not silently dropped.
+- 2026-06-02 — Clarified sequence actor mirroring as a contract issue rather than a default parity
+  bug: Mermaid 11.15 defaults `sequence.mirrorActors` to `false`, while `merman-ascii` now exposes
+  `AsciiRenderOptions::with_sequence_mirror_actors(true)` and `merman-cli --sequence-mirror-actors`
+  for terminal output that wants bottom participant boxes.
+- 2026-06-02 — Fixed class namespace qualified relation endpoints in `merman-core` so relations
+  like `Platform.FFI.DartBinding --> Platform.Core.Renderer` resolve to already declared
+  namespace member classes instead of creating duplicate fully qualified top-level classes. Updated
+  affected class parser goldens for the intentional duplicate-class removal.
+- 2026-06-02 — Fixed ER/class shared layered relation routing for spanning edges that cross
+  intermediate boxes. The route lane now chooses a clear side around intermediate boxes, so the
+  reported `PRODUCT ||--o{ ORDER_ITEM` edge no longer draws through `ORDER` attributes.
+- 2026-06-02 — Verification passed `cargo nextest run -p merman-ascii`,
+  `cargo nextest run -p merman-core --lib`, `cargo nextest run -p merman-core
+  namespace_qualified_relation_endpoints_resolve_to_declared_classes`,
+  `cargo fmt --all --check`, `cargo clippy -p merman-ascii --all-targets --no-deps -- -D warnings`,
+  `cargo clippy -p merman-cli --features ascii --all-targets --no-deps -- -D warnings`,
+  `cargo nextest run -p merman-cli --features ascii`, and `git diff --check`.
+  `cargo nextest run -p merman-core` still fails on unrelated fixture
+  `fixtures/flowchart/stress_flowchart_edge_label_position_064.mmd` because the current parser
+  emits node `labelType=markdown` while the checked-in golden still expects `text`.

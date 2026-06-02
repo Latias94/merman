@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — Handoff
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Current State
 
@@ -18,16 +18,23 @@ The lane has been resumed for AAD-080, a bounded `A-GRAPH-010` follow-on.
 
 ## Active Task
 
-- Task ID: AAD-080
+- Task ID: AAD-090
 - Owner: codex
-- Files: `crates/merman-ascii/src/graph`, `crates/merman-ascii/tests/flowchart_model.rs`,
-  `crates/merman-ascii/FLOWCHART_SUPPORT.md`, `crates/merman-ascii/ASCII_GAP_REGISTRY.md`,
-  `docs/workstreams/ascii-architecture-deepening`
-- Validation: `cargo nextest run -p merman-ascii flowchart subgraph`; `cargo nextest run -p merman-ascii graph_fixture`
-- Status: IN PROGRESS
-- Review: Verify local-direction routing is limited to fully internal subgraph edges and that
-  cross-boundary edges keep the global fallback.
-- Evidence: `JOURNAL/2026-06-01-aad-080.md`
+- Files: `crates/merman-ascii/src/graph/routing`, `crates/merman-ascii/src/relation_graph.rs`,
+  `crates/merman-ascii/src/class/render.rs`, `crates/merman-ascii/src/er/render.rs`,
+  `crates/merman-ascii/src/sequence`, `crates/merman-ascii/tests/flowchart_model.rs`,
+  `crates/merman-ascii/tests/class_model.rs`, `crates/merman-ascii/tests/er_model.rs`,
+  `crates/merman-ascii/tests/sequence_model.rs`, `crates/merman-core/src/diagrams/class/db.rs`,
+  `crates/merman-core/src/diagrams/class/tests.rs`, `crates/merman-cli`, ASCII support docs,
+  class namespace parser goldens, `docs/workstreams/ascii-architecture-deepening`
+- Validation: `cargo nextest run -p merman-ascii`; `cargo nextest run -p merman-cli --features ascii`;
+  `cargo nextest run -p merman-core --lib`;
+  `cargo clippy -p merman-ascii --all-targets --no-deps -- -D warnings`;
+  `cargo clippy -p merman-cli --features ascii --all-targets --no-deps -- -D warnings`
+- Status: READY FOR REVIEW
+- Review: Verify route-plan coverage catches dropped edges and wrong Unicode turn glyphs without
+  blessing unrelated output shape drift.
+- Evidence: `EVIDENCE_AND_GATES.md`, `JOURNAL/2026-06-02-aad-090.md`
 
 ## Decisions Since Last Update
 
@@ -65,14 +72,30 @@ The lane has been resumed for AAD-080, a bounded `A-GRAPH-010` follow-on.
   edges whose endpoints both live inside the same direction-bearing subgraph.
 - Cross-boundary mixed-direction subgraph cases still fall back to the global root layout and are
   documented as remaining work rather than hidden partial parity.
+- AAD-090 added explicit `DrawEdgeRequest` and `GridRouteOptions` request objects, preserving the
+  routing seam while removing wide argument lists in graph edge drawing and grid route planning.
+- TD same-rank merge edges now route through the existing LR direct route planner instead of being
+  silently dropped.
+- Unicode turn glyph selection now lives at the route-plan level and is shared by grid and TD bent
+  routes, so a `Right -> Down` branch bend renders as `┐` instead of the disconnected `└`.
+- Sequence bottom participant boxes are not part of the default Mermaid-compatible contract because
+  Mermaid 11.15 defaults `sequence.mirrorActors` to `false`; they are now available through an
+  explicit library option and CLI flag for terminal output.
+- Namespace-qualified class relation endpoints now resolve to existing namespace member classes in
+  core instead of synthesizing duplicate top-level classes.
+- ER/class shared spanning relation lanes now choose a clear side around intermediate boxes instead
+  of blindly offsetting to the right and potentially overwriting entity/class text.
 
 ## Blockers
 
 - None for the shipped subset. Remaining mixed-direction parity gaps are tracked in
   `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+- `cargo nextest run -p merman-core` still has one unrelated snapshot failure in
+  `fixtures/flowchart/stress_flowchart_edge_label_position_064.mmd` (`labelType` markdown vs
+  checked-in text golden). The class namespace goldens touched by this slice were updated.
 
 ## Next Recommended Action
 
-- Finish AAD-080 closeout by updating `WORKSTREAM.json` and evidence once this slice is committed.
-- After that, choose between extending `A-GRAPH-010` into cross-boundary mixed-direction routing or
-  moving to another high-yield gap from `crates/merman-ascii/ASCII_GAP_REGISTRY.md`.
+- Review and, if accepted, close this AAD-090 slice. The next same-lane task should add broader
+  route invariants for every parsed flowchart edge and decide separately whether to refresh or
+  investigate the stale flowchart parser golden.

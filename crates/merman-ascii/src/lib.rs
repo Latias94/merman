@@ -167,6 +167,7 @@ mod tests {
         assert_eq!(options.sequence_participant_spacing, 5);
         assert_eq!(options.sequence_message_spacing, 1);
         assert_eq!(options.sequence_self_message_width, 4);
+        assert!(!options.sequence_mirror_actors);
     }
 
     #[test]
@@ -190,6 +191,13 @@ mod tests {
                 .color_for(AsciiColorRole::ChartSeries(9)),
             AsciiColorTheme::default_dark().color_for(AsciiColorRole::ChartSeries(1))
         );
+    }
+
+    #[test]
+    fn options_builder_sets_sequence_mirror_actors() {
+        let options = AsciiRenderOptions::unicode().with_sequence_mirror_actors(true);
+
+        assert!(options.sequence_mirror_actors);
     }
 
     #[test]

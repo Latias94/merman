@@ -40,6 +40,7 @@ pub struct AsciiRenderOptions {
     pub sequence_participant_spacing: usize,
     pub sequence_message_spacing: usize,
     pub sequence_self_message_width: usize,
+    pub sequence_mirror_actors: bool,
     pub max_grid_cells: usize,
 }
 
@@ -56,6 +57,7 @@ impl Default for AsciiRenderOptions {
             sequence_participant_spacing: 5,
             sequence_message_spacing: 1,
             sequence_self_message_width: 4,
+            sequence_mirror_actors: false,
             max_grid_cells: 250_000,
         }
     }
@@ -80,6 +82,11 @@ impl AsciiRenderOptions {
 
     pub fn with_color_theme(mut self, color_theme: AsciiColorTheme) -> Self {
         self.color_theme = color_theme;
+        self
+    }
+
+    pub fn with_sequence_mirror_actors(mut self, mirror_actors: bool) -> Self {
+        self.sequence_mirror_actors = mirror_actors;
         self
     }
 

@@ -25,6 +25,7 @@ pub(super) struct SequenceChars {
     pub(super) active_vertical: char,
     pub(super) destroyed_mark: char,
     pub(super) tee_down: char,
+    pub(super) tee_up: char,
     pub(super) tee_right: char,
     pub(super) tee_left: char,
     pub(super) filled_arrow_right: char,
@@ -50,6 +51,7 @@ impl SequenceChars {
                 active_vertical: '#',
                 destroyed_mark: 'x',
                 tee_down: '+',
+                tee_up: '+',
                 tee_right: '+',
                 tee_left: '+',
                 filled_arrow_right: '>',
@@ -71,6 +73,7 @@ impl SequenceChars {
                 active_vertical: '┃',
                 destroyed_mark: '×',
                 tee_down: '┬',
+                tee_up: '┴',
                 tee_right: '├',
                 tee_left: '┤',
                 filled_arrow_right: '►',
@@ -217,6 +220,44 @@ pub(crate) fn render_sequence_diagram(
         event_plan.active_counts(),
         event_plan.visible_actors(),
     ));
+    if options.sequence_mirror_actors {
+        lines.push(build_participant_line(
+            diagram,
+            &layout,
+            event_plan.visible_actors(),
+            |index| {
+                participant_box_segment(
+                    diagram,
+                    &layout,
+                    &chars,
+                    index,
+                    ParticipantBoxRow::MirrorTop,
+                )
+            },
+        ));
+        lines.push(build_participant_line(
+            diagram,
+            &layout,
+            event_plan.visible_actors(),
+            |index| {
+                participant_box_segment(diagram, &layout, &chars, index, ParticipantBoxRow::Label)
+            },
+        ));
+        lines.push(build_participant_line(
+            diagram,
+            &layout,
+            event_plan.visible_actors(),
+            |index| {
+                participant_box_segment(
+                    diagram,
+                    &layout,
+                    &chars,
+                    index,
+                    ParticipantBoxRow::MirrorBottom,
+                )
+            },
+        ));
+    }
     let control_frames = event_plan.finish()?;
     if !control_frames.is_empty() {
         lines = render_sequence_control_frames(lines, &control_frames, &chars);
@@ -254,6 +295,8 @@ enum ParticipantBoxRow {
     Top,
     Label,
     Bottom,
+    MirrorTop,
+    MirrorBottom,
 }
 
 fn participant_box_segment(
@@ -267,10 +310,15 @@ fn participant_box_segment(
     let total_width = width + 2;
     let mut line = SequenceLine::blank(total_width);
     match row {
-        ParticipantBoxRow::Top => {
+        ParticipantBoxRow::Top | ParticipantBoxRow::MirrorTop => {
             line.set_role(0, chars.top_left, AsciiColorRole::SequenceFrame);
             for x in 1..=width {
-                line.set_role(x, chars.horizontal, AsciiColorRole::SequenceFrame);
+                let ch = if row == ParticipantBoxRow::MirrorTop && x == (width / 2) + 1 {
+                    chars.tee_up
+                } else {
+                    chars.horizontal
+                };
+                line.set_role(x, ch, AsciiColorRole::SequenceFrame);
             }
             line.set_role(width + 1, chars.top_right, AsciiColorRole::SequenceFrame);
         }
@@ -282,10 +330,10 @@ fn participant_box_segment(
             line.write_text_role(1 + left_padding, label, AsciiColorRole::Text);
             line.set_role(width + 1, chars.vertical, AsciiColorRole::SequenceFrame);
         }
-        ParticipantBoxRow::Bottom => {
+        ParticipantBoxRow::Bottom | ParticipantBoxRow::MirrorBottom => {
             line.set_role(0, chars.bottom_left, AsciiColorRole::SequenceFrame);
             for x in 1..=width {
-                let ch = if x == (width / 2) + 1 {
+                let ch = if row == ParticipantBoxRow::Bottom && x == (width / 2) + 1 {
                     chars.tee_down
                 } else {
                     chars.horizontal

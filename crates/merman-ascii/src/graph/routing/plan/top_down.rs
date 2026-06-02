@@ -2,9 +2,10 @@ use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, NodeLayout};
 use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow};
 use super::super::cell::edge_line_char;
+use super::super::path::StepDirection;
 use super::{
     PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell, planned_label, route_cell,
+    edge_line_cell, planned_label, route_cell, route_turn_char,
 };
 
 pub(super) fn plan_top_down_direct_route(
@@ -96,7 +97,12 @@ pub(super) fn plan_top_down_bent_route(
         }
     }
 
-    cells.push(route_cell(target_x, source_y, charset.corner_down_right));
+    let bend = if target_x > from.center_x() {
+        route_turn_char(StepDirection::Right, StepDirection::Down, charset)
+    } else {
+        route_turn_char(StepDirection::Left, StepDirection::Down, charset)
+    };
+    cells.push(route_cell(target_x, source_y, bend));
     for y in (source_y + 1)..end_y {
         cells.push(route_cell(target_x, y, vertical));
     }

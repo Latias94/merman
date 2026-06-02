@@ -27,7 +27,8 @@ Basic sequence diagrams with participants, filled/open solid and dotted messages
 wrapped message labels, wrapped notes, diagram titles, sequence boxes, activations, actor
 create/destroy lifecycle markers, visible autonumber, and sequence control blocks can render through
 `render_sequence` or
-`render_model`. The classDiagram slice can render class boxes, members, methods, relationship
+`render_model`; bottom participant boxes are available with
+`AsciiRenderOptions::with_sequence_mirror_actors(true)`. The classDiagram slice can render class boxes, members, methods, relationship
 labels, single relationship layouts, layered chain/star multi-relationship layouts, and
 adjacent-layer crossing layouts resolved by layer reordering for extension, dependency,
 aggregation, and composition through `render_class` or `render_model`; same-endpoint and simple
@@ -60,7 +61,7 @@ See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support mat
 | Diagram family | Public entry points | Shipped text subset |
 | --- | --- | --- |
 | flowchart/graph | `render_flowchart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | LR/TD/TB/BT/RL root directions, boxed nodes, common terminal shape approximations, labels, open/dotted/thick edges, titled/nested subgraphs with multiline and wrapped title rows, opt-in ANSI/HTML foreground color roles, and foreground `classDef`/`class`/`style`/`linkStyle` mapping. |
-| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
+| sequenceDiagram | `render_sequence`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Titles, participants, optional mirrored bottom participant boxes, solid/dotted messages, notes, boxes, activations, lifecycle markers, autonumber, core control blocks, and opt-in ANSI/HTML foreground color roles. |
 | classDiagram | `render_class`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Class boxes, members, methods, labels, single relationships, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone class components, and opt-in ANSI/HTML foreground color roles. |
 | erDiagram | `render_er`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Entity boxes, attributes, labels, identifying/non-identifying relationships, common cardinality markers, layered chain/star multi-relationship layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint lanes, simple mixed-parallel lanes, simple spanning-level side lanes, unrelated standalone entity components, and opt-in ANSI/HTML foreground color roles. |
 | xychart | `render_xychart`, `render_model`, `merman::ascii::render_ascii_sync`, `merman-cli render --format ascii|unicode` | Compact vertical bars, stair-step lines, mixed overlays, horizontal bars, titles, axes, inferred numeric labels, and opt-in ANSI/HTML foreground color roles. |

@@ -668,11 +668,12 @@ fn draw_layered_relation(
     let Some(bottom) = placed_by_id.get(layout.bottom_id) else {
         return;
     };
-    let lane_offset = if spans_intermediate_box(placed_boxes, top, bottom) {
-        lane_offset + relation_graph::spanning_lane_offset(top.width(), bottom.width())
-    } else {
-        lane_offset
-    };
+    let lane_offset = relation_graph::spanning_lane_offset_around_intermediate_boxes(
+        placed_boxes,
+        top,
+        bottom,
+        lane_offset,
+    );
     let from_x = relation_graph::offset_center(top.center_x(), lane_offset);
     let from_y = top.bottom();
     let to_x = relation_graph::offset_center(bottom.center_x(), lane_offset);
@@ -725,16 +726,6 @@ fn draw_layered_relation(
             AsciiColorRole::EdgeArrow,
         ),
     }
-}
-
-fn spans_intermediate_box(
-    placed_boxes: &[PlacedClassBox<'_>],
-    top: &PlacedClassBox<'_>,
-    bottom: &PlacedClassBox<'_>,
-) -> bool {
-    placed_boxes
-        .iter()
-        .any(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
 }
 
 fn marker_char(marker: RelationMarker, side: MarkerSide, charset: ClassCharset) -> char {

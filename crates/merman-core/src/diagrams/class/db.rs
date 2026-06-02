@@ -769,11 +769,35 @@ impl<'a> ClassDb<'a> {
         }
     }
 
+    fn existing_relation_class_id(&self, class_name: &str) -> Option<String> {
+        if self.classes.contains_key(class_name) {
+            return Some(class_name.to_string());
+        }
+
+        let (namespace_id, local_id) = class_name.rsplit_once('.')?;
+        let namespace = self.namespaces.get(namespace_id)?;
+        if namespace.class_ids.iter().any(|id| id == local_id)
+            && self.classes.contains_key(local_id)
+        {
+            return Some(local_id.to_string());
+        }
+
+        None
+    }
+
+    fn add_relation_class(&mut self, id: &str) -> String {
+        let (class_name, _) = self.split_class_name_and_type(id);
+        if let Some(existing_id) = self.existing_relation_class_id(&class_name) {
+            return existing_id;
+        }
+
+        self.add_class(id);
+        class_name
+    }
+
     fn add_relation(&mut self, mut rel: RelationData) {
         let original_id1 = rel.id1.clone();
         let original_id2 = rel.id2.clone();
-        let (id1_name, _) = self.split_class_name_and_type(&rel.id1);
-        let (id2_name, _) = self.split_class_name_and_type(&rel.id2);
 
         let invalid_types = [
             REL_LOLLIPOP,
@@ -784,7 +808,7 @@ impl<'a> ClassDb<'a> {
         ];
 
         if rel.relation.type1 == REL_LOLLIPOP && !invalid_types.contains(&rel.relation.type2) {
-            self.add_class(&original_id2);
+            let id2_name = self.add_relation_class(&original_id2);
             let iface_id = format!("interface{}", self.interfaces.len());
             self.interfaces.push(Interface {
                 id: iface_id.clone(),
@@ -795,7 +819,7 @@ impl<'a> ClassDb<'a> {
             rel.id2 = id2_name;
         } else if rel.relation.type2 == REL_LOLLIPOP && !invalid_types.contains(&rel.relation.type1)
         {
-            self.add_class(&original_id1);
+            let id1_name = self.add_relation_class(&original_id1);
             let iface_id = format!("interface{}", self.interfaces.len());
             self.interfaces.push(Interface {
                 id: iface_id.clone(),
@@ -805,8 +829,8 @@ impl<'a> ClassDb<'a> {
             rel.id1 = id1_name;
             rel.id2 = iface_id;
         } else {
-            self.add_class(&original_id1);
-            self.add_class(&original_id2);
+            let id1_name = self.add_relation_class(&original_id1);
+            let id2_name = self.add_relation_class(&original_id2);
             rel.id1 = id1_name;
             rel.id2 = id2_name;
         }

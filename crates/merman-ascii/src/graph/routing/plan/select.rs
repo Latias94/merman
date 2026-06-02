@@ -5,8 +5,8 @@ use super::super::path::Port;
 use super::PlannedRouteSegment;
 use super::RoutePlan;
 use super::grid::{
-    plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports,
-    plan_left_right_grid_path_route_with_ports_and_segment,
+    GridRouteOptions, plan_left_right_grid_path_route,
+    plan_left_right_grid_path_route_with_options, plan_left_right_grid_path_route_with_ports,
 };
 use super::left_right::{
     left_right_back_edge_bottom_y, plan_left_right_bottom_lane_route, plan_left_right_direct_route,
@@ -63,9 +63,7 @@ pub(in crate::graph::routing) fn plan_edge_route(
 
     match boundary.direction().canonical() {
         GraphDirection::LeftRight => plan_left_right_route(request),
-        GraphDirection::TopDown => {
-            plan_top_down_route(request.from, request.to, request.edge, request.charset)
-        }
+        GraphDirection::TopDown => plan_top_down_route(request),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
@@ -146,14 +144,22 @@ fn plan_left_right_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
     None
 }
 
-fn plan_top_down_route(
-    from: &NodeLayout,
-    to: &NodeLayout,
-    edge: &AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> Option<RoutePlan> {
+fn plan_top_down_route(request: EdgeRouteRequest<'_>) -> Option<RoutePlan> {
+    let from = request.from;
+    let to = request.to;
+    let edge = request.edge;
+    let charset = request.charset;
+
     if from.center_y() > to.center_y() {
         return plan_top_down_back_route(from, to, edge, charset);
+    }
+
+    if from.center_y() == to.center_y() {
+        if let Some(plan) =
+            plan_left_right_direct_route(&request.graph_layout.nodes, from, to, edge, charset)
+        {
+            return Some(plan);
+        }
     }
 
     if from.center_x() != to.center_x() {
@@ -185,15 +191,14 @@ fn plan_boundary_route(
             root_direction: GraphDirection::TopDown,
             local_direction: GraphDirection::LeftRight,
             ..
-        } => plan_left_right_grid_path_route_with_ports_and_segment(
+        } => plan_left_right_grid_path_route_with_options(
             request.graph_layout,
             request.from,
             request.to,
             request.edge,
             request.charset,
-            Some(Port::Right),
-            Some(Port::Right),
-            PlannedRouteSegment::Boundary,
+            GridRouteOptions::with_ports(Some(Port::Right), Some(Port::Right))
+                .with_segment(PlannedRouteSegment::Boundary),
         ),
         EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. } => None,
         EdgeBoundaryContext::Entering { .. } | EdgeBoundaryContext::Leaving { .. } => None,

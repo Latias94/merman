@@ -267,6 +267,59 @@ fn sequence_color_html_wraps_boxes_notes_control_frames_and_messages_without_cha
     }
 }
 
+#[test]
+fn sequence_default_keeps_mermaid_mirror_actors_disabled() {
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "    participant U as User\n",
+            "    participant B as Browser\n",
+            "    participant S as Server\n",
+            "    U->>B: Click Login\n",
+            "    B->>S: POST /login\n",
+            "    S-->>B: Return Token\n",
+            "    B-->>U: Show Success\n",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .unwrap();
+
+    assert!(
+        !rendered.contains("┌───┴──┐"),
+        "default Mermaid-compatible sequence output should not mirror actors: {rendered}"
+    );
+}
+
+#[test]
+fn sequence_option_mirrors_participant_boxes_below_lifelines() {
+    let options = AsciiRenderOptions::unicode().with_sequence_mirror_actors(true);
+
+    let rendered = render_sequence(
+        concat!(
+            "sequenceDiagram\n",
+            "    participant U as User\n",
+            "    participant B as Browser\n",
+            "    participant S as Server\n",
+            "    U->>B: Click Login\n",
+            "    B->>S: POST /login\n",
+            "    S-->>B: Return Token\n",
+            "    B-->>U: Show Success\n",
+        ),
+        &options,
+    )
+    .unwrap();
+
+    assert!(
+        rendered.ends_with(concat!(
+            "    │             │               │\n",
+            "┌───┴──┐     ┌────┴────┐     ┌────┴───┐\n",
+            "│ User │     │ Browser │     │ Server │\n",
+            "└──────┘     └─────────┘     └────────┘\n",
+        )),
+        "mirrored sequence actors should close the lifelines with bottom participant boxes: {rendered}"
+    );
+}
+
 fn basic_sequence_model() -> SequenceDiagramRenderModel {
     let mut actors = BTreeMap::new();
     actors.insert(

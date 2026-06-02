@@ -1,4 +1,7 @@
-use super::grid::{plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports};
+use super::grid::{
+    GridRouteOptions, plan_left_right_grid_path_route,
+    plan_left_right_grid_path_route_with_options, plan_left_right_grid_path_route_with_ports,
+};
 use super::left_right::{
     plan_left_right_bottom_lane_route, plan_left_right_direct_route, plan_left_right_down_route,
     plan_left_right_down_then_right_route, plan_left_right_reverse_over_self_loop_route,
@@ -68,6 +71,33 @@ fn edge_route_selects_top_down_back_route() {
     })
     .unwrap();
     let expected = plan_top_down_back_route(&from, &to, &edge, &charset).unwrap();
+
+    assert_eq!(selected, expected);
+}
+
+#[test]
+fn edge_route_selects_top_down_same_rank_direct_route() {
+    let options = AsciiRenderOptions::unicode();
+    let graph_layout = left_right_layout(&[("a", "b")], &options);
+    let from = layout_node(&graph_layout, "a");
+    let to = layout_node(&graph_layout, "b");
+    let edge = edge_between("a", "b", None, GraphEdgeArrow::Point);
+    let edges = vec![edge.clone()];
+    let charset = GraphCharset::for_options(&options);
+
+    let selected = plan_edge_route(EdgeRouteRequest {
+        graph: &AsciiGraph::new(GraphDirection::TopDown),
+        graph_layout: &graph_layout,
+        edges: &edges,
+        from,
+        to,
+        edge_index: 0,
+        edge: &edge,
+        charset: &charset,
+    })
+    .unwrap();
+    let expected =
+        plan_left_right_direct_route(&graph_layout.nodes, from, to, &edge, &charset).unwrap();
 
     assert_eq!(selected, expected);
 }
@@ -273,14 +303,17 @@ fn leaving_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     })
     .expect("leaving boundary route should use the grid path stub");
 
-    let expected = plan_left_right_grid_path_route_with_ports(
+    let expected = plan_left_right_grid_path_route_with_options(
         &layout,
         from,
         to,
         &edge,
         &charset,
-        Some(crate::graph::routing::path::Port::Right),
-        Some(crate::graph::routing::path::Port::Right),
+        GridRouteOptions::with_ports(
+            Some(crate::graph::routing::path::Port::Right),
+            Some(crate::graph::routing::path::Port::Right),
+        )
+        .with_segment(PlannedRouteSegment::Boundary),
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
@@ -822,6 +855,30 @@ fn top_down_bent_route_plans_right_bend_arrow_and_label() {
 }
 
 #[test]
+fn top_down_bent_route_plans_right_bend_unicode_corner() {
+    let from = node("a", 0, 0, 3, 3);
+    let to = node("b", 6, 5, 3, 3);
+    let edge = edge(None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+
+    let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+    assert!(
+        plan.cells
+            .iter()
+            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '┐'),
+        "right/down bend should connect from the left into a downward leg: {plan:?}"
+    );
+    assert!(
+        !plan
+            .cells
+            .iter()
+            .any(|cell| cell.coord == CanvasCoord { x: 7, y: 1 } && cell.ch == '└'),
+        "right/down bend must not use the left-right/down-up corner: {plan:?}"
+    );
+}
+
+#[test]
 fn top_down_bent_route_plans_left_bend_open_endpoint() {
     let from = node("a", 10, 0, 3, 3);
     let to = node("b", 0, 5, 3, 3);
@@ -849,6 +906,30 @@ fn top_down_bent_route_plans_left_bend_open_endpoint() {
         ]
     );
     assert!(plan.labels.is_empty());
+}
+
+#[test]
+fn top_down_bent_route_plans_left_bend_unicode_corner() {
+    let from = node("a", 10, 0, 3, 3);
+    let to = node("b", 0, 5, 3, 3);
+    let edge = edge(None, GraphEdgeArrow::Point);
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::unicode());
+
+    let plan = plan_top_down_bent_route(&from, &to, &edge, &charset).unwrap();
+
+    assert!(
+        plan.cells
+            .iter()
+            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '┌'),
+        "left/down bend should connect from the right into a downward leg: {plan:?}"
+    );
+    assert!(
+        !plan
+            .cells
+            .iter()
+            .any(|cell| cell.coord == CanvasCoord { x: 1, y: 1 } && cell.ch == '└'),
+        "left/down bend must not use the left-right/down-up corner: {plan:?}"
+    );
 }
 
 #[test]

@@ -520,11 +520,12 @@ fn draw_layered_relationship(
     let Some(bottom) = placed_by_id.get(relationship.entity_b.as_str()) else {
         return Ok(());
     };
-    let lane_offset = if spans_intermediate_box(placed_boxes, top, bottom) {
-        lane_offset + relation_graph::spanning_lane_offset(top.width(), bottom.width())
-    } else {
-        lane_offset
-    };
+    let lane_offset = relation_graph::spanning_lane_offset_around_intermediate_boxes(
+        placed_boxes,
+        top,
+        bottom,
+        lane_offset,
+    );
     let top_cardinality = cardinality_marker(&relationship.rel_spec.card_b)?;
     let bottom_cardinality = cardinality_marker(&relationship.rel_spec.card_a)?;
     let vertical = relationship_line(&relationship.rel_spec.rel_type, charset)?;
@@ -582,16 +583,6 @@ fn draw_layered_relationship(
     );
 
     Ok(())
-}
-
-fn spans_intermediate_box(
-    placed_boxes: &[PlacedEntityBox<'_>],
-    top: &PlacedEntityBox<'_>,
-    bottom: &PlacedEntityBox<'_>,
-) -> bool {
-    placed_boxes
-        .iter()
-        .any(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
 }
 
 fn cardinality_marker(cardinality: &str) -> Result<&'static str> {

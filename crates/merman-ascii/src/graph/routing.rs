@@ -22,6 +22,15 @@ pub(super) struct RouteDrawing<'a> {
     labels: &'a mut Vec<EdgeLabel>,
 }
 
+pub(super) struct DrawEdgeRequest<'a> {
+    pub(super) graph: &'a AsciiGraph,
+    pub(super) graph_layout: &'a GraphLayout,
+    pub(super) edges: &'a [AsciiGraphEdge],
+    pub(super) edge_index: usize,
+    pub(super) edge: &'a AsciiGraphEdge,
+    pub(super) charset: &'a GraphCharset,
+}
+
 impl<'a> RouteDrawing<'a> {
     pub(super) fn new(
         canvas: &'a mut Canvas,
@@ -57,44 +66,35 @@ pub(super) fn transform_routed_label(
     }
 }
 
-pub(super) fn draw_edge(
-    drawing: &mut RouteDrawing<'_>,
-    graph: &AsciiGraph,
-    graph_layout: &GraphLayout,
-    edges: &[AsciiGraphEdge],
-    edge_index: usize,
-    edge: &AsciiGraphEdge,
-    _direction: GraphDirection,
-    charset: &GraphCharset,
-) {
-    let layouts = &graph_layout.nodes;
-    let Some(from) = layouts.iter().find(|layout| layout.id == edge.from) else {
+pub(super) fn draw_edge(drawing: &mut RouteDrawing<'_>, request: DrawEdgeRequest<'_>) {
+    let layouts = &request.graph_layout.nodes;
+    let Some(from) = layouts.iter().find(|layout| layout.id == request.edge.from) else {
         return;
     };
-    let Some(to) = layouts.iter().find(|layout| layout.id == edge.to) else {
+    let Some(to) = layouts.iter().find(|layout| layout.id == request.edge.to) else {
         return;
     };
     let labels_start = drawing.labels.len();
-    let before =
-        (edge.style.line.is_some() || edge.style.arrow.is_some()).then(|| drawing.canvas.clone());
+    let before = (request.edge.style.line.is_some() || request.edge.style.arrow.is_some())
+        .then(|| drawing.canvas.clone());
 
     if let Some(plan) = plan_edge_route(EdgeRouteRequest {
-        graph,
-        graph_layout,
-        edges,
+        graph: request.graph,
+        graph_layout: request.graph_layout,
+        edges: request.edges,
         from,
         to,
-        edge_index,
-        edge,
-        charset,
+        edge_index: request.edge_index,
+        edge: request.edge,
+        charset: request.charset,
     }) {
         paint_route_plan(drawing, &plan);
     }
 
     if let Some(before) = &before {
-        apply_edge_style_delta(drawing.canvas, before, edge.style);
+        apply_edge_style_delta(drawing.canvas, before, request.edge.style);
     }
-    if let Some(color) = edge.style.label {
+    if let Some(color) = request.edge.style.label {
         for label in &mut drawing.labels[labels_start..] {
             label.color = Some(color);
         }

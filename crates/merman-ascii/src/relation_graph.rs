@@ -62,6 +62,10 @@ impl PlacedRelationGraphBox<'_> {
         self.id
     }
 
+    pub(crate) fn x(&self) -> usize {
+        self.x
+    }
+
     pub(crate) fn width(&self) -> usize {
         self.relation_box.width()
     }
@@ -76,6 +80,10 @@ impl PlacedRelationGraphBox<'_> {
 
     pub(crate) fn center_x(&self) -> usize {
         self.x + self.width() / 2
+    }
+
+    pub(crate) fn right(&self) -> usize {
+        self.x + self.width().saturating_sub(1)
     }
 
     pub(crate) fn bottom(&self) -> usize {
@@ -449,6 +457,95 @@ pub(crate) fn offset_center(center: usize, offset: isize) -> usize {
 
 pub(crate) fn spanning_lane_offset(top_width: usize, bottom_width: usize) -> isize {
     (top_width.max(bottom_width) / 2).saturating_add(3) as isize
+}
+
+pub(crate) fn spanning_lane_offset_around_intermediate_boxes(
+    placed_boxes: &[PlacedRelationGraphBox<'_>],
+    top: &PlacedRelationGraphBox<'_>,
+    bottom: &PlacedRelationGraphBox<'_>,
+    lane_offset: isize,
+) -> isize {
+    let intermediate_boxes = placed_boxes
+        .iter()
+        .filter(|placed_box| placed_box.y() > top.y() && placed_box.y() < bottom.y())
+        .collect::<Vec<_>>();
+    if intermediate_boxes.is_empty() {
+        return lane_offset;
+    }
+
+    let route_clearance = intermediate_boxes
+        .iter()
+        .map(|placed_box| placed_box.width() / 2)
+        .max()
+        .unwrap_or(0);
+    let spanning_offset = spanning_lane_offset(
+        top.width().max(route_clearance.saturating_mul(2)),
+        bottom.width(),
+    );
+    let left_offset = lane_offset - spanning_offset;
+    let right_offset = lane_offset + spanning_offset;
+    let left_is_clear =
+        !route_column_crosses_any_box(top.center_x(), left_offset, &intermediate_boxes);
+    let right_is_clear =
+        !route_column_crosses_any_box(top.center_x(), right_offset, &intermediate_boxes);
+
+    match (left_is_clear, right_is_clear) {
+        (true, false) => left_offset,
+        (false, true) => right_offset,
+        (true, true) if lane_offset < 0 => left_offset,
+        (true, true) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => left_offset,
+        (true, true) => right_offset,
+        (false, false) if top_is_left_of_intermediate_boxes(top, &intermediate_boxes) => {
+            route_column_left_of_intermediate_boxes(top, &intermediate_boxes)
+        }
+        (false, false) => route_column_right_of_intermediate_boxes(top, &intermediate_boxes),
+    }
+}
+
+fn route_column_crosses_any_box(
+    center_x: usize,
+    lane_offset: isize,
+    boxes: &[&PlacedRelationGraphBox<'_>],
+) -> bool {
+    let column = offset_center(center_x, lane_offset);
+    boxes
+        .iter()
+        .any(|placed_box| column >= placed_box.x() && column <= placed_box.right())
+}
+
+fn top_is_left_of_intermediate_boxes(
+    top: &PlacedRelationGraphBox<'_>,
+    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
+) -> bool {
+    intermediate_boxes
+        .iter()
+        .any(|placed_box| top.center_x() < placed_box.center_x())
+}
+
+fn route_column_left_of_intermediate_boxes(
+    top: &PlacedRelationGraphBox<'_>,
+    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
+) -> isize {
+    let target = intermediate_boxes
+        .iter()
+        .map(|placed_box| placed_box.x())
+        .min()
+        .unwrap_or(0)
+        .saturating_sub(2);
+    target as isize - top.center_x() as isize
+}
+
+fn route_column_right_of_intermediate_boxes(
+    top: &PlacedRelationGraphBox<'_>,
+    intermediate_boxes: &[&PlacedRelationGraphBox<'_>],
+) -> isize {
+    let target = intermediate_boxes
+        .iter()
+        .map(|placed_box| placed_box.right())
+        .max()
+        .unwrap_or(top.center_x())
+        .saturating_add(2);
+    target as isize - top.center_x() as isize
 }
 
 pub(crate) fn marker_line_with_role(

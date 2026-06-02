@@ -1,7 +1,7 @@
 # ASCII Architecture Deepening — TODO
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## M0 — Scope And Evidence Freeze
 
@@ -113,5 +113,7 @@ Last updated: 2026-06-01
   Evidence: route-plan classification tests, parser-backed subgraph boundary tests, and updated
   design/evidence docs.
   Context: `crates/merman-ascii/ASCII_GAP_REGISTRY.md`, `docs/workstreams/ascii-architecture-deepening/DESIGN.md`, `F:\\SourceCodes\\Rust\\merman\\repo-ref\\beautiful-mermaid\\src\\layout-engine.ts`.
-  Handoff: IN PROGRESS on 2026-06-02. Design clarified; next implementation step is to extract
-  boundary context classification before route painting.
+  Handoff: READY FOR REVIEW on 2026-06-02. Route seam has explicit request objects, boundary
+  segment markers, TD same-rank merge coverage, turn-glyph regression tests, class namespace
+  qualified endpoint coverage, and ER spanning relation coverage. Next same-lane step is a broader
+  route invariant that fails when any parsed flowchart edge is silently dropped.
