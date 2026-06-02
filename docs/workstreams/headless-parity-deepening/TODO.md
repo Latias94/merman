@@ -157,7 +157,8 @@ Last updated: 2026-06-02
   Handoff: IN_PROGRESS. The first source-backed slice fixed missing or incomplete theme CSS emission
   for Kanban, Packet, Sankey, C4, and GitGraph. The user Kanban metadata and GitGraph merge samples
   now render with readable labels and semantic branch/card styling. Follow-up slices fixed Gantt,
-  Treemap, Requirement, Mindmap, and Pie theme/readability gaps, including Mindmap XHTML `span`
-  label colors and Pie title/slice/legend text variables. Continue by scanning supported diagrams
-  for blank output, hidden labels, black blocks, lost theme colors, and other functional
-  renderability failures before returning to fine root residual work.
+  Treemap, Requirement, Mindmap, Pie, and Journey theme/readability gaps, including Mindmap XHTML
+  `span` label colors, Pie title/slice/legend text variables, and Journey task/section fillType
+  rules. Continue by scanning supported diagrams for blank output, hidden labels, black blocks,
+  lost theme colors, and other functional renderability failures before returning to fine root
+  residual work.

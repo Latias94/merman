@@ -752,6 +752,32 @@ Focused verification:
 - `cargo test -p merman-render pie_css_honors_mermaid_11_15_theme_options`
 - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Fifth slice outcome:
+
+- Audited pinned Mermaid 11.15 Journey style provider:
+  - `packages/mermaid/src/diagrams/user-journey/styles.js`
+- Journey previously mixed layout-derived presentation attributes with fixed CSS fallback colors.
+  This is visible because class CSS such as `.task-type-*` and `.section-type-*` overrides SVG
+  `fill` presentation attributes, so fixed CSS can make configured section/task colors appear to
+  be ignored.
+- Journey CSS now reads Mermaid 11.15 theme variables for `faceColor`, `mainBkg`, `nodeBorder`,
+  `arrowheadColor`, `edgeLabelBackground`, `titleColor`, `tertiaryColor`, `border2`, `fillType0`
+  through `fillType7`, and optional `actor0` through `actor5`.
+- The generic `line` rule now follows upstream `textColor`; edge/flowchart link rules still use
+  source-backed `lineColor`.
+- Actor color CSS is only emitted when the corresponding `themeVariables.actorN` exists. This keeps
+  default layout-derived actor colors intact while allowing theme variables to override the visible
+  SVG when they are provided.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/journey.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/journey.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render journey_css_honors_mermaid_11_15_theme_options`
+- `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

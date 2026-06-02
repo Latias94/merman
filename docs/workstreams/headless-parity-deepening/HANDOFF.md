@@ -197,6 +197,10 @@ Current repository reality to preserve:
   - A fourth HPD-080 slice fixed Pie theme CSS emission. Pie now passes `effective_config` into
     CSS generation and reads Mermaid 11.15 `pie*` theme variables for stroke, opacity, title,
     slice-label, and legend text styles. The obsolete fixed `info_css(...)` wrapper was removed.
+  - A fifth HPD-080 slice fixed Journey theme CSS emission. Journey now reads source-backed
+    `faceColor`, `mainBkg`, `nodeBorder`, `arrowheadColor`, `edgeLabelBackground`, `titleColor`,
+    `tertiaryColor`, `border2`, `fillType0..7`, and optional `actor0..5` variables; this matters
+    because task/section CSS classes override SVG `fill` presentation attributes.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -75,3 +75,5 @@
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-pie.md","reason":"HPD-080 journal: fourth source-backed theme CSS slice covers Pie stroke, opacity, title, slice-label, and legend theme variables."}
 {"file":"crates/merman-render/src/svg/parity/pie.rs","reason":"HPD-080 implementation: Pie renderer now passes effective config into CSS generation."}
 {"file":"crates/merman-render/src/svg/parity/css.rs","reason":"HPD-080 implementation: Pie CSS now reads Mermaid 11.15 theme variables and removed the unused fixed info_css wrapper."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-journey.md","reason":"HPD-080 journal: fifth source-backed theme CSS slice covers Journey fillType, actor, face, tooltip, and label theme variables."}
+{"file":"crates/merman-render/src/svg/parity/journey.rs","reason":"HPD-080 implementation: Journey CSS now reads Mermaid 11.15 user-journey theme variables that affect visible task, section, actor, face, and tooltip colors."}

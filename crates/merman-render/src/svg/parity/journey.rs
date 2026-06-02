@@ -30,6 +30,22 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let font = parts.font_family;
     let text_color = parts.text_color;
     let line_color = parts.line_color;
+    let face_color = theme_color(effective_config, "faceColor", "#FFF8DC");
+    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
+    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
+    let arrowhead_color = theme_color(effective_config, "arrowheadColor", "#333333");
+    let edge_label_background = theme_color(
+        effective_config,
+        "edgeLabelBackground",
+        "rgba(232,232,232, 0.8)",
+    );
+    let title_color = theme_color(effective_config, "titleColor", text_color.as_str());
+    let tertiary_color = theme_color(
+        effective_config,
+        "tertiaryColor",
+        "hsl(80, 100%, 96.2745098039%)",
+    );
+    let border2 = theme_color(effective_config, "border2", "#aaaa33");
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -39,7 +55,7 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         id, font, text_color
     );
     let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, id);
-    let _ = write!(&mut out, r#"#{} line{{stroke:{};}}"#, id, line_color);
+    let _ = write!(&mut out, r#"#{} line{{stroke:{};}}"#, id, text_color);
     let _ = write!(
         &mut out,
         r#"#{} .legend{{fill:{};font-family:{};}}"#,
@@ -47,18 +63,22 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     );
     let _ = write!(&mut out, r#"#{} .label text{{fill:{};}}"#, id, text_color);
     let _ = write!(&mut out, r#"#{} .label{{color:{};}}"#, id, text_color);
-    let _ = write!(&mut out, r#"#{} .face{{fill:#FFF8DC;stroke:#999;}}"#, id);
     let _ = write!(
         &mut out,
-        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
-        id, id, id, id, id
+        r#"#{} .face{{fill:{};stroke:#999;}}"#,
+        id, face_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}"#,
+        id, id, id, id, id, main_bkg, node_border
     );
     let _ = write!(&mut out, r#"#{} .node .label{{text-align:center;}}"#, id);
     let _ = write!(&mut out, r#"#{} .node.clickable{{cursor:pointer;}}"#, id);
     let _ = write!(
         &mut out,
         r#"#{} .arrowheadPath{{fill:{};}}"#,
-        id, line_color
+        id, arrowhead_color
     );
     let _ = write!(
         &mut out,
@@ -72,56 +92,46 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     );
     let _ = write!(
         &mut out,
-        r#"#{} .edgeLabel{{background-color:rgba(232,232,232, 0.8);text-align:center;}}"#,
-        id
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
+        id, edge_label_background
     );
     let _ = write!(&mut out, r#"#{} .edgeLabel rect{{opacity:0.5;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .cluster text{{fill:{};}}"#, id, text_color);
     let _ = write!(
         &mut out,
-        r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}}"#,
-        id, font
+        r#"#{} .cluster text{{fill:{};}}"#,
+        id, title_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .task-type-0,#{} .section-type-0{{fill:#ECECFF;}}"#,
-        id, id
+        r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}"#,
+        id, font, tertiary_color, border2
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-1,#{} .section-type-1{{fill:#ffffde;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-2,#{} .section-type-2{{fill:hsl(304, 100%, 96.2745098039%);}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-3,#{} .section-type-3{{fill:hsl(124, 100%, 93.5294117647%);}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-4,#{} .section-type-4{{fill:hsl(176, 100%, 96.2745098039%);}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-5,#{} .section-type-5{{fill:hsl(-4, 100%, 93.5294117647%);}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-6,#{} .section-type-6{{fill:hsl(8, 100%, 96.2745098039%);}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .task-type-7,#{} .section-type-7{{fill:hsl(188, 100%, 93.5294117647%);}}"#,
-        id, id
-    );
+    const DEFAULT_FILL_TYPES: [&str; 8] = [
+        "#ECECFF",
+        "#ffffde",
+        "hsl(304, 100%, 96.2745098039%)",
+        "hsl(124, 100%, 93.5294117647%)",
+        "hsl(176, 100%, 96.2745098039%)",
+        "hsl(-4, 100%, 93.5294117647%)",
+        "hsl(8, 100%, 96.2745098039%)",
+        "hsl(188, 100%, 93.5294117647%)",
+    ];
+    for (i, default_fill) in DEFAULT_FILL_TYPES.iter().enumerate() {
+        let fill = theme_color(effective_config, &format!("fillType{}", i), default_fill);
+        let _ = write!(
+            &mut out,
+            r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
+            id, i, id, i, fill
+        );
+    }
+    for i in 0..6 {
+        if let Some(fill) = config_string(
+            effective_config,
+            &["themeVariables", &format!("actor{}", i)],
+        ) {
+            let _ = write!(&mut out, r#"#{} .actor-{}{{fill:{};}}"#, id, i, fill);
+        }
+    }
     let _ = write!(
         &mut out,
         r#"#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}"#,
@@ -617,4 +627,49 @@ pub(super) fn render_journey_diagram_svg_model(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn journey_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#101010",
+                "lineColor": "#202020",
+                "faceColor": "#303030",
+                "mainBkg": "#404040",
+                "nodeBorder": "#505050",
+                "arrowheadColor": "#606060",
+                "edgeLabelBackground": "#707070",
+                "titleColor": "#808080",
+                "tertiaryColor": "#909090",
+                "border2": "#a0a0a0",
+                "fillType0": "#b0b0b0",
+                "fillType1": "#c0c0c0",
+                "actor0": "#d0d0d0",
+                "actor1": "#e0e0e0"
+            }
+        });
+
+        let css = journey_css("journey", &cfg);
+
+        assert!(css.contains(r#"#journey line{stroke:#101010;}"#));
+        assert!(css.contains(r#"#journey .face{fill:#303030;stroke:#999;}"#));
+        assert!(css.contains(r#"#journey .node rect,#journey .node circle,#journey .node ellipse,#journey .node polygon,#journey .node path{fill:#404040;stroke:#505050;stroke-width:1px;}"#));
+        assert!(css.contains(r#"#journey .arrowheadPath{fill:#606060;}"#));
+        assert!(
+            css.contains(r#"#journey .edgeLabel{background-color:#707070;text-align:center;}"#)
+        );
+        assert!(css.contains(r#"#journey .cluster text{fill:#808080;}"#));
+        assert!(css.contains(r#"background:#909090;border:1px solid #a0a0a0;"#));
+        assert!(css.contains(r#"#journey .task-type-0,#journey .section-type-0{fill:#b0b0b0;}"#));
+        assert!(css.contains(r#"#journey .task-type-1,#journey .section-type-1{fill:#c0c0c0;}"#));
+        assert!(css.contains(r#"#journey .actor-0{fill:#d0d0d0;}"#));
+        assert!(css.contains(r#"#journey .actor-1{fill:#e0e0e0;}"#));
+        assert!(css.contains(r#"#journey .flowchart-link{stroke:#202020;fill:none;}"#));
+    }
 }
