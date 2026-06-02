@@ -50,7 +50,7 @@ Status terms:
 | Mindmap | `mindmap/styles.ts` | Covered with deferred rules | Section/root/icon/span colors are covered. `data-look` gradient/drop-shadow rules are deferred until local output emits matching attributes/defs. |
 | Packet | `packet/styles.ts` | Covered | `packet.*` style options drive byte, label, title, and block CSS. |
 | Pie | `pie/pieStyles.ts` | Covered | Stroke, opacity, title, slice, legend, font family, and text colors read Mermaid 11.15 theme variables. |
-| QuadrantChart | `quadrant-chart/quadrantDiagram.ts` uses `styles: () => ''` | Inline | Theme behavior is inline through quadrant chart config, classDef, and point styles. No CSS provider should be invented. |
+| QuadrantChart | `quadrant-chart/quadrantDiagram.ts` uses `styles: () => ''` | Inline, render-path covered | Theme behavior is inline through quadrant chart config, classDef, and point styles. No CSS provider should be invented. Mermaid 11.15's default `quadrantPointFill` currently expands to `hsl(...NaN%)`; merman intentionally emits a valid derived default while preserving valid explicit point-color overrides. |
 | Radar | `radar/styles.ts` | Covered | Top-level `radar.*` overrides are resolved before `themeVariables.radar.*`, matching Mermaid's clean-and-merge behavior. |
 | Requirement | `requirement/styles.js` | Covered | Requirement boxes, relationship lines, labels, edge-label backgrounds, node text, and divider colors are covered. `data-look`/`data-color-id` rules are deferred where local output lacks attributes. |
 | Sankey | `sankey/styles.js` | Covered | Label, outlined-label background, node, and link style options are emitted. |
@@ -91,6 +91,11 @@ host postprocessor or an explicit output policy, but it should not be a silent d
 
 Do not make browser font metrics look exact by hardcoding fixture-specific widths. Continue using
 the measurement seams from HPD-040 and classify residuals honestly.
+
+Do not preserve invalid SVG tokens for byte parity when they break supported headless rendering.
+The current QuadrantChart default point color is the narrow precedent: upstream's `hsl(...NaN%)`
+comes from a missing khroma amount argument, so local SVG output uses a valid default and xtask
+normalizes only that known default point-color slot in parity modes.
 
 ## Next Useful Work
 

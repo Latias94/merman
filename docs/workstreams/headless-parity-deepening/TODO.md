@@ -190,6 +190,10 @@ Last updated: 2026-06-02
   values reach the final SVG render path without inventing a non-existent CSS provider. A
   cross-diagram dark-theme smoke slice then fixed Flowchart `nodeTextColor` CSS emission and locked
   the public render API against representative readable theme signals for Flowchart, Sequence,
-  Kanban, GitGraph, and XYChart while preserving upstream Kanban placeholder-class behavior.
+  Kanban, GitGraph, and XYChart while preserving upstream Kanban placeholder-class behavior. A
+  QuadrantChart follow-up fixed invalid default data-point colors: Mermaid 11.15's shipped theme
+  expansion emits `hsl(...NaN%)` because khroma `lighten`/`darken` are called without an amount,
+  while merman now emits a valid derived default and keeps valid explicit `quadrantPointFill`
+  overrides.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -1297,6 +1297,43 @@ Focused verification:
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Twenty-first slice outcome:
+
+- Audited QuadrantChart inline theme behavior against pinned Mermaid 11.15:
+  - `packages/mermaid/src/themes/theme-default.js`
+  - `packages/mermaid/src/diagrams/quadrant-chart/quadrantRenderer.ts`
+  - khroma `lighten`, `darken`, and `luminance` helpers from the installed baseline toolchain.
+- Mermaid 11.15 intends default `quadrantPointFill` to be a lightened/darkened
+  `quadrant1Fill`, but the shipped source calls khroma `lighten` / `darken` without the required
+  amount argument. The saved upstream fixtures therefore contain invalid
+  `hsl(240, 100%, NaN%)` point fill/stroke tokens.
+- Local QuadrantChart output now treats that as an upstream invalid-token defect rather than a
+  product requirement. When no valid `themeVariables.quadrantPointFill` is present, merman derives
+  a valid 10% lightness-shift point color from `quadrant1Fill`; valid explicit
+  `quadrantPointFill` values still win verbatim.
+- Added renderer coverage in
+  [crates/merman-render/tests/quadrantchart_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/quadrantchart_svg_test.rs)
+  for default point renderability and explicit point color/text overrides.
+- Extended the public API dark-theme smoke to cover QuadrantChart inline theme variables.
+- Updated xtask DOM parity normalization so only QuadrantChart default data-point circle
+  `fill`/`stroke` maps upstream `hsl(...NaN%)` and local `rgb(185, 185, 255)` to one comparison
+  slot. Strict mode still preserves the real attr difference.
+
+Focused verification:
+
+- `cargo fmt -p merman-render -p merman -p xtask`
+- `cargo test -p merman-render --test quadrantchart_svg_test`
+- `cargo test -p merman representative_dark_theme_diagrams_keep_visible_theme_signals --test theme_renderability_smoke --features render`
+- `cargo test -p xtask parity_normalizes_quadrantchart_invalid_default_point_color`
+- `cargo fmt --check -p merman-render -p merman -p xtask`
+- `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+
+Residual note:
+
+- This is an intentional renderability-over-byte-parity correction for an invalid upstream CSS
+  token. It should not be generalized into broad color normalization or cosmetic palette changes.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

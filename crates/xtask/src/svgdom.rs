@@ -575,9 +575,66 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             has_plot && has_bar_plot
         }
 
+        fn is_quadrantchart_data_point_circle(n: roxmltree::Node<'_, '_>) -> bool {
+            if !(n.is_element() && n.tag_name().name() == "circle") {
+                return false;
+            }
+
+            let mut in_quadrantchart_svg = false;
+            let mut in_data_point = false;
+            for a in n.ancestors() {
+                if !a.is_element() {
+                    continue;
+                }
+                if a.tag_name().name() == "svg"
+                    && a.attribute("aria-roledescription")
+                        .is_some_and(|v| v == "quadrantChart")
+                {
+                    in_quadrantchart_svg = true;
+                }
+                if a.tag_name().name() == "g" && has_class_token(a, "data-point") {
+                    in_data_point = true;
+                }
+            }
+
+            in_quadrantchart_svg && in_data_point
+        }
+
+        fn is_invalid_svg_token(value: &str) -> bool {
+            let lower = value.trim().to_ascii_lowercase();
+            lower.contains("nan") || lower.contains("undefined") || lower.contains("infinity")
+        }
+
+        fn normalize_quadrantchart_default_point_color(
+            key: &str,
+            value: &str,
+            n: roxmltree::Node<'_, '_>,
+            mode: DomMode,
+        ) -> Option<String> {
+            if !matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
+                return None;
+            }
+            if !matches!(key, "fill" | "stroke") || !is_quadrantchart_data_point_circle(n) {
+                return None;
+            }
+            let value = value.trim();
+            if is_invalid_svg_token(value) || value == "rgb(185, 185, 255)" {
+                Some("<quadrant-point-default-color>".to_string())
+            } else {
+                None
+            }
+        }
+
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
+
+            if let Some(normalized) =
+                normalize_quadrantchart_default_point_color(&key, &val, n, mode)
+            {
+                attrs.insert(key, normalized);
+                continue;
+            }
 
             if key == "transform" {
                 val = normalize_transform_attr(&val);
@@ -1515,6 +1572,22 @@ mod tests {
         let new_dom = dom_signature(new_path, DomMode::Parity, 3).unwrap();
 
         assert_eq!(old_dom, new_dom);
+    }
+
+    #[test]
+    fn parity_normalizes_quadrantchart_invalid_default_point_color() {
+        let upstream = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
+        let local = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/></g></g></svg>"#;
+
+        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
+        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(upstream_dom, local_dom);
+
+        let upstream_strict = dom_signature(upstream, DomMode::Strict, 3).unwrap();
+        let local_strict = dom_signature(local, DomMode::Strict, 3).unwrap();
+
+        assert_ne!(upstream_strict, local_strict);
     }
 
     #[test]

@@ -94,6 +94,31 @@ gitGraph
             ],
         ),
         (
+            "theme-quadrantchart",
+            r##"%%{init: {"themeVariables": {"quadrant1Fill": "#172554", "quadrant2Fill": "#1e3a8a", "quadrant3Fill": "#0f172a", "quadrant4Fill": "#111827", "quadrant1TextFill": "#f8fafc", "quadrant2TextFill": "#f8fafc", "quadrant3TextFill": "#f8fafc", "quadrant4TextFill": "#f8fafc", "quadrantPointFill": "#facc15", "quadrantPointTextFill": "#111827", "quadrantTitleFill": "#f8fafc", "quadrantXAxisTextFill": "#bfdbfe", "quadrantYAxisTextFill": "#fde68a"}}}%%
+quadrantChart
+  title Priority Matrix
+  x-axis Low Effort --> High Effort
+  y-axis Low Impact --> High Impact
+  quadrant-1 Invest
+  quadrant-2 Watch
+  quadrant-3 Park
+  quadrant-4 Delegate
+  Feature: [0.7, 0.8]
+"##,
+            &[
+                "Priority Matrix",
+                "Low Effort",
+                "High Impact",
+                "Invest",
+                "Feature",
+            ],
+            &[
+                "#172554", "#1e3a8a", "#0f172a", "#111827", "#f8fafc", "#facc15", "#bfdbfe",
+                "#fde68a",
+            ],
+        ),
+        (
             "theme-xychart",
             r##"%%{init: {"themeVariables": {"xyChart": {"backgroundColor": "#0f172a", "titleColor": "#f8fafc", "xAxisLabelColor": "#93c5fd", "xAxisTitleColor": "#bfdbfe", "xAxisTickColor": "#38bdf8", "xAxisLineColor": "#60a5fa", "yAxisLabelColor": "#fde68a", "yAxisTitleColor": "#facc15", "yAxisTickColor": "#f97316", "yAxisLineColor": "#fb923c", "plotColorPalette": "#22c55e,#e879f9"}}}}%%
 xychart

@@ -149,6 +149,22 @@ fn fmt_rgb(r: u8, g: u8, b: u8) -> String {
     format!("rgb({r}, {g}, {b})")
 }
 
+fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
+    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let parse_channel = |part: &str| -> Option<u8> {
+        let value = part.parse::<f64>().ok()?;
+        if !value.is_finite() {
+            return None;
+        }
+        Some(value.round().clamp(0.0, 255.0) as u8)
+    };
+    let r = parse_channel(parts.next()?)?;
+    let g = parse_channel(parts.next()?)?;
+    let b = parse_channel(parts.next()?)?;
+    Some((r, g, b))
+}
+
 fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
     let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
     let mut parts = inner.split(',').map(|p| p.trim());
@@ -217,31 +233,99 @@ fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
     Some((to_u8(r), to_u8(g), to_u8(b)))
 }
 
-fn css_color_to_rgb_string(s: &str) -> Option<String> {
+fn css_color_to_rgb(s: &str) -> Option<(u8, u8, u8)> {
     let t = s.trim();
-    if t.starts_with("rgb(") {
-        return Some(t.to_string());
+    if let Some(rgb) = parse_rgb_css(t) {
+        return Some(rgb);
     }
-    if let Some((r, g, b)) = parse_hex_rgb(t) {
-        return Some(fmt_rgb(r, g, b));
+    if let Some(rgb) = parse_hex_rgb(t) {
+        return Some(rgb);
     }
     if let Some((h, s, l)) = parse_hsl_css(t) {
-        let (r, g, b) = hsl_to_rgb_u8(h, s, l)?;
-        return Some(fmt_rgb(r, g, b));
+        return hsl_to_rgb_u8(h, s, l);
     }
     None
 }
 
+fn css_color_to_rgb_string(s: &str) -> Option<String> {
+    let (r, g, b) = css_color_to_rgb(s)?;
+    Some(fmt_rgb(r, g, b))
+}
+
+fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
+    fn to_linear(channel: u8) -> f64 {
+        let v = channel as f64 / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    0.2126 * to_linear(r) + 0.7152 * to_linear(g) + 0.0722 * to_linear(b)
+}
+
+fn rgb_to_hsl_pct(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let r = r as f64 / 255.0;
+    let g = g as f64 / 255.0;
+    let b = b as f64 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+
+    if (max - min).abs() < f64::EPSILON {
+        return (0.0, 0.0, l * 100.0);
+    }
+
+    let d = max - min;
+    let s = if l > 0.5 {
+        d / (2.0 - max - min)
+    } else {
+        d / (max + min)
+    };
+    let h = if (max - r).abs() < f64::EPSILON {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if (max - g).abs() < f64::EPSILON {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    } / 6.0;
+
+    (h * 360.0, s * 100.0, l * 100.0)
+}
+
+fn derive_quadrant_point_fill(quadrant1_fill: &str, fallback: &str) -> String {
+    let Some((r, g, b)) = css_color_to_rgb(quadrant1_fill) else {
+        return fallback.to_string();
+    };
+    let (h, s, l) = rgb_to_hsl_pct(r, g, b);
+    let delta = if relative_luminance(r, g, b) < 0.5 {
+        10.0
+    } else {
+        -10.0
+    };
+    let adjusted_l = (l + delta).clamp(0.0, 100.0);
+    let Some((r, g, b)) = hsl_to_rgb_u8(h, s, adjusted_l) else {
+        return fallback.to_string();
+    };
+    fmt_rgb(r, g, b)
+}
+
+fn is_invalid_css_token(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    lower.is_empty()
+        || lower.contains("nan")
+        || lower.contains("undefined")
+        || lower.contains("infinity")
+}
+
 fn default_quadrant_theme(effective_config: &Value) -> QuadrantThemeConfig {
-    // Mermaid 11.12.2 quadrant defaults:
+    // Mermaid 11.15 quadrant defaults:
     // - Quadrant fills are derived from the active theme's `primaryColor`.
     // - Label text is derived from the active theme's `primaryTextColor` (or, for older configs,
     //   an invert-of-primary heuristic).
     // - Border strokes use `primaryBorderColor` which upstream serializes as `rgb(...)` even when
     //   the config stores it as `hsl(...)`.
-    //
-    // Note: quadrant point fill currently resolves to an `hsl(...NaN%)` string in upstream.
-    // Keep that behavior for DOM parity at the pinned baseline.
     let quadrant1_fill = config_string(effective_config, &["themeVariables", "primaryColor"])
         .unwrap_or_else(|| "#ECECFF".to_string());
     let primary_text = config_string(effective_config, &["themeVariables", "primaryTextColor"])
@@ -250,6 +334,10 @@ fn default_quadrant_theme(effective_config: &Value) -> QuadrantThemeConfig {
     let border_stroke = config_string(effective_config, &["themeVariables", "primaryBorderColor"])
         .and_then(|v| css_color_to_rgb_string(&v))
         .unwrap_or_else(|| "rgb(199, 199, 241)".to_string());
+    // Mermaid 11.15 intends `quadrantPointFill` to be a lightened/darkened `quadrant1Fill`, but
+    // the shipped browser code omits khroma's required amount argument and emits `hsl(...NaN%)`.
+    // Prefer a stable headless 10% lightness shift over preserving invalid SVG color tokens.
+    let quadrant_point_fill = derive_quadrant_point_fill(&quadrant1_fill, &border_stroke);
     QuadrantThemeConfig {
         quadrant2_fill: adjust_hex_rgb(&quadrant1_fill, 5).unwrap_or_else(|| "#f1f1ff".to_string()),
         quadrant3_fill: adjust_hex_rgb(&quadrant1_fill, 10)
@@ -263,7 +351,7 @@ fn default_quadrant_theme(effective_config: &Value) -> QuadrantThemeConfig {
             .unwrap_or_else(|| "#090900".to_string()),
         quadrant4_text_fill: adjust_hex_rgb(&primary_text, -15)
             .unwrap_or_else(|| "#040400".to_string()),
-        quadrant_point_fill: "hsl(240, 100%, NaN%)".to_string(),
+        quadrant_point_fill,
         quadrant_point_text_fill: primary_text.clone(),
         quadrant_x_axis_text_fill: primary_text.clone(),
         quadrant_y_axis_text_fill: primary_text.clone(),
@@ -295,7 +383,11 @@ fn quadrant_theme_with_overrides(effective_config: &Value) -> QuadrantThemeConfi
     set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
     set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
 
-    set(&mut theme.quadrant_point_fill, "quadrantPointFill");
+    if let Some(v) = config_string(effective_config, &["themeVariables", "quadrantPointFill"]) {
+        if !is_invalid_css_token(&v) {
+            theme.quadrant_point_fill = v;
+        }
+    }
     set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
     set(
         &mut theme.quadrant_x_axis_text_fill,

@@ -270,6 +270,13 @@ Current repository reality to preserve:
     The same smoke was calibrated against pinned Kanban source/fixtures so upstream
     `class="node undefined"` / `class="cluster undefined ..."` placeholders and priority side-line
     rendering are not treated as local defects.
+  - A twenty-first HPD-080 slice fixed QuadrantChart's invalid default data-point color. Pinned
+    Mermaid 11.15 intends `quadrantPointFill` to be a lightened/darkened `quadrant1Fill`, but calls
+    khroma `lighten` / `darken` without the required amount argument and emits
+    `hsl(...NaN%)`. Local headless output now derives a valid 10% lightness-shift default while
+    preserving valid explicit `quadrantPointFill` overrides. xtask DOM parity normalization treats
+    only this known QuadrantChart default point-color slot as an upstream invalid-token artifact;
+    strict DOM comparison still exposes the real difference.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
