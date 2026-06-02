@@ -799,6 +799,26 @@ Architecture custom-init finalElements audit (2026-06-03):
   from `26` to `47`, so do not change global group padding, add a single service label scale, or
   pin root bounds for this row. A valid fix needs a reusable phase-specific bbox model.
 
+Architecture nested-groups finalElements audit (2026-06-03):
+
+- Re-audited `stress_architecture_nested_groups_002` with finalElements and local group debug.
+- Pinned Mermaid source confirms the relevant source rules: Cytoscape `.node-group` padding comes
+  from `db.getConfigField('padding')`, and SVG group rects render from final
+  `node.boundingBox()` with `x = x1 + iconSize / 2`, `y = y1 + iconSize / 2`, `width = w`, and
+  `height = h`.
+- Current focused compare remains expected-fail at upstream `727.924x622.658` vs local
+  `730.424x622.658`; height is exact and root width is wider by `2.5px`.
+- Browser final group bboxes are `platform.w=459.154,h=542.658`,
+  `runtime.w=365.654,h=182`, and `data.w=376.154,h=182`. Pinned upstream SVG group rects match
+  those bboxes after Mermaid's `iconSize / 2` rect translation.
+- Local SVG group rects are `platform.w=458.654,h=542.658`,
+  `runtime.w=365.654,h=182`, and `data.w=375.654,h=182`.
+- Browser final service positions and local service positions have matching Y values, while local
+  X values are uniformly about `+1.25px`. Local group debug confirms the existing configured
+  `pad=42.5` path and nested child-group inset propagation.
+- Classification stays nested compound-bounds phase residual. Do not change SVG group-rect
+  translation, configured padding, root finalization, or edge path emission for this row alone.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`

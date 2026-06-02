@@ -221,6 +221,12 @@ Current repository reality to preserve:
     service/group child bbox phase residual; the earlier global formula that made it exact expanded
     full Architecture root mismatches from `26` to `47`, so keep it classified until a reusable
     phase-specific bbox model exists.
+  - A follow-up `nested_groups_002` finalElements audit reconfirmed this is not an SVG group-rect
+    translation, configured-padding, root-finalize, or edge-emission issue. Pinned Mermaid source
+    renders group rects directly from final `node.boundingBox()` plus `iconSize/2`, and the upstream
+    SVG matches that. Local services are uniformly shifted about `+1.25px` on X, while nested
+    `data` and `platform` group widths are `0.5px` short, producing the `+2.5px` root tail after
+    propagation. Keep it classified as nested compound-bounds phase residual.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
