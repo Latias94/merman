@@ -263,5 +263,10 @@ Last updated: 2026-06-02
   as blank/all-background images, while treating header-only, accessibility-only, and title-only
   metadata fixtures as non-visual. Architecture/Class/Sequence passed the focused filtered raster
   audit after that calibration.
+  A follow-up raster ink calibration slice tightened the source-content detector for Journey
+  section-only, `packet-beta` header-only, Radar option-only, and Treemap no-value inputs, then fixed
+  a real single-leaf Treemap readability failure: transparent first-leaf fill plus white default
+  `cScaleLabel0` text now falls back to `themeVariables.textColor` only when no explicit leaf fill
+  override exists.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -204,6 +204,39 @@ pub(super) fn render_treemap_diagram_svg(
         None
     }
 
+    fn css_color_is_transparent(color: &str) -> bool {
+        color.trim().eq_ignore_ascii_case("transparent")
+    }
+
+    fn css_color_is_white_like(color: &str) -> bool {
+        parse_css_rgb(color).is_some_and(|(r, g, b)| r >= 250 && g >= 250 && b >= 250)
+    }
+
+    fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
+        style.split(';').any(|decl| {
+            let Some((key, value)) = decl.split_once(':') else {
+                return false;
+            };
+            key.trim().eq_ignore_ascii_case(property) && !value.trim().is_empty()
+        })
+    }
+
+    fn readable_leaf_label_fill(
+        effective_config: &serde_json::Value,
+        leaf_fill: &str,
+        leaf_rect_style: &str,
+        leaf_label_fill: String,
+    ) -> String {
+        if css_color_is_transparent(leaf_fill)
+            && !style_has_non_empty_decl(leaf_rect_style, "fill")
+            && css_color_is_white_like(&leaf_label_fill)
+        {
+            theme_color(effective_config, "textColor", "#333")
+        } else {
+            leaf_label_fill
+        }
+    }
+
     fn invert_css_color_to_hex(color: &str) -> Option<String> {
         let (r, g, b) = parse_css_rgb(color)?;
         let ir = 255u8.saturating_sub(r);
@@ -796,7 +829,12 @@ pub(super) fn render_treemap_diagram_svg(
         let compiled = treemap_styles2_string(leaf_css);
         let leaf_rect_style = compiled.node_styles.clone();
         let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
-        let leaf_label_fill = color_scale_label.get(&leaf.name);
+        let leaf_label_fill = readable_leaf_label_fill(
+            effective_config,
+            &fill,
+            &leaf_rect_style,
+            color_scale_label.get(&leaf.name),
+        );
 
         let _ = write!(
             &mut out,

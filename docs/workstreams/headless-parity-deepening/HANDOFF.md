@@ -418,6 +418,14 @@ Current repository reality to preserve:
     images. The gate is source-aware: header-only, accessibility-only, and title-only metadata
     fixtures still need valid SVG/PNG output but do not require non-background ink. A focused
     Architecture/Class/Sequence raster audit passed after that calibration.
+  - A forty-first HPD-080 raster audit slice calibrated that source-content gate for remaining
+    non-visual parser fixtures: Journey section-only, `packet-beta` header-only, Radar option-only,
+    and Treemap no-value/classDef-only inputs no longer trigger false blank-output failures. The
+    same pass found and fixed a real single-leaf Treemap defect: Mermaid 11.15's first Treemap color
+    scale entry is `transparent` and default `cScaleLabel0` is white, so a single value leaf could
+    rasterize as an all-background PNG. Local Treemap now keeps the transparent cell fill but uses
+    `themeVariables.textColor` for leaf label/value inline fill only for the transparent-cell plus
+    white-label combination when no explicit class/style fill overrides it.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -313,6 +313,7 @@ fn assert_rasterizes_when_enabled(_name: &str, _source: &str, _svg: &str) {
 fn source_has_visible_diagram_content(source: &str) -> bool {
     let mut in_frontmatter = false;
     let mut in_accessibility_block = false;
+    let mut diagram_kind = SourceDiagramKind::Other;
 
     for line in source.lines() {
         let trimmed = line.trim();
@@ -339,7 +340,8 @@ fn source_has_visible_diagram_content(source: &str) -> bool {
             continue;
         }
 
-        if let Some(rest) = strip_mermaid_header(trimmed) {
+        if let Some((kind, rest)) = strip_mermaid_header(trimmed) {
+            diagram_kind = kind;
             let rest = rest.trim().trim_matches(';').trim();
             if is_title_metadata(rest) {
                 continue;
@@ -353,10 +355,28 @@ fn source_has_visible_diagram_content(source: &str) -> bool {
             continue;
         }
 
+        if diagram_kind == SourceDiagramKind::Journey && trimmed.starts_with("section ") {
+            continue;
+        }
+        if diagram_kind == SourceDiagramKind::Radar && is_radar_option_line(trimmed) {
+            continue;
+        }
+        if diagram_kind == SourceDiagramKind::Treemap && !is_treemap_value_line(trimmed) {
+            continue;
+        }
+
         return true;
     }
 
     false
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceDiagramKind {
+    Journey,
+    Other,
+    Radar,
+    Treemap,
 }
 
 fn is_title_metadata(line: &str) -> bool {
@@ -384,7 +404,7 @@ fn skip_accessibility_metadata(line: &str, in_accessibility_block: &mut bool) ->
     false
 }
 
-fn strip_mermaid_header(line: &str) -> Option<&str> {
+fn strip_mermaid_header(line: &str) -> Option<(SourceDiagramKind, &str)> {
     strip_flowchart_header(line, "flowchart")
         .or_else(|| strip_flowchart_header(line, "graph"))
         .or_else(|| strip_plain_header(line, "architecture-beta"))
@@ -395,26 +415,36 @@ fn strip_mermaid_header(line: &str) -> Option<&str> {
         .or_else(|| strip_plain_header(line, "classDiagram"))
         .or_else(|| strip_plain_header(line, "erDiagram"))
         .or_else(|| strip_plain_header(line, "gitGraph"))
-        .or_else(|| strip_plain_header(line, "journey"))
+        .or_else(|| strip_plain_header_kind(line, "journey", SourceDiagramKind::Journey))
         .or_else(|| strip_plain_header(line, "kanban"))
         .or_else(|| strip_plain_header(line, "mindmap"))
         .or_else(|| strip_plain_header(line, "packet"))
+        .or_else(|| strip_plain_header(line, "packet-beta"))
         .or_else(|| strip_plain_header(line, "pie"))
         .or_else(|| strip_plain_header(line, "quadrantChart"))
-        .or_else(|| strip_plain_header(line, "radar"))
-        .or_else(|| strip_plain_header(line, "radar-beta"))
+        .or_else(|| strip_plain_header_kind(line, "radar", SourceDiagramKind::Radar))
+        .or_else(|| strip_plain_header_kind(line, "radar-beta", SourceDiagramKind::Radar))
         .or_else(|| strip_plain_header(line, "requirementDiagram"))
         .or_else(|| strip_plain_header(line, "sankey"))
         .or_else(|| strip_plain_header(line, "sequenceDiagram"))
         .or_else(|| strip_plain_header(line, "stateDiagram"))
         .or_else(|| strip_plain_header(line, "stateDiagram-v2"))
         .or_else(|| strip_plain_header(line, "timeline"))
-        .or_else(|| strip_plain_header(line, "treemap"))
+        .or_else(|| strip_plain_header_kind(line, "treemap", SourceDiagramKind::Treemap))
+        .or_else(|| strip_plain_header_kind(line, "treemap-beta", SourceDiagramKind::Treemap))
         .or_else(|| strip_plain_header(line, "xychart"))
         .or_else(|| strip_plain_header(line, "xychart-beta"))
 }
 
-fn strip_plain_header<'a>(line: &'a str, header: &str) -> Option<&'a str> {
+fn strip_plain_header<'a>(line: &'a str, header: &str) -> Option<(SourceDiagramKind, &'a str)> {
+    strip_plain_header_kind(line, header, SourceDiagramKind::Other)
+}
+
+fn strip_plain_header_kind<'a>(
+    line: &'a str,
+    header: &str,
+    kind: SourceDiagramKind,
+) -> Option<(SourceDiagramKind, &'a str)> {
     let rest = line.strip_prefix(header)?;
     if rest
         .chars()
@@ -423,12 +453,15 @@ fn strip_plain_header<'a>(line: &'a str, header: &str) -> Option<&'a str> {
     {
         return None;
     }
-    Some(rest)
+    Some((kind, rest))
 }
 
-fn strip_flowchart_header<'a>(line: &'a str, header: &str) -> Option<&'a str> {
-    let rest = strip_plain_header(line, header)?;
-    Some(strip_flowchart_direction(rest.trim_start()))
+fn strip_flowchart_header<'a>(line: &'a str, header: &str) -> Option<(SourceDiagramKind, &'a str)> {
+    let (_, rest) = strip_plain_header(line, header)?;
+    Some((
+        SourceDiagramKind::Other,
+        strip_flowchart_direction(rest.trim_start()),
+    ))
 }
 
 fn strip_flowchart_direction(rest: &str) -> &str {
@@ -448,6 +481,37 @@ fn strip_flowchart_direction(rest: &str) -> &str {
         }
     }
     rest
+}
+
+fn is_radar_option_line(line: &str) -> bool {
+    ["ticks", "showLegend", "graticule", "min", "max"]
+        .iter()
+        .any(|keyword| {
+            line.strip_prefix(keyword)
+                .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+        })
+}
+
+fn is_treemap_value_line(line: &str) -> bool {
+    if line.starts_with("classDef") || line.starts_with("class ") {
+        return false;
+    }
+
+    for (idx, _) in line.match_indices(':') {
+        let after = line[idx + 1..].trim_start();
+        if after.starts_with(':') {
+            continue;
+        }
+        if after
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_digit() || ch == '-' || ch == '.')
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 #[test]
@@ -600,6 +664,7 @@ fn source_content_gate_distinguishes_accessibility_only_from_visible_content() {
         "architecture-beta\naccDescr {\n    Accessibility Description\n}\n"
     ));
     assert!(!source_has_visible_diagram_content("packet\n"));
+    assert!(!source_has_visible_diagram_content("packet-beta\n"));
     assert!(!source_has_visible_diagram_content(
         "pie accDescr {\n    Accessibility Description\n}\n"
     ));
@@ -609,5 +674,24 @@ fn source_content_gate_distinguishes_accessibility_only_from_visible_content() {
     assert!(source_has_visible_diagram_content("graph TD;a-X-node;\n"));
     assert!(source_has_visible_diagram_content(
         "flowchart LR\n  A[Alpha] --> B[Beta]\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "journey\naccTitle: The title\nsection Order from website\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "journey\nsection Order from website\n  Add to cart: 5: Me\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "radar-beta\n  ticks 10\n  showLegend false\n  graticule polygon\n  min 1\n  max 10\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "radar-beta\n  axis A,B,C\n  curve mycurve{1,2,3}\n"
+    ));
+    assert!(!source_has_visible_diagram_content("treemap\n\"Root\"\n"));
+    assert!(!source_has_visible_diagram_content(
+        "treemap\nclassDef myClass fill:red;\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "treemap\n\"Root\"\n  \"Leaf\": 100:::leafClass\n"
     ));
 }

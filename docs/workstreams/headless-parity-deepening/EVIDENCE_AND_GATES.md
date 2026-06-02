@@ -2189,6 +2189,42 @@ Residual note:
   PNGs for diagrams with actual diagram content, while leaving fine color, antialiasing, and title
   rendering parity to source-backed focused tests.
 
+## HPD-080 - Raster Ink Calibration And Single-Leaf Treemap
+
+Outcome:
+
+- Calibrated the raster ink source-content detector for parser/header/options fixtures that do not
+  produce visible marks: Journey section-only sources, `packet-beta` header-only input, Radar
+  option-only input, and Treemap root/classDef-only input no longer falsely require non-background
+  ink.
+- Found a real contentful raster failure in
+  `fixtures/treemap/upstream_pkgtests_treemap_test_032.mmd`: a single top-level Treemap value
+  inherited Mermaid 11.15's first color-scale fill of `transparent` and default `cScaleLabel0`
+  white text, making the PNG all-background on the white root canvas.
+- Kept Mermaid's transparent first leaf fill, but Treemap now uses `themeVariables.textColor` for
+  leaf label/value inline fill only when the generated leaf fill is transparent, no explicit
+  class/style fill overrides it, and the generated label color is white/near-white. This follows
+  Mermaid's Treemap CSS-provider default for `.treemapLabel` / `.treemapValue` while avoiding
+  unreadable headless output.
+
+Focused verification:
+
+- `cargo fmt -p merman-render -p merman`
+- `cargo fmt -p merman-render -p merman --check`
+- `cargo nextest run -p merman-render --test treemap_svg_test`
+- `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke source_content_gate_distinguishes_accessibility_only_from_visible_content`
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='treemap'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='gitgraph,kanban,timeline,journey'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='treemap,pie,quadrantchart,xychart'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='radar,requirement,packet,sankey,c4'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+- `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_pkgtests_treemap_test_032`
+
+Residual note:
+
+- The unfiltered multi-family raster audit can exceed a five-minute tool timeout. Use
+  `MERMAN_RESVG_SAFE_AUDIT_FAMILY` slices for broad PNG-level triage and keep treating the ink check
+  as a gross renderability gate, not a pixel-diff parity metric.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

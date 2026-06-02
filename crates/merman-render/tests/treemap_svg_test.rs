@@ -25,6 +25,28 @@ fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
     &svg[start..end]
 }
 
+fn text_tag_by_class_and_text<'a>(svg: &'a str, class_name: &str, text: &str) -> &'a str {
+    let needle = format!(">{text}</text>");
+    let mut offset = 0;
+    while let Some(rel_end) = svg[offset..].find(&needle) {
+        let end = offset + rel_end + needle.len();
+        let start = svg[..end].rfind("<text").expect("expected text tag start");
+        let tag = &svg[start..end];
+        if tag.contains(&format!(r#"class="{class_name}""#)) {
+            return tag;
+        }
+        offset = end;
+    }
+    panic!("expected text tag with class {class_name} and text {text}");
+}
+
+fn contains_default_text_fill(tag: &str) -> bool {
+    tag.contains("fill:#333")
+        || tag.contains("fill: #333")
+        || tag.contains("fill:rgb(51, 51, 51)")
+        || tag.contains("fill: rgb(51, 51, 51)")
+}
+
 fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_json::Value) {
     let path = workspace_root()
         .join("fixtures")
@@ -139,6 +161,38 @@ fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
     assert!(
         digital_tag.contains("font-size: 36px"),
         "expected Digital label font-size to stay at 36px, got {digital_tag}"
+    );
+}
+
+#[test]
+fn treemap_single_leaf_label_uses_readable_fill_over_transparent_cell() {
+    let svg = render_treemap_svg_from_source(
+        r#"treemap
+"Item" : 123.45
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"class="treemapLeaf" fill="transparent""#),
+        "expected single top-level leaf to preserve Mermaid's transparent cell fill: {svg}"
+    );
+
+    let label_tag = text_tag_by_text(&svg, "Item");
+    assert!(
+        contains_default_text_fill(label_tag),
+        "single-leaf label must remain visible on the white root background: {label_tag}"
+    );
+    assert!(
+        !label_tag.contains("fill:#ffffff")
+            && !label_tag.contains("fill: #ffffff")
+            && !label_tag.contains("fill: rgb(255, 255, 255)"),
+        "single-leaf label should not keep upstream's white-on-transparent fill: {label_tag}"
+    );
+
+    let value_tag = text_tag_by_class_and_text(&svg, "treemapValue", "123.45");
+    assert!(
+        contains_default_text_fill(value_tag),
+        "single-leaf value must remain visible on the white root background: {value_tag}"
     );
 }
 
