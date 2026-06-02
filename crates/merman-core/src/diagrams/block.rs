@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -196,6 +196,7 @@ impl BlockDb {
     }
 
     fn set_hierarchy(&mut self, blocks: Vec<Block>, config: &MermaidConfig) -> Result<()> {
+        validate_block_depth(&blocks)?;
         let root_id = self.root_id.clone();
         self.populate_block_database(blocks, &root_id, config)?;
         let root = self
@@ -415,6 +416,24 @@ fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
     Value::Object(obj)
 }
 
+fn validate_block_depth(blocks: &[Block]) -> Result<()> {
+    let mut stack: Vec<(&Block, usize)> = blocks.iter().map(|block| (block, 1)).collect();
+    while let Some((block, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::DiagramParse {
+                diagram_type: "block".to_string(),
+                message: format!(
+                    "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        for child in &block.children {
+            stack.push((child, depth + 1));
+        }
+    }
+    Ok(())
+}
+
 fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
     BlockNodeRenderModel {
         id: b.id.clone(),
@@ -449,6 +468,7 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
 }
 
 fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
+    validate_block_source_depth(code)?;
     let mut parser = Parser::new(code);
     parser.parse_header()?;
     let blocks = parser.parse_document(false)?;
@@ -457,6 +477,55 @@ fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
     db.clear();
     db.set_hierarchy(blocks, &meta.effective_config)?;
     Ok(db)
+}
+
+fn validate_block_source_depth(code: &str) -> Result<()> {
+    let mut depth = 0usize;
+    let mut header_consumed = false;
+
+    for line in code.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("%%") {
+            continue;
+        }
+        if !header_consumed && is_block_header(trimmed) {
+            header_consumed = true;
+            continue;
+        }
+        if is_block_start(trimmed) {
+            depth += 1;
+            if depth > MAX_DIAGRAM_NESTING_DEPTH {
+                return Err(Error::DiagramParse {
+                    diagram_type: "block".to_string(),
+                    message: format!(
+                        "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                    ),
+                });
+            }
+        } else if trimmed == "end" && depth > 0 {
+            depth -= 1;
+        }
+    }
+
+    Ok(())
+}
+
+fn is_block_header(line: &str) -> bool {
+    is_block_keyword(line, "block-beta") || is_block_keyword(line, "block")
+}
+
+fn is_block_start(line: &str) -> bool {
+    line.starts_with("block:") || is_block_header(line)
+}
+
+fn is_block_keyword(line: &str, keyword: &str) -> bool {
+    let Some(rest) = line.strip_prefix(keyword) else {
+        return false;
+    };
+    match rest.chars().next() {
+        None => true,
+        Some(ch) => ch.is_whitespace() || ch == ':',
+    }
 }
 
 pub fn parse_block_model_for_render(
@@ -669,6 +738,7 @@ struct Parser<'a> {
     input: &'a str,
     pos: usize,
     gen_counter: i64,
+    document_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -677,6 +747,7 @@ impl<'a> Parser<'a> {
             input,
             pos: 0,
             gen_counter: 0,
+            document_depth: 0,
         }
     }
 
@@ -800,50 +871,64 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_document(&mut self, stop_on_end: bool) -> Result<Vec<Block>> {
-        let mut out = Vec::<Block>::new();
-        loop {
-            self.skip_ws_and_comments();
-            if self.is_eof() {
-                break;
-            }
-            if stop_on_end && self.peek_keyword("end") {
-                self.consume_keyword("end");
-                break;
-            }
-
-            if self.peek_keyword("block:") {
-                out.push(self.parse_id_block()?);
-                continue;
-            }
-            if self.peek_keyword("block-beta") || self.peek_keyword("block") {
-                out.push(self.parse_anonymous_block()?);
-                continue;
-            }
-            if self.peek_keyword("columns") {
-                out.push(self.parse_columns_statement()?);
-                continue;
-            }
-            if self.peek_keyword("space") {
-                out.push(self.parse_space_statement()?);
-                continue;
-            }
-            if self.peek_keyword("classDef") {
-                out.push(self.parse_classdef_statement()?);
-                continue;
-            }
-            if self.peek_keyword("class") {
-                out.push(self.parse_apply_class_statement()?);
-                continue;
-            }
-            if self.peek_keyword("style") {
-                out.push(self.parse_style_statement()?);
-                continue;
-            }
-
-            let mut blocks = self.parse_node_statement()?;
-            out.append(&mut blocks);
+        if self.document_depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::DiagramParse {
+                diagram_type: "block".to_string(),
+                message: format!(
+                    "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
         }
-        Ok(out)
+
+        self.document_depth += 1;
+        let result = (|| {
+            let mut out = Vec::<Block>::new();
+            loop {
+                self.skip_ws_and_comments();
+                if self.is_eof() {
+                    break;
+                }
+                if stop_on_end && self.peek_keyword("end") {
+                    self.consume_keyword("end");
+                    break;
+                }
+
+                if self.peek_keyword("block:") {
+                    out.push(self.parse_id_block()?);
+                    continue;
+                }
+                if self.peek_keyword("block-beta") || self.peek_keyword("block") {
+                    out.push(self.parse_anonymous_block()?);
+                    continue;
+                }
+                if self.peek_keyword("columns") {
+                    out.push(self.parse_columns_statement()?);
+                    continue;
+                }
+                if self.peek_keyword("space") {
+                    out.push(self.parse_space_statement()?);
+                    continue;
+                }
+                if self.peek_keyword("classDef") {
+                    out.push(self.parse_classdef_statement()?);
+                    continue;
+                }
+                if self.peek_keyword("class") {
+                    out.push(self.parse_apply_class_statement()?);
+                    continue;
+                }
+                if self.peek_keyword("style") {
+                    out.push(self.parse_style_statement()?);
+                    continue;
+                }
+
+                let mut blocks = self.parse_node_statement()?;
+                out.append(&mut blocks);
+            }
+            Ok(out)
+        })();
+        self.document_depth -= 1;
+        result
     }
 
     fn parse_anonymous_block(&mut self) -> Result<Block> {

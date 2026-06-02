@@ -6,6 +6,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-02
+
+### Fixed
+
+- Hardened deeply nested diagram handling to prevent stack overflows in Flowchart, State,
+  Block, Mindmap, Treemap, C4, and Class diagram parsing/layout.
+
 ## [0.6.0] - 2026-05-28
 
 This release adds an opt-in SVG output pipeline for applications that need Mermaid-parity SVG by default but also need cleaner output for in-app previews, PNG/PDF export, or host-specific theming. Use `render_svg_sync` for parity snapshots, `SvgPipeline::readable()` when the SVG will be inlined and should keep readable fallback text, and `SvgPipeline::resvg_safe()` before rasterizing through `resvg` / `usvg`.

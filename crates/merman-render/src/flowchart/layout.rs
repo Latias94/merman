@@ -7,9 +7,9 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::MermaidConfig;
+use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
@@ -197,10 +197,17 @@ fn lowest_common_parent(
 }
 
 fn extract_descendants(id: &str, g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
-    let children = g.children(id);
-    let mut out: Vec<String> = children.iter().map(|s| s.to_string()).collect();
-    for child in children {
-        out.extend(extract_descendants(child, g));
+    let mut out: Vec<String> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = g.children(id).iter().map(|s| s.to_string()).collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        for child in g.children(&node) {
+            stack.push(child.to_string());
+        }
+        out.push(node);
     }
     out
 }
@@ -274,15 +281,24 @@ fn flowchart_find_non_cluster_child(
         return Some(id.to_string());
     }
     let mut reserve: Option<String> = None;
-    for child in children {
-        let Some(child_id) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = children.iter().rev().map(|s| s.to_string()).collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
             continue;
-        };
-        let common_edges = flowchart_find_common_edges(graph, cluster_id, &child_id);
+        }
+        let children = graph.children(&node);
+        if !children.is_empty() {
+            for child in children.iter().rev() {
+                stack.push(child.to_string());
+            }
+            continue;
+        }
+        let common_edges = flowchart_find_common_edges(graph, cluster_id, &node);
         if !common_edges.is_empty() {
-            reserve = Some(child_id);
+            reserve = Some(node);
         } else {
-            return Some(child_id);
+            return Some(node);
         }
     }
     reserve
@@ -645,6 +661,7 @@ fn layout_flowchart_v2_with_model(
     total_start: Option<std::time::Instant>,
     deserialize: std::time::Duration,
 ) -> Result<FlowchartV2Layout> {
+    validate_flowchart_model_depth(model)?;
     #[derive(Debug, Default, Clone)]
     struct FlowchartLayoutTimings {
         total: std::time::Duration,
@@ -2629,4 +2646,82 @@ fn layout_flowchart_v2_with_model(
         bounds,
         dom_node_order_by_root,
     })
+}
+
+fn validate_flowchart_model_depth(model: &FlowchartV2Model) -> Result<()> {
+    let subgraph_ids: std::collections::HashSet<&str> =
+        model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
+    let mut child_map: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut parented: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for sg in &model.subgraphs {
+        for member in &sg.nodes {
+            if subgraph_ids.contains(member.as_str()) {
+                child_map
+                    .entry(sg.id.as_str())
+                    .or_default()
+                    .push(member.as_str());
+                parented.insert(member.as_str());
+            }
+        }
+    }
+
+    let mut roots: Vec<&str> = subgraph_ids
+        .iter()
+        .copied()
+        .filter(|id| !parented.contains(id))
+        .collect();
+    if roots.is_empty() {
+        roots.extend(subgraph_ids.iter().copied());
+    }
+
+    let mut stack: Vec<(&str, usize)> = roots.into_iter().map(|id| (id, 1)).collect();
+    let mut visiting: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    while let Some((id, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "flowchart subgraph nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        if !visiting.insert(id) {
+            continue;
+        }
+        if let Some(children) = child_map.get(id) {
+            for &child in children {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn extract_descendants_handles_deeply_nested_subgraphs() {
+        const DEPTH: usize = 100_000;
+        let (tx, rx) = mpsc::channel();
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                let mut g = Graph::new(GraphOptions {
+                    compound: true,
+                    ..Default::default()
+                });
+                for i in (0..DEPTH).rev() {
+                    g.set_parent(format!("n{}", i + 1), format!("n{i}"));
+                }
+                let _ = tx.send(extract_descendants("n0", &g));
+            })
+            .unwrap();
+        let descendants = rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("extract_descendants overflowed the stack on deep nesting");
+        assert_eq!(descendants.len(), DEPTH);
+    }
 }

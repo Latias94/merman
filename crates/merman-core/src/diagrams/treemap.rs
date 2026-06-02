@@ -1,4 +1,4 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -105,6 +105,7 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
 
     let (arena, roots) = build_hierarchy(&flat_items);
+    validate_hierarchy_depth(&arena, &roots, meta)?;
     let root_value = json!({
         "name": "",
         "children": roots.iter().map(|&idx| node_to_value(&arena, idx)).collect::<Vec<_>>(),
@@ -240,6 +241,7 @@ fn treemap_parsed_input_to_render_model(
     let class_defs = class_defs_from_rows(&parsed.rows)?;
     let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
     let (arena, roots) = build_hierarchy(&flat_items);
+    validate_hierarchy_depth_for_type(&arena, &roots, "treemap")?;
 
     Ok(TreemapDiagramRenderModel {
         title: parsed.title,
@@ -396,6 +398,34 @@ fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
     }
 
     (arena, roots)
+}
+
+fn validate_hierarchy_depth(arena: &Arena, roots: &[usize], meta: &ParseMetadata) -> Result<()> {
+    validate_hierarchy_depth_for_type(arena, roots, &meta.diagram_type)
+}
+
+fn validate_hierarchy_depth_for_type(
+    arena: &Arena,
+    roots: &[usize],
+    diagram_type: &str,
+) -> Result<()> {
+    let mut stack: Vec<(usize, usize)> = roots.iter().copied().map(|idx| (idx, 1)).collect();
+    while let Some((idx, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::DiagramParse {
+                diagram_type: diagram_type.to_string(),
+                message: format!(
+                    "treemap nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        if let Some(children) = arena.nodes.get(idx).and_then(|node| node.children.as_ref()) {
+            for &child in children {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn node_to_value(arena: &Arena, idx: usize) -> Value {

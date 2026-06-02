@@ -103,9 +103,22 @@ fn extract_descendants(
     id: &str,
     out: &mut Vec<String>,
 ) {
-    for child in graph.children(id) {
-        out.push(child.to_string());
-        extract_descendants(graph, child, out);
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = graph
+        .children(id)
+        .iter()
+        .rev()
+        .map(|s| s.to_string())
+        .collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        out.push(node.clone());
+        let children = graph.children(&node);
+        for child in children.iter().rev() {
+            stack.push(child.to_string());
+        }
     }
 }
 
