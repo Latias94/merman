@@ -655,6 +655,38 @@ Focused verification:
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd050_isolated_root_bounds.md`
   remains an expected failure with `25` dom mismatches.
 
+Architecture residual classification refresh (2026-06-03):
+
+- Re-ran the Architecture family reports after the isolated-service seam and after subsequent
+  renderability work. Structural `parity` remains green.
+- The fresh Architecture `parity-root` report remains an expected failure with `25` dom
+  mismatches, confirming that the older `29`-row M15RV queue is stale.
+- Rows no longer in the active Architecture root queue include
+  `stress_architecture_batch4_init_small_icons_061`,
+  `stress_architecture_batch4_init_fontsize_wrap_063`,
+  `stress_architecture_edge_label_corner_cases_012`, `stress_architecture_fan_in_out_021`,
+  `stress_architecture_deep_nesting_013`,
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, and
+  `stress_architecture_disconnected_islands_046`.
+- The remaining larger audit front is source/input matched but not root-green:
+  `stress_architecture_junction_fork_join_026` (`+13.976px`),
+  `stress_architecture_batch5_long_titles_and_punct_076` (`+5px`),
+  `stress_architecture_html_titles_and_escapes_041` (`+5px`),
+  `stress_architecture_unicode_and_xml_escapes_019` (`+3px`),
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`),
+  `stress_architecture_nested_groups_002` (`+2.5px`), and
+  `stress_architecture_group_port_edges_017` (`+1.468px`).
+- Treat the smaller icon/default/reasonable-height rows as browser/Cytoscape bbox lattice tails
+  unless a source rule or generated measurement path explains the whole class. Do not add root
+  pins, one-off metric constants, or broad solver rewrites to make the count smaller.
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_hpd050_residual_classification_refresh.md`
+  remained an expected failure with `25` dom mismatches.
+
 Seventeenth slice Graphlib filter/default-label API coverage:
 
 - Added source-backed `Graph::filter_nodes(...)` in
@@ -1408,11 +1440,11 @@ Focused verification:
 
 Known non-slice gate:
 
-- `cargo test -p merman-render --lib` currently fails on existing measurement-sensitive tests:
-  `sequence_default_message_widths_match_mermaid_default_font_family` (`161.0` vs `160.0`) and
-  `node_katex_math_renderer_measures_sanitized_flowchart_browser_shell` (`matrix width =
-  282.265625`). The new pipeline tests pass and these failures are unrelated to fallback
-  de-duplication.
+- Historical note: this slice originally observed unrelated measurement-sensitive failures in
+  `cargo test -p merman-render --lib`. That is no longer the current default-test state. On
+  2026-06-03, `cargo nextest run --workspace --all-features` passed `1680/1680` tests, and the
+  Sequence width check now compares against the current single-run SVG bbox fact instead of a
+  platform-fragile literal.
 
 Residual note:
 

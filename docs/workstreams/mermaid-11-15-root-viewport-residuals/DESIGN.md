@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-03
 
 ## Why This Lane Exists
 
@@ -97,8 +97,10 @@ This lane adopts the headless-parity-deepening taxonomy and applies it to the cu
 - **Solver / phase residual**
   - Architecture is the main active owner of this class: disconnected components, compound bounds,
     and some group/port rows now sit here after source inputs were matched.
-  - Rows such as `stress_architecture_group_port_edges_017` and
-    `stress_architecture_disconnected_islands_046` are currently classified here.
+  - Rows such as `stress_architecture_group_port_edges_017`,
+    `stress_architecture_nested_groups_002`, and the remaining
+    `stress_architecture_junction_fork_join_026` tail are currently classified here after
+    source inputs were matched.
 
 - **Scope boundary**
   - Unsupported Mermaid families remain outside this lane.
@@ -108,7 +110,7 @@ Current bucket summary:
 
 - Flowchart `61`: mostly browser lattice tails, with occasional generated-measurement follow-up
   candidates.
-- Architecture `29`: mixed source-backed rows already reduced; remaining front is mainly
+- Architecture `25`: mixed source-backed rows already reduced; remaining front is mainly
   solver/phase residuals plus some browser/generation measurement tails.
 - Sequence `27`: mixed generated-measurement gaps and browser lattice tails.
 - Class `12`: generated-measurement gap plus stale-table audit front; do not solve by table growth.

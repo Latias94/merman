@@ -97,12 +97,10 @@ Current repository reality to preserve:
     the installed `mermaid@11.15.0` dist used by `tools/mermaid-cli` does not contain the later
     repo-ref `withSeededRandom` Architecture seed path, so do not change `manatee` to that
     `mulberry32` behavior unless the baseline package changes.
-  - The local `repo-ref/mermaid` checkout is currently on `develop` at
-    `9bae92cd3214f9ec99369ab314ef41ffb283f6b6`, while `tools/upstreams/REPOS.lock.json` pins
-    Mermaid to `41646dfd43ac83f001b03c70605feb036afae46d`. For any source-backed HPD-050 claim,
-    use `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:<path>`, the
-    installed `tools/mermaid-cli` dist, or fresh `check-upstream-svgs` output. Do not treat the
-    current repo-ref working tree as baseline truth without this check.
+  - The local `repo-ref/mermaid` checkout is restored to the pinned Mermaid `11.15.0` commit
+    `41646dfd43ac83f001b03c70605feb036afae46d` in detached-HEAD state, matching
+    `tools/upstreams/REPOS.lock.json`. For any source-backed HPD-050 claim, use that pinned
+    checkout, the installed `tools/mermaid-cli` dist, or fresh `check-upstream-svgs` output.
   - A follow-up Cytoscape bbox phase audit enhanced the debug probe to expose pre-layout
     `labelWidth`, `labelHeight`, `labelBounds`, `bodyBounds`, `autoWidth`, `autoHeight`, and
     `autoPadding`. For `batch6_init_fontsize_icon_size_wrap_093`, the probe explains the remaining
@@ -192,6 +190,15 @@ Current repository reality to preserve:
     now exact at `823.346x768.460`, full Architecture structural parity is still green, and the
     Architecture root mismatch count is down to `25`. Do not broaden this into a global
     service-bounds switch.
+  - Fresh 2026-06-03 classification confirms the Architecture family structural report is green
+    and the root-only report has `25` mismatches. The next residual audits should start from
+    `junction_fork_join_026` (`+13.976px`), the `+5px` group/service bbox rows
+    (`batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`), the
+    `unicode_and_xml_escapes_019` / `nested_groups_002` compound-bounds class, and
+    `group_port_edges_017`. Do not reopen `batch4_init_small_icons_061`,
+    `batch4_init_fontsize_wrap_063`, `edge_label_corner_cases_012`, `fan_in_out_021`,
+    `deep_nesting_013`, `batch6_junctions_multi_split_with_group_edges_087`, or
+    `disconnected_islands_046` unless a fresh report regresses.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

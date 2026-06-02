@@ -128,6 +128,12 @@ Last updated: 2026-06-03
   landed: isolated top-level services in diagrams that also have groups use the Cytoscape
   group-child phase for root contribution, making the disconnected-islands row exact and reducing
   Architecture root mismatches from `26` to `25` while preserving structural parity.
+  Fresh 2026-06-03 classification confirms the active Architecture root queue is `25` rows. Do not
+  reopen the now-exact `batch4_init_small_icons`, `batch4_init_fontsize_wrap`,
+  `edge_label_corner_cases`, `fan_in_out`, `deep_nesting`,
+  `batch6_junctions_multi_split_with_group_edges`, or `disconnected_islands` rows. Continue from
+  source-backed audits of `junction_fork_join`, the `+5px` group/service bbox rows, the `unicode`
+  / `nested_groups` compound-bounds rows, and `group_port_edges`.
 
 ## M5 - Semantic / Render Unification Pilot
 

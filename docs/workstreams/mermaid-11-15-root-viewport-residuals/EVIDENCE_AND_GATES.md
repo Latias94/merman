@@ -1437,6 +1437,36 @@ Superseded note from HPD-050:
   did not consume it. The retained renderer seam is the node `BoundsExtras` adapter; relocation and
   element bbox policy remain inside `manatee`.
 
+## 2026-06-03 - Architecture Residual Queue Refresh
+
+Fresh focused evidence:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_hpd050_residual_classification_refresh.md`:
+  expected failure with `25` dom mismatches.
+
+Outcome:
+
+- This supersedes the older M15RV-089 handoff that still described the Architecture root queue as
+  `29` rows and named `stress_architecture_batch4_init_small_icons_061` as a next tail.
+- The following rows are not active Architecture root tails in the fresh report:
+  `stress_architecture_batch4_init_small_icons_061`,
+  `stress_architecture_batch4_init_fontsize_wrap_063`,
+  `stress_architecture_edge_label_corner_cases_012`, `stress_architecture_fan_in_out_021`,
+  `stress_architecture_deep_nesting_013`,
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, and
+  `stress_architecture_disconnected_islands_046`.
+- The live larger Architecture queue is now `stress_architecture_junction_fork_join_026`
+  (`+13.976px`), `stress_architecture_batch5_long_titles_and_punct_076` (`+5px`),
+  `stress_architecture_html_titles_and_escapes_041` (`+5px`),
+  `stress_architecture_unicode_and_xml_escapes_019` (`+3px`),
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`),
+  `stress_architecture_nested_groups_002` (`+2.5px`), and
+  `stress_architecture_group_port_edges_017` (`+1.468px`).
+- The refresh is a queue/governance correction, not a root parity closure. Remaining rows still
+  need source-backed or generated-measurement evidence before any production change.
+
 ## Gate Set
 
 Run after any code or generated-data change:

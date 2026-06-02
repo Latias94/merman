@@ -220,14 +220,22 @@ Last updated: 2026-06-02
   SVG group sizing policy but does not change the current 29-row residual set. The committed
   piecewise long-label canvas approximation (`measured width >= 200px -> scale 1.01`) reduces
   `stress_architecture_batch5_long_titles_and_punct_076` from `+10px` to `+5px` without moving the
-  nearby diagnostic matrix rows, while batch4 small-icon remains an icon-floor dominated tail; do
-  not tune one global label scale for them. Fresh focused checks also show the three
-  `reasonable_height` fixtures still carry a shared `+0.380px` width rounding tail, so they are not
-  root-green. Continue from the remaining larger tails such
-  as
+  nearby diagnostic matrix rows; do not tune one global label scale from that row. Fresh
+  2026-06-03 Architecture reports after the HPD-050 isolated-service seam keep structural parity
+  green and show `25` root mismatches, not the older `29` queue. Do not reopen rows that are now
+  exact, including `stress_architecture_batch4_init_small_icons_061`,
+  `stress_architecture_batch4_init_fontsize_wrap_063`,
+  `stress_architecture_edge_label_corner_cases_012`,
+  `stress_architecture_fan_in_out_021`, `stress_architecture_deep_nesting_013`,
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, and
+  `stress_architecture_disconnected_islands_046`. Continue from the remaining larger tails:
   `stress_architecture_junction_fork_join_026` (`+13.976px`),
-  `stress_architecture_batch5_long_titles_and_punct_076` (`+5px`), and
-  `stress_architecture_batch4_init_small_icons_061` (`-9.288px`), treating the small
+  `stress_architecture_batch5_long_titles_and_punct_076` (`+5px`),
+  `stress_architecture_html_titles_and_escapes_041` (`+5px`),
+  `stress_architecture_unicode_and_xml_escapes_019` (`+3px`),
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`),
+  `stress_architecture_nested_groups_002` (`+2.5px`), and
+  `stress_architecture_group_port_edges_017` (`+1.468px`), treating the smaller
   browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.
   Additional focused checks classified `stress_architecture_html_titles_and_escapes_041` as a
   group/service Cytoscape bbox tail (not an HTML/entity or edge-label source bug), and
@@ -236,9 +244,10 @@ Last updated: 2026-06-02
   constants from those rows. Further focused diagnostics classify
   `stress_architecture_unicode_and_xml_escapes_019` as the same group/service bbox class,
   `stress_architecture_edge_label_corner_cases_012` and
-  `stress_architecture_batch4_init_fontsize_wrap_063` as edge-label browser `getBBox()` tails, and
-  `stress_architecture_nested_groups_002` as a nested-compound/FCoSE residual after source inputs
-  match.
+  `stress_architecture_batch4_init_fontsize_wrap_063` as edge-label browser `getBBox()` tails, but
+  those two rows are now root-green after the later HPD-050 `createText()` root-bounds fix. Keep
+  `stress_architecture_nested_groups_002` classified as a nested-compound/FCoSE residual after
+  source inputs match.
 
 ## M3 - Policy Closeout
 
@@ -251,6 +260,6 @@ Last updated: 2026-06-02
   `git diff --check`.
   Review: Run workstream review and verification before closing.
   Evidence: `EVIDENCE_AND_GATES.md`
-  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the current 135 residuals;
-  Flowchart, Sequence, Architecture, and Class still contain real text/layout/root-bounds
-  differences.
+  Handoff: Blocked by source-rule follow-ups. Do not close by accepting the last-known full-root
+  residual set; rerun fresh all-diagram `parity-root` evidence first. Flowchart, Sequence,
+  Architecture, and Class still contain real text/layout/root-bounds differences.

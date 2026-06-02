@@ -424,15 +424,18 @@ a future Mermaid baseline changes the source behavior.
 - Goal: Investigate the top Architecture FCoSE/group-port root residuals after the 11.15 baseline
   refresh and stale Architecture root-pin deletion.
 - Evidence: start from
-  `target/compare/architecture_report_parity_root_after_m15rv089_group_padding_metric_refactor_only.md`;
-  full root evidence currently reports 29 unaccepted Architecture rows.
+  `target/compare/architecture_report_parity_root_hpd050_residual_classification_refresh.md`;
+  fresh Architecture root evidence currently reports `25` mismatches.
 - Concern: Do not add root pins or browser-dependent layout hacks for the remaining rows. The new
-  29-row count comes from Mermaid source rules, not from restoring stale baselines or pins.
+  25-row count comes from Mermaid source rules and later HPD-050 root-bounds seams, not from
+  restoring stale baselines or pins.
 
 ## Fresh Counts
 
-- Total unaccepted full-root residuals: 134.
-- Largest buckets: Flowchart 61, Architecture 29, Sequence 27, Class 12.
+- Total unaccepted full-root residuals: 134 in the last full all-diagram run; refresh this before
+  policy closeout.
+- Largest buckets in the current family-level evidence: Flowchart 61, Architecture 25, Sequence
+  27, Class 12.
 - Smaller buckets: Timeline 3, Journey 2.
 - Closed in M15RV-040: C4 15 -> 0.
 - Closed in M15RV-050: ER 3 -> 0, Sankey 3 -> 0, Timeline 7 -> 3.
@@ -444,22 +447,26 @@ a future Mermaid baseline changes the source behavior.
   IDs and fallback background paths now come from source rules, all Architecture root pins were
   deleted, and stale groups-within-groups calibration was removed. The Architecture bucket is now
   32 honest rows rather than 30 rows mixed with stale baseline/pin artifacts.
-- In progress in M15RV-089: Architecture 32 -> 29 after deleting the non-source junction group
-  inference and mirroring Mermaid's endpoint traversal order for group alignment overwrites. The
-  custom-init group-padding row improved from about `-22.5px` to about `-2.5px` after switching
-  group rect sizing from the old `iconSize / 2` proxy to source-derived `architecture.padding`.
-  Rust also now preserves Mermaid's duplicate queued-position BFS behavior for Architecture
-  relative constraints; this aligns the `junction_fork_join` FCoSE input with the browser probe but
-  does not reduce its remaining `+13.976px` tail.
+- In progress in M15RV-089: the first source-backed Architecture work reduced the bucket from
+  `32` to `29` after deleting the non-source junction group inference and mirroring Mermaid's
+  endpoint traversal order for group alignment overwrites. Later HPD-050 root-bounds work reduced
+  the active family-level Architecture queue to `25` mismatches. The custom-init group-padding row
+  improved from about `-22.5px` to about `-2.5px` after switching group rect sizing from the old
+  `iconSize / 2` proxy to source-derived `architecture.padding`. Rust also now preserves Mermaid's
+  duplicate queued-position BFS behavior for Architecture relative constraints; this aligns the
+  `junction_fork_join` FCoSE input with the browser probe but does not reduce its remaining
+  `+13.976px` tail.
   HPD-050 later narrowed this statement: renderer-side pre-layout group bbox center calculation was
   removed because it was not consumed by layout. Manatee owns relocation/element bbox policy; the
   renderer now feeds only per-node `BoundsExtras` into manatee and keeps final SVG group rect
   padding under a separately named helper.
-  Batch5, batch4-small-icon, html-title/escape, unicode/xml, edge-label corner, fontsize-wrap,
-  nested-group, and group-port rows now have focused diagnostic evidence; none justify a
-  renderer-side one-off metric or root pin.
-  Full all-diagram root policy remains 134 unaccepted residuals, with a clean 11.15 baseline and
-  no Architecture root pins.
+  Batch5, html-title/escape, unicode/xml, nested-group, group-port, and custom-init rows now have
+  focused diagnostic evidence; none justify a renderer-side one-off metric or root pin. Batch4
+  small-icons, fontsize-wrap, edge-label corner, fan-in/out, deep-nesting, multi-split junctions,
+  and disconnected-islands rows are no longer active Architecture root tails in the fresh family
+  report. The last full all-diagram root policy run reported 134 unaccepted residuals with a clean
+  11.15 baseline and no Architecture root pins; refresh that all-family number before M15RV-090
+  policy closeout.
 
 ## Guardrails
 
@@ -581,6 +588,17 @@ a future Mermaid baseline changes the source behavior.
   root-bounds fix, so further work should not tune their wrapping or text scale.
 - Do not tune nested-group padding from `stress_architecture_nested_groups_002`; current evidence
   points to small FCoSE/compound-bound drift after source inputs match.
+- Fresh 2026-06-03 Architecture reports supersede the older 29-row M15RV-089 queue: structural
+  parity is green and Architecture `parity-root` has `25` mismatches after the HPD-050
+  isolated-service seam. Do not continue from `stress_architecture_batch4_init_small_icons_061`,
+  `stress_architecture_batch4_init_fontsize_wrap_063`, `stress_architecture_edge_label_corner_cases_012`,
+  `stress_architecture_fan_in_out_021`, `stress_architecture_deep_nesting_013`,
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, or
+  `stress_architecture_disconnected_islands_046` unless a fresh report regresses. The live larger
+  Architecture audit queue is `junction_fork_join_026`, `batch5_long_titles_and_punct_076`,
+  `html_titles_and_escapes_041`, `unicode_and_xml_escapes_019`,
+  `batch6_init_fontsize_icon_size_wrap_093`, `nested_groups_002`, and
+  `group_port_edges_017`.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

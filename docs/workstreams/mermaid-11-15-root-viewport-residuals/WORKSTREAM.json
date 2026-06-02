@@ -3,7 +3,7 @@
   "slug": "mermaid-11-15-root-viewport-residuals",
   "title": "Mermaid 11.15 Root Viewport Residuals",
   "status": "active",
-  "updated": "2026-06-02",
+  "updated": "2026-06-03",
   "scope_kind": "execution",
   "problem": "The implemented Mermaid 11.15 diagram matrix is structurally green, but full parity-root still has root viewBox/max-width residuals driven by browser bbox/font/layout lattice behavior.",
   "authoritative_docs": [
