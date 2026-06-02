@@ -5,8 +5,10 @@
 //
 // Notes:
 // - Runs inside Chromium via Puppeteer so Cytoscape can measure node dimensions consistently.
-// - Seeds RNG using the same xorshift64* as `xtask` upstream baselines (ADR-0055).
-// - Uses Mermaid only to parse the fixture into ArchitectureDB model objects.
+// - Installs the same deterministic page prelude as `xtask` upstream baselines.
+// - Uses Mermaid only to parse the fixture into ArchitectureDB model objects, then manually
+//   reconstructs the Architecture FCoSE inputs. Treat this as diagnostic evidence, not as a full
+//   replacement for the Mermaid CLI render path.
 
 const fs = require("fs");
 const path = require("path");
@@ -25,7 +27,7 @@ function parseInitDirective(code) {
   return JSON.parse(match[1]);
 }
 
-function xorshiftSeedScript(seedStr) {
+function deterministicPagePreludeScript(seedStr) {
   return `
 (() => {
   const mask64 = (1n << 64n) - 1n;
@@ -44,6 +46,24 @@ function xorshiftSeedScript(seedStr) {
     return Number(u) / 9007199254740992;
   }
   Math.random = nextF64;
+
+  if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+    const orig = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    globalThis.crypto.getRandomValues = (arr) => {
+      if (!arr || typeof arr.length !== 'number') {
+        return orig(arr);
+      }
+      try {
+        const bytes = new Uint8Array(arr.buffer, arr.byteOffset || 0, arr.byteLength || 0);
+        for (let i = 0; i < bytes.length; i++) {
+          bytes[i] = Math.floor(nextF64() * 256);
+        }
+        return arr;
+      } catch (e) {
+        return orig(arr);
+      }
+    };
+  }
 })();
 `;
 }
@@ -90,7 +110,7 @@ async function main() {
   });
   const page = await browser.newPage();
   await page.setViewport({ width: 1200, height: 800, deviceScaleFactor: 1 });
-  await page.evaluateOnNewDocument(xorshiftSeedScript("1"));
+  await page.evaluateOnNewDocument(deterministicPagePreludeScript("1"));
 
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
   await page.addScriptTag({ path: mermaidIifePath });
@@ -376,9 +396,15 @@ async function main() {
     }
 
     const iconSize = db.getConfigField("iconSize");
+    const sameGroupIdealLength = db.getConfigField("idealEdgeLengthMultiplier") * iconSize;
+    const crossGroupIdealLength = 0.5 * iconSize;
+    const sameGroupElasticity = db.getConfigField("edgeElasticity");
     const layout = cy.layout({
       name: "fcose",
       quality: "proof",
+      randomize: db.getConfigField("randomize"),
+      nodeSeparation: db.getConfigField("nodeSeparation"),
+      numIter: db.getConfigField("numIter"),
       styleEnabled: false,
       animate: false,
       nodeDimensionsIncludeLabels: false,
@@ -386,13 +412,13 @@ async function main() {
         const [nodeA, nodeB] = edge.connectedNodes();
         const parentA = nodeA.data("parent");
         const parentB = nodeB.data("parent");
-        return parentA === parentB ? 1.5 * iconSize : 0.5 * iconSize;
+        return parentA === parentB ? sameGroupIdealLength : crossGroupIdealLength;
       },
       edgeElasticity(edge) {
         const [nodeA, nodeB] = edge.connectedNodes();
         const parentA = nodeA.data("parent");
         const parentB = nodeB.data("parent");
-        return parentA === parentB ? 0.45 : 0.001;
+        return parentA === parentB ? sameGroupElasticity : 0.001;
       },
       alignmentConstraint,
       relativePlacementConstraint,
@@ -507,6 +533,11 @@ async function main() {
         iconSize: db.getConfigField("iconSize"),
         fontSize: db.getConfigField("fontSize"),
         padding: db.getConfigField("padding"),
+        randomize: db.getConfigField("randomize"),
+        nodeSeparation: db.getConfigField("nodeSeparation"),
+        idealEdgeLengthMultiplier: db.getConfigField("idealEdgeLengthMultiplier"),
+        edgeElasticity: db.getConfigField("edgeElasticity"),
+        numIter: db.getConfigField("numIter"),
       },
       constraints: { alignmentConstraint, relativePlacementConstraint },
       stages: globalThis.__archFcoseStages || [],

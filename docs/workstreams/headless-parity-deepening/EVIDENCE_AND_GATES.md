@@ -227,13 +227,13 @@ Third slice classification:
   ungrouped junction parents, 9 relative-placement constraints including duplicate `join -> db`
   and `join -> cache`, configured group padding, and the current `eles.boundingBox()` relocation
   approximation.
-- The saved Mermaid browser probe
+- The old saved Mermaid browser probe
   [target/compare/arch_junction_fork_join_probe_m15rv089.json](/F:/SourceCodes/Rust/merman/target/compare/arch_junction_fork_join_probe_m15rv089.json)
   has final service positions that match the current local SVG to floating-point noise.
 - A fresh `check-upstream-svgs` run using Edge as `PUPPETEER_EXECUTABLE_PATH` reproduced the stored
   upstream SVG fixture exactly: both report `max-width: 2808.126708984375px` and
   `viewBox="-1362.063232421875 -1213.2674560546875 2808.126708984375 2557.534912109375"`.
-- Therefore the previous "stored upstream baseline drift" reading was too broad. The saved debug
+- Therefore the previous "stored upstream baseline drift" reading was too broad. The old saved debug
   browser probe is the divergent path here: its service positions match local output, but differ
   from the current CLI/Edge baseline by about `7-10px` on X and `6-12px` on Y.
 - Treat the remaining `+13.976px` root tail as a probe-harness / CLI-harness divergence plus a
@@ -245,7 +245,8 @@ Focused verification:
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug.md`
 - `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram architecture --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3`
 - `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram architecture --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity --dom-decimals 3`
-- PowerShell JSON/SVG comparison of `target/compare/arch_junction_fork_join_probe_m15rv089.json`
+- PowerShell JSON/SVG comparison of the old saved
+  `target/compare/arch_junction_fork_join_probe_m15rv089.json`
   final positions against the local SVG showed deltas at floating-point noise level.
 - The same comparison against
   `fixtures/upstream-svgs/architecture/stress_architecture_junction_fork_join_026.svg` showed the
@@ -287,6 +288,45 @@ Focused verification:
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_bounds_extras_refactor.md`
 - `cargo run -p xtask -- report-overrides --check-no-growth`
 - `git diff --check`
+
+Fifth slice probe-harness correction:
+
+- Re-audited the Architecture FCoSE browser probe after `junction_fork_join_026` showed a
+  probe/fixture split.
+- The actual installed baseline package
+  `tools/mermaid-cli/node_modules/mermaid/package.json` is `mermaid@11.15.0`, and the generated
+  `dist/mermaid.js` used by `check-upstream-svgs` does not contain the later `withSeededRandom`
+  Architecture source path seen in `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture`.
+  It still uses the xtask page-level deterministic prelude and the Architecture FCoSE config fields
+  `randomize`, `nodeSeparation`, `idealEdgeLengthMultiplier`, `edgeElasticity`, and `numIter`.
+- Updated
+  [tools/debug/arch_fcose_browser_probe_fixture_025.js](/F:/SourceCodes/Rust/merman/tools/debug/arch_fcose_browser_probe_fixture_025.js)
+  so it:
+  - documents that it is a manual diagnostic reconstruction rather than a full Mermaid CLI render
+    replacement,
+  - mirrors the xtask deterministic page prelude more closely by also patching
+    `crypto.getRandomValues`, and
+  - reads the same currently shipped Architecture FCoSE config fields instead of hard-coding
+    same-group ideal length and elasticity.
+- A rejected exploratory patch changed `manatee` from the current xorshift deterministic baseline
+  to the later repo-ref `mulberry32` seed helper. It was reverted before commit because the shipped
+  npm `mermaid@11.15.0` baseline does not contain that path. Do not repeat that change unless the
+  baseline package changes or `dist/mermaid.js` confirms the source path.
+- A refreshed probe
+  `target/compare/arch_junction_fork_join_probe_hpd050_debug_tool_refresh.json` still does not
+  reproduce the CLI fixture. It reports probe-minus-fixture deltas such as
+  `auth.x=+12.684px`, `cache.x=+12.684px`, `api.y=-15.004px`, and `db.y=-15.004px`. It is closer
+  to local output than to the fixture, but no longer exactly identical after the config/prelude
+  cleanup. Treat it as diagnostic evidence only.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p manatee xorshift64star_next_f64_unit_matches_seeded_upstream_baseline --lib`
+- `cargo test -p merman-render architecture_fcose_node_bounds_extras_feed_label_bounds --lib`
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; node tools/debug/arch_fcose_browser_probe_fixture_025.js stress_architecture_junction_fork_join_026 > target/compare/arch_junction_fork_join_probe_hpd050_debug_tool_refresh.json`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug_tool_refresh.md`
+  expected failure remains `2808.127px` upstream vs `2822.102px` local (`+13.976px`).
 
 Residual evidence after the fourth slice:
 

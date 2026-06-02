@@ -71,7 +71,7 @@ Current repository reality to preserve:
     (`+5.000px`).
   - A follow-up `junction_fork_join_026` audit found no new source-input mismatch, but corrected
     the earlier baseline-drift reading. Current local service positions match the saved Mermaid
-    debug probe `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point
+    old debug probe `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point
     noise; however, a fresh Edge-backed `check-upstream-svgs` run reproduces the stored upstream
     fixture exactly. Treat this row as a probe-harness / CLI-harness divergence plus solver/phase
     residual candidate; do not tune manatee against the saved debug probe alone.
@@ -80,3 +80,11 @@ Current repository reality to preserve:
     `architecture_svg_group_bbox_padding_px(...)`. The remaining `batch5_long_titles` and
     `html_titles` `+5px` tails are confirmed group/service Cytoscape bbox measurement residuals;
     do not close them by globally removing the final SVG group bbox extra.
+  - A probe-harness correction updated
+    `tools/debug/arch_fcose_browser_probe_fixture_025.js` to be explicit that it is a manual
+    diagnostic reconstruction, not an authoritative Mermaid CLI render. It now mirrors xtask's
+    deterministic page prelude more closely and reads shipped Architecture FCoSE config fields, but
+    it still does not reproduce the stored CLI fixture for `junction_fork_join_026`. Important:
+    the installed `mermaid@11.15.0` dist used by `tools/mermaid-cli` does not contain the later
+    repo-ref `withSeededRandom` Architecture seed path, so do not change `manatee` to that
+    `mulberry32` behavior unless the baseline package changes.

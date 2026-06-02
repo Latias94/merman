@@ -1150,11 +1150,12 @@ Outcome:
 
 Superseded note from HPD-050:
 
-- Rechecking the saved browser probe showed current local service positions match
+- Rechecking the old saved browser probe showed local service positions matched
   `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise. A later
   Edge-backed `check-upstream-svgs` run reproduced the stored upstream fixture exactly, so this is
-  not stale stored-baseline drift. Treat this row as a debug-probe harness / CLI-harness divergence
-  plus solver/phase residual candidate before changing manatee.
+  not stale stored-baseline drift. A refreshed HPD-050 probe still does not reproduce the CLI
+  fixture and must be treated as diagnostic-only. Treat this row as a debug-probe harness /
+  CLI-harness divergence plus solver/phase residual candidate before changing manatee.
 
 ## M15RV-089 - Architecture Pre-Layout Group Padding Source Rule
 
