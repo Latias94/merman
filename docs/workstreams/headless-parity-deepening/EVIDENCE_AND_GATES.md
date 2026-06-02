@@ -727,6 +727,27 @@ Architecture residual classification refresh (2026-06-03):
   unless a source rule or generated measurement path explains the whole class. Do not add root
   pins, one-off metric constants, or broad solver rewrites to make the count smaller.
 
+Architecture group bbox phase audit (2026-06-03):
+
+- Re-audited `stress_architecture_batch5_long_titles_and_punct_076` and
+  `stress_architecture_html_titles_and_escapes_041` on current HEAD.
+- The focused reports remain expected failures:
+  - `target/compare/architecture_batch5_hpd050_current_debug.md`: upstream `542.926px`, local
+    `547.926px`.
+  - `target/compare/architecture_html_titles_hpd050_current_debug.md`: upstream `479.926px`, local
+    `484.926px`.
+- Structured SVG inspection confirms the deltas are final group rect width:
+  - `batch5_long_titles`: upstream group rect width `462.925633px`, local `467.925633px`.
+  - `html_titles`: upstream group rect width `399.925633px`, local `404.925633px`.
+- A temporary experiment changing `ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX` from `2.5` to
+  `0.0` made those two rows width-exact but made their heights `5px` too short and expanded many
+  group-heavy root mismatches. The experiment report is
+  `target/compare/architecture_report_parity_root_experiment_group_extra_0.md`; the code change was
+  reverted before commit.
+- Conclusion: do not globally remove the final SVG group bbox extra. The right follow-up is a
+  phase-specific Cytoscape bbox model, not a root pin, one-off width constant, or single global
+  group-padding formula.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`

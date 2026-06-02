@@ -145,10 +145,10 @@ Do not keep useless invalid inline style attributes only because upstream fixtur
 ER relationship paths and Mindmap edge paths now omit upstream's `style="undefined;;;undefined"`
 artifact; their visible behavior remains class-driven.
 
-Do not reject Mermaid-compatible style input just because the resulting browser CSS would be empty
-or useless. Treemap `classDef` accepts bare label-style tokens such as `color`, matching Mermaid's
-`TreeMapDB.addClass(...)`, but local SVG emission drops empty-valued declarations instead of
-leaking invalid `color: !important` or `fill: !important` into headless output.
+Do not infer parser parity from a Mermaid DB helper in isolation. Treemap `TreeMapDB.addClass(...)`
+has tolerant style splitting, but pinned Mermaid 11.15 renders `classDef ... color;` as an error
+diagram; local parsing therefore rejects bare style tokens instead of treating DB-layer tolerance as
+valid source syntax.
 
 ## Next Useful Work
 

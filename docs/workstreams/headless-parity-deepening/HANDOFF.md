@@ -199,6 +199,12 @@ Current repository reality to preserve:
     `batch4_init_fontsize_wrap_063`, `edge_label_corner_cases_012`, `fan_in_out_021`,
     `deep_nesting_013`, `batch6_junctions_multi_split_with_group_edges_087`, or
     `disconnected_islands_046` unless a fresh report regresses.
+  - A follow-up group-bbox phase audit rechecked the two `+5px` rows on current HEAD. Both are
+    still controlled by final group rect width, not service placement or root-finalize CSS. A
+    temporary experiment removing `ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX=2.5` made those two
+    rows width-exact but height-short and regressed many group-heavy rows, so it was reverted before
+    commit. Continue toward a phase-specific Cytoscape bbox model; do not globally remove the final
+    group bbox extra.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
