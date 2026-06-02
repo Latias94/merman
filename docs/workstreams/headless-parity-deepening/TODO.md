@@ -99,7 +99,11 @@ Last updated: 2026-06-02
   neighbor updates), while preserving the open missing-node and chainable-mutator API-shape
   differences instead of forcing JS ergonomics into Rust. A follow-up edge-invariant slice now
   tightens simple-graph named-edge behavior to match upstream Graphlib: setting a named edge on a
-  non-multigraph panics, and named queries/removals no longer alias the unnamed edge.
+  non-multigraph panics, and named queries/removals no longer alias the unnamed edge. ARCH-022's
+  first Dagre reference adapter slice is also landed: `dagre_reference.rs` now owns the Rust-side
+  reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
+  delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
+  composite, and internal-cluster State comparisons all stayed zero-delta.
 
 ## M5 - Semantic / Render Unification Pilot
 

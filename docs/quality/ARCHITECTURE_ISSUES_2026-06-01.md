@@ -859,6 +859,13 @@ Suggested direction:
 Create a reusable Dagre reference adapter for input schema, endpoint
 normalization, JS invocation, Rust/JS diff, and optional golden output.
 
+HPD-050 status:
+
+An initial adapter extraction has landed in
+`crates/xtask/src/cmd/debug/dagre_reference.rs`. `compare-dagre-layout` remains a
+State-only graph producer for now; non-State producers should be added only when a
+source-backed Dagre residual audit needs them.
+
 Related decisions:
 
 - ADR-0044 Dugong parity and testing

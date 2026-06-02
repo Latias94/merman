@@ -541,3 +541,34 @@ Focused verification:
 - `cargo test -p merman-render --test state_layout_test`
 - `cargo test -p merman-render --test class_layout_test`
 - `cargo test -p merman-render --test er_layout_test`
+
+Thirteenth slice Dagre reference adapter extraction:
+
+- Extracted
+  [crates/xtask/src/cmd/debug/dagre_reference.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/dagre_reference.rs)
+  as the Rust-side adapter for the Dagre JS reference harness.
+- The adapter now owns the reference input JSON schema, Rust output snapshots, JS harness
+  invocation, JS output parsing, max node/edge delta calculation, and the compound-edge endpoint
+  normalization mirrored from `tools/dagre-harness/run.mjs`.
+- `compare-dagre-layout` remains State-only in this slice. It now acts as a graph producer plus
+  command wrapper, which keeps future Dagre-backed audits from copying the reference machinery.
+- Added a unit test for compound-edge normalization so the extracted adapter is covered below the
+  command-smoke level.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo check -p xtask`
+- `cargo test -p xtask compound_edge_normalization_moves_edges_to_non_cluster_child`
+- `cargo test -p xtask`
+- `node tools/dagre-harness/run.mjs --help`
+- `cargo run -p xtask -- compare-dagre-layout --fixture basic --out-dir target\compare\dagre-layout-hpd050-reference-adapter`
+- `cargo run -p xtask -- compare-dagre-layout --fixture stress_state_composite_with_external_edges_028 --out-dir target\compare\dagre-layout-hpd050-reference-adapter-composite`
+- `cargo run -p xtask -- compare-dagre-layout --fixture stress_state_composite_with_external_edges_028 --cluster state-Big-7 --out-dir target\compare\dagre-layout-hpd050-reference-adapter-cluster`
+
+Verification notes:
+
+- The three focused layout comparisons all reported `max node delta: 0.000000` and
+  `max edge delta: 0.000000`.
+- This is an ARCH-022 seam cleanup, not a claim that the Dagre reference adapter now supports every
+  diagram family. Add non-State graph producers only when a source-backed residual audit needs one.

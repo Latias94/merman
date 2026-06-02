@@ -134,3 +134,9 @@ Current repository reality to preserve:
     guard: named edge insertion panics on simple graphs, and named lookup/removal does not alias the
     unnamed edge. Renderer graph construction that uses edge names is already multigraph-based, so
     this should be treated as a source-backed invariant fix rather than a rendering tune.
+  - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
+    Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
+    `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and
+    acts as a graph producer/command wrapper. Basic, composite, and internal-cluster State Dagre
+    comparisons all reported zero node and edge delta after the extraction. Do not broaden this to
+    other diagrams until a real Dagre-backed residual audit needs that producer.
