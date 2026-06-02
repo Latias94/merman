@@ -130,3 +130,7 @@
 {"file":"docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md","reason":"HPD-080/Zed update: PR 57967 is now classified as host palette policy plus optional fallback duplicate-cleanup support."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureStyles.ts","reason":"HPD-080 source evidence: provider naming audit caught non-conventional Architecture style provider names at pinned Mermaid 11.15."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/pie/pieStyles.ts","reason":"HPD-080 source evidence: provider naming audit caught non-conventional Pie style provider names at pinned Mermaid 11.15."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-rendering-coverage-xychart.md","reason":"HPD-080 journal: XYChart has no Mermaid 11.15 CSS provider, so theme parity is inline render-path coverage rather than invented CSS."}
+{"file":"crates/merman-render/tests/xychart_svg_test.rs","reason":"HPD-080 regression: custom themeVariables.xyChart values now have render-path coverage for background, title, axes, ticks, labels, and plot palette colors."}
+{"file":"fixtures/xychart/upstream_cypress_xychart_spec_render_all_the_theme_color_018.mmd","reason":"HPD-080 fixture evidence: upstream Cypress XYChart fixture exercises custom xyChart theme colors across visible chart elements."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/xychartRenderer.ts","reason":"HPD-080 source evidence: pinned Mermaid 11.15 XYChart writes themeConfig values inline as SVG fill/stroke attributes."}

@@ -260,6 +260,10 @@ Current repository reality to preserve:
     for Mermaid 11.15 style-provider coverage, inline-only diagrams, deferred inert rules, and host
     theme integration boundaries. It explicitly records that Zed-like palette cleanup is host policy,
     while fallback markers/de-duplication are merman integration contracts.
+  - A nineteenth HPD-080 slice added XYChart inline theme render-path coverage. Mermaid 11.15 has no
+    XYChart style provider, so the correct parity shape is not invented CSS; the new test proves
+    `themeVariables.xyChart` reaches chart background, title, axis labels/titles, ticks, axis lines,
+    and bar/line plot palette colors in final SVG output.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

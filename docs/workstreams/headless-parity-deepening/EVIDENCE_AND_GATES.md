@@ -1239,6 +1239,34 @@ Focused verification:
 - `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams/architecture/architectureStyles.ts`
 - `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams/pie/pieStyles.ts`
 
+Nineteenth slice outcome:
+
+- Audited Mermaid 11.15 XYChart theme behavior at pinned source commit
+  `41646dfd43ac83f001b03c70605feb036afae46d`:
+  - `xychartDb.ts` merges default `themeVariables.xyChart` with configured
+    `config.themeVariables.xyChart`,
+  - `xychartRenderer.ts` writes those values directly to SVG `fill` / `stroke` attributes,
+  - `chartBuilder/interfaces.ts` defines `XYChartThemeConfig`,
+  - `theme-default.js` and `theme-base.js` define the `xyChart` theme variable surface.
+- Added a render-path regression in
+  [crates/merman-render/tests/xychart_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/xychart_svg_test.rs)
+  using
+  [fixtures/xychart/upstream_cypress_xychart_spec_render_all_the_theme_color_018.mmd](/F:/SourceCodes/Rust/merman/fixtures/xychart/upstream_cypress_xychart_spec_render_all_the_theme_color_018.mmd).
+- The regression asserts that custom `themeVariables.xyChart` values reach the final SVG for:
+  chart background, chart title, x/y axis titles, x/y labels, x/y ticks, x/y axis lines, and bar/line
+  plot palette colors.
+- No production change was needed. This slice confirms the correct headless parity boundary for
+  XYChart: inline theme config is supported, and no CSS provider should be invented.
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render xychart_svg_honors_mermaid_11_15_inline_theme_config --test xychart_svg_test`
+- `cargo test -p merman-render --test xychart_svg_test`
+- `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `git diff --check`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

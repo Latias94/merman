@@ -186,6 +186,7 @@ Last updated: 2026-06-02
   labels that duplicate native SVG text without losing fallback-only labels. A theme coverage ledger
   now records implemented-matrix style-provider coverage, deferred inert rules, and host theme
   boundaries so future HPD-080 work does not fake CSS parity or copy Zed-specific palette policy
-  into default output.
+  into default output. A XYChart coverage slice now proves Mermaid 11.15 inline `xyChart` theme
+  values reach the final SVG render path without inventing a non-existent CSS provider.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

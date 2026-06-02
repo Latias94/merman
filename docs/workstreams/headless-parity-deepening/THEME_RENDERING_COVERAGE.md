@@ -58,7 +58,7 @@ Status terms:
 | State | `state/styles.js` | Covered with deferred rules | State node, cluster, transition, label, note, marker, start/end, special-state, and title rules are covered. Neo gradient/drop-shadow and dependency-marker rules remain deferred without emitted support. |
 | Timeline | `timeline/styles.js` | Covered | Disabled node/text colors now honor `tertiaryColor` and `clusterBorder`. Redux/neo-only rules stay deferred when support attributes/defs are absent. |
 | Treemap | `treemap/styles.ts` | Covered | `treemap.*` options and title/text theme fallbacks drive section, leaf, label, value, and title CSS. |
-| XYChart | none | Inline | Mermaid 11.15 has no dedicated provider. Visible theme behavior comes from `xyChart` theme config and inline renderer attributes; keep future work render-path tested rather than inventing CSS. |
+| XYChart | none | Inline, render-path covered | Mermaid 11.15 has no dedicated provider. Visible theme behavior comes from `xyChart` theme config and inline renderer attributes; the custom-theme render-path smoke now covers background, title, axes, ticks, labels, and plot palette. |
 | Error | none | Shared/error renderer | Not maintained as a full upstream SVG baseline family. No diagram-specific style provider exists in 11.15. |
 | ZenUML | external plugin compatibility | Boundary | Local support is a headless Sequence compatibility subset, not Mermaid browser-plugin CSS parity. |
 
@@ -96,9 +96,8 @@ the measurement seams from HPD-040 and classify residuals honestly.
 
 1. Add a small dark-theme visual smoke set across the implemented matrix, focused on unreadable
    labels and black blocks rather than pixel parity.
-2. Add render-path tests for XYChart custom `xyChart` theme variables if coverage is missing.
-3. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
-4. Consider a documented host-theme postprocessor example for consumers that want Zed-like palette
+2. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
+3. Consider a documented host-theme postprocessor example for consumers that want Zed-like palette
    replacement.
-5. Reconcile the root white-background question as a separate source/capture audit before changing
+4. Reconcile the root white-background question as a separate source/capture audit before changing
    default SVG output.
