@@ -789,6 +789,36 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
   passed with `267` tests.
 
+Twenty-second slice Graphlib setEdge optional-label / EdgeKey coverage:
+
+- Added direct regressions in
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  for Graphlib's `setEdge(..., undefined)` state behavior. Rust maps this through explicit
+  `Option<T>` edge labels: `Some(None)` clears an existing optional label while keeping the edge
+  present.
+- Added `set_edge_key_sets_simple_and_named_edge_labels` so Graphlib's edge-object and multi-edge
+  object `setEdge({ v, w, name }, value)` cases map to the Rust `EdgeKey` API.
+- Updated the Graphlib coverage ledger so these source `setEdge` cases are no longer implicit.
+- No production code changed in this slice. JS stringification, chainability, and argument
+  overloading remain explicit Rust/JS API-shape differences.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_edge`
+  failed first on an unnamed `EdgeKey::new(..., None)` type-inference issue in the new test.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_edge`
+  passed after spelling the unnamed edge object as `None::<String>`.
+
+Full verification:
+
+- `cargo fmt --check -p dugong-graphlib` passed.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `87` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+- JSONL validation passed for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`.
+- `git diff --check` passed.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

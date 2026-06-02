@@ -164,6 +164,9 @@ Current repository reality to preserve:
   - A follow-up Graphlib parent/clear-parent coverage slice is now landed. It maps Graphlib's
     `parent(v)` optional query shape and `setParent(v)` clear-parent state behavior to existing
     Rust `parent(...)` and `clear_parent(...)` APIs without adding JS optional-argument overloading.
+  - A follow-up Graphlib `setEdge` optional-label / EdgeKey coverage slice is now landed.
+    It maps explicit JS `undefined` edge-label clearing to `Option<T>` edge labels and maps
+    Graphlib edge-object parameters to the existing Rust `EdgeKey` API.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and

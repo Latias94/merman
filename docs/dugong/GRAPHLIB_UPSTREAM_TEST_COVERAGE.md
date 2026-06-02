@@ -141,8 +141,12 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setEdge / creates the edge if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / creates the nodes for the edge if they are not part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / changes the value for an edge if it is already in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_with_label_updates_existing_edge_label`
+- `setEdge / deletes the value for the edge if the value arg is undefined` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_with_label_can_clear_optional_edge_label`
 - `setEdge / creates a multi-edge if if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
 - `setEdge / throws if a multi-edge is used with a non-multigraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_named_panics_on_named_edge_for_non_multigraph`
+- `setEdge / changes the value for a multi-edge if it is already in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_named_can_clear_optional_multiedge_label`
+- `setEdge / can take an edge object as the first parameter` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_key_sets_simple_and_named_edge_labels`
+- `setEdge / can take an multi-edge object as the first parameter` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_key_sets_simple_and_named_edge_labels`
 - `setEdge / treats edges in opposite directions as distinct in a digraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_respects_direction_for_directed_graphs`
 - `setEdge / handles undirected graph edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_accepts_either_direction_for_undirected_graphs`
 - `edge / returns undefined if the edge isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_returns_none_for_missing_edges`

@@ -225,3 +225,5 @@
 {"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib parent and setParent clear-parent cases define optional parent query behavior."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-080-mermaid-source-checkout-audit.md","reason":"HPD-080 journal: repo-ref/mermaid checkout drift was corrected before further Mermaid 11.15 style-provider audits."}
 {"file":"tools/upstreams/REPOS.lock.json","reason":"HPD-080 source authority: Mermaid 11.15 lockfile commit used to restore repo-ref/mermaid."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-setedge-edgekey.md","reason":"HPD-050 journal: Graphlib setEdge undefined-label clearing and edge-object cases now map to Option edge labels and EdgeKey."}
+{"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib setEdge optional value and edge-object cases define state behavior."}

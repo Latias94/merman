@@ -323,6 +323,29 @@ fn set_edge_with_label_updates_existing_edge_label() {
 }
 
 #[test]
+fn set_edge_with_label_can_clear_optional_edge_label() {
+    let mut g: Graph<(), Option<&str>, ()> = Graph::new(GraphOptions::default());
+    g.set_edge_with_label("a", "b", Some("foo"));
+    g.set_edge_with_label("a", "b", None);
+
+    assert!(g.has_edge("a", "b", None));
+    assert_eq!(g.edge("a", "b", None), Some(&None));
+}
+
+#[test]
+fn set_edge_named_can_clear_optional_multiedge_label() {
+    let mut g: Graph<(), Option<&str>, ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("name"), Some(Some("foo")));
+    g.set_edge_named("a", "b", Some("name"), Some(None));
+
+    assert!(g.has_edge("a", "b", Some("name")));
+    assert_eq!(g.edge("a", "b", Some("name")), Some(&None));
+}
+
+#[test]
 fn multigraph_preserves_named_edges() {
     let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions {
         multigraph: true,
@@ -396,6 +419,28 @@ fn set_path_with_label_sets_and_updates_all_path_edge_labels() {
 
     assert_eq!(g.edge("a", "b", None).map(String::as_str), Some("bar"));
     assert_eq!(g.edge("b", "c", None).map(String::as_str), Some("bar"));
+}
+
+#[test]
+fn set_edge_key_sets_simple_and_named_edge_labels() {
+    let mut simple: Graph<(), String, ()> = Graph::new(GraphOptions::default());
+    simple.set_edge_key(EdgeKey::new("a", "b", None::<String>), "value".to_string());
+
+    assert_eq!(
+        simple.edge("a", "b", None).map(String::as_str),
+        Some("value")
+    );
+
+    let mut multi: Graph<(), String, ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    multi.set_edge_key(EdgeKey::new("a", "b", Some("name")), "named".to_string());
+
+    assert_eq!(
+        multi.edge("a", "b", Some("name")).map(String::as_str),
+        Some("named")
+    );
 }
 
 #[test]
