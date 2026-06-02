@@ -774,14 +774,6 @@ impl<'a> ClassDb<'a> {
             return Some(class_name.to_string());
         }
 
-        let (namespace_id, local_id) = class_name.rsplit_once('.')?;
-        let namespace = self.namespaces.get(namespace_id)?;
-        if namespace.class_ids.iter().any(|id| id == local_id)
-            && self.classes.contains_key(local_id)
-        {
-            return Some(local_id.to_string());
-        }
-
         None
     }
 

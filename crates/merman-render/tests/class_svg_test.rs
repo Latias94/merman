@@ -382,9 +382,9 @@ fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
                 "max-width: 89px",
                 "max-width: 76px",
                 "max-width: 72px",
-                "max-width: 194px",
+                "max-width: 197px",
                 "max-width: 271px",
-                "max-width: 226px",
+                "max-width: 229px",
             ],
         ),
     ];

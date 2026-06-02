@@ -29,7 +29,7 @@ C1 <|-- C2 : inherits
 }
 
 #[test]
-fn namespace_qualified_relation_endpoints_resolve_to_declared_classes() {
+fn namespace_qualified_relation_endpoints_create_facade_classes_like_mermaid() {
     let code = r#"classDiagram
 namespace Platform["Platform Layer"] {
   namespace FFI {
@@ -48,12 +48,19 @@ Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
 
     assert_eq!(
         model.classes.keys().cloned().collect::<Vec<_>>(),
-        vec!["DartBinding", "PythonBinding", "Renderer"]
+        vec![
+            "DartBinding",
+            "PythonBinding",
+            "Renderer",
+            "Platform.FFI.DartBinding",
+            "Platform.Core.Renderer",
+            "Platform.FFI.PythonBinding"
+        ]
     );
-    assert_eq!(model.relations[0].id1, "DartBinding");
-    assert_eq!(model.relations[0].id2, "Renderer");
-    assert_eq!(model.relations[1].id1, "PythonBinding");
-    assert_eq!(model.relations[1].id2, "Renderer");
+    assert_eq!(model.relations[0].id1, "Platform.FFI.DartBinding");
+    assert_eq!(model.relations[0].id2, "Platform.Core.Renderer");
+    assert_eq!(model.relations[1].id1, "Platform.FFI.PythonBinding");
+    assert_eq!(model.relations[1].id2, "Platform.Core.Renderer");
     assert_eq!(
         model.namespaces["Platform.FFI"].class_ids,
         vec!["DartBinding", "PythonBinding"]

@@ -963,11 +963,53 @@ Residual note:
 - This slice fixes Flowchart theme/readability CSS only. It does not claim Flowchart root-bounds
   closure.
 - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` was
-  run as part of the adjacent Class audit and currently exposes three namespace structural
-  mismatches (`stress_class_comments_inside_namespaces_024`,
+  run as part of the adjacent Class audit and exposed three namespace structural mismatches
+  (`stress_class_comments_inside_namespaces_024`,
   `stress_class_nested_namespaces_many_levels_021`, and `stress_class_unicode_namespace_mix_017`).
-  Those mismatches are not caused by the Flowchart change and should be handled by a dedicated
-  source-backed Class namespace/qualified-id slice.
+  Those mismatches were not caused by the Flowchart change and were handled by the dedicated
+  source-backed Class namespace/qualified-id slice below.
+
+Twelfth slice outcome:
+
+- Audited pinned Mermaid 11.15 Class DB source:
+  - `packages/mermaid/src/diagrams/class/classDb.ts`
+- Mermaid 11.15 `addRelation(...)` calls `addClass(...)` for each relation endpoint and then keeps
+  `classRelation.id1/id2` as `splitClassNameAndType(endpoint).className`. It does not resolve a
+  namespace-qualified relation endpoint such as `Outer.Foo` back to an existing namespace member
+  `Foo`.
+- Local Class core had an ASCII-oriented shortcut that collapsed namespace-qualified relation
+  endpoints to the namespace member id when that member existed. That made ASCII output concise, but
+  broke pinned SVG structural parity for relation ids and implicit namespace-qualified facade class
+  nodes.
+- Class core now preserves Mermaid's namespace-qualified facade semantics for relation endpoints.
+  The focused parser test documents the extra facade classes and fully-qualified relation endpoints.
+- ASCII rendering keeps its user-friendly output by folding only empty namespace facade classes back
+  to their declared namespace member as a view-layer alias. This avoids duplicate terminal boxes
+  without changing the core semantic model or SVG parity surface.
+- The Class SVG HTML-cap fixture was updated to the current deterministic headless output after the
+  surrounding renderer changes; `compare-class-svgs` remains the authority for pinned upstream DOM
+  structure.
+
+Touched production surfaces:
+
+- [crates/merman-core/src/diagrams/class/db.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/class/db.rs)
+- [crates/merman-ascii/src/class/render.rs](/F:/SourceCodes/Rust/merman/crates/merman-ascii/src/class/render.rs)
+- [crates/merman-core/src/diagrams/class/tests.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/class/tests.rs)
+- [crates/merman-render/tests/class_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/class_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-core -p merman-render -p merman-ascii`
+- `cargo fmt --check -p merman-core -p merman-render -p merman-ascii`
+- `cargo test -p merman-core class --lib`
+- `cargo test -p merman-render --test class_svg_test`
+- `cargo test -p merman-ascii class --test class_model`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes Class namespace-qualified relation semantic/structural parity only. It does not
+  claim Class root-bounds or browser text-measurement closure.
 
 ## HPD-060 - Semantic / Render Unification Pilot
 

@@ -127,9 +127,11 @@ pub(crate) fn render_class_diagram(
     }
 
     let charset = ClassCharset::for_options(options);
+    let namespace_facade_aliases = namespace_facade_aliases(model);
     let boxes = model
         .classes
         .values()
+        .filter(|class| !namespace_facade_aliases.contains_key(class.id.as_str()))
         .map(|class| render_class_box(class, options, charset))
         .collect::<Vec<_>>();
 
@@ -142,10 +144,52 @@ pub(crate) fn render_class_diagram(
     let layouts = model
         .relations
         .iter()
-        .map(|relation| relation_layout(model, relation))
+        .map(|relation| relation_layout(model, relation, &namespace_facade_aliases))
         .collect::<Result<Vec<_>>>()?;
 
     render_class_components(&boxes, &layouts, options, charset)
+}
+
+fn namespace_facade_aliases(model: &ClassDiagram) -> HashMap<String, String> {
+    let mut aliases = HashMap::new();
+    for class in model.classes.values() {
+        let Some(local_id) = namespace_facade_local_id(model, class) else {
+            continue;
+        };
+        aliases.insert(class.id.clone(), local_id.to_string());
+    }
+    aliases
+}
+
+fn namespace_facade_local_id<'a>(model: &'a ClassDiagram, class: &'a ClassNode) -> Option<&'a str> {
+    if class
+        .parent
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|parent| !parent.is_empty())
+        || !class.annotations.is_empty()
+        || !class.members.is_empty()
+        || !class.methods.is_empty()
+    {
+        return None;
+    }
+
+    model
+        .namespaces
+        .values()
+        .filter_map(|namespace| {
+            let remainder = class
+                .id
+                .strip_prefix(namespace.id.as_str())?
+                .strip_prefix('.')?;
+            namespace
+                .class_ids
+                .iter()
+                .any(|id| id == remainder)
+                .then_some((namespace.id.len(), remainder))
+        })
+        .max_by_key(|(namespace_len, _)| *namespace_len)
+        .and_then(|(_, local_id)| model.classes.contains_key(local_id).then_some(local_id))
 }
 
 fn render_class_component(
@@ -340,6 +384,7 @@ fn content_line(
 fn relation_layout<'a>(
     model: &'a ClassDiagram,
     relation: &'a ClassRelation,
+    namespace_facade_aliases: &'a HashMap<String, String>,
 ) -> Result<RelationLayout<'a>> {
     let line = if relation.relation.line_type == model.constants.line_type.line {
         RelationLine::Solid
@@ -382,16 +427,16 @@ fn relation_layout<'a>(
     if marker == RelationMarker::Extension {
         return Ok(match marker_side {
             MarkerSide::Top => RelationLayout {
-                top_id: relation.id1.as_str(),
-                bottom_id: relation.id2.as_str(),
+                top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
+                bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
                 marker,
                 marker_side: MarkerSide::Top,
                 line,
                 label,
             },
             MarkerSide::Bottom => RelationLayout {
-                top_id: relation.id2.as_str(),
-                bottom_id: relation.id1.as_str(),
+                top_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
+                bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
                 marker,
                 marker_side: MarkerSide::Top,
                 line,
@@ -401,13 +446,23 @@ fn relation_layout<'a>(
     }
 
     Ok(RelationLayout {
-        top_id: relation.id1.as_str(),
-        bottom_id: relation.id2.as_str(),
+        top_id: relation_endpoint_id(namespace_facade_aliases, relation.id1.as_str()),
+        bottom_id: relation_endpoint_id(namespace_facade_aliases, relation.id2.as_str()),
         marker,
         marker_side,
         line,
         label,
     })
+}
+
+fn relation_endpoint_id<'a>(
+    namespace_facade_aliases: &'a HashMap<String, String>,
+    id: &'a str,
+) -> &'a str {
+    namespace_facade_aliases
+        .get(id)
+        .map(String::as_str)
+        .unwrap_or(id)
 }
 
 fn marker_for_relation_type(

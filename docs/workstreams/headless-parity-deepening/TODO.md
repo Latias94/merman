@@ -169,7 +169,8 @@ Last updated: 2026-06-02
   node, cluster, transition, label, note, marker, start/end, special-state, and title CSS, including
   the prefixed local barbEnd marker selector. A Flowchart slice fixed hardcoded node/edge-path
   stroke widths so Mermaid 11.15 numeric `themeVariables.strokeWidth` controls visible stroke
-  thickness. An adjacent Class audit exposed namespace-qualified relation structural mismatches
-  that should be handled as a separate source-backed Class slice, not hidden in a CSS patch.
+  thickness. A Class namespace slice restored Mermaid 11.15 namespace-qualified relation facade
+  semantics in core, while ASCII now folds only empty facade classes back to their declared
+  namespace members as a view-layer alias to avoid duplicate terminal boxes.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
