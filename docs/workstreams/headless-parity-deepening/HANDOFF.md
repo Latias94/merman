@@ -194,6 +194,9 @@ Current repository reality to preserve:
     `span` colors instead of the old single `.section-2 span` fallback. Upstream `data-look`
     gradient/drop-shadow rules remain intentionally un-emitted until local SVG nodes actually emit
     those attributes.
+  - A fourth HPD-080 slice fixed Pie theme CSS emission. Pie now passes `effective_config` into
+    CSS generation and reads Mermaid 11.15 `pie*` theme variables for stroke, opacity, title,
+    slice-label, and legend text styles. The obsolete fixed `info_css(...)` wrapper was removed.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

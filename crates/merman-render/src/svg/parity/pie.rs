@@ -150,7 +150,7 @@ pub(super) fn render_pie_diagram_svg_model(
         );
     }
 
-    let css = super::pie_css(diagram_id);
+    let css = super::pie_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
 

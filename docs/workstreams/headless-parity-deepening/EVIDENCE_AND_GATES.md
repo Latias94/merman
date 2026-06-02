@@ -725,6 +725,33 @@ Focused verification:
 - `cargo test -p merman-render mindmap_css_honors_mermaid_11_15_theme_sections`
 - `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Fourth slice outcome:
+
+- Audited pinned Mermaid 11.15 Pie style provider:
+  - `packages/mermaid/src/diagrams/pie/pieStyles.ts`
+- Pie previously emitted fixed default CSS through `pie_css(diagram_id)` and discarded
+  `effective_config`, so Mermaid 11.15 pie style variables could not affect slice stroke/opacity,
+  outer ring stroke, title text, slice labels, or legend text. This is a visible theme/readability
+  defect, especially for dark or custom themes.
+- Pie CSS now reads Mermaid 11.15 `themeVariables` for `pieStrokeColor`, `pieStrokeWidth`,
+  `pieOpacity`, `pieOuterStrokeColor`, `pieOuterStrokeWidth`, `pieTitleTextSize`,
+  `pieTitleTextColor`, `pieSectionTextSize`, `pieSectionTextColor`, `pieLegendTextSize`, and
+  `pieLegendTextColor`, while preserving the default-theme fallback values from the upstream theme.
+- `pie_css` now accepts `effective_config`, uses config-aware base CSS parts, and keeps `:root`
+  last like the other HPD-080 style emitters.
+- Removed the now-unused fixed `info_css(...)` wrapper; remaining emitters use either
+  `info_css_into(...)` directly or config-aware CSS parts.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/css.rs)
+- [crates/merman-render/src/svg/parity/pie.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/pie.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render pie_css_honors_mermaid_11_15_theme_options`
+- `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

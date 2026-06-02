@@ -42,12 +42,6 @@ pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
     );
 }
 
-pub(super) fn info_css(diagram_id: &str) -> String {
-    let mut out = String::new();
-    info_css_into(&mut out, diagram_id);
-    out
-}
-
 pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
@@ -496,15 +490,72 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     out
 }
 
-pub(super) fn pie_css(diagram_id: &str) -> String {
+fn pie_theme_option(
+    effective_config: &serde_json::Value,
+    key: &str,
+    default_value: &str,
+) -> String {
+    crate::config::config_css_number_or_string(effective_config, &["themeVariables", key])
+        .unwrap_or_else(|| default_value.to_string())
+}
+
+pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    // Mirrors Mermaid@11.15.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
+    // config-aware CSS emitters used by the other diagram families.
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let mut out = info_css(diagram_id);
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let font = parts.font_family;
+    let task_text_dark_color = theme_color(effective_config, "taskTextDarkColor", "black");
+    let pie_stroke_color = pie_theme_option(effective_config, "pieStrokeColor", "black");
+    let pie_stroke_width = pie_theme_option(effective_config, "pieStrokeWidth", "2px");
+    let pie_opacity = pie_theme_option(effective_config, "pieOpacity", "0.7");
+    let pie_outer_stroke_color = pie_theme_option(effective_config, "pieOuterStrokeColor", "black");
+    let pie_outer_stroke_width = pie_theme_option(effective_config, "pieOuterStrokeWidth", "2px");
+    let pie_title_text_size = pie_theme_option(effective_config, "pieTitleTextSize", "25px");
+    let pie_title_text_color = theme_color(
+        effective_config,
+        "pieTitleTextColor",
+        task_text_dark_color.as_str(),
+    );
+    let pie_section_text_size = pie_theme_option(effective_config, "pieSectionTextSize", "17px");
+    let pie_section_text_color = theme_color(
+        effective_config,
+        "pieSectionTextColor",
+        parts.text_color.as_str(),
+    );
+    let pie_legend_text_size = pie_theme_option(effective_config, "pieLegendTextSize", "17px");
+    let pie_legend_text_color = theme_color(
+        effective_config,
+        "pieLegendTextColor",
+        task_text_dark_color.as_str(),
+    );
     let _ = write!(
         &mut out,
-        r#"#{} .pieCircle{{stroke:black;stroke-width:2px;opacity:0.7;}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:black;stroke-width:2px;fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:25px;fill:black;font-family:{};}}#{} .slice{{font-family:{};fill:#333;font-size:17px;}}#{} .legend text{{fill:black;font-family:{};font-size:17px;}}"#,
-        id, id, id, id, id, font, id, font, id, font
+        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+        id,
+        pie_stroke_color,
+        pie_stroke_width,
+        pie_opacity,
+        id,
+        id,
+        id,
+        pie_outer_stroke_color,
+        pie_outer_stroke_width,
+        id,
+        pie_title_text_size,
+        pie_title_text_color,
+        font,
+        id,
+        font,
+        pie_section_text_color,
+        pie_section_text_size,
+        id,
+        pie_legend_text_color,
+        font,
+        pie_legend_text_size
     );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -853,6 +904,38 @@ mod tests {
         assert!(
             css.contains(r#"#sk :root{--mermaid-font-family:"ibm plex sans",arial,sans-serif;}"#)
         );
+    }
+
+    #[test]
+    fn pie_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#111111",
+                "taskTextDarkColor": "#222222",
+                "pieStrokeColor": "#333333",
+                "pieStrokeWidth": "4px",
+                "pieOpacity": "0.9",
+                "pieOuterStrokeColor": "#444444",
+                "pieOuterStrokeWidth": "5px",
+                "pieTitleTextSize": "26px",
+                "pieTitleTextColor": "#555555",
+                "pieSectionTextSize": "18px",
+                "pieSectionTextColor": "#666666",
+                "pieLegendTextSize": "19px",
+                "pieLegendTextColor": "#777777"
+            }
+        });
+
+        let css = pie_css("pie", &cfg);
+
+        assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
+        assert!(
+            css.contains(r#"#pie .pieOuterCircle{stroke:#444444;stroke-width:5px;fill:none;}"#)
+        );
+        assert!(css.contains(r#"#pie .pieTitleText{text-anchor:middle;font-size:26px;fill:#555555;font-family:"ibm plex sans",arial,sans-serif;}"#));
+        assert!(css.contains(r#"#pie .slice{font-family:"ibm plex sans",arial,sans-serif;fill:#666666;font-size:18px;}"#));
+        assert!(css.contains(r#"#pie .legend text{fill:#777777;font-family:"ibm plex sans",arial,sans-serif;font-size:19px;}"#));
     }
 
     #[test]
