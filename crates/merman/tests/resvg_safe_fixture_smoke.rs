@@ -339,6 +339,9 @@ fn source_has_visible_diagram_content(source: &str) -> bool {
         if skip_accessibility_metadata(trimmed, &mut in_accessibility_block) {
             continue;
         }
+        if is_non_visual_directive_metadata(trimmed) {
+            continue;
+        }
 
         if let Some((kind, rest)) = strip_mermaid_header(trimmed) {
             diagram_kind = kind;
@@ -347,6 +350,9 @@ fn source_has_visible_diagram_content(source: &str) -> bool {
                 continue;
             }
             if skip_accessibility_metadata(rest, &mut in_accessibility_block) {
+                continue;
+            }
+            if is_non_visual_directive_metadata(rest) {
                 continue;
             }
             if !rest.is_empty() {
@@ -359,6 +365,9 @@ fn source_has_visible_diagram_content(source: &str) -> bool {
             continue;
         }
         if diagram_kind == SourceDiagramKind::Radar && is_radar_option_line(trimmed) {
+            continue;
+        }
+        if diagram_kind == SourceDiagramKind::State && is_state_non_visual_line(trimmed) {
             continue;
         }
         if diagram_kind == SourceDiagramKind::Treemap && !is_treemap_value_line(trimmed) {
@@ -376,6 +385,7 @@ enum SourceDiagramKind {
     Journey,
     Other,
     Radar,
+    State,
     Treemap,
 }
 
@@ -404,6 +414,25 @@ fn skip_accessibility_metadata(line: &str, in_accessibility_block: &mut bool) ->
     false
 }
 
+fn is_non_visual_directive_metadata(line: &str) -> bool {
+    is_class_def_metadata(line) || is_click_metadata(line) || is_link_style_metadata(line)
+}
+
+fn is_class_def_metadata(line: &str) -> bool {
+    line.strip_prefix("classDef")
+        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+}
+
+fn is_click_metadata(line: &str) -> bool {
+    line.strip_prefix("click")
+        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+}
+
+fn is_link_style_metadata(line: &str) -> bool {
+    line.strip_prefix("linkStyle")
+        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+}
+
 fn strip_mermaid_header(line: &str) -> Option<(SourceDiagramKind, &str)> {
     strip_flowchart_header(line, "flowchart")
         .or_else(|| strip_flowchart_header(line, "graph"))
@@ -427,8 +456,8 @@ fn strip_mermaid_header(line: &str) -> Option<(SourceDiagramKind, &str)> {
         .or_else(|| strip_plain_header(line, "requirementDiagram"))
         .or_else(|| strip_plain_header(line, "sankey"))
         .or_else(|| strip_plain_header(line, "sequenceDiagram"))
-        .or_else(|| strip_plain_header(line, "stateDiagram"))
-        .or_else(|| strip_plain_header(line, "stateDiagram-v2"))
+        .or_else(|| strip_plain_header_kind(line, "stateDiagram", SourceDiagramKind::State))
+        .or_else(|| strip_plain_header_kind(line, "stateDiagram-v2", SourceDiagramKind::State))
         .or_else(|| strip_plain_header(line, "timeline"))
         .or_else(|| strip_plain_header_kind(line, "treemap", SourceDiagramKind::Treemap))
         .or_else(|| strip_plain_header_kind(line, "treemap-beta", SourceDiagramKind::Treemap))
@@ -492,8 +521,35 @@ fn is_radar_option_line(line: &str) -> bool {
         })
 }
 
+fn is_state_non_visual_line(line: &str) -> bool {
+    is_state_bare_keyword_line(line) || is_state_floating_note_alias_line(line)
+}
+
+fn is_state_bare_keyword_line(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("state") else {
+        return false;
+    };
+    if !rest.chars().next().is_some_and(char::is_whitespace) {
+        return false;
+    }
+    let rest = rest.trim().trim_end_matches(';').trim();
+    !rest.is_empty()
+        && rest.split_whitespace().count() == 1
+        && !rest.contains('{')
+        && !rest.contains(':')
+        && !rest.contains("<<")
+}
+
+fn is_state_floating_note_alias_line(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("note") else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    rest.starts_with('"') && rest.contains(" as ")
+}
+
 fn is_treemap_value_line(line: &str) -> bool {
-    if line.starts_with("classDef") || line.starts_with("class ") {
+    if is_class_def_metadata(line) || line.starts_with("class ") {
         return false;
     }
 
@@ -665,6 +721,24 @@ fn source_content_gate_distinguishes_accessibility_only_from_visible_content() {
     ));
     assert!(!source_has_visible_diagram_content("packet\n"));
     assert!(!source_has_visible_diagram_content("packet-beta\n"));
+    assert!(!source_has_visible_diagram_content(
+        "graph LR\n      click X callback \"X\";\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "stateDiagram-v2\n classDef exampleClass background:#bbb;\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "stateDiagram-v2\n state foo\n note \"This is a floating note\" as N1\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "stateDiagram-v2\n state \"Long state description\" as S1\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "stateDiagram-v2\n state fork_state <<fork>>\n"
+    ));
+    assert!(source_has_visible_diagram_content(
+        "stateDiagram-v2\n foo: bar\n note \"This is a floating note\" as N1\n"
+    ));
     assert!(!source_has_visible_diagram_content(
         "pie accDescr {\n    Accessibility Description\n}\n"
     ));

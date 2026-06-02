@@ -5,32 +5,32 @@
       "nodes": [
         {
           "id": "Company",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 487.664,
-          "height": 390.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 432.664,
+          "height": 445.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 412.664,
-          "height": 320.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 357.664,
+          "height": 375.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project.Module",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 342.664,
-          "height": 220.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 287.664,
+          "height": 275.0,
           "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 243.832,
-          "y": 195.0,
+          "x": 216.332,
+          "y": 222.5,
           "width": 217.664,
           "height": 150.0,
           "is_cluster": false
@@ -40,15 +40,15 @@
       "clusters": [
         {
           "id": "Company",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 487.664,
-          "height": 390.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 432.664,
+          "height": 445.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company",
           "title_label": {
-            "x": 243.832,
+            "x": 216.332,
             "y": 12.0,
             "width": 58.4,
             "height": 24.0
@@ -61,15 +61,15 @@
         },
         {
           "id": "Company.Project",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 412.664,
-          "height": 320.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 357.664,
+          "height": 375.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Project",
           "title_label": {
-            "x": 243.832,
+            "x": 216.332,
             "y": 47.0,
             "width": 50.88,
             "height": 24.0
@@ -82,15 +82,15 @@
         },
         {
           "id": "Company.Project.Module",
-          "x": 243.832,
-          "y": 195.0,
-          "width": 342.664,
-          "height": 220.0,
+          "x": 216.332,
+          "y": 222.5,
+          "width": 287.664,
+          "height": 275.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Module",
           "title_label": {
-            "x": 243.832,
+            "x": 216.332,
             "y": 97.0,
             "width": 41.6,
             "height": 24.0
@@ -105,8 +105,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 487.664,
-        "max_y": 390.0
+        "max_x": 432.664,
+        "max_y": 445.0
       }
     }
   }

@@ -30,9 +30,9 @@
         {
           "id": "actor-top-Logs",
           "x": 702.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -70,9 +70,9 @@
         {
           "id": "actor-bottom-Logs",
           "x": 702.0,
-          "y": 425.75,
+          "y": 432.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         }
       ],
@@ -363,7 +363,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 827.0,
-        "max_y": 473.0
+        "max_y": 478.0
       }
     }
   }

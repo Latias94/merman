@@ -6,33 +6,33 @@
         {
           "id": "actor-top-API",
           "x": 75.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-Auth",
           "x": 275.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-API",
           "x": 75.0,
-          "y": 213.0,
+          "y": 205.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Auth",
           "x": 275.0,
-          "y": 211.0,
+          "y": 215.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         }
       ],
@@ -153,7 +153,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 400.0,
-        "max_y": 264.0
+        "max_y": 268.0
       }
     }
   }

@@ -276,13 +276,13 @@
           "width": 391.6,
           "height": 134.0,
           "diff": -4.0,
-          "offset_y": 44.0,
+          "offset_y": 20.0,
           "title": "ignored_dir local TB external link",
           "title_label": {
             "x": 368.52,
-            "y": 32.0,
-            "width": 200.0,
-            "height": 48.0
+            "y": 20.0,
+            "width": 216.48,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",

@@ -7,7 +7,7 @@
           "id": "A",
           "x": 79.82,
           "y": 27.5,
-          "width": 143.64,
+          "width": 143.641,
           "height": 39.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 151.64,
+        "max_x": 151.641,
         "max_y": 47.0
       }
     }

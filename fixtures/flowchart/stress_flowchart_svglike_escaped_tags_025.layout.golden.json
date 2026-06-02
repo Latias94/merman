@@ -183,13 +183,13 @@
           "width": 258.32,
           "height": 262.8,
           "diff": -4.0,
-          "offset_y": 31.2,
+          "offset_y": 13.6,
           "title": "<strong>Subgraph</strong> title",
           "title_label": {
             "x": 825.956,
-            "y": 25.6,
-            "width": 194.563,
-            "height": 35.2
+            "y": 16.8,
+            "width": 229.44,
+            "height": 17.6
           },
           "requested_dir": "TB",
           "effective_dir": "TB",

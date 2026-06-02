@@ -7,23 +7,23 @@
           "id": "n0",
           "x": 46.045,
           "y": 27.5,
-          "width": 76.09,
+          "width": 76.089,
           "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "n1",
-          "x": 156.615,
+          "x": 156.611,
           "y": 27.5,
-          "width": 45.05,
+          "width": 45.042,
           "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "n2",
-          "x": 269.425,
+          "x": 269.419,
           "y": 27.5,
-          "width": 80.57,
+          "width": 80.574,
           "height": 39.0,
           "is_cluster": false
         }
@@ -33,7 +33,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 309.71,
+        "max_x": 309.706,
         "max_y": 47.0
       }
     }

@@ -25,7 +25,7 @@
           "percent": 40.0,
           "text_x": 157.976,
           "text_y": -52.592,
-          "fill": "#ECECFF"
+          "fill": "hsl(240, 100%, 96.2745098039%)"
         },
         {
           "label": "Potassium",
@@ -36,7 +36,7 @@
           "percent": 46.0,
           "text_x": -120.924,
           "text_y": 114.453,
-          "fill": "#ffffde"
+          "fill": "hsl(60, 100%, 93.5294117647%)"
         },
         {
           "label": "Magnesium",
@@ -65,13 +65,13 @@
         {
           "label": "Calcium",
           "value": 42.96,
-          "fill": "#ECECFF",
+          "fill": "hsl(240, 100%, 96.2745098039%)",
           "y": -44.0
         },
         {
           "label": "Potassium",
           "value": 50.05,
-          "fill": "#ffffde",
+          "fill": "hsl(60, 100%, 93.5294117647%)",
           "y": -22.0
         },
         {

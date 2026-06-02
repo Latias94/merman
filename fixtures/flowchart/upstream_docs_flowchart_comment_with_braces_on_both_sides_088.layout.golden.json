@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "A",
-          "x": 52.79,
+          "x": 52.789,
           "y": 32.5,
-          "width": 89.58,
+          "width": 89.578,
           "height": 49.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 97.58,
+        "max_x": 97.578,
         "max_y": 57.0
       }
     }

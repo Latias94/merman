@@ -5,7 +5,7 @@
       "nodes": [
         {
           "id": "A",
-          "x": 94.063,
+          "x": 138.578,
           "y": 66.8,
           "width": 97.125,
           "height": 47.6,
@@ -13,7 +13,7 @@
         },
         {
           "id": "B",
-          "x": 266.188,
+          "x": 310.703,
           "y": 66.8,
           "width": 97.125,
           "height": 47.6,
@@ -21,9 +21,9 @@
         },
         {
           "id": "wrap",
-          "x": 180.125,
+          "x": 224.64,
           "y": 66.8,
-          "width": 344.25,
+          "width": 433.28,
           "height": 117.6,
           "is_cluster": true
         }
@@ -37,15 +37,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 142.625,
+              "x": 187.14,
               "y": 66.8
             },
             {
-              "x": 180.125,
+              "x": 224.64,
               "y": 66.8
             },
             {
-              "x": 217.625,
+              "x": 262.14,
               "y": 66.8
             }
           ],
@@ -62,18 +62,18 @@
       "clusters": [
         {
           "id": "wrap",
-          "x": 180.125,
+          "x": 224.64,
           "y": 66.8,
-          "width": 344.25,
+          "width": 433.28,
           "height": 117.6,
-          "diff": -4.0,
-          "offset_y": 66.4,
+          "diff": 36.515,
+          "offset_y": 13.6,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
-            "x": 180.125,
-            "y": 43.2,
-            "width": 198.875,
-            "height": 70.4
+            "x": 224.64,
+            "y": 16.8,
+            "width": 425.28,
+            "height": 17.6
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -85,7 +85,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 352.25,
+        "max_x": 441.28,
         "max_y": 125.6
       }
     }

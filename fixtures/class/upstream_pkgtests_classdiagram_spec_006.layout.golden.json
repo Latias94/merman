@@ -5,41 +5,41 @@
       "nodes": [
         {
           "id": "Admin",
-          "x": 170.695,
-          "y": 162.0,
+          "x": 143.195,
+          "y": 189.5,
           "width": 71.391,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Company",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 586.234,
-          "height": 324.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 286.391,
+          "height": 612.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 511.234,
-          "height": 254.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 211.391,
+          "height": 542.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project.Module",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 441.234,
-          "height": 154.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 141.391,
+          "height": 442.0,
           "is_cluster": true
         },
         {
           "id": "User",
-          "x": 422.352,
-          "y": 162.0,
-          "width": 57.766,
+          "x": 143.195,
+          "y": 422.5,
+          "width": 56.203,
           "height": 84.0,
           "is_cluster": false
         }
@@ -53,21 +53,21 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 206.391,
-              "y": 162.0
+              "x": 143.195,
+              "y": 231.5
             },
             {
-              "x": 299.93,
-              "y": 162.0
+              "x": 143.195,
+              "y": 306.0
             },
             {
-              "x": 393.469,
-              "y": 162.0
+              "x": 143.195,
+              "y": 380.5
             }
           ],
           "label": {
-            "x": 299.93,
-            "y": 162.0,
+            "x": 143.195,
+            "y": 306.0,
             "width": 62.078,
             "height": 24.0
           },
@@ -83,15 +83,15 @@
       "clusters": [
         {
           "id": "Company",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 586.234,
-          "height": 324.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 286.391,
+          "height": 612.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company",
           "title_label": {
-            "x": 293.117,
+            "x": 143.195,
             "y": 12.0,
             "width": 58.4,
             "height": 24.0
@@ -104,15 +104,15 @@
         },
         {
           "id": "Company.Project",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 511.234,
-          "height": 254.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 211.391,
+          "height": 542.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Project",
           "title_label": {
-            "x": 293.117,
+            "x": 143.195,
             "y": 47.0,
             "width": 50.88,
             "height": 24.0
@@ -125,15 +125,15 @@
         },
         {
           "id": "Company.Project.Module",
-          "x": 293.117,
-          "y": 162.0,
-          "width": 441.234,
-          "height": 154.0,
+          "x": 143.195,
+          "y": 306.0,
+          "width": 141.391,
+          "height": 442.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Module",
           "title_label": {
-            "x": 293.117,
+            "x": 143.195,
             "y": 97.0,
             "width": 41.6,
             "height": 24.0
@@ -148,8 +148,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 586.234,
-        "max_y": 324.0
+        "max_x": 286.391,
+        "max_y": 612.0
       }
     }
   }

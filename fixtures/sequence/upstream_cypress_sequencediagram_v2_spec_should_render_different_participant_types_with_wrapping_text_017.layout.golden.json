@@ -6,33 +6,33 @@
         {
           "id": "actor-top-B",
           "x": 75.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-C",
           "x": 275.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-E",
           "x": 475.0,
-          "y": 28.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-DB",
           "x": 675.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -70,33 +70,33 @@
         {
           "id": "actor-bottom-B",
           "x": 75.0,
-          "y": 599.0,
+          "y": 591.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-C",
           "x": 275.0,
-          "y": 597.0,
+          "y": 601.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-E",
           "x": 475.0,
-          "y": 587.0,
+          "y": 591.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-DB",
           "x": 675.0,
-          "y": 587.75,
+          "y": 594.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -639,7 +639,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1600.0,
-        "max_y": 650.0
+        "max_y": 654.0
       }
     }
   }

@@ -182,13 +182,13 @@
           "width": 330.0,
           "height": 512.0,
           "diff": -4.0,
-          "offset_y": 44.0,
+          "offset_y": 20.0,
           "title": "Model – long labels / punctuation",
           "title_label": {
             "x": 173.0,
-            "y": 32.0,
-            "width": 200.0,
-            "height": 48.0
+            "y": 20.0,
+            "width": 210.88,
+            "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",

@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Handoff
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 This workstream opens the post-11.15 structural-parity phase.
 
@@ -426,6 +426,14 @@ Current repository reality to preserve:
     rasterize as an all-background PNG. Local Treemap now keeps the transparent cell fill but uses
     `themeVariables.textColor` for leaf label/value inline fill only for the transparent-cell plus
     white-label combination when no explicit class/style fill overrides it.
+  - A forty-second HPD-080 raster audit slice calibrated directive-only parser/metadata fixtures
+    without changing renderer behavior. State `classDef`-only fixtures are style-registry tests,
+    State bare `state foo` plus floating note alias samples are parser-only smoke cases, and
+    Flowchart `click`-only input records interaction metadata without visible nodes. The raster
+    source-content gate now skips `classDef`, `click`, and `linkStyle` metadata by themselves, plus
+    those narrow State non-visual forms, while keeping visible State declarations and Flowchart
+    `style ...` lines contentful. Full State and split-prefix Flowchart raster audits passed after
+    the calibration.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

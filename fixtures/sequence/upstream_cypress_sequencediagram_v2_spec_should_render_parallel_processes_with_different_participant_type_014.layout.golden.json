@@ -22,33 +22,33 @@
         {
           "id": "actor-top-PaymentService",
           "x": 475.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-InventoryManager",
           "x": 675.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-Order",
           "x": 875.0,
-          "y": 28.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-OrdersDB",
           "x": 1075.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -78,33 +78,33 @@
         {
           "id": "actor-bottom-PaymentService",
           "x": 475.0,
-          "y": 645.0,
+          "y": 637.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-InventoryManager",
           "x": 675.0,
-          "y": 643.0,
+          "y": 647.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Order",
           "x": 875.0,
-          "y": 633.0,
+          "y": 637.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-OrdersDB",
           "x": 1075.0,
-          "y": 633.75,
+          "y": 640.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -598,7 +598,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1400.0,
-        "max_y": 696.0
+        "max_y": 700.0
       }
     }
   }

@@ -104,13 +104,13 @@
           "width": 532.2,
           "height": 124.0,
           "diff": -4.0,
-          "offset_y": 68.0,
+          "offset_y": 20.0,
           "title": "Title: with punctuation (a/b/c) + dashes - and spaces",
           "title_label": {
             "x": 274.1,
-            "y": 44.0,
-            "width": 200.0,
-            "height": 72.0
+            "y": 20.0,
+            "width": 340.48,
+            "height": 24.0
           },
           "requested_dir": "LR",
           "effective_dir": "LR",

@@ -14,17 +14,17 @@
         {
           "id": "actor-top-Bob",
           "x": 305.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-John",
           "x": 517.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -46,17 +46,17 @@
         {
           "id": "actor-bottom-Bob",
           "x": 305.0,
-          "y": 890.0,
+          "y": 882.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-John",
           "x": 517.0,
-          "y": 888.0,
+          "y": 892.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         }
       ],
@@ -442,7 +442,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 742.0,
-        "max_y": 941.0
+        "max_y": 945.0
       }
     }
   }

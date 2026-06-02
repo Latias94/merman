@@ -39,7 +39,7 @@
           "id": "subGraph0",
           "x": 289.6,
           "y": 70.0,
-          "width": 251.68,
+          "width": 334.72,
           "height": 124.0,
           "is_cluster": true
         }
@@ -146,16 +146,16 @@
           "id": "subGraph0",
           "x": 289.6,
           "y": 70.0,
-          "width": 251.68,
+          "width": 334.72,
           "height": 124.0,
-          "diff": -4.0,
-          "offset_y": 48.8,
+          "diff": 33.52,
+          "offset_y": 13.6,
           "title": "A very long cluster title with punctuation: (a/b/c)",
           "title_label": {
             "x": 289.6,
-            "y": 34.4,
-            "width": 196.641,
-            "height": 52.8
+            "y": 16.8,
+            "width": 326.72,
+            "height": 17.6
           },
           "requested_dir": null,
           "effective_dir": "TB",

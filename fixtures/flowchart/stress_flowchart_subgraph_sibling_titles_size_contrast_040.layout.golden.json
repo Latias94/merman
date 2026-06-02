@@ -55,7 +55,7 @@
           "id": "sg_right",
           "x": 82.28,
           "y": 422.0,
-          "width": 208.0,
+          "width": 346.08,
           "height": 312.0,
           "is_cluster": true
         }
@@ -212,16 +212,16 @@
           "id": "sg_right",
           "x": 82.28,
           "y": 422.0,
-          "width": 208.0,
+          "width": 346.08,
           "height": 312.0,
-          "diff": 21.72,
-          "offset_y": 68.0,
+          "diff": 90.76,
+          "offset_y": 20.0,
           "title": "a much much longer title that should expand the box",
           "title_label": {
             "x": 82.28,
-            "y": 302.0,
-            "width": 200.0,
-            "height": 72.0
+            "y": 278.0,
+            "width": 338.08,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -231,9 +231,9 @@
         }
       ],
       "bounds": {
-        "min_x": -21.72,
+        "min_x": -90.76,
         "min_y": 8.0,
-        "max_x": 186.28,
+        "max_x": 255.32,
         "max_y": 578.0
       }
     }

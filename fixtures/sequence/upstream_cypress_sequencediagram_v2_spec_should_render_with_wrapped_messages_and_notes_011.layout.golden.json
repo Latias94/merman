@@ -14,41 +14,41 @@
         {
           "id": "actor-top-AuthService",
           "x": 275.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-UI",
           "x": 481.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-OrderController",
           "x": 681.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-Product",
           "x": 881.0,
-          "y": 28.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-MongoDB",
           "x": 1081.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -78,41 +78,41 @@
         {
           "id": "actor-bottom-AuthService",
           "x": 275.0,
-          "y": 563.0,
+          "y": 567.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-UI",
           "x": 481.0,
-          "y": 565.0,
+          "y": 557.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-OrderController",
           "x": 681.0,
-          "y": 563.0,
+          "y": 567.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Product",
           "x": 881.0,
-          "y": 553.0,
+          "y": 557.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-MongoDB",
           "x": 1081.0,
-          "y": 553.75,
+          "y": 560.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -639,7 +639,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1606.0,
-        "max_y": 616.0
+        "max_y": 620.0
       }
     }
   }

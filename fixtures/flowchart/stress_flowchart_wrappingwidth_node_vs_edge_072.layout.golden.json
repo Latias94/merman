@@ -72,13 +72,13 @@
           "width": 627.12,
           "height": 172.0,
           "diff": -4.0,
-          "offset_y": 68.0,
+          "offset_y": 20.0,
           "title": "This subgraph title should wrap at 200 not 120",
           "title_label": {
             "x": 321.56,
-            "y": 44.0,
-            "width": 200.0,
-            "height": 72.0
+            "y": 20.0,
+            "width": 314.88,
+            "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",

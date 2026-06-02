@@ -198,13 +198,13 @@
           "width": 239.2,
           "height": 124.0,
           "diff": -4.0,
-          "offset_y": 44.0,
+          "offset_y": 20.0,
           "title": "subgraph with internal-only edges",
           "title_label": {
             "x": 572.56,
-            "y": 32.0,
-            "width": 200.0,
-            "height": 48.0
+            "y": 20.0,
+            "width": 218.56,
+            "height": 24.0
           },
           "requested_dir": "RL",
           "effective_dir": "RL",
@@ -219,13 +219,13 @@
           "width": 239.2,
           "height": 124.0,
           "diff": -4.0,
-          "offset_y": 44.0,
+          "offset_y": 20.0,
           "title": "subgraph receiving external edge",
           "title_label": {
             "x": 283.36,
-            "y": 32.0,
-            "width": 200.0,
-            "height": 48.0
+            "y": 20.0,
+            "width": 208.16,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",

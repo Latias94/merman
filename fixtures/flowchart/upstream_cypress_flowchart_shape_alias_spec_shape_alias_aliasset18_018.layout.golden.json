@@ -7,15 +7,15 @@
           "id": "n0",
           "x": 50.18,
           "y": 32.5,
-          "width": 84.36,
+          "width": 84.359,
           "height": 49.0,
           "is_cluster": false
         },
         {
           "id": "n1",
-          "x": 176.94,
+          "x": 176.938,
           "y": 32.5,
-          "width": 69.16,
+          "width": 69.156,
           "height": 49.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 211.52,
+        "max_x": 211.516,
         "max_y": 57.0
       }
     }

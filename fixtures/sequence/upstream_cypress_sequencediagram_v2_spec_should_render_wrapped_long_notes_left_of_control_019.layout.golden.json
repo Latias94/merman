@@ -6,9 +6,9 @@
         {
           "id": "actor-top-Alice",
           "x": 75.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -21,18 +21,18 @@
         },
         {
           "id": "note-1",
-          "x": -27.5,
+          "x": -35.0,
           "y": 190.5,
-          "width": 155.0,
+          "width": 170.0,
           "height": 143.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 364.0,
+          "y": 368.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -158,10 +158,10 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": -155.0,
+        "min_x": -170.0,
         "min_y": -10.0,
         "max_x": 400.0,
-        "max_y": 413.0
+        "max_y": 421.0
       }
     }
   }

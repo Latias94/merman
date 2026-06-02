@@ -6,17 +6,17 @@
         {
           "id": "actor-top-P",
           "x": 75.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-P",
           "x": 75.0,
-          "y": 187.75,
+          "y": 194.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         }
       ],
@@ -82,7 +82,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 201.0,
-        "max_y": 227.5
+        "max_y": 240.0
       }
     }
   }

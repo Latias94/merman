@@ -14,9 +14,9 @@
         {
           "id": "actor-top-Bob",
           "x": 305.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
@@ -30,9 +30,9 @@
         {
           "id": "actor-bottom-Bob",
           "x": 305.0,
-          "y": 167.0,
+          "y": 171.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         }
       ],
@@ -123,7 +123,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 430.0,
-        "max_y": 216.0
+        "max_y": 224.0
       }
     }
   }

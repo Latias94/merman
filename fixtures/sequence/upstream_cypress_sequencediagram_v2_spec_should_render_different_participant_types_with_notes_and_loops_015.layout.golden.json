@@ -22,41 +22,41 @@
         {
           "id": "actor-top-AuthService",
           "x": 494.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-UserManager",
           "x": 694.0,
-          "y": 38.0,
+          "y": 42.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-UserProfile",
           "x": 894.0,
-          "y": 28.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-UserDB",
           "x": 1094.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-Logs",
           "x": 1294.0,
-          "y": 28.75,
+          "y": 35.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -86,41 +86,41 @@
         {
           "id": "actor-bottom-AuthService",
           "x": 494.0,
-          "y": 729.0,
+          "y": 721.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-UserManager",
           "x": 694.0,
-          "y": 727.0,
+          "y": 731.0,
           "width": 150.0,
-          "height": 76.0,
+          "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-UserProfile",
           "x": 894.0,
-          "y": 717.0,
+          "y": 721.0,
           "width": 150.0,
-          "height": 56.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-UserDB",
           "x": 1094.0,
-          "y": 717.75,
+          "y": 724.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Logs",
           "x": 1294.0,
-          "y": 717.75,
+          "y": 724.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         }
       ],
@@ -636,7 +636,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1419.0,
-        "max_y": 780.0
+        "max_y": 784.0
       }
     }
   }

@@ -14,9 +14,9 @@
         {
           "id": "actor-top-DB",
           "x": 280.0,
-          "y": 55.75,
+          "y": 62.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -54,9 +54,9 @@
         {
           "id": "actor-bottom-DB",
           "x": 280.0,
-          "y": 425.75,
+          "y": 432.0,
           "width": 150.0,
-          "height": 57.5,
+          "height": 70.0,
           "is_cluster": false
         },
         {
@@ -333,7 +333,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 830.0,
-        "max_y": 483.0
+        "max_y": 488.0
       }
     }
   }

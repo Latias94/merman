@@ -1,7 +1,7 @@
 # Headless Parity Deepening - TODO
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 ## M0 - Lane Freeze And Prioritization
 
@@ -268,5 +268,9 @@ Last updated: 2026-06-02
   a real single-leaf Treemap readability failure: transparent first-leaf fill plus white default
   `cScaleLabel0` text now falls back to `themeVariables.textColor` only when no explicit leaf fill
   override exists.
+  A follow-up directive-only calibration slice then fixed false raster-ink failures for
+  State `classDef`-only, State parser-only floating note declarations, and Flowchart `click`-only
+  fixtures. The fix is limited to the source-content gate; renderer behavior was not changed because
+  pinned Mermaid 11.15 treats these inputs as parser/metadata cases with no required visible marks.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -14,9 +14,9 @@
         {
           "id": "actor-top-Charlie",
           "x": 275.0,
-          "y": 40.0,
+          "y": 32.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
@@ -46,9 +46,9 @@
         {
           "id": "actor-bottom-Charlie",
           "x": 275.0,
-          "y": 221.0,
+          "y": 213.0,
           "width": 150.0,
-          "height": 80.0,
+          "height": 64.0,
           "is_cluster": false
         }
       ],
@@ -109,7 +109,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 400.0,
-        "max_y": 272.0
+        "max_y": 257.0
       }
     }
   }

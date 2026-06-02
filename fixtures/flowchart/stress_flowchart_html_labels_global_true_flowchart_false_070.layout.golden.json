@@ -13,7 +13,7 @@
         },
         {
           "id": "B",
-          "x": 397.54,
+          "x": 393.54,
           "y": 70.0,
           "width": 145.12,
           "height": 54.0,
@@ -21,9 +21,9 @@
         },
         {
           "id": "SG",
-          "x": 257.8,
+          "x": 255.8,
           "y": 70.0,
-          "width": 499.6,
+          "width": 495.6,
           "height": 124.0,
           "is_cluster": true
         }
@@ -41,19 +41,19 @@
               "y": 70.0
             },
             {
-              "x": 250.36,
+              "x": 248.36,
               "y": 70.0
             },
             {
-              "x": 324.98,
+              "x": 320.98,
               "y": 70.0
             }
           ],
           "label": {
-            "x": 250.36,
+            "x": 248.36,
             "y": 70.0,
-            "width": 74.24,
-            "height": 21.6
+            "width": 70.24,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -67,18 +67,18 @@
       "clusters": [
         {
           "id": "SG",
-          "x": 257.8,
+          "x": 255.8,
           "y": 70.0,
-          "width": 499.6,
+          "width": 495.6,
           "height": 124.0,
           "diff": -4.0,
-          "offset_y": 13.6,
+          "offset_y": 20.0,
           "title": "Subgraph Title",
           "title_label": {
-            "x": 257.8,
-            "y": 16.8,
-            "width": 95.359,
-            "height": 17.6
+            "x": 255.8,
+            "y": 20.0,
+            "width": 95.36,
+            "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
@@ -90,7 +90,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 507.6,
+        "max_x": 503.6,
         "max_y": 132.0
       }
     }
