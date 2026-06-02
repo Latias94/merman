@@ -137,6 +137,28 @@ fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
     })
 }
 
+fn parse_hsl_color(s: &str) -> Option<Hsl> {
+    let body = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+    let mut parts = body.split(',').map(str::trim);
+    let h = parts.next()?.parse::<f64>().ok()?;
+    let s = parts.next()?.strip_suffix('%')?.parse::<f64>().ok()?;
+    let l = parts.next()?.strip_suffix('%')?.parse::<f64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(round_hsl_1e10(Hsl {
+        h_deg: h,
+        s_pct: s,
+        l_pct: l,
+    }))
+}
+
+fn parse_color_hsl(s: &str) -> Option<Hsl> {
+    parse_hex_rgb01(s)
+        .map(rgb01_to_hsl)
+        .or_else(|| parse_hsl_color(s))
+}
+
 fn adjust_hsl(mut hsl: Hsl, h_delta: f64, s_delta: f64, l_delta: f64) -> Hsl {
     hsl.h_deg = (hsl.h_deg + h_delta) % 360.0;
     hsl.s_pct = (hsl.s_pct + s_delta).clamp(0.0, 100.0);
@@ -247,9 +269,7 @@ fn adjust_color_hsl_string(
     s_delta: f64,
     l_delta: f64,
 ) -> Option<String> {
-    parse_hex_rgb01(color)
-        .map(rgb01_to_hsl)
-        .map(|hsl| fmt_hsl(adjust_hsl(hsl, h_delta, s_delta, l_delta)))
+    parse_color_hsl(color).map(|hsl| fmt_hsl(adjust_hsl(hsl, h_delta, s_delta, l_delta)))
 }
 
 fn darken_color_hsl_string(color: &str, amount: f64) -> Option<String> {
@@ -258,6 +278,30 @@ fn darken_color_hsl_string(color: &str, amount: f64) -> Option<String> {
 
 fn invert_color_hex_string(color: &str) -> Option<String> {
     parse_hex_rgb01(color).map(invert_rgb01_to_hex)
+}
+
+fn invert_color_css_string(color: &str) -> Option<String> {
+    let rgb = parse_hex_rgb01(color).or_else(|| parse_hsl_color(color).map(hsl_to_rgb01))?;
+    let inv = Rgb01 {
+        r: 1.0 - rgb.r,
+        g: 1.0 - rgb.g,
+        b: 1.0 - rgb.b,
+    };
+    let components = [
+        round_1e10(inv.r * 255.0),
+        round_1e10(inv.g * 255.0),
+        round_1e10(inv.b * 255.0),
+    ];
+    if components.iter().all(|v| (v - v.round()).abs() < 1e-10) {
+        Some(rgb01_to_hex(inv))
+    } else {
+        Some(format!(
+            "rgb({}, {}, {})",
+            fmt_js_1e10(components[0]),
+            fmt_js_1e10(components[1]),
+            fmt_js_1e10(components[2])
+        ))
+    }
 }
 
 fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
@@ -502,6 +546,79 @@ fn apply_extended_theme_visible_derivations(
                 "labelBackgroundColor",
             ] {
                 set_derived_string_unless_explicit(tv, explicit, key, main_bkg.clone());
+            }
+        }
+    }
+
+    if explicit.contains_key("primaryColor")
+        && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
+    {
+        if let Some(primary) = get_truthy_string(tv, "primaryColor") {
+            for key in ["requirementBackground", "pie1", "quadrant1Fill"] {
+                set_derived_string_unless_explicit(tv, explicit, key, primary.clone());
+            }
+        }
+    }
+
+    if matches!(theme, "redux-dark" | "redux-dark-color")
+        && (explicit.contains_key("primaryColor")
+            || explicit.contains_key("secondaryColor")
+            || explicit.contains_key("tertiaryColor"))
+    {
+        derive_redux_dark_git_palette(explicit, tv);
+    }
+
+    for i in 0..8 {
+        let git_key = format!("git{i}");
+        let git_inv_key = format!("gitInv{i}");
+        if explicit.contains_key(&git_key) && !explicit.contains_key(&git_inv_key) {
+            if let Some(git) = get_truthy_string(tv, &git_key) {
+                if let Some(inv) = invert_color_css_string(&git) {
+                    tv.insert(git_inv_key, Value::String(inv));
+                }
+            }
+        }
+    }
+}
+
+fn derive_redux_dark_git_palette(explicit: &Map<String, Value>, tv: &mut Map<String, Value>) {
+    let Some(primary) = get_truthy_string(tv, "primaryColor") else {
+        return;
+    };
+    let Some(secondary) = get_truthy_string(tv, "secondaryColor") else {
+        return;
+    };
+    let Some(tertiary) = get_truthy_string(tv, "tertiaryColor") else {
+        return;
+    };
+
+    let bases = [
+        Some(primary.clone()),
+        Some(secondary),
+        Some(tertiary),
+        adjust_color_hsl_string(&primary, -30.0, 0.0, 0.0),
+        adjust_color_hsl_string(&primary, -60.0, 0.0, 0.0),
+        adjust_color_hsl_string(&primary, -90.0, 0.0, 0.0),
+        adjust_color_hsl_string(&primary, 60.0, 0.0, 0.0),
+        adjust_color_hsl_string(&primary, 120.0, 0.0, 0.0),
+    ];
+
+    for (i, base) in bases.into_iter().enumerate() {
+        let Some(base) = base else {
+            continue;
+        };
+        let git_key = format!("git{i}");
+        if !explicit.contains_key(&git_key) {
+            if let Some(git) = darken_color_hsl_string(&base, 25.0) {
+                tv.insert(git_key.clone(), Value::String(git));
+            }
+        }
+        let git_inv_key = format!("gitInv{i}");
+        if !explicit.contains_key(&git_inv_key) {
+            if let Some(git) = get_truthy_string(tv, &git_key) {
+                if let Some(inv) = invert_color_css_string(&git) {
+                    tv.insert(git_inv_key, Value::String(inv));
+                }
             }
         }
     }
@@ -2459,6 +2576,72 @@ mod tests {
             );
         }
         assert_eq!(tv.get("nodeBkg").and_then(|v| v.as_str()), Some("#cccccc"));
+    }
+
+    #[test]
+    fn dark_extended_theme_recomputes_primary_visible_derivations() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "redux-dark",
+            "themeVariables": {
+                "primaryColor": "#123456"
+            }
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        for key in ["requirementBackground", "pie1", "quadrant1Fill"] {
+            assert_eq!(
+                tv.get(key).and_then(|v| v.as_str()),
+                Some("#123456"),
+                "key {key}"
+            );
+        }
+        assert_eq!(
+            tv.get("git0").and_then(|v| v.as_str()),
+            Some("hsl(210, 65.3846153846%, 0%)")
+        );
+        assert_eq!(
+            tv.get("git1").and_then(|v| v.as_str()),
+            Some("hsl(180, 1.5873015873%, 3.3529411765%)")
+        );
+        assert_eq!(
+            tv.get("git3").and_then(|v| v.as_str()),
+            Some("hsl(180, 65.3846153846%, 0%)")
+        );
+        assert_eq!(tv.get("gitInv0").and_then(|v| v.as_str()), Some("#ffffff"));
+        assert_eq!(
+            tv.get("gitInv1").and_then(|v| v.as_str()),
+            Some("rgb(246.5857142856, 246.3142857142, 246.3142857142)")
+        );
+    }
+
+    #[test]
+    fn extended_theme_explicit_git_color_derives_git_inverse_unless_explicit() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "themeVariables": {
+                "git0": "#000000",
+                "git1": "#111111",
+                "gitInv1": "#222222"
+            }
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(tv.get("git0").and_then(|v| v.as_str()), Some("#000000"));
+        assert_eq!(tv.get("gitInv0").and_then(|v| v.as_str()), Some("#ffffff"));
+        assert_eq!(tv.get("git1").and_then(|v| v.as_str()), Some("#111111"));
+        assert_eq!(tv.get("gitInv1").and_then(|v| v.as_str()), Some("#222222"));
     }
 
     #[test]

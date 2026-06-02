@@ -399,6 +399,12 @@ Current repository reality to preserve:
     by current renderers. Direct derived-key overrides still win, matching Mermaid's
     `calculate(overrides)` order. The Flowchart regression intentionally confirms Redux node fill
     stays on `mainBkg` while the derived secondary color reaches visible edge-label CSS.
+  - A thirty-seventh HPD-080 dark extended-theme slice deepened that same seam for
+    `neo-dark` / `redux-dark*`: `primaryColor` now derives visible Requirement, Pie, and
+    QuadrantChart palette keys, `redux-dark*` derives GitGraph `git0..7` / `gitInv0..7`, and
+    explicit `gitN` colors derive matching inverses unless `gitInvN` is also explicit. This slice
+    also fixed Pie layout to read `themeVariables.pie1..pie12` for slice/legend colors instead of
+    using a hardcoded default palette.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

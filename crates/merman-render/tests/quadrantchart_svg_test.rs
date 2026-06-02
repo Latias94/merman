@@ -72,3 +72,20 @@ quadrantChart
     );
     assert_contains(&svg, r##"fill="#111827" font-size="12""##);
 }
+
+#[test]
+fn quadrantchart_redux_dark_primary_override_derives_quadrant_fill() {
+    let svg = render_quadrantchart_svg_from_text(
+        r##"%%{init: {"theme": "redux-dark", "themeVariables": {"primaryColor": "#123456"}}}%%
+quadrantChart
+  title Priority
+  x-axis Low --> High
+  y-axis Low --> High
+  quadrant-1 Plan
+  quadrant-2 Build
+  Feature: [0.8, 0.8]
+"##,
+    );
+
+    assert_contains(&svg, r##"fill="#123456""##);
+}

@@ -243,3 +243,9 @@
 {"file":"crates/merman-core/src/theme.rs","reason":"HPD-080 implementation: extended theme user overrides recompute source-backed visible derived keys while explicit derived-key overrides still win."}
 {"file":"crates/merman-render/tests/flowchart_svg_test.rs","reason":"HPD-080 regression: Redux primaryColor override derives the source-backed secondary edge-label CSS without incorrectly changing mainBkg-driven node fill."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-redux.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 extended theme calculate(overrides) order defines user base-key derivation and explicit override precedence."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-extended-theme-dark-palette-derivations.md","reason":"HPD-080 journal: dark extended theme primaryColor derivations and Pie theme palette consumption now cover visible current-renderer surfaces."}
+{"file":"crates/merman-core/src/theme.rs","reason":"HPD-080 implementation: neo-dark/redux-dark extended theme overrides derive visible Requirement/Pie/Quadrant/GitGraph palette keys and git inverse colors."}
+{"file":"crates/merman-render/src/pie.rs","reason":"HPD-080 implementation: Pie layout consumes themeVariables.pie1..pie12 for slice and legend palette colors instead of a hardcoded default palette."}
+{"file":"crates/merman-render/tests/pie_svg_test.rs","reason":"HPD-080 regression: redux-dark primaryColor override reaches visible Pie slice fill through themeVariables.pie1."}
+{"file":"crates/merman-render/tests/quadrantchart_svg_test.rs","reason":"HPD-080 regression: redux-dark primaryColor override reaches visible QuadrantChart quadrant fill through themeVariables.quadrant1Fill."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 redux-dark theme derives GitGraph and diagram palette colors from user base overrides."}

@@ -248,5 +248,9 @@ Last updated: 2026-06-02
   `neo/redux*` themes: defaults still come from generated Mermaid 11.15 snapshots, but user base
   overrides now recompute source-backed visible derived keys consumed by current renderers, while
   direct derived-key overrides keep winning after derivation.
+  A follow-up dark extended-theme slice added source-backed `neo-dark` / `redux-dark*`
+  `primaryColor` derivations for Requirement, Pie, QuadrantChart, and `redux-dark*` GitGraph
+  palettes/inverses, and fixed Pie layout so slice/legend colors consume
+  `themeVariables.pie1..pie12` instead of a hardcoded default palette.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

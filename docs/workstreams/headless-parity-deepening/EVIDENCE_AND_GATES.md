@@ -2053,6 +2053,49 @@ Residual note:
   consumer proves a currently emitted surface still misses Mermaid's override-derived value. Do not
   replace the generated default snapshots with fixture-keyed constants.
 
+## HPD-080 - Extended Theme Dark Palette Derivations
+
+Outcome:
+
+- Continued the official `neo/redux*` override audit against Mermaid 11.15 dark extended themes.
+- Confirmed from pinned source and installed Mermaid output that `neo-dark` / `redux-dark` /
+  `redux-dark-color` with `themeVariables.primaryColor` derive visible
+  `requirementBackground`, `pie1`, and `quadrant1Fill`.
+- Confirmed `redux-dark` / `redux-dark-color` also derive GitGraph `git0..git7` plus
+  `gitInv0..gitInv7` from the current palette, and that explicit `gitN` values should derive
+  `gitInvN` unless the inverse key is explicit too.
+- Extended [crates/merman-core/src/theme.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/theme.rs)
+  with HSL color parsing, dark extended-theme primary palette derivation, `redux-dark*` GitGraph
+  palette/inverse derivation, and explicit `gitN` inverse derivation.
+- Found and fixed a second production rendering gap while adding render-path coverage:
+  [crates/merman-render/src/pie.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/pie.rs)
+  previously built slice/legend colors from a hardcoded default palette. Pie layout now reads
+  `effective_config.themeVariables.pie1..pie12`, preserving the default color-domain behavior when
+  theme variables are absent.
+- Added Pie and QuadrantChart regressions proving `redux-dark` `primaryColor` overrides reach
+  visible slice/quadrant fills.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-neo-dark.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark-color.js`
+- Installed Mermaid `11.15.0` dist probe through
+  `tools/mermaid-cli/node_modules/mermaid/dist/mermaid.core.mjs`.
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render -p merman`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-core theme`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test pie_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test quadrantchart_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+
+Residual note:
+
+- This still avoids broad snapshot replacement or browser-color overfitting. The seam should grow
+  only from source-backed rules that affect currently emitted SVG surfaces.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

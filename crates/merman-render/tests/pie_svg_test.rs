@@ -81,6 +81,20 @@ fn pie_hidden_slices_still_reserve_color_domain_slots() {
 }
 
 #[test]
+fn pie_redux_dark_primary_override_derives_first_slice_color() {
+    let layout = layout_pie_from_text(
+        r##"%%{init: {"theme": "redux-dark", "themeVariables": {"primaryColor": "#123456"}}}%%
+pie
+  "A" : 10
+  "B" : 20
+"##,
+    );
+
+    let first = layout.slices.first().expect("first slice");
+    assert_eq!(first.fill, "#123456");
+}
+
+#[test]
 fn pie_text_position_config_moves_slice_labels() {
     let layout = layout_pie_from_text(
         r#"%%{init: {"pie": {"textPosition": 0.5}}}%%

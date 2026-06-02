@@ -156,7 +156,7 @@ fn adjust_color_to_hsl_string(
 }
 
 impl ColorScale {
-    fn new_default() -> Self {
+    fn default_palette() -> Vec<String> {
         // Default theme colors as emitted by Mermaid 11.12.2 in SVG.
         //
         // Mermaid derives this palette from `theme-default.js` `pie1..pie12` (using `adjust()`),
@@ -191,21 +191,32 @@ impl ColorScale {
         let pie12 = adjust_color_to_hsl_string(PRIMARY, 120.0, 0.0, -30.0)
             .unwrap_or_else(|| "hsl(0, 100%, 66.2745098039%)".to_string());
 
+        vec![
+            PRIMARY.to_string(),
+            SECONDARY.to_string(),
+            pie3,
+            pie4,
+            pie5,
+            pie6,
+            pie7,
+            pie8,
+            pie9,
+            pie10,
+            pie11,
+            pie12,
+        ]
+    }
+
+    fn from_config(effective_config: &serde_json::Value) -> Self {
+        let mut palette = Self::default_palette();
+        for (idx, color) in palette.iter_mut().enumerate() {
+            let key = format!("pie{}", idx + 1);
+            if let Some(value) = config_string(effective_config, &["themeVariables", &key]) {
+                *color = value;
+            }
+        }
         Self {
-            palette: vec![
-                PRIMARY.to_string(),
-                SECONDARY.to_string(),
-                pie3,
-                pie4,
-                pie5,
-                pie6,
-                pie7,
-                pie8,
-                pie9,
-                pie10,
-                pie11,
-                pie12,
-            ],
+            palette,
             mapping: std::collections::HashMap::new(),
             next: 0,
         }
@@ -220,6 +231,12 @@ impl ColorScale {
         self.mapping.insert(label.to_string(), idx);
         self.palette[idx % self.palette.len()].clone()
     }
+}
+
+fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
+    value_at(cfg, path)
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
 }
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
@@ -321,7 +338,7 @@ pub fn layout_pie_diagram_typed(
         .map(|s| s.value)
         .sum();
 
-    let mut color_scale = ColorScale::new_default();
+    let mut color_scale = ColorScale::from_config(effective_config);
     for sec in &model.sections {
         let _ = color_scale.color_for(&sec.label);
     }
