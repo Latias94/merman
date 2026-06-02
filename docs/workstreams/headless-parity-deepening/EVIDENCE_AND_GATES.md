@@ -601,3 +601,52 @@ Verification notes:
 - The root report top rows remained the known residual front, led by `junction_fork_join_026`,
   `batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`, and
   `batch6_init_fontsize_icon_size_wrap_093`.
+
+## HPD-060 - Semantic / Render Unification Pilot
+
+Outcome:
+
+- Selected Sequence as the bounded pilot because it already had a typed render model and an obvious
+  duplicate compatibility JSON construction path.
+- Added `SequenceDiagramRenderModel::to_compat_json(...)` in
+  [crates/merman-core/src/diagrams/sequence/render_model.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/sequence/render_model.rs)
+  as the compatibility adapter from typed model to legacy JSON shape.
+- Replaced the manual `SequenceDb::into_model(...)` JSON builder in
+  [crates/merman-core/src/diagrams/sequence/db.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/sequence/db.rs)
+  with `self.into_render_model().to_compat_json(...)`.
+- Kept compatibility JSON field semantics explicit:
+  - top-level `type` and `constants.placement` are still added by the adapter,
+  - ordinary message `placement` is omitted when absent,
+  - `centralConnection` is omitted when zero,
+  - `from` / `to` still serialize as nullable compatibility fields.
+- Expanded the typed-vs-JSON parse test in
+  [crates/merman-core/src/tests/misc.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/tests/misc.rs)
+  to cover actor order, messages, notes, boxes, create/destroy actor indexes, and omitted optional
+  message fields.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-core parse_sequence_render_model_uses_typed_variant_without_changing_json_parse --lib`
+- `cargo test -p merman-core sequence --lib`
+- `cargo test -p merman-core --lib`
+- `cargo test -p merman-render sequence_long_leftof_notes_keep_mermaid_11_15_note_width --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\sequence_report_parity_after_hpd060_typed_projection.md`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\sequence_report_parity_root_after_hpd060_typed_projection.md`
+
+Verification notes:
+
+- Sequence structural parity remained green: the post-HPD-060 `parity` report says all fixtures
+  matched.
+- The Sequence `parity-root` report remains an expected failure with `28` dom mismatches. The top
+  rows are existing measurement/root residuals, led by long left-of wrapped notes at `+19px` and
+  math/line-break rows.
+- Full `cargo test -p merman-render --test sequence_svg_test` still fails on existing measurement
+  gates:
+  - `sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode` reports local
+    `152.0` vs expected `151.0`,
+  - `sequence_long_leftof_notes_keep_mermaid_11_15_root_width` remains the documented long-note
+    root-width residual.
+- This pilot does not claim repo-wide semantic/render unification. It proves the narrower pattern:
+  use one typed semantic source, then project compatibility JSON as an adapter instead of keeping a
+  second parser-owned JSON master.

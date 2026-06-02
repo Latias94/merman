@@ -111,7 +111,7 @@ Last updated: 2026-06-02
 
 ## M5 - Semantic / Render Unification Pilot
 
-- [ ] HPD-060 [owner=codex] [deps=HPD-020,HPD-040] [scope=crates/merman-core,crates/merman-render]
+- [x] HPD-060 [owner=codex] [deps=HPD-020,HPD-040] [scope=crates/merman-core,crates/merman-render]
   Goal: Pick one high-value diagram family and deepen the “one semantic truth, adapters on top”
   direction to reduce typed-vs-JSON parallel master paths.
   Validation: pilot design note + focused implementation slice or an explicit split decision with
@@ -119,7 +119,11 @@ Last updated: 2026-06-02
   Review: This is a seam-deepening pilot, not a full repo-wide migration in one task.
   Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
-  Handoff: Sequence and Architecture are the default pilot candidates unless evidence changes.
+  Handoff: DONE. Sequence was selected as the bounded pilot. `SequenceDb::into_model(...)` now
+  delegates through `into_render_model().to_compat_json(...)`, so compatibility JSON is projected
+  from the typed render model instead of a second DB-side manual JSON master. The focused test now
+  covers messages, notes, boxes, create/destroy indexes, and omitted message fields. Sequence
+  structural SVG parity remains green; existing Sequence root-measurement residuals remain open.
 
 ## M6 - New Family Rubric
 

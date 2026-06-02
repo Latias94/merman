@@ -8,15 +8,17 @@ This workstream opens the post-11.15 structural-parity phase.
 Current priority order:
 
 1. HPD-050 Architecture-first layout engine audit
-2. HPD-060 semantic/render unification pilot
+2. HPD-060 semantic/render unification pilot - done for Sequence
 3. HPD-070 unsupported-family rubric
 
 Immediate next task:
 
-- HPD-010, HPD-020, HPD-030, and HPD-040 are done.
-- Next executable slice should be HPD-050 Architecture-first layout engine audit. HPD-040 created
-  the first shared measurement/root-bounds seams, so the next leverage point is to audit
-  Architecture residuals through Mermaid source-backed input and bounds-feeding evidence.
+- HPD-010, HPD-020, HPD-030, HPD-040, and HPD-060 are done.
+- HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
+  when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
+  rewrite.
+- HPD-070 is the next bounded planner/docs task if the next move should be unsupported-family
+  admission policy.
 
 Current repository reality to preserve:
 
@@ -145,3 +147,13 @@ Current repository reality to preserve:
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
     preserving the known 26 Architecture root residuals; SVG root `createText(...)` measurement
     remains separate from Cytoscape compound-child label measurement.
+- HPD-060 outcome to preserve:
+  - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
+    compatibility JSON projection.
+  - `SequenceDb::into_model(...)` delegates through `into_render_model().to_compat_json(...)`
+    instead of maintaining a second manual JSON construction path.
+  - The focused parse test covers actor order, messages, notes, boxes, create/destroy indexes, and
+    omitted optional message fields (`placement`, `centralConnection`).
+  - Sequence structural SVG parity stayed green after the change. Sequence root parity still has the
+    existing measurement residual front (`28` dom mismatches in the focused post-HPD-060 report);
+    do not present this pilot as root-bounds closure.

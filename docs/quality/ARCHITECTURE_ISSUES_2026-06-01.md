@@ -249,6 +249,15 @@ Suggested direction:
 Each diagram should produce one semantic source and project it to compatibility
 JSON and typed render models. Sanitization should live at that semantic seam.
 
+Status note 2026-06-02:
+
+HPD-060 landed the first bounded pilot for this direction in Sequence.
+`SequenceDb::into_model(...)` now delegates through the typed
+`SequenceDiagramRenderModel` and projects compatibility JSON via
+`to_compat_json(...)`, removing the parser DB's second manual JSON master path.
+This narrows ARCH-005 for Sequence only; it does not complete the repo-wide
+semantic seam cleanup.
+
 Related decisions:
 
 - ADR-0004 public API and headless output
@@ -363,6 +372,14 @@ Suggested direction:
 Deepen diagram-family render modules so each family owns parse projection,
 layout, SVG adapter, and compatibility JSON fallback behavior. The JSON fallback
 should be an adapter, not a parallel master path.
+
+Status note 2026-06-02:
+
+The HPD-060 Sequence pilot applies this adapter rule on the core projection side:
+compatibility JSON is now projected from `SequenceDiagramRenderModel` rather
+than rebuilt from `SequenceDb`. Render dispatch is still broader than desired,
+so ARCH-008 remains open for renderer-side family ownership and JSON fallback
+consolidation.
 
 Related decisions:
 

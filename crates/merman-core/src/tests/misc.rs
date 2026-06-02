@@ -321,7 +321,19 @@ fn render_model_for(input: &str) -> RenderSemanticModel {
 #[test]
 fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
-    let input = "sequenceDiagram\nAlice->>Bob: Hi";
+    let input = r#"sequenceDiagram
+participant Alice as Alice A.
+participant Bob
+box aqua Core
+participant Carol
+end
+Alice->>+Bob: Hi
+Note right of Bob: Seen
+create participant Dana
+Bob-->>Dana: Spawn
+destroy Dana
+Dana-->>Bob: Done
+"#;
 
     let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -329,13 +341,18 @@ fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() 
         .unwrap();
 
     assert_eq!(parsed.meta.diagram_type, "sequence");
-    match parsed.model {
+    let typed_json = match &parsed.model {
         RenderSemanticModel::Sequence(model) => {
-            assert_eq!(model.actor_order, ["Alice", "Bob"]);
+            assert_eq!(model.actor_order, ["Alice", "Bob", "Carol", "Dana"]);
             assert_eq!(model.messages[0].message_text(), "Hi");
+            assert_eq!(model.notes[0].message, "Seen");
+            assert_eq!(model.boxes[0].actor_keys, ["Carol"]);
+            assert_eq!(model.created_actors["Dana"], 3);
+            assert_eq!(model.destroyed_actors["Dana"], 4);
+            model.to_compat_json(&parsed.meta.diagram_type)
         }
         other => panic!("sequence render parse should return typed model, got {other:?}"),
-    }
+    };
 
     let parsed_json = engine
         .parse_diagram_sync(input, ParseOptions::strict())
@@ -343,6 +360,13 @@ fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() 
         .unwrap();
     assert_eq!(parsed_json.model["type"], json!("sequence"));
     assert_eq!(parsed_json.model["messages"][0]["message"], json!("Hi"));
+    assert!(parsed_json.model["messages"][0].get("placement").is_none());
+    assert!(
+        parsed_json.model["messages"][0]
+            .get("centralConnection")
+            .is_none()
+    );
+    assert_eq!(typed_json, parsed_json.model);
 }
 
 #[test]
