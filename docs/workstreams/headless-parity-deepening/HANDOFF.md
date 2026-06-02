@@ -405,6 +405,10 @@ Current repository reality to preserve:
     explicit `gitN` colors derive matching inverses unless `gitInvN` is also explicit. This slice
     also fixed Pie layout to read `themeVariables.pie1..pie12` for slice/legend colors instead of
     using a hardcoded default palette.
+  - A thirty-eighth HPD-080 audit tightened Journey coverage semantics: `arrowheadColor` is no
+    longer counted as a public smoke visible signal because Mermaid 11.15 emits the
+    `.arrowheadPath` CSS rule but current Journey marker DOM has no matching class. This was a
+    measurement correction, not a renderer DOM change.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

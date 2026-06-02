@@ -200,7 +200,7 @@ block
         ),
         (
             "theme-journey",
-            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "faceColor": "#111827", "mainBkg": "#1f2937", "nodeBorder": "#38bdf8", "arrowheadColor": "#facc15", "edgeLabelBackground": "#0f172a", "titleColor": "#fde68a", "fillType0": "#172554", "actor0": "#f97316"}}}%%
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "faceColor": "#111827", "mainBkg": "#1f2937", "nodeBorder": "#38bdf8", "edgeLabelBackground": "#0f172a", "titleColor": "#fde68a", "fillType0": "#172554", "actor0": "#f97316"}}}%%
 journey
   title Theme Journey
   section Checkout
@@ -209,8 +209,8 @@ journey
 "##,
             &["Theme Journey", "Checkout", "Sign Up", "Pay", "Alice"],
             &[
-                "#f8fafc", "#22c55e", "#111827", "#1f2937", "#38bdf8", "#facc15", "#fde68a",
-                "#172554", "#f97316",
+                "#f8fafc", "#22c55e", "#111827", "#1f2937", "#38bdf8", "#fde68a", "#172554",
+                "#f97316",
             ],
         ),
         (

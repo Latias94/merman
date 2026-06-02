@@ -2096,6 +2096,37 @@ Residual note:
 - This still avoids broad snapshot replacement or browser-color overfitting. The seam should grow
   only from source-backed rules that affect currently emitted SVG surfaces.
 
+## HPD-080 - Journey Arrowhead Visible Signal Audit
+
+Outcome:
+
+- Audited Journey `themeVariables.arrowheadColor` after the renderability smoke had counted it as a
+  visible theme signal.
+- Confirmed pinned Mermaid 11.15 `user-journey/styles.js` emits `.arrowheadPath`, but
+  `user-journey/svgDraw.js` creates the marker path without that class. Local Journey output mirrors
+  that marker DOM.
+- Removed `arrowheadColor` from the Journey case in
+  [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+  so the smoke no longer treats an inert CSS token as visible coverage.
+- Updated [docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md)
+  to track Journey arrowhead color as an upstream-inert provider rule, not a renderability signal.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js`
+- `crates/merman-render/src/svg/parity/journey.rs`
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+
+Residual note:
+
+- No renderer DOM class was added. If merman later chooses to make `.arrowheadPath` effective as a
+  headless renderability improvement, it should be tracked explicitly as a deliberate DOM divergence
+  from pinned Mermaid output.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

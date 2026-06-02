@@ -46,7 +46,7 @@ Status terms:
 | Gantt | `gantt/styles.js` | Covered | Section, grid, today marker, task state, outside label contrast, marker, and title theme variables are emitted. |
 | GitGraph | `git/styles.js` | Covered | Branch label, commit, arrow, merge, reverse, highlight, and label color rules are emitted for classic/default branch theme variables. |
 | Info | none | Inline/shared base | No diagram-specific Mermaid provider in 11.15. Shared base CSS is sufficient unless a visible fixture proves otherwise. |
-| Journey | `user-journey/styles.js` | Covered | Task, section, actor, arrowhead, edge-label, and fillType theme variables are emitted. |
+| Journey | `user-journey/styles.js` | Covered with inert-arrowhead caveat | Task, section, actor, edge-label, and fillType theme variables are emitted and covered as visible signals. Mermaid 11.15 also emits `.arrowheadPath` for `arrowheadColor`, but current Journey marker DOM has no matching class, so `arrowheadColor` is tracked as an upstream-inert provider rule rather than a renderability signal. |
 | Kanban | `kanban/styles.ts` | Covered | Section, ticket, icon, and label theme CSS fixes the dark-card/hidden-label defect class. |
 | Mindmap | `mindmap/styles.ts` | Covered with deferred rules | Section/root/icon/span colors are covered. `data-look` gradient/drop-shadow rules are deferred until local output emits matching attributes/defs. |
 | Packet | `packet/styles.ts` | Covered | `packet.*` style options drive byte, label, title, and block CSS. |

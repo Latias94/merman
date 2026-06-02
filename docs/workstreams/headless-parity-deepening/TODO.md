@@ -252,5 +252,9 @@ Last updated: 2026-06-02
   `primaryColor` derivations for Requirement, Pie, QuadrantChart, and `redux-dark*` GitGraph
   palettes/inverses, and fixed Pie layout so slice/legend colors consume
   `themeVariables.pie1..pie12` instead of a hardcoded default palette.
+  A Journey arrowhead audit then tightened the public dark-theme smoke by removing
+  `arrowheadColor` from visible-signal assertions: Mermaid 11.15 emits `.arrowheadPath`, but current
+  Journey marker DOM has no matching class, so counting that CSS token as visible coverage was
+  self-deceptive.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

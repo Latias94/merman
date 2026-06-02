@@ -249,3 +249,7 @@
 {"file":"crates/merman-render/tests/pie_svg_test.rs","reason":"HPD-080 regression: redux-dark primaryColor override reaches visible Pie slice fill through themeVariables.pie1."}
 {"file":"crates/merman-render/tests/quadrantchart_svg_test.rs","reason":"HPD-080 regression: redux-dark primaryColor override reaches visible QuadrantChart quadrant fill through themeVariables.quadrant1Fill."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 redux-dark theme derives GitGraph and diagram palette colors from user base overrides."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-journey-arrowhead-visible-signal-audit.md","reason":"HPD-080 journal: Journey arrowheadColor was removed from visible smoke coverage because the source-backed CSS rule is inert for current Journey marker DOM."}
+{"file":"crates/merman/tests/theme_renderability_smoke.rs","reason":"HPD-080 regression correction: public dark-theme smoke no longer counts Journey arrowheadColor as a visible signal when no marker path class applies it."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/styles.js","reason":"HPD-080 source evidence: Mermaid 11.15 emits the Journey .arrowheadPath theme rule."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js","reason":"HPD-080 source evidence: Mermaid 11.15 Journey marker path lacks the arrowheadPath class, making the provider rule inert for current DOM."}
