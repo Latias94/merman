@@ -70,3 +70,5 @@
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-gantt-treemap-requirement.md","reason":"HPD-080 journal: second source-backed theme CSS slice covers Gantt, Treemap, and Requirement visible renderability risks."}
 {"file":"crates/merman-render/src/svg/parity/gantt.rs","reason":"HPD-080 implementation: Gantt renderer now passes effective config into Mermaid 11.15 style emission."}
 {"file":"crates/merman-render/src/svg/parity/treemap.rs","reason":"HPD-080 implementation: Treemap renderer now passes effective config into Mermaid 11.15 style emission."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-mindmap.md","reason":"HPD-080 journal: third source-backed theme CSS slice covers Mindmap section/root label readability and documents inert data-look boundary."}
+{"file":"crates/merman-render/src/svg/parity/mindmap.rs","reason":"HPD-080 implementation: Mindmap CSS now reads Mermaid 11.15 section/root theme variables and emits span colors for local XHTML labels."}

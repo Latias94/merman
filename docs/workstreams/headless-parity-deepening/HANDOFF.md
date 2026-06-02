@@ -188,6 +188,12 @@ Current repository reality to preserve:
     reads theme variables and emits outside done/doneCrit contrast rules; Treemap maps `treemap.*`
     style options plus theme title/text colors; Requirement maps requirement/relationship/label
     theme colors instead of using stale fixed colors.
+  - A third HPD-080 slice fixed Mindmap theme CSS emission. Mindmap section/root colors now read
+    Mermaid 11.15 `THEME_COLOR_LIMIT`, `cScale*`, `cScaleLabel*`, `cScaleInv*`, `git0`,
+    `gitBranchLabel0`, `nodeBorder`, `theme`, and `look`; local XHTML labels now receive section
+    `span` colors instead of the old single `.section-2 span` fallback. Upstream `data-look`
+    gradient/drop-shadow rules remain intentionally un-emitted until local SVG nodes actually emit
+    those attributes.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

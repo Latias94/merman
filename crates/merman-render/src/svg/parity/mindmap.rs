@@ -317,7 +317,7 @@ fn mindmap_viewport_bounds_from_layout(
 }
 
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
+    // Mirrors Mermaid@11.15.0 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
@@ -326,9 +326,9 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
 
-    // Mermaid default theme resolves `cScale0..11` into this fixed palette for mindmap/kanban/timeline.
+    // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
-    let fills = [
+    const DEFAULT_FILLS: [&str; 12] = [
         "hsl(240, 100%, 76.2745098039%)",
         "hsl(60, 100%, 73.5294117647%)",
         "hsl(80, 100%, 76.2745098039%)",
@@ -342,7 +342,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         "hsl(180, 100%, 76.2745098039%)",
         "hsl(210, 100%, 76.2745098039%)",
     ];
-    let inv_fills = [
+    const DEFAULT_INV_FILLS: [&str; 12] = [
         "hsl(60, 100%, 86.2745098039%)",
         "hsl(240, 100%, 83.5294117647%)",
         "hsl(260, 100%, 86.2745098039%)",
@@ -357,29 +357,72 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         "hsl(30, 100%, 86.2745098039%)",
     ];
 
-    for (i, (fill, inv)) in fills.iter().zip(inv_fills.iter()).enumerate() {
+    fn default_mindmap_fill(i: usize) -> &'static str {
+        DEFAULT_FILLS[i % DEFAULT_FILLS.len()]
+    }
+
+    fn default_mindmap_inv_fill(i: usize) -> &'static str {
+        DEFAULT_INV_FILLS[i % DEFAULT_INV_FILLS.len()]
+    }
+
+    fn default_mindmap_label(i: usize) -> &'static str {
+        if i == 0 || i == 3 { "#ffffff" } else { "black" }
+    }
+
+    let theme = config_string(effective_config, &["theme"]).unwrap_or_default();
+    let look = config_string(effective_config, &["look"]).unwrap_or_default();
+    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
+        .map(|v| v.round() as i64)
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_FILLS.len() as i64)
+        .clamp(1, 64) as usize;
+
+    for i in 0..theme_color_limit {
         let section = i as i64 - 1;
-        let label = if i == 0 || i == 3 { "#ffffff" } else { "black" };
-        let sw = 17_i64 - 3_i64 * (i as i64);
+        let c_scale = theme_color(
+            effective_config,
+            &format!("cScale{}", i),
+            default_mindmap_fill(i),
+        );
+        let c_scale_inv = theme_color(
+            effective_config,
+            &format!("cScaleInv{}", i),
+            default_mindmap_inv_fill(i),
+        );
+        let c_scale_label = theme_color(
+            effective_config,
+            &format!("cScaleLabel{}", i),
+            default_mindmap_label(i),
+        );
+        let sw = if look == "neo" {
+            (10_i64 - (section * 2)).max(2)
+        } else {
+            17_i64 - 3_i64 * (i as i64)
+        };
         let _ = write!(
             &mut out,
             r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};}}"#,
-            id, section, id, section, id, section, id, section, id, section, fill
+            id, section, id, section, id, section, id, section, id, section, c_scale
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-{} text{{fill:{};}}"#,
-            id, section, label
+            id, section, c_scale_label
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-{} span{{color:{};}}"#,
+            id, section, c_scale_label
         );
         let _ = write!(
             &mut out,
             r#"#{} .node-icon-{}{{font-size:40px;color:{};}}"#,
-            id, section, label
+            id, section, c_scale_label
         );
         let _ = write!(
             &mut out,
             r#"#{} .section-edge-{}{{stroke:{};}}"#,
-            id, section, fill
+            id, section, c_scale
         );
         let _ = write!(
             &mut out,
@@ -389,7 +432,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         let _ = write!(
             &mut out,
             r#"#{} .section-{} line{{stroke:{};stroke-width:3;}}"#,
-            id, section, inv
+            id, section, c_scale_inv
         );
         let _ = write!(
             &mut out,
@@ -399,14 +442,29 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     }
 
     // Root section overrides.
+    let root_fill = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
+    let root_label = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
+    let node_border = theme_color(effective_config, "nodeBorder", root_label.as_str());
+    let root_span = if theme.contains("redux") {
+        node_border.as_str()
+    } else {
+        root_label.as_str()
+    };
     let _ = write!(
         &mut out,
-        r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:hsl(240, 100%, 46.2745098039%);}}"#,
-        id, id, id, id
+        r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}"#,
+        id, id, id, id, root_fill
     );
-    let _ = write!(&mut out, r#"#{} .section-root text{{fill:#ffffff;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .section-root span{{color:#ffffff;}}"#, id);
-    let _ = write!(&mut out, r#"#{} .section-2 span{{color:#ffffff;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .section-root text{{fill:{};}}"#,
+        id, root_label
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .section-root span{{color:{};}}"#,
+        id, root_span
+    );
     let _ = write!(
         &mut out,
         r#"#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}"#,
@@ -1301,6 +1359,41 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mindmap_css_honors_mermaid_11_15_theme_sections() {
+        let cfg = serde_json::json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 3,
+                "cScale0": "#101010",
+                "cScaleLabel0": "#f0f0f0",
+                "cScaleInv0": "#202020",
+                "cScale1": "#303030",
+                "cScaleLabel1": "#404040",
+                "cScaleInv1": "#505050",
+                "cScale2": "#606060",
+                "cScaleLabel2": "#707070",
+                "cScaleInv2": "#808080",
+                "git0": "#909090",
+                "gitBranchLabel0": "#a0a0a0",
+                "nodeBorder": "#b0b0b0"
+            }
+        });
+
+        let css = mindmap_css("mm", &cfg);
+
+        assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
+        assert!(css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
+        assert!(css.contains(r#"#mm .section-0 span{color:#404040;}"#));
+        assert!(css.contains(r#"#mm .section-1 line{stroke:#808080;stroke-width:3;}"#));
+        assert!(css.contains(r#"#mm .edge-depth--1{stroke-width:12;}"#));
+        assert!(css.contains(r#"#mm .edge-depth-0{stroke-width:10;}"#));
+        assert!(css.contains(r#"#mm .section-root rect,#mm .section-root path,#mm .section-root circle,#mm .section-root polygon{fill:#909090;}"#));
+        assert!(css.contains(r#"#mm .section-root text{fill:#a0a0a0;}"#));
+        assert!(css.contains(r#"#mm .section-root span{color:#b0b0b0;}"#));
+    }
 
     #[test]
     fn viewport_bounds_include_cloud_path_bbox() {

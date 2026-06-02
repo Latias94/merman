@@ -697,6 +697,34 @@ Focused verification:
 - `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Third slice outcome:
+
+- Audited pinned Mermaid 11.15 Mindmap style provider:
+  - `packages/mermaid/src/diagrams/mindmap/styles.ts`
+- Mindmap previously emitted the default section palette as fixed CSS and only colored
+  `.section-2 span`, while the local renderer actually emits label text through
+  `<span class="nodeLabel">...`. Custom `themeVariables.cScaleLabel*` values therefore did not
+  apply to most rendered labels.
+- Mindmap now reads Mermaid 11.15 `THEME_COLOR_LIMIT`, `cScale*`, `cScaleLabel*`, `cScaleInv*`,
+  `git0`, `gitBranchLabel0`, `nodeBorder`, `theme`, and `look` when emitting section/root CSS.
+- Section `span` labels and node icons now follow source-backed `cScaleLabel*` rules. Root text and
+  root `span` labels now follow `gitBranchLabel0`, or `nodeBorder` for redux-style themes, matching
+  the upstream visible color rule.
+- `look: neo` now uses Mermaid 11.15's source-backed Mindmap edge-depth stroke width formula.
+- The upstream `[data-look="neo"]` gradient/drop-shadow rules were intentionally not emitted in
+  this slice because current local Mindmap SVG nodes do not emit the required `data-look`
+  attributes. Adding those inert rules would not improve renderability and would create a false
+  parity signal.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/mindmap.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/mindmap.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render mindmap_css_honors_mermaid_11_15_theme_sections`
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
