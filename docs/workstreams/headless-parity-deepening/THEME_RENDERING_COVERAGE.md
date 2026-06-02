@@ -97,6 +97,10 @@ The current QuadrantChart default point color is the narrow precedent: upstream'
 comes from a missing khroma amount argument, so local SVG output uses a valid default and xtask
 normalizes only that known default point-color slot in parity modes.
 
+Do not keep useless invalid inline style attributes only because upstream fixtures contain them.
+ER relationship paths and Mindmap edge paths now omit upstream's `style="undefined;;;undefined"`
+artifact; their visible behavior remains class-driven.
+
 ## Next Useful Work
 
 1. Extend the dark-theme renderability smoke only when a supported diagram has a source-backed

@@ -194,6 +194,8 @@ Last updated: 2026-06-02
   QuadrantChart follow-up fixed invalid default data-point colors: Mermaid 11.15's shipped theme
   expansion emits `hsl(...NaN%)` because khroma `lighten`/`darken` are called without an amount,
   while merman now emits a valid derived default and keeps valid explicit `quadrantPointFill`
-  overrides.
+  overrides. A follow-up raw-SVG cleanup then removed useless upstream
+  `style="undefined;;;undefined"` artifacts from ER relationship paths and Mindmap edge paths
+  while preserving class-driven edge styling and structural parity.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

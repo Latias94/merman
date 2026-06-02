@@ -80,6 +80,10 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(svg.contains(r#"id="merman-id_entity-BOOK-0_entity-PAGE-1_0""#));
     assert!(svg.contains(r#"id="merman-drop-shadow""#));
     assert!(svg.contains("relationshipLine"));
+    assert!(
+        !svg.contains(r#"style="undefined"#),
+        "relationship paths should not leak invalid style tokens"
+    );
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
         svg.contains("marker") && svg.contains("merman_er-zeroOrMoreStart"),

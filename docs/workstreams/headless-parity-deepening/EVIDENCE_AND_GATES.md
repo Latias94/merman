@@ -1334,6 +1334,39 @@ Residual note:
 - This is an intentional renderability-over-byte-parity correction for an invalid upstream CSS
   token. It should not be generalized into broad color normalization or cosmetic palette changes.
 
+Twenty-second slice outcome:
+
+- Audited the remaining raw SVG `undefined` hits from the renderability scan:
+  - `fixtures/er/basic.mmd`
+  - `fixtures/mindmap/basic.mmd`
+  - corresponding pinned upstream SVG fixtures.
+- ER relationship paths and Mindmap edge paths both emitted
+  `style="undefined;;;undefined"`. Pinned upstream fixtures contain the same artifact, but the
+  attribute carries no useful visual semantics; edge appearance is driven by CSS classes such as
+  `relationshipLine`, `edge`, `section-edge-*`, and `edge-depth-*`.
+- Removed the invalid inline `style` attribute from local ER relationship paths and Mindmap edge
+  paths instead of preserving a useless upstream token for byte parity.
+- Added focused regression checks so the affected raw SVG paths no longer leak `style="undefined"`.
+
+Focused verification:
+
+- `cargo fmt -p merman-render -p merman`
+- `cargo test -p merman-render er_svg_renders_entities_and_relationships --test er_svg_test`
+- `cargo test -p merman mindmap_br_variants_031_matches_upstream_node_geometry --test mindmap_br_variants_031 --features render`
+- `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo fmt --check -p merman-render -p merman`
+
+Manual raw-output sample:
+
+- `fixtures/er/basic.mmd`: no `style="undefined"`, no `undefined`, no `NaN`
+- `fixtures/mindmap/basic.mmd`: no `style="undefined"`, no `undefined`, no `NaN`
+
+Residual note:
+
+- This is a narrow raw-SVG cleanliness fix. It does not imply that all empty `style=""` attributes
+  should be removed, and it does not change ER or Mindmap layout/root residuals.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

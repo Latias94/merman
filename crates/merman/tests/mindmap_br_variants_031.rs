@@ -26,6 +26,10 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
     let svg = merman::render::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
         .expect("render svg")
         .expect("diagram detected");
+    assert!(
+        !svg.contains(r#"style="undefined"#),
+        "mindmap edge paths should not leak invalid style tokens"
+    );
 
     let doc = roxmltree::Document::parse(&svg).expect("valid svg xml");
     let node_1 = doc

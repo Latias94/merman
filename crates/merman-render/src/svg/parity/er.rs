@@ -808,7 +808,7 @@ pub(super) fn render_er_diagram_svg_model(
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
+                r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),

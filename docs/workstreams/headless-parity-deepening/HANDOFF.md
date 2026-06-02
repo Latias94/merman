@@ -277,6 +277,10 @@ Current repository reality to preserve:
     preserving valid explicit `quadrantPointFill` overrides. xtask DOM parity normalization treats
     only this known QuadrantChart default point-color slot as an upstream invalid-token artifact;
     strict DOM comparison still exposes the real difference.
+  - A twenty-second HPD-080 slice removed useless invalid inline style artifacts from ER and
+    Mindmap edge paths. Upstream fixtures contain `style="undefined;;;undefined"`, but the visible
+    edge behavior is class-driven and the token is not a meaningful style contract. Local raw SVG
+    no longer leaks that string while ER and Mindmap structural parity remain green.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

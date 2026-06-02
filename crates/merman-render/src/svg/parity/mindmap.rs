@@ -996,7 +996,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         );
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{id}" class="{class}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            r#"<path d="{d}" id="{id}" class="{class}" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
             d = escape_attr(&d),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
