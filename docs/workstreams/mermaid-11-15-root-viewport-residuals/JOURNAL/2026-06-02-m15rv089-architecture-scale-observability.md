@@ -23,6 +23,10 @@ observability changes do not perturb the focused residuals.
 - `ArchitectureCytoscapeCanvasLabelMetrics` now carries `applied_scale`.
 - The Architecture debug trace now prints that scale.
 - Added a focused unit test for the new metrics seam.
+- A follow-up source check against Mermaid's Architecture renderer/svgs clarified that the current
+  `>= 200px -> 1.01` branch belongs to the pre-SVG Cytoscape layout canvas label approximation,
+  not to the final SVG service-label bbox path. The helper and constants were renamed accordingly
+  to `layout_canvas_*` wording, with no behavior change.
 
 ## Verification
 

@@ -1361,6 +1361,11 @@ Outcome:
   Architecture bbox policy.
 - Future changes to the long-label branch should be framed as narrowing or replacing the current
   `>=200px -> 1.01` approximation, not as another opaque global constant tweak.
+- A same-day upstream source recheck clarified that this branch approximates the Cytoscape layout
+  canvas label path (`node[label]` + `compound-sizing-wrt-labels: include`), not the final SVG
+  `createText(...).getBBox()` service-label path. The metric helper and constants were then renamed
+  from generic `cytoscape/long-label` wording to explicit `layout_canvas_*` semantics without
+  changing behavior. Focused Architecture residuals and the new metrics-seam tests stayed stable.
 
 ## Gate Set
 

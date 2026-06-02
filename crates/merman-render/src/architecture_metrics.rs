@@ -1,8 +1,8 @@
 use crate::text::{TextMeasurer, TextStyle};
 
-pub(crate) const ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
-pub(crate) const ARCHITECTURE_LONG_LABEL_WIDTH_SCALE: f64 = 1.01;
-pub(crate) const ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 = 200.0;
+pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
+pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE: f64 = 1.01;
+pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
@@ -29,7 +29,7 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
 ) -> ArchitectureCytoscapeCanvasLabelMetrics {
     let m = measurer.measure(label, style);
     let width = m.width.max(0.0);
-    let scale = architecture_cytoscape_canvas_label_width_scale(width);
+    let scale = architecture_layout_canvas_label_width_scale(width);
     let half_width = (width * scale) / 2.0;
     let half_width = (half_width * 2.0).round() / 2.0;
     ArchitectureCytoscapeCanvasLabelMetrics {
@@ -39,11 +39,11 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
     }
 }
 
-pub(crate) fn architecture_cytoscape_canvas_label_width_scale(width_px: f64) -> f64 {
-    if width_px >= ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX {
-        ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+pub(crate) fn architecture_layout_canvas_label_width_scale(width_px: f64) -> f64 {
+    if width_px >= ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX {
+        ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
     } else {
-        ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
+        ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE
     }
 }
 
@@ -138,11 +138,11 @@ mod tests {
             24.1875
         );
         assert_eq!(
-            super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE,
+            super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE,
             1.055
         );
-        assert_eq!(super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE, 1.01);
-        assert_eq!(super::ARCHITECTURE_LONG_LABEL_WIDTH_THRESHOLD_PX, 200.0);
+        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE, 1.01);
+        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX, 200.0);
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
         assert_eq!(super::ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, 2.5);
@@ -178,24 +178,24 @@ mod tests {
         );
         assert!(metrics.width > 0.0);
         assert!(
-            metrics.applied_scale == super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
-                || metrics.applied_scale == super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+            metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE
+                || metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
         );
     }
 
     #[test]
     fn architecture_canvas_label_scale_switches_at_long_label_threshold() {
         assert_eq!(
-            super::architecture_cytoscape_canvas_label_width_scale(199.999),
-            super::ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE
+            super::architecture_layout_canvas_label_width_scale(199.999),
+            super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE
         );
         assert_eq!(
-            super::architecture_cytoscape_canvas_label_width_scale(200.0),
-            super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+            super::architecture_layout_canvas_label_width_scale(200.0),
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
         );
         assert_eq!(
-            super::architecture_cytoscape_canvas_label_width_scale(320.0),
-            super::ARCHITECTURE_LONG_LABEL_WIDTH_SCALE
+            super::architecture_layout_canvas_label_width_scale(320.0),
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
         );
     }
 
