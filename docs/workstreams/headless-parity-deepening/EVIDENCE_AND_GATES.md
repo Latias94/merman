@@ -683,6 +683,36 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
   passed with `267` tests.
 
+Eighteenth slice Graphlib children/root API coverage:
+
+- Added `Graph::children_opt(...)` in
+  [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs)
+  as a narrow optional-return seam for Graphlib's `children(v)` shape. It returns `None` for a
+  missing queried node, `Some([])` for an existing node with no children, and direct children for
+  compound nodes.
+- Kept the existing ergonomic `children(parent) -> Vec<&str>` behavior unchanged so current Rust
+  callers that expect empty vectors do not regress.
+- Reused the existing `children_root()` API as the Rust mapping for Graphlib's no-argument
+  `children()` root query. For non-compound graphs it returns all nodes; for compound graphs it
+  returns nodes without a parent.
+- Updated the Graphlib coverage ledger so pinned `repo-ref/graphlib/test/graph-test.js`
+  `children` cases map to concrete Rust tests instead of remaining implicit under parent tests.
+- This is a public Graph API shape seam. It does not force JS overloads, `undefined`, chainability,
+  ID stringification, or non-compound `setParent(...)` throws into the existing Rust APIs.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib children_opt`
+  failed first because `Graph::children_opt(...)` did not exist.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib children_opt`
+  passed after the seam was implemented.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib children`
+  passed with `3` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `80` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

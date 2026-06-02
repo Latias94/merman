@@ -110,8 +110,13 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setParent / creates the child if it does not exist` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
 - `setParent / moves the node from the previous parent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_moves_node_from_previous_parent`
 - `setParent / preserves the tree invariant` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_preserves_tree_invariant`
-- `children / returns children for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
-- `children / returns all nodes without a parent when the parent is not set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
+- `children / returns undefined if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
+- `children / defaults to an empty list for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
+- `children / returns undefined for a non-compound graph without the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
+- `children / returns an empty list for a non-compound graph with the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
+- `children / returns all nodes for the root of a non-compound graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_root_matches_graphlib_no_arg_children_semantics`
+- `children / returns children for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_root_matches_graphlib_no_arg_children_semantics`
+- `children / returns all nodes without a parent when the parent is not set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_root_matches_graphlib_no_arg_children_semantics` and `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
 - `predecessors / returns the predecessors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::predecessors_returns_node_predecessors`
 - `successors / returns the successors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::successors_returns_node_successors`
 - `neighbors / returns the neighbors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::neighbors_returns_unique_in_and_out_neighbors`
@@ -157,10 +162,12 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 
 ## Open API Shape Differences
 
-- Missing-node query methods: upstream JS returns `undefined` for `predecessors`, `successors`,
-  `neighbors`, `inEdges`, `outEdges`, and `nodeEdges` when the node does not exist. The current
-  Rust API uses empty vectors for these collection-returning methods, which is a deliberate
-  shape difference until a fallible/optional query seam is justified by consumers.
+- Missing-node query methods: upstream JS returns `undefined` for several collection queries.
+  `children(...)` now has an explicit optional Rust seam, `children_opt(...)`, while the existing
+  ergonomic `children(...)` still returns an empty vector for missing nodes. `predecessors`,
+  `successors`, `neighbors`, `inEdges`, `outEdges`, and `nodeEdges` still use empty vectors for
+  missing nodes; that remains a deliberate shape difference until consumers justify additional
+  fallible/optional seams.
 - Chainable mutators: upstream `removeEdge(...)` returns the graph object. Rust mutators currently
   return booleans or `&mut Self` depending on the method; coverage focuses on state changes rather
   than JS chaining.
@@ -172,9 +179,9 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 
 ## Next Priority
 
-1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers:
-   additional compound child/root API-shape cases may still be useful, but `filterNodes` and
-   endpoint-aware default label callbacks now have direct Rust coverage.
+1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers.
+   Compound child/root API-shape coverage, `filterNodes`, and endpoint-aware default label
+   callbacks now have direct Rust coverage.
 2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
    before adding ad hoc snapshot serializers elsewhere.
 3. Keep non-used algorithms such as shortest paths, Prim, and Floyd-Warshall out of scope unless a

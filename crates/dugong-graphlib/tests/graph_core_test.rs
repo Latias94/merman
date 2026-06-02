@@ -687,6 +687,46 @@ fn set_parent_creates_parent_and_child_nodes() {
 }
 
 #[test]
+fn children_opt_distinguishes_missing_nodes_from_empty_children() {
+    let mut compound: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+
+    assert_eq!(compound.children_opt("missing"), None);
+
+    compound.ensure_node("a");
+    assert_eq!(compound.children_opt("a"), Some(Vec::<&str>::new()));
+
+    let mut simple: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+
+    assert_eq!(simple.children_opt("missing"), None);
+
+    simple.ensure_node("a");
+    assert_eq!(simple.children_opt("a"), Some(Vec::<&str>::new()));
+}
+
+#[test]
+fn children_root_matches_graphlib_no_arg_children_semantics() {
+    let mut simple: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    simple.ensure_node("a");
+    simple.ensure_node("b");
+
+    assert_eq!(sorted(simple.children_root()), vec!["a", "b"]);
+
+    let mut compound: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    compound.ensure_node("b");
+    compound.ensure_node("c");
+    compound.set_parent("a", "parent");
+
+    assert_eq!(sorted(compound.children_opt("parent").unwrap()), vec!["a"]);
+    assert_eq!(sorted(compound.children_root()), vec!["b", "c", "parent"]);
+}
+
+#[test]
 fn set_parent_moves_node_from_previous_parent() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
         compound: true,
@@ -740,6 +780,7 @@ fn remove_node_clears_parent_child_relationships() {
     assert!(g.remove_node("b"));
 
     assert_eq!(g.parent("b"), None);
+    assert_eq!(g.children_opt("b"), None);
     assert!(g.children("b").is_empty());
     assert!(!g.children("a").contains(&"b"));
     assert_eq!(g.parent("c"), None);

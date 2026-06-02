@@ -102,7 +102,10 @@ Last updated: 2026-06-02
   non-multigraph panics, and named queries/removals no longer alias the unnamed edge. The next
   public Graph API slice now covers `filterNodes` subgraph copying/compound parent promotion plus
   endpoint-aware default node/edge label callbacks without adding broad Clone bounds to ordinary
-  layout graphs. ARCH-022's first Dagre reference adapter slice is also landed:
+  layout graphs. A follow-up child/root API slice now adds `children_opt(...)` for source-backed
+  missing-node versus empty-children semantics while keeping existing `children(...)` and
+  `children_root()` behavior stable for Rust callers. ARCH-022's first Dagre reference adapter
+  slice is also landed:
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,

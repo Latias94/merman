@@ -209,3 +209,9 @@
 {"file":"fixtures/upstream-svgs/timeline","reason":"HPD-080 source evidence: pinned upstream Timeline SVG fixtures include class=\"node-bkg node-undefined\", so the smoke scrubber treats only that exact placeholder class as upstream-shaped."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-public-theme-renderability-smoke-remaining-families.md","reason":"HPD-080 journal: ER, Mindmap, C4, Packet, and Sankey now have public HeadlessRenderer renderability smoke coverage without production changes."}
 {"file":"crates/merman/tests/theme_renderability_smoke.rs","reason":"HPD-080 regression: public smoke now covers ER, Mindmap, C4, Packet, and Sankey source-backed theme/config signals in addition to the earlier matrix."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-children-api.md","reason":"HPD-050 journal: Graphlib children/root optional query semantics are now source-backed without changing existing Rust children() behavior."}
+{"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 implementation: Graph::children_opt exposes missing-node versus empty-children semantics while children_root remains the no-arg root query mapping."}
+{"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 regression: graph_core_test covers children_opt, children_root, and remove-node child-query semantics from pinned Graphlib graph-test.js."}
+{"file":"docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md","reason":"HPD-050 ledger: upstream graph-test.js children cases now map to concrete Rust Graph API tests."}
+{"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib tests define children, no-arg root children, and removeNode child relationship semantics."}
+{"file":"repo-ref/graphlib/lib/graph.js","reason":"HPD-050 source evidence: pinned Graphlib implementation defines children(v = GRAPH_NODE) optional return shape."}

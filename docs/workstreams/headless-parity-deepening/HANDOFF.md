@@ -150,6 +150,11 @@ Current repository reality to preserve:
     node id or edge endpoints/name through explicit Rust API methods while the existing no-arg
     setters remain available. These APIs are method-scoped parity seams; they do not add broad
     Clone bounds to ordinary layout graphs.
+  - A follow-up Graphlib children/root slice is now landed. `children_opt(...)` exposes the
+    source-backed optional query shape for missing nodes versus existing nodes with no children,
+    while `children_root()` remains the Rust mapping for Graphlib's no-argument `children()` root
+    query. The existing `children(...) -> Vec<&str>` behavior is intentionally unchanged for Rust
+    callers.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and

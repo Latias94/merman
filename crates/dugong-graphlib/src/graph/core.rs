@@ -1523,6 +1523,22 @@ where
         self.children_iter(parent).collect()
     }
 
+    pub fn children_opt(&self, parent: &str) -> Option<Vec<&str>> {
+        if !self.options.compound {
+            return self.has_node(parent).then(Vec::new);
+        }
+
+        let &parent_ix = self.node_index.get(parent)?;
+        let children = self.children_ix.get(parent_ix)?;
+        let mut out = Vec::with_capacity(children.len());
+        for &child_ix in children {
+            if let Some(id) = self.node_id_by_ix(child_ix) {
+                out.push(id);
+            }
+        }
+        Some(out)
+    }
+
     pub fn children_root(&self) -> Vec<&str> {
         if !self.options.compound {
             return self.nodes().collect();
