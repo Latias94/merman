@@ -4,8 +4,7 @@ use super::super::super::model::{AsciiGraphEdge, GraphDirection, GraphEdgeArrow,
 use super::super::cell::edge_line_char;
 use super::{
     PlannedRouteCell, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan, edge_arrow_cell,
-    edge_line_cell,
-    planned_label, route_cell,
+    edge_line_cell, planned_label, route_cell,
 };
 
 pub(super) fn plan_left_right_direct_route(

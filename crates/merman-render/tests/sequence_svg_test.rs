@@ -365,6 +365,48 @@ fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
 }
 
 #[test]
+fn sequence_long_leftof_notes_keep_mermaid_11_15_root_width() {
+    for fixture in [
+        "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
+    ] {
+        let svg = render_sequence_svg_from_fixture(fixture);
+        assert!(
+            svg.contains(r#"max-width: 566px"#),
+            "expected long left-of note fixture {fixture} to keep Mermaid 11.15 root width"
+        );
+    }
+}
+
+#[test]
+fn sequence_long_leftof_notes_keep_mermaid_11_15_note_width() {
+    let engine = Engine::new();
+    for fixture in [
+        "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
+    ] {
+        let path = workspace_root().join("fixtures").join("sequence").join(fixture);
+        let text = std::fs::read_to_string(&path).expect("fixture");
+        let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+        let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+        let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+            panic!("expected SequenceDiagram layout");
+        };
+        let note = layout
+            .nodes
+            .iter()
+            .find(|n| n.id == "note-1")
+            .expect("expected note-1 layout node");
+        assert_eq!(
+            note.width, 170.0,
+            "expected long left-of note fixture {fixture} to keep Mermaid 11.15 note width"
+        );
+    }
+}
+
+#[test]
 fn sequence_frontmatter_title_expands_layout_root_y() {
     let path = workspace_root()
         .join("fixtures")

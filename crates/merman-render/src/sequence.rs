@@ -84,7 +84,8 @@ pub fn layout_sequence_diagram_typed_with_title(
     let bottom_margin_adj = config_f64(seq_cfg, &["bottomMarginAdj"]).unwrap_or(1.0);
     let box_margin = config_f64(seq_cfg, &["boxMargin"]).unwrap_or(10.0);
     let actor_margin = config_f64(seq_cfg, &["actorMargin"]).unwrap_or(50.0);
-    let actor_width_min = config_f64(seq_cfg, &["width"]).unwrap_or(150.0);
+    let sequence_default_width = config_f64(seq_cfg, &["width"]).unwrap_or(150.0);
+    let actor_width_min = sequence_default_width;
     let actor_height = config_f64(seq_cfg, &["height"]).unwrap_or(65.0);
     let message_margin = config_f64(seq_cfg, &["messageMargin"]).unwrap_or(35.0);
     let wrap_padding = config_f64(seq_cfg, &["wrapPadding"]).unwrap_or(10.0);
@@ -203,6 +204,7 @@ pub fn layout_sequence_diagram_typed_with_title(
         actor_top_offset_y,
         max_actor_layout_height,
         actor_width_min,
+        sequence_default_width,
         actor_height,
         message_margin,
         box_margin,
@@ -271,10 +273,12 @@ pub fn layout_sequence_diagram_typed_with_title(
         diagram_margin_y,
         bottom_margin_adj,
         box_margin,
+        wrap_padding,
         has_boxes,
         mirror_actors,
         measurer,
         msg_text_style: &msg_text_style,
+        note_text_style: &note_text_style,
         math_config: &math_config,
         math_renderer,
     }));

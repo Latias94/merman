@@ -51,13 +51,8 @@ pub(super) fn plan_left_right_grid_path_route_with_ports_and_segment(
     end_port: Option<Port>,
     segment: PlannedRouteSegment,
 ) -> Option<RoutePlan> {
-    let (path, start_port, end_port) = route_grid_path_with_ports(
-        &graph_layout.nodes,
-        from,
-        to,
-        start_port,
-        end_port,
-    )?;
+    let (path, start_port, end_port) =
+        route_grid_path_with_ports(&graph_layout.nodes, from, to, start_port, end_port)?;
     if path.len() < 2 {
         return None;
     }
@@ -69,7 +64,13 @@ pub(super) fn plan_left_right_grid_path_route_with_ports_and_segment(
         return None;
     }
     plan_grid_corners(&mut cells, graph_layout, &path, charset, segment);
-    plan_grid_box_start(&mut cells, lines_drawn[0].as_slice(), start_port, charset, segment);
+    plan_grid_box_start(
+        &mut cells,
+        lines_drawn[0].as_slice(),
+        start_port,
+        charset,
+        segment,
+    );
     plan_grid_arrow_head(
         &mut cells,
         lines_drawn.last().map(Vec::as_slice).unwrap_or_default(),
@@ -223,14 +224,12 @@ fn plan_grid_box_start(
         StepDirection::Up => {
             edge_line_cell_in_segment(from.x, from.y + 1, charset.up_connector, segment)
         }
-        StepDirection::Down => {
-            edge_line_cell_in_segment(
-                from.x,
-                from.y.saturating_sub(1),
-                charset.down_connector,
-                segment,
-            )
-        }
+        StepDirection::Down => edge_line_cell_in_segment(
+            from.x,
+            from.y.saturating_sub(1),
+            charset.down_connector,
+            segment,
+        ),
         StepDirection::Left => {
             edge_line_cell_in_segment(from.x + 1, from.y, charset.left_connector, segment)
         }

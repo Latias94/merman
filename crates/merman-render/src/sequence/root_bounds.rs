@@ -3,7 +3,7 @@ use super::constants::sequence_actor_popup_panel_height;
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines_floored_bbox};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use std::collections::HashMap;
@@ -27,10 +27,12 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_margin_y: f64,
     pub(super) bottom_margin_adj: f64,
     pub(super) box_margin: f64,
+    pub(super) wrap_padding: f64,
     pub(super) has_boxes: bool,
     pub(super) mirror_actors: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
 }
@@ -76,12 +78,50 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
     let mut bounds_box = ActorHorizontalBounds::from_content(content.min_x, content.max_x);
     bounds_box.include_actor_boxes(&ctx);
     include_self_message_bounds(&mut bounds_box, &ctx);
+    include_left_of_note_text_bounds(&mut bounds_box, &ctx);
 
     Bounds {
         min_x: bounds_box.start_x - ctx.diagram_margin_x,
         min_y: vb_min_y,
         max_x: bounds_box.stop_x + ctx.diagram_margin_x,
         max_y: bounds_box_stopy + ctx.diagram_margin_y,
+    }
+}
+
+fn include_left_of_note_text_bounds(
+    bounds_box: &mut ActorHorizontalBounds,
+    ctx: &SequenceRootBoundsContext<'_>,
+) {
+    for msg in &ctx.model.messages {
+        if msg.message_type != 2 || msg.placement != Some(0) {
+            continue;
+        }
+        let node_id = format!("note-{}", msg.id);
+        let Some(note_node) = ctx.nodes.iter().find(|n| n.id == node_id) else {
+            continue;
+        };
+        let text = msg.message_text();
+        if text.is_empty() {
+            continue;
+        }
+        let wrap_w = (note_node.width - 2.0 * ctx.wrap_padding).max(1.0);
+        let lines = wrap_label_like_mermaid_lines_floored_bbox(
+            text,
+            ctx.measurer,
+            ctx.note_text_style,
+            wrap_w,
+        );
+        let wrapped = lines.join("<br/>");
+        let (text_w, _text_h) = measure_sequence_label_for_layout(
+            ctx.measurer,
+            &wrapped,
+            ctx.note_text_style,
+            ctx.math_config,
+            ctx.math_renderer,
+            SequenceMathHeightMode::Bound,
+        );
+        let text_half = text_w.max(1.0) / 2.0;
+        bounds_box.include(note_node.x - text_half, note_node.x + text_half);
     }
 }
 

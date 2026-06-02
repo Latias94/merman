@@ -1,3 +1,4 @@
+use crate::model::Bounds;
 use crate::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE: f64 = 1.055;
@@ -6,6 +7,13 @@ pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 =
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
+
+#[derive(Debug, Clone)]
+pub(crate) struct ArchitectureServiceBoundsEstimate {
+    pub(crate) icon_bounds: Bounds,
+    pub(crate) root_bounds: Bounds,
+    pub(crate) compound_bounds: Bounds,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
@@ -121,6 +129,113 @@ pub(crate) fn architecture_node_bbox_extras_to_manatee(
         right: extras.right,
         top: extras.top,
         bottom: extras.bottom,
+    }
+}
+
+pub(crate) fn architecture_estimate_service_bounds<TLine>(
+    x: f64,
+    y: f64,
+    icon_size_px: f64,
+    arch_font_size_px: f64,
+    svg_font_size_px: f64,
+    title: Option<&str>,
+    text_measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+    compound_text_style: &TextStyle,
+    wrap_svg_words_to_lines: impl Fn(&str, f64, &dyn TextMeasurer, &TextStyle) -> Vec<TLine>,
+    svg_line_plain_text: impl Fn(&TLine) -> String,
+    measure_svg_text_bbox_x: impl Fn(&str, &TextStyle) -> (f64, f64),
+) -> ArchitectureServiceBoundsEstimate
+where
+    TLine: std::fmt::Debug,
+{
+    let icon_bounds = Bounds {
+        min_x: x,
+        min_y: y,
+        max_x: x + icon_size_px,
+        max_y: y + icon_size_px,
+    };
+    let mut root_bounds = icon_bounds.clone();
+    let mut compound_bounds = icon_bounds.clone();
+    let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
+        .ok()
+        .filter(|value| !value.is_empty());
+
+    if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
+        let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, text_measurer, text_style);
+        let mut bbox_left_root = 0.0f64;
+        let mut bbox_right_root = 0.0f64;
+        for line in &lines {
+            let s = svg_line_plain_text(line);
+            let (l, r) = measure_svg_text_bbox_x(s.as_str(), text_style);
+            bbox_left_root = bbox_left_root.max(l);
+            bbox_right_root = bbox_right_root.max(r);
+        }
+        let line_count_root = lines.len().max(1);
+        let label_extra_bottom_root =
+            architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
+
+        let metrics = architecture_cytoscape_canvas_label_metrics(
+            title,
+            text_measurer,
+            compound_text_style,
+        );
+        let compound_half_width = metrics.half_width;
+        let label_extra_bottom_compound =
+            architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
+
+        let cx = x + icon_size_px / 2.0;
+        let text_left_root = cx - bbox_left_root;
+        let text_right_root = cx + bbox_right_root;
+        let text_bottom_root = y + icon_size_px + label_extra_bottom_root;
+
+        let text_left_compound = cx - compound_half_width;
+        let text_right_compound = cx + compound_half_width;
+        let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
+
+        root_bounds = Bounds {
+            min_x: root_bounds.min_x.min(text_left_root),
+            min_y: root_bounds.min_y,
+            max_x: root_bounds.max_x.max(text_right_root),
+            max_y: root_bounds.max_y.max(text_bottom_root),
+        };
+        compound_bounds = Bounds {
+            min_x: compound_bounds.min_x.min(text_left_compound),
+            min_y: compound_bounds.min_y,
+            max_x: compound_bounds.max_x.max(text_right_compound),
+            max_y: compound_bounds.max_y.max(text_bottom_compound),
+        };
+
+        if debug_service.as_deref() == Some(title) {
+            eprintln!(
+                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} compound_bottom={} icon_bounds=({}, {})-({}, {}) compound_bounds=({}, {})-({}, {}) root_bounds=({}, {})-({}, {})",
+                title,
+                lines,
+                bbox_left_root,
+                bbox_right_root,
+                label_extra_bottom_root,
+                metrics.half_width,
+                label_extra_bottom_compound,
+                icon_bounds.min_x,
+                icon_bounds.min_y,
+                icon_bounds.max_x,
+                icon_bounds.max_y,
+                compound_bounds.min_x,
+                compound_bounds.min_y,
+                compound_bounds.max_x,
+                compound_bounds.max_y,
+                root_bounds.min_x,
+                root_bounds.min_y,
+                root_bounds.max_x,
+                root_bounds.max_y,
+            );
+        }
+    }
+
+    ArchitectureServiceBoundsEstimate {
+        icon_bounds,
+        root_bounds,
+        compound_bounds,
     }
 }
 

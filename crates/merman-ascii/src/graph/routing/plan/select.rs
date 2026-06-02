@@ -1,6 +1,8 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{GraphLayout, NodeLayout};
 use super::super::super::model::{AsciiGraph, AsciiGraphEdge, GraphDirection};
+use super::super::path::Port;
+use super::PlannedRouteSegment;
 use super::RoutePlan;
 use super::grid::{
     plan_left_right_grid_path_route, plan_left_right_grid_path_route_with_ports,
@@ -16,9 +18,7 @@ use super::top_down::{
     plan_top_down_back_route, plan_top_down_bent_route, plan_top_down_direct_route,
     top_down_back_edge_lane_x,
 };
-use super::super::path::Port;
 use crate::text::display_width;
-use super::PlannedRouteSegment;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::graph::routing) enum EdgeBoundaryContext<'a> {

@@ -16,8 +16,8 @@ use crate::graph::model::{
     AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeArrow, GraphEdgeStroke, GraphEdgeStyle,
     GraphNodeShape, GraphNodeStyle,
 };
-use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
 use crate::graph::routing::plan::PlannedRouteSegment;
+use crate::graph::routing::plan::select::{EdgeBoundaryContext, edge_boundary_context};
 
 #[test]
 fn edge_route_selects_left_right_parallel_bottom_lane() {
@@ -386,10 +386,12 @@ fn leaving_boundary_route_uses_explicit_right_boundary_ports() {
             .map(|cell| (cell.coord, cell.ch, cell.kind))
             .collect::<Vec<_>>()
     );
-    assert!(actual
-        .cells
-        .iter()
-        .all(|cell| cell.segment == PlannedRouteSegment::Boundary));
+    assert!(
+        actual
+            .cells
+            .iter()
+            .all(|cell| cell.segment == PlannedRouteSegment::Boundary)
+    );
 }
 
 #[test]
@@ -402,10 +404,11 @@ fn direct_grid_route_cells_keep_direct_segment_marker() {
     let charset = GraphCharset::for_options(&options);
 
     let plan = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset).unwrap();
-    assert!(plan
-        .cells
-        .iter()
-        .all(|cell| cell.segment == PlannedRouteSegment::Direct));
+    assert!(
+        plan.cells
+            .iter()
+            .all(|cell| cell.segment == PlannedRouteSegment::Direct)
+    );
 }
 
 #[test]

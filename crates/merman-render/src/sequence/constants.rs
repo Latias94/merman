@@ -1,6 +1,7 @@
 pub(crate) const SEQUENCE_NOTE_WRAP_SLACK_PX: f64 = 0.0;
 pub(crate) const SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX: f64 = 0.0;
 pub(crate) const SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX: f64 = 0.0;
+pub(crate) const SEQUENCE_LEFT_OF_NOTE_WRAP_WIDTH_SLACK_PX: f64 = 15.0;
 pub(crate) const SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX: f64 = 4.0;
 pub(crate) const SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR: f64 = 4.5;
 pub(crate) const SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX: f64 = 60.0;
@@ -63,6 +64,7 @@ mod tests {
         assert_eq!(super::SEQUENCE_NOTE_WRAP_SLACK_PX, 0.0);
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WIDTH_OVERFLOW_PX, 0.0);
         assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, 0.0);
+        assert_eq!(super::SEQUENCE_LEFT_OF_NOTE_WRAP_WIDTH_SLACK_PX, 15.0);
         assert_eq!(super::SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, 4.0);
         assert_eq!(super::SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, 4.5);
         assert_eq!(super::SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT, 20.0);

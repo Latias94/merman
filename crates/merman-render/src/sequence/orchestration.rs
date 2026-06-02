@@ -27,6 +27,7 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
     pub(super) actor_width_min: f64,
+    pub(super) sequence_default_width: f64,
     pub(super) actor_height: f64,
     pub(super) message_margin: f64,
     pub(super) box_margin: f64,
@@ -145,7 +146,7 @@ fn handle_sequence_note(
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
-    note_width_single: f64,
+    note_default_width: f64,
     note_top_offset: f64,
 ) -> bool {
     if msg.message_type != 2 {
@@ -161,7 +162,7 @@ fn handle_sequence_note(
             actor_index: ctx.actor_index,
             actor_centers_x: ctx.actor_centers_x,
             actor_widths: ctx.actor_widths,
-            note_width_single,
+            note_default_width,
             note_text_pad_total,
             note_top_offset,
             note_gap,
@@ -293,7 +294,7 @@ pub(super) fn build_sequence_layout_graph(
         message_width_scale: ctx.message_width_scale,
     });
 
-    let note_width_single = ctx.actor_width_min;
+    let note_default_width = ctx.sequence_default_width;
     let rect_step_start = 2.0 * SEQUENCE_FRAME_GEOM_PAD_PX;
     let rect_step_end = SEQUENCE_FRAME_GEOM_PAD_PX;
     let note_gap = SEQUENCE_FRAME_GEOM_PAD_PX;
@@ -325,7 +326,7 @@ pub(super) fn build_sequence_layout_graph(
             &mut state,
             &ctx,
             &mut nodes,
-            note_width_single,
+            note_default_width,
             note_top_offset,
         ) {
             continue;
