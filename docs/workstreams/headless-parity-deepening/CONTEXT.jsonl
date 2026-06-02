@@ -218,3 +218,6 @@
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-setpath-label.md","reason":"HPD-050 journal: Graphlib setPath(nodes, value) now has a Rust set_path_with_label seam with method-scoped Clone bounds."}
 {"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 implementation: Graph::set_path_with_label maps Graphlib setPath label propagation without broad edge-label Clone constraints."}
 {"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 regression: graph_core_test covers set_path_with_label creating and updating all path edge labels."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-setnodes.md","reason":"HPD-050 journal: Graphlib setNodes(nodes, value) now has Rust set_nodes and set_nodes_with_label seams."}
+{"file":"repo-ref/dagre/test/order/sort-subgraph-test.js","reason":"HPD-050 source evidence: pinned Dagre tests use Graphlib setNodes for graph-construction fixtures."}
+{"file":"repo-ref/dagre/test/rank/network-simplex-test.js","reason":"HPD-050 source evidence: pinned Dagre tests use chainable setNodes in network-simplex fixtures; Rust maps state behavior without JS chaining."}

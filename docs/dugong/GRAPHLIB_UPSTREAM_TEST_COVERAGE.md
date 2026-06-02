@@ -102,6 +102,8 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setNodeDefaults / can take a function` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNodeDefaults / can take a function that takes the node's name` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_node_label_can_read_node_id`
 - `removeNode / does nothing if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
+- `setNodes / creates multiple nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_nodes_uses_default_labels_without_changing_existing_nodes`
+- `setNodes / can set a value for all of the nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_nodes_with_label_sets_and_updates_all_node_labels`
 - `removeNode / removes the node if it is in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
 - `removeNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
 - `removeNode / removes edges incident on the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`

@@ -736,6 +736,33 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
   passed with `267` tests.
 
+Twentieth slice Graphlib setNodes API coverage:
+
+- Added `Graph::set_nodes(...)` and `Graph::set_nodes_with_label(...)` in
+  [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs)
+  as the Rust mapping for Graphlib's `setNodes(nodes)` and `setNodes(nodes, value)` behavior.
+- `set_nodes(...)` reuses the existing default node label seam and preserves existing node labels,
+  matching `setNode(v)` no-value behavior in pinned `repo-ref/graphlib/lib/graph.js`.
+- `set_nodes_with_label(...)` sets and updates one label across every listed node with only a
+  method-scoped `N: Clone` bound.
+- Updated the Graphlib coverage ledger so the source `setNodes` cases map to concrete Rust
+  regressions. This is a small graph-construction seam, not JS argument overloading or chainable API
+  porting.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_nodes`
+  failed first because `Graph::set_nodes(...)` and `Graph::set_nodes_with_label(...)` did not
+  exist.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_nodes`
+  passed after the seam was implemented.
+- `cargo fmt --check -p dugong-graphlib`
+  passed.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `83` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

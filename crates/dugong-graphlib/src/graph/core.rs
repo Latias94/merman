@@ -566,6 +566,23 @@ where
         self
     }
 
+    pub fn set_nodes(&mut self, ids: &[&str]) -> &mut Self {
+        for id in ids {
+            self.ensure_node_ref(id);
+        }
+        self
+    }
+
+    pub fn set_nodes_with_label(&mut self, ids: &[&str], label: N) -> &mut Self
+    where
+        N: Clone,
+    {
+        for id in ids {
+            self.set_node(*id, label.clone());
+        }
+        self
+    }
+
     pub fn ensure_node(&mut self, id: impl Into<String>) -> &mut Self {
         let id = id.into();
         if self.node_index.contains_key(&id) {

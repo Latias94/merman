@@ -106,7 +106,9 @@ Last updated: 2026-06-02
   missing-node versus empty-children semantics while keeping existing `children(...)` and
   `children_root()` behavior stable for Rust callers. A follow-up `setPath(nodes, value)` slice
   now adds `set_path_with_label(...)` with method-scoped `E: Clone` instead of forcing cloneability
-  onto ordinary graph use. ARCH-022's first Dagre reference adapter slice is also landed:
+  onto ordinary graph use. A follow-up `setNodes(nodes, value)` slice now adds `set_nodes(...)`
+  and `set_nodes_with_label(...)` with method-scoped `N: Clone` for the batch-label API. ARCH-022's
+  first Dagre reference adapter slice is also landed:
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,

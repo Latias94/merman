@@ -193,6 +193,36 @@ fn ensure_node_does_not_change_existing_node_label() {
 }
 
 #[test]
+fn set_nodes_uses_default_labels_without_changing_existing_nodes() {
+    let mut g: Graph<Option<String>, (), ()> = Graph::new(GraphOptions::default());
+    g.set_default_node_label_with_id(|v| Some(format!("{v}-default")));
+    g.set_node("a", Some("existing".to_string()));
+
+    g.set_nodes(&["a", "b", "c"]);
+
+    assert_eq!(g.node("a").and_then(|v| v.as_deref()), Some("existing"));
+    assert_eq!(g.node("b").and_then(|v| v.as_deref()), Some("b-default"));
+    assert_eq!(g.node("c").and_then(|v| v.as_deref()), Some("c-default"));
+}
+
+#[test]
+fn set_nodes_with_label_sets_and_updates_all_node_labels() {
+    let mut g: Graph<Option<String>, (), ()> = Graph::new(GraphOptions::default());
+
+    g.set_nodes_with_label(&["a", "b", "c"], Some("foo".to_string()));
+
+    assert_eq!(g.node("a").and_then(|v| v.as_deref()), Some("foo"));
+    assert_eq!(g.node("b").and_then(|v| v.as_deref()), Some("foo"));
+    assert_eq!(g.node("c").and_then(|v| v.as_deref()), Some("foo"));
+
+    g.set_nodes_with_label(&["a", "b", "c"], Some("bar".to_string()));
+
+    assert_eq!(g.node("a").and_then(|v| v.as_deref()), Some("bar"));
+    assert_eq!(g.node("b").and_then(|v| v.as_deref()), Some("bar"));
+    assert_eq!(g.node("c").and_then(|v| v.as_deref()), Some("bar"));
+}
+
+#[test]
 fn set_node_is_idempotent_for_existing_node() {
     let mut g: Graph<Option<i32>, (), ()> = Graph::new(GraphOptions::default());
     g.set_node("a", Some(1));

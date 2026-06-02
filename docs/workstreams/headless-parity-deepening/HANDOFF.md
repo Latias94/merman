@@ -158,6 +158,9 @@ Current repository reality to preserve:
   - A follow-up Graphlib `setPath(nodes, value)` slice is now landed. `set_path_with_label(...)`
     sets and updates the same edge label across every path edge with only a method-scoped
     `E: Clone` bound.
+  - A follow-up Graphlib `setNodes(nodes, value)` slice is now landed. `set_nodes(...)` uses
+    default node labels without changing existing node labels, and `set_nodes_with_label(...)`
+    batch-applies one node label with only a method-scoped `N: Clone` bound.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and
