@@ -1,7 +1,7 @@
 # Theme Parity Refactor - TODO
 
 Status: Complete
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## M0 - Scope And Evidence Freeze
 
@@ -97,3 +97,49 @@ Last updated: 2026-06-01
   Context: docs/workstreams/theme-parity/CONTEXT.jsonl
   Handoff: DONE. `neo/redux` theme families, full fixture expansion, and remaining diagram-specific
   resolver migrations are explicit follow-ups.
+
+## M6 - Post-11.15 Theme Surface Hardening
+
+- [x] TPR-090 [owner=codex] [deps=TPR-060] [scope=crates/merman-core/src/theme.rs,crates/merman-render/src/svg/parity/flowchart/css.rs,platforms/web/src/index.ts]
+  Goal: Re-align public supported themes with Mermaid 11.15's official config surface and make
+  snapshot-only `neo/redux*` names fall back to the default theme.
+  Validation: cargo nextest run -p merman-core theme &&
+  cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface &&
+  cargo nextest run -p merman-render flowchart_svg &&
+  npm run build:ts --prefix platforms/web &&
+  cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter theme --diagram flowchart --diagram xychart --diagram gitgraph --diagram pie --diagram gantt --diagram architecture --diagram quadrantchart --diagram class --diagram sequence --diagram radar --diagram er --diagram timeline --diagram packet --diagram treemap
+  Review: Do not expose snapshot-derived theme names unless Mermaid exposes them through config
+  theme selection or Merman deliberately labels them experimental.
+  Evidence: docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/theme-parity/CONTEXT.jsonl
+  Handoff: DONE. Core, bindings, and `@merman/web` now expose only
+  `default/base/dark/forest/neutral`; unsupported snapshot-only names use default theme variables.
+  Flowchart neutral `edgeLabelBackground: white` now serializes to Mermaid's white label background.
+
+- [x] TPR-100 [owner=codex] [deps=TPR-070,TPR-090] [scope=crates/merman,crates/merman-render]
+  Goal: Add representative ordinary-source theme-selector parity coverage for supported external
+  themes and unsupported snapshot-only fallback behavior without introducing a frontend test
+  runner.
+  Validation: cargo nextest run -p merman-core theme &&
+  cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface &&
+  cargo nextest run -p merman-render flowchart_svg &&
+  cargo nextest run -p merman-render neutral_named_white_edge_label_background_fades_to_white unknown_edge_label_background_keeps_mermaid_default_fade &&
+  cargo nextest run -p merman --features render external_site_theme external_snapshot_only_theme
+  Review: Coverage should prove actual external site-config behavior for plain sources, not only
+  directive handling inside diagrams.
+  Evidence: docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/theme-parity/CONTEXT.jsonl
+  Handoff: DONE. Plain-source rendering now has high-level tests for external neutral theme
+  application and external snapshot-only fallback; Flowchart CSS has direct tests for white and
+  unknown label-background fade behavior.
+
+- [ ] TPR-110 [owner=codex] [deps=TPR-100] [scope=crates/merman-render/src/svg/parity]
+  Goal: Continue migrating remaining diagram-specific theme reads to shared resolver helpers only
+  where the migration deletes real duplication without changing SVG parity.
+  Validation: cargo nextest run -p merman-render svg &&
+  cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter theme
+  Review: Prefer local diagram semantics over premature abstraction when a value is layout-specific.
+  Evidence: docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/theme-parity/CONTEXT.jsonl
+  Handoff: SPLIT. Remaining resolver migrations are useful only with fixture evidence per diagram;
+  this M6 closeout does not force abstraction without a parity failure.

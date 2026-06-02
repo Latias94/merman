@@ -3,19 +3,7 @@ use ryu_js::Buffer;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
-    "default",
-    "base",
-    "dark",
-    "forest",
-    "neutral",
-    "neo",
-    "neo-dark",
-    "redux",
-    "redux-dark",
-    "redux-color",
-    "redux-dark-color",
-];
+pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &["default", "base", "dark", "forest", "neutral"];
 
 // Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.15.0.
 static UPSTREAM_THEME_VARIABLES: OnceLock<Value> = OnceLock::new();
@@ -287,12 +275,6 @@ fn finish_theme_defaults(
     config.set_value("themeVariables", Value::Object(tv));
 }
 
-fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
-    let tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
-    finish_theme_defaults(config, theme, tv, has_user_theme_variables);
-}
-
 fn mermaid_default_font_family() -> Value {
     Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string())
 }
@@ -364,9 +346,6 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
         "dark" => apply_dark_theme_defaults(config),
         "forest" => apply_forest_theme_defaults(config),
         "neutral" => apply_neutral_theme_defaults(config),
-        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color" => {
-            apply_snapshot_theme_defaults(config, theme.as_str())
-        }
         _ => apply_default_theme_defaults(config),
     }
 }
@@ -1962,19 +1941,7 @@ mod tests {
     fn supported_theme_names_match_core_expansion_surface() {
         assert_eq!(
             crate::supported_themes(),
-            &[
-                "default",
-                "base",
-                "dark",
-                "forest",
-                "neutral",
-                "neo",
-                "neo-dark",
-                "redux",
-                "redux-dark",
-                "redux-color",
-                "redux-dark-color"
-            ]
+            &["default", "base", "dark", "forest", "neutral"]
         );
     }
 
@@ -2009,14 +1976,7 @@ mod tests {
                 .unwrap();
             let expected = upstream_theme_snapshot(theme).unwrap();
 
-            if matches!(
-                theme,
-                "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
-            ) {
-                assert_eq!(actual, expected, "theme {theme}");
-            } else {
-                assert_contains_snapshot_keys(actual, expected);
-            }
+            assert_contains_snapshot_keys(actual, expected);
         }
     }
 
@@ -2141,6 +2101,40 @@ mod tests {
             tv.get("classText").and_then(|v| v.as_str()),
             Some("#131300")
         );
+    }
+
+    #[test]
+    fn snapshot_only_theme_names_fall_back_to_default_theme_variables() {
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            let mut cfg = MermaidConfig::from_value(json!({
+                "theme": theme
+            }));
+            apply_theme_defaults(&mut cfg);
+
+            let tv = cfg
+                .as_value()
+                .get("themeVariables")
+                .and_then(|v| v.as_object())
+                .unwrap();
+
+            assert_eq!(
+                tv.get("primaryColor").and_then(|v| v.as_str()),
+                Some("#ECECFF"),
+                "theme {theme}"
+            );
+            assert_eq!(
+                tv.get("nodeBorder").and_then(|v| v.as_str()),
+                Some("#9370DB"),
+                "theme {theme}"
+            );
+        }
     }
 
     #[test]

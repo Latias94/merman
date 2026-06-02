@@ -70,6 +70,14 @@ pub(in crate::svg::parity) fn flowchart_css(
             Some((parts[0], parts[1], parts[2]))
         }
 
+        fn parse_named_color(s: &str) -> Option<(f64, f64, f64)> {
+            match s.trim().to_ascii_lowercase().as_str() {
+                "black" => Some((0.0, 0.0, 0.0)),
+                "white" => Some((255.0, 255.0, 255.0)),
+                _ => None,
+            }
+        }
+
         fn parse_hsl_to_rgb(s: &str) -> Option<(f64, f64, f64)> {
             let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
             let mut parts = inner.split(',').map(|p| p.trim());
@@ -130,7 +138,8 @@ pub(in crate::svg::parity) fn flowchart_css(
         let rgb = parse_hex_rgb(edge_label_background)
             .or_else(|| parse_rgb_like(edge_label_background, "rgb("))
             .or_else(|| parse_rgb_like(edge_label_background, "rgba("))
-            .or_else(|| parse_hsl_to_rgb(edge_label_background));
+            .or_else(|| parse_hsl_to_rgb(edge_label_background))
+            .or_else(|| parse_named_color(edge_label_background));
 
         let (r, g, b) = rgb.unwrap_or((232.0, 232.0, 232.0));
         let r = r.round().clamp(0.0, 255.0) as i64;
@@ -383,5 +392,49 @@ pub(super) fn write_flowchart_edge_class_attr(out: &mut String, edge: &crate::fl
     if let Some(cls) = animation_class {
         out.push(' ');
         out.push_str(cls);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn neutral_named_white_edge_label_background_fades_to_white() {
+        let css = flowchart_css(
+            "theme_neutral",
+            &json!({
+                "themeVariables": {
+                    "edgeLabelBackground": "white"
+                }
+            }),
+            "\"trebuchet ms\",verdana,arial,sans-serif",
+            16.0,
+            &IndexMap::new(),
+        );
+
+        assert!(
+            css.contains("#theme_neutral .labelBkg{background-color:rgba(255, 255, 255, 0.5);}")
+        );
+    }
+
+    #[test]
+    fn unknown_edge_label_background_keeps_mermaid_default_fade() {
+        let css = flowchart_css(
+            "theme_unknown_color",
+            &json!({
+                "themeVariables": {
+                    "edgeLabelBackground": "not-a-css-color"
+                }
+            }),
+            "\"trebuchet ms\",verdana,arial,sans-serif",
+            16.0,
+            &IndexMap::new(),
+        );
+
+        assert!(css.contains(
+            "#theme_unknown_color .labelBkg{background-color:rgba(232, 232, 232, 0.5);}"
+        ));
     }
 }

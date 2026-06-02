@@ -355,6 +355,7 @@ pub async fn render_svg_resvg_safe(
 #[cfg(test)]
 mod svg_pipeline_tests {
     use super::*;
+    use serde_json::json;
     use std::borrow::Cow;
 
     #[test]
@@ -484,6 +485,39 @@ flowchart TD
         assert!(svg.contains("#theme-css .node rect { fill: #123456; }"));
         assert!(svg.contains("@media (max-width: 600px) {"));
         assert!(svg.contains("#theme-css text { fill: #654321; }"));
+    }
+
+    #[test]
+    fn render_svg_sync_applies_external_site_theme_to_plain_source() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "theme": "neutral"
+            })))
+            .with_diagram_id("external-theme");
+        let source = "flowchart TD\n  A[Plain source] --> B[External theme]";
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(
+            svg.contains("#external-theme .labelBkg{background-color:rgba(255, 255, 255, 0.5);}")
+        );
+    }
+
+    #[test]
+    fn render_svg_sync_falls_back_for_external_snapshot_only_theme() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "theme": "neo"
+            })))
+            .with_diagram_id("external-neo");
+        let source = "flowchart TD\n  A[Plain source] --> B[Unsupported theme]";
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(svg.contains("fill:#ECECFF;stroke:#9370DB;stroke-width:1px;"));
+        assert!(
+            svg.contains("#external-neo .labelBkg{background-color:rgba(232, 232, 232, 0.5);}")
+        );
     }
 }
 

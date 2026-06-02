@@ -1,7 +1,7 @@
 # Theme Parity Refactor - Milestones
 
 Status: Complete
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## M0 - Scope Freeze
 
@@ -52,3 +52,18 @@ Exit criteria:
 - CHANGELOG records theme refactor and user-visible theme behavior changes.
 - `neo/redux` support is either deferred explicitly or moved to a follow-on workstream.
 - Final verification evidence is recorded.
+
+## M6 - Post-11.15 Theme Surface Hardening
+
+Exit criteria:
+
+- Core, bindings, WASM, `@merman/web`, playground, and compare mode expose only Mermaid 11.15
+  config themes: `default/base/dark/forest/neutral`.
+- Snapshot-only `neo/redux*` theme names fall back to default unless a separate experimental theme
+  surface is designed.
+- Flowchart neutral `edgeLabelBackground: white` produces Mermaid-compatible white label
+  backgrounds.
+- Representative ordinary-source/theme-selector parity coverage exists before broadening fixture
+  claims; current coverage uses high-level `HeadlessRenderer::with_site_config` tests for plain
+  source external themes.
+- Remaining diagram resolver migrations are evaluated after fixture evidence, not before it.
