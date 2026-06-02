@@ -626,6 +626,35 @@ Focused verification:
 - `Select-String` counts confirmed current full root report has `26` mismatches, while the rejected
   top-level Cytoscape experiment report has `84`.
 
+Sixteenth slice Architecture isolated top-level service root-bounds seam:
+
+- Added `architecture_top_level_service_root_bounds(...)` in
+  [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+  so the top-level service root contribution decision is explicit instead of hidden in the SVG
+  renderer loop.
+- The rule is deliberately narrow: `cytoscape_group_child_bounds` is used only for isolated
+  top-level services in diagrams that also contain groups. Connected top-level services and
+  no-group singleton/iconText rows keep `svg_root_bounds`.
+- This closes `stress_architecture_disconnected_islands_046` without applying the rejected global
+  top-level-service switch that regressed full Architecture root mismatches from `26` to `84`.
+- Full Architecture structural parity remains green. Full Architecture `parity-root` remains an
+  expected failure, but its mismatch count moved from `26` to `25`.
+- This is a phase-specific root contribution seam, not a browser-exact text measurement claim.
+  Remaining residuals still need source/evidence-backed audits rather than constants.
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo test -p merman-render architecture_top_level_service_root_bounds_splits_isolated_group_component_phase --lib`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_hpd050_isolated_root_bounds.md`
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_disconnected_islands_046 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_disconnected_islands_isolated_service_experiment.md`
+  passed with upstream/local root `823.346x768.460`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd050_isolated_root_bounds.md`
+  remains an expected failure with `25` dom mismatches.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:
@@ -1097,9 +1126,9 @@ Focused verification:
 
 Residual note:
 
-- This slice fixes Architecture theme CSS emission only. It does not change Architecture layout,
-  Cytoscape/manatee phase modeling, SVG root bounds, or the known 26 Architecture `parity-root`
-  residuals.
+- This slice fixed Architecture theme CSS emission only. It did not change Architecture layout,
+  Cytoscape/manatee phase modeling, SVG root bounds, or the then-known 26 Architecture
+  `parity-root` residuals.
 
 Fifteenth slice outcome:
 

@@ -28,7 +28,7 @@ Current repository reality to preserve:
 - Structural `parity` is green for the implemented matrix.
 - `parity-root` remains the active numeric residual front, but visible rendering defects are higher
   priority than small root viewport tails.
-- Honest top residual buckets are currently Flowchart `61`, Architecture `26`, Sequence `27`,
+- Honest top residual buckets are currently Flowchart `61`, Architecture `25`, Sequence `27`,
   Class `12`, Timeline `3`, Journey `2`.
 - Sequence left-of wrapped note width semantics were improved in commit `cd9f02ff`, but a small
   root-width residual remains and should not be overfit without stronger evidence.
@@ -74,8 +74,8 @@ Current repository reality to preserve:
   - This made `stress_architecture_batch4_init_small_icons_061`,
     `stress_architecture_batch4_init_fontsize_wrap_063`, and
     `stress_architecture_edge_label_corner_cases_012` root-green without adding root overrides.
-  - Full Architecture structural parity is still green; Architecture `parity-root` now has `26`
-    mismatches. The remaining top tails are still `junction_fork_join_026` (`+13.976px`),
+  - Full Architecture structural parity stayed green; Architecture `parity-root` had `26`
+    mismatches at that point. The remaining top tails were `junction_fork_join_026` (`+13.976px`),
     `batch5_long_titles_and_punct_076` (`+5.000px`), and `html_titles_and_escapes_041`
     (`+5.000px`).
   - A follow-up `junction_fork_join_026` audit found no new source-input mismatch, but corrected
@@ -114,7 +114,8 @@ Current repository reality to preserve:
   - The first safe follow-up to that finding is now landed: Architecture service bounds estimate
     fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`,
     `cytoscape_group_child_bounds`). This did not change behavior: structural Architecture parity
-    is green, and `parity-root` remains the expected 26 mismatches.
+    was green, and `parity-root` remained the expected 26 mismatches before the later isolated
+    service follow-up.
   - `repo-ref/dagre` and `repo-ref/graphlib` are now present and checked out to the pinned
     lockfile commits, so dugong/graphlib source-backed audits no longer have to proceed from stale
     assumptions.
@@ -152,16 +153,22 @@ Current repository reality to preserve:
   - Architecture Cytoscape service-label measurement now has a shared
     `ArchitectureCytoscapeServiceLabelExtension` seam used by both FCoSE node `BoundsExtras` and
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
-    preserving the known 26 Architecture root residuals; SVG root `createText(...)` measurement
-    remains separate from Cytoscape compound-child label measurement.
+    preserving the then-known 26 Architecture root residuals; SVG root `createText(...)`
+    measurement remains separate from Cytoscape compound-child label measurement.
   - A follow-up disconnected-islands root-bounds audit confirmed why that phase split matters.
-    `stress_architecture_disconnected_islands_046` is width-aligned but height-off: current local
-    final root is `823.346x775.647` versus upstream `823.346x768.460`. The emitted SVG scanner alone
-    is too short (`823.346x751.460`), while the final root becomes too tall after unioning synthetic
-    label `content_bounds`. A temporary top-level-service switch from `svg_root_bounds` to
+    `stress_architecture_disconnected_islands_046` was width-aligned but height-off before the
+    follow-up fix: local final root was `823.346x775.647` versus upstream `823.346x768.460`. The
+    emitted SVG scanner alone was too short (`823.346x751.460`), while the final root became too
+    tall after unioning synthetic label `content_bounds`. A temporary top-level-service switch from
+    `svg_root_bounds` to
     `cytoscape_group_child_bounds` fixed this one row but expanded full Architecture root mismatches
-    from `26` to `84`, so it was rejected. The next valid fix needs a phase-specific root label
-    contribution model, not a global service-bounds switch.
+    from `26` to `84`, so it was rejected.
+  - The first narrow phase-specific follow-up is now landed:
+    `architecture_top_level_service_root_bounds(...)` uses `cytoscape_group_child_bounds` only for
+    isolated top-level services in diagrams that also have groups. The disconnected-islands row is
+    now exact at `823.346x768.460`, full Architecture structural parity is still green, and the
+    Architecture root mismatch count is down to `25`. Do not broaden this into a global
+    service-bounds switch.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

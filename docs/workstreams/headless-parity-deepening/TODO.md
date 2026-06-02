@@ -105,13 +105,16 @@ Last updated: 2026-06-02
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
   composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
   service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
-  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. This keeps SVG
+  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. That seam kept SVG
   root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
-  preserves the known 26 Architecture root residuals. A disconnected-islands root-bounds audit then
+  preserved the then-known 26 Architecture root residuals. A disconnected-islands root-bounds audit
+  then
   rejected a tempting global top-level-service switch from `svg_root_bounds` to
   `cytoscape_group_child_bounds`: it made that one height-only row exact but expanded full
-  Architecture root mismatches from `26` to `84`. The next valid Architecture root fix needs a
-  phase-specific root label contribution model.
+  Architecture root mismatches from `26` to `84`. The first narrow phase-specific follow-up is now
+  landed: isolated top-level services in diagrams that also have groups use the Cytoscape
+  group-child phase for root contribution, making the disconnected-islands row exact and reducing
+  Architecture root mismatches from `26` to `25` while preserving structural parity.
 
 ## M5 - Semantic / Render Unification Pilot
 

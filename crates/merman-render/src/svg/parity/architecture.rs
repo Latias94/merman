@@ -1,6 +1,7 @@
 use super::*;
 use crate::architecture_metrics::{
     ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_estimate_service_bounds,
+    architecture_top_level_service_root_bounds,
 };
 
 mod edges;
@@ -250,6 +251,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         }
     };
 
+    let mut services_with_edges: rustc_hash::FxHashSet<&str> = rustc_hash::FxHashSet::default();
+    for edge in model.edges() {
+        services_with_edges.insert(edge.lhs_id);
+        services_with_edges.insert(edge.rhs_id);
+    }
+
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
     for svc in model.services() {
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
@@ -281,8 +288,17 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         // viewport bounds when the service is not inside a group.
         service_bounds.insert(svc.id, b_full.clone());
         if svc.in_group.is_none() {
-            // For top-level services, approximate Chromium `getBBox()` via the root label model.
-            extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
+            // Connected top-level services still use the SVG root `createText()` label model.
+            // Isolated top-level services in diagrams that also have groups behave like separate
+            // Cytoscape components for root extent purposes; using the larger SVG root label phase
+            // overcounts the disconnected-islands baseline while broadening the rule regresses
+            // singleton/iconText rows.
+            let root_bounds = architecture_top_level_service_root_bounds(
+                &estimate,
+                services_with_edges.contains(svc.id),
+                groups_len > 0,
+            );
+            extend_bounds(&mut content_bounds, root_bounds);
         } else {
             extend_bounds(&mut content_bounds, estimate.emitted_icon_bounds);
         }

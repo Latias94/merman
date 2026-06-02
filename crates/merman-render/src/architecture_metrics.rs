@@ -276,6 +276,18 @@ where
     }
 }
 
+pub(crate) fn architecture_top_level_service_root_bounds(
+    estimate: &ArchitectureServiceBoundsEstimate,
+    has_incident_edge: bool,
+    has_groups: bool,
+) -> Bounds {
+    if has_groups && !has_incident_edge {
+        estimate.cytoscape_group_child_bounds.clone()
+    } else {
+        estimate.svg_root_bounds.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -328,6 +340,50 @@ mod tests {
         assert_eq!(mapped.right, 2.5);
         assert_eq!(mapped.top, 3.5);
         assert_eq!(mapped.bottom, 4.5);
+    }
+
+    #[test]
+    fn architecture_top_level_service_root_bounds_splits_isolated_group_component_phase() {
+        fn assert_bounds_eq(actual: crate::model::Bounds, expected: &crate::model::Bounds) {
+            assert_eq!(actual.min_x, expected.min_x);
+            assert_eq!(actual.min_y, expected.min_y);
+            assert_eq!(actual.max_x, expected.max_x);
+            assert_eq!(actual.max_y, expected.max_y);
+        }
+
+        let estimate = super::ArchitectureServiceBoundsEstimate {
+            emitted_icon_bounds: crate::model::Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 80.0,
+                max_y: 80.0,
+            },
+            svg_root_bounds: crate::model::Bounds {
+                min_x: -10.0,
+                min_y: 0.0,
+                max_x: 90.0,
+                max_y: 104.1875,
+            },
+            cytoscape_group_child_bounds: crate::model::Bounds {
+                min_x: -8.0,
+                min_y: 0.0,
+                max_x: 88.0,
+                max_y: 97.0,
+            },
+        };
+
+        assert_bounds_eq(
+            super::architecture_top_level_service_root_bounds(&estimate, false, true),
+            &estimate.cytoscape_group_child_bounds,
+        );
+        assert_bounds_eq(
+            super::architecture_top_level_service_root_bounds(&estimate, true, true),
+            &estimate.svg_root_bounds,
+        );
+        assert_bounds_eq(
+            super::architecture_top_level_service_root_bounds(&estimate, false, false),
+            &estimate.svg_root_bounds,
+        );
     }
 
     #[test]
