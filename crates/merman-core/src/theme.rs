@@ -966,14 +966,21 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     );
 
     // Color scale.
-    let primary_hsl = get_truthy_string(&tv, "primaryColor")
-        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+    let primary_color =
+        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| default_primary.to_string());
+    let secondary_color =
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary.to_string());
+    let primary_hsl = parse_hex_rgb01(&primary_color)
+        .map(rgb01_to_hsl)
+        .or_else(|| parse_hsl_color(&primary_color))
         .unwrap_or(default_primary_hsl);
-    let secondary_hsl = get_truthy_string(&tv, "secondaryColor")
-        .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+    let secondary_hsl = parse_hex_rgb01(&secondary_color)
+        .map(rgb01_to_hsl)
+        .or_else(|| parse_hsl_color(&secondary_color))
         .unwrap_or(default_secondary_hsl);
     let tertiary_hsl = get_truthy_string(&tv, "tertiaryColor")
         .and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+        .or_else(|| get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hsl_color(&s)))
         .unwrap_or(default_tertiary_hsl);
     let c_scales: [Hsl; 12] = [
         primary_hsl,
@@ -1062,8 +1069,8 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
             "fillType7",
             fmt_hsl(adjust_hsl(secondary_hsl, 128.0, 0.0, 0.0)),
         ),
-        ("pie1", fmt_hsl(primary_hsl)),
-        ("pie2", fmt_hsl(secondary_hsl)),
+        ("pie1", primary_color),
+        ("pie2", secondary_color),
         ("pie3", fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
         ("pie4", fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, -10.0))),
         ("pie5", fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -30.0))),
@@ -2288,6 +2295,8 @@ mod tests {
             tv.get("secondaryColor").and_then(|v| v.as_str()),
             Some("#ffffde")
         );
+        assert_eq!(tv.get("pie1").and_then(|v| v.as_str()), Some("#ECECFF"));
+        assert_eq!(tv.get("pie2").and_then(|v| v.as_str()), Some("#ffffde"));
         assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#ECECFF"));
         assert_eq!(
             tv.get("nodeBorder").and_then(|v| v.as_str()),
@@ -2347,6 +2356,8 @@ mod tests {
             tv.get("primaryColor").and_then(|v| v.as_str()),
             Some("#111111")
         );
+        assert_eq!(tv.get("pie1").and_then(|v| v.as_str()), Some("#111111"));
+        assert_eq!(tv.get("pie2").and_then(|v| v.as_str()), Some("#ffffde"));
         assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#101010"));
         assert_eq!(tv.get("nodeBkg").and_then(|v| v.as_str()), Some("#101010"));
         assert_eq!(
@@ -2363,6 +2374,30 @@ mod tests {
         assert_eq!(
             xy.get("dataLabelColor").and_then(|v| v.as_str()),
             Some("#131300")
+        );
+    }
+
+    #[test]
+    fn default_theme_merges_unrelated_theme_variable_overrides_without_hsl_rewriting_pie_base() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "default",
+            "themeVariables": {
+                "pieOuterStrokeWidth": "5px"
+            }
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(tv.get("pie1").and_then(|v| v.as_str()), Some("#ECECFF"));
+        assert_eq!(tv.get("pie2").and_then(|v| v.as_str()), Some("#ffffde"));
+        assert_eq!(
+            tv.get("pieOuterStrokeWidth").and_then(|v| v.as_str()),
+            Some("5px")
         );
     }
 

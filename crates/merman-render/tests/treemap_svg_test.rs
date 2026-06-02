@@ -1,6 +1,6 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_treemap_diagram_svg};
+use merman_render::svg::{SvgRenderOptions, render_layouted_svg, render_treemap_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
 
@@ -197,25 +197,36 @@ fn treemap_single_leaf_label_uses_readable_fill_over_transparent_cell() {
 }
 
 #[test]
-fn treemap_classdef_bare_label_style_token_does_not_emit_empty_css_value() {
-    let svg = render_treemap_svg_from_source(
-        r#"treemap
+fn treemap_classdef_bare_label_style_token_renders_error_like_mermaid_parser() {
+    let source = r#"treemap
 classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 "Root":::c
   "Leaf": 1000.00:::c
-"#,
-    );
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(
+        source,
+        ParseOptions {
+            suppress_errors: true,
+        },
+    ))
+    .expect("parse returns suppressed error")
+    .expect("diagram detected");
+
+    assert_eq!(parsed.meta.diagram_type, "error");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let svg = render_layouted_svg(
+        &out,
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
 
     assert!(
-        svg.contains("fill:#ff0000 !important"),
-        "expected filled classDef style to remain visible: {svg}"
-    );
-    assert!(
-        svg.contains("stroke:rgb(1,2,3) !important"),
-        "expected escaped comma stroke style to remain visible: {svg}"
-    );
-    assert!(
-        !svg.contains("color: !important") && !svg.contains("fill: !important"),
-        "bare classDef label style token should not leak empty CSS values: {svg}"
+        svg.contains(r#"aria-roledescription="error""#) && svg.contains("Syntax error in text"),
+        "expected Mermaid parser-compatible error SVG for invalid classDef style token: {svg}"
     );
 }

@@ -3,6 +3,53 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Pie Theme Merge and Treemap Error Semantics
+
+Outcome:
+
+- Confirmed the user-reported CI failures were stale relative to current HEAD:
+  `sequence_default_message_widths_match_mermaid_default_font_family` has already been replaced by
+  the calibrated `sequence_default_message_widths_use_current_sequence_svg_bbox_facts`, and
+  `fixtures_match_golden_snapshots` now includes the Class namespace facade snapshot update.
+- Fixed a fresh Pie structural compare regression where frontmatter with an unrelated
+  `themeVariables` override caused local slice fill to use `hsl(240, 100%, 86.275%)` instead of
+  Mermaid 11.15's raw `#ECECFF`.
+- Corrected the Treemap classDef bare-token assumption. Pinned upstream renders
+  `classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;` as an error diagram, so local parsing now
+  rejects bare style tokens rather than accepting DB-layer `addClass` tolerance as parser parity.
+- Refreshed only the affected Pie layout goldens and Treemap semantic/layout goldens.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js` sets `this.pie1 =
+  this.pie1 || this.primaryColor` and `this.pie2 = this.pie2 || this.secondaryColor`, so merman
+  must preserve the raw user/default color strings for those two slots.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/db.ts` has tolerant style splitting, but
+  the pinned upstream SVG baseline for
+  `fixtures/upstream-svgs/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.svg`
+  is an `aria-roledescription="error"` diagram. The parser/render result, not DB helper tolerance,
+  is the parity contract for this fixture.
+
+Focused verification:
+
+- `cargo nextest run -p merman-render sequence_default_message_widths_use_current_sequence_svg_bbox_facts`
+- `cargo nextest run -p merman-core --test snapshots fixtures_match_golden_snapshots`
+- `cargo nextest run -p merman-core default_theme_merges_unrelated_theme_variable_overrides_without_hsl_rewriting_pie_base default_theme_preserves_user_overrides_after_derivation supported_theme_defaults_match_upstream_snapshot`
+- `cargo nextest run -p merman-core treemap_classdef_rejects_bare_label_style_tokens_like_mermaid_parser`
+- `cargo nextest run -p merman-render --test treemap_svg_test treemap_classdef_bare_label_style_token_renders_error_like_mermaid_parser`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+- `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run --workspace --all-features`
+
+Verification notes:
+
+- Full SVG structural parity is green after the Pie/Treemap fixes.
+- Workspace tests passed: `1681/1681` run, `1681` passed, `6` skipped.
+- The `cargo nextest run --workspace --all-features` warning about `svg v0.7.2` future
+  incompatibility is pre-existing dependency noise, not a test failure.
+
 ## HPD-020 - Baseline Registry
 
 Outcome:

@@ -536,9 +536,6 @@ fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
         if s.is_empty() {
             continue;
         }
-        if is_label_style_bug_compatible(s) {
-            continue;
-        }
         let Some((k, v)) = s.split_once(':') else {
             return Err(format!("invalid classDef style token `{s}`"));
         };
@@ -1055,29 +1052,17 @@ classDef important fill:#f96,stroke:#333,stroke-width:2px;
     }
 
     #[test]
-    fn treemap_classdef_allows_bare_label_style_tokens_like_mermaid() {
-        let model = parse(
+    fn treemap_classdef_rejects_bare_label_style_tokens_like_mermaid_parser() {
+        let msg = parse_error(
             r#"treemap
 classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 "Root":::c
   "Leaf": 1000.00:::c
 "#,
         );
-        let compiled = model["root"]["children"][0]["cssCompiledStyles"][0]
-            .as_str()
-            .expect("compiled styles");
-
         assert!(
-            compiled.contains("fill:#ff0000"),
-            "expected fill style in {compiled:?}"
-        );
-        assert!(
-            compiled.contains("stroke:rgb(1,2,3)"),
-            "expected escaped comma to survive in {compiled:?}"
-        );
-        assert!(
-            compiled.contains("color"),
-            "expected Mermaid-compatible bare label token in {compiled:?}"
+            msg.contains("invalid classDef style token `color`"),
+            "{msg}"
         );
     }
 

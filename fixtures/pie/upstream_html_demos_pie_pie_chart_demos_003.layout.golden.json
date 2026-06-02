@@ -25,7 +25,7 @@
           "percent": 30.0,
           "text_x": 67.351,
           "text_y": -48.933,
-          "fill": "hsl(240, 100%, 96.2745098039%)"
+          "fill": "#ECECFF"
         },
         {
           "label": "Python",
@@ -36,7 +36,7 @@
           "percent": 25.0,
           "text_x": 37.795,
           "text_y": 74.176,
-          "fill": "hsl(60, 100%, 93.5294117647%)"
+          "fill": "#ffffde"
         },
         {
           "label": "Java",
@@ -76,13 +76,13 @@
         {
           "label": "JavaScript",
           "value": 30.0,
-          "fill": "hsl(240, 100%, 96.2745098039%)",
+          "fill": "#ECECFF",
           "y": -55.0
         },
         {
           "label": "Python",
           "value": 25.0,
-          "fill": "hsl(60, 100%, 93.5294117647%)",
+          "fill": "#ffffde",
           "y": -33.0
         },
         {

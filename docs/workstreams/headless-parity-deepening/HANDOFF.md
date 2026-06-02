@@ -393,12 +393,11 @@ Current repository reality to preserve:
     treat it as a functional regression gate, not an all-fixture parity percentage.
   - A thirty-fifth HPD-080 all-supported resvg-safe audit slice resolved the Flowchart `layout.rs`
     conflict between the Zed PR `58325` backport shape and local explicit-stack traversal coverage,
-    then ran the ignored supported-fixture audit. The audit found and fixed a Treemap classDef
-    compatibility gap: Mermaid accepts bare label-style tokens such as `color`, so local Treemap
-    parsing now accepts them too, while SVG emission drops empty-valued declarations instead of
-    leaking invalid `color: !important` / `fill: !important` styles. The same slice made empty Pie
-    roots finite for headless/raster safety rather than preserving Mermaid's invalid `-Infinity`
-    capture artifact.
+    then ran the ignored supported-fixture audit. The same slice made empty Pie roots finite for
+    headless/raster safety rather than preserving Mermaid's invalid `-Infinity` capture artifact.
+    Its earlier Treemap bare-label-token assumption was later corrected by the forty-fourth slice:
+    pinned Mermaid 11.15 rejects that syntax at parser/render time despite DB-layer style splitting
+    being more tolerant.
   - A thirty-sixth HPD-080 extended-theme override slice fixed a host theme gap in official
     `neo/redux*` themes. Defaults still come from generated Mermaid 11.15 snapshots, but when users
     override source base keys such as `primaryColor`, `secondaryColor`, `background`, `lineColor`,
@@ -446,6 +445,13 @@ Current repository reality to preserve:
     full supported-family style-provider parity claims. The `error` corpus now exercises lenient
     suppressed-error rendering, and all three boundary dirs reuse the XML, foreignObject,
     invalid-token, empty-style, and raster ink assertions from the public renderability gate.
+  - A forty-fourth HPD-080 CI/compare diagnosis confirmed the reported Windows/macOS/Linux
+    Sequence width and Class namespace snapshot failures were already fixed on current HEAD, then
+    fixed the fresh structural compare regressions. Default-theme Pie now preserves Mermaid
+    11.15's raw `pie1/#ECECFF` and `pie2/#ffffde` strings when unrelated `themeVariables` are
+    supplied, matching `theme-default.js`. Treemap now rejects bare `classDef` style tokens such as
+    `color` and renders the fixture through the suppressed error diagram, matching the pinned
+    upstream SVG baseline instead of treating DB-layer `addClass` tolerance as parser parity.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

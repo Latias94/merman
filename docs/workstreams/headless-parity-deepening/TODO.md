@@ -246,10 +246,11 @@ Last updated: 2026-06-03
   supported-family fixtures; the gate rejects foreignObject reliance, invalid visual tokens, empty
   style elements, and, under the `raster` feature, SVGs that cannot convert to PNG. A follow-up
   all-supported resvg-safe audit resolved the Flowchart `layout.rs` conflict between the Zed PR
-  `58325` backport shape and local explicit-stack traversal coverage, fixed empty Pie roots to emit
-  finite headless-safe viewBoxes, and fixed a Treemap classDef compatibility gap: Mermaid accepts
-  bare label-style tokens such as `color`, while local SVG emission now drops empty-valued
-  declarations instead of leaking invalid `color: !important` / `fill: !important` styles.
+  `58325` backport shape and local explicit-stack traversal coverage and fixed empty Pie roots to
+  emit finite headless-safe viewBoxes. A later source-backed Treemap correction reversed the earlier
+  bare-label-token assumption: pinned Mermaid 11.15 renders `classDef ... color;` as an error, so
+  local parsing now rejects bare style tokens instead of pretending DB-layer tolerance is parser
+  parity.
   A follow-up extended-theme slice fixed a real host theme override gap in the official
   `neo/redux*` themes: defaults still come from generated Mermaid 11.15 snapshots, but user base
   overrides now recompute source-backed visible derived keys consumed by current renderers, while
@@ -282,5 +283,10 @@ Last updated: 2026-06-03
   `resvg_safe` fixture smoke. These entrypoints stay out of the supported-family style-provider
   matrix, but now have the same XML, foreignObject, invalid-token, empty-style, and raster ink
   regression gate used for public renderability.
+  A follow-up CI/compare diagnosis confirmed the reported cross-platform Sequence width and Class
+  namespace snapshot failures were stale relative to current HEAD, then fixed two fresh structural
+  rendering regressions: default-theme Pie `themeVariables` merging now preserves source-backed
+  `pie1/#ECECFF` and `pie2/#ffffde` base colors under unrelated overrides, and Treemap invalid
+  bare classDef style tokens now render through the suppressed error diagram like pinned upstream.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
