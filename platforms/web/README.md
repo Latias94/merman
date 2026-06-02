@@ -10,6 +10,7 @@ Use the live build at [Merman Playground](https://frankorz.com/merman/).
 ```sh
 npm install --prefix platforms/web
 npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
 ```
 
 ## Usage
@@ -53,8 +54,9 @@ needs to provide the wasm-bindgen module or wasm URL explicitly, pass initializa
 import type { MermanWasmModule } from "@merman/web";
 
 await initMerman({
-  loader: async () => (await import("./merman_wasm.js")) as MermanWasmModule,
-  wasm: new URL("./merman_wasm_bg.wasm", import.meta.url),
+  loader: async () =>
+    (await import("@merman/web/pkg/merman_wasm.js")) as MermanWasmModule,
+  wasm: new URL("@merman/web/pkg/merman_wasm_bg.wasm", import.meta.url),
 });
 ```
 
@@ -72,6 +74,8 @@ Concurrent calls share the same in-flight initialization promise.
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.
+`supportedDiagrams()`, `asciiSupportedDiagrams()`, and `themes()` return typed metadata and fail
+fast if the generated WebAssembly metadata drifts from the TypeScript surface.
 
 ## Benchmarking against Mermaid JS
 
