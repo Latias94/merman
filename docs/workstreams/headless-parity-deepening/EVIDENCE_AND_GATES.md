@@ -135,6 +135,23 @@ Verification notes:
 - The deliverable is a durable classification system and queue-shaping mapping, not a fresh one-off
   report or a pseudo-precise completion metric.
 
+Gate-tier follow-up:
+
+- Added an explicit headless parity gate tier policy to
+  [docs/workstreams/headless-parity-deepening/DESIGN.md](/F:/SourceCodes/Rust/merman/docs/workstreams/headless-parity-deepening/DESIGN.md)
+  and
+  [docs/workstreams/mermaid-11-15-root-viewport-residuals/DESIGN.md](/F:/SourceCodes/Rust/merman/docs/workstreams/mermaid-11-15-root-viewport-residuals/DESIGN.md).
+- Hard gates are parser/semantic/error behavior, theme/CSS readability, structural DOM parity, and
+  no blank/hidden/clipped/miscolored output.
+- Strong alignment targets are source-backed layout topology and reusable measurement/root-bounds
+  seams that improve a family as a whole.
+- `parity-root` is a diagnostic and regression sensor for browser-derived numeric tails; it becomes
+  a production-fix requirement only when the residual is source-backed, visible/user-facing, stale,
+  or explained by a reusable seam that survives family verification.
+- This policy was written after the Architecture child source-phase experiment proved that a raw
+  Cytoscape source formula can improve two rows while expanding the full Architecture root report
+  from `25` to `100` mismatches.
+
 ## HPD-040 - Measurement / Root Bounds Platform
 
 Outcome:

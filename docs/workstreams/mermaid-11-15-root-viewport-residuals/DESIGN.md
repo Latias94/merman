@@ -33,6 +33,20 @@ This lane closes when one of these is true for each residual bucket:
 
 The full `parity` gate must remain green throughout.
 
+## Gate Interpretation
+
+`parity-root` is a strong diagnostic surface, not a blanket pixel-exact release gate. It becomes a
+production-fix requirement when a residual is:
+
+- source-backed by pinned Mermaid/Cytoscape/Dagre behavior,
+- visible to users through clipping, unreadable output, blank output, or lost semantic styling,
+- stale due to an old fixture/override/generated table,
+- or explainable by a reusable measurement/root-bounds seam that improves the surrounding family.
+
+When source inputs match and the remaining delta is browser font/SVG/Cytoscape/FCoSE lattice drift,
+the correct action is to classify and monitor it. Do not import raw browser measurement artifacts
+or grow fixture-keyed constants just to make this lane numerically green.
+
 ## In Scope
 
 - Classify fresh `target/compare/*_report_parity_root.md` residuals by diagram and mechanism.

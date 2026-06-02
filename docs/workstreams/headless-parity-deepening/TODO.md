@@ -133,7 +133,11 @@ Last updated: 2026-06-03
   `edge_label_corner_cases`, `fan_in_out`, `deep_nesting`,
   `batch6_junctions_multi_split_with_group_edges`, or `disconnected_islands` rows. Continue from
   source-backed audits of `junction_fork_join`, the `+5px` group/service bbox rows, the `unicode`
-  / `nested_groups` compound-bounds rows, and `group_port_edges`.
+  / `nested_groups` compound-bounds rows, and `group_port_edges`. A later child-bbox/source-phase
+  experiment confirmed the first-principles gate policy: raw Cytoscape label/body/final group
+  formulas improved the two `+5px` rows locally but expanded full Architecture root mismatches
+  from `25` to `100`, so production changes were reverted and `parity-root` remains diagnostic
+  unless a seam survives family-level verification.
 
 ## M5 - Semantic / Render Unification Pilot
 

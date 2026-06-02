@@ -54,6 +54,11 @@ Current repository reality to preserve:
     solver/phase front; Sequence and Class are the main generated-measurement fronts.
   - Counts remain queue-shaping hints only. They are not progress percentages and should not be
     used to justify fake completion claims.
+  - Headless parity now has an explicit gate-tier policy: parser/semantic/error behavior,
+    theme/CSS readability, structural DOM parity, and no blank/hidden/clipped/miscolored output are
+    hard gates; `parity-root` numeric tails are diagnostic/regression sensors unless they are
+    source-backed, visible/user-facing, stale, or explained by a reusable seam that survives
+    family-level verification.
 - HPD-040 outcome to preserve:
   - `svg_emitted_bounds` is now `svg/parity` infrastructure, not State-owned code.
   - Sequence note final wrap/measure logic is centralized and reused by layout, root-bounds, and

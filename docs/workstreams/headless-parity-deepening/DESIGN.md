@@ -79,6 +79,39 @@ classifiable, auditable, and fixable without drifting toward browser-dependent b
    component ordering, relocation centers, and bounds extras feeding.
 6. Delete obsolete pathways when a deeper seam truly replaces them.
 
+## Headless Parity Gate Tiers
+
+This lane treats Mermaid parity as a layered contract, not as a single pixel-equality target.
+Mermaid JS renders through a browser; `merman` is a deterministic headless renderer. A browser
+measurement artifact is useful evidence, but it is not automatically a production requirement.
+
+Hard gates:
+
+- parser, semantic model, and source-backed error behavior for implemented families;
+- diagram-specific theme/CSS emission, readable labels, and semantic colors;
+- structural SVG DOM parity for the implemented matrix;
+- no blank output, hidden labels, black cards, root clipping, or unreadable fallback behavior.
+
+Strong alignment targets:
+
+- source-backed layout topology, group membership, edge endpoints, relative constraints, label
+  wrapping, and reusable measurement/root-bounds seams;
+- candidate source formulas that improve the family as a whole, not just one or two root rows.
+
+Diagnostic sensors:
+
+- `parity-root` `max-width` / `viewBox` numeric tails;
+- small residuals from browser `getBBox()`, `getComputedTextLength()`, canvas `measureText()`,
+  Cytoscape body/label bounds, and FCoSE solution decimals;
+- residual counts as queue-shaping signals, not completion percentages.
+
+Explicit non-goals:
+
+- depending on a browser at runtime;
+- fixture-keyed constants or hand-written text tables to clear individual rows;
+- importing raw browser measurement artifacts when they damage the deterministic headless family
+  model.
+
 ## Architecture Direction
 
 This lane is intentionally split into five capability themes:
