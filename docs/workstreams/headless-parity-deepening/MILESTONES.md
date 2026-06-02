@@ -31,3 +31,9 @@
 
 - Unsupported Mermaid family admission has a rubric and priority order.
 - Follow-on family work can open cleanly without re-litigating headless fit.
+
+## M7 - Visible Rendering Is Trustworthy
+
+- Structural DOM parity no longer hides unreadable output.
+- Missing diagram-specific theme CSS, invisible labels, blank renders, and lost semantic colors are
+  fixed before small root viewport residuals.

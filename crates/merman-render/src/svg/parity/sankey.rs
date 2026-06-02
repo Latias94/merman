@@ -162,7 +162,11 @@ pub(super) fn render_sankey_diagram_svg(
             },
         );
     }
-    let _ = write!(&mut out, "<style>{}</style>", sankey_css(diagram_id));
+    let _ = write!(
+        &mut out,
+        "<style>{}</style>",
+        sankey_css(diagram_id, effective_config)
+    );
     out.push_str("<g/>");
 
     let scheme_tableau10: [&str; 10] = [

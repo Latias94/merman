@@ -493,45 +493,30 @@ pub(super) fn pie_css(diagram_id: &str) -> String {
     out
 }
 
-pub(super) fn sankey_css(diagram_id: &str) -> String {
-    // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, plus a `.label`
-    // rule, and keeps `:root` last.
+pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    // Mermaid's sankey diagram uses the same base CSS as "info-like" diagrams, then appends
+    // `sankey/styles.js` rules. Keep `:root` last to match upstream SVG baselines.
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let mut out = String::new();
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let label_background = config_string(effective_config, &["themeVariables", "mainBkg"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "background"]))
+        .unwrap_or_else(|| "#fff".to_string());
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}"#,
+        id,
+        parts.font_family,
+        id,
+        parts.font_family,
+        id,
+        label_background,
+        id,
+        parts.text_color,
+        id,
+        id
     );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:#fff;stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:#333;}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:multiply;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font, id, id, font, id, font, id, id, id, id, id, font
-    );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -759,6 +744,28 @@ mod tests {
         ));
         assert!(
             css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#)
+        );
+    }
+
+    #[test]
+    fn sankey_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "fontFamily": "\"source sans\", arial, sans-serif",
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#123456",
+                "mainBkg": "#abcdef",
+            }
+        });
+
+        let css = sankey_css("sk", &cfg);
+
+        assert!(css.contains(r#"#sk .label{font-family:"ibm plex sans",arial,sans-serif;}"#));
+        assert!(css.contains(r#"#sk .node-labels{font-family:"ibm plex sans",arial,sans-serif;}"#));
+        assert!(css.contains(r#"#sk .sankey-label-bg{stroke:#abcdef;"#));
+        assert!(css.contains(r#"#sk .sankey-label-fg{fill:#123456;}"#));
+        assert!(
+            css.contains(r#"#sk :root{--mermaid-font-family:"ibm plex sans",arial,sans-serif;}"#)
         );
     }
 }

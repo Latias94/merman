@@ -11,6 +11,8 @@ matrix, but the remaining work is no longer “finish a few missing features”.
 
 - root viewport / `max-width` residuals,
 - browser-vs-headless text measurement drift,
+- visible rendering defects that structural DOM parity does not catch, especially missing
+  diagram-specific CSS/theme emission,
 - duplicated baseline facts and generated provenance,
 - shallow diagram registry and semantic/render seams,
 - solver/input-model residuals in `manatee` / `dugong`-adjacent layout paths,
@@ -28,17 +30,21 @@ classifiable, auditable, and fixable without drifting toward browser-dependent b
    behavior gaps from headless measurement approximations and browser-only lattice tails.
 3. Text measurement and root-bounds policy live behind explicit seams instead of being re-derived
    inside multiple diagram renderers.
-4. `Architecture`, `Sequence`, `Flowchart`, and `Class` residual work proceeds through shared
+4. Functional renderability is treated as a first-class gate: blank output, hidden text, unreadable
+   labels, missing semantic colors, and missing diagram theme CSS outrank numeric root residuals.
+5. `Architecture`, `Sequence`, `Flowchart`, and `Class` residual work proceeds through shared
    measurement/layout seams rather than fixture-specific constants.
-5. `manatee` / `dugong` alignment work is driven by source-backed input-model and bounds-feeding
+6. `manatee` / `dugong` alignment work is driven by source-backed input-model and bounds-feeding
    audits, not blanket solver rewrites or aimless numerical tweaking.
-6. The repository is better prepared for new diagram-family adoption without implying that all
+7. The repository is better prepared for new diagram-family adoption without implying that all
    Mermaid `11.15.0` families are already in scope.
 
 ## Scope
 
 - Baseline registry/provenance deepening.
 - Root residual taxonomy and evidence hygiene.
+- Visible rendering defect triage for the implemented matrix, especially source-backed
+  diagram-specific CSS/theme emission.
 - Measurement and root-bounds seam extraction where justified.
 - Source-backed `Architecture` layout engine/input-model audits.
 - Source-backed `Sequence` / `Flowchart` / `Class` residual consolidation where it removes a real
@@ -59,16 +65,19 @@ classifiable, auditable, and fixable without drifting toward browser-dependent b
 1. Prefer Mermaid source-backed behavior and official fixtures before changing headless heuristics.
 2. When a residual is measurement-driven, fix it by deepening a reusable seam or record it as a
    bounded headless residual; do not silently smear constants across diagram code.
-3. `parity-root` work must distinguish:
+3. Treat visible rendering defects as higher priority than `parity-root` tails. A structurally
+   matching SVG is still broken if labels are invisible, semantic colors are missing, or diagram
+   theme CSS is absent.
+4. `parity-root` work must distinguish:
    - source-backed behavior gaps,
    - measurement approximation gaps,
    - browser bbox / lattice residuals,
    - solver / phase residuals,
    - stale baseline / stale override mistakes,
    - unsupported-family scope gaps.
-4. `manatee` / `dugong` work audits input semantics first: parent assignment, constraints,
+5. `manatee` / `dugong` work audits input semantics first: parent assignment, constraints,
    component ordering, relocation centers, and bounds extras feeding.
-5. Delete obsolete pathways when a deeper seam truly replaces them.
+6. Delete obsolete pathways when a deeper seam truly replaces them.
 
 ## Architecture Direction
 
@@ -82,31 +91,43 @@ This lane is intentionally split into five capability themes:
    A workstream-local taxonomy and evidence ledger for residuals, including which residuals are
    aligned to fix vs. record.
 
-3. **Measurement / root-bounds platform**
+3. **Visible rendering quality**
+   Source-backed diagram CSS/theme and renderer checks for failures that produce blank,
+   unreadable, or semantically misleading output even when DOM parity is green.
+
+4. **Measurement / root-bounds platform**
    Shared seams for browser-like text measurement approximation and diagram root viewport policy.
 
-4. **Layout engine audit**
+5. **Layout engine audit**
    Source-backed audits of `manatee` / `dugong`-adjacent seams, initially centered on
    `Architecture`, then reused where profitable.
 
-5. **New-family rubric**
+6. **New-family rubric**
    A disciplined gate for which Mermaid families are worth promoting into the headless support
    matrix and in what order.
 
-## Initial Priority Order
+## Priority Order
+
+Completed foundation:
 
 1. HPD-010 lane freeze and prioritization
 2. HPD-020 baseline registry
 3. HPD-030 residual taxonomy + evidence alignment
 4. HPD-040 measurement / root-bounds platform
-5. HPD-050 Architecture layout engine audit
-6. HPD-060 semantic/render unification pilot
-7. HPD-070 new family rubric
+5. HPD-060 semantic/render unification pilot
+6. HPD-070 new family rubric
+
+Current execution priority:
+
+1. HPD-080 visible rendering defect triage
+2. HPD-050 focused Architecture / `manatee` / `dugong` audits when no higher-severity rendering
+   defect is active
 
 ## Current Repository Reality
 
 - Implemented-matrix structural Mermaid `11.15.0` SVG DOM `parity` is green.
-- The active front is `parity-root`, not broad structural SVG breakage.
+- The active front is now visible rendering quality plus `parity-root`; DOM parity alone is not
+  enough to declare output usable.
 - Current honest `parity-root` buckets are led by:
   - Flowchart: `61`
   - Architecture: `29`
@@ -163,6 +184,11 @@ This lane should execute in three layers rather than as a flat backlog:
 The key rule is that deeper implementation slices should consume clearer truth and better seams.
 If a candidate fix still depends on hidden fixture keys, old 11.12 naming, or ambiguous residual
 classification, the lane should step back and fix the governing seam first.
+
+Visible rendering defects are a priority override. If a supported diagram emits unreadable text,
+blank output, black blocks, or loses Mermaid's semantic theme colors, fix that before spending more
+time on small root-width residuals. The fix still needs the same evidence standard: use pinned
+Mermaid source and fixtures, not browser-dependent runtime rendering or fixture-keyed cosmetics.
 
 ## Residual Taxonomy
 

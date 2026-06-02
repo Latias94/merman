@@ -140,3 +140,22 @@ Last updated: 2026-06-02
   New-family priority is `treeView`, `ishikawa`, `eventmodeling`, `venn`, then `wardley`.
   `railroad-*` and `cynefin-beta` are absent from the pinned 11.15 source and should not be treated
   as 11.15 backlog items.
+
+## M7 - Visible Rendering Defect Triage
+
+- [ ] HPD-080 [owner=codex] [deps=HPD-030] [scope=crates/merman-render/src/svg/parity,fixtures,xtask compare commands]
+  Goal: Find and fix functional rendering defects that DOM structural parity can miss, especially
+  missing Mermaid 11.15 diagram-specific CSS/theme emission that makes output unreadable or loses
+  semantic color cues.
+  Validation: source-backed style/rendering checks against pinned Mermaid 11.15 plus focused
+  renderer tests and compare commands for touched diagram families.
+  Review: This task outranks small numeric `parity-root` residuals, but it is not a license for
+  cosmetic overfitting. Fix only defects backed by Mermaid source, official fixtures, or direct
+  user-visible breakage.
+  Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
+  Handoff: IN_PROGRESS. The first source-backed slice fixed missing or incomplete theme CSS emission
+  for Kanban, Packet, Sankey, C4, and GitGraph. The user Kanban metadata and GitGraph merge samples
+  now render with readable labels and semantic branch/card styling. Continue by scanning supported
+  diagrams for blank output, hidden labels, black blocks, lost theme colors, and other functional
+  renderability failures before returning to fine root residual work.

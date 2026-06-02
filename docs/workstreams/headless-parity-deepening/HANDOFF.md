@@ -7,23 +7,27 @@ This workstream opens the post-11.15 structural-parity phase.
 
 Current priority order:
 
-1. HPD-050 Architecture-first layout engine audit
-2. HPD-060 semantic/render unification pilot - done for Sequence
-3. HPD-070 unsupported-family rubric - done
+1. HPD-080 visible rendering defect triage
+2. HPD-050 Architecture-first layout engine audit
+3. HPD-060 semantic/render unification pilot - done for Sequence
+4. HPD-070 unsupported-family rubric - done
 
 Immediate next task:
 
 - HPD-010, HPD-020, HPD-030, HPD-040, HPD-060, and HPD-070 are done.
+- HPD-080 is now the active priority override. Continue scanning for functional renderability
+  failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
+  colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.
 - HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
   when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
   rewrite.
-- The remaining same-workstream choice is whether to continue focused HPD-050 child audits or close /
-  split HPD-050 into a narrower follow-on lane.
+- Root residual work should wait behind HPD-080 when a supported diagram is visibly broken.
 
 Current repository reality to preserve:
 
 - Structural `parity` is green for the implemented matrix.
-- `parity-root` remains the active residual front.
+- `parity-root` remains the active numeric residual front, but visible rendering defects are higher
+  priority than small root viewport tails.
 - Honest top residual buckets are currently Flowchart `61`, Architecture `26`, Sequence `27`,
   Class `12`, Timeline `3`, Journey `2`.
 - Sequence left-of wrapped note width semantics were improved in commit `cd9f02ff`, but a small
@@ -31,6 +35,9 @@ Current repository reality to preserve:
 - Architecture remains the highest-value `manatee` / input-model audit target.
 - This lane is not a license to drive every residual to zero with constants. Its purpose is to
   improve baseline truth, residual governance, and shared seams so later fixes are explainable.
+- This lane also now treats renderability as an explicit quality gate: a DOM-parity SVG is not good
+  enough if labels are invisible, cards/branch labels render as dark blocks, or Mermaid's semantic
+  theme colors are missing.
 - HPD-020 outcome to preserve:
   - `crates/merman-core/src/baseline.rs` owns the pinned Mermaid tag/version plus the explicit
     legacy generated suffix.
@@ -167,3 +174,16 @@ Current repository reality to preserve:
   - `railroad-*` and `cynefin-beta` are absent from the pinned Mermaid 11.15 source, even if a newer
     `repo-ref/mermaid` checkout later contains them. Do not include them in the 11.15 parity backlog
     unless the baseline is bumped.
+- HPD-080 in-progress outcome:
+  - The first source-backed CSS/theme slice fixed the defect class exposed by the user's Kanban and
+    GitGraph examples: structurally valid SVGs that were unreadable because diagram-specific
+    Mermaid 11.15 styles were missing or incomplete.
+  - Kanban emits source-backed section/ticket/icon/label theme CSS. Packet maps `packet.*`
+    `PacketStyleOptions`. Sankey emits config-aware label/link style rules. C4 emits config-aware
+    base CSS and `.person` theme colors. GitGraph emits classic/default per-branch theme rules for
+    branch labels, commits, arrows, labels, merge/reverse commits, and highlight inner colors.
+  - The user GitGraph merge sample now renders readable branch labels and colored branch/merge
+    paths; the manual PNG evidence is `target/compare/gitgraph_user_merge.png`.
+  - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
+    unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
+    chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -37,7 +37,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
-  "current_task": "HPD-050",
+  "current_task": "HPD-080",
   "gates": [
     "cargo fmt --check",
     "git diff --check",
@@ -69,6 +69,6 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "execute-next-task",
-    "notes": "Baseline truth, residual taxonomy, first measurement/root-bounds seams, the Sequence semantic projection pilot, unsupported-family admission rubric, and multiple source-backed HPD-050 layout audit slices are in place. Remaining active work is focused HPD-050 child audits or closing/splitting that audit lane; avoid broad rewrites or fake browser-bound parity claims."
+    "notes": "Baseline truth, residual taxonomy, first measurement/root-bounds seams, the Sequence semantic projection pilot, unsupported-family admission rubric, and multiple source-backed HPD-050 layout audit slices are in place. HPD-080 now overrides root-residual chasing when supported diagrams are visibly broken: prioritize blank output, hidden text, dark labels/cards, missing semantic colors, and missing Mermaid 11.15 diagram CSS/theme emission. Continue focused HPD-050 child audits only when no higher-severity rendering defect is active; avoid broad rewrites or fake browser-bound parity claims."
   }
 }
