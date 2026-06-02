@@ -16,7 +16,7 @@ failure modes:
 | --- | --- | --- |
 | Mermaid-compatible default SVG readability | Product requirement | Diagram-specific source-backed CSS is emitted for the implemented matrix where Mermaid 11.15 has a provider and local SVG elements can consume the rules. |
 | Official Mermaid theme names | Product requirement | Core, bindings, and `@merman/web` expose all 11 Mermaid 11.15 themes: `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. Extended theme defaults use generated upstream snapshots; exact `neo/redux*` override derivation is a follow-up audit. |
-| Custom Mermaid theme variables | Product requirement | Renderers pass `effective_config` into CSS or inline style generation. Non-color CSS tokens use string/number-aware paths such as `SvgTheme::css_value(...)` where needed. |
+| Custom Mermaid theme variables | Product requirement | Renderers pass `effective_config` into CSS or inline style generation. Rust and shared binding consumers can pass external Mermaid defaults through site config; non-color CSS tokens use string/number-aware paths such as `SvgTheme::css_value(...)` where needed. |
 | Browser-free raster-safe output | Product requirement | `SvgPipeline::resvg_safe()` inserts SVG text fallbacks for `<foreignObject>` labels, strips unsupported foreignObject content, and sanitizes CSS/attributes for resvg. |
 | Host palette replacement, such as Zed markdown preview colors | Host integration boundary | Hosts should pass Mermaid config and/or compose postprocessors. merman should not inject Zed-specific edge-label, tag-label, or background colors by default. |
 | Native/fallback duplicate label cleanup | Optional host pipeline feature | Rust users can compose `DropNativeDuplicateFallbacksPostprocessor`; binding users can set `svg.drop_native_duplicate_fallbacks=true`. Both paths drop only fallback groups whose text duplicates native SVG `<text>`, preserving fallback-only labels. |
@@ -85,10 +85,10 @@ default merman styling behavior.
 
 | Need | Current status | Notes |
 | --- | --- | --- |
-| Select an official Mermaid theme | Supported | Rust uses `HeadlessRenderer::with_site_config(...)`; public metadata exposes all Mermaid 11.15 theme names. Binding consumers can discover the theme list but do not yet have a direct shared `site_config` option. |
-| Override Mermaid `themeVariables` | Supported in Rust and directives | Rust can pass site config; ordinary Mermaid init directives also work. Shared binding options do not yet expose an external config object, so non-Rust hosts must use directives or postprocess output. |
-| Apply diagram-owned custom CSS | Supported | Mermaid `themeCSS` is emitted as scoped SVG CSS through the parity renderer. |
-| Apply host-owned palette CSS | Supported in Rust, manual elsewhere | Rust consumers can append `ScopedCssPostprocessor` and optional `CssOverridePostprocessor`. Binding consumers can postprocess the SVG string themselves; adding a JSON host-CSS option needs an explicit security/cascade design. |
+| Select an official Mermaid theme | Supported | Rust uses `HeadlessRenderer::with_site_config(...)`; binding consumers use top-level `options_json.site_config`; public metadata exposes all Mermaid 11.15 theme names. |
+| Override Mermaid `themeVariables` | Supported | Rust can pass site config; shared binding options now expose top-level `site_config`; ordinary Mermaid init directives also work. |
+| Apply diagram-owned custom CSS | Supported | Mermaid `themeCSS` is emitted as scoped SVG CSS through the parity renderer, including when it comes from binding `site_config`. |
+| Apply host-owned palette CSS | Supported in Rust, manual elsewhere | Rust consumers can append `ScopedCssPostprocessor` and optional `CssOverridePostprocessor`. Binding consumers can postprocess the SVG string themselves; adding a JSON host-CSS option still needs an explicit security/cascade design. |
 | Export through resvg/usvg | Supported | `SvgPipeline::resvg_safe()` and binding `svg.pipeline="resvg-safe"` handle fallback insertion, `foreignObject` stripping, and common CSS/attribute hazards. |
 | Remove duplicate fallback labels | Supported and opt-in | Rust uses `DropNativeDuplicateFallbacksPostprocessor`; bindings use `svg.drop_native_duplicate_fallbacks=true`. Fallback-only labels are preserved. |
 | Replace white SVG backgrounds with host background | Boundary | Useful for editors such as Zed, but it is host palette policy. Do not silently change Mermaid parity output or `resvg_safe()` defaults. |

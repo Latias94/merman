@@ -121,6 +121,7 @@ struct ValidationPayload<'a> {
 struct BindingOptions {
     #[allow(dead_code)]
     version: Option<u32>,
+    site_config: Option<serde_json::Value>,
     parse: Option<ParseOptionsJson>,
     layout: Option<LayoutOptionsJson>,
     svg: Option<SvgOptionsJson>,
@@ -284,9 +285,12 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
         merman::ParseOptions::strict()
     };
 
-    let renderer = merman::ascii::HeadlessAsciiRenderer::new()
+    let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
         .with_parse_options(parse)
         .with_ascii_options(merman::ascii::AsciiRenderOptions::unicode());
+    if let Some(site_config) = binding_site_config(&options)? {
+        renderer = renderer.with_site_config(site_config);
+    }
 
     let rendered = renderer
         .render_ascii_sync(source)
@@ -373,6 +377,10 @@ fn build_renderer(
         renderer = renderer.with_strict_parsing();
     }
 
+    if let Some(site_config) = binding_site_config(options)? {
+        renderer = renderer.with_site_config(site_config);
+    }
+
     let mut layout = LayoutOptions::headless_svg_defaults();
     if let Some(layout_json) = options.layout.as_ref() {
         if let Some(width) = layout_json.viewport_width {
@@ -453,6 +461,21 @@ fn build_renderer(
     }
 
     Ok((renderer, pipeline))
+}
+
+fn binding_site_config(
+    options: &BindingOptions,
+) -> Result<Option<merman::MermaidConfig>, BindingError> {
+    let Some(site_config) = options.site_config.as_ref() else {
+        return Ok(None);
+    };
+    if !site_config.is_object() {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "site_config must be a JSON object",
+        ));
+    }
+    Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
 }
 
 fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
@@ -580,6 +603,44 @@ mod tests {
 
         assert!(svg.contains("id=\"bindings-core-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[test]
+    fn render_svg_accepts_external_site_config() {
+        let options = br##"{
+            "site_config": {
+                "theme": "base",
+                "themeVariables": {
+                    "mainBkg": "#111827",
+                    "nodeTextColor": "#f8fafc",
+                    "nodeBorder": "#38bdf8"
+                },
+                "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
+            },
+            "svg": { "diagram_id": "bindings theme config" }
+        }"##;
+        let svg = String::from_utf8(render_svg(b"flowchart TD\nA[Plain source]", options).unwrap())
+            .unwrap();
+
+        assert!(svg.contains("#111827"), "{svg}");
+        assert!(svg.contains("#f8fafc"), "{svg}");
+        assert!(svg.contains("#38bdf8"), "{svg}");
+        assert!(
+            svg.contains(
+                "#bindings-theme-config .node rect { filter: drop-shadow(1px 1px 1px #000); }"
+            ),
+            "{svg}"
+        );
+        assert!(svg.contains(r#"data-merman-postprocess="scoped-css""#));
+    }
+
+    #[test]
+    fn non_object_site_config_returns_invalid_argument() {
+        let err =
+            render_svg(b"flowchart TD\nA[Hello]", br#"{ "site_config": "dark" }"#).unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("site_config"));
     }
 
     #[test]

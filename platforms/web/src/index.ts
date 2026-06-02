@@ -15,8 +15,11 @@ export interface SvgOptions {
   drop_native_duplicate_fallbacks?: boolean;
 }
 
+export type MermaidSiteConfig = Record<string, unknown>;
+
 export interface BindingOptions {
   version?: number;
+  site_config?: MermaidSiteConfig;
   parse?: ParseOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;

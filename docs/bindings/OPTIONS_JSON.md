@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-05-31
+Last updated: 2026-06-02
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -15,6 +15,14 @@ numeric values return binding errors instead of panicking.
 ```json
 {
   "version": 1,
+  "site_config": {
+    "theme": "base",
+    "themeVariables": {
+      "mainBkg": "#111827",
+      "nodeTextColor": "#f8fafc"
+    },
+    "themeCSS": ".node rect { stroke-width: 2px; }"
+  },
   "parse": {
     "suppress_errors": false
   },
@@ -38,9 +46,34 @@ Every field is optional.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `version` | integer | ignored | Reserved for future options-schema versioning. |
+| `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
+
+## Site Config
+
+`site_config` accepts the same Mermaid configuration object that Rust users pass through
+`HeadlessRenderer::with_site_config(...)`. It is intended for host-level Mermaid defaults such as
+theme selection, `themeVariables`, and Mermaid `themeCSS`:
+
+```json
+{
+  "site_config": {
+    "theme": "base",
+    "themeVariables": {
+      "mainBkg": "#111827",
+      "nodeTextColor": "#f8fafc",
+      "nodeBorder": "#38bdf8"
+    },
+    "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
+  }
+}
+```
+
+`site_config` must be a JSON object. Non-object values return `MERMAN_INVALID_ARGUMENT`. This option
+does not apply host palette replacement or product-specific CSS postprocessing; use explicit host
+postprocessing for editor-specific colors.
 
 ## Parse Options
 
@@ -81,6 +114,23 @@ Readable SVG with a stable id:
   "svg": {
     "diagram_id": "docs-flow",
     "pipeline": "readable"
+  }
+}
+```
+
+External Mermaid theme defaults for plain source:
+
+```json
+{
+  "site_config": {
+    "theme": "base",
+    "themeVariables": {
+      "mainBkg": "#111827",
+      "nodeTextColor": "#f8fafc"
+    }
+  },
+  "svg": {
+    "diagram_id": "host-preview"
   }
 }
 ```

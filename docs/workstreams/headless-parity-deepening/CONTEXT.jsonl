@@ -183,3 +183,8 @@
 {"file":"target/compare/architecture_disconnected_islands_isolated_service_experiment.md","reason":"HPD-050 evidence: focused disconnected-islands parity-root comparison is exact at upstream/local 823.346x768.460."}
 {"file":"target/compare/architecture_report_parity_after_hpd050_isolated_root_bounds.md","reason":"HPD-050 evidence: full Architecture structural parity remains green after the isolated-service root-bounds seam."}
 {"file":"target/compare/architecture_report_parity_root_after_hpd050_isolated_root_bounds.md","reason":"HPD-050 evidence: full Architecture parity-root remains expected-fail but mismatch count drops from 26 to 25."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-binding-site-config-options.md","reason":"HPD-080 journal: shared binding options_json now exposes Mermaid site_config while keeping host palette CSS as a boundary."}
+{"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: binding site_config is validated as an object and applied to SVG, parse, layout, and ASCII renderer construction."}
+{"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web BindingOptions exposes site_config for typed Mermaid site defaults."}
+{"file":"docs/bindings/OPTIONS_JSON.md","reason":"HPD-080 docs: shared options_json contract documents top-level site_config and object-only validation."}
+{"file":"docs/rendering/SVG_OUTPUT_PIPELINE.md","reason":"HPD-080 docs: SVG pipeline guide distinguishes binding Mermaid site_config from host-owned palette postprocessing."}

@@ -309,9 +309,15 @@ Current repository reality to preserve:
   - A twenty-fifth HPD-080 slice re-audited Zed PR 57967 against the current 0.7 theme surface.
     Rust host theme workflows are covered through site config, `themeCSS`, scoped CSS
     postprocessors, and raster-safe pipelines. Bindings cover raster-safe output and fallback
-    de-duplication, but still lack first-class external `site_config` or host-scoped CSS options.
-    Treat that as API ergonomics work; do not turn Zed's editor palette cleanup into default
-    Mermaid output.
+    de-duplication, but still lacked first-class external `site_config` or host-scoped CSS options.
+    Treat host palette cleanup as API ergonomics work; do not turn Zed's editor palette cleanup into
+    default Mermaid output.
+  - A twenty-sixth HPD-080 slice closed the Mermaid-config half of that binding gap:
+    `options_json.site_config` now accepts a Mermaid config object, validates that it is an object,
+    and feeds `HeadlessRenderer::with_site_config(...)` / `HeadlessAsciiRenderer::with_site_config(...)`.
+    Non-Rust hosts can now pass official themes, `themeVariables`, diagram config, and Mermaid
+    `themeCSS` without injecting directives into the diagram source. Host-owned palette CSS remains
+    manual or Rust-postprocessor-only until a security/cascade/raster-safety design exists.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

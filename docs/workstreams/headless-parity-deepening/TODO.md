@@ -208,6 +208,9 @@ Last updated: 2026-06-02
   while keeping exact `neo/redux*` override derivation as an honest follow-up. A binding options
   slice then exposed `svg.drop_native_duplicate_fallbacks` so non-Rust hosts can opt into the same
   duplicate native/fallback cleanup as Rust `SvgPipeline` consumers without changing default
-  `resvg_safe` behavior.
+  `resvg_safe` behavior. A follow-up binding options slice added top-level `site_config`, so
+  non-Rust hosts can pass Mermaid theme, `themeVariables`, diagram config, and `themeCSS` defaults
+  without injecting init directives into source text; host-owned palette CSS remains a separate
+  security/cascade/raster-safety design problem.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

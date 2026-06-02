@@ -136,6 +136,22 @@ Product-specific rules still belong in host code. For example, Zed-style accent 
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
 `SvgPostprocessor` passes layered after these generic blocks.
 
+Binding consumers can pass external Mermaid defaults through `options_json.site_config` without
+embedding an init directive into the diagram source:
+
+```json
+{
+  "site_config": {
+    "theme": "base",
+    "themeVariables": {
+      "mainBkg": "#111827",
+      "nodeTextColor": "#f8fafc"
+    },
+    "themeCSS": ".node rect { stroke-width: 2px; }"
+  }
+}
+```
+
 Binding consumers can opt into the generic duplicate-fallback cleanup without writing a Rust
 postprocessor:
 

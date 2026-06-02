@@ -1513,8 +1513,41 @@ Focused verification:
 
 Residual note:
 
-- Binding-level `site_config` and host-scoped CSS options may be useful later, but they need an
-  explicit security/cascade/raster-safety contract. Do not add a quick Zed-specific palette flag.
+- The next useful binding split is Mermaid `site_config` first and host-scoped CSS later. Host CSS
+  still needs an explicit security/cascade/raster-safety contract; do not add a quick Zed-specific
+  palette flag.
+
+Twenty-sixth slice outcome:
+
+- Closed the Mermaid-config part of the binding host-theme gap by adding top-level
+  `options_json.site_config` to [crates/merman-bindings-core/src/lib.rs](/F:/SourceCodes/Rust/merman/crates/merman-bindings-core/src/lib.rs).
+- `site_config` is validated as a JSON object and mapped to `HeadlessRenderer::with_site_config(...)`
+  / `HeadlessAsciiRenderer::with_site_config(...)`, so binding consumers can pass `theme`,
+  `themeVariables`, diagram options, and Mermaid `themeCSS` without embedding init directives in
+  the source text.
+- Updated `@merman/web` `BindingOptions` and `docs/bindings/OPTIONS_JSON.md` with the same
+  top-level `site_config` contract.
+- Kept host palette CSS as a boundary. This slice does not add a Zed-specific background or label
+  color option and does not change `resvg_safe()` defaults.
+- Updated `THEME_RENDERING_COVERAGE.md` so common host theme needs now distinguish supported
+  Mermaid site config from still-manual host-owned palette postprocessing.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-bindings-core site_config --lib`
+- `cargo fmt --check -p merman-bindings-core`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-bindings-core --lib`
+- `npm run build:ts --prefix platforms/web`
+- JSONL validation for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`
+- `git diff --check`
+
+Residual note:
+
+- Binding host-owned scoped CSS remains a possible future API, but it still needs an explicit
+  cascade/security/raster-safety design. Plain Mermaid `themeCSS` is already covered through
+  `site_config`.
+- The default MSVC linker was not on PATH in this shell (`link.exe` not found), so Rust tests were
+  verified with the toolchain-provided `rust-lld` linker.
 
 ## HPD-060 - Semantic / Render Unification Pilot
 
