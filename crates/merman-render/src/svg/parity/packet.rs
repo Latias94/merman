@@ -1,10 +1,29 @@
 use super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_css(diagram_id: &str) -> String {
+fn packet_style_option(
+    effective_config: &serde_json::Value,
+    key: &str,
+    default_value: &str,
+) -> String {
+    crate::config::config_css_number_or_string(effective_config, &["packet", key])
+        .unwrap_or_else(|| default_value.to_string())
+}
+
+fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let byte_font_size = packet_style_option(effective_config, "byteFontSize", "10px");
+    let start_byte_color = packet_style_option(effective_config, "startByteColor", "black");
+    let end_byte_color = packet_style_option(effective_config, "endByteColor", "black");
+    let label_color = packet_style_option(effective_config, "labelColor", "black");
+    let label_font_size = packet_style_option(effective_config, "labelFontSize", "12px");
+    let title_color = packet_style_option(effective_config, "titleColor", "black");
+    let title_font_size = packet_style_option(effective_config, "titleFontSize", "14px");
+    let block_stroke_color = packet_style_option(effective_config, "blockStrokeColor", "black");
+    let block_stroke_width = packet_style_option(effective_config, "blockStrokeWidth", "1");
+    let block_fill_color = packet_style_option(effective_config, "blockFillColor", "#efefef");
     let mut out = String::new();
     let _ = write!(
         &mut out,
@@ -41,8 +60,23 @@ fn packet_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} .packetByte{{font-size:10px;}}#{} .packetByte.start{{fill:black;}}#{} .packetByte.end{{fill:black;}}#{} .packetLabel{{fill:black;font-size:12px;}}#{} .packetTitle{{fill:black;font-size:14px;}}#{} .packetBlock{{stroke:black;stroke-width:1;fill:#efefef;}}"#,
-        id, id, id, id, id, id
+        r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
+        id,
+        byte_font_size,
+        id,
+        start_byte_color,
+        id,
+        end_byte_color,
+        id,
+        label_color,
+        label_font_size,
+        id,
+        title_color,
+        title_font_size,
+        id,
+        block_stroke_color,
+        block_stroke_width,
+        block_fill_color
     );
     let _ = write!(
         &mut out,
@@ -66,7 +100,7 @@ pub(super) fn render_packet_diagram_svg(
 pub(super) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
     model: &PacketDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -132,7 +166,7 @@ pub(super) fn render_packet_diagram_svg_model(
         );
     }
 
-    let css = packet_css(diagram_id);
+    let css = packet_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
 
@@ -217,4 +251,38 @@ pub(super) fn render_packet_diagram_svg_model(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn packet_css_honors_mermaid_11_15_packet_style_options() {
+        let css = packet_css(
+            "pkt",
+            &json!({
+                "packet": {
+                    "byteFontSize": "11px",
+                    "startByteColor": "#111111",
+                    "endByteColor": "#222222",
+                    "labelColor": "#333333",
+                    "labelFontSize": "13px",
+                    "titleColor": "#444444",
+                    "titleFontSize": "15px",
+                    "blockStrokeColor": "#555555",
+                    "blockStrokeWidth": 2,
+                    "blockFillColor": "#666666"
+                }
+            }),
+        );
+
+        assert!(css.contains("#pkt .packetByte{font-size:11px;}"));
+        assert!(css.contains("#pkt .packetByte.start{fill:#111111;}"));
+        assert!(css.contains("#pkt .packetByte.end{fill:#222222;}"));
+        assert!(css.contains("#pkt .packetLabel{fill:#333333;font-size:13px;}"));
+        assert!(css.contains("#pkt .packetTitle{fill:#444444;font-size:15px;}"));
+        assert!(css.contains("#pkt .packetBlock{stroke:#555555;stroke-width:2;fill:#666666;}"));
+    }
 }

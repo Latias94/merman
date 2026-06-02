@@ -8,43 +8,22 @@ type C4SvgModelRel = C4RelRenderModel;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
 
-fn c4_css(diagram_id: &str) -> String {
+fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let mut out = String::new();
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let person_border = theme_color(
+        effective_config,
+        "personBorder",
+        "hsl(240, 60%, 86.2745098039%)",
+    );
+    let person_bkg = theme_color(effective_config, "personBkg", "#ECECFF");
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{} .person{{stroke:{};fill:{};}}"#,
+        id, person_border, person_bkg
     );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .person{{stroke:hsl(240, 60%, 86.2745098039%);fill:#ECECFF;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font, id, id, id, font
-    );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -290,7 +269,7 @@ pub(super) fn render_c4_diagram_svg_typed(
         );
     }
 
-    let css = c4_css(diagram_id);
+    let css = c4_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
 
@@ -851,7 +830,26 @@ pub(super) fn render_c4_diagram_svg(
 
 #[cfg(test)]
 mod tests {
-    use super::c4_type_text_length_px;
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn c4_css_honors_mermaid_11_15_person_theme_options() {
+        let css = c4_css(
+            "c4",
+            &json!({
+                "themeVariables": {
+                    "personBorder": "#112233",
+                    "personBkg": "#445566",
+                    "textColor": "#778899"
+                }
+            }),
+        );
+
+        assert!(css.contains("#c4{"));
+        assert!(css.contains("fill:#778899;"));
+        assert!(css.contains("#c4 .person{stroke:#112233;fill:#445566;}"));
+    }
 
     #[test]
     fn c4_type_text_length_rules_stay_local() {

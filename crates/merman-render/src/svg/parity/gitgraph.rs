@@ -11,6 +11,40 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
+
+    fn default_git_color(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(240, 100%, 46.2745098039%)",
+            1 => "hsl(60, 100%, 43.5294117647%)",
+            2 => "hsl(80, 100%, 46.2745098039%)",
+            3 => "hsl(210, 100%, 46.2745098039%)",
+            4 => "hsl(180, 100%, 46.2745098039%)",
+            5 => "hsl(150, 100%, 46.2745098039%)",
+            6 => "hsl(300, 100%, 46.2745098039%)",
+            _ => "hsl(0, 100%, 46.2745098039%)",
+        }
+    }
+
+    fn default_git_branch_label(i: usize) -> &'static str {
+        match i {
+            0 | 3 => "#ffffff",
+            _ => "black",
+        }
+    }
+
+    fn default_git_inv(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(60, 100%, 3.7254901961%)",
+            1 => "rgb(0, 0, 160.5)",
+            2 => "rgb(48.8333333334, 0, 146.5000000001)",
+            3 => "rgb(146.5000000001, 73.2500000001, 0)",
+            4 => "rgb(146.5000000001, 0, 0)",
+            5 => "rgb(146.5000000001, 0, 73.2500000001)",
+            6 => "rgb(0, 146.5000000001, 0)",
+            _ => "rgb(0, 146.5000000001, 146.5000000001)",
+        }
+    }
+
     let commit_label_font_size =
         config_string(effective_config, &["themeVariables", "commitLabelFontSize"])
             .unwrap_or_else(|| "10px".to_string());
@@ -28,12 +62,48 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
         "tagLabelBorder",
         "hsl(240, 60%, 86.2745098039%)",
     );
+    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
+        .map(|value| value.max(1.0).min(64.0) as usize)
+        .unwrap_or(12);
+    let stroke_width = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "strokeWidth"],
+    )
+    .unwrap_or_else(|| "1".to_string());
+    let commit_line_color = config_string(effective_config, &["themeVariables", "commitLineColor"])
+        .unwrap_or_else(|| parts.line_color.clone());
+    let primary_color = theme_color(effective_config, "primaryColor", "#ECECFF");
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:1;stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};}}#{} .commit-label-bkg{{font-size:{};fill:{};opacity:0.5;}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};}}#{} .tag-hole{{fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        r#"#{} .commit-id,#{} .commit-msg,#{} .branch-label{{fill:lightgrey;color:lightgrey;font-family:'trebuchet ms',verdana,arial,sans-serif;font-family:var(--mermaid-font-family);}}"#,
+        id, id, id
+    );
+    for i in 0..theme_color_limit {
+        let ci = i % 8;
+        let git = theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
+        let branch_label = theme_color(
+            effective_config,
+            &format!("gitBranchLabel{ci}"),
+            default_git_branch_label(ci),
+        );
+        let git_inv = theme_color(
+            effective_config,
+            &format!("gitInv{ci}"),
+            default_git_inv(ci),
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
+            id, i, branch_label, id, i, git, git, id, i, git_inv, git_inv, id, i, git, id, i, git
+        );
+    }
+    let _ = write!(
+        &mut out,
+        r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};}}#{} .commit-label-bkg{{font-size:{};fill:{};opacity:0.5;}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:3;}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
         id,
-        parts.line_color,
+        stroke_width,
+        commit_line_color,
         id,
         id,
         commit_label_font_size,
@@ -49,6 +119,16 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
         tag_label_border,
         id,
         parts.text_color,
+        id,
+        primary_color,
+        primary_color,
+        id,
+        primary_color,
+        primary_color,
+        id,
+        id,
+        primary_color,
+        primary_color,
         id,
         parts.text_color
     );
@@ -917,4 +997,24 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_width_attr, 1);
     out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn gitgraph_css_includes_mermaid_11_15_branch_theme_rules() {
+        let css = gitgraph_css("git", &json!({})).css;
+
+        assert!(css.contains("#git .branch-label0{fill:#ffffff;}"));
+        assert!(css.contains(
+            "#git .commit0{stroke:hsl(240, 100%, 46.2745098039%);fill:hsl(240, 100%, 46.2745098039%);}"
+        ));
+        assert!(css.contains("#git .label0{fill:hsl(240, 100%, 46.2745098039%);}"));
+        assert!(css.contains("#git .arrow0{stroke:hsl(240, 100%, 46.2745098039%);}"));
+        assert!(css.contains("#git .commit-merge{stroke:#ECECFF;fill:#ECECFF;}"));
+        assert!(css.contains("#git .commit-highlight-inner{stroke:#ECECFF;fill:#ECECFF;}"));
+    }
 }

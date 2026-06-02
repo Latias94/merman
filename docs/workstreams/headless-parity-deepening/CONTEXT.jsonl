@@ -55,3 +55,15 @@
 {"file":"target/compare/sequence_report_parity_after_hpd060_typed_projection.md","reason":"HPD-060 evidence: Sequence structural parity remained green after typed compatibility JSON projection."}
 {"file":"target/compare/sequence_report_parity_root_after_hpd060_typed_projection.md","reason":"HPD-060 residual evidence: Sequence parity-root remains an expected 28-mismatch measurement/root front after the semantic projection pilot."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-060-sequence-typed-json-projection.md","reason":"HPD-060 journal: Sequence typed JSON projection pilot, validation, and measurement residual non-claim."}
+{"file":"docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md","reason":"HPD-070 deliverable: pinned-source admission gates and priority order for unsupported Mermaid families."}
+{"file":"docs/alignment/STATUS.md","reason":"HPD-070 alignment update: unsupported-family table now distinguishes pinned Mermaid 11.15 source presence from future/develop families."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams","reason":"HPD-070 source evidence: locked Mermaid 41646dfd... contains eventmodeling, ishikawa, treeView, venn, and wardley, but not railroad or cynefin."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-070-unsupported-family-rubric.md","reason":"HPD-070 journal: unsupported-family source checks, admission rubric, and priority outcome."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects.md","reason":"HPD-080 journal: visible rendering defects outrank fine root residuals; first source-backed CSS/theme slice covers Kanban, Packet, Sankey, C4, and GitGraph."}
+{"file":"crates/merman-render/src/svg/parity/packet.rs","reason":"HPD-080 implementation: Packet emits Mermaid 11.15 packet style options from packet.* config instead of fixed defaults."}
+{"file":"crates/merman-render/src/svg/parity/css.rs","reason":"HPD-080 implementation: Sankey shared CSS is config-aware and includes source-backed Mermaid 11.15 label background/foreground and font rules."}
+{"file":"crates/merman-render/src/svg/parity/sankey.rs","reason":"HPD-080 implementation: Sankey renderer passes effective config into CSS emission."}
+{"file":"crates/merman-render/src/svg/parity/c4.rs","reason":"HPD-080 implementation: C4 emits config-aware base CSS plus source-backed .person theme colors."}
+{"file":"crates/merman-render/src/svg/parity/gitgraph.rs","reason":"HPD-080 implementation: GitGraph emits Mermaid 11.15 per-branch theme CSS so branch labels, commits, arrows, merges, and highlights render visibly."}
+{"file":"target/compare/gitgraph_user_merge.png","reason":"HPD-080 manual evidence: user-provided GitGraph merge sample renders readable branch labels and colored branch/merge paths after CSS fix."}
+{"file":"target/compare/kanban_user_metadata.fixed.png","reason":"HPD-080 manual evidence: user-provided Kanban metadata sample renders readable cards and labels after theme CSS emission."}
