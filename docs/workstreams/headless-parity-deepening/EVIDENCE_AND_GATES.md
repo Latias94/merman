@@ -780,6 +780,25 @@ Architecture group-port finalElements audit (2026-06-03):
   drift. Do not tune group-edge shifts, SVG path emission, service label measurement, or root
   viewBox logic for this row alone.
 
+Architecture custom-init finalElements audit (2026-06-03):
+
+- Re-audited `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` with finalElements.
+- Current focused compare remains expected-fail at upstream `325.105x380.479` vs local
+  `322.605x380.479`; height is exact and only root width is short by `2.5px`.
+- Browser finalElements reports effective config `iconSize=40`, `fontSize=18`, `padding=30`.
+- Browser final group bboxes are:
+  - `left` `node.boundingBox().w=162,h=124`
+  - `right` `node.boundingBox().w=236.605,h=160.924`
+- Pinned upstream SVG group rects match those final bboxes after Mermaid's SVG group rect
+  translation. Local SVG group rects are `left.w=159,h=124` and
+  `right.w=235.605,h=160.924`.
+- Browser final service bboxes are `api.w=101,labelBounds.w=99`,
+  `db.w=84,labelBounds.w=82`, and `disk.w=42,labelBounds.w=39`.
+- Classification stays custom-init Cytoscape service/group child bbox phase residual. The earlier
+  exploratory global formula that made this row exact expanded full Architecture root mismatches
+  from `26` to `47`, so do not change global group padding, add a single service label scale, or
+  pin root bounds for this row. A valid fix needs a reusable phase-specific bbox model.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`

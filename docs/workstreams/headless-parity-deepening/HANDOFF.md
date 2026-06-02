@@ -214,6 +214,13 @@ Current repository reality to preserve:
     about `17.845px` more compressed than the browser/Cytoscape result, matching the root deltas.
     Treat it as manatee-vs-Cytoscape FCoSE solution / compound-bound drift unless a reusable
     source-backed solver rule appears.
+  - A follow-up `batch6_init_fontsize_icon_size_wrap_093` finalElements audit reconfirmed this is
+    not a root-finalize or height issue. Browser final group bboxes are `left.w=162,h=124` and
+    `right.w=236.605,h=160.924`, while local group rects are `left.w=159,h=124` and
+    `right.w=235.605,h=160.924`. The remaining `-2.5px` root width tail is a custom-init
+    service/group child bbox phase residual; the earlier global formula that made it exact expanded
+    full Architecture root mismatches from `26` to `47`, so keep it classified until a reusable
+    phase-specific bbox model exists.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
