@@ -1353,3 +1353,39 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 
 The `parity-root` command is allowed to fail while this lane is active, but it must fail with
 bounded summaries and fresh per-diagram reports.
+
+## 2026-06-02 - Baseline Naming Deconfusion And Override Inventory Recheck
+
+Fresh focused evidence from 2026-06-02:
+
+- `cargo test -p xtask overrides::report -- --nocapture`:
+  passed after a small xtask refactor that centralizes the pinned Mermaid baseline label lookup.
+- `cargo test -p xtask root_override_audit -- --nocapture`:
+  passed after switching the audit report header from a stale hard-coded baseline string to the
+  same shared pinned-baseline helper.
+- `cargo run -p xtask -- report-overrides`:
+  now prints `Mermaid baseline: @11.15.0`, proving the reporting surface no longer advertises the
+  old `11.12.3` baseline while the repository is pinned to Mermaid 11.15.
+- The same inventory run also gives a fresh honest override footprint for the active 11.15 lane:
+  `241` root viewport entries, `488` text lookup entries, `1036` Sequence SVG text rows, and
+  `3774` Flowchart font-metric rows.
+- `crates/merman-render/src/generated/mod.rs` now documents that the retained
+  `*_11_12_2.rs` generated filenames are storage-era artifacts rather than the active semantic
+  contract. No generated file was renamed in this slice.
+- `crates/merman-core/src/lib.rs` no longer claims headless parity is pinned to
+  `mermaid@11.12.3`; the top-level crate docs now describe parity against the repository's pinned
+  Mermaid baseline instead.
+
+Outcome:
+
+- No diagram renderer behavior changed in this slice. This was a deliberate deconfusion pass:
+  remove stale baseline language from the active toolchain and make the remaining historical
+  filename suffix explicit rather than silently misleading.
+- The current 11.15 gap discussion should use the live override inventory above instead of a fake
+  percentage-complete estimate. The next aligned work is to classify that inventory into:
+  1. historical naming only,
+  2. still-justified headless approximation debt,
+  3. highest-value deletion or source-rule replacement targets.
+- Do not treat the surviving `11_12_2` suffixes themselves as proof of a rendering gap. They are
+  now explicitly documented as naming debt until a controlled regeneration/rename migration is
+  worth the churn.

@@ -1,4 +1,9 @@
 // This module contains generated and fixture-derived Mermaid parity data.
+//
+// Note: several generated filenames still carry the historical `11_12_2` suffix.
+// That suffix is a storage-era artifact, not the active upstream contract. These
+// modules now back the repository's pinned Mermaid baseline (currently 11.15.0)
+// until each family is regenerated and renamed in a controlled migration.
 
 pub mod architecture_root_overrides_11_12_2;
 pub mod block_text_overrides_11_12_2;

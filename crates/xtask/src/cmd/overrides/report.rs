@@ -6,6 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+pub(crate) const LEGACY_GENERATED_BASELINE_SUFFIX: &str = "11_12_2";
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum OverrideCategory {
     RootViewport,
@@ -470,7 +472,7 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
     }
 
     if file_name.contains("_text_overrides_") {
-        if file_name == "class_text_overrides_11_12_2.rs" {
+        if file_name == format!("class_text_overrides_{LEGACY_GENERATED_BASELINE_SUFFIX}.rs") {
             let class_entries = classify_class_text_override_file(&file_name, text);
             if !class_entries.is_empty() {
                 return class_entries;
@@ -563,7 +565,7 @@ fn report_path_name(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn pinned_mermaid_baseline_label(workspace_root: &Path) -> String {
+pub(crate) fn pinned_mermaid_baseline_label(workspace_root: &Path) -> String {
     let lock_path = workspace_root
         .join("tools")
         .join("upstreams")

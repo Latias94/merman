@@ -2,7 +2,7 @@
 //! Mermaid parser + semantic model (headless).
 //!
 //! Design goals:
-//! - 1:1 parity with upstream Mermaid (`mermaid@11.12.3`)
+//! - 1:1 parity with the repository's pinned upstream Mermaid baseline
 //! - deterministic, testable outputs (semantic snapshot goldens)
 //! - runtime-agnostic async APIs (no specific executor required)
 

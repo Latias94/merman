@@ -10,6 +10,7 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 const ROOT_REPORT_FAMILIES: &[&str] = &["flowchart", "gitgraph", "mindmap", "sequence", "state"];
+const LEGACY_ROOT_OVERRIDE_FILE_SUFFIX: &str = "_root_overrides_11_12_2.rs";
 
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
@@ -241,7 +242,7 @@ fn collect_root_override_tables(
             continue;
         };
         let Some(family) = file_name
-            .strip_suffix("_root_overrides_11_12_2.rs")
+            .strip_suffix(LEGACY_ROOT_OVERRIDE_FILE_SUFFIX)
             .map(str::to_owned)
         else {
             continue;
@@ -419,7 +420,11 @@ fn render_global_root_override_audit(
         "- Generated at: `{}`",
         chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     );
-    let _ = writeln!(&mut out, "- Mermaid baseline: `11.12.3`");
+    let _ = writeln!(
+        &mut out,
+        "- Mermaid baseline: `{}`",
+        crate::cmd::pinned_mermaid_baseline_label(&cmd::workspace_root())
+    );
     let _ = writeln!(&mut out, "- DOM mode: `parity-root`");
     let _ = writeln!(&mut out, "- DOM decimals: `{dom_decimals}`");
     let _ = writeln!(
