@@ -92,9 +92,6 @@
   "editor": {
     "placeholder": "在此输入 Mermaid 代码...",
     "loading": "正在加载编辑器...",
-    "format": "格式化",
-    "formatted": "已格式化",
-    "formatAlreadyClean": "已经是格式化状态",
     "hover": {
       "flowchart": "声明流程图。常用方向有 TD、LR、BT、RL。",
       "graph": "Mermaid 的另一种流程图开头。",

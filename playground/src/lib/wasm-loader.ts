@@ -22,9 +22,16 @@ export interface ValidationResult {
   error?: string;
 }
 
+export type SvgPipeline = "parity" | "readable" | "resvg-safe";
+
 export interface MermanWasm {
   init(): Promise<void>;
-  render_svg(code: string, theme: string, configJson?: string): string;
+  render_svg(
+    code: string,
+    theme: string,
+    configJson?: string,
+    pipeline?: SvgPipeline
+  ): string;
   render_ascii(code: string, theme?: string, configJson?: string): string | null;
   parse_json(code: string, theme?: string, configJson?: string): string;
   layout_json(code: string, theme?: string, configJson?: string): string;
@@ -72,9 +79,13 @@ function createWasmAdapter(): MermanWasm {
     render_svg(
       code: string,
       theme: string,
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      pipeline?: SvgPipeline
     ): string {
-      return renderSvg(sourceWithConfig(code, theme, configJson));
+      return renderSvg(
+        sourceWithConfig(code, theme, configJson),
+        pipeline ? { svg: { pipeline } } : undefined
+      );
     },
 
     render_ascii(

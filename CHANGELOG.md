@@ -69,6 +69,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Hardened deeply nested diagram handling to prevent stack overflows in Flowchart, State,
+  Block, Mindmap, Treemap, C4, and Class diagram parsing/layout.
 - Fixed Class and Block diagram SVG labels so HTML and SVG text get diagram-scoped colors instead
   of inheriting light text from dark host pages; labels remain visible in the playground and
   exported SVG.

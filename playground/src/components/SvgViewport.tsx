@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent,
@@ -8,6 +9,11 @@ import {
   type RefObject,
   type WheelEvent,
 } from "react";
+import {
+  normalizeSvgDimensions,
+  parseSvgDimensions,
+  type SvgDimensions,
+} from "@/src/lib/svg-geometry";
 import { cn } from "@/lib/utils";
 
 interface Point {
@@ -53,20 +59,24 @@ export function useSvgViewport({
     const content = contentRef.current;
     if (!container || !content) return;
 
-    const contentWidth = content.offsetWidth;
-    const contentHeight = content.offsetHeight;
-    if (contentWidth <= 0 || contentHeight <= 0) return;
+    const contentSize = measurePreviewContent(content, svg);
+    if (!contentSize) return;
 
     const availableWidth = Math.max(container.clientWidth - 48, 1);
     const availableHeight = Math.max(container.clientHeight - 48, 1);
     const nextZoom = Math.max(
       0.1,
-      Math.min(1, availableWidth / contentWidth, availableHeight / contentHeight)
+      Math.min(
+        1,
+        availableWidth / contentSize.width,
+        availableHeight / contentSize.height
+      )
     );
 
+    setIsAutoFit(true);
     setZoom(Number(nextZoom.toFixed(3)));
     setPosition({ x: 0, y: 0 });
-  }, []);
+  }, [svg]);
 
   const zoomIn = useCallback(() => {
     setIsAutoFit(false);
@@ -192,6 +202,12 @@ export function SvgViewport({
   contentClassName,
   empty,
 }: SvgViewportProps) {
+  const displaySvg = useMemo(() => {
+    if (!svg) return null;
+
+    return normalizeSvgDimensions(svg)?.svg ?? svg;
+  }, [svg]);
+
   return (
     <div
       ref={controller.containerRef}
@@ -228,7 +244,7 @@ export function SvgViewport({
                 "preview-container inline-flex bg-white rounded-lg shadow-sm p-4",
                 contentClassName
               )}
-              dangerouslySetInnerHTML={{ __html: svg }}
+              dangerouslySetInnerHTML={{ __html: displaySvg ?? svg }}
             />
           </div>
         </div>
@@ -237,4 +253,48 @@ export function SvgViewport({
       )}
     </div>
   );
+}
+
+function measurePreviewContent(
+  content: HTMLDivElement,
+  svg: string | null
+): SvgDimensions | null {
+  const parsed = svg ? parseSvgDimensions(svg) : null;
+  if (parsed) {
+    const insets = measureElementInsets(content);
+    return {
+      width: parsed.width + insets.width,
+      height: parsed.height + insets.height,
+    };
+  }
+
+  if (content.offsetWidth <= 0 || content.offsetHeight <= 0) {
+    return null;
+  }
+
+  return {
+    width: content.offsetWidth,
+    height: content.offsetHeight,
+  };
+}
+
+function measureElementInsets(element: HTMLElement): SvgDimensions {
+  const style = window.getComputedStyle(element);
+  return {
+    width:
+      parseCssPixels(style.paddingLeft) +
+      parseCssPixels(style.paddingRight) +
+      parseCssPixels(style.borderLeftWidth) +
+      parseCssPixels(style.borderRightWidth),
+    height:
+      parseCssPixels(style.paddingTop) +
+      parseCssPixels(style.paddingBottom) +
+      parseCssPixels(style.borderTopWidth) +
+      parseCssPixels(style.borderBottomWidth),
+  };
+}
+
+function parseCssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

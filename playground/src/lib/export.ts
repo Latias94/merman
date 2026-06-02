@@ -1,3 +1,5 @@
+import { normalizeSvgDimensions } from "@/src/lib/svg-geometry";
+
 /**
  * 支持 ASCII 导出的图表类型
  */
@@ -34,45 +36,8 @@ export async function exportPNG(
   filename: string = 'diagram',
   scale: number = 2
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Failed to get canvas context'));
-      return;
-    }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0);
-
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            downloadBlob(blob, `${filename}.png`);
-            resolve();
-          } else {
-            reject(new Error('Failed to create PNG blob'));
-          }
-        },
-        'image/png',
-        1.0
-      );
-    };
-
-    img.onerror = () => {
-      reject(new Error('Failed to load SVG image'));
-    };
-
-    // 将 SVG 转换为 data URL
-    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-    img.src = URL.createObjectURL(svgBlob);
-  });
+  const blob = await rasterizeSvgToPngBlob(svg, scale);
+  downloadBlob(blob, `${filename}.png`);
 }
 
 /**
@@ -109,46 +74,10 @@ export async function copyPNGToClipboard(
   svg: string,
   scale: number = 2
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      reject(new Error('Failed to get canvas context'));
-      return;
-    }
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = async () => {
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      ctx.scale(scale, scale);
-      ctx.drawImage(img, 0, 0);
-
-      canvas.toBlob(async (blob) => {
-        if (blob) {
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ 'image/png': blob }),
-            ]);
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        } else {
-          reject(new Error('Failed to create PNG blob'));
-        }
-      }, 'image/png');
-    };
-
-    img.onerror = () => {
-      reject(new Error('Failed to load SVG image'));
-    };
-
-    const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-    img.src = URL.createObjectURL(svgBlob);
-  });
+  const blob = await rasterizeSvgToPngBlob(svg, scale);
+  await navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': blob }),
+  ]);
 }
 
 /**
@@ -170,4 +99,90 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+interface RasterSvgSource {
+  svg: string;
+  width: number;
+  height: number;
+}
+
+const FALLBACK_RASTER_WIDTH = 300;
+const FALLBACK_RASTER_HEIGHT = 150;
+
+async function rasterizeSvgToPngBlob(
+  svg: string,
+  scale: number
+): Promise<Blob> {
+  const source = prepareSvgForRasterExport(svg);
+  const effectiveScale = normalizeScale(scale);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Failed to get canvas context');
+  }
+
+  canvas.width = Math.max(1, Math.ceil(source.width * effectiveScale));
+  canvas.height = Math.max(1, Math.ceil(source.height * effectiveScale));
+
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+
+  const svgBlob = new Blob([source.svg], {
+    type: 'image/svg+xml;charset=utf-8',
+  });
+  const url = URL.createObjectURL(svgBlob);
+
+  try {
+    await loadImage(img, url);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+
+  return canvasToPngBlob(canvas);
+}
+
+function prepareSvgForRasterExport(svg: string): RasterSvgSource {
+  return normalizeSvgDimensions(svg) ?? fallbackRasterSvgSource(svg);
+}
+
+function fallbackRasterSvgSource(svg: string): RasterSvgSource {
+  return {
+    svg,
+    width: FALLBACK_RASTER_WIDTH,
+    height: FALLBACK_RASTER_HEIGHT,
+  };
+}
+
+function normalizeScale(scale: number): number {
+  return isPositiveFinite(scale) ? scale : 1;
+}
+
+function isPositiveFinite(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value > 0;
+}
+
+function loadImage(img: HTMLImageElement, url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('Failed to load SVG image'));
+    img.src = url;
+  });
+}
+
+function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create PNG blob'));
+        }
+      },
+      'image/png',
+      1.0
+    );
+  });
 }

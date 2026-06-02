@@ -54,3 +54,27 @@ fn fixture_inventory_records_source_provenance() {
     assert!(license.contains("MIT License"));
     assert!(license.contains("Copyright (c) 2023 Alexander Grooff"));
 }
+
+#[test]
+fn fixture_inventory_documents_v1_coverage_contract() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let contract = fs::read_to_string(manifest_dir.join("V1_MERMAID_ASCII_COVERAGE.md"))
+        .expect("v1 coverage contract must be readable");
+
+    for expected in [
+        "6fffb8e2714acab2c4cb41c78894fabbc62cee56",
+        "52 / 52 exact output matches",
+        "23 / 23 exact output matches",
+        "12 / 12 normalized exact output matches",
+        "5 / 5 normalized exact output matches",
+        "Graph/flowchart copied fixture parity: 75 / 75.",
+        "Sequence copied fixture parity: 17 / 17.",
+        "Named copied fixture gaps: none.",
+        "cargo nextest run -p merman-ascii fixture_inventory graph_fixture sequence_golden",
+    ] {
+        assert!(
+            contract.contains(expected),
+            "v1 coverage contract must mention `{expected}`"
+        );
+    }
+}

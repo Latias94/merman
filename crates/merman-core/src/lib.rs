@@ -34,6 +34,8 @@ pub use diagram::{
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
+pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
+
 pub fn supported_themes() -> &'static [&'static str] {
     theme::SUPPORTED_THEME_NAMES
 }

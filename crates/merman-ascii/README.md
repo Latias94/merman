@@ -53,8 +53,9 @@ Broader flowchart and sequence compatibility is tracked under
 `docs/workstreams/ascii-renderer-compatibility-expansion/`,
 `docs/workstreams/ascii-sequence-parity/`, and follow-on workstreams.
 
-See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices. See
-`ASCII_GAP_REGISTRY.md` for follow-on ASCII gaps mapped to owning modules and validation gates.
+See `V1_MERMAID_ASCII_COVERAGE.md` for the first release's copied `mermaid-ascii` coverage
+contract. See `FLOWCHART_SUPPORT.md` and `SEQUENCE_SUPPORT.md` for the current support matrices.
+See `ASCII_GAP_REGISTRY.md` for follow-on ASCII gaps mapped to owning modules and validation gates.
 
 ## Shipped Diagram Matrix
 
