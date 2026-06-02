@@ -7,7 +7,10 @@ pub(crate) mod util;
 
 pub use css_override::{CssOverridePolicy, CssOverridePostprocessor};
 pub use css_sanitize::SanitizeCssPostprocessor;
-pub use foreign_object::{ForeignObjectFallbackPostprocessor, StripForeignObjectPostprocessor};
+pub use foreign_object::{
+    DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
+    StripForeignObjectPostprocessor,
+};
 pub use scoped_css::ScopedCssPostprocessor;
 
 pub use attr_sanitize::SanitizeSvgAttributesPostprocessor;

@@ -1145,6 +1145,64 @@ Residual note:
 - This slice fixes Class stylesheet/theme emission only. It does not claim Class root-bounds,
   namespace cluster inline style, icon label, or neo rendering support closure.
 
+Seventeenth slice outcome:
+
+- Audited Zed integration feedback from
+  [zed-industries/zed#57967](https://github.com/zed-industries/zed/pull/57967), which updates Zed
+  from `merman = "0.4"` to `0.6` and adopts `SvgPipeline::resvg_safe()`.
+- The reviewer-visible color changes in
+  [issuecomment-4598335939](https://github.com/zed-industries/zed/pull/57967#issuecomment-4598335939)
+  and the follow-up
+  [issuecomment-4599604388](https://github.com/zed-industries/zed/pull/57967#issuecomment-4599604388)
+  are host theme override concerns, not evidence that merman should inject Zed's palette by
+  default. Zed's `color cleanup` commit rewrites its own background, edge-label, and tag-label
+  injection behavior to preserve Zed's current visual style.
+- The same commit changed Zed's fallback cleanup from "drop all fallback groups when any native
+  text exists" to "drop only fallback groups whose text duplicates native SVG text." That is a
+  general `resvg_safe` integration need: some diagrams need fallback labels for raster safety, while
+  others can double-render labels when native SVG text already exists.
+- Added `DropNativeDuplicateFallbacksPostprocessor` as a public optional pipeline pass exported
+  through both `merman_render::svg` and `merman::render`. It preserves the default `resvg_safe()`
+  contract while allowing hosts to compose:
+  `SvgPipeline::resvg_safe().with_postprocessor(DropNativeDuplicateFallbacksPostprocessor)`.
+- The pass uses the existing `data-merman-foreignobject="fallback"` and
+  `merman-foreignobject-fallback-text` marker contract, collects native non-fallback `<text>`
+  contents, and removes only fallback `<g>` groups whose normalized text duplicates a native label.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs)
+- [crates/merman-render/src/svg/pipeline/builtin/mod.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/pipeline/builtin/mod.rs)
+- [crates/merman-render/src/svg/pipeline/mod.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/pipeline/mod.rs)
+- [crates/merman-render/src/svg.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg.rs)
+- [crates/merman/src/render/mod.rs](/F:/SourceCodes/Rust/merman/crates/merman/src/render/mod.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render -p merman`
+- `cargo fmt --check -p merman-render -p merman`
+- `cargo test -p merman-render drop_native_duplicate_fallbacks --lib`
+- `cargo test -p merman-render resvg_safe_can_optionally_drop_native_duplicate_fallbacks --lib`
+- `cargo test -p merman-render svg::pipeline --lib`
+- `cargo test -p merman-render foreign_object --lib`
+- `cargo test -p merman render_svg_sync_applies_scoped_theme_css_once --lib` compiled the top-level
+  `merman` crate but matched zero tests.
+- `git diff --check`
+
+Known non-slice gate:
+
+- `cargo test -p merman-render --lib` currently fails on existing measurement-sensitive tests:
+  `sequence_default_message_widths_match_mermaid_default_font_family` (`161.0` vs `160.0`) and
+  `node_katex_math_renderer_measures_sanitized_flowchart_browser_shell` (`matrix width =
+  282.265625`). The new pipeline tests pass and these failures are unrelated to fallback
+  de-duplication.
+
+Residual note:
+
+- This slice does not change default `resvg_safe()` behavior and does not make Zed's host theme CSS
+  a merman default. Host palette injection remains the consumer's responsibility, while fallback
+  marker/de-duplication is now available as a reusable pipeline contract.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

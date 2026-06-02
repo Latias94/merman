@@ -3,9 +3,9 @@ mod context;
 mod preset;
 
 pub use builtin::{
-    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
-    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
-    StripForeignObjectPostprocessor,
+    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
+    ForeignObjectFallbackPostprocessor, SanitizeCssPostprocessor,
+    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub use preset::{SvgPipelinePreset, resvg_safe_svg};

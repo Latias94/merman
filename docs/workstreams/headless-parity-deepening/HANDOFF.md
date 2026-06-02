@@ -249,6 +249,12 @@ Current repository reality to preserve:
     `themeVariables.strokeWidth` through `SvgTheme::css_value(...)` instead of dropping it through
     a string-only color lookup. Icon and neo-only rules remain intentionally deferred where local
     Class output does not emit the required support attributes/elements.
+  - A seventeenth HPD-080 slice audited Zed PR 57967's 0.6 integration feedback. Zed's color
+    cleanup remains a host theme override concern, but its fallback de-duplication fix exposed a
+    general `resvg_safe` integration need. `DropNativeDuplicateFallbacksPostprocessor` is now a
+    public optional pipeline pass: it keeps fallback-only labels but drops fallback groups whose text
+    duplicates native SVG `<text>`, matching the safer behavior Zed had to implement locally without
+    changing the default `resvg_safe()` contract.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -121,3 +121,8 @@
 {"file":"crates/merman-render/src/svg/parity/class/css.rs","reason":"HPD-080 implementation: Class CSS now emits current-output rules from Mermaid 11.15 class/styles.js and reads strokeWidth through SvgTheme::css_value."}
 {"file":"crates/merman-render/tests/class_svg_test.rs","reason":"HPD-080 regression: render-path test asserts numeric Class strokeWidth theme values reach node shape and relation CSS."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/styles.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Class style provider maps node shapes, dividers, clusters, edge terminals, class labels, and relations to theme variables."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-zed-resvg-safe-theme-feedback.md","reason":"HPD-080 journal: Zed PR 57967 integration feedback distinguishes host theme override policy from reusable fallback de-duplication."}
+{"file":"crates/merman-render/src/svg/pipeline/builtin/foreign_object.rs","reason":"HPD-080 implementation: DropNativeDuplicateFallbacksPostprocessor removes only fallback groups whose text duplicates native SVG text."}
+{"file":"crates/merman-render/src/svg.rs","reason":"HPD-080 API: merman_render::svg now exports DropNativeDuplicateFallbacksPostprocessor for host-composed resvg_safe pipelines."}
+{"file":"crates/merman/src/render/mod.rs","reason":"HPD-080 API: merman::render re-exports DropNativeDuplicateFallbacksPostprocessor for downstream integrations such as Zed."}
+{"file":"https://github.com/zed-industries/zed/pull/57967","reason":"HPD-080 external evidence: Zed update to merman 0.6 adopts SvgPipeline::resvg_safe and documents color/fallback integration concerns."}

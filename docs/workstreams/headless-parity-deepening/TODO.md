@@ -181,6 +181,8 @@ Last updated: 2026-06-02
   complementing the existing `noteTextColor` CSS coverage. A follow-up Class stylesheet slice
   restored source-backed node shape, divider, cluster, class-label, edge-terminal, and relation CSS
   rules that apply to current output, including numeric `themeVariables.strokeWidth` via the shared
-  CSS-token path.
+  CSS-token path. A Zed integration feedback slice added an optional
+  `DropNativeDuplicateFallbacksPostprocessor` so `resvg_safe` consumers can drop only fallback
+  labels that duplicate native SVG text without losing fallback-only labels.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
