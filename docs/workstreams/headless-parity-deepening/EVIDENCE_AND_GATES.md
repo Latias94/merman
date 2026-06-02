@@ -1203,6 +1203,42 @@ Residual note:
   a merman default. Host palette injection remains the consumer's responsibility, while fallback
   marker/de-duplication is now available as a reusable pipeline contract.
 
+Eighteenth slice outcome:
+
+- Added
+  [docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md)
+  as the durable HPD-080 ledger for Mermaid 11.15 style-provider coverage and host theme boundaries.
+- Re-audited the pinned Mermaid `11.15.0` source tree at
+  `41646dfd43ac83f001b03c70605feb036afae46d` for diagram style providers, including provider names
+  that are not simply `styles.js` / `styles.ts`:
+  - `architecture/architectureStyles.ts`
+  - `pie/pieStyles.ts`
+  - conventional providers such as `class/styles.js`, `flowchart/styles.ts`,
+    `sequence/styles.js`, and `treemap/styles.ts`
+- Recorded implemented-matrix boundaries:
+  - covered source-backed providers for current local output,
+  - inline-only diagrams such as QuadrantChart and XYChart,
+  - absent-provider diagrams such as Info/Error,
+  - unsupported-family providers that belong to the admission rubric rather than HPD-080.
+- Recorded negative gates:
+  - do not add inert neo/gradient/drop-shadow/data-look CSS when local SVG does not emit the
+    required elements, attributes, defs, or filters,
+  - do not copy Zed-specific palette cleanup into default merman output,
+  - do not globally remove root `background-color: white;` until upstream SVG baselines and
+    Mermaid source/capture behavior are reconciled,
+  - do not claim exact browser font parity through fixture-specific widths.
+- Updated
+  [docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md](/F:/SourceCodes/Rust/merman/docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md)
+  with PR `zed-industries/zed#57967`, distinguishing host palette policy from the reusable fallback
+  duplicate-cleanup pipeline contract.
+
+Focused verification:
+
+- `git -C repo-ref/mermaid ls-tree -r --name-only 41646dfd43ac83f001b03c70605feb036afae46d packages/mermaid/src/diagrams`
+- `git -C repo-ref/mermaid grep -n "styles" 41646dfd43ac83f001b03c70605feb036afae46d -- packages/mermaid/src/diagrams/*/*Diagram.ts packages/mermaid/src/diagrams/*/*definition.ts packages/mermaid/src/diagrams/*/diagram.ts`
+- `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams/architecture/architectureStyles.ts`
+- `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams/pie/pieStyles.ts`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

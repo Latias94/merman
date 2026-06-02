@@ -126,3 +126,7 @@
 {"file":"crates/merman-render/src/svg.rs","reason":"HPD-080 API: merman_render::svg now exports DropNativeDuplicateFallbacksPostprocessor for host-composed resvg_safe pipelines."}
 {"file":"crates/merman/src/render/mod.rs","reason":"HPD-080 API: merman::render re-exports DropNativeDuplicateFallbacksPostprocessor for downstream integrations such as Zed."}
 {"file":"https://github.com/zed-industries/zed/pull/57967","reason":"HPD-080 external evidence: Zed update to merman 0.6 adopts SvgPipeline::resvg_safe and documents color/fallback integration concerns."}
+{"file":"docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md","reason":"HPD-080 ledger: records Mermaid 11.15 style-provider coverage, inline-only diagrams, deferred inert rules, and host theme boundaries for common consumer needs."}
+{"file":"docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md","reason":"HPD-080/Zed update: PR 57967 is now classified as host palette policy plus optional fallback duplicate-cleanup support."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureStyles.ts","reason":"HPD-080 source evidence: provider naming audit caught non-conventional Architecture style provider names at pinned Mermaid 11.15."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/pie/pieStyles.ts","reason":"HPD-080 source evidence: provider naming audit caught non-conventional Pie style provider names at pinned Mermaid 11.15."}

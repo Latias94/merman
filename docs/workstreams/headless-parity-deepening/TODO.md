@@ -183,6 +183,9 @@ Last updated: 2026-06-02
   rules that apply to current output, including numeric `themeVariables.strokeWidth` via the shared
   CSS-token path. A Zed integration feedback slice added an optional
   `DropNativeDuplicateFallbacksPostprocessor` so `resvg_safe` consumers can drop only fallback
-  labels that duplicate native SVG text without losing fallback-only labels.
+  labels that duplicate native SVG text without losing fallback-only labels. A theme coverage ledger
+  now records implemented-matrix style-provider coverage, deferred inert rules, and host theme
+  boundaries so future HPD-080 work does not fake CSS parity or copy Zed-specific palette policy
+  into default output.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

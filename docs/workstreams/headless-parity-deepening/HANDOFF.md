@@ -255,6 +255,11 @@ Current repository reality to preserve:
     public optional pipeline pass: it keeps fallback-only labels but drops fallback groups whose text
     duplicates native SVG `<text>`, matching the safer behavior Zed had to implement locally without
     changing the default `resvg_safe()` contract.
+  - An eighteenth HPD-080 slice added
+    `docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md`, a source-backed ledger
+    for Mermaid 11.15 style-provider coverage, inline-only diagrams, deferred inert rules, and host
+    theme integration boundaries. It explicitly records that Zed-like palette cleanup is host policy,
+    while fallback markers/de-duplication are merman integration contracts.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -32,6 +32,10 @@
       "path": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl"
     },
     {
+      "role": "theme_rendering_coverage",
+      "path": "docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md"
+    },
+    {
       "role": "handoff",
       "path": "docs/workstreams/headless-parity-deepening/HANDOFF.md"
     }
@@ -64,7 +68,8 @@
     "root-residuals",
     "measurement-platform",
     "layout-engine-audit",
-    "baseline-registry"
+    "baseline-registry",
+    "theme-renderability"
   ],
   "lane_slug": null,
   "continue_policy": {
