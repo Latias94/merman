@@ -205,6 +205,10 @@ Current repository reality to preserve:
     rows width-exact but height-short and regressed many group-heavy rows, so it was reverted before
     commit. Continue toward a phase-specific Cytoscape bbox model; do not globally remove the final
     group bbox extra.
+  - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
+    read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
+    final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
+    `batch5_long_titles_and_punct_076` residual rows.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

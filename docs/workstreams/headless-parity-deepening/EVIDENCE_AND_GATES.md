@@ -748,6 +748,22 @@ Architecture group bbox phase audit (2026-06-03):
   phase-specific Cytoscape bbox model, not a root pin, one-off width constant, or single global
   group-padding formula.
 
+Architecture final bbox probe enhancement (2026-06-03):
+
+- Enhanced `tools/debug/arch_fcose_browser_probe_fixture_025.js` to emit `finalElements` after the
+  second FCoSE run while preserving the existing `final` service-position summary.
+- `finalElements` uses the same node/edge dump shape as `preLayout`, including final
+  `node.boundingBox()`, `labelBounds`, `bodyBounds`, classes, data, and metrics.
+- Verified the new output against two active residual fixtures:
+  - `target/compare/arch_unicode_xml_probe_hpd050_final_elements.json`: group `i`
+    `node.boundingBox().x1=-209.91096759368116,w=389.8219351873623`; adding `iconSize/2` matches
+    the pinned upstream group rect `x=-169.91096759368116,w=389.8219351873623`.
+  - `target/compare/arch_batch5_long_titles_probe_hpd050_final_elements.json`: group `pipeline`
+    `node.boundingBox().x1=-273.4628163140578,w=462.92563262811564`; adding `iconSize/2` matches
+    the pinned upstream group rect `x=-233.4628163140578,w=462.92563262811564`.
+- Use this probe output for future Architecture bbox-phase audits before changing renderer or
+  manatee math.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`

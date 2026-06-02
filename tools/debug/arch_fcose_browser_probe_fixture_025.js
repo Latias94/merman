@@ -438,7 +438,7 @@ async function main() {
       }
     })();
 
-    function dumpPreLayoutElements() {
+    function dumpElements() {
       const cloneMetricObject = (value) =>
         value == null ? value : JSON.parse(JSON.stringify(value));
       const nodes = [];
@@ -500,8 +500,11 @@ async function main() {
     }
 
     const bbBeforeRun1 = cy.elements().boundingBox();
-    const preLayout = dumpPreLayoutElements();
+    const preLayout = dumpElements();
 
+    // Preserve the original service-position summary while also exposing post-rerun
+    // node/edge bboxes for group-rect and root-viewport residual audits.
+    let finalElements = null;
     const final = await new Promise((resolve) => {
       layout.one("layoutstop", () => {
         // Match architectureRenderer: adjust segment weights for XY edges, then re-run layout.
@@ -544,6 +547,7 @@ async function main() {
             const p = n.position();
             nodeOut[svc.id] = { x: p.x, y: p.y };
           }
+          finalElements = dumpElements();
           resolve(nodeOut);
         });
         layout.run();
@@ -565,6 +569,7 @@ async function main() {
       constraints: { alignmentConstraint, relativePlacementConstraint },
       stages: globalThis.__archFcoseStages || [],
       final,
+      finalElements,
       bbBeforeRun1,
       preLayout,
       layoutElesInfo,
