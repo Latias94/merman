@@ -64,7 +64,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         .unwrap_or(default_src_root);
     if !src_root.is_dir() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream package src root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
+            "upstream package src root not found: {} (expected repo-ref checkout of the pinned Mermaid baseline)",
             src_root.display()
         )));
     }
@@ -714,7 +714,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         score: i64,
     }
 
-    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
 
     let mut spec_files: Vec<PathBuf> = Vec::new();
     collect_test_files_recursively(&src_root, &mut spec_files)?;

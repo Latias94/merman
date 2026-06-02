@@ -1,0 +1,9 @@
+{"file":"docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md","reason":"Primary architecture audit driving the next-phase deepening priorities and deletions."}
+{"file":"docs/alignment/STATUS.md","reason":"Authoritative matrix for implemented diagram coverage, baseline scope, and residual split."}
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/HANDOFF.md","reason":"Current parity-root residual classification state and Architecture/Sequence evidence."}
+{"file":"docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md","reason":"Evidence anchors and commands for active residual buckets."}
+{"file":"docs/workstreams/mermaid-11-15-complete-adaptation/HANDOFF.md","reason":"Closed structural parity lane that split the residual lane."}
+{"file":"docs/adr/0001-upstream-baseline.md","reason":"Mermaid baseline authority for the implemented matrix."}
+{"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy and intended relationship to upstream Mermaid."}
+{"file":"docs/adr/0050-svg-viewbox-parity.md","reason":"Root viewport and viewBox parity decisions."}
+{"file":"docs/adr/0062-fixture-derived-overrides.md","reason":"Override policy boundary; useful when deciding what not to encode."}

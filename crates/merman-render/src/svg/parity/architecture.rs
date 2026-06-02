@@ -1,7 +1,6 @@
 use super::*;
 use crate::architecture_metrics::{
-    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
-    architecture_estimate_service_bounds,
+    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_estimate_service_bounds,
 };
 
 mod edges;

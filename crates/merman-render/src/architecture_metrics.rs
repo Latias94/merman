@@ -175,11 +175,8 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let metrics = architecture_cytoscape_canvas_label_metrics(
-            title,
-            text_measurer,
-            compound_text_style,
-        );
+        let metrics =
+            architecture_cytoscape_canvas_label_metrics(title, text_measurer, compound_text_style);
         let compound_half_width = metrics.half_width;
         let label_extra_bottom_compound =
             architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
@@ -252,12 +249,15 @@ mod tests {
             super::architecture_create_text_root_label_extra_bottom_px(16.0, 1),
             24.1875
         );
+        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE, 1.055);
         assert_eq!(
-            super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE,
-            1.055
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE,
+            1.01
         );
-        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE, 1.01);
-        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX, 200.0);
+        assert_eq!(
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX,
+            200.0
+        );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
         assert_eq!(super::ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, 2.5);
@@ -294,7 +294,8 @@ mod tests {
         assert!(metrics.width > 0.0);
         assert!(
             metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE
-                || metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
+                || metrics.applied_scale
+                    == super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
         );
     }
 

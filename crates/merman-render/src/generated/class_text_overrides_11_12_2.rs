@@ -98,7 +98,7 @@ pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<
         (16, "+String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip") => Some(471),
         (16, "+doSomethingWithManyParameters(String a, String b, String c, String d) : void") => {
             Some(517)
-        },
+        }
         (16, "«abstract»") => Some(66),
         (16, "«enumeration»") => Some(96),
         (16, "E") => Some(10),

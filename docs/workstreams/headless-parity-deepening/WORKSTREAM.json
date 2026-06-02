@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "slug": "headless-parity-deepening",
+  "title": "Headless Parity Deepening",
+  "status": "active",
+  "updated": "2026-06-02",
+  "scope_kind": "execution",
+  "problem": "Post-Mermaid-11.15 structural parity work has shifted from broad missing features to root residual governance, measurement seams, baseline-truth drift, and source-backed layout engine audits.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/headless-parity-deepening/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/headless-parity-deepening/TODO.md"
+    },
+    {
+      "role": "tasks",
+      "path": "docs/workstreams/headless-parity-deepening/TASKS.jsonl"
+    },
+    {
+      "role": "campaigns",
+      "path": "docs/workstreams/headless-parity-deepening/CAMPAIGNS.jsonl"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/headless-parity-deepening/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
+  "current_task": "HPD-050",
+  "gates": [
+    "cargo fmt --check",
+    "git diff --check",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3",
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3"
+  ],
+  "evidence": [
+    "docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md",
+    "docs/workstreams/mermaid-11-15-root-viewport-residuals/EVIDENCE_AND_GATES.md",
+    "target/compare/*_report_parity*.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0001-upstream-baseline.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0050-svg-viewbox-parity.md",
+    "docs/adr/0062-fixture-derived-overrides.md"
+  ],
+  "architecture_refs": [
+    "docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md",
+    "docs/alignment/STATUS.md"
+  ],
+  "capability_tags": [
+    "headless-parity",
+    "root-residuals",
+    "measurement-platform",
+    "layout-engine-audit",
+    "baseline-registry"
+  ],
+  "lane_slug": null,
+  "continue_policy": {
+    "default_action": "execute-next-task",
+    "notes": "Prioritize baseline truth, residual taxonomy, and shared measurement/root-bounds seams before opening new diagram-family implementation lanes."
+  }
+}

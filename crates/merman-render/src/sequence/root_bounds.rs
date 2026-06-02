@@ -1,9 +1,10 @@
 use super::block_bounds::SequenceBlockBounds;
 use super::constants::sequence_actor_popup_panel_height;
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::notes::{SequenceNoteFinalTextMeasure, measure_sequence_note_final_text};
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines_floored_bbox};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use std::collections::HashMap;
@@ -104,22 +105,16 @@ fn include_left_of_note_text_bounds(
         if text.is_empty() {
             continue;
         }
-        let wrap_w = (note_node.width - 2.0 * ctx.wrap_padding).max(1.0);
-        let lines = wrap_label_like_mermaid_lines_floored_bbox(
+        let (text_w, _text_h) = measure_sequence_note_final_text(SequenceNoteFinalTextMeasure {
             text,
-            ctx.measurer,
-            ctx.note_text_style,
-            wrap_w,
-        );
-        let wrapped = lines.join("<br/>");
-        let (text_w, _text_h) = measure_sequence_label_for_layout(
-            ctx.measurer,
-            &wrapped,
-            ctx.note_text_style,
-            ctx.math_config,
-            ctx.math_renderer,
-            SequenceMathHeightMode::Bound,
-        );
+            placement: 0,
+            note_width: note_node.width,
+            note_text_pad_total: 2.0 * ctx.wrap_padding,
+            measurer: ctx.measurer,
+            note_text_style: ctx.note_text_style,
+            math_config: ctx.math_config,
+            math_renderer: ctx.math_renderer,
+        });
         let text_half = text_w.max(1.0) / 2.0;
         bounds_box.include(note_node.x - text_half, note_node.x + text_half);
     }

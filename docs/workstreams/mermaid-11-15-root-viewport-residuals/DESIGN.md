@@ -63,6 +63,57 @@ Work should move constants out of renderer call sites and into either determinis
 generated/version-pinned measurement tables. If a row cannot be made source-derived or generated,
 document it as diagnostic residual rather than silently widening tolerances.
 
+## Residual Taxonomy Mapping
+
+This lane adopts the headless-parity-deepening taxonomy and applies it to the current active front:
+
+- **Source-backed behavior gap**
+  - Sequence actor-type geometry and footer-row root-bounds work already closed rows here.
+  - Class namespace extraction/order and title-wrap source alignment already closed rows here.
+  - Architecture junction parent assignment, group alignment overwrite order, and group padding
+    defects were source-backed rows in this class.
+
+- **Generated measurement gap**
+  - Sequence wrap/HTML `<br>` work moved through generated SVG text evidence rather than ad hoc
+    constants.
+  - Class long `htmlLabels=true` title widths currently point here if a generated replacement path
+    can replace stale hand-curated lookup rows.
+  - Future Architecture Cytoscape canvas-label evidence may also land here if a reusable generated
+    path proves better than the current deterministic approximation.
+
+- **Browser lattice tail**
+  - Flowchart's current 61-row bucket is mostly small root-width/viewBox tails after the major
+    11.15 source-rule fixes.
+  - Timeline's remaining 3 rows and Journey's remaining 2 rows are in this class today.
+  - Sequence still has note/wrap/participant tails that are likely here unless stronger source or
+    generated evidence changes the classification.
+
+- **Stale baseline or stale override**
+  - C4, ER, Sankey, and several Sequence/Flowchart/Architecture rows were closed by refreshing or
+    deleting stale root pins or stale upstream baselines.
+  - Architecture `service_icon_text` and the old `reasonable_height` calibration are canonical
+    examples of this class.
+
+- **Solver / phase residual**
+  - Architecture is the main active owner of this class: disconnected components, compound bounds,
+    and some group/port rows now sit here after source inputs were matched.
+  - Rows such as `stress_architecture_group_port_edges_017` and
+    `stress_architecture_disconnected_islands_046` are currently classified here.
+
+- **Scope boundary**
+  - Unsupported Mermaid families remain outside this lane.
+  - `flowchart-elk` remains a deferred capability decision, not a residual to “smooth over”.
+
+Current bucket summary:
+
+- Flowchart `61`: mostly browser lattice tails, with occasional generated-measurement follow-up
+  candidates.
+- Architecture `29`: mixed source-backed rows already reduced; remaining front is mainly
+  solver/phase residuals plus some browser/generation measurement tails.
+- Sequence `27`: mixed generated-measurement gaps and browser lattice tails.
+- Class `12`: generated-measurement gap plus stale-table audit front; do not solve by table growth.
+- Timeline `3`, Journey `2`: browser lattice tails unless stronger evidence emerges.
+
 ## Closeout Condition
 
 - Structural `compare-all-svgs --dom-mode parity` is green.

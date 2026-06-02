@@ -6,6 +6,7 @@
 //! - deterministic, testable outputs (semantic snapshot goldens)
 //! - runtime-agnostic async APIs (no specific executor required)
 
+pub mod baseline;
 pub mod common;
 pub mod common_db;
 pub mod config;
@@ -84,9 +85,9 @@ impl Default for Engine {
         let site_config = generated::default_site_config();
 
         Self {
-            registry: DetectorRegistry::default_mermaid_11_12_2(),
-            diagram_registry: DiagramRegistry::default_mermaid_11_12_2(),
-            render_diagram_registry: RenderDiagramRegistry::default_mermaid_11_12_2(),
+            registry: DetectorRegistry::for_pinned_mermaid_baseline(),
+            diagram_registry: DiagramRegistry::for_pinned_mermaid_baseline(),
+            render_diagram_registry: RenderDiagramRegistry::for_pinned_mermaid_baseline(),
             site_config,
             fixed_today_local: None,
             fixed_local_offset_minutes: None,

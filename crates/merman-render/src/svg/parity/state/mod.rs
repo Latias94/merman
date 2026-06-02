@@ -4,7 +4,6 @@ use std::sync::Arc;
 mod context;
 mod debug_svg;
 mod edge;
-mod emitted_bounds;
 mod links;
 mod node;
 mod rough_cache;
@@ -17,10 +16,6 @@ pub(super) use super::roughjs_common::{
     RoughRectSpec as StateRoughRectSpec, ops_to_svg_path_d as roughjs_ops_to_svg_path_d,
     parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba, roughjs_circle_path_d,
 };
-pub use emitted_bounds::{
-    SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
-};
-pub(super) use emitted_bounds::{svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner};
 
 use roughjs::{
     mermaid_choice_diamond_path_data, mermaid_rounded_rect_path_data, roughjs_paths_for_svg_path,

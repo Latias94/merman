@@ -408,7 +408,7 @@ fn bench_end_to_end(c: &mut Criterion) {
 }
 
 fn bench_parse_typed(c: &mut Criterion) {
-    let registry = merman_core::DetectorRegistry::default_mermaid_11_12_2();
+    let registry = merman_core::DetectorRegistry::for_pinned_mermaid_baseline();
 
     let mut group = c.benchmark_group("parse_typed");
     for (name, input) in fixtures() {
@@ -486,7 +486,7 @@ fn bench_parse_typed(c: &mut Criterion) {
 }
 
 fn bench_parse_typed_only(c: &mut Criterion) {
-    let registry = merman_core::DetectorRegistry::default_mermaid_11_12_2();
+    let registry = merman_core::DetectorRegistry::for_pinned_mermaid_baseline();
 
     let mut group = c.benchmark_group("parse_typed_only");
     for (name, input) in fixtures() {

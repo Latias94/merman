@@ -60,7 +60,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         .unwrap_or_else(|| crate::cmd::mermaid_repo_root().join("demos"));
     if !html_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream html root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
+            "upstream html root not found: {} (expected repo-ref checkout of the pinned Mermaid baseline)",
             html_root.display()
         )));
     }
@@ -434,7 +434,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
         score: i64,
     }
 
-    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
     let mut html_files: Vec<PathBuf> = Vec::new();
     collect_html_files_recursively(&html_root, &mut html_files)?;
     html_files.sort();

@@ -20,13 +20,12 @@ mod rect;
 mod root_bounds;
 
 pub(crate) use constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX,
-    SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX, SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR,
-    SEQUENCE_NOTE_WRAP_SLACK_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
-    sequence_actor_popup_panel_height, sequence_text_dimensions_height_px,
-    sequence_text_line_step_px,
+    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR,
+    SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, sequence_actor_popup_panel_height,
+    sequence_text_dimensions_height_px, sequence_text_line_step_px,
 };
 pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
+pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_bounds::sequence_block_bounds;

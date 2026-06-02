@@ -2419,7 +2419,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         best
     }
 
-    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
     let mut spec_files: Vec<PathBuf> = Vec::new();
     collect_spec_files_recursively(&spec_root, &mut spec_files)?;
     spec_files.sort();

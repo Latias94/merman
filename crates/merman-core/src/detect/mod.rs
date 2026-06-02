@@ -100,7 +100,7 @@ impl DetectorRegistry {
         .into())
     }
 
-    pub fn default_mermaid_11_12_2_full() -> Self {
+    pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::new();
 
         // The detector order is significant and mirrors Mermaid's registration order.
@@ -142,7 +142,7 @@ impl DetectorRegistry {
         reg
     }
 
-    pub fn default_mermaid_11_12_2_tiny() -> Self {
+    pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::new();
 
         // The detector order is significant and mirrors Mermaid's registration order.
@@ -180,13 +180,28 @@ impl DetectorRegistry {
     }
 
     #[cfg(feature = "large-features")]
-    pub fn default_mermaid_11_12_2() -> Self {
-        Self::default_mermaid_11_12_2_full()
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_full()
     }
 
     #[cfg(not(feature = "large-features"))]
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_tiny()
+    }
+
+    #[deprecated(note = "use for_pinned_mermaid_baseline or pinned_mermaid_baseline_*")]
+    pub fn default_mermaid_11_12_2_full() -> Self {
+        Self::pinned_mermaid_baseline_full()
+    }
+
+    #[deprecated(note = "use for_pinned_mermaid_baseline or pinned_mermaid_baseline_*")]
+    pub fn default_mermaid_11_12_2_tiny() -> Self {
+        Self::pinned_mermaid_baseline_tiny()
+    }
+
+    #[deprecated(note = "use for_pinned_mermaid_baseline")]
     pub fn default_mermaid_11_12_2() -> Self {
-        Self::default_mermaid_11_12_2_tiny()
+        Self::for_pinned_mermaid_baseline()
     }
 }
 
