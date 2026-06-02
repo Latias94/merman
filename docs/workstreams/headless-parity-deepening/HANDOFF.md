@@ -216,6 +216,15 @@ Current repository reality to preserve:
     while still reopening many rows. The next real implementation should model Cytoscape
     `children.boundingBox({ includeLabels: true, includeOverlays: false })` before applying the
     final group `outerWidth + body expansion` formula.
+  - A children-bbox probe follow-up now records parent
+    `childrenBoundingBoxIncludeLabels` and `childrenBoundingBoxBodyOnly` directly. For the two
+    focused `+5px` rows, `childrenBoundingBoxIncludeLabels.w` exactly equals browser `autoWidth`
+    (`pipeline=379.926`, `ui=316.926`), while `childrenBoundingBoxBodyOnly.w=282.926`. Browser
+    service label bounds follow Cytoscape's `labelWidth + 4` rule, but current Rust child-label
+    contributions differ by a non-uniform pattern (`+1`, `+2`, `+4`, `0`, `+2`, `-8`, `+4` across
+    the sampled labels). Do not apply a uniform subtract-N, global label-scale, or group-padding
+    patch for these rows; the next safe implementation needs a phase-specific service
+    labelBounds/bodyBounds union helper and full Architecture root verification.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

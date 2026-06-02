@@ -450,6 +450,25 @@ async function main() {
         const style = n._private?.rstyle ?? {};
         const labelBounds = n._private?.labelBounds ?? {};
         const bodyBounds = n._private?.bodyBounds ?? {};
+        let childrenBoundingBoxIncludeLabels = null;
+        let childrenBoundingBoxBodyOnly = null;
+        if (n.isParent && n.isParent()) {
+          try {
+            childrenBoundingBoxIncludeLabels = n.children().boundingBox({
+              includeLabels: true,
+              includeOverlays: false,
+              useCache: false,
+            });
+            childrenBoundingBoxBodyOnly = n.children().boundingBox({
+              includeLabels: false,
+              includeOverlays: false,
+              useCache: false,
+            });
+          } catch (e) {
+            childrenBoundingBoxIncludeLabels = { error: String(e && e.message ? e.message : e) };
+            childrenBoundingBoxBodyOnly = { error: String(e && e.message ? e.message : e) };
+          }
+        }
         nodes.push({
           id,
           pos: { x: p.x, y: p.y },
@@ -469,6 +488,8 @@ async function main() {
             labelHeight: scratch.labelHeight ?? style.labelHeight,
             labelLineHeight: scratch.labelLineHeight,
           },
+          childrenBoundingBoxIncludeLabels,
+          childrenBoundingBoxBodyOnly,
           labelBounds: cloneMetricObject(labelBounds),
           bodyBounds: cloneMetricObject(bodyBounds),
           classes: n.classes ? n.classes() : undefined,

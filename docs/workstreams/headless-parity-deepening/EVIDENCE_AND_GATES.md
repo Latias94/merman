@@ -778,6 +778,30 @@ Architecture group bbox source-formula follow-up (2026-06-03):
   next implementation is a proper model of Cytoscape child contribution into
   `children.boundingBox(...)`, followed by the final group `outerWidth + body expansion` formula.
 
+Architecture children bbox probe follow-up (2026-06-03):
+
+- Enhanced `tools/debug/arch_fcose_browser_probe_fixture_025.js` again so parent nodes emit:
+  - `childrenBoundingBoxIncludeLabels`
+  - `childrenBoundingBoxBodyOnly`
+- This directly confirms the source formula instead of inferring it from parent dimensions:
+  - `batch5` group `pipeline`: `childrenBoundingBoxIncludeLabels.w=379.926`,
+    `autoWidth=379.926`, `childrenBoundingBoxBodyOnly.w=282.926`,
+    `node.boundingBox().w=462.926`.
+  - `html_titles` group `ui`: `childrenBoundingBoxIncludeLabels.w=316.926`,
+    `autoWidth=316.926`, `childrenBoundingBoxBodyOnly.w=282.926`,
+    `node.boundingBox().w=399.926`.
+- Browser leaf service `labelBounds.w` follows the Cytoscape source rule `labelWidth + 4`:
+  `Runner Linux amd64=153`, `Container Registry=137`,
+  `Artifacts Storage retention 30d=221`, `Production=81`,
+  `Web Front Line 2=127`, `CDN Cache=90`, `Origin primary=105`.
+- Current Rust child-label contributions for the same labels are not a uniform offset:
+  `154`, `139`, `225`, `81`, `129`, `82`, and `109` respectively. This rejects a
+  uniform subtract-N fix and also explains why a padding-only correction overfits the two focused
+  rows.
+- Conclusion: the next real implementation should be a phase-specific helper for Cytoscape service
+  child label/body contribution. Do not change the shared canvas label scale or final group padding
+  unless the helper survives the full Architecture root suite.
+
 Architecture final bbox probe enhancement (2026-06-03):
 
 - Enhanced `tools/debug/arch_fcose_browser_probe_fixture_025.js` to emit `finalElements` after the
