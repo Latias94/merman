@@ -91,7 +91,31 @@
   },
   "editor": {
     "placeholder": "在此输入 Mermaid 代码...",
-    "loading": "正在加载编辑器..."
+    "loading": "正在加载编辑器...",
+    "format": "格式化",
+    "formatted": "已格式化",
+    "formatAlreadyClean": "已经是格式化状态",
+    "hover": {
+      "flowchart": "声明流程图。常用方向有 TD、LR、BT、RL。",
+      "graph": "Mermaid 的另一种流程图开头。",
+      "sequenceDiagram": "声明时序图，用于描述参与者之间的消息流。",
+      "classDiagram": "声明类图，可描述类、成员和关系。",
+      "stateDiagram": "使用 v2 状态图语法声明状态图。",
+      "erDiagram": "声明实体关系图。",
+      "xychart": "声明 XY 图，可包含 x-axis、y-axis、bar 和 line 数据列。",
+      "architecture": "声明架构图，可描述 group、service 和连接关系。",
+      "block": "声明块图，可用 columns 和块之间的关系组织布局。",
+      "packet": "声明数据包图，每一行描述一个 bit 字段。",
+      "kanban": "声明看板，可包含列和任务元数据。",
+      "quadrant": "声明象限图，可包含坐标轴、象限和点。",
+      "sankey": "声明桑基图，使用 source,target,value 行描述流量。",
+      "radar": "声明雷达图，可包含轴和曲线。",
+      "treemap": "声明矩形树图，缩进表示层级关系。",
+      "requirement": "声明需求图。未加引号的 text 字段里不要使用逗号。",
+      "participant": "定义时序图参与者。",
+      "subgraph": "开始一个流程图子图，使用 end 结束。",
+      "autonumber": "启用时序图消息编号。"
+    }
   },
   "config": {
     "valid": "配置可用",
@@ -149,7 +173,8 @@
     "dark": "深色",
     "forest": "森林",
     "neutral": "中性",
-    "base": "基础"
+    "base": "基础",
+    "system": "跟随系统"
   },
   "diagramTypes": {
     "flowchart": "流程图",

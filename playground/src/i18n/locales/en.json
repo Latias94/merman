@@ -91,7 +91,31 @@
   },
   "editor": {
     "placeholder": "Enter your Mermaid code here...",
-    "loading": "Loading editor..."
+    "loading": "Loading editor...",
+    "format": "Format",
+    "formatted": "Formatted",
+    "formatAlreadyClean": "Already formatted",
+    "hover": {
+      "flowchart": "Declares a flowchart. Common directions are TD, LR, BT, and RL.",
+      "graph": "Alternative flowchart header used by Mermaid.",
+      "sequenceDiagram": "Declares a sequence diagram for message flows between participants.",
+      "classDiagram": "Declares a class diagram with classes, members, and relationships.",
+      "stateDiagram": "Declares a state diagram using the v2 state syntax.",
+      "erDiagram": "Declares an entity relationship diagram.",
+      "xychart": "Declares an XY chart with x-axis, y-axis, bar, and line series.",
+      "architecture": "Declares an architecture diagram with groups, services, and edges.",
+      "block": "Declares a block diagram with grid columns and block relationships.",
+      "packet": "Declares a packet diagram where each row describes a bit field.",
+      "kanban": "Declares a kanban board with columns and item metadata.",
+      "quadrant": "Declares a quadrant chart with axis labels, quadrants, and points.",
+      "sankey": "Declares a Sankey diagram using source,target,value rows.",
+      "radar": "Declares a radar chart with axes and curves.",
+      "treemap": "Declares a treemap using indentation to represent hierarchy.",
+      "requirement": "Declares a requirement diagram. Avoid commas in unquoted text fields.",
+      "participant": "Defines a sequence diagram participant.",
+      "subgraph": "Starts a flowchart subgraph. Close it with end.",
+      "autonumber": "Enables sequence message numbering."
+    }
   },
   "config": {
     "valid": "Config OK",
@@ -149,7 +173,8 @@
     "dark": "Dark",
     "forest": "Forest",
     "neutral": "Neutral",
-    "base": "Base"
+    "base": "Base",
+    "system": "System"
   },
   "diagramTypes": {
     "flowchart": "Flowchart",
