@@ -6,6 +6,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-02
+
+### Fixed
+
+- Hardened deeply nested diagram handling to prevent stack overflows in Flowchart, State,
+  Block, Mindmap, Treemap, C4, and Class diagram parsing/layout.
+
 ## [0.5.0] - 2026-05-19
 
 This release is mostly about rendering fidelity and the render pipeline. If you render diagrams to SVG, PNG, JPG, or PDF, the main difference is fewer label, sizing, and viewport mismatches against Mermaid 11.12.3. The public semantic JSON API stays available, while render-only paths now avoid more of the old JSON round trip.

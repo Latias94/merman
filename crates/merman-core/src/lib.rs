@@ -32,6 +32,8 @@ pub use diagram::{
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
+pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
     pub suppress_errors: bool,
