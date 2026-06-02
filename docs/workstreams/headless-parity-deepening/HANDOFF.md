@@ -225,6 +225,15 @@ Current repository reality to preserve:
     the sampled labels). Do not apply a uniform subtract-N, global label-scale, or group-padding
     patch for these rows; the next safe implementation needs a phase-specific service
     labelBounds/bodyBounds union helper and full Architecture root verification.
+  - A follow-up source-phase experiment tested that helper direction. LabelBounds-only source
+    formula improved the two `+5px` rows and reduced Architecture root mismatches from `25` to
+    `24`, but it was rejected as a half-source model that worsened already-small rows. The fuller
+    source phase model (child body `+1px`, child labelBounds `ceil(width)/2 + 2`, final group
+    padding `padding + 1.5`) improved the focused rows to `+2.5` and `+1.5` and kept structural
+    Architecture parity green, but expanded full Architecture root mismatches from `25` to `100`.
+    Both production experiments were reverted. Treat this as evidence that `parity-root` is a
+    diagnostic sensor for Architecture browser tails, not a mandate to directly import raw
+    Cytoscape source phases before the headless measurement model is strong enough.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

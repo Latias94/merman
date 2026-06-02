@@ -802,6 +802,32 @@ Architecture children bbox probe follow-up (2026-06-03):
   child label/body contribution. Do not change the shared canvas label scale or final group padding
   unless the helper survives the full Architecture root suite.
 
+Architecture child source-phase experiments (2026-06-03):
+
+- Current HEAD baseline for Architecture `parity-root` is still `25` DOM mismatches.
+- Experiment A used the Cytoscape labelBounds source formula
+  `ceil(headless_measured_width) / 2 + 2` only for `cytoscape_group_child_bounds`, while leaving the
+  old body and final group padding compensation in place:
+  - focused `batch5_long_titles`: `+5.000` improved to `+4.500`;
+  - focused `html_titles`: `+5.000` improved to `+3.500`;
+  - full Architecture `parity-root` DOM mismatches improved from `25` to `24`.
+- Experiment A was rejected because it is a half-source model and worsened several already-small
+  residuals, e.g. `batch3_long_group_titles_wrapping_055` from `-1.000` to `-2.500` and
+  `long_labels_006` from `-0.500` to `-1.500`.
+- Experiment B used the fuller source phase model: child body `+1px`, child labelBounds
+  `ceil(headless_measured_width) / 2 + 2`, and final group padding `padding + 1.5px`:
+  - focused `batch5_long_titles`: `+5.000` improved to `+2.500`;
+  - focused `html_titles`: `+5.000` improved to `+1.500`;
+  - Architecture structural `parity` stayed green;
+  - full Architecture `parity-root` DOM mismatches expanded from `25` to `100`.
+- Experiment B was rejected and reverted because it made many group-heavy/nested rows too small,
+  including `deep_group_chain_027=-7.000`, `batch6_deep_group_chain_crosslinks_094=-6.000`, and
+  `batch6_nested_groups_group_edges_and_ports_086=-5.000`.
+- Conclusion: `parity-root` should stay a diagnostic/regression sensor here, not a mandate to
+  force every browser-derived pixel tail closed. The next real implementation needs a broader
+  headless measurement model before raw Cytoscape source phases can replace the current mixed
+  compensation.
+
 Architecture final bbox probe enhancement (2026-06-03):
 
 - Enhanced `tools/debug/arch_fcose_browser_probe_fixture_025.js` to emit `finalElements` after the
