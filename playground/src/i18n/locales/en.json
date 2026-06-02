@@ -38,7 +38,7 @@
   },
   "bench": {
     "title": "Render Bench",
-    "description": "Current diagram, local browser.",
+    "description": "Current diagram, local browser. Samples exclude module loading.",
     "engines": "Engines",
     "merman": "Merman",
     "mermaid": "Mermaid JS",

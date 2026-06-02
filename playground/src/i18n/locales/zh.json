@@ -38,7 +38,7 @@
   },
   "bench": {
     "title": "渲染压测",
-    "description": "当前图表，本机浏览器。",
+    "description": "当前图表，本机浏览器。样本不包含模块加载时间。",
     "engines": "引擎",
     "merman": "Merman",
     "mermaid": "Mermaid JS",
