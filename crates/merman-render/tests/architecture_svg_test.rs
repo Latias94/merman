@@ -20,6 +20,10 @@ fn render_architecture_fixture_with_options(
         .join(fixture_name);
     let text = std::fs::read_to_string(&path).expect("read fixture");
 
+    render_architecture_text_with_options(&text, options)
+}
+
+fn render_architecture_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(&text, ParseOptions::strict())
@@ -138,6 +142,38 @@ fn assert_close(actual: f64, expected: f64, message: &str) {
         delta <= 1e-6,
         "{message}: expected {expected}, got {actual}, delta {delta}"
     );
+}
+
+#[test]
+fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
+    let text = r##"%%{init: {"themeVariables": {"lineColor": "#445566", "primaryBorderColor": "#778899", "archEdgeColor": "#010203", "archEdgeArrowColor": "#040506", "archEdgeWidth": 7, "archGroupBorderColor": "#070809", "archGroupBorderWidth": "6px"}}}%%
+architecture-beta
+  group core(cloud)[Core]
+  service api(server)[API] in core
+  service db(database)[DB] in core
+  api:R --> L:db
+"##;
+
+    let svg = render_architecture_text_with_options(
+        text,
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-theme".to_string()),
+            ..Default::default()
+        },
+    );
+
+    assert!(svg.contains(r#"#architecture-theme .edge{stroke-width:7;stroke:#010203;fill:none;}"#));
+    assert!(svg.contains(r#"#architecture-theme .arrow{fill:#040506;}"#));
+    assert!(svg.contains(
+        r#"#architecture-theme .node-bkg{fill:none;stroke:#070809;stroke-width:6px;stroke-dasharray:8;}"#
+    ));
+    assert!(
+        !svg.contains(r#"#architecture-theme .edge{stroke-width:3;stroke:#445566;fill:none;}"#)
+    );
+    assert!(!svg.contains(r#"#architecture-theme .arrow{fill:#445566;}"#));
+    assert!(!svg.contains(
+        r#"#architecture-theme .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
+    ));
 }
 
 #[test]

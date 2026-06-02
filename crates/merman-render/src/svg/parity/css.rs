@@ -206,6 +206,21 @@ pub(super) fn architecture_css_with_config(
         "primaryBorderColor",
         "hsl(240, 60%, 86.2745098039%)",
     );
+    let arch_edge_color = theme_color(effective_config, "archEdgeColor", &line_color);
+    let arch_edge_arrow_color =
+        theme_color(effective_config, "archEdgeArrowColor", &arch_edge_color);
+    let arch_edge_width = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "archEdgeWidth"],
+    )
+    .unwrap_or_else(|| "3".to_string());
+    let arch_group_border_color =
+        theme_color(effective_config, "archGroupBorderColor", &primary_border);
+    let arch_group_border_width = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "archGroupBorderWidth"],
+    )
+    .unwrap_or_else(|| "2px".to_string());
 
     // Keep `:root` last (matches upstream Mermaid SVG baselines).
     let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family);
@@ -253,14 +268,18 @@ pub(super) fn architecture_css_with_config(
 
     let _ = write!(
         &mut out,
-        r#"#{} .edge{{stroke-width:3;stroke:{};fill:none;}}"#,
-        id, line_color
+        r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}"#,
+        id, arch_edge_width, arch_edge_color
     );
-    let _ = write!(&mut out, r#"#{} .arrow{{fill:{};}}"#, id, line_color);
     let _ = write!(
         &mut out,
-        r#"#{} .node-bkg{{fill:none;stroke:{};stroke-width:2px;stroke-dasharray:8;}}"#,
-        id, primary_border
+        r#"#{} .arrow{{fill:{};}}"#,
+        id, arch_edge_arrow_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node-bkg{{fill:none;stroke:{};stroke-width:{};stroke-dasharray:8;}}"#,
+        id, arch_group_border_color, arch_group_border_width
     );
     let _ = write!(
         &mut out,
@@ -879,6 +898,11 @@ mod tests {
                 "textColor": "#112233",
                 "lineColor": "#445566",
                 "primaryBorderColor": "#778899",
+                "archEdgeColor": "#010203",
+                "archEdgeArrowColor": "#040506",
+                "archEdgeWidth": 7,
+                "archGroupBorderColor": "#070809",
+                "archGroupBorderWidth": "6px",
             }
         });
 
@@ -887,10 +911,10 @@ mod tests {
         assert!(css.contains(
             r#"#diag{font-family:"courier new",courier,monospace;font-size:18px;fill:#112233;}"#
         ));
-        assert!(css.contains(r#"#diag .edge{stroke-width:3;stroke:#445566;fill:none;}"#));
-        assert!(css.contains(r#"#diag .arrow{fill:#445566;}"#));
+        assert!(css.contains(r#"#diag .edge{stroke-width:7;stroke:#010203;fill:none;}"#));
+        assert!(css.contains(r#"#diag .arrow{fill:#040506;}"#));
         assert!(css.contains(
-            r#"#diag .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
+            r#"#diag .node-bkg{fill:none;stroke:#070809;stroke-width:6px;stroke-dasharray:8;}"#
         ));
         assert!(
             css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#)

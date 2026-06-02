@@ -173,6 +173,9 @@ Last updated: 2026-06-02
   semantics in core, while ASCII now folds only empty facade classes back to their declared
   namespace members as a view-layer alias to avoid duplicate terminal boxes. A Timeline slice fixed
   `.disabled` CSS so `themeVariables.tertiaryColor` and `clusterBorder` drive disabled node/text
-  colors instead of stale hardcoded fallback fills.
+  colors instead of stale hardcoded fallback fills. An Architecture slice fixed source-backed
+  `archEdgeColor`, `archEdgeArrowColor`, `archEdgeWidth`, `archGroupBorderColor`, and
+  `archGroupBorderWidth` emission so custom Architecture edge/group styling reaches the final SVG
+  stylesheet instead of falling back to generic line/group-border colors.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -1044,6 +1044,39 @@ Residual note:
   does not emit the required `data-look`/defs support. This slice fixes only source-backed CSS that
   applies to the current local Timeline stylesheet.
 
+Fourteenth slice outcome:
+
+- Audited pinned Mermaid 11.15 Architecture style provider and option type:
+  - `packages/mermaid/src/diagrams/architecture/architectureStyles.ts`
+  - `packages/mermaid/src/diagrams/architecture/architectureTypes.ts`
+- Mermaid 11.15 Architecture CSS consumes `archEdgeColor`, `archEdgeArrowColor`,
+  `archEdgeWidth`, `archGroupBorderColor`, and `archGroupBorderWidth` directly. The local theme
+  expansion already populated these values, but Architecture CSS still emitted generic
+  `lineColor`, `primaryBorderColor`, and hardcoded `3` / `2px` widths.
+- Architecture CSS now reads those source-backed `arch*` theme variables through the shared config
+  CSS-token path. Custom Architecture edge/group styling therefore reaches the final SVG stylesheet
+  instead of being parsed and then ignored.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/css.rs)
+- [crates/merman-render/tests/architecture_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/architecture_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render architecture_css_with_config_honors_font_and_theme_colors`
+- `cargo test -p merman-render architecture_svg_honors_mermaid_11_15_style_theme_variables --test architecture_svg_test`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes Architecture theme CSS emission only. It does not change Architecture layout,
+  Cytoscape/manatee phase modeling, SVG root bounds, or the known 26 Architecture `parity-root`
+  residuals.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
