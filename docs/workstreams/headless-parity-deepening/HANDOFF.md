@@ -130,3 +130,7 @@ Current repository reality to preserve:
     `node_edges_between`, because those map to existing Graphlib behavior and real graph consumers.
     Missing-node `undefined` returns and JS chainable mutators remain documented Rust/JS API-shape
     differences, not hidden parity claims.
+  - A follow-up Graphlib edge-invariant slice now matches upstream's non-multigraph named-edge
+    guard: named edge insertion panics on simple graphs, and named lookup/removal does not alias the
+    unnamed edge. Renderer graph construction that uses edge names is already multigraph-based, so
+    this should be treated as a source-backed invariant fix rather than a rendering tune.

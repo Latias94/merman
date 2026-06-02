@@ -39,3 +39,4 @@
 {"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 graphlib audit implementation: set_parent_ix now rejects parent cycles like upstream Graphlib tree invariant checks."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-graph-core.md","reason":"HPD-050 journal: public Graph API coverage slice, parent-cycle guard, and remaining API-shape decisions."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-edge-queries.md","reason":"HPD-050 journal: public Graph API edge/adjacency query coverage, source-backed node_edges_between behavior, and remaining JS/Rust API-shape differences."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-edge-invariants.md","reason":"HPD-050 journal: simple-graph named-edge invariant fix, query/removal name matching, and source-backed edge lookup coverage."}

@@ -481,6 +481,11 @@ Focused verification:
 
 - `cargo test -p dugong-graphlib --tests`
 - `cargo test -p dugong --tests`
+- `cargo test -p merman-render --test flowchart_layout_test`
+- `cargo test -p merman-render --test state_layout_test`
+- `cargo test -p merman-render --test class_layout_test`
+- `cargo test -p merman-render --test er_layout_test`
+- `cargo test -p dugong --tests`
 
 Verification notes:
 
@@ -513,3 +518,26 @@ Verification notes:
   vectors.
 - Upstream chainability for `removeEdge(...)` is not copied into Rust; tests cover the state and
   adjacency effects that matter to consumers.
+
+Twelfth slice Graphlib edge invariant coverage:
+
+- Tightened [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs)
+  so `set_edge_named(..., Some(name), ...)` on a non-multigraph panics instead of silently
+  discarding the name.
+- Edge lookup/removal views now keep the supplied name even for non-multigraphs, so
+  `has_edge("a", "b", Some("name"))`, `edge(...)`, and `remove_edge(...)` no longer alias the
+  unnamed simple edge.
+- Added direct graph-test coverage for edge-key listing, directed vs. undirected edge lookup,
+  missing edge lookup, named-edge rejection, named edge removal, and undirected remove-edge
+  endpoint normalization.
+- Production Mermaid-facing named-edge graph construction had already been audited as multigraph
+  based, so this is an invariant fix rather than a forced renderer behavior change.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+- `cargo test -p merman-render --test flowchart_layout_test`
+- `cargo test -p merman-render --test state_layout_test`
+- `cargo test -p merman-render --test class_layout_test`
+- `cargo test -p merman-render --test er_layout_test`

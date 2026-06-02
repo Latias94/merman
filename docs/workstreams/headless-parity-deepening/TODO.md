@@ -97,7 +97,9 @@ Last updated: 2026-06-02
   decision. The next Graph API slice also covers source-backed edge/adjacency queries (`sinks`,
   predecessor/successor/neighbor queries, `isLeaf`, in/out/node edge filters, and remove-edge
   neighbor updates), while preserving the open missing-node and chainable-mutator API-shape
-  differences instead of forcing JS ergonomics into Rust.
+  differences instead of forcing JS ergonomics into Rust. A follow-up edge-invariant slice now
+  tightens simple-graph named-edge behavior to match upstream Graphlib: setting a named edge on a
+  non-multigraph panics, and named queries/removals no longer alias the unnamed edge.
 
 ## M5 - Semantic / Render Unification Pilot
 

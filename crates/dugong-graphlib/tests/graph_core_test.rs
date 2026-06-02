@@ -139,6 +139,7 @@ fn set_edge_creates_endpoint_nodes_and_uses_default_edge_label() {
     assert!(g.has_node("a"));
     assert!(g.has_node("b"));
     assert_eq!(g.edge("a", "b", None), Some(&Some(9)));
+    assert_eq!(g.edge_count(), 1);
 }
 
 #[test]
@@ -164,6 +165,42 @@ fn multigraph_preserves_named_edges() {
     assert_eq!(g.edge("a", "b", Some("first")), Some(&Some(1)));
     assert_eq!(g.edge("a", "b", Some("second")), Some(&Some(2)));
     assert_eq!(g.edge_count(), 2);
+    assert!(!g.has_edge("a", "b", None));
+}
+
+#[test]
+#[should_panic(expected = "Cannot set a named edge when is_multigraph = false")]
+fn set_edge_named_panics_on_named_edge_for_non_multigraph() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+
+    g.set_edge_named("a", "b", Some("name"), None);
+}
+
+#[test]
+fn named_edge_queries_do_not_match_unnamed_edges_in_simple_graph() {
+    let mut g: Graph<(), i32, ()> = Graph::new(GraphOptions::default());
+    g.set_edge_with_label("a", "b", 5);
+
+    assert!(g.has_edge("a", "b", None));
+    assert!(!g.has_edge("a", "b", Some("name")));
+    assert_eq!(g.edge("a", "b", Some("name")), None);
+    assert!(!g.remove_edge("a", "b", Some("name")));
+    assert!(g.has_edge("a", "b", None));
+}
+
+#[test]
+fn edges_returns_inserted_edge_keys() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+
+    assert_eq!(
+        sorted_edge_tuples(g.edge_keys()),
+        vec![
+            ("a".to_string(), "b".to_string(), None),
+            ("b".to_string(), "c".to_string(), None)
+        ]
+    );
 }
 
 #[test]
@@ -174,6 +211,41 @@ fn set_path_creates_path_edges() {
 
     assert!(g.has_edge("a", "b", None));
     assert!(g.has_edge("b", "c", None));
+}
+
+#[test]
+fn edge_lookup_respects_direction_for_directed_graphs() {
+    let mut g: Graph<(), i32, ()> = Graph::new(GraphOptions::default());
+    g.set_edge_with_label("a", "b", 7);
+
+    assert_eq!(g.edge("a", "b", None), Some(&7));
+    assert_eq!(g.edge("b", "a", None), None);
+    assert!(g.has_edge("a", "b", None));
+    assert!(!g.has_edge("b", "a", None));
+}
+
+#[test]
+fn edge_lookup_returns_none_for_missing_edges() {
+    let g: Graph<(), i32, ()> = Graph::new(GraphOptions::default());
+
+    assert_eq!(g.edge("a", "b", None), None);
+    assert_eq!(g.edge("a", "b", Some("foo")), None);
+    assert!(!g.has_edge("a", "b", None));
+    assert!(!g.has_edge("a", "b", Some("foo")));
+}
+
+#[test]
+fn edge_lookup_accepts_either_direction_for_undirected_graphs() {
+    let mut g: Graph<(), i32, ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    g.set_edge_with_label("a", "b", 7);
+
+    assert_eq!(g.edge("a", "b", None), Some(&7));
+    assert_eq!(g.edge("b", "a", None), Some(&7));
+    assert!(g.has_edge("a", "b", None));
+    assert!(g.has_edge("b", "a", None));
 }
 
 #[test]
@@ -373,6 +445,59 @@ fn node_edges_between_returns_edges_between_specific_nodes() {
         ("a".to_string(), "b".to_string(), Some("foo".to_string())),
     ];
     assert_eq!(sorted_edge_tuples(g.node_edges_between("b", "a")), ab);
+}
+
+#[test]
+fn remove_edge_missing_edge_is_noop() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+
+    assert!(!g.remove_edge("a", "b", None));
+
+    assert!(!g.has_edge("a", "b", None));
+    assert_eq!(g.edge_count(), 0);
+}
+
+#[test]
+fn remove_edge_key_removes_named_multigraph_edge() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    let key = EdgeKey::new("a", "b", Some("foo"));
+    g.set_edge_key(key.clone(), ());
+
+    assert!(g.remove_edge_key(&key));
+
+    assert!(!g.has_edge("a", "b", Some("foo")));
+    assert_eq!(g.edge_count(), 0);
+}
+
+#[test]
+fn remove_edge_with_named_ids_removes_named_multigraph_edge() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("foo"), None);
+
+    assert!(g.remove_edge("a", "b", Some("foo")));
+
+    assert!(!g.has_edge("a", "b", Some("foo")));
+    assert_eq!(g.edge_count(), 0);
+}
+
+#[test]
+fn remove_edge_accepts_reversed_endpoints_for_undirected_graphs() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    g.set_edge("h", "g");
+
+    assert!(g.remove_edge("g", "h", None));
+
+    assert!(g.neighbors("g").is_empty());
+    assert!(g.neighbors("h").is_empty());
 }
 
 #[test]

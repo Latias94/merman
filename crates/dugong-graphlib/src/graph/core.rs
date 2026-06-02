@@ -361,7 +361,6 @@ where
         } else {
             (w, v)
         };
-        let name = if self.options.multigraph { name } else { None };
         EdgeKeyView { v, w, name }
     }
 
@@ -371,11 +370,7 @@ where
         if !self.options.directed && v > w {
             (v, w) = (w, v);
         }
-        let name = if self.options.multigraph {
-            key.name.as_deref()
-        } else {
-            None
-        };
+        let name = key.name.as_deref();
         EdgeKeyView { v, w, name }
     }
 
@@ -392,7 +387,10 @@ where
     }
 
     fn canonicalize_name(&self, name: Option<String>) -> Option<String> {
-        if self.options.multigraph { name } else { None }
+        if name.is_some() && !self.options.multigraph {
+            panic!("Cannot set a named edge when is_multigraph = false");
+        }
+        name
     }
 
     fn canonicalize_key(&self, mut key: EdgeKey) -> EdgeKey {

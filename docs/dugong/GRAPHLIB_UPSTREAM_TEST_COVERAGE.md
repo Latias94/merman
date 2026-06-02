@@ -108,12 +108,24 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `isLeaf / returns false for predecessor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
 - `isLeaf / returns true for successor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
 - `setPath / creates a path of mutiple edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_path_creates_path_edges`
+- `edges / returns the keys for edges in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edges_returns_inserted_edge_keys`
 - `setEdge / creates the edge if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / creates the nodes for the edge if they are not part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / changes the value for an edge if it is already in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_with_label_updates_existing_edge_label`
 - `setEdge / creates a multi-edge if if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
+- `setEdge / throws if a multi-edge is used with a non-multigraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_named_panics_on_named_edge_for_non_multigraph`
+- `setEdge / treats edges in opposite directions as distinct in a digraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_respects_direction_for_directed_graphs`
+- `setEdge / handles undirected graph edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_accepts_either_direction_for_undirected_graphs`
+- `edge / returns undefined if the edge isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_returns_none_for_missing_edges`
+- `edge / returns the value of the edge if it is part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_respects_direction_for_directed_graphs`
+- `edge / returns the value of a multi-edge if it is part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
+- `edge / returns an edge in either direction in an undirected graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_accepts_either_direction_for_undirected_graphs`
+- `removeEdge / has no effect if the edge is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_missing_edge_is_noop`
+- `removeEdge / can remove an edge by edgeObj` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_key_removes_named_multigraph_edge`
+- `removeEdge / can remove an edge by separate ids` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_with_named_ids_removes_named_multigraph_edge`
 - `removeEdge / correctly removes neighbors` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_updates_neighbor_queries`
 - `removeEdge / correctly decrements neighbor counts` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_keeps_named_parallel_edges`
+- `removeEdge / works with undirected graphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_accepts_reversed_endpoints_for_undirected_graphs`
 - `inEdges / returns the edges that point at the specified node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::in_edges_returns_edges_pointing_at_node`
 - `inEdges / works for multigraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
 - `inEdges / can return only edges from a specified node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
@@ -135,12 +147,15 @@ Source: `repo-ref/graphlib/test/graph-test.js`
   than JS chaining.
 - Non-compound `setParent(...)`: upstream throws; current Rust parent methods no-op on
   non-compound graphs. This remains an explicit API-shape decision.
+- ID stringification: upstream JS coerces node ids, edge endpoints, and edge names through string
+  conversion. Rust accepts typed string inputs, so this coercion behavior is not a parity target
+  unless a public FFI seam needs it.
 
 ## Next Priority
 
 1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers:
-   remaining edge removal variants, filterNodes if a Rust seam exists or should exist, and
-   additional compound child/root cases.
+   filterNodes if a Rust seam exists or should exist, default-label endpoint-aware callbacks if
+   useful, and additional compound child/root cases.
 2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
    before adding ad hoc snapshot serializers elsewhere.
 3. Keep non-used algorithms such as shortest paths, Prim, and Floyd-Warshall out of scope unless a
