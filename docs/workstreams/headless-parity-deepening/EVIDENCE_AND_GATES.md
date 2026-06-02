@@ -748,6 +748,36 @@ Architecture group bbox phase audit (2026-06-03):
   phase-specific Cytoscape bbox model, not a root pin, one-off width constant, or single global
   group-padding formula.
 
+Architecture group bbox source-formula follow-up (2026-06-03):
+
+- Re-audited the same two `+5px` rows with browser `finalElements`, local group-rect debug, and
+  Cytoscape source:
+  - `stress_architecture_batch5_long_titles_and_punct_076`
+  - `stress_architecture_html_titles_and_escapes_041`
+- Cytoscape `updateCompoundBounds()` sizes a parent from
+  `children.boundingBox({ includeLabels, includeOverlays: false, useCache: false })`; parent
+  `width()` / `height()` then expose `_p.autoWidth` / `_p.autoHeight`, `padding()` exposes
+  `_p.autoPadding`, and `outerWidth()` / `outerHeight()` add border plus `2 * padding()`. The final
+  default `node.boundingBox()` body path also applies the browser inaccuracy / anti-alias expansion.
+- Browser `finalElements` metrics show:
+  - `batch5` group `pipeline`: `autoWidth=379.926`, `outerWidth=460.926`,
+    `node.boundingBox().w=462.926`.
+  - `html_titles` group `ui`: `autoWidth=316.926`, `outerWidth=397.926`,
+    `node.boundingBox().w=399.926`.
+- Local group debug shows:
+  - `batch5` group `pipeline`: content width `382.926`, final width `467.926`.
+  - `html_titles` group `ui`: content width `319.926`, final width `404.926`.
+- The `+5px` rows therefore split into a `+3px` child-contribution mismatch and a `+2px` final
+  group formula mismatch. This is useful, but not safe to patch piecemeal.
+- Two temporary experiments were rejected and reverted:
+  - Split-axis group padding (`x=padding`, `y=padding+2.5`) made both focused rows root-green but
+    reopened many group-heavy Architecture rows as too narrow.
+  - Standalone `ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX=1.5` improved the two focused rows
+    from `+5px` to `+3px` but still reopened many rows.
+- Conclusion: keep `ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX=2.5` for now. The source-backed
+  next implementation is a proper model of Cytoscape child contribution into
+  `children.boundingBox(...)`, followed by the final group `outerWidth + body expansion` formula.
+
 Architecture final bbox probe enhancement (2026-06-03):
 
 - Enhanced `tools/debug/arch_fcose_browser_probe_fixture_025.js` to emit `finalElements` after the

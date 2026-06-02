@@ -206,6 +206,16 @@ Current repository reality to preserve:
     rows width-exact but height-short and regressed many group-heavy rows, so it was reverted before
     commit. Continue toward a phase-specific Cytoscape bbox model; do not globally remove the final
     group bbox extra.
+  - A source-formula follow-up split those two `+5px` rows more precisely. Browser finalElements
+    show `pipeline.autoWidth=379.926` / `node.boundingBox().w=462.926` and
+    `ui.autoWidth=316.926` / `node.boundingBox().w=399.926`; local group debug shows content widths
+    `382.926` and `319.926`, then final widths `467.926` and `404.926`. The row shape is therefore
+    roughly `+3px` child-contribution drift plus `+2px` final group formula drift. Two tempting
+    experiments were rejected: split-axis group padding made the focused rows green but reopened
+    many group-heavy rows, and standalone final group extra `+1.5` only improved them to `+3px`
+    while still reopening many rows. The next real implementation should model Cytoscape
+    `children.boundingBox({ includeLabels: true, includeOverlays: false })` before applying the
+    final group `outerWidth + body expansion` formula.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
