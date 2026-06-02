@@ -229,22 +229,28 @@ Third slice classification:
   approximation.
 - The saved Mermaid browser probe
   [target/compare/arch_junction_fork_join_probe_m15rv089.json](/F:/SourceCodes/Rust/merman/target/compare/arch_junction_fork_join_probe_m15rv089.json)
-  has final service positions that match the current local SVG to floating-point noise. The stored
-  upstream SVG fixture differs from that probe by roughly `7-10px` on X and `6-12px` on Y for the
-  services.
-- This means the remaining `+13.976px` root tail is not a current source-input or manatee-layout
-  mismatch against the saved browser probe. Treat it as a generated-baseline / seed-lattice audit
-  candidate unless a fresh reproducible Mermaid 11.15 browser render proves the stored upstream SVG
-  is still the authoritative behavior.
+  has final service positions that match the current local SVG to floating-point noise.
+- A fresh `check-upstream-svgs` run using Edge as `PUPPETEER_EXECUTABLE_PATH` reproduced the stored
+  upstream SVG fixture exactly: both report `max-width: 2808.126708984375px` and
+  `viewBox="-1362.063232421875 -1213.2674560546875 2808.126708984375 2557.534912109375"`.
+- Therefore the previous "stored upstream baseline drift" reading was too broad. The saved debug
+  browser probe is the divergent path here: its service positions match local output, but differ
+  from the current CLI/Edge baseline by about `7-10px` on X and `6-12px` on Y.
+- Treat the remaining `+13.976px` root tail as a probe-harness / CLI-harness divergence plus a
+  solver/phase residual candidate. Do not tune `manatee` against the saved probe alone, and do not
+  refresh or discard the stored fixture on the basis of that probe.
 
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug.md`
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram architecture --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3`
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram architecture --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity --dom-decimals 3`
 - PowerShell JSON/SVG comparison of `target/compare/arch_junction_fork_join_probe_m15rv089.json`
   final positions against the local SVG showed deltas at floating-point noise level.
-- The same comparison against `fixtures/upstream-svgs/architecture/stress_architecture_junction_fork_join_026.svg`
-  showed concrete stored-baseline drift: e.g. `auth` and `cache` X differ by about `10.376px`,
-  while `api`/`db` Y differ by about `12.358px`.
+- The same comparison against
+  `fixtures/upstream-svgs/architecture/stress_architecture_junction_fork_join_026.svg` showed the
+  debug probe / CLI baseline split: e.g. probe-minus-fixture deltas are `auth.x=+10.376px`,
+  `cache.x=+10.376px`, `api.y=-12.358px`, and `db.y=-12.358px`.
 
 Fourth slice seam cleanup:
 

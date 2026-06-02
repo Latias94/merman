@@ -1151,9 +1151,10 @@ Outcome:
 Superseded note from HPD-050:
 
 - Rechecking the saved browser probe showed current local service positions match
-  `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise, while the
-  stored upstream SVG differs by concrete service-position deltas. Treat this row as a
-  generated-baseline / seed-lattice audit candidate before changing manatee.
+  `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise. A later
+  Edge-backed `check-upstream-svgs` run reproduced the stored upstream fixture exactly, so this is
+  not stale stored-baseline drift. Treat this row as a debug-probe harness / CLI-harness divergence
+  plus solver/phase residual candidate before changing manatee.
 
 ## M15RV-089 - Architecture Pre-Layout Group Padding Source Rule
 
