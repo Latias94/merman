@@ -6,6 +6,7 @@
 //! classification are delegated to `merman-bindings-core`.
 
 use merman_bindings_core::BindingError;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 const WASM_ABI_VERSION: u32 = 2;
@@ -98,7 +99,9 @@ fn json_value_result(result: Result<Vec<u8>, BindingError>) -> Result<JsValue, J
     let bytes = result.map_err(binding_error_to_js)?;
     let value: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|err| JsValue::from_str(&err.to_string()))?;
-    serde_wasm_bindgen::to_value(&value).map_err(|err| JsValue::from_str(&err.to_string()))
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 fn binding_error_to_js(err: BindingError) -> JsValue {
