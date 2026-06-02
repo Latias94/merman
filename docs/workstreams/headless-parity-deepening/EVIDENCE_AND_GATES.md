@@ -1433,6 +1433,36 @@ Residual note:
   `!important` cleanup are still not JSON options. Those require an explicit cascade/security
   design rather than a quick binding flag.
 
+Twenty-fifth slice outcome:
+
+- Re-audited Zed PR 57967 after the binding fallback option landed, including the `color cleanup`
+  commit. The remaining Zed color differences are still host palette policy: white-background
+  replacement, edge-label background/text fixes, and GitGraph tag-label text color are editor
+  compatibility rules, not default Mermaid output requirements.
+- Confirmed the current merman surface covers common Rust host theme needs:
+  `HeadlessRenderer::with_site_config(...)`, Mermaid `theme` / `themeVariables` / `themeCSS`,
+  `SvgPipeline::resvg_safe()`, `ScopedCssPostprocessor`, `CssOverridePostprocessor`, and
+  `DropNativeDuplicateFallbacksPostprocessor`.
+- Confirmed the shared binding surface covers raster-safe output and duplicate fallback cleanup, but
+  does not yet expose external Mermaid site config or host-scoped CSS injection. That is an API
+  ergonomics gap, not evidence for silently changing `resvg_safe()` defaults.
+- Updated `THEME_RENDERING_COVERAGE.md` with a common-host-needs table so future HPD-080 work does
+  not conflate Mermaid theme support with product-specific palette rewriting.
+
+Focused verification:
+
+- `gh pr view 57967 --repo zed-industries/zed --comments --json title,url,mergeStateStatus,state,body,files,commits,comments,reviews`
+- `gh api repos/zed-industries/zed/commits/c85f29cd2e78ec8a68b20349606d8298eecf37bb --jq ...`
+- `cargo nextest run -p merman-core theme`
+- `cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface svg_options_can_drop_native_duplicate_fallbacks`
+- `cargo nextest run -p merman --features render external_ render_svg_sync_applies_scoped_theme_css_once`
+- `npm run build:ts --prefix platforms/web`
+
+Residual note:
+
+- Binding-level `site_config` and host-scoped CSS options may be useful later, but they need an
+  explicit security/cascade/raster-safety contract. Do not add a quick Zed-specific palette flag.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

@@ -291,6 +291,12 @@ Current repository reality to preserve:
     binding `options_json` as `svg.drop_native_duplicate_fallbacks`. The default remains unchanged;
     non-Rust hosts can now opt into the same safe duplicate native/fallback label cleanup that Rust
     users had through `DropNativeDuplicateFallbacksPostprocessor`.
+  - A twenty-fifth HPD-080 slice re-audited Zed PR 57967 against the current 0.7 theme surface.
+    Rust host theme workflows are covered through site config, `themeCSS`, scoped CSS
+    postprocessors, and raster-safe pipelines. Bindings cover raster-safe output and fallback
+    de-duplication, but still lack first-class external `site_config` or host-scoped CSS options.
+    Treat that as API ergonomics work; do not turn Zed's editor palette cleanup into default
+    Mermaid output.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

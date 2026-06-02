@@ -81,6 +81,19 @@ default merman styling behavior.
   `data-merman-foreignobject="fallback"` on fallback groups and
   `merman-foreignobject-fallback-text` on fallback text.
 
+## Common Host Theme Needs
+
+| Need | Current status | Notes |
+| --- | --- | --- |
+| Select an official Mermaid theme | Supported | Rust uses `HeadlessRenderer::with_site_config(...)`; public metadata exposes all Mermaid 11.15 theme names. Binding consumers can discover the theme list but do not yet have a direct shared `site_config` option. |
+| Override Mermaid `themeVariables` | Supported in Rust and directives | Rust can pass site config; ordinary Mermaid init directives also work. Shared binding options do not yet expose an external config object, so non-Rust hosts must use directives or postprocess output. |
+| Apply diagram-owned custom CSS | Supported | Mermaid `themeCSS` is emitted as scoped SVG CSS through the parity renderer. |
+| Apply host-owned palette CSS | Supported in Rust, manual elsewhere | Rust consumers can append `ScopedCssPostprocessor` and optional `CssOverridePostprocessor`. Binding consumers can postprocess the SVG string themselves; adding a JSON host-CSS option needs an explicit security/cascade design. |
+| Export through resvg/usvg | Supported | `SvgPipeline::resvg_safe()` and binding `svg.pipeline="resvg-safe"` handle fallback insertion, `foreignObject` stripping, and common CSS/attribute hazards. |
+| Remove duplicate fallback labels | Supported and opt-in | Rust uses `DropNativeDuplicateFallbacksPostprocessor`; bindings use `svg.drop_native_duplicate_fallbacks=true`. Fallback-only labels are preserved. |
+| Replace white SVG backgrounds with host background | Boundary | Useful for editors such as Zed, but it is host palette policy. Do not silently change Mermaid parity output or `resvg_safe()` defaults. |
+| Match browser font fallback/raster output exactly | Boundary | merman should expose deterministic, headless measurements honestly rather than pretending browser font fallback is exact. |
+
 ## Negative Gates
 
 Do not claim theme parity by adding inert CSS. A rule is useful only if the current renderer emits

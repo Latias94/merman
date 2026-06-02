@@ -164,3 +164,8 @@
 {"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web BindingOptions exposes svg.drop_native_duplicate_fallbacks."}
 {"file":"docs/bindings/OPTIONS_JSON.md","reason":"HPD-080 docs: shared options_json contract documents the duplicate fallback cleanup flag and example."}
 {"file":"docs/rendering/SVG_OUTPUT_PIPELINE.md","reason":"HPD-080 docs: SVG pipeline guide documents the binding-level duplicate fallback cleanup option for host consumers."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-zed-host-theme-needs-audit.md","reason":"HPD-080 journal: current theme surface audit against Zed PR 57967 separates Rust-supported host theme workflows, binding API ergonomics gaps, and non-goal host palette rewriting."}
+{"file":"docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md","reason":"HPD-080 ledger update: common host theme needs table records which needs are supported, binding/manual-only, or explicit host boundaries."}
+{"file":"crates/merman/src/render/mod.rs","reason":"HPD-080 verification: HeadlessRenderer tests cover external site theme selection, unknown-theme fallback, and scoped themeCSS emission for Rust consumers."}
+{"file":"crates/merman-render/src/svg/pipeline/builtin/scoped_css.rs","reason":"HPD-080 API evidence: ScopedCssPostprocessor is the product-neutral Rust seam for host-owned palette CSS."}
+{"file":"https://github.com/zed-industries/zed/commit/c85f29cd2e78ec8a68b20349606d8298eecf37bb","reason":"HPD-080 external evidence: Zed color cleanup rewrites editor background/edge/tag label policy after adopting merman resvg_safe."}
