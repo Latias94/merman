@@ -141,7 +141,7 @@ export function useMerman() {
 
   const getAsciiSupportedDiagrams = useCallback((): string[] => {
     if (!ready || !wasmRef.current) {
-      return ['flowchart', 'sequence', 'class', 'state', 'er'];
+      return ['flowchart', 'sequence', 'class', 'er', 'xychart'];
     }
     return wasmRef.current.get_ascii_supported_diagrams();
   }, [ready]);

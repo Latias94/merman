@@ -19,6 +19,17 @@ const categoryKeys: Record<string, string> = {
   Pie: "examples.categories.pie",
   Mindmap: "examples.categories.mindmap",
   Git: "examples.categories.git",
+  Timeline: "examples.categories.timeline",
+  "XY Chart": "examples.categories.xychart",
+  Architecture: "examples.categories.architecture",
+  Block: "examples.categories.block",
+  Packet: "examples.categories.packet",
+  Kanban: "examples.categories.kanban",
+  Quadrant: "examples.categories.quadrant",
+  Sankey: "examples.categories.sankey",
+  Radar: "examples.categories.radar",
+  Treemap: "examples.categories.treemap",
+  Requirement: "examples.categories.requirement",
 };
 
 export function ExampleGallery() {
@@ -57,7 +68,7 @@ export function ExampleGallery() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧分类 */}
-        <div className="w-48 border-r p-2 flex-shrink-0">
+        <div className="w-48 border-r p-2 flex-shrink-0 overflow-y-auto">
           <nav className="space-y-1">
             {categories.map((category) => (
               <button

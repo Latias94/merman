@@ -75,7 +75,18 @@
       "gantt": "甘特图",
       "pie": "饼图",
       "mindmap": "思维导图",
-      "git": "Git 图"
+      "git": "Git 图",
+      "timeline": "时间线",
+      "xychart": "XY 图",
+      "architecture": "架构图",
+      "block": "块图",
+      "packet": "数据包图",
+      "kanban": "看板",
+      "quadrant": "象限图",
+      "sankey": "桑基图",
+      "radar": "雷达图",
+      "treemap": "矩形树图",
+      "requirement": "需求图"
     }
   },
   "editor": {
@@ -150,6 +161,17 @@
     "pie": "饼图",
     "mindmap": "思维导图",
     "gitgraph": "Git 图",
+    "timeline": "时间线",
+    "xychart": "XY 图",
+    "architecture": "架构图",
+    "block": "块图",
+    "packet": "数据包图",
+    "kanban": "看板",
+    "quadrantchart": "象限图",
+    "sankey": "桑基图",
+    "radar": "雷达图",
+    "treemap": "矩形树图",
+    "requirement": "需求图",
     "unknown": "未知"
   }
 }
