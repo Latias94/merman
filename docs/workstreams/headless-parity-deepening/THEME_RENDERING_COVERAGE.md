@@ -140,6 +140,11 @@ Do not keep useless invalid inline style attributes only because upstream fixtur
 ER relationship paths and Mindmap edge paths now omit upstream's `style="undefined;;;undefined"`
 artifact; their visible behavior remains class-driven.
 
+Do not reject Mermaid-compatible style input just because the resulting browser CSS would be empty
+or useless. Treemap `classDef` accepts bare label-style tokens such as `color`, matching Mermaid's
+`TreeMapDB.addClass(...)`, but local SVG emission drops empty-valued declarations instead of
+leaking invalid `color: !important` or `fill: !important` into headless output.
+
 ## Next Useful Work
 
 1. Extend the dark-theme renderability smoke only when a newly supported diagram has a source-backed

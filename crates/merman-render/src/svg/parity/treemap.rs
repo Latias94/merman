@@ -140,11 +140,10 @@ pub(super) fn render_treemap_diagram_svg(
         let mut border_styles: Vec<String> = Vec::new();
 
         for (k, v) in &m.order {
-            let decl = if v.is_empty() {
-                format!("{k}:")
-            } else {
-                format!("{k}:{v}")
-            };
+            if v.is_empty() {
+                continue;
+            }
+            let decl = format!("{k}:{v}");
             let decl_imp = format!("{decl} !important");
             if treemap_is_label_style(k) {
                 label_styles.push(decl_imp);

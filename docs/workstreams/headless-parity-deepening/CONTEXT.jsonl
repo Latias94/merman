@@ -233,3 +233,9 @@
 {"file":"https://github.com/zed-industries/merman/commit/1c765dcca2ef5092fcde7bebe8374819563623ef","reason":"HPD-080 external evidence: Zed fork patch changed recursive Flowchart descendant extraction to an explicit stack."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-resvg-safe-fixture-smoke.md","reason":"HPD-080 journal: public resvg-safe host-integration smoke now covers user Kanban/GitGraph examples, dark-theme Flowchart, representative fixtures, and optional PNG rasterization."}
 {"file":"crates/merman/tests/resvg_safe_fixture_smoke.rs","reason":"HPD-080 regression gate: supported-family representative fixtures and host examples must render through HeadlessRenderer resvg-safe output without raster hazards."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-resvg-safe-all-supported-treemap-classdef.md","reason":"HPD-080 journal: all-supported resvg-safe audit found Treemap bare classDef label-token compatibility and empty Pie finite-root issues."}
+{"file":"crates/merman-render/src/svg/parity/pie.rs","reason":"HPD-080 implementation: empty Pie roots emit finite headless/raster-safe viewBoxes instead of preserving upstream invalid -Infinity capture output."}
+{"file":"crates/merman-core/src/diagrams/treemap.rs","reason":"HPD-080 implementation: Treemap classDef validation accepts Mermaid-compatible bare label-style tokens such as color."}
+{"file":"crates/merman-render/src/svg/parity/treemap.rs","reason":"HPD-080 implementation: Treemap SVG style compilation drops empty-valued declarations from Mermaid-compatible bare style tokens."}
+{"file":"crates/merman-render/tests/treemap_svg_test.rs","reason":"HPD-080 regression: Treemap bare classDef label-style tokens parse and render without leaking empty CSS values."}
+{"file":"crates/merman-render/tests/pie_svg_test.rs","reason":"HPD-080 regression: empty Pie root viewport remains finite for headless SVG output."}

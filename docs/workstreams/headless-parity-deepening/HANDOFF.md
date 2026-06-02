@@ -384,6 +384,14 @@ Current repository reality to preserve:
     `foreignObject`, raster-unsafe CSS/token cleanup, non-empty style elements, and actual PNG
     conversion when the `raster` feature is enabled. No new renderer defect was found in that scan;
     treat it as a functional regression gate, not an all-fixture parity percentage.
+  - A thirty-fifth HPD-080 all-supported resvg-safe audit slice resolved the Flowchart `layout.rs`
+    conflict between the Zed PR `58325` backport shape and local explicit-stack traversal coverage,
+    then ran the ignored supported-fixture audit. The audit found and fixed a Treemap classDef
+    compatibility gap: Mermaid accepts bare label-style tokens such as `color`, so local Treemap
+    parsing now accepts them too, while SVG emission drops empty-valued declarations instead of
+    leaking invalid `color: !important` / `fill: !important` styles. The same slice made empty Pie
+    roots finite for headless/raster safety rather than preserving Mermaid's invalid `-Infinity`
+    capture artifact.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

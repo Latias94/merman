@@ -218,6 +218,20 @@ pie
 }
 
 #[test]
+fn empty_pie_root_viewport_is_finite_for_headless_rendering() {
+    let svg = render_pie_from_text("pie");
+
+    assert!(
+        svg.contains(r#"viewBox="0 0 450 450""#),
+        "empty pie should keep a finite, visible root viewport: {svg}"
+    );
+    assert!(
+        !svg.contains("Infinity") && !svg.contains("NaN"),
+        "empty pie should not leak non-finite SVG values: {svg}"
+    );
+}
+
+#[test]
 fn pie_highlight_slice_config_emits_highlight_classes_and_css() {
     let svg = render_pie_from_text(
         r#"%%{init: {"pie": {"highlightSlice": "A"}}}%%

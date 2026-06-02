@@ -31,9 +31,12 @@ fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_j
         .join("treemap")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
+    render_treemap_svg_and_config_from_source(&text)
+}
 
+fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json::Value) {
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
@@ -56,6 +59,10 @@ fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_j
 
 fn render_treemap_svg_from_fixture(fixture: &str) -> String {
     render_treemap_svg_and_config_from_fixture(fixture).0
+}
+
+fn render_treemap_svg_from_source(text: &str) -> String {
+    render_treemap_svg_and_config_from_source(text).0
 }
 
 #[test]
@@ -132,5 +139,29 @@ fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
     assert!(
         digital_tag.contains("font-size: 36px"),
         "expected Digital label font-size to stay at 36px, got {digital_tag}"
+    );
+}
+
+#[test]
+fn treemap_classdef_bare_label_style_token_does_not_emit_empty_css_value() {
+    let svg = render_treemap_svg_from_source(
+        r#"treemap
+classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
+"Root":::c
+  "Leaf": 1000.00:::c
+"#,
+    );
+
+    assert!(
+        svg.contains("fill:#ff0000 !important"),
+        "expected filled classDef style to remain visible: {svg}"
+    );
+    assert!(
+        svg.contains("stroke:rgb(1,2,3) !important"),
+        "expected escaped comma stroke style to remain visible: {svg}"
+    );
+    assert!(
+        !svg.contains("color: !important") && !svg.contains("fill: !important"),
+        "bare classDef label style token should not leak empty CSS values: {svg}"
     );
 }

@@ -76,6 +76,27 @@ fn fixture_sample_paths() -> Vec<PathBuf> {
     out
 }
 
+fn all_supported_fixture_paths() -> Vec<PathBuf> {
+    let fixtures_root = workspace_root().join("fixtures");
+    let mut out = Vec::new();
+
+    for family in SUPPORTED_FIXTURE_DIRS {
+        let dir = fixtures_root.join(family);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        out.extend(
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("mmd")),
+        );
+    }
+
+    out.sort();
+    out
+}
+
 fn is_representative_fixture_name(name: &str) -> bool {
     name.starts_with("stress_")
         || name.starts_with("kanban_stress_")
@@ -93,6 +114,29 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
         .render_svg_resvg_safe_sync(source)
         .unwrap_or_else(|err| panic!("{name}: headless resvg-safe render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+}
+
+fn is_docs_placeholder_fixture(source: &str) -> bool {
+    source.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed == "..." || trimmed == "... More Fields ..."
+    })
+}
+
+fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
+    if relative_name.contains("parser_only_spec") {
+        return true;
+    }
+
+    if is_docs_placeholder_fixture(source) {
+        return true;
+    }
+
+    matches!(
+        relative_name,
+        // Mermaid 11.15 parser tests classify this trailing-comma Radar example as invalid.
+        "fixtures/radar/upstream_docs_radar_examples_005.mmd"
+    )
 }
 
 fn assert_resvg_safe_output(name: &str, svg: &str) {
@@ -268,4 +312,43 @@ fn representative_fixtures_render_headless_resvg_safe() {
         let svg = render_resvg_safe(diagram_id, &source);
         assert_resvg_safe_output(&relative_name, &svg);
     }
+}
+
+#[test]
+#[ignore = "manual HPD-080 audit over all supported fixtures; default smoke stays representative"]
+fn all_supported_fixtures_render_headless_resvg_safe_audit() {
+    let fixtures = all_supported_fixture_paths();
+    assert!(
+        fixtures.len() > 100,
+        "expected a broad supported fixture corpus"
+    );
+
+    let mut rendered = 0usize;
+    let mut skipped_unrenderable = 0usize;
+
+    for path in fixtures {
+        let relative_name = path
+            .strip_prefix(workspace_root())
+            .unwrap_or(path.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{relative_name}: read {}: {err}", path.display()));
+        if is_known_unrenderable_fixture(&relative_name, &source) {
+            skipped_unrenderable += 1;
+            continue;
+        }
+        let diagram_id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("fixture");
+        let svg = render_resvg_safe(diagram_id, &source);
+        assert_resvg_safe_output(&relative_name, &svg);
+        rendered += 1;
+    }
+
+    assert!(
+        rendered > 100,
+        "expected the manual audit to render a broad corpus; rendered={rendered}, skipped_unrenderable={skipped_unrenderable}"
+    );
 }

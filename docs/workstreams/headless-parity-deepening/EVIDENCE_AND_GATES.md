@@ -1960,6 +1960,47 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke`
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
 
+## HPD-080 - All-Supported Resvg-Safe Audit And Treemap ClassDef
+
+Outcome:
+
+- Resolved the Flowchart `layout.rs` conflict between the Zed PR `58325` backport shape and the
+  local explicit-stack cluster traversal follow-up. The merged file keeps the
+  `MAX_DIAGRAM_NESTING_DEPTH` model guard and the 512 KB stack-thread regressions for deep helper
+  traversals.
+- Rechecked Zed PR `57967`: Zed's background/text/accent cleanup is still host policy, while the
+  current merman surface covers common product-neutral host needs through `site_config`,
+  `themeCSS`, scoped host CSS, optional `!important` cleanup, root-background replacement, and
+  duplicate native/fallback cleanup.
+- Extended the resvg-safe smoke with a manual ignored all-supported audit. The audit intentionally
+  skips parser-only fixtures, upstream docs placeholders such as `...`, and pinned upstream-invalid
+  examples, then renders the supported fixture set through
+  `HeadlessRenderer::render_svg_resvg_safe_sync(...)`.
+- Fixed an upstream-source-backed Treemap input compatibility gap found by that audit. Mermaid
+  `TreeMapDB.addClass(...)` accepts bare label-style tokens such as `color`; local Treemap parsing
+  no longer rejects those tokens as parse errors.
+- Kept headless output valid rather than copying invalid CSS. Treemap SVG style compilation now
+  drops empty-valued declarations, so a Mermaid-compatible bare token like `color` does not leak
+  `color: !important` or `fill: !important` into final SVG output.
+- Fixed section-less Pie root output for headless/raster safety. Mermaid's browser/capture path can
+  serialize `viewBox="0 0 -Infinity 450"` for empty Pie input; local headless output now emits the
+  finite `viewBox="0 0 450 450"` instead of preserving a raster-hostile invalid token.
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render -p merman`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render flowchart_cluster_traversals_handle_deep_subgraphs_with_small_stack extract_descendants_handles_deeply_nested_subgraphs`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render drop_native_duplicate_fallbacks root_background scoped_css`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface svg_options_can_drop_native_duplicate_fallbacks svg_options_can_inject_host_scoped_css svg_options_can_set_root_background_color`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render pie --test pie_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-core treemap_classdef_allows_bare_label_style_tokens_like_mermaid`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render treemap --test treemap_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
+- `git diff --check`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
