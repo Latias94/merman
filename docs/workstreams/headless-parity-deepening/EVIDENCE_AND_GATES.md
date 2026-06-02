@@ -1683,6 +1683,36 @@ Residual note:
   raster duplicate labels, but hosts with intentionally repeated labels may still prefer a custom
   geometry-aware cleanup pass.
 
+Thirtieth slice outcome:
+
+- Expanded the public API dark-theme renderability smoke in
+  [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+  from the earlier representative set to cover Class, State, Architecture, Block, Journey, Radar,
+  Requirement, Timeline, Gantt, Treemap, and Pie as well.
+- The smoke remains semantic rather than pixel-based: it verifies SVG output, rejects `NaN`,
+  rejects unexpected `undefined` tokens, and checks source-backed visible labels plus theme colors
+  that the current local renderer should emit.
+- Requirement labels in the smoke use the renderer's visible source-backed text shape
+  (`Risk: High`, `Verification: Analysis`) rather than raw parser token spelling.
+- Timeline's `class="node-bkg node-undefined"` is narrowly allowed after checking Mermaid 11.15
+  upstream SVG fixtures. This is the same class of upstream placeholder as the earlier Kanban
+  `cluster undefined` / `node undefined` class shape, not a local visible rendering failure.
+
+Focused verification:
+
+- `rg -n "node-undefined|undefined" fixtures\upstream-svgs\timeline repo-ref\mermaid\packages\mermaid\src\diagrams\timeline -S`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render representative_dark_theme_diagrams_keep_visible_theme_signals`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo fmt --check -p merman`
+- JSONL validation for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`
+- `git diff --check`
+
+Residual note:
+
+- This is a public renderability contract gate, not a full visual parity metric. It should catch
+  blank output, unreadable labels, missing emitted theme colors, and invalid visible tokens without
+  pretending to measure browser font or pixel parity exactly.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

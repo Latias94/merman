@@ -22,7 +22,8 @@ fn assert_renderable_theme_signals(
 
     let svg_without_upstream_placeholder_classes = svg
         .replace(r#"class="cluster undefined "#, r#"class="cluster "#)
-        .replace(r#"class="node undefined"#, r#"class="node"#);
+        .replace(r#"class="node undefined"#, r#"class="node"#)
+        .replace(r#"class="node-bkg node-undefined""#, r#"class="node-bkg""#);
     assert!(
         !svg_without_upstream_placeholder_classes.contains("undefined"),
         "{name}: SVG leaked undefined tokens"
@@ -70,6 +71,33 @@ sequenceDiagram
             ],
         ),
         (
+            "theme-class",
+            r##"%%{init: {"themeVariables": {"classText": "#f8fafc", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "noteBkgColor": "#1f2937", "noteBorderColor": "#f97316", "noteTextColor": "#fde68a", "strokeWidth": 4}}}%%
+classDiagram
+  Animal <|-- Dog
+  class Animal {
+    +bark()
+  }
+  note for Animal "Dark note"
+"##,
+            &["Animal", "Dog", "bark()", "Dark note"],
+            &[
+                "#f8fafc", "#111827", "#38bdf8", "#f59e0b", "#1f2937", "#f97316", "#fde68a",
+            ],
+        ),
+        (
+            "theme-state",
+            r##"%%{init: {"themeVariables": {"transitionColor": "#22c55e", "lineColor": "#38bdf8", "stateLabelColor": "#f8fafc", "transitionLabelColor": "#facc15", "stateBkg": "#111827", "stateBorder": "#38bdf8", "specialStateColor": "#f97316", "strokeWidth": 4}}}%%
+stateDiagram-v2
+  [*] --> Idle: start
+  Idle --> Done: finish
+"##,
+            &["Idle", "Done", "start", "finish"],
+            &[
+                "#22c55e", "#38bdf8", "#f8fafc", "#facc15", "#111827", "#f97316",
+            ],
+        ),
+        (
             "theme-kanban",
             r##"%%{init: {"themeVariables": {"background": "#0f172a", "nodeBorder": "#38bdf8", "textColor": "#f8fafc", "git0": "#22c55e", "gitBranchLabel0": "#020617", "cScale0": "hsl(160, 80%, 40%)", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#111827"}}}%%
 kanban
@@ -91,6 +119,54 @@ gitGraph
             &["main", "dev"],
             &[
                 "#22c55e", "#020617", "#38bdf8", "#0f172a", "#f8fafc", "#111827", "#f59e0b",
+            ],
+        ),
+        (
+            "theme-architecture",
+            r##"%%{init: {"themeVariables": {"archEdgeColor": "#22c55e", "archEdgeArrowColor": "#facc15", "archEdgeWidth": 5, "archGroupBorderColor": "#38bdf8", "archGroupBorderWidth": "4px"}}}%%
+architecture-beta
+  group core(cloud)[Core]
+  service api(server)[API] in core
+  service db(database)[DB] in core
+  api:R --> L:db
+"##,
+            &["Core", "API", "DB"],
+            &[
+                "#22c55e",
+                "#facc15",
+                "#38bdf8",
+                "stroke-width:5",
+                "stroke-width:4px",
+            ],
+        ),
+        (
+            "theme-block",
+            r##"%%{init: {"themeVariables": {"nodeTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8"}}}%%
+block
+  block:Core
+    A["Alpha"]
+  end
+"##,
+            &["Alpha"],
+            &[
+                "#f8fafc",
+                "rgba(23, 37, 84, 0.5)",
+                "rgba(56, 189, 248, 0.2)",
+            ],
+        ),
+        (
+            "theme-journey",
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "faceColor": "#111827", "mainBkg": "#1f2937", "nodeBorder": "#38bdf8", "arrowheadColor": "#facc15", "edgeLabelBackground": "#0f172a", "titleColor": "#fde68a", "fillType0": "#172554", "actor0": "#f97316"}}}%%
+journey
+  title Theme Journey
+  section Checkout
+    Sign Up: 5: Alice
+    Pay: 3: Alice
+"##,
+            &["Theme Journey", "Checkout", "Sign Up", "Pay", "Alice"],
+            &[
+                "#f8fafc", "#22c55e", "#111827", "#1f2937", "#38bdf8", "#facc15", "#fde68a",
+                "#172554", "#f97316",
             ],
         ),
         (
@@ -117,6 +193,94 @@ quadrantChart
                 "#172554", "#1e3a8a", "#0f172a", "#111827", "#f8fafc", "#facc15", "#bfdbfe",
                 "#fde68a",
             ],
+        ),
+        (
+            "theme-radar",
+            r##"%%{init: {"themeVariables": {"titleColor": "#f8fafc", "cScale0": "#22c55e", "radar": {"axisColor": "#38bdf8", "graticuleColor": "#1f2937"}}, "radar": {"axisColor": "#facc15", "axisStrokeWidth": 4, "axisLabelFontSize": 14, "graticuleColor": "#334155", "graticuleOpacity": 0.8, "curveOpacity": 0.9, "curveStrokeWidth": 5}}}%%
+radar-beta
+  title Theme Radar
+  axis Speed, Quality, Cost
+  curve Team{8, 7, 4}
+"##,
+            &["Theme Radar", "Speed", "Quality", "Cost", "Team"],
+            &[
+                "#f8fafc",
+                "#22c55e",
+                "#facc15",
+                "#334155",
+                "stroke-width:4",
+                "stroke-width:5",
+            ],
+        ),
+        (
+            "theme-requirement",
+            r##"%%{init: {"look": "neo", "themeVariables": {"relationColor": "#22c55e", "lineColor": "#38bdf8", "requirementBackground": "#111827", "requirementBorderColor": "#facc15", "requirementTextColor": "#f8fafc", "relationLabelBackground": "#1f2937", "relationLabelColor": "#fde68a", "edgeLabelBackground": "#0f172a", "requirementEdgeLabelBackground": "#334155", "nodeBorder": "#f97316", "strokeWidth": 3}}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Dark requirement
+    risk: high
+    verifymethod: analysis
+  }
+"##,
+            &[
+                "req1",
+                "Dark requirement",
+                "Risk: High",
+                "Verification: Analysis",
+            ],
+            &[
+                "#22c55e", "#38bdf8", "#111827", "#facc15", "#f8fafc", "#1f2937", "#fde68a",
+                "#0f172a", "#334155",
+            ],
+        ),
+        (
+            "theme-timeline",
+            r##"%%{init: {"themeVariables": {"tertiaryColor": "#172554", "clusterBorder": "#f8fafc"}}}%%
+timeline
+  title Theme Timeline
+  section Release
+    2026 : Ship
+"##,
+            &["Theme Timeline", "Release", "2026", "Ship"],
+            &["#172554", "#f8fafc"],
+        ),
+        (
+            "theme-gantt",
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "sectionBkgColor": "#172554", "sectionBkgColor2": "#1e3a8a", "titleColor": "#fde68a", "gridColor": "#38bdf8", "taskTextColor": "#f8fafc", "taskBkgColor": "#111827", "taskBorderColor": "#facc15", "taskTextOutsideColor": "#fb923c", "doneTaskBkgColor": "#22c55e", "doneTaskBorderColor": "#16a34a"}}}%%
+gantt
+  title Theme Plan
+  dateFormat YYYY-MM-DD
+  section Core
+  Ship :done, 2026-01-01, 1d
+"##,
+            &["Theme Plan", "Core", "Ship"],
+            &[
+                "#f8fafc", "#172554", "#1e3a8a", "#fde68a", "#38bdf8", "#111827", "#facc15",
+                "#fb923c", "#22c55e",
+            ],
+        ),
+        (
+            "theme-treemap",
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "titleColor": "#fde68a"}, "treemap": {"sectionStrokeColor": "#38bdf8", "sectionFillColor": "#172554", "leafStrokeColor": "#facc15", "leafFillColor": "#111827", "labelColor": "#f8fafc", "valueColor": "#fb923c", "titleColor": "#fde68a"}}}%%
+treemap-beta
+  "Theme Section"
+    "Theme Leaf": 42
+"##,
+            &["Theme Section", "Theme Leaf", "42"],
+            &[
+                "#f8fafc", "#fde68a", "#38bdf8", "#172554", "#facc15", "#111827", "#fb923c",
+            ],
+        ),
+        (
+            "theme-pie",
+            r##"%%{init: {"themeVariables": {"pieTitleTextColor": "#f8fafc", "pieSectionTextColor": "#111827", "pieLegendTextColor": "#fde68a", "pieStrokeColor": "#38bdf8", "pieStrokeWidth": "3px"}}}%%
+pie title Theme Pie
+  "Alpha": 40
+  "Beta": 60
+"##,
+            &["Theme Pie", "Alpha", "Beta"],
+            &["#f8fafc", "#111827", "#fde68a", "#38bdf8", "3px"],
         ),
         (
             "theme-xychart",

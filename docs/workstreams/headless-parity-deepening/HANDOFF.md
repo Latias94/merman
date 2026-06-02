@@ -340,6 +340,11 @@ Current repository reality to preserve:
     `resvg-safe`, optional duplicate fallback cleanup, and root background replacement. Advanced
     element/inline-style palette rewriting remains a host-owned postprocessor boundary, not a
     default merman theme behavior.
+  - A thirtieth HPD-080 slice expanded the public API dark-theme renderability smoke to cover
+    Class, State, Architecture, Block, Journey, Radar, Requirement, Timeline, Gantt, Treemap, and
+    Pie in addition to the earlier Flowchart, Sequence, Kanban, GitGraph, QuadrantChart, and
+    XYChart cases. Timeline's `node-bkg node-undefined` class is narrowly allowed because pinned
+    upstream Timeline SVG fixtures emit that placeholder shape too.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

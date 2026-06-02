@@ -67,6 +67,25 @@ Unsupported Mermaid 11.15 families with style providers remain outside HPD-080 u
 `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`: `treeView`, `ishikawa`,
 `eventmodeling`, `venn`, and `wardley`.
 
+## Public Renderability Smoke
+
+The public `HeadlessRenderer` dark-theme smoke now covers the supported families where a compact
+source-backed theme signal is available: Architecture, Block, Class, Flowchart, Gantt, GitGraph,
+Journey, Kanban, Pie, QuadrantChart, Radar, Requirement, Sequence, State, Timeline, Treemap, and
+XYChart.
+
+The gate is intentionally semantic. It checks that output is SVG, geometry does not leak `NaN`,
+unexpected `undefined` tokens are absent, representative labels remain visible in the output, and
+diagram-owned theme colors or inline theme settings survive through the public API. It does not
+attempt screenshot parity, font fallback parity, or exact color-compositing parity.
+
+Known upstream placeholder class shapes are narrowly allowed:
+
+- Kanban/shared cluster helpers can emit `class="cluster undefined ..."` and
+  `class="node undefined"`.
+- Timeline fixtures in the pinned Mermaid 11.15 baseline can emit
+  `class="node-bkg node-undefined"`.
+
 ## Zed Feedback Boundary
 
 Zed PR `zed-industries/zed#57967` is useful integration evidence but should not be copied as
@@ -119,7 +138,7 @@ artifact; their visible behavior remains class-driven.
 
 ## Next Useful Work
 
-1. Extend the dark-theme renderability smoke only when a supported diagram has a source-backed
+1. Extend the dark-theme renderability smoke only when a newly supported diagram has a source-backed
    visible theme contract or a real consumer failure. Keep it semantic, not pixel-parity based.
 2. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
 3. Add root-background smoke coverage only when a host reports a concrete raster/export failure;
