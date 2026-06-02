@@ -119,3 +119,8 @@ Current repository reality to preserve:
   - The next dugong-adjacent audit should target the public Graphlib `Graph` API subset used by
     `dugong` and Mermaid-facing renderers. Do not spend HPD-050 budget implementing unused
     shortest-path algorithms unless a real Mermaid/Dagre path needs them.
+  - That public Graphlib `Graph` API audit has started. The first `graph-test.js` slice now covers
+    options, labels, node/edge basics, named multiedges, compound parent moves, root children, and
+    remove-node cleanup. `set_parent_ix(...)` now enforces the upstream tree invariant by panicking
+    if a parent assignment would create a cycle. The non-compound `setParent(...)` throw remains an
+    open Rust API-shape decision.

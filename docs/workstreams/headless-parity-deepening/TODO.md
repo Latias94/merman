@@ -91,7 +91,10 @@ Last updated: 2026-06-02
   `dugong-graphlib` has a Graphlib coverage ledger, exposed Graphlib helper algorithm tests are
   ported, and the Dagre reference harness is executable again against the installed Mermaid
   `11.15.0` / `dagre-d3-es@7.0.14` toolchain. The next useful dugong slice is public Graphlib
-  `Graph` API coverage, not unused shortest-path algorithms.
+  `Graph` API coverage, not unused shortest-path algorithms. The first public Graph API slice is
+  now underway: basic options/node/edge/compound behavior is covered and parent-cycle assignment is
+  guarded, while non-compound `setParent(...)` throw semantics remain an explicit open API-shape
+  decision.
 
 ## M5 - Semantic / Render Unification Pilot
 

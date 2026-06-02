@@ -20,7 +20,7 @@ As of the pinned checkout, `repo-ref/graphlib/test` contains 212 `it(...)` cases
 | `test/alg/find-cycles-test.js` | 6 | Ported in `crates/dugong-graphlib/tests/alg_test.rs` |
 | `test/alg/postorder-test.js` | 6 | Ported in `crates/dugong-graphlib/tests/alg_test.rs` |
 | `test/alg/preorder-test.js` | 5 | Ported in `crates/dugong-graphlib/tests/alg_test.rs` |
-| `test/graph-test.js` | 129 | Not yet ledger-ported independently |
+| `test/graph-test.js` | 129 | Partially ported in `crates/dugong-graphlib/tests/graph_core_test.rs` |
 | `test/json-test.js` | 6 | Not yet implemented as a Graphlib JSON seam |
 | `test/bundle-test.js` | 3 | Not applicable as a JS bundle test; Rust crate smoke tests may replace it |
 | `test/version-test.js` | 1 | Not yet ledger-ported independently |
@@ -69,11 +69,46 @@ Source: `repo-ref/graphlib/test/alg/postorder-test.js`
 - `works for multiple connected roots` -> `crates/dugong-graphlib/tests/alg_test.rs::postorder_handles_multiple_connected_roots`
 - `fails if root is not in the graph` -> `crates/dugong-graphlib/tests/alg_test.rs::postorder_panics_if_root_is_not_in_the_graph`
 
+Source: `repo-ref/graphlib/test/graph-test.js`
+
+- `initial state / has no nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
+- `initial state / has no edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
+- `initial state / has no attributes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
+- `initial state / defaults to a simple directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
+- `initial state / can be set to undirected` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_options_can_enable_undirected_compound_or_multigraph_modes`
+- `initial state / can be set to a compound graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_options_can_enable_undirected_compound_or_multigraph_modes`
+- `initial state / can be set to a mulitgraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_options_can_enable_undirected_compound_or_multigraph_modes`
+- `setGraph / can be used to get and set properties for the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_label_can_be_set_and_read`
+- `nodes / is empty if there are no nodes in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
+- `nodes / returns the ids of nodes in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::nodes_returns_inserted_node_ids`
+- `sources / returns nodes in the graph that have no in-edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::sources_returns_nodes_without_in_edges`
+- `setNode / creates the node if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
+- `setNode / can set a value for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
+- `setNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
+- `setNodeDefaults / sets a default label for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
+- `setNodeDefaults / does not change existing nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_does_not_change_existing_node_label`
+- `removeNode / does nothing if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
+- `removeNode / removes the node if it is in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
+- `removeNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
+- `removeNode / removes edges incident on the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
+- `removeNode / removes parent / child relationships for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_clears_parent_child_relationships`
+- `setParent / creates the parent if it does not exist` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
+- `setParent / creates the child if it does not exist` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
+- `setParent / moves the node from the previous parent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_moves_node_from_previous_parent`
+- `setParent / preserves the tree invariant` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_preserves_tree_invariant`
+- `children / returns children for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
+- `children / returns all nodes without a parent when the parent is not set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
+- `setPath / creates a path of mutiple edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_path_creates_path_edges`
+- `setEdge / creates the edge if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
+- `setEdge / creates the nodes for the edge if they are not part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
+- `setEdge / changes the value for an edge if it is already in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_with_label_updates_existing_edge_label`
+- `setEdge / creates a multi-edge if if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
+
 ## Next Priority
 
-1. Port a focused slice of `test/graph-test.js` for the public APIs that `dugong` and Mermaid-facing
-   renderers rely on: options, node creation/defaults, edge creation/defaults, compound
-   parent/children semantics, multigraph edge keys, and remove-node/remove-edge cleanup.
+1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers:
+   edge removal variants, predecessors/successors/neighbors, in/out/node edge queries, and
+   additional compound child/root cases.
 2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
    before adding ad hoc snapshot serializers elsewhere.
 3. Keep non-used algorithms such as shortest paths, Prim, and Floyd-Warshall out of scope unless a

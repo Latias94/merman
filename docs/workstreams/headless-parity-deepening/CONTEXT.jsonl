@@ -35,3 +35,6 @@
 {"file":"target/compare/dagre-layout-hpd050-graphlib-audit/basic.js.json","reason":"HPD-050 verification evidence: compare-dagre-layout State basic JS reference output generated after harness import fix."}
 {"file":"target/compare/dagre-layout-hpd050-graphlib-audit/basic.rust.json","reason":"HPD-050 verification evidence: compare-dagre-layout State basic Rust output matched JS with zero node/edge delta."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-dugong-graphlib-audit.md","reason":"HPD-050 journal: source checkout, Graphlib coverage ledger, alg tests, missing-root behavior, and Dagre harness fix."}
+{"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 graphlib audit implementation: direct upstream graph-test slice for public Graph API basics and compound parent invariants."}
+{"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 graphlib audit implementation: set_parent_ix now rejects parent cycles like upstream Graphlib tree invariant checks."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-graph-core.md","reason":"HPD-050 journal: public Graph API coverage slice, parent-cycle guard, and remaining API-shape decisions."}

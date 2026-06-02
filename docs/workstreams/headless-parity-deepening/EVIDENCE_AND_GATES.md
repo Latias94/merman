@@ -461,3 +461,29 @@ Verification notes:
 - This slice does not claim full Graphlib parity. The next useful audit target is the public
   `Graph` API subset consumed by `dugong` and Mermaid-facing renderers, not unused shortest-path
   algorithms.
+
+Tenth slice Graphlib Graph core coverage:
+
+- Added
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  as the first direct source-test slice from `repo-ref/graphlib/test/graph-test.js`.
+- Covered current public Rust API equivalents for initial options, graph labels, node defaults,
+  source queries, edge creation/update, named multiedges, path edges, parent/child moves, root
+  children, and remove-node cleanup.
+- Tightened `Graph::set_parent_ix(...)` so assigning a node under its own descendant panics with
+  `set_parent would create a cycle`, matching upstream Graphlib's tree-invariant throw in Rust
+  form.
+- Updated
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  to classify `test/graph-test.js` as partially ported and list the mapped cases.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+
+Verification notes:
+
+- The invalid non-compound `setParent(...)` upstream throw remains a deliberate open API-shape
+  decision; current Rust methods still no-op on non-compound graphs. Do not change that casually
+  without auditing downstream callers.

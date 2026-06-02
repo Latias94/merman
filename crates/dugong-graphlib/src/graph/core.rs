@@ -1366,6 +1366,10 @@ where
         if child_ix >= self.nodes.len() || parent_ix >= self.nodes.len() {
             return self;
         }
+        assert!(
+            !self.would_create_parent_cycle(child_ix, parent_ix),
+            "set_parent would create a cycle"
+        );
 
         let prev = self.parent_ix.get(child_ix).copied().flatten();
         if prev == Some(parent_ix) {
@@ -1387,6 +1391,21 @@ where
             }
         }
         self
+    }
+
+    fn would_create_parent_cycle(&self, child_ix: usize, parent_ix: usize) -> bool {
+        let mut seen: HashSet<usize> = HashSet::default();
+        let mut current = Some(parent_ix);
+        while let Some(ix) = current {
+            if ix == child_ix {
+                return true;
+            }
+            if !seen.insert(ix) {
+                return true;
+            }
+            current = self.parent_ix.get(ix).copied().flatten();
+        }
+        false
     }
 
     pub fn clear_parent(&mut self, child: &str) -> &mut Self {
