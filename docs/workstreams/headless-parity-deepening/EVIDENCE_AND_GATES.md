@@ -1902,6 +1902,40 @@ Focused verification:
 - `rg --files repo-ref/mermaid/packages/mermaid/src/diagrams | rg "(style|styles|architectureStyles|ishikawaStyles|pieStyles)\.(ts|js)$"`
   matched the expected pinned-provider inventory.
 
+Thirty-third slice outcome:
+
+- Re-audited Zed PR `57967` and confirmed the current 0.7 theme surface supports common
+  product-neutral host needs: Mermaid `theme` / `themeVariables` / `themeCSS`,
+  binding `options_json.site_config`, host `svg.scoped_css` / `css_override_policy`,
+  `resvg-safe`, duplicate native/fallback cleanup, and root background replacement.
+- Kept Zed's exact background, edge-label, tag-label, and accent cleanup classified as host palette
+  policy. No default Mermaid theme behavior changed for this part.
+- Followed the latest Zed PR thread to PR `58325`, where Zed fixed a stack overflow in deeply
+  nested Flowchart subgraphs on their merman fork. Local 0.7 still had the same class of unbounded
+  recursive traversal in Flowchart cluster handling.
+- Converted Flowchart cluster traversal seams in
+  [crates/merman-render/src/flowchart/layout.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/flowchart/layout.rs)
+  from Rust call-stack recursion to explicit stacks:
+  `compute_effective_dir_by_id`, `extract_descendants`, `flowchart_find_non_cluster_child`, and
+  `copy_cluster`.
+- Added a 512 KB stack-thread regression covering 10,000 nested subgraphs across those traversal
+  seams. The bounded recursive cluster layout depth rule remains unchanged.
+
+Focused verification:
+
+- `gh pr view 57967 --repo zed-industries/zed --json title,url,commits,comments,reviews,files`
+- `gh issue view 58325 --repo zed-industries/zed --json title,url,state,body,comments,labels`
+- `gh api repos/zed-industries/merman/commits/1c765dcca2ef5092fcde7bebe8374819563623ef --jq '.files[] | {filename, patch}'`
+- `npm run build:ts --prefix platforms/web`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-bindings-core`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render drop_native_duplicate_fallbacks root_background scoped_css`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render flowchart_cluster_traversals_handle_deep_subgraphs_with_small_stack`
+- `cargo fmt --check -p merman-render`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test flowchart_layout_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test flowchart_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test zed_pr_57644_corpus`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

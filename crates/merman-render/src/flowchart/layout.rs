@@ -9,7 +9,7 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::MermaidConfig;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
@@ -94,62 +94,56 @@ fn compute_effective_dir_by_id(
     diagram_dir: &str,
     inherit_dir: bool,
 ) -> HashMap<String, String> {
-    fn compute_one(
+    fn compute_one_iterative(
         id: &str,
         subgraphs_by_id: &HashMap<String, FlowSubgraph>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         diagram_dir: &str,
         inherit_dir: bool,
-        visiting: &mut std::collections::HashSet<String>,
         memo: &mut HashMap<String, String>,
-    ) -> String {
-        if let Some(dir) = memo.get(id) {
-            return dir.clone();
-        }
-        if !visiting.insert(id.to_string()) {
-            let dir = toggled_dir(diagram_dir);
-            memo.insert(id.to_string(), dir.clone());
-            return dir;
+    ) {
+        if memo.contains_key(id) {
+            return;
         }
 
-        let parent_dir = g
-            .parent(id)
-            .and_then(|p| subgraphs_by_id.contains_key(p).then_some(p.to_string()))
-            .map(|p| {
-                compute_one(
-                    &p,
-                    subgraphs_by_id,
-                    g,
-                    diagram_dir,
-                    inherit_dir,
-                    visiting,
-                    memo,
-                )
-            })
-            .unwrap_or_else(|| normalize_dir(diagram_dir));
+        let mut path: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut cur = id.to_string();
+        let mut parent_dir = loop {
+            if let Some(dir) = memo.get(&cur) {
+                break dir.clone();
+            }
+            if !seen.insert(cur.clone()) {
+                let dir = toggled_dir(diagram_dir);
+                memo.insert(cur.clone(), dir.clone());
+                break dir;
+            }
 
-        let dir = subgraphs_by_id
-            .get(id)
-            .map(|sg| effective_cluster_dir(sg, &parent_dir, inherit_dir))
-            .unwrap_or_else(|| toggled_dir(&parent_dir));
+            path.push(cur.clone());
+            let Some(parent) = g.parent(&cur).filter(|p| subgraphs_by_id.contains_key(*p)) else {
+                break normalize_dir(diagram_dir);
+            };
+            cur = parent.to_string();
+        };
 
-        memo.insert(id.to_string(), dir.clone());
-        let _ = visiting.remove(id);
-        dir
+        for node in path.into_iter().rev() {
+            if let Some(dir) = memo.get(&node) {
+                parent_dir = dir.clone();
+                continue;
+            }
+
+            let dir = subgraphs_by_id
+                .get(&node)
+                .map(|sg| effective_cluster_dir(sg, &parent_dir, inherit_dir))
+                .unwrap_or_else(|| toggled_dir(&parent_dir));
+            memo.insert(node, dir.clone());
+            parent_dir = dir;
+        }
     }
 
     let mut memo: HashMap<String, String> = HashMap::new();
-    let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
     for id in subgraphs_by_id.keys() {
-        let _ = compute_one(
-            id,
-            subgraphs_by_id,
-            g,
-            diagram_dir,
-            inherit_dir,
-            &mut visiting,
-            &mut memo,
-        );
+        compute_one_iterative(id, subgraphs_by_id, g, diagram_dir, inherit_dir, &mut memo);
     }
     memo
 }
@@ -199,11 +193,20 @@ fn lowest_common_parent(
 }
 
 fn extract_descendants(id: &str, g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
-    let children = g.children(id);
-    let mut out: Vec<String> = children.iter().map(|s| s.to_string()).collect();
-    for child in children {
-        out.extend(extract_descendants(child, g));
+    let mut out: Vec<String> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = g.children(id).iter().map(|s| s.to_string()).collect();
+
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        for child in g.children(&node) {
+            stack.push(child.to_string());
+        }
+        out.push(node);
     }
+
     out
 }
 
@@ -271,22 +274,34 @@ fn flowchart_find_non_cluster_child(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_id: &str,
 ) -> Option<String> {
-    let children = graph.children(id);
-    if children.is_empty() {
-        return Some(id.to_string());
-    }
-    let mut reserve: Option<String> = None;
-    for child in children {
-        let Some(child_id) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
+    let mut leaves: Vec<String> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = vec![id.to_string()];
+
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
             continue;
-        };
-        let common_edges = flowchart_find_common_edges(graph, cluster_id, &child_id);
-        if !common_edges.is_empty() {
-            reserve = Some(child_id);
-        } else {
-            return Some(child_id);
+        }
+        let children = graph.children(&node);
+        if children.is_empty() {
+            leaves.push(node);
+            continue;
+        }
+        for child in children.iter().rev() {
+            stack.push(child.to_string());
         }
     }
+
+    let mut reserve: Option<String> = None;
+    for leaf in leaves {
+        let common_edges = flowchart_find_common_edges(graph, cluster_id, &leaf);
+        if !common_edges.is_empty() {
+            reserve = Some(leaf);
+        } else {
+            return Some(leaf);
+        }
+    }
+
     reserve
 }
 
@@ -430,57 +445,96 @@ fn copy_cluster(
     root_id: &str,
     descendants: &std::collections::HashMap<String, Vec<String>>,
 ) {
-    let mut nodes: Vec<String> = graph
-        .children(cluster_id)
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    if cluster_id != root_id {
-        nodes.push(cluster_id.to_string());
+    #[derive(Debug)]
+    struct CopyFrame {
+        node: String,
+        owner_cluster: String,
+        expanded: bool,
     }
 
-    for node in nodes {
+    let mut nodes: Vec<(String, String)> = Vec::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<CopyFrame> = Vec::new();
+    if cluster_id != root_id {
+        stack.push(CopyFrame {
+            node: cluster_id.to_string(),
+            owner_cluster: cluster_id.to_string(),
+            expanded: true,
+        });
+    }
+    stack.extend(graph.children(cluster_id).iter().rev().map(|s| CopyFrame {
+        node: s.to_string(),
+        owner_cluster: cluster_id.to_string(),
+        expanded: false,
+    }));
+
+    while let Some(frame) = stack.pop() {
+        if frame.expanded {
+            nodes.push((frame.node, frame.owner_cluster));
+            continue;
+        }
+        if !visited.insert(frame.node.clone()) {
+            continue;
+        }
+
+        let children = graph.children(&frame.node);
+        if children.is_empty() {
+            nodes.push((frame.node, frame.owner_cluster));
+            continue;
+        }
+
+        stack.push(CopyFrame {
+            node: frame.node.clone(),
+            owner_cluster: frame.node.clone(),
+            expanded: true,
+        });
+        for child in children.iter().rev() {
+            stack.push(CopyFrame {
+                node: child.to_string(),
+                owner_cluster: frame.node.clone(),
+                expanded: false,
+            });
+        }
+    }
+
+    for (node, owner_cluster) in nodes {
         if !graph.has_node(&node) {
             continue;
         }
 
-        if !graph.children(&node).is_empty() {
-            copy_cluster(&node, graph, new_graph, root_id, descendants);
-        } else {
-            let data = graph.node(&node).cloned().unwrap_or_default();
-            new_graph.set_node(node.clone(), data);
+        let data = graph.node(&node).cloned().unwrap_or_default();
+        new_graph.set_node(node.clone(), data);
 
-            if let Some(parent) = graph.parent(&node) {
-                if parent != root_id {
-                    new_graph.set_parent(node.clone(), parent.to_string());
-                }
+        if let Some(parent) = graph.parent(&node) {
+            if parent != root_id {
+                new_graph.set_parent(node.clone(), parent.to_string());
             }
-            if cluster_id != root_id && node != cluster_id {
-                new_graph.set_parent(node.clone(), cluster_id.to_string());
-            }
+        }
+        if owner_cluster != root_id && node != owner_cluster {
+            new_graph.set_parent(node.clone(), owner_cluster);
+        }
 
-            // Copy edges for this extracted cluster.
-            //
-            // Mermaid's implementation calls `graph.edges(node)` (note: on dagre-d3-es Graphlib,
-            // `edges()` ignores the argument and returns *all* edges). Because the source graph is
-            // mutated as nodes are removed, this makes edge insertion order sensitive to the leaf
-            // traversal order, which in turn can affect deterministic tie-breaking in Dagre's
-            // acyclic/ranking steps.
-            //
-            // Reference:
-            // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
-            for ek in graph.edge_keys() {
-                if !edge_in_cluster(&ek, root_id, descendants) {
-                    continue;
-                }
-                if new_graph.has_edge(&ek.v, &ek.w, ek.name.as_deref()) {
-                    continue;
-                }
-                let Some(lbl) = graph.edge_by_key(&ek).cloned() else {
-                    continue;
-                };
-                new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(lbl));
+        // Copy edges for this extracted cluster.
+        //
+        // Mermaid's implementation calls `graph.edges(node)` (note: on dagre-d3-es Graphlib,
+        // `edges()` ignores the argument and returns *all* edges). Because the source graph is
+        // mutated as nodes are removed, this makes edge insertion order sensitive to the leaf
+        // traversal order, which in turn can affect deterministic tie-breaking in Dagre's
+        // acyclic/ranking steps.
+        //
+        // Reference:
+        // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
+        for ek in graph.edge_keys() {
+            if !edge_in_cluster(&ek, root_id, descendants) {
+                continue;
             }
+            if new_graph.has_edge(&ek.v, &ek.w, ek.name.as_deref()) {
+                continue;
+            }
+            let Some(lbl) = graph.edge_by_key(&ek).cloned() else {
+                continue;
+            };
+            new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(lbl));
         }
 
         let _ = graph.remove_node(&node);
@@ -2665,4 +2719,101 @@ fn layout_flowchart_v2_with_model(
         bounds,
         dom_node_order_by_root,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    const DEEP_SUBGRAPH_DEPTH: usize = 10_000;
+
+    #[derive(Debug)]
+    struct DeepTraversalOutcome {
+        descendant_count: usize,
+        anchor: Option<String>,
+        root_dir: Option<String>,
+        child_dir: Option<String>,
+        copied_node_count: usize,
+    }
+
+    fn compound_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        })
+    }
+
+    fn deep_compound_graph(depth: usize) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = compound_graph();
+        for i in (0..depth).rev() {
+            graph.set_parent(format!("n{}", i + 1), format!("n{i}"));
+        }
+        graph
+    }
+
+    fn deep_subgraphs(depth: usize) -> HashMap<String, FlowSubgraph> {
+        let mut subgraphs = HashMap::with_capacity(depth);
+        for i in 0..depth {
+            subgraphs.insert(
+                format!("n{i}"),
+                FlowSubgraph {
+                    id: format!("n{i}"),
+                    title: format!("n{i}"),
+                    dir: None,
+                    label_type: None,
+                    classes: Vec::new(),
+                    styles: Vec::new(),
+                    nodes: vec![format!("n{}", i + 1)],
+                },
+            );
+        }
+        subgraphs
+    }
+
+    #[test]
+    fn flowchart_cluster_traversals_handle_deep_subgraphs_with_small_stack() {
+        let (tx, rx) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("flowchart-deep-subgraph-traversal".to_string())
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                let mut graph = deep_compound_graph(DEEP_SUBGRAPH_DEPTH);
+                let descendants = extract_descendants("n0", &graph);
+                let anchor = flowchart_find_non_cluster_child("n0", &graph, "n0");
+                let dirs = compute_effective_dir_by_id(
+                    &deep_subgraphs(DEEP_SUBGRAPH_DEPTH),
+                    &graph,
+                    "TB",
+                    false,
+                );
+
+                let mut descendants_by_id = HashMap::new();
+                descendants_by_id.insert("n0".to_string(), descendants.clone());
+                let mut copied = compound_graph();
+                copy_cluster("n0", &mut graph, &mut copied, "n0", &descendants_by_id);
+
+                tx.send(DeepTraversalOutcome {
+                    descendant_count: descendants.len(),
+                    anchor,
+                    root_dir: dirs.get("n0").cloned(),
+                    child_dir: dirs.get("n1").cloned(),
+                    copied_node_count: copied.node_count(),
+                })
+                .unwrap();
+            })
+            .expect("spawn deep subgraph traversal test");
+
+        let outcome = rx
+            .recv_timeout(Duration::from_secs(15))
+            .expect("deep subgraph traversal should finish without stack overflow");
+
+        assert_eq!(outcome.descendant_count, DEEP_SUBGRAPH_DEPTH);
+        assert_eq!(outcome.anchor, Some(format!("n{DEEP_SUBGRAPH_DEPTH}")));
+        assert_eq!(outcome.root_dir.as_deref(), Some("LR"));
+        assert_eq!(outcome.child_dir.as_deref(), Some("TB"));
+        assert_eq!(outcome.copied_node_count, DEEP_SUBGRAPH_DEPTH);
+    }
 }

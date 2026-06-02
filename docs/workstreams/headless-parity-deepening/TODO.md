@@ -232,6 +232,9 @@ Last updated: 2026-06-02
   root canvas explicitly, while default Mermaid parity output stays unchanged. A source-checkout
   audit then restored `repo-ref/mermaid` from accidental `develop` drift to the lockfile Mermaid
   `11.15.0` commit and confirmed the theme coverage ledger still matches the pinned provider
-  inventory.
+  inventory. A follow-up Zed-feedback audit reconfirmed that common host theme needs are covered
+  without making Zed's exact editor palette cleanup a merman default, and used Zed PR `58325` to
+  fix a serious Flowchart deep-subgraph stack-overflow risk by moving cluster tree traversals onto
+  explicit stacks.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
