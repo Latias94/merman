@@ -70,14 +70,18 @@ Unsupported Mermaid 11.15 families with style providers remain outside HPD-080 u
 ## Public Renderability Smoke
 
 The public `HeadlessRenderer` dark-theme smoke now covers the supported families where a compact
-source-backed theme signal is available: Architecture, Block, Class, Flowchart, Gantt, GitGraph,
-Journey, Kanban, Pie, QuadrantChart, Radar, Requirement, Sequence, State, Timeline, Treemap, and
-XYChart.
+source-backed theme/config signal is available: Architecture, Block, C4, Class, ER, Flowchart,
+Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Pie, QuadrantChart, Radar, Requirement, Sankey,
+Sequence, State, Timeline, Treemap, and XYChart.
 
 The gate is intentionally semantic. It checks that output is SVG, geometry does not leak `NaN`,
 unexpected `undefined` tokens are absent, representative labels remain visible in the output, and
 diagram-owned theme colors or inline theme settings survive through the public API. It does not
 attempt screenshot parity, font fallback parity, or exact color-compositing parity.
+
+C4 is covered through visible C4 config colors rather than broad generic `themeVariables`. This
+matches the current Mermaid 11.15 boundary: the C4 stylesheet provider is narrow, while most visible
+C4 palette behavior is C4 config or per-element style.
 
 Known upstream placeholder class shapes are narrowly allowed:
 

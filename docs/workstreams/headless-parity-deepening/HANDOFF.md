@@ -345,6 +345,11 @@ Current repository reality to preserve:
     Pie in addition to the earlier Flowchart, Sequence, Kanban, GitGraph, QuadrantChart, and
     XYChart cases. Timeline's `node-bkg node-undefined` class is narrowly allowed because pinned
     upstream Timeline SVG fixtures emit that placeholder shape too.
+  - A thirty-first HPD-080 slice filled the remaining compact public-smoke coverage gap for ER,
+    Mindmap, C4, Packet, and Sankey. No production fix was needed; the slice proves these diagrams'
+    labels and source-backed theme/config colors survive the public `HeadlessRenderer` route. C4 is
+    intentionally asserted through visible C4 config colors, while Info/Error/ZenUML remain
+    boundary cases unless a concrete visible failure appears.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

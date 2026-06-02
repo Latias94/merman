@@ -98,6 +98,20 @@ stateDiagram-v2
             ],
         ),
         (
+            "theme-er",
+            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "nodeTextColor": "#fde68a", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  CUSTOMER {
+    string name
+  }
+"##,
+            &["CUSTOMER", "ORDER", "places", "name"],
+            &[
+                "#f8fafc", "#22c55e", "#111827", "#38bdf8", "#fde68a", "#172554", "#334155",
+            ],
+        ),
+        (
             "theme-kanban",
             r##"%%{init: {"themeVariables": {"background": "#0f172a", "nodeBorder": "#38bdf8", "textColor": "#f8fafc", "git0": "#22c55e", "gitBranchLabel0": "#020617", "cScale0": "hsl(160, 80%, 40%)", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#111827"}}}%%
 kanban
@@ -106,6 +120,18 @@ kanban
 "##,
             &["Todo", "Dark Card", "Core"],
             &["#0f172a", "#38bdf8", "#f8fafc", "#22c55e", "#020617"],
+        ),
+        (
+            "theme-mindmap",
+            r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "gitBranchLabel0": "#020617", "nodeBorder": "#facc15", "cScale0": "#172554", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#334155"}}}%%
+mindmap
+  Root
+    Child
+"##,
+            &["Root", "Child"],
+            &[
+                "#22c55e", "#020617", "#facc15", "#172554", "#f8fafc", "#334155",
+            ],
         ),
         (
             "theme-gitgraph",
@@ -120,6 +146,24 @@ gitGraph
             &[
                 "#22c55e", "#020617", "#38bdf8", "#0f172a", "#f8fafc", "#111827", "#f59e0b",
             ],
+        ),
+        (
+            "theme-c4",
+            r##"%%{init: {"c4": {"person_bg_color": "#172554", "person_border_color": "#38bdf8", "system_bg_color": "#111827", "system_border_color": "#facc15"}}}%%
+C4Context
+title Theme C4
+Person(customer, "Customer", "Uses the system")
+System(system, "Internet Banking", "Core system")
+Rel(customer, system, "Uses", "HTTPS")
+"##,
+            &[
+                "Theme C4",
+                "Customer",
+                "Internet Banking",
+                "Core system",
+                "Uses",
+            ],
+            &["#172554", "#38bdf8", "#111827", "#facc15"],
         ),
         (
             "theme-architecture",
@@ -193,6 +237,29 @@ quadrantChart
                 "#172554", "#1e3a8a", "#0f172a", "#111827", "#f8fafc", "#facc15", "#bfdbfe",
                 "#fde68a",
             ],
+        ),
+        (
+            "theme-packet",
+            r##"%%{init: {"packet": {"startByteColor": "#22c55e", "endByteColor": "#f97316", "labelColor": "#f8fafc", "titleColor": "#fde68a", "blockStrokeColor": "#38bdf8", "blockStrokeWidth": 2, "blockFillColor": "#111827"}}}%%
+packet
+title Theme Packet
++8: "Byte"
++16: "Word"
+"##,
+            &["Theme Packet", "Byte", "Word"],
+            &[
+                "#22c55e", "#f97316", "#f8fafc", "#fde68a", "#38bdf8", "#111827",
+            ],
+        ),
+        (
+            "theme-sankey",
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "mainBkg": "#111827"}, "sankey": {"labelStyle": "outlined", "nodeColors": {"Source": "#22c55e", "Target": "#38bdf8"}, "showValues": true, "prefix": "$", "suffix": " units"}}}%%
+sankey
+Source,Target,10
+Target,Done,2
+"##,
+            &["Source", "Target", "Done", "$10 units"],
+            &["#f8fafc", "#111827", "#22c55e", "#38bdf8"],
         ),
         (
             "theme-radar",

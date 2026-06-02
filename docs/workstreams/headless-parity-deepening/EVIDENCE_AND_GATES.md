@@ -1713,6 +1713,34 @@ Residual note:
   blank output, unreadable labels, missing emitted theme colors, and invalid visible tokens without
   pretending to measure browser font or pixel parity exactly.
 
+Thirty-first slice outcome:
+
+- Extended the same public API dark-theme renderability smoke to the remaining supported diagram
+  families with compact source-backed theme/config signals: ER, Mindmap, C4, Packet, and Sankey.
+- This closes the earlier public-smoke gap where those diagrams had renderer-level CSS/config
+  coverage but no public `HeadlessRenderer` route proving labels and configured colors survived the
+  full parse/layout/render path.
+- No production rendering change was needed. The only calibration was Mindmap: `nodeBorder` is a
+  root span color only for redux-style output, so the smoke uses `theme: "redux"` before asserting
+  that color.
+- C4 is intentionally checked through visible C4 config colors rather than broad Mermaid
+  `themeVariables`, because Mermaid 11.15's C4 style provider is narrow and most visible C4 palette
+  behavior is C4 config or per-element style rather than generic theme-variable CSS.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render representative_dark_theme_diagrams_keep_visible_theme_signals`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo fmt --check -p merman`
+- JSONL validation for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`
+- `git diff --check`
+
+Residual note:
+
+- Info and Error still have no Mermaid 11.15 diagram-specific style provider. ZenUML remains an
+  external plugin compatibility boundary. They should be audited only for concrete visible failures,
+  not forced into the same theme smoke.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
