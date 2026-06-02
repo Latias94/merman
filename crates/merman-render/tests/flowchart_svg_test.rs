@@ -33,6 +33,29 @@ fn fmt(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+fn render_flowchart_svg_from_text(text: &str) -> String {
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg")
+}
+
 #[test]
 fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
     let text = "flowchart TB\nsubgraph A[\"This is a very very very very very very very long title that should wrap\"]\n  a\nend\n";
@@ -129,6 +152,27 @@ fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
     assert!(
         svg.contains("max-width: 120px"),
         "expected flowchart.wrappingWidth=120 to affect html label max-width style"
+    );
+}
+
+#[test]
+fn flowchart_svg_honors_mermaid_11_15_numeric_stroke_width_theme() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233", "nodeBorder": "#445566"}}}%%
+flowchart TB
+    A --> B
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#merman .node rect,#merman .node circle,#merman .node ellipse,#merman .node polygon,#merman .node path{fill:#ECECFF;stroke:#445566;stroke-width:4px;}"#
+        ),
+        "expected numeric themeVariables.strokeWidth to drive Flowchart node stroke width CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .edgePath .path{stroke:#112233;stroke-width:4px;}"#),
+        "expected numeric themeVariables.strokeWidth to drive Flowchart edge path stroke width CSS: {svg}"
     );
 }
 

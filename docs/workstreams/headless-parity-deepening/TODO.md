@@ -167,6 +167,9 @@ Last updated: 2026-06-02
   label, note, activation, marker/error, and rect node CSS by routing Sequence styles through
   `effective_config` and the shared `SvgTheme` seam. A State slice fixed stale hardcoded state
   node, cluster, transition, label, note, marker, start/end, special-state, and title CSS, including
-  the prefixed local barbEnd marker selector. Continue by scanning supported diagrams for blank
-  output, hidden labels, black blocks, lost theme colors, and other functional renderability
-  failures before returning to fine root residual work.
+  the prefixed local barbEnd marker selector. A Flowchart slice fixed hardcoded node/edge-path
+  stroke widths so Mermaid 11.15 numeric `themeVariables.strokeWidth` controls visible stroke
+  thickness. An adjacent Class audit exposed namespace-qualified relation structural mismatches
+  that should be handled as a separate source-backed Class slice, not hidden in a CSS patch.
+  Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
+  colors, and other functional renderability failures before returning to fine root residual work.

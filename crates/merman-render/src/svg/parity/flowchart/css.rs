@@ -17,6 +17,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     let main_bkg = theme.color("mainBkg", "#ECECFF");
     let text_color = theme.color("textColor", "#333");
     let title_color = theme.color("titleColor", text_color.as_str());
+    let stroke_width = theme.css_value("strokeWidth", "1");
     let error_bkg = theme.color("errorBkgColor", "#552222");
     let error_text = theme.color("errorTextColor", "#552222");
     let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
@@ -222,11 +223,11 @@ pub(in crate::svg::parity) fn flowchart_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:1px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
+        r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
     );
     let _ = write!(
         &mut out,
-        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:2.0px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
+        r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePath .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
         id.as_str(),
         stroke,
         stroke,
@@ -234,6 +235,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         arrowhead_color,
         id.as_str(),
         stroke,
+        stroke_width,
         id.as_str(),
         stroke
     );

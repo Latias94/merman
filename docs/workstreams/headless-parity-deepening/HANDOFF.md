@@ -223,6 +223,16 @@ Current repository reality to preserve:
     through `SvgTheme`; the prefixed local barbEnd marker now uses source-backed suffix selectors,
     while dependency marker and neo gradient/drop-shadow rules remain intentionally un-emitted where
     local SVG output/defs do not support them.
+  - An eleventh HPD-080 slice fixed Flowchart stroke-width theme CSS. Flowchart now reads
+    Mermaid 11.15 `themeVariables.strokeWidth` through `SvgTheme::css_value(...)` for visible node
+    and edge-path stroke widths instead of hardcoding `1px` / `2.0px`; Flowchart structural parity
+    stayed green.
+  - The same audit found a separate Class namespace structural issue:
+    `stress_class_comments_inside_namespaces_024`,
+    `stress_class_nested_namespaces_many_levels_021`, and `stress_class_unicode_namespace_mix_017`
+    still differ from pinned upstream around namespace-qualified relation ids and, for some
+    fixtures, implicit top-level namespace-qualified class nodes. Treat this as a future
+    source-backed Class semantic/render slice, not a CSS-only theme patch.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

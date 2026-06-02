@@ -930,6 +930,45 @@ Residual note:
 - This slice fixes State theme/readability CSS only. It does not claim State layout or root-bounds
   closure.
 
+Eleventh slice outcome:
+
+- Audited pinned Mermaid 11.15 Flowchart style provider:
+  - `packages/mermaid/src/diagrams/flowchart/styles.ts`
+- Flowchart CSS previously hardcoded node strokes to `1px` and edge-path strokes to `2.0px`.
+  Mermaid 11.15 drives both from `themeVariables.strokeWidth` and appends `px` in the Flowchart
+  stylesheet. This is visible for `theme: neo`, redux themes, and custom numeric
+  `themeVariables.strokeWidth` values.
+- Flowchart CSS now reads `strokeWidth` through `SvgTheme::css_value(...)`, preserving numeric
+  theme defaults and user overrides instead of treating the value as a color or ignoring it.
+- A focused Class audit during this slice found an unrelated structural namespace issue:
+  `Outer.Foo --> Bar` style relations still differ from the pinned upstream fixture because local
+  Class rendering collapses namespace-qualified relation ids that upstream keeps fully qualified
+  and, in some cases, as a separate top-level class. That is recorded as a future Class semantic
+  slice, not hidden inside this Flowchart CSS change.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/flowchart/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/flowchart/css.rs)
+- [crates/merman-render/tests/flowchart_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/flowchart_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render flowchart_svg_honors_mermaid_11_15_numeric_stroke_width_theme --test flowchart_svg_test`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes Flowchart theme/readability CSS only. It does not claim Flowchart root-bounds
+  closure.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` was
+  run as part of the adjacent Class audit and currently exposes three namespace structural
+  mismatches (`stress_class_comments_inside_namespaces_024`,
+  `stress_class_nested_namespaces_many_levels_021`, and `stress_class_unicode_namespace_mix_017`).
+  Those mismatches are not caused by the Flowchart change and should be handled by a dedicated
+  source-backed Class namespace/qualified-id slice.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
