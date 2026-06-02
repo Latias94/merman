@@ -82,6 +82,7 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `nodes / is empty if there are no nodes in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::graph_initial_state_uses_default_directed_simple_options`
 - `nodes / returns the ids of nodes in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::nodes_returns_inserted_node_ids`
 - `sources / returns nodes in the graph that have no in-edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::sources_returns_nodes_without_in_edges`
+- `sinks / returns nodes in the graph that have no out-edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::sinks_returns_nodes_without_out_edges`
 - `setNode / creates the node if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNode / can set a value for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
 - `setNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
@@ -98,16 +99,47 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setParent / preserves the tree invariant` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_preserves_tree_invariant`
 - `children / returns children for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
 - `children / returns all nodes without a parent when the parent is not set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
+- `predecessors / returns the predecessors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::predecessors_returns_node_predecessors`
+- `successors / returns the successors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::successors_returns_node_successors`
+- `neighbors / returns the neighbors of a node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::neighbors_returns_unique_in_and_out_neighbors`
+- `isLeaf / returns false for connected node in undirected graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
+- `isLeaf / returns true for an unconnected node in undirected graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
+- `isLeaf / returns true for unconnected node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
+- `isLeaf / returns false for predecessor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
+- `isLeaf / returns true for successor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
 - `setPath / creates a path of mutiple edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_path_creates_path_edges`
 - `setEdge / creates the edge if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / creates the nodes for the edge if they are not part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / changes the value for an edge if it is already in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_with_label_updates_existing_edge_label`
 - `setEdge / creates a multi-edge if if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
+- `removeEdge / correctly removes neighbors` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_updates_neighbor_queries`
+- `removeEdge / correctly decrements neighbor counts` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_edge_keeps_named_parallel_edges`
+- `inEdges / returns the edges that point at the specified node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::in_edges_returns_edges_pointing_at_node`
+- `inEdges / works for multigraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
+- `inEdges / can return only edges from a specified node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
+- `outEdges / returns all edges that this node points at` -> `crates/dugong-graphlib/tests/graph_core_test.rs::out_edges_returns_edges_pointing_from_node`
+- `outEdges / works for multigraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
+- `outEdges / can return only edges to a specified node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_queries_work_for_multigraphs_and_endpoint_filters`
+- `nodeEdges / returns all edges that this node points at` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_returns_all_incident_edges`
+- `nodeEdges / works for multigraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_returns_parallel_multigraph_edges`
+- `nodeEdges / can return only edges between specific nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_between_returns_edges_between_specific_nodes`
+
+## Open API Shape Differences
+
+- Missing-node query methods: upstream JS returns `undefined` for `predecessors`, `successors`,
+  `neighbors`, `inEdges`, `outEdges`, and `nodeEdges` when the node does not exist. The current
+  Rust API uses empty vectors for these collection-returning methods, which is a deliberate
+  shape difference until a fallible/optional query seam is justified by consumers.
+- Chainable mutators: upstream `removeEdge(...)` returns the graph object. Rust mutators currently
+  return booleans or `&mut Self` depending on the method; coverage focuses on state changes rather
+  than JS chaining.
+- Non-compound `setParent(...)`: upstream throws; current Rust parent methods no-op on
+  non-compound graphs. This remains an explicit API-shape decision.
 
 ## Next Priority
 
 1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers:
-   edge removal variants, predecessors/successors/neighbors, in/out/node edge queries, and
+   remaining edge removal variants, filterNodes if a Rust seam exists or should exist, and
    additional compound child/root cases.
 2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
    before adding ad hoc snapshot serializers elsewhere.

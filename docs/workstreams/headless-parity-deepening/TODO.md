@@ -94,7 +94,10 @@ Last updated: 2026-06-02
   `Graph` API coverage, not unused shortest-path algorithms. The first public Graph API slice is
   now underway: basic options/node/edge/compound behavior is covered and parent-cycle assignment is
   guarded, while non-compound `setParent(...)` throw semantics remain an explicit open API-shape
-  decision.
+  decision. The next Graph API slice also covers source-backed edge/adjacency queries (`sinks`,
+  predecessor/successor/neighbor queries, `isLeaf`, in/out/node edge filters, and remove-edge
+  neighbor updates), while preserving the open missing-node and chainable-mutator API-shape
+  differences instead of forcing JS ergonomics into Rust.
 
 ## M5 - Semantic / Render Unification Pilot
 

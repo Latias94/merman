@@ -1491,6 +1491,28 @@ where
             .collect()
     }
 
+    pub fn sinks(&self) -> Vec<&str> {
+        if !self.options.directed {
+            return self.nodes().collect();
+        }
+        self.nodes
+            .iter()
+            .filter_map(|n| n.as_ref())
+            .filter(|n| self.out_edges(&n.id, None).is_empty())
+            .map(|n| n.id.as_str())
+            .collect()
+    }
+
+    pub fn is_leaf(&self, v: &str) -> bool {
+        if !self.has_node(v) {
+            return false;
+        }
+        if self.options.directed {
+            return self.successors(v).is_empty();
+        }
+        self.neighbors(v).is_empty()
+    }
+
     pub fn node_edges(&self, v: &str) -> Vec<EdgeKey> {
         let mut out: Vec<EdgeKey> = Vec::new();
         let mut seen: HashSet<EdgeKey> = HashSet::default();
@@ -1499,6 +1521,21 @@ where
                 continue;
             };
             if (e.key.v == v || e.key.w == v) && seen.insert(e.key.clone()) {
+                out.push(e.key.clone());
+            }
+        }
+        out
+    }
+
+    pub fn node_edges_between(&self, v: &str, w: &str) -> Vec<EdgeKey> {
+        let mut out: Vec<EdgeKey> = Vec::new();
+        let mut seen: HashSet<EdgeKey> = HashSet::default();
+        for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
+            let touches_both = (e.key.v == v && e.key.w == w) || (e.key.v == w && e.key.w == v);
+            if touches_both && seen.insert(e.key.clone()) {
                 out.push(e.key.clone());
             }
         }

@@ -10,6 +10,13 @@ fn sorted_owned(mut values: Vec<String>) -> Vec<String> {
     values
 }
 
+fn sorted_edge_tuples(edges: Vec<EdgeKey>) -> Vec<(String, String, Option<String>)> {
+    let mut out: Vec<(String, String, Option<String>)> =
+        edges.into_iter().map(|e| (e.v, e.w, e.name)).collect();
+    out.sort();
+    out
+}
+
 #[test]
 fn graph_initial_state_uses_default_directed_simple_options() {
     let g: Graph<(), (), Option<String>> = Graph::new(GraphOptions::default());
@@ -67,6 +74,15 @@ fn sources_returns_nodes_without_in_edges() {
     g.ensure_node("d");
 
     assert_eq!(sorted(g.sources()), vec!["a", "d"]);
+}
+
+#[test]
+fn sinks_returns_nodes_without_out_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_path(&["a", "b", "c"]);
+    g.ensure_node("d");
+
+    assert_eq!(sorted(g.sinks()), vec!["c", "d"]);
 }
 
 #[test]
@@ -158,6 +174,236 @@ fn set_path_creates_path_edges() {
 
     assert!(g.has_edge("a", "b", None));
     assert!(g.has_edge("b", "c", None));
+}
+
+#[test]
+fn predecessors_returns_node_predecessors() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+    g.set_edge("a", "a");
+
+    assert_eq!(sorted(g.predecessors("a")), vec!["a"]);
+    assert_eq!(sorted(g.predecessors("b")), vec!["a"]);
+    assert_eq!(sorted(g.predecessors("c")), vec!["b"]);
+}
+
+#[test]
+fn successors_returns_node_successors() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+    g.set_edge("a", "a");
+
+    assert_eq!(sorted(g.successors("a")), vec!["a", "b"]);
+    assert_eq!(sorted(g.successors("b")), vec!["c"]);
+    assert!(g.successors("c").is_empty());
+}
+
+#[test]
+fn neighbors_returns_unique_in_and_out_neighbors() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+    g.set_edge("a", "a");
+
+    assert_eq!(sorted(g.neighbors("a")), vec!["a", "b"]);
+    assert_eq!(sorted(g.neighbors("b")), vec!["a", "c"]);
+    assert_eq!(sorted(g.neighbors("c")), vec!["b"]);
+}
+
+#[test]
+fn is_leaf_follows_graphlib_directed_and_undirected_rules() {
+    let mut directed: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    directed.ensure_node("isolated");
+    directed.set_edge("a", "b");
+
+    assert!(directed.is_leaf("isolated"));
+    assert!(!directed.is_leaf("a"));
+    assert!(directed.is_leaf("b"));
+
+    let mut undirected: Graph<(), (), ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    undirected.ensure_node("isolated");
+    undirected.set_edge("a", "b");
+
+    assert!(undirected.is_leaf("isolated"));
+    assert!(!undirected.is_leaf("b"));
+}
+
+#[test]
+fn in_edges_returns_edges_pointing_at_node() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+
+    assert!(g.in_edges("a", None).is_empty());
+    assert_eq!(
+        sorted_edge_tuples(g.in_edges("b", None)),
+        vec![("a".to_string(), "b".to_string(), None)]
+    );
+    assert_eq!(
+        sorted_edge_tuples(g.in_edges("c", None)),
+        vec![("b".to_string(), "c".to_string(), None)]
+    );
+}
+
+#[test]
+fn out_edges_returns_edges_pointing_from_node() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+
+    assert_eq!(
+        sorted_edge_tuples(g.out_edges("a", None)),
+        vec![("a".to_string(), "b".to_string(), None)]
+    );
+    assert_eq!(
+        sorted_edge_tuples(g.out_edges("b", None)),
+        vec![("b".to_string(), "c".to_string(), None)]
+    );
+    assert!(g.out_edges("c", None).is_empty());
+}
+
+#[test]
+fn edge_queries_work_for_multigraphs_and_endpoint_filters() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge("a", "b");
+    g.set_edge_named("a", "b", Some("bar"), None);
+    g.set_edge_named("a", "b", Some("foo"), None);
+    g.set_edge("a", "c");
+    g.set_edge("b", "c");
+    g.set_edge("z", "a");
+    g.set_edge("z", "b");
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.out_edges("a", Some("b"))), ab);
+    assert!(g.out_edges("b", Some("a")).is_empty());
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.in_edges("b", Some("a"))), ab);
+    assert!(g.in_edges("a", Some("b")).is_empty());
+}
+
+#[test]
+fn node_edges_returns_all_incident_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+
+    assert_eq!(
+        sorted_edge_tuples(g.node_edges("a")),
+        vec![("a".to_string(), "b".to_string(), None)]
+    );
+    assert_eq!(
+        sorted_edge_tuples(g.node_edges("b")),
+        vec![
+            ("a".to_string(), "b".to_string(), None),
+            ("b".to_string(), "c".to_string(), None)
+        ]
+    );
+    assert_eq!(
+        sorted_edge_tuples(g.node_edges("c")),
+        vec![("b".to_string(), "c".to_string(), None)]
+    );
+}
+
+#[test]
+fn node_edges_returns_parallel_multigraph_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge("a", "b");
+    g.set_edge_named("a", "b", Some("bar"), None);
+    g.set_edge_named("a", "b", Some("foo"), None);
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.node_edges("a")), ab);
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.node_edges("b")), ab);
+}
+
+#[test]
+fn node_edges_between_returns_edges_between_specific_nodes() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge("a", "b");
+    g.set_edge_named("a", "b", Some("bar"), None);
+    g.set_edge_named("a", "b", Some("foo"), None);
+    g.set_edge("a", "c");
+    g.set_edge("b", "c");
+    g.set_edge("z", "a");
+    g.set_edge("z", "b");
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.node_edges_between("a", "b")), ab);
+
+    let ab = vec![
+        ("a".to_string(), "b".to_string(), None),
+        ("a".to_string(), "b".to_string(), Some("bar".to_string())),
+        ("a".to_string(), "b".to_string(), Some("foo".to_string())),
+    ];
+    assert_eq!(sorted_edge_tuples(g.node_edges_between("b", "a")), ab);
+}
+
+#[test]
+fn remove_edge_updates_neighbor_queries() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+
+    assert!(g.remove_edge("a", "b", None));
+
+    assert!(g.successors("a").is_empty());
+    assert!(g.neighbors("a").is_empty());
+    assert!(g.predecessors("b").is_empty());
+    assert!(g.neighbors("b").is_empty());
+}
+
+#[test]
+fn remove_edge_keeps_named_parallel_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge("a", "b");
+    g.set_edge_named("a", "b", Some("foo"), None);
+
+    assert!(g.remove_edge("a", "b", None));
+
+    assert!(g.has_edge("a", "b", Some("foo")));
+    assert_eq!(g.successors("a"), vec!["b"]);
+    assert_eq!(g.neighbors("a"), vec!["b"]);
+    assert_eq!(g.predecessors("b"), vec!["a"]);
+    assert_eq!(g.neighbors("b"), vec!["a"]);
 }
 
 #[test]

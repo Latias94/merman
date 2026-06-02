@@ -487,3 +487,29 @@ Verification notes:
 - The invalid non-compound `setParent(...)` upstream throw remains a deliberate open API-shape
   decision; current Rust methods still no-op on non-compound graphs. Do not change that casually
   without auditing downstream callers.
+
+Eleventh slice Graphlib edge-query coverage:
+
+- Extended the direct `repo-ref/graphlib/test/graph-test.js` coverage in
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  to cover `sinks`, `predecessors`, `successors`, `neighbors`, `isLeaf`, `inEdges`, `outEdges`,
+  `nodeEdges`, and remove-edge adjacency updates.
+- Added Rust API seams for source-backed Graphlib behavior that previously had no public equivalent:
+  `Graph::sinks(...)`, `Graph::is_leaf(...)`, and `Graph::node_edges_between(...)`.
+- Updated
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  so this slice is mapped to pinned upstream case names and the remaining JS/Rust API-shape
+  differences are explicit.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+
+Verification notes:
+
+- Missing-node query behavior is intentionally not claimed as identical: upstream JS returns
+  `undefined` for several query methods, while the current Rust collection API returns empty
+  vectors.
+- Upstream chainability for `removeEdge(...)` is not copied into Rust; tests cover the state and
+  adjacency effects that matter to consumers.

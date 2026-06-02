@@ -124,3 +124,9 @@ Current repository reality to preserve:
     remove-node cleanup. `set_parent_ix(...)` now enforces the upstream tree invariant by panicking
     if a parent assignment would create a cycle. The non-compound `setParent(...)` throw remains an
     open Rust API-shape decision.
+  - The next public Graph API slice covers source-backed edge/adjacency queries: `sinks`,
+    predecessor/successor/neighbor queries, `isLeaf`, `inEdges`, `outEdges`, `nodeEdges`, and
+    remove-edge neighbor count behavior. New Rust API seams are limited to `sinks`, `is_leaf`, and
+    `node_edges_between`, because those map to existing Graphlib behavior and real graph consumers.
+    Missing-node `undefined` returns and JS chainable mutators remain documented Rust/JS API-shape
+    differences, not hidden parity claims.
