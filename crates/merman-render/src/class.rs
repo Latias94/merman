@@ -14,6 +14,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
+
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
@@ -115,9 +117,22 @@ fn extract_descendants(
     id: &str,
     out: &mut Vec<String>,
 ) {
-    for child in graph.children(id) {
-        out.push(child.to_string());
-        extract_descendants(graph, child, out);
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = graph
+        .children(id)
+        .iter()
+        .rev()
+        .map(|s| s.to_string())
+        .collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        out.push(node.clone());
+        let children = graph.children(&node);
+        for child in children.iter().rev() {
+            stack.push(child.to_string());
+        }
     }
 }
 
@@ -129,15 +144,27 @@ fn extract_cluster_copy_order(
 ) {
     // Mirrors Mermaid's `copy(...)`: children are copied before the non-root cluster node itself.
     // That order decides which nested cluster is extracted first in later recursive passes.
-    for child in graph.children(cluster_id) {
-        if graph.children(child).is_empty() {
-            out.push(child.to_string());
-        } else {
-            extract_cluster_copy_order(graph, child, root_id, out);
+    let mut stack: Vec<(String, bool)> = vec![(cluster_id.to_string(), false)];
+    while let Some((node, expanded)) = stack.pop() {
+        if expanded {
+            if node != root_id {
+                out.push(node);
+            }
+            continue;
         }
-    }
-    if cluster_id != root_id {
-        out.push(cluster_id.to_string());
+
+        let children = graph.children(&node);
+        if children.is_empty() {
+            if node != root_id {
+                out.push(node);
+            }
+            continue;
+        }
+
+        stack.push((node, true));
+        for child in children.iter().rev() {
+            stack.push((child.to_string(), false));
+        }
     }
 }
 
@@ -1818,6 +1845,7 @@ fn layout_class_diagram_v2_typed_inner(
     note_html_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramV2Layout> {
+    validate_class_model_depth(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let conf = effective_config
         .get("flowchart")
@@ -2388,6 +2416,34 @@ fn layout_class_diagram_v2_typed_inner(
         bounds,
         class_row_metrics_by_id,
     })
+}
+
+fn validate_class_model_depth(model: &ClassDiagramModel) -> Result<()> {
+    for id in model.namespaces.keys() {
+        let mut depth = 0usize;
+        let mut current = Some(id.as_str());
+        let mut seen: HashSet<&str> = HashSet::new();
+        while let Some(ns_id) = current {
+            if !seen.insert(ns_id) {
+                return Err(Error::InvalidModel {
+                    message: format!("class namespace parent cycle involving {ns_id}"),
+                });
+            }
+            if depth > MAX_DIAGRAM_NESTING_DEPTH {
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "class namespace nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                    ),
+                });
+            }
+            current = model
+                .namespaces
+                .get(ns_id)
+                .and_then(|ns| ns.parent.as_deref());
+            depth += 1;
+        }
+    }
+    Ok(())
 }
 
 fn mirror_layout_x_coord(x: f64, axis_x: f64) -> f64 {

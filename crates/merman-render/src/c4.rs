@@ -6,6 +6,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use merman_core::diagrams::c4::C4DiagramRenderModel;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -816,6 +817,7 @@ pub(crate) fn layout_c4_diagram_typed(
             .or_default()
             .push(i);
     }
+    validate_c4_boundary_depth(model, &boundary_children)?;
     let mut shape_children: HashMap<String, Vec<usize>> = HashMap::new();
     for (i, s) in model.shapes.iter().enumerate() {
         shape_children
@@ -1012,6 +1014,32 @@ pub(crate) fn layout_c4_diagram_typed(
         shapes: shapes_out,
         rels: rels_out,
     })
+}
+
+fn validate_c4_boundary_depth(
+    model: &C4DiagramRenderModel,
+    boundary_children: &HashMap<String, Vec<usize>>,
+) -> Result<()> {
+    let roots = boundary_children.get("").cloned().unwrap_or_default();
+    let mut stack: Vec<(usize, usize)> = roots.into_iter().map(|idx| (idx, 1)).collect();
+    while let Some((idx, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "c4 boundary nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        let Some(boundary) = model.boundaries.get(idx) else {
+            continue;
+        };
+        if let Some(children) = boundary_children.get(&boundary.alias) {
+            for &child in children {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn layout_c4_diagram(
