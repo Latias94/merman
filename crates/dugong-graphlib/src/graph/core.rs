@@ -837,6 +837,21 @@ where
         self
     }
 
+    pub fn set_path_with_label(&mut self, nodes: &[&str], label: E) -> &mut Self
+    where
+        E: Clone,
+    {
+        if nodes.len() < 2 {
+            return self;
+        }
+        for pair in nodes.windows(2) {
+            let v = pair[0];
+            let w = pair[1];
+            self.set_edge_with_label(v, w, label.clone());
+        }
+        self
+    }
+
     pub fn has_edge(&self, v: &str, w: &str, name: Option<&str>) -> bool {
         let view = self.edge_key_view(v, w, name);
         self.edge_index_of_view(view).is_some()

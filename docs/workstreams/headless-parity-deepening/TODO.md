@@ -104,8 +104,9 @@ Last updated: 2026-06-02
   endpoint-aware default node/edge label callbacks without adding broad Clone bounds to ordinary
   layout graphs. A follow-up child/root API slice now adds `children_opt(...)` for source-backed
   missing-node versus empty-children semantics while keeping existing `children(...)` and
-  `children_root()` behavior stable for Rust callers. ARCH-022's first Dagre reference adapter
-  slice is also landed:
+  `children_root()` behavior stable for Rust callers. A follow-up `setPath(nodes, value)` slice
+  now adds `set_path_with_label(...)` with method-scoped `E: Clone` instead of forcing cloneability
+  onto ordinary graph use. ARCH-022's first Dagre reference adapter slice is also landed:
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,

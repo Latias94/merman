@@ -155,6 +155,9 @@ Current repository reality to preserve:
     while `children_root()` remains the Rust mapping for Graphlib's no-argument `children()` root
     query. The existing `children(...) -> Vec<&str>` behavior is intentionally unchanged for Rust
     callers.
+  - A follow-up Graphlib `setPath(nodes, value)` slice is now landed. `set_path_with_label(...)`
+    sets and updates the same edge label across every path edge with only a method-scoped
+    `E: Clone` bound.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and

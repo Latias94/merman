@@ -126,6 +126,7 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `isLeaf / returns false for predecessor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
 - `isLeaf / returns true for successor node in directed graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::is_leaf_follows_graphlib_directed_and_undirected_rules`
 - `setPath / creates a path of mutiple edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_path_creates_path_edges`
+- `setPath / can set a value for all of the edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_path_with_label_sets_and_updates_all_path_edge_labels`
 - `edges / returns the keys for edges in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edges_returns_inserted_edge_keys`
 - `setEdge / creates the edge if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
 - `setEdge / creates the nodes for the edge if they are not part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`

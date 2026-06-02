@@ -354,6 +354,21 @@ fn set_path_creates_path_edges() {
 }
 
 #[test]
+fn set_path_with_label_sets_and_updates_all_path_edge_labels() {
+    let mut g: Graph<(), String, ()> = Graph::new(GraphOptions::default());
+
+    g.set_path_with_label(&["a", "b", "c"], "foo".to_string());
+
+    assert_eq!(g.edge("a", "b", None).map(String::as_str), Some("foo"));
+    assert_eq!(g.edge("b", "c", None).map(String::as_str), Some("foo"));
+
+    g.set_path_with_label(&["a", "b", "c"], "bar".to_string());
+
+    assert_eq!(g.edge("a", "b", None).map(String::as_str), Some("bar"));
+    assert_eq!(g.edge("b", "c", None).map(String::as_str), Some("bar"));
+}
+
+#[test]
 fn edge_lookup_respects_direction_for_directed_graphs() {
     let mut g: Graph<(), i32, ()> = Graph::new(GraphOptions::default());
     g.set_edge_with_label("a", "b", 7);

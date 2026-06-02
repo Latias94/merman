@@ -713,6 +713,29 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
   passed with `267` tests.
 
+Nineteenth slice Graphlib setPath label API coverage:
+
+- Added `Graph::set_path_with_label(...)` in
+  [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs)
+  as the Rust mapping for Graphlib's `setPath(nodes, value)` behavior.
+- The method sets the same label on every edge in the path and updates existing edge labels,
+  matching pinned `repo-ref/graphlib/lib/graph.js` `setPath(...)`.
+- The `Clone` bound is method-scoped to this batch-label API. Ordinary graph construction and
+  layout mutation still do not require cloneable edge labels.
+- Updated the Graphlib coverage ledger so `setPath / can set a value for all of the edges` maps to
+  a concrete Rust regression.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_path_with_label`
+  failed first because `Graph::set_path_with_label(...)` did not exist.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib set_path_with_label`
+  passed after the seam was implemented.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `81` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

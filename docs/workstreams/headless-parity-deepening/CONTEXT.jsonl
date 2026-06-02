@@ -215,3 +215,6 @@
 {"file":"docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md","reason":"HPD-050 ledger: upstream graph-test.js children cases now map to concrete Rust Graph API tests."}
 {"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib tests define children, no-arg root children, and removeNode child relationship semantics."}
 {"file":"repo-ref/graphlib/lib/graph.js","reason":"HPD-050 source evidence: pinned Graphlib implementation defines children(v = GRAPH_NODE) optional return shape."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-setpath-label.md","reason":"HPD-050 journal: Graphlib setPath(nodes, value) now has a Rust set_path_with_label seam with method-scoped Clone bounds."}
+{"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 implementation: Graph::set_path_with_label maps Graphlib setPath label propagation without broad edge-label Clone constraints."}
+{"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 regression: graph_core_test covers set_path_with_label creating and updating all path edge labels."}
