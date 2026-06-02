@@ -69,3 +69,8 @@ Current repository reality to preserve:
     mismatches. The remaining top tails are still `junction_fork_join_026` (`+13.976px`),
     `batch5_long_titles_and_punct_076` (`+5.000px`), and `html_titles_and_escapes_041`
     (`+5.000px`).
+  - A follow-up `junction_fork_join_026` audit found no new source-input mismatch. Current local
+    service positions match the saved Mermaid browser probe
+    `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise, while the
+    stored upstream SVG differs by about `7-10px` in X and `6-12px` in Y on service positions.
+    Treat this row as a generated-baseline / seed-lattice audit candidate before touching manatee.

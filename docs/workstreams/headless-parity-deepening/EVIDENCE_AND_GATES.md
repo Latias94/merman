@@ -218,3 +218,30 @@ Residual evidence after the second slice:
   `stress_architecture_batch5_long_titles_and_punct_076` (`+5.000px`), and
   `stress_architecture_html_titles_and_escapes_041` (`+5.000px`). These remain open and should not
   be closed by constants without new source-backed evidence.
+
+Third slice classification:
+
+- Rechecked `stress_architecture_junction_fork_join_026`, the largest remaining Architecture
+  root residual, after the edge-label bounds fix.
+- Local debug still feeds the source-backed FCoSE inputs already documented in M15RV-089:
+  ungrouped junction parents, 9 relative-placement constraints including duplicate `join -> db`
+  and `join -> cache`, configured group padding, and the current `eles.boundingBox()` relocation
+  approximation.
+- The saved Mermaid browser probe
+  [target/compare/arch_junction_fork_join_probe_m15rv089.json](/F:/SourceCodes/Rust/merman/target/compare/arch_junction_fork_join_probe_m15rv089.json)
+  has final service positions that match the current local SVG to floating-point noise. The stored
+  upstream SVG fixture differs from that probe by roughly `7-10px` on X and `6-12px` on Y for the
+  services.
+- This means the remaining `+13.976px` root tail is not a current source-input or manatee-layout
+  mismatch against the saved browser probe. Treat it as a generated-baseline / seed-lattice audit
+  candidate unless a fresh reproducible Mermaid 11.15 browser render proves the stored upstream SVG
+  is still the authoritative behavior.
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug.md`
+- PowerShell JSON/SVG comparison of `target/compare/arch_junction_fork_join_probe_m15rv089.json`
+  final positions against the local SVG showed deltas at floating-point noise level.
+- The same comparison against `fixtures/upstream-svgs/architecture/stress_architecture_junction_fork_join_026.svg`
+  showed concrete stored-baseline drift: e.g. `auth` and `cache` X differ by about `10.376px`,
+  while `api`/`db` Y differ by about `12.358px`.

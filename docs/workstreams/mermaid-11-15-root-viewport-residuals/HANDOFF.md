@@ -213,6 +213,13 @@ behavior, with a unit test covering the fork/join diamond. This did not change t
 `+13.976px` root tail, so treat it as source-input parity plus residual classification rather than
 a viewport fix.
 
+Later HPD-050 correction: a fresh local audit compared the saved Mermaid browser probe
+`target/compare/arch_junction_fork_join_probe_m15rv089.json` against the current local SVG and the
+stored upstream SVG. Local service positions match the saved browser probe to floating-point noise,
+while the stored upstream SVG differs by about `7-10px` in X and `6-12px` in Y. Treat
+`stress_architecture_junction_fork_join_026` as a generated-baseline / seed-lattice audit
+candidate before touching manatee again.
+
 The group-padding source rule now applies in both places that approximate Cytoscape compound
 bounds. Final SVG group rectangles had already moved from `iconSize / 2` to configured
 `architecture.padding`; the pre-layout compound bbox used before FCoSE now also uses
@@ -539,6 +546,9 @@ a future Mermaid baseline changes the source behavior.
 - Architecture relative placement BFS must process duplicate queued current positions on pop, like
   Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
   drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
+- `stress_architecture_junction_fork_join_026` currently matches the saved Mermaid browser probe
+  at service-position level, despite disagreeing with the stored upstream SVG. Do not tune manatee
+  against this stored SVG row until the upstream baseline/probe disagreement is resolved.
 - Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
   long labels and batch4 small-icon labels need different treatment. The current piecewise
   long-label branch (`>= 200px -> 1.01`) is already committed because it improved the targeted
