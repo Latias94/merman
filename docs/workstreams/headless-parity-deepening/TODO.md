@@ -171,6 +171,8 @@ Last updated: 2026-06-02
   stroke widths so Mermaid 11.15 numeric `themeVariables.strokeWidth` controls visible stroke
   thickness. A Class namespace slice restored Mermaid 11.15 namespace-qualified relation facade
   semantics in core, while ASCII now folds only empty facade classes back to their declared
-  namespace members as a view-layer alias to avoid duplicate terminal boxes.
+  namespace members as a view-layer alias to avoid duplicate terminal boxes. A Timeline slice fixed
+  `.disabled` CSS so `themeVariables.tertiaryColor` and `clusterBorder` drive disabled node/text
+  colors instead of stale hardcoded fallback fills.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

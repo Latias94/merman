@@ -100,6 +100,8 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
     let label_text_color = theme_color(effective_config, "labelTextColor", "black");
     let label_text_is_calculated = label_text_color.trim() == "calculated";
     let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
+    let disabled_fill = theme_color(effective_config, "tertiaryColor", "lightgray");
+    let disabled_text_fill = theme_color(effective_config, "clusterBorder", "#efefef");
     let mut buf = ryu_js::Buffer::new();
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
@@ -130,7 +132,7 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
 
         let _ = write!(
             &mut out,
-            r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
+            r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
             id,
             section,
             id,
@@ -160,7 +162,9 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
             id,
             id,
             id,
+            disabled_fill,
             id,
+            disabled_text_fill,
         );
     }
 

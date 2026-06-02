@@ -231,6 +231,10 @@ Current repository reality to preserve:
     now preserves Mermaid 11.15 namespace-qualified relation facade classes/endpoints instead of
     resolving them back to namespace members; ASCII rendering keeps concise output by folding only
     empty namespace facade boxes back to declared members as a view-layer alias.
+  - A thirteenth HPD-080 slice fixed Timeline `.disabled` theme CSS. Timeline disabled node/text
+    fills now read Mermaid 11.15 `themeVariables.tertiaryColor` and `clusterBorder` instead of
+    hardcoded fallback colors; redux/neo gradient/drop-shadow rules remain deferred where local SVG
+    does not emit the required support attributes/defs.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

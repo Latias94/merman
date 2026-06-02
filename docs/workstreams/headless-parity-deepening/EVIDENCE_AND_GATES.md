@@ -1011,6 +1011,39 @@ Residual note:
 - This slice fixes Class namespace-qualified relation semantic/structural parity only. It does not
   claim Class root-bounds or browser text-measurement closure.
 
+Thirteenth slice outcome:
+
+- Audited pinned Mermaid 11.15 Timeline style provider:
+  - `packages/mermaid/src/diagrams/timeline/styles.js`
+- Timeline CSS already consumed `cScale*`, `cScaleLabel*`, `cScaleInv*`, `git0`, and
+  `gitBranchLabel0`, but still hardcoded `.disabled` fills to `lightgray` and `#efefef`.
+- Mermaid 11.15 emits `.disabled` node fill from `themeVariables.tertiaryColor` and disabled text
+  fill from `themeVariables.clusterBorder`, with those hardcoded values only as missing-option
+  fallbacks. Default pinned SVG baselines therefore contain expanded theme values such as
+  `hsl(80, 100%, 96.2745098039%)` and `#aaaa33`.
+- Timeline CSS now reads both values through the shared theme lookup path. This fixes a visible
+  theme/readability gap without emitting inert redux/neo/gradient rules that local Timeline SVG
+  nodes do not currently support.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/timeline.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/timeline.rs)
+- [crates/merman-render/tests/timeline_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/timeline_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render timeline_svg_honors_mermaid_11_15_disabled_theme_colors --test timeline_svg_test`
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `git diff --check`
+
+Residual note:
+
+- Timeline redux/neo gradient/drop-shadow selectors remain intentionally un-emitted where local SVG
+  does not emit the required `data-look`/defs support. This slice fixes only source-backed CSS that
+  applies to the current local Timeline stylesheet.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
