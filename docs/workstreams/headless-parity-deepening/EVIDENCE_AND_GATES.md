@@ -665,6 +665,38 @@ Negative / residual evidence:
   note/root measurement tail. The new HPD-080 CSS tests passed; this slice does not claim Sequence
   root closure.
 
+Second slice outcome:
+
+- Audited additional pinned Mermaid 11.15 style providers with the HPD-080 visible-rendering lens:
+  - `packages/mermaid/src/diagrams/gantt/styles.js`
+  - `packages/mermaid/src/diagrams/treemap/styles.ts`
+  - `packages/mermaid/src/diagrams/requirement/styles.js`
+- Gantt previously discarded `effective_config` when emitting CSS. It now reads source-backed Gantt
+  theme variables for section backgrounds, grid/today colors, task text, task bars, active/done/
+  critical states, vertical markers, and title text.
+- Gantt now emits Mermaid 11.15 outside done/doneCrit text contrast rules, preventing labels that
+  move outside bars from inheriting the wrong bar-text color.
+- Treemap now maps Mermaid 11.15 `treemap.*` style options and theme title/text colors for section,
+  leaf, label, value, and title CSS.
+- Requirement now maps Mermaid 11.15 requirement theme variables for requirement boxes, labels,
+  relationship lines/labels, edge-label backgrounds, node text, and divider colors.
+- Requirement intentionally did not emit the upstream `[data-look][data-color-id]` color scale
+  rules because current local Requirement SVGs do not emit those attributes; inert CSS would not
+  improve renderability.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/css.rs)
+- [crates/merman-render/src/svg/parity/gantt.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/gantt.rs)
+- [crates/merman-render/src/svg/parity/treemap.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/treemap.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render css_honors_mermaid_11_15`
+- `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

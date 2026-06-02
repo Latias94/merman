@@ -67,3 +67,6 @@
 {"file":"crates/merman-render/src/svg/parity/gitgraph.rs","reason":"HPD-080 implementation: GitGraph emits Mermaid 11.15 per-branch theme CSS so branch labels, commits, arrows, merges, and highlights render visibly."}
 {"file":"target/compare/gitgraph_user_merge.png","reason":"HPD-080 manual evidence: user-provided GitGraph merge sample renders readable branch labels and colored branch/merge paths after CSS fix."}
 {"file":"target/compare/kanban_user_metadata.fixed.png","reason":"HPD-080 manual evidence: user-provided Kanban metadata sample renders readable cards and labels after theme CSS emission."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-gantt-treemap-requirement.md","reason":"HPD-080 journal: second source-backed theme CSS slice covers Gantt, Treemap, and Requirement visible renderability risks."}
+{"file":"crates/merman-render/src/svg/parity/gantt.rs","reason":"HPD-080 implementation: Gantt renderer now passes effective config into Mermaid 11.15 style emission."}
+{"file":"crates/merman-render/src/svg/parity/treemap.rs","reason":"HPD-080 implementation: Treemap renderer now passes effective config into Mermaid 11.15 style emission."}

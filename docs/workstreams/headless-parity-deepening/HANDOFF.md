@@ -184,6 +184,10 @@ Current repository reality to preserve:
     branch labels, commits, arrows, labels, merge/reverse commits, and highlight inner colors.
   - The user GitGraph merge sample now renders readable branch labels and colored branch/merge
     paths; the manual PNG evidence is `target/compare/gitgraph_user_merge.png`.
+  - A second HPD-080 slice fixed the same class for Gantt, Treemap, and Requirement. Gantt now
+    reads theme variables and emits outside done/doneCrit contrast rules; Treemap maps `treemap.*`
+    style options plus theme title/text colors; Requirement maps requirement/relationship/label
+    theme colors instead of using stale fixed colors.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -524,7 +524,7 @@ pub(super) fn render_treemap_diagram_svg(
         vb_h = layout.diagram_padding * 2.0;
     }
 
-    let css = treemap_css(diagram_id);
+    let css = treemap_css(diagram_id, effective_config);
 
     let mut out = String::new();
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));

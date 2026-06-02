@@ -143,7 +143,7 @@ pub(super) fn render_gantt_diagram_svg(
 pub(super) fn render_gantt_diagram_svg_model(
     layout: &crate::model::GanttDiagramLayout,
     model: &GanttDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -206,7 +206,7 @@ pub(super) fn render_gantt_diagram_svg_model(
         );
     }
 
-    let css = gantt_css(diagram_id);
+    let css = gantt_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
 

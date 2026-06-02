@@ -284,82 +284,97 @@ pub(super) fn architecture_css_with_config(
 }
 
 pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.12.2 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
-    // Keep `:root` last (matches upstream fixtures).
+    // Mirrors Mermaid 11.15 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
+    // Keep `:root` last to match upstream fixtures.
     let id = escape_xml(diagram_id);
-    let font = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-    let font = normalize_css_font_family(font.as_str());
-    let font = if font.is_empty() {
-        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-    } else {
-        font
-    };
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
-        id,
-        font,
-        fmt(font_size)
-    );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font,
-        fmt(font_size),
-        id
-    );
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let font = parts.font_family;
+    let text_color = parts.text_color;
+    let node_text_color = config_string(effective_config, &["themeVariables", "nodeTextColor"])
+        .unwrap_or_else(|| text_color.clone());
 
-    // Requirement diagram styles (duplicated marker/svg rules are present upstream).
+    let option = |key: &str, default_value: &str| -> String {
+        crate::config::config_css_number_or_string(effective_config, &["themeVariables", key])
+            .unwrap_or_else(|| default_value.to_string())
+    };
+
+    let relation_color = option("relationColor", "#333333");
+    let line_color = option("lineColor", "#333333");
+    let font_size = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "fontSize"],
+    )
+    .or_else(|| crate::config::config_css_number_or_string(effective_config, &["fontSize"]))
+    .unwrap_or_else(|| "16px".to_string());
+    let requirement_background = option("requirementBackground", "#ECECFF");
+    let requirement_border_color =
+        option("requirementBorderColor", "hsl(240, 60%, 86.2745098039%)");
+    let requirement_border_size = option("requirementBorderSize", "1");
+    let requirement_text_color = option("requirementTextColor", "#131300");
+    let relation_label_background = option("relationLabelBackground", "rgba(232,232,232, 0.8)");
+    let relation_label_color = option("relationLabelColor", "black");
+    let edge_label_background = option("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+    let requirement_edge_label_background = config_string(
+        effective_config,
+        &["themeVariables", "requirementEdgeLabelBackground"],
+    )
+    .unwrap_or_else(|| edge_label_background.clone());
+    let node_border = option("nodeBorder", "#9370DB");
+    let look = config_string(effective_config, &["look"]).unwrap_or_default();
+    let relationship_line_stroke_width = if look.trim() == "neo" {
+        option("strokeWidth", "1")
+    } else {
+        "1px".to_string()
+    };
+
     let _ = write!(
         &mut out,
-        r#"#{} marker{{fill:#333333;stroke:#333333;}}#{} marker.cross{{stroke:#333333;}}#{} svg{{font-family:{};font-size:{}px;}}"#,
-        id,
-        id,
+        r#"#{} marker{{fill:{};stroke:{};}}#{} marker.cross{{stroke:{};}}"#,
+        id, relation_color, relation_color, id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:{}}}#{} .reqBox{{fill:{};fill-opacity:1.0;stroke:{};stroke-width:{};}}#{} .reqTitle,#{} .reqLabel{{fill:{};}}#{} .reqLabelBox{{fill:{};fill-opacity:1.0;}}#{} .req-title-line{{stroke:{};stroke-width:{};}}#{} .relationshipLine{{stroke:{};stroke-width:{};}}#{} .relationshipLabel{{fill:{};}}#{} .edgeLabel{{background-color:{};}}#{} .edgeLabel .label rect{{fill:{};}}#{} .edgeLabel .label text{{fill:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} .label{{font-family:{};color:{};}}#{} .label text,#{} span{{fill:{};color:{};}}#{} .labelBkg{{background-color:{};}}"#,
         id,
         font,
-        fmt(font_size)
+        font_size,
+        id,
+        requirement_background,
+        requirement_border_color,
+        requirement_border_size,
+        id,
+        id,
+        requirement_text_color,
+        id,
+        relation_label_background,
+        id,
+        requirement_border_color,
+        requirement_border_size,
+        id,
+        relation_color,
+        relationship_line_stroke_width,
+        id,
+        relation_label_color,
+        id,
+        edge_label_background,
+        id,
+        edge_label_background,
+        id,
+        relation_label_color,
+        id,
+        node_border,
+        id,
+        font,
+        node_text_color,
+        id,
+        id,
+        node_text_color,
+        node_text_color,
+        id,
+        requirement_edge_label_background
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} .reqBox{{fill:#ECECFF;fill-opacity:1.0;stroke:hsl(240, 60%, 86.2745098039%);stroke-width:1;}}#{} .reqTitle,#{} .reqLabel{{fill:#131300;}}#{} .reqLabelBox{{fill:rgba(232,232,232, 0.8);fill-opacity:1.0;}}#{} .req-title-line{{stroke:hsl(240, 60%, 86.2745098039%);stroke-width:1;}}#{} .relationshipLine{{stroke:#333333;stroke-width:1;}}#{} .relationshipLabel{{fill:black;}}#{} .divider{{stroke:#9370DB;stroke-width:1;}}#{} .label{{font-family:{};color:#333;}}#{} .label text,#{} span{{fill:#333;color:#333;}}#{} .labelBkg{{background-color:rgba(232,232,232, 0.8);}}"#,
-        id, id, id, id, id, id, id, id, id, font, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
-    );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -520,54 +535,61 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
     out
 }
 
-pub(super) fn treemap_css(diagram_id: &str) -> String {
-    // Keep `:root` last (matches upstream Mermaid treemap SVG baselines).
+fn treemap_style_option(
+    effective_config: &serde_json::Value,
+    key: &str,
+    default_value: &str,
+) -> String {
+    crate::config::config_css_number_or_string(effective_config, &["treemap", key])
+        .unwrap_or_else(|| default_value.to_string())
+}
+
+pub(super) fn treemap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
+    // `:root` last to match upstream SVG baselines.
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let mut out = String::new();
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let title_color = config_string(effective_config, &["treemap", "titleColor"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "titleColor"]))
+        .unwrap_or_else(|| parts.text_color.clone());
+    let label_color = config_string(effective_config, &["treemap", "labelColor"])
+        .unwrap_or_else(|| parts.text_color.clone());
+    let value_color = config_string(effective_config, &["treemap", "valueColor"])
+        .unwrap_or_else(|| parts.text_color.clone());
+    let section_stroke_color =
+        treemap_style_option(effective_config, "sectionStrokeColor", "black");
+    let section_stroke_width = treemap_style_option(effective_config, "sectionStrokeWidth", "1");
+    let section_fill_color = treemap_style_option(effective_config, "sectionFillColor", "#efefef");
+    let leaf_stroke_color = treemap_style_option(effective_config, "leafStrokeColor", "black");
+    let leaf_stroke_width = treemap_style_option(effective_config, "leafStrokeWidth", "1");
+    let leaf_fill_color = treemap_style_option(effective_config, "leafFillColor", "#efefef");
+    let label_font_size = treemap_style_option(effective_config, "labelFontSize", "12px");
+    let value_font_size = treemap_style_option(effective_config, "valueFontSize", "10px");
+    let title_font_size = treemap_style_option(effective_config, "titleFontSize", "14px");
+
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{} .treemapNode.section{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapNode.leaf{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapLabel{{fill:{};font-size:{};}}#{} .treemapValue{{fill:{};font-size:{};}}#{} .treemapTitle{{fill:{};font-size:{};}}"#,
+        id,
+        section_stroke_color,
+        section_stroke_width,
+        section_fill_color,
+        id,
+        leaf_stroke_color,
+        leaf_stroke_width,
+        leaf_fill_color,
+        id,
+        label_color,
+        label_font_size,
+        id,
+        value_color,
+        value_font_size,
+        id,
+        title_color,
+        title_font_size
     );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
-        id, font, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .treemapNode.section{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapNode.leaf{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapLabel{{fill:black;font-size:12px;}}#{} .treemapValue{{fill:black;font-size:10px;}}#{} .treemapTitle{{fill:black;font-size:14px;}}"#,
-        id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
-    );
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -578,13 +600,61 @@ pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
     info_css_into(out, diagram_id);
 }
 
-pub(super) fn gantt_css(diagram_id: &str) -> String {
+pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
-    let mut out = info_css(diagram_id);
-    if let Some(prefix) = out.strip_suffix(&root_rule) {
-        out = prefix.to_string();
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let font = parts.font_family;
+    let text_color = parts.text_color;
+
+    let option = |key: &str, default_value: &str| -> String {
+        config_string(effective_config, &["themeVariables", key])
+            .unwrap_or_else(|| default_value.to_string())
+    };
+
+    let exclude_bkg_color = option("excludeBkgColor", "#eeeeee");
+    let section_bkg_color = option("sectionBkgColor", "rgba(102, 102, 255, 0.49)");
+    let section_bkg_color2 = option("sectionBkgColor2", "#fff400");
+    let alt_section_bkg_color = option("altSectionBkgColor", "white");
+    let title_color = option("titleColor", "#333");
+    let grid_color = option("gridColor", "lightgrey");
+    let today_line_color = option("todayLineColor", "red");
+    let task_text_dark_color = option("taskTextDarkColor", "black");
+    let task_text_clickable_color = option("taskTextClickableColor", "#003163");
+    let task_text_color = option("taskTextColor", "white");
+    let task_bkg_color = option("taskBkgColor", "#8a90dd");
+    let task_border_color = option("taskBorderColor", "#534fbc");
+    let task_text_outside_color = option("taskTextOutsideColor", "black");
+    let active_task_bkg_color = option("activeTaskBkgColor", "#bfc7ff");
+    let active_task_border_color = option("activeTaskBorderColor", "#534fbc");
+    let done_task_border_color = option("doneTaskBorderColor", "grey");
+    let done_task_bkg_color = option("doneTaskBkgColor", "lightgrey");
+    let crit_border_color = option("critBorderColor", "#ff8888");
+    let crit_bkg_color = option("critBkgColor", "red");
+    let vert_line_color = option("vertLineColor", "navy");
+    let title_text_color = if title_color.trim().is_empty() {
+        text_color.clone()
+    } else {
+        title_color.clone()
+    };
+
+    fn push_outside_done_text_rules(out: &mut String, id: &str, class_prefix: &str, color: &str) {
+        let mut first = true;
+        for i in 0..4 {
+            for side in ["Left", "Right"] {
+                if first {
+                    first = false;
+                } else {
+                    out.push(',');
+                }
+                let _ = write!(
+                    out,
+                    "#{} .{}{}.taskTextOutside{}",
+                    id, class_prefix, i, side
+                );
+            }
+        }
+        let _ = write!(out, "{{fill:{}!important;}}", color);
     }
 
     let _ = write!(
@@ -592,23 +662,31 @@ pub(super) fn gantt_css(diagram_id: &str) -> String {
         r#"#{} .mermaid-main-font{{font-family:{};}}"#,
         id, font
     );
-    let _ = write!(&mut out, r#"#{} .exclude-range{{fill:#eeeeee;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .exclude-range{{fill:{};}}"#,
+        id, exclude_bkg_color
+    );
     let _ = write!(&mut out, r#"#{} .section{{stroke:none;opacity:0.2;}}"#, id);
     let _ = write!(
         &mut out,
-        r#"#{} .section0{{fill:rgba(102, 102, 255, 0.49);}}"#,
-        id
-    );
-    let _ = write!(&mut out, r#"#{} .section2{{fill:#fff400;}}"#, id);
-    let _ = write!(
-        &mut out,
-        r#"#{} .section1,#{} .section3{{fill:white;opacity:0.2;}}"#,
-        id, id
+        r#"#{} .section0{{fill:{};}}"#,
+        id, section_bkg_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .sectionTitle0{{fill:#333;}}#{} .sectionTitle1{{fill:#333;}}#{} .sectionTitle2{{fill:#333;}}#{} .sectionTitle3{{fill:#333;}}"#,
-        id, id, id, id
+        r#"#{} .section2{{fill:{};}}"#,
+        id, section_bkg_color2
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .section1,#{} .section3{{fill:{};opacity:0.2;}}"#,
+        id, id, alt_section_bkg_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .sectionTitle0{{fill:{};}}#{} .sectionTitle1{{fill:{};}}#{} .sectionTitle2{{fill:{};}}#{} .sectionTitle3{{fill:{};}}"#,
+        id, title_color, id, title_color, id, title_color, id, title_color
     );
     let _ = write!(
         &mut out,
@@ -617,74 +695,81 @@ pub(super) fn gantt_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} .grid .tick{{stroke:lightgrey;opacity:0.8;shape-rendering:crispEdges;}}#{} .grid .tick text{{font-family:{};fill:#333;}}#{} .grid path{{stroke-width:0;}}"#,
-        id, id, font, id
+        r#"#{} .grid .tick{{stroke:{};opacity:0.8;shape-rendering:crispEdges;}}#{} .grid .tick text{{font-family:{};fill:{};}}#{} .grid path{{stroke-width:0;}}"#,
+        id, grid_color, id, font, text_color, id
     );
     let _ = write!(
         &mut out,
-        r#"#{} .today{{fill:none;stroke:red;stroke-width:2px;}}"#,
-        id
+        r#"#{} .today{{fill:none;stroke:{};stroke-width:2px;}}"#,
+        id, today_line_color
     );
     let _ = write!(&mut out, r#"#{} .task{{stroke-width:2;}}"#, id);
     let _ = write!(
         &mut out,
-        r#"#{} .taskText{{text-anchor:middle;font-family:{};}}#{} .taskTextOutsideRight{{fill:black;text-anchor:start;font-family:{};}}#{} .taskTextOutsideLeft{{fill:black;text-anchor:end;}}"#,
-        id, font, id, font, id
+        r#"#{} .taskText{{text-anchor:middle;font-family:{};}}#{} .taskTextOutsideRight{{fill:{};text-anchor:start;font-family:{};}}#{} .taskTextOutsideLeft{{fill:{};text-anchor:end;}}"#,
+        id, font, id, task_text_dark_color, font, id, task_text_dark_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .task.clickable{{cursor:pointer;}}#{} .taskText.clickable{{cursor:pointer;fill:#003163!important;font-weight:bold;}}#{} .taskTextOutsideLeft.clickable{{cursor:pointer;fill:#003163!important;font-weight:bold;}}#{} .taskTextOutsideRight.clickable{{cursor:pointer;fill:#003163!important;font-weight:bold;}}"#,
-        id, id, id, id
+        r#"#{} .task.clickable{{cursor:pointer;}}#{} .taskText.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}#{} .taskTextOutsideLeft.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}#{} .taskTextOutsideRight.clickable{{cursor:pointer;fill:{}!important;font-weight:bold;}}"#,
+        id,
+        id,
+        task_text_clickable_color,
+        id,
+        task_text_clickable_color,
+        id,
+        task_text_clickable_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .taskText0,#{} .taskText1,#{} .taskText2,#{} .taskText3{{fill:white;}}"#,
-        id, id, id, id
+        r#"#{} .taskText0,#{} .taskText1,#{} .taskText2,#{} .taskText3{{fill:{};}}"#,
+        id, id, id, id, task_text_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .task0,#{} .task1,#{} .task2,#{} .task3{{fill:#8a90dd;stroke:#534fbc;}}"#,
-        id, id, id, id
+        r#"#{} .task0,#{} .task1,#{} .task2,#{} .task3{{fill:{};stroke:{};}}"#,
+        id, id, id, id, task_bkg_color, task_border_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .taskTextOutside0,#{} .taskTextOutside2{{fill:black;}}#{} .taskTextOutside1,#{} .taskTextOutside3{{fill:black;}}"#,
-        id, id, id, id
+        r#"#{} .taskTextOutside0,#{} .taskTextOutside2{{fill:{};}}#{} .taskTextOutside1,#{} .taskTextOutside3{{fill:{};}}"#,
+        id, id, task_text_outside_color, id, id, task_text_outside_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .active0,#{} .active1,#{} .active2,#{} .active3{{fill:#bfc7ff;stroke:#534fbc;}}"#,
-        id, id, id, id
+        r#"#{} .active0,#{} .active1,#{} .active2,#{} .active3{{fill:{};stroke:{};}}"#,
+        id, id, id, id, active_task_bkg_color, active_task_border_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .activeText0,#{} .activeText1,#{} .activeText2,#{} .activeText3{{fill:black!important;}}"#,
-        id, id, id, id
+        r#"#{} .activeText0,#{} .activeText1,#{} .activeText2,#{} .activeText3{{fill:{}!important;}}"#,
+        id, id, id, id, task_text_dark_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .done0,#{} .done1,#{} .done2,#{} .done3{{stroke:grey;fill:lightgrey;stroke-width:2;}}"#,
-        id, id, id, id
+        r#"#{} .done0,#{} .done1,#{} .done2,#{} .done3{{stroke:{};fill:{};stroke-width:2;}}"#,
+        id, id, id, id, done_task_border_color, done_task_bkg_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:black!important;}}"#,
-        id, id, id, id
+        r#"#{} .doneText0,#{} .doneText1,#{} .doneText2,#{} .doneText3{{fill:{}!important;}}"#,
+        id, id, id, id, task_text_dark_color
+    );
+    push_outside_done_text_rules(&mut out, &id, "doneText", &task_text_outside_color);
+    let _ = write!(
+        &mut out,
+        r#"#{} .crit0,#{} .crit1,#{} .crit2,#{} .crit3{{stroke:{};fill:{};stroke-width:2;}}"#,
+        id, id, id, id, crit_border_color, crit_bkg_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .crit0,#{} .crit1,#{} .crit2,#{} .crit3{{stroke:#ff8888;fill:red;stroke-width:2;}}"#,
-        id, id, id, id
+        r#"#{} .activeCrit0,#{} .activeCrit1,#{} .activeCrit2,#{} .activeCrit3{{stroke:{};fill:{};stroke-width:2;}}"#,
+        id, id, id, id, crit_border_color, active_task_bkg_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .activeCrit0,#{} .activeCrit1,#{} .activeCrit2,#{} .activeCrit3{{stroke:#ff8888;fill:#bfc7ff;stroke-width:2;}}"#,
-        id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .doneCrit0,#{} .doneCrit1,#{} .doneCrit2,#{} .doneCrit3{{stroke:#ff8888;fill:lightgrey;stroke-width:2;cursor:pointer;shape-rendering:crispEdges;}}"#,
-        id, id, id, id
+        r#"#{} .doneCrit0,#{} .doneCrit1,#{} .doneCrit2,#{} .doneCrit3{{stroke:{};fill:{};stroke-width:2;cursor:pointer;shape-rendering:crispEdges;}}"#,
+        id, id, id, id, crit_border_color, done_task_bkg_color
     );
     let _ = write!(
         &mut out,
@@ -693,26 +778,27 @@ pub(super) fn gantt_css(diagram_id: &str) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:black!important;}}"#,
-        id, id, id, id
+        r#"#{} .doneCritText0,#{} .doneCritText1,#{} .doneCritText2,#{} .doneCritText3{{fill:{}!important;}}"#,
+        id, id, id, id, task_text_dark_color
+    );
+    push_outside_done_text_rules(&mut out, &id, "doneCritText", &task_text_outside_color);
+    let _ = write!(
+        &mut out,
+        r#"#{} .vert{{stroke:{};}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:{}!important;}}"#,
+        id, vert_line_color, id, vert_line_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .vert{{stroke:navy;}}#{} .vertText{{font-size:15px;text-anchor:middle;fill:navy!important;}}"#,
-        id, id
+        r#"#{} .activeCritText0,#{} .activeCritText1,#{} .activeCritText2,#{} .activeCritText3{{fill:{}!important;}}"#,
+        id, id, id, id, task_text_dark_color
     );
     let _ = write!(
         &mut out,
-        r#"#{} .activeCritText0,#{} .activeCritText1,#{} .activeCritText2,#{} .activeCritText3{{fill:black!important;}}"#,
-        id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .titleText{{text-anchor:middle;font-size:18px;fill:#333;font-family:{};}}"#,
-        id, font
+        r#"#{} .titleText{{text-anchor:middle;font-size:18px;fill:{};font-family:{};}}"#,
+        id, title_text_color, font
     );
 
-    out.push_str(&root_rule);
+    out.push_str(&parts.root_rule);
     out
 }
 
@@ -767,5 +853,131 @@ mod tests {
         assert!(
             css.contains(r#"#sk :root{--mermaid-font-family:"ibm plex sans",arial,sans-serif;}"#)
         );
+    }
+
+    #[test]
+    fn gantt_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#707070",
+                "excludeBkgColor": "#101010",
+                "sectionBkgColor": "#202020",
+                "sectionBkgColor2": "#303030",
+                "altSectionBkgColor": "#404040",
+                "titleColor": "#505050",
+                "gridColor": "#606060",
+                "todayLineColor": "#808080",
+                "taskTextDarkColor": "#909090",
+                "taskTextClickableColor": "#a0a0a0",
+                "taskTextColor": "#b0b0b0",
+                "taskBkgColor": "#c0c0c0",
+                "taskBorderColor": "#d0d0d0",
+                "taskTextOutsideColor": "#e0e0e0",
+                "activeTaskBkgColor": "#111111",
+                "activeTaskBorderColor": "#222222",
+                "doneTaskBorderColor": "#333333",
+                "doneTaskBkgColor": "#444444",
+                "critBorderColor": "#555555",
+                "critBkgColor": "#666666",
+                "vertLineColor": "#777777"
+            }
+        });
+
+        let css = gantt_css("g", &cfg);
+
+        assert!(css.contains(r#"#g .exclude-range{fill:#101010;}"#));
+        assert!(css.contains(r#"#g .section0{fill:#202020;}"#));
+        assert!(css.contains(r#"#g .section2{fill:#303030;}"#));
+        assert!(css.contains(r#"#g .grid .tick{stroke:#606060;"#));
+        assert!(
+            css.contains(
+                r#"#g .taskText0,#g .taskText1,#g .taskText2,#g .taskText3{fill:#b0b0b0;}"#
+            )
+        );
+        assert!(
+            css.contains(
+                r#"#g .task0,#g .task1,#g .task2,#g .task3{fill:#c0c0c0;stroke:#d0d0d0;}"#
+            )
+        );
+        assert!(
+            css.contains(r#"#g .doneText0.taskTextOutsideLeft,#g .doneText0.taskTextOutsideRight"#)
+        );
+        assert!(css.contains(r#"fill:#e0e0e0!important;"#));
+        assert!(css.contains(r#"#g .titleText{text-anchor:middle;font-size:18px;fill:#505050;font-family:"ibm plex sans",arial,sans-serif;}"#));
+    }
+
+    #[test]
+    fn treemap_css_honors_mermaid_11_15_style_options() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#123456",
+                "titleColor": "#654321"
+            },
+            "treemap": {
+                "sectionStrokeColor": "#111111",
+                "sectionStrokeWidth": 2,
+                "sectionFillColor": "#222222",
+                "leafStrokeColor": "#333333",
+                "leafStrokeWidth": "3",
+                "leafFillColor": "#444444",
+                "labelColor": "#555555",
+                "valueColor": "#666666",
+                "titleColor": "#777777",
+                "labelFontSize": "13px",
+                "valueFontSize": "11px",
+                "titleFontSize": "15px"
+            }
+        });
+
+        let css = treemap_css("tm", &cfg);
+
+        assert!(
+            css.contains("#tm .treemapNode.section{stroke:#111111;stroke-width:2;fill:#222222;}")
+        );
+        assert!(css.contains("#tm .treemapNode.leaf{stroke:#333333;stroke-width:3;fill:#444444;}"));
+        assert!(css.contains("#tm .treemapLabel{fill:#555555;font-size:13px;}"));
+        assert!(css.contains("#tm .treemapValue{fill:#666666;font-size:11px;}"));
+        assert!(css.contains("#tm .treemapTitle{fill:#777777;font-size:15px;}"));
+    }
+
+    #[test]
+    fn requirement_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "fontSize": "18px",
+                "textColor": "#101010",
+                "nodeTextColor": "#111111",
+                "relationColor": "#222222",
+                "lineColor": "#333333",
+                "requirementBackground": "#444444",
+                "requirementBorderColor": "#555555",
+                "requirementBorderSize": 2,
+                "requirementTextColor": "#666666",
+                "relationLabelBackground": "#777777",
+                "relationLabelColor": "#888888",
+                "edgeLabelBackground": "#999999",
+                "requirementEdgeLabelBackground": "#aaaaaa",
+                "nodeBorder": "#bbbbbb",
+                "strokeWidth": 3
+            }
+        });
+
+        let css = requirement_css("req", &cfg);
+
+        assert!(css.contains(r#"#req marker{fill:#222222;stroke:#222222;}"#));
+        assert!(css.contains(r#"#req marker.cross{stroke:#333333;}"#));
+        assert!(css.contains(
+            r#"#req .reqBox{fill:#444444;fill-opacity:1.0;stroke:#555555;stroke-width:2;}"#
+        ));
+        assert!(css.contains(r#"#req .reqTitle,#req .reqLabel{fill:#666666;}"#));
+        assert!(css.contains(r#"#req .reqLabelBox{fill:#777777;fill-opacity:1.0;}"#));
+        assert!(css.contains(r#"#req .relationshipLine{stroke:#222222;stroke-width:3;}"#));
+        assert!(css.contains(r#"#req .relationshipLabel{fill:#888888;}"#));
+        assert!(css.contains(r#"#req .edgeLabel .label rect{fill:#999999;}"#));
+        assert!(css.contains(r#"#req .labelBkg{background-color:#aaaaaa;}"#));
     }
 }
