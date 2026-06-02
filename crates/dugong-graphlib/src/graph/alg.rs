@@ -31,6 +31,7 @@ where
     let mut visited: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<String> = Vec::new();
     for r in roots {
+        assert!(g.has_node(r), "preorder root is not in the graph: {r}");
         dfs(g, r, &mut visited, &mut out);
     }
     out
@@ -64,6 +65,7 @@ where
     let mut visited: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<String> = Vec::new();
     for r in roots {
+        assert!(g.has_node(r), "postorder root is not in the graph: {r}");
         dfs(g, r, &mut visited, &mut out);
     }
     out

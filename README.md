@@ -266,8 +266,8 @@ cargo run -p merman --features render --example svg_pipeline < fixtures/flowchar
 ## Quickstart (FFI and native hosts)
 
 The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The first
-release candidate supports SVG rendering, semantic JSON, layout JSON, and explicit Rust-owned
-buffer release.
+release candidate supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON,
+validation JSON, binding metadata, and explicit Rust-owned buffer release.
 
 ```c
 #include "merman.h"

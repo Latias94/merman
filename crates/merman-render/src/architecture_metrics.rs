@@ -10,9 +10,12 @@ pub(crate) const ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureServiceBoundsEstimate {
-    pub(crate) icon_bounds: Bounds,
-    pub(crate) root_bounds: Bounds,
-    pub(crate) compound_bounds: Bounds,
+    // Actual emitted icon bounds used when grouped service labels should not affect root getBBox.
+    pub(crate) emitted_icon_bounds: Bounds,
+    // Approximation of Mermaid's final SVG getBBox() for top-level services.
+    pub(crate) svg_root_bounds: Bounds,
+    // Approximation of the child bounds that Cytoscape compounds use for group sizing.
+    pub(crate) cytoscape_group_child_bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -20,6 +23,13 @@ pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
     pub(crate) width: f64,
     pub(crate) half_width: f64,
     pub(crate) applied_scale: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ArchitectureCytoscapeServiceLabelExtension {
+    pub(crate) metrics: ArchitectureCytoscapeCanvasLabelMetrics,
+    pub(crate) half_width: f64,
+    pub(crate) bottom_extension_px: f64,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -87,6 +97,21 @@ pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
     padding_px.max(0.0) + ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX
 }
 
+pub(crate) fn architecture_cytoscape_service_label_extension(
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    font_size_px: f64,
+) -> Option<ArchitectureCytoscapeServiceLabelExtension> {
+    let title = title.map(str::trim).filter(|t| !t.is_empty())?;
+    let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
+    Some(ArchitectureCytoscapeServiceLabelExtension {
+        metrics,
+        half_width: metrics.half_width,
+        bottom_extension_px: architecture_create_text_compound_label_extra_bottom_px(font_size_px),
+    })
+}
+
 pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -100,20 +125,21 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     let mut half_w = half_icon + border;
     let mut bottom = border;
 
-    if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
-        let label_metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
-        let label_half = label_metrics.half_width;
+    if let Some(label_extension) =
+        architecture_cytoscape_service_label_extension(title, measurer, style, font_size_px)
+    {
+        let label_half = label_extension.half_width;
         half_w = half_w.max(label_half + border);
         half_w = (half_w * 2.0).round() / 2.0;
-        bottom = border + (font_size_px + 1.0).max(0.0);
+        bottom = border + label_extension.bottom_extension_px;
 
         if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
             eprintln!(
                 "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
-                title,
-                label_metrics.width,
+                title.map(str::trim).unwrap_or(""),
+                label_extension.metrics.width,
                 label_half,
-                label_metrics.applied_scale,
+                label_extension.metrics.applied_scale,
                 half_w,
                 (half_w - half_icon).max(0.0),
                 bottom,
@@ -158,14 +184,14 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
 where
     TLine: std::fmt::Debug,
 {
-    let icon_bounds = Bounds {
+    let emitted_icon_bounds = Bounds {
         min_x: x,
         min_y: y,
         max_x: x + icon_size_px,
         max_y: y + icon_size_px,
     };
-    let mut root_bounds = icon_bounds.clone();
-    let mut compound_bounds = icon_bounds.clone();
+    let mut svg_root_bounds = emitted_icon_bounds.clone();
+    let mut cytoscape_group_child_bounds = emitted_icon_bounds.clone();
     let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
         .ok()
         .filter(|value| !value.is_empty());
@@ -184,11 +210,16 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let metrics =
-            architecture_cytoscape_canvas_label_metrics(title, text_measurer, compound_text_style);
-        let compound_half_width = metrics.half_width;
-        let label_extra_bottom_compound =
-            architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
+        let Some(cytoscape_label_extension) = architecture_cytoscape_service_label_extension(
+            Some(title),
+            text_measurer,
+            compound_text_style,
+            arch_font_size_px,
+        ) else {
+            unreachable!("trimmed non-empty title should produce a Cytoscape label extension");
+        };
+        let compound_half_width = cytoscape_label_extension.half_width;
+        let label_extra_bottom_compound = cytoscape_label_extension.bottom_extension_px;
 
         let cx = x + icon_size_px / 2.0;
         let text_left_root = cx - bbox_left_root;
@@ -199,49 +230,49 @@ where
         let text_right_compound = cx + compound_half_width;
         let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
 
-        root_bounds = Bounds {
-            min_x: root_bounds.min_x.min(text_left_root),
-            min_y: root_bounds.min_y,
-            max_x: root_bounds.max_x.max(text_right_root),
-            max_y: root_bounds.max_y.max(text_bottom_root),
+        svg_root_bounds = Bounds {
+            min_x: svg_root_bounds.min_x.min(text_left_root),
+            min_y: svg_root_bounds.min_y,
+            max_x: svg_root_bounds.max_x.max(text_right_root),
+            max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        compound_bounds = Bounds {
-            min_x: compound_bounds.min_x.min(text_left_compound),
-            min_y: compound_bounds.min_y,
-            max_x: compound_bounds.max_x.max(text_right_compound),
-            max_y: compound_bounds.max_y.max(text_bottom_compound),
+        cytoscape_group_child_bounds = Bounds {
+            min_x: cytoscape_group_child_bounds.min_x.min(text_left_compound),
+            min_y: cytoscape_group_child_bounds.min_y,
+            max_x: cytoscape_group_child_bounds.max_x.max(text_right_compound),
+            max_y: cytoscape_group_child_bounds.max_y.max(text_bottom_compound),
         };
 
         if debug_service.as_deref() == Some(title) {
             eprintln!(
-                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} compound_bottom={} icon_bounds=({}, {})-({}, {}) compound_bounds=({}, {})-({}, {}) root_bounds=({}, {})-({}, {})",
+                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} emitted_icon_bounds=({}, {})-({}, {}) group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
                 title,
                 lines,
                 bbox_left_root,
                 bbox_right_root,
                 label_extra_bottom_root,
-                metrics.half_width,
+                cytoscape_label_extension.half_width,
                 label_extra_bottom_compound,
-                icon_bounds.min_x,
-                icon_bounds.min_y,
-                icon_bounds.max_x,
-                icon_bounds.max_y,
-                compound_bounds.min_x,
-                compound_bounds.min_y,
-                compound_bounds.max_x,
-                compound_bounds.max_y,
-                root_bounds.min_x,
-                root_bounds.min_y,
-                root_bounds.max_x,
-                root_bounds.max_y,
+                emitted_icon_bounds.min_x,
+                emitted_icon_bounds.min_y,
+                emitted_icon_bounds.max_x,
+                emitted_icon_bounds.max_y,
+                cytoscape_group_child_bounds.min_x,
+                cytoscape_group_child_bounds.min_y,
+                cytoscape_group_child_bounds.max_x,
+                cytoscape_group_child_bounds.max_y,
+                svg_root_bounds.min_x,
+                svg_root_bounds.min_y,
+                svg_root_bounds.max_x,
+                svg_root_bounds.max_y,
             );
         }
     }
 
     ArchitectureServiceBoundsEstimate {
-        icon_bounds,
-        root_bounds,
-        compound_bounds,
+        emitted_icon_bounds,
+        svg_root_bounds,
+        cytoscape_group_child_bounds,
     }
 }
 
@@ -333,6 +364,43 @@ mod tests {
         assert_eq!(
             super::architecture_layout_canvas_label_width_scale(320.0),
             super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
+        );
+    }
+
+    #[test]
+    fn architecture_cytoscape_service_label_extension_centralizes_compound_label_phase() {
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 12.0,
+            font_weight: None,
+        };
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+
+        let extension = super::architecture_cytoscape_service_label_extension(
+            Some("API gateway"),
+            &measurer,
+            &style,
+            12.0,
+        )
+        .expect("non-empty title has a Cytoscape label extension");
+        let direct_metrics =
+            super::architecture_cytoscape_canvas_label_metrics("API gateway", &measurer, &style);
+
+        assert_eq!(extension.metrics.width, direct_metrics.width);
+        assert_eq!(extension.half_width, direct_metrics.half_width);
+        assert_eq!(
+            extension.metrics.applied_scale,
+            direct_metrics.applied_scale
+        );
+        assert_eq!(extension.bottom_extension_px, 13.0);
+        assert!(
+            super::architecture_cytoscape_service_label_extension(
+                Some("   "),
+                &measurer,
+                &style,
+                12.0
+            )
+            .is_none()
         );
     }
 

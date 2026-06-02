@@ -5,19 +5,11 @@
 //! The crate intentionally stays thin: all parsing, rendering, options parsing, and error
 //! classification are delegated to `merman-bindings-core`.
 
-use merman_bindings_core::{BindingError, BindingStatus};
+use merman_bindings_core::BindingError;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-const WASM_ABI_VERSION: u32 = 1;
-
-#[derive(Debug, Serialize)]
-struct ValidationResult {
-    valid: bool,
-    error: Option<String>,
-    code: i32,
-    code_name: &'static str,
-}
+const WASM_ABI_VERSION: u32 = 2;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -69,50 +61,16 @@ pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String
 
 #[wasm_bindgen]
 pub fn validate(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    let result = match merman_bindings_core::parse_json(
+    json_value_result(merman_bindings_core::validate_json(
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
-    ) {
-        Ok(_) => ValidationResult {
-            valid: true,
-            error: None,
-            code: BindingStatus::Ok.code(),
-            code_name: BindingStatus::Ok.code_name(),
-        },
-        Err(err) => validation_error(&err),
-    };
-    serde_wasm_bindgen::to_value(&result).map_err(|err| JsValue::from_str(&err.to_string()))
+    ))
 }
 
 #[wasm_bindgen(js_name = supportedDiagrams)]
 pub fn supported_diagrams() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&[
-        "architecture",
-        "block",
-        "c4",
-        "class",
-        "er",
-        "flowchart",
-        "gantt",
-        "gitgraph",
-        "info",
-        "journey",
-        "kanban",
-        "mindmap",
-        "packet",
-        "pie",
-        "quadrantchart",
-        "radar",
-        "requirement",
-        "sankey",
-        "sequence",
-        "state",
-        "timeline",
-        "treemap",
-        "xychart",
-        "zenuml",
-    ])
-    .map_err(|err| JsValue::from_str(&err.to_string()))
+    serde_wasm_bindgen::to_value(merman_bindings_core::supported_diagrams())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
 #[wasm_bindgen]
@@ -124,7 +82,7 @@ pub fn themes() -> Result<JsValue, JsValue> {
 #[cfg(feature = "ascii")]
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
 pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&["class", "er", "flowchart", "sequence", "xychart"])
+    serde_wasm_bindgen::to_value(merman_bindings_core::ascii_supported_diagrams())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
@@ -137,22 +95,23 @@ fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValu
     String::from_utf8(bytes).map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-fn binding_error_to_js(err: BindingError) -> JsValue {
-    JsValue::from_str(&format!("{}: {}", err.status().code_name(), err.message()))
+fn json_value_result(result: Result<Vec<u8>, BindingError>) -> Result<JsValue, JsValue> {
+    let bytes = result.map_err(binding_error_to_js)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|err| JsValue::from_str(&err.to_string()))?;
+    value
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-fn validation_error(err: &BindingError) -> ValidationResult {
-    ValidationResult {
-        valid: false,
-        error: Some(err.message().to_string()),
-        code: err.status().code(),
-        code_name: err.status().code_name(),
-    }
+fn binding_error_to_js(err: BindingError) -> JsValue {
+    JsValue::from_str(&format!("{}: {}", err.status().code_name(), err.message()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn package_version_matches_crate_version() {
@@ -173,12 +132,18 @@ mod tests {
 
     #[test]
     fn validation_error_uses_binding_status() {
-        let err = merman_bindings_core::render_svg(b"", b"").unwrap_err();
-        let result = validation_error(&err);
+        let json: Value =
+            serde_json::from_slice(&merman_bindings_core::validate_json(b"", b"").unwrap())
+                .unwrap();
 
-        assert!(!result.valid);
-        assert_eq!(result.code_name, BindingStatus::NoDiagram.code_name());
-        assert!(result.error.unwrap().contains("no Mermaid diagram"));
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
+        assert!(
+            json["error"]
+                .as_str()
+                .unwrap()
+                .contains("no Mermaid diagram")
+        );
     }
 
     #[cfg(feature = "ascii")]

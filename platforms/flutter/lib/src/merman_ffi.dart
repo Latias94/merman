@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-const int mermanAbiVersion = 1;
+const int mermanAbiVersion = 2;
 
 enum MermanStatus {
   ok(0, 'MERMAN_OK'),
@@ -66,6 +66,9 @@ typedef _MermanCallC = NativeMermanResult Function(
 typedef _MermanCallDart = NativeMermanResult Function(
     Pointer<Uint8>, int, Pointer<Uint8>, int);
 
+typedef _MermanMetadataC = NativeMermanResult Function();
+typedef _MermanMetadataDart = NativeMermanResult Function();
+
 typedef _BufferFreeC = Void Function(NativeMermanBuffer);
 typedef _BufferFreeDart = void Function(NativeMermanBuffer);
 
@@ -103,6 +106,40 @@ class MermanException implements Exception {
   String toString() => 'MermanException($codeName): $message';
 }
 
+class MermanValidationResult {
+  const MermanValidationResult({
+    required this.valid,
+    required this.error,
+    required this.code,
+    required this.codeName,
+  });
+
+  final bool valid;
+  final String? error;
+  final int code;
+  final String codeName;
+
+  factory MermanValidationResult.fromJson(Map<String, Object?> json) {
+    final valid = json['valid'];
+    final code = json['code'];
+    final codeName = json['code_name'];
+    if (valid is! bool || code is! num || codeName is! String) {
+      throw const MermanException(
+        code: -1,
+        codeName: 'DART_JSON_TYPE_ERROR',
+        message: 'expected validation JSON object',
+      );
+    }
+    final error = json['error'];
+    return MermanValidationResult(
+      valid: valid,
+      error: error is String ? error : null,
+      code: code.toInt(),
+      codeName: codeName,
+    );
+  }
+}
+
 class Merman {
   Merman.fromDynamicLibrary(DynamicLibrary library)
       : _bindings = _MermanBindings(library) {
@@ -121,6 +158,12 @@ class Merman {
   String renderSvg(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.renderSvg, source, optionsJson),
+    );
+  }
+
+  String renderAscii(String source, {String? optionsJson}) {
+    return _decodeText(
+      _bindings.call(_bindings.renderAscii, source, optionsJson),
     );
   }
 
@@ -144,6 +187,36 @@ class Merman {
     return _decodeJsonMap(layoutJsonRaw(source, optionsJson: optionsJson));
   }
 
+  String validateJsonRaw(String source, {String? optionsJson}) {
+    return _decodeText(
+      _bindings.call(_bindings.validateJson, source, optionsJson),
+    );
+  }
+
+  MermanValidationResult validate(String source, {String? optionsJson}) {
+    return MermanValidationResult.fromJson(
+      _decodeJsonMap(validateJsonRaw(source, optionsJson: optionsJson)),
+    );
+  }
+
+  List<String> supportedDiagrams() {
+    return _decodeJsonStringList(
+      _decodeText(_bindings.metadata(_bindings.supportedDiagramsJson)),
+    );
+  }
+
+  List<String> asciiSupportedDiagrams() {
+    return _decodeJsonStringList(
+      _decodeText(_bindings.metadata(_bindings.asciiSupportedDiagramsJson)),
+    );
+  }
+
+  List<String> themes() {
+    return _decodeJsonStringList(
+      _decodeText(_bindings.metadata(_bindings.themesJson)),
+    );
+  }
+
   static String _decodeText(Uint8List bytes) => utf8.decode(bytes);
 
   static Map<String, Object?> _decodeJsonMap(String text) {
@@ -155,6 +228,18 @@ class Merman {
       code: -1,
       codeName: 'DART_JSON_TYPE_ERROR',
       message: 'expected JSON object',
+    );
+  }
+
+  static List<String> _decodeJsonStringList(String text) {
+    final decoded = jsonDecode(text);
+    if (decoded is List && decoded.every((item) => item is String)) {
+      return decoded.cast<String>();
+    }
+    throw const MermanException(
+      code: -1,
+      codeName: 'DART_JSON_TYPE_ERROR',
+      message: 'expected JSON string array',
     );
   }
 }
@@ -179,11 +264,29 @@ class _MermanBindings {
         renderSvg = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_render_svg',
         ),
+        renderAscii = library.lookupFunction<_MermanCallC, _MermanCallDart>(
+          'merman_render_ascii',
+        ),
         parseJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_parse_json',
         ),
         layoutJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_layout_json',
+        ),
+        validateJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
+          'merman_validate_json',
+        ),
+        supportedDiagramsJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_supported_diagrams_json',
+        ),
+        asciiSupportedDiagramsJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_ascii_supported_diagrams_json',
+        ),
+        themesJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_themes_json',
         ),
         _bufferFree = library.lookupFunction<_BufferFreeC, _BufferFreeDart>(
           'merman_buffer_free',
@@ -195,8 +298,13 @@ class _MermanBindings {
   final _StructSizeDart _resultStructSize;
   final _BufferFreeDart _bufferFree;
   final _MermanCallDart renderSvg;
+  final _MermanCallDart renderAscii;
   final _MermanCallDart parseJson;
   final _MermanCallDart layoutJson;
+  final _MermanCallDart validateJson;
+  final _MermanMetadataDart supportedDiagramsJson;
+  final _MermanMetadataDart asciiSupportedDiagramsJson;
+  final _MermanMetadataDart themesJson;
 
   void checkAbi() {
     final abiVersion = _abiVersion();
@@ -251,6 +359,15 @@ class _MermanBindings {
       _freeIfAllocated(sourcePtr);
       _freeIfAllocated(optionsPtr);
     }
+  }
+
+  Uint8List metadata(_MermanMetadataDart function) {
+    final result = function();
+    final payload = _takeBuffer(result.data);
+    if (result.code == MermanStatus.ok.code) {
+      return payload;
+    }
+    throw _exceptionFromPayload(result.code, payload);
   }
 
   Pointer<Uint8> _copyBytes(List<int> bytes) {

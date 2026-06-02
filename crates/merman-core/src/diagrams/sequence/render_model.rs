@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+use super::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceDiagramRenderModel {
     #[serde(rename = "accTitle")]
@@ -21,6 +23,54 @@ pub struct SequenceDiagramRenderModel {
     pub created_actors: BTreeMap<String, usize>,
     #[serde(rename = "destroyedActors", default)]
     pub destroyed_actors: BTreeMap<String, usize>,
+}
+
+impl SequenceDiagramRenderModel {
+    pub(crate) fn to_compat_json(&self, diagram_type: &str) -> Value {
+        let Value::Object(mut typed) =
+            serde_json::to_value(self).expect("sequence render model must serialize")
+        else {
+            unreachable!("sequence render model must serialize to a JSON object");
+        };
+
+        let mut root = serde_json::Map::with_capacity(12);
+        root.insert("type".to_string(), Value::String(diagram_type.to_string()));
+        for key in [
+            "title",
+            "accTitle",
+            "accDescr",
+            "actorOrder",
+            "actors",
+            "messages",
+            "notes",
+            "boxes",
+            "createdActors",
+            "destroyedActors",
+        ] {
+            root.insert(
+                key.to_string(),
+                typed.remove(key).unwrap_or_else(|| {
+                    panic!("sequence render model serialization missing field {key}")
+                }),
+            );
+        }
+
+        let mut placement = serde_json::Map::with_capacity(3);
+        placement.insert(
+            "leftOf".to_string(),
+            Value::Number(PLACEMENT_LEFT_OF.into()),
+        );
+        placement.insert(
+            "rightOf".to_string(),
+            Value::Number(PLACEMENT_RIGHT_OF.into()),
+        );
+        placement.insert("over".to_string(), Value::Number(PLACEMENT_OVER.into()));
+        let mut constants = serde_json::Map::with_capacity(1);
+        constants.insert("placement".to_string(), Value::Object(placement));
+        root.insert("constants".to_string(), Value::Object(constants));
+
+        Value::Object(root)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +102,7 @@ pub struct SequenceMessage {
     pub wrap: bool,
     #[serde(default)]
     pub activate: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement: Option<i32>,
     #[serde(
         rename = "centralConnection",
@@ -80,15 +130,6 @@ impl SequenceMessagePayload {
         match self {
             Self::Text(text) => text,
             Self::Autonumber(_) => "",
-        }
-    }
-
-    pub(crate) fn into_value(self) -> Value {
-        match self {
-            Self::Text(text) => Value::String(text),
-            Self::Autonumber(v) => {
-                serde_json::to_value(v).expect("sequence autonumber payload must serialize")
-            }
         }
     }
 }

@@ -23,8 +23,13 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 ## Kotlin Surface
 
 - `MermanEngine.renderSvg(source, optionsJson = null)`
+- `MermanEngine.renderAscii(source, optionsJson = null)`
 - `MermanEngine.parseJson(source, optionsJson = null)`
 - `MermanEngine.layoutJson(source, optionsJson = null)`
+- `MermanEngine.validateJson(source, optionsJson = null)`
+- `MermanEngine.supportedDiagramsJson()`
+- `MermanEngine.asciiSupportedDiagramsJson()`
+- `MermanEngine.themesJson()`
 - `MermanEngine.packageVersion`
 - `MermanException`
 
@@ -33,8 +38,8 @@ initialization.
 
 ## Example
 
-`platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, semantic
-JSON, and layout JSON from Android/Kotlin.
+`platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, ASCII,
+semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
 
 ## Verification
 

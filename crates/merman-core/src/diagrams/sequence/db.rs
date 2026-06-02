@@ -10,8 +10,7 @@ use super::render_model::{
 };
 use super::{
     LINETYPE_ACTIVE_END, LINETYPE_ACTIVE_START, LINETYPE_AUTONUMBER, LINETYPE_CENTRAL_CONNECTION,
-    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE, PLACEMENT_LEFT_OF, PLACEMENT_OVER,
-    PLACEMENT_RIGHT_OF,
+    LINETYPE_CENTRAL_CONNECTION_REVERSE, LINETYPE_NOTE,
 };
 
 #[derive(Debug, Clone)]
@@ -625,124 +624,8 @@ impl SequenceDb {
         }
     }
 
-    pub(super) fn into_model(mut self, meta: &ParseMetadata) -> Value {
-        fn opt_string(v: Option<String>) -> Value {
-            v.map(Value::String).unwrap_or(Value::Null)
-        }
-
-        let mut actors = std::mem::take(&mut self.actors);
-        let mut actors_json = serde_json::Map::new();
-        let mut actor_order_json: Vec<Value> = Vec::with_capacity(self.actor_order.len());
-        for id in std::mem::take(&mut self.actor_order) {
-            actor_order_json.push(Value::String(id.clone()));
-            if let Some(a) = actors.remove(&id) {
-                let mut obj = serde_json::Map::with_capacity(6);
-                obj.insert("name".to_string(), Value::String(a.name));
-                obj.insert("description".to_string(), Value::String(a.description));
-                obj.insert("wrap".to_string(), Value::Bool(a.wrap));
-                obj.insert("type".to_string(), Value::String(a.actor_type));
-                obj.insert("links".to_string(), Value::Object(a.links));
-                obj.insert("properties".to_string(), Value::Object(a.properties));
-                actors_json.insert(id, Value::Object(obj));
-            }
-        }
-
-        let messages_json: Vec<Value> = std::mem::take(&mut self.messages)
-            .into_iter()
-            .map(|m| {
-                let mut obj = serde_json::Map::new();
-                obj.insert("id".to_string(), Value::String(m.id));
-                obj.insert(
-                    "from".to_string(),
-                    m.from.map(Value::String).unwrap_or(Value::Null),
-                );
-                obj.insert(
-                    "to".to_string(),
-                    m.to.map(Value::String).unwrap_or(Value::Null),
-                );
-                obj.insert("message".to_string(), m.message.into_value());
-                obj.insert("wrap".to_string(), Value::Bool(m.wrap));
-                obj.insert("type".to_string(), Value::Number(m.message_type.into()));
-                obj.insert("activate".to_string(), Value::Bool(m.activate));
-                if m.central_connection != 0 {
-                    obj.insert(
-                        "centralConnection".to_string(),
-                        Value::Number(m.central_connection.into()),
-                    );
-                }
-                if let Some(p) = m.placement {
-                    obj.insert("placement".to_string(), Value::Number(p.into()));
-                }
-                Value::Object(obj)
-            })
-            .collect();
-
-        let notes_json: Vec<Value> = std::mem::take(&mut self.notes)
-            .into_iter()
-            .map(|n| {
-                let mut obj = serde_json::Map::with_capacity(4);
-                obj.insert("actor".to_string(), n.actor);
-                obj.insert("placement".to_string(), Value::Number(n.placement.into()));
-                obj.insert("message".to_string(), Value::String(n.message));
-                obj.insert("wrap".to_string(), Value::Bool(n.wrap));
-                Value::Object(obj)
-            })
-            .collect();
-
-        let boxes_json: Vec<Value> = std::mem::take(&mut self.boxes)
-            .into_iter()
-            .map(|b| {
-                let mut obj = serde_json::Map::with_capacity(4);
-                obj.insert("name".to_string(), opt_string(b.name));
-                obj.insert("wrap".to_string(), Value::Bool(b.wrap));
-                obj.insert("fill".to_string(), Value::String(b.fill));
-                obj.insert(
-                    "actorKeys".to_string(),
-                    Value::Array(b.actor_keys.into_iter().map(Value::String).collect()),
-                );
-                Value::Object(obj)
-            })
-            .collect();
-
-        let created_json: serde_json::Map<String, Value> = std::mem::take(&mut self.created_actors)
-            .into_iter()
-            .map(|(k, v)| (k, Value::Number((v as u64).into())))
-            .collect();
-
-        let destroyed_json: serde_json::Map<String, Value> =
-            std::mem::take(&mut self.destroyed_actors)
-                .into_iter()
-                .map(|(k, v)| (k, Value::Number((v as u64).into())))
-                .collect();
-
-        let mut placement = serde_json::Map::with_capacity(3);
-        placement.insert(
-            "leftOf".to_string(),
-            Value::Number(PLACEMENT_LEFT_OF.into()),
-        );
-        placement.insert(
-            "rightOf".to_string(),
-            Value::Number(PLACEMENT_RIGHT_OF.into()),
-        );
-        placement.insert("over".to_string(), Value::Number(PLACEMENT_OVER.into()));
-        let mut constants = serde_json::Map::with_capacity(1);
-        constants.insert("placement".to_string(), Value::Object(placement));
-
-        let mut root = serde_json::Map::with_capacity(11);
-        root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        root.insert("title".to_string(), opt_string(self.title));
-        root.insert("accTitle".to_string(), opt_string(self.acc_title));
-        root.insert("accDescr".to_string(), opt_string(self.acc_descr));
-        root.insert("actorOrder".to_string(), Value::Array(actor_order_json));
-        root.insert("actors".to_string(), Value::Object(actors_json));
-        root.insert("messages".to_string(), Value::Array(messages_json));
-        root.insert("notes".to_string(), Value::Array(notes_json));
-        root.insert("boxes".to_string(), Value::Array(boxes_json));
-        root.insert("createdActors".to_string(), Value::Object(created_json));
-        root.insert("destroyedActors".to_string(), Value::Object(destroyed_json));
-        root.insert("constants".to_string(), Value::Object(constants));
-
-        Value::Object(root)
+    pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
+        self.into_render_model().to_compat_json(&meta.diagram_type)
     }
 
     pub(super) fn into_render_model(mut self) -> SequenceDiagramRenderModel {

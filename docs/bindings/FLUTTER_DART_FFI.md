@@ -3,8 +3,8 @@
 Status: experimental publishable Flutter package.
 
 `platforms/flutter` provides the `merman` Dart/Flutter package over the canonical `merman-ffi`
-C ABI. The Dart wrapper uses the byte-buffer ABI and exposes SVG, semantic JSON, and layout JSON as
-Dart strings/maps.
+C ABI. The Dart wrapper uses the byte-buffer ABI and exposes SVG, ASCII text, semantic JSON,
+layout JSON, validation, and metadata as Dart strings/maps/lists.
 
 Merman itself is a browserless Rust engine for Mermaid diagrams. Start from the
 [project README](https://github.com/Latias94/merman) for product scope, the
@@ -24,8 +24,13 @@ for current Mermaid parity.
   calling render functions.
 - Exposes:
   - `Merman.renderSvg`
+  - `Merman.renderAscii`
   - `Merman.parseJson` / `parseJsonRaw`
   - `Merman.layoutJson` / `layoutJsonRaw`
+  - `Merman.validate` / `validateJsonRaw`
+  - `Merman.supportedDiagrams`
+  - `Merman.asciiSupportedDiagrams`
+  - `Merman.themes`
 - Converts non-OK C ABI results into `MermanException`.
 - Provides `Merman.openPath(path)` only for local Dart CLI smoke tests and other development
   diagnostics where Flutter platform packaging is not running.

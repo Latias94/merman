@@ -83,10 +83,35 @@ Last updated: 2026-06-02
   Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
   Handoff: This task may split child work if one audited seam becomes a large implementation lane.
+  The current candidate split is Architecture Cytoscape bbox phase modeling: leaf default
+  `node.boundingBox()`, child `updateCompoundBounds()` contribution, final group
+  `node.boundingBox()`, and manatee relocation bbox currently cannot be represented by one global
+  label/padding formula without broad root regressions. The dugong-adjacent source audit has also
+  begun: `repo-ref/dagre` and `repo-ref/graphlib` are now checked out to their pinned commits,
+  `dugong-graphlib` has a Graphlib coverage ledger, exposed Graphlib helper algorithm tests are
+  ported, and the Dagre reference harness is executable again against the installed Mermaid
+  `11.15.0` / `dagre-d3-es@7.0.14` toolchain. The next useful dugong slice is public Graphlib
+  `Graph` API coverage, not unused shortest-path algorithms. The first public Graph API slice is
+  now underway: basic options/node/edge/compound behavior is covered and parent-cycle assignment is
+  guarded, while non-compound `setParent(...)` throw semantics remain an explicit open API-shape
+  decision. The next Graph API slice also covers source-backed edge/adjacency queries (`sinks`,
+  predecessor/successor/neighbor queries, `isLeaf`, in/out/node edge filters, and remove-edge
+  neighbor updates), while preserving the open missing-node and chainable-mutator API-shape
+  differences instead of forcing JS ergonomics into Rust. A follow-up edge-invariant slice now
+  tightens simple-graph named-edge behavior to match upstream Graphlib: setting a named edge on a
+  non-multigraph panics, and named queries/removals no longer alias the unnamed edge. ARCH-022's
+  first Dagre reference adapter slice is also landed: `dagre_reference.rs` now owns the Rust-side
+  reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
+  delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
+  composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
+  service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
+  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. This keeps SVG
+  root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
+  preserves the known 26 Architecture root residuals.
 
 ## M5 - Semantic / Render Unification Pilot
 
-- [ ] HPD-060 [owner=codex] [deps=HPD-020,HPD-040] [scope=crates/merman-core,crates/merman-render]
+- [x] HPD-060 [owner=codex] [deps=HPD-020,HPD-040] [scope=crates/merman-core,crates/merman-render]
   Goal: Pick one high-value diagram family and deepen the “one semantic truth, adapters on top”
   direction to reduce typed-vs-JSON parallel master paths.
   Validation: pilot design note + focused implementation slice or an explicit split decision with
@@ -94,7 +119,11 @@ Last updated: 2026-06-02
   Review: This is a seam-deepening pilot, not a full repo-wide migration in one task.
   Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
-  Handoff: Sequence and Architecture are the default pilot candidates unless evidence changes.
+  Handoff: DONE. Sequence was selected as the bounded pilot. `SequenceDb::into_model(...)` now
+  delegates through `into_render_model().to_compat_json(...)`, so compatibility JSON is projected
+  from the typed render model instead of a second DB-side manual JSON master. The focused test now
+  covers messages, notes, boxes, create/destroy indexes, and omitted message fields. Sequence
+  structural SVG parity remains green; existing Sequence root-measurement residuals remain open.
 
 ## M6 - New Family Rubric
 

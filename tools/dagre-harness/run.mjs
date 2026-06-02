@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-import { Graph } from 'dagre-d3-es/src/graphlib/index.js';
-import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
+import { Graph } from '../mermaid-cli/node_modules/dagre-d3-es/src/graphlib/index.js';
+import { layout as dagreLayout } from '../mermaid-cli/node_modules/dagre-d3-es/src/dagre/index.js';
 
 function usage() {
   console.error('usage: node tools/dagre-harness/run.mjs --in <input.json> --out <output.json>');

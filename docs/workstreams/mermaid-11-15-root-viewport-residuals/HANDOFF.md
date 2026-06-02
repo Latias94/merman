@@ -213,11 +213,12 @@ behavior, with a unit test covering the fork/join diamond. This did not change t
 `+13.976px` root tail, so treat it as source-input parity plus residual classification rather than
 a viewport fix.
 
-Later HPD-050 correction: a fresh local audit compared the saved Mermaid debug probe
+Later HPD-050 correction: a fresh local audit compared the old saved Mermaid debug probe
 `target/compare/arch_junction_fork_join_probe_m15rv089.json` against the current local SVG, the
 stored upstream SVG, and a fresh Edge-backed `check-upstream-svgs` output. Local service positions
-match the saved debug probe to floating-point noise, but the stored upstream fixture is
-reproducible by the current CLI/Edge baseline path. Treat
+matched that old saved debug probe to floating-point noise, but the stored upstream fixture is
+reproducible by the current CLI/Edge baseline path. A refreshed HPD-050 probe still does not
+reproduce the CLI fixture, so treat
 `stress_architecture_junction_fork_join_026` as a debug-probe harness / CLI-harness divergence plus
 solver/phase residual candidate before touching manatee again.
 
@@ -553,9 +554,10 @@ a future Mermaid baseline changes the source behavior.
 - Architecture relative placement BFS must process duplicate queued current positions on pop, like
   Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
   drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
-- `stress_architecture_junction_fork_join_026` currently matches the saved Mermaid debug probe at
+- `stress_architecture_junction_fork_join_026` matched the old saved Mermaid debug probe at
   service-position level, while the stored upstream SVG is reproducible by the current CLI/Edge
-  path. Do not tune manatee against the saved debug probe until the probe harness / CLI harness
+  path. A refreshed HPD-050 probe remains diagnostic-only and still does not reproduce the CLI
+  fixture. Do not tune manatee against the debug probe until the probe harness / CLI harness
   disagreement is resolved.
 - Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
   long labels and batch4 small-icon labels need different treatment. The current piecewise

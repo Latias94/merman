@@ -361,7 +361,6 @@ where
         } else {
             (w, v)
         };
-        let name = if self.options.multigraph { name } else { None };
         EdgeKeyView { v, w, name }
     }
 
@@ -371,11 +370,7 @@ where
         if !self.options.directed && v > w {
             (v, w) = (w, v);
         }
-        let name = if self.options.multigraph {
-            key.name.as_deref()
-        } else {
-            None
-        };
+        let name = key.name.as_deref();
         EdgeKeyView { v, w, name }
     }
 
@@ -392,7 +387,10 @@ where
     }
 
     fn canonicalize_name(&self, name: Option<String>) -> Option<String> {
-        if self.options.multigraph { name } else { None }
+        if name.is_some() && !self.options.multigraph {
+            panic!("Cannot set a named edge when is_multigraph = false");
+        }
+        name
     }
 
     fn canonicalize_key(&self, mut key: EdgeKey) -> EdgeKey {
@@ -1366,6 +1364,10 @@ where
         if child_ix >= self.nodes.len() || parent_ix >= self.nodes.len() {
             return self;
         }
+        assert!(
+            !self.would_create_parent_cycle(child_ix, parent_ix),
+            "set_parent would create a cycle"
+        );
 
         let prev = self.parent_ix.get(child_ix).copied().flatten();
         if prev == Some(parent_ix) {
@@ -1387,6 +1389,21 @@ where
             }
         }
         self
+    }
+
+    fn would_create_parent_cycle(&self, child_ix: usize, parent_ix: usize) -> bool {
+        let mut seen: HashSet<usize> = HashSet::default();
+        let mut current = Some(parent_ix);
+        while let Some(ix) = current {
+            if ix == child_ix {
+                return true;
+            }
+            if !seen.insert(ix) {
+                return true;
+            }
+            current = self.parent_ix.get(ix).copied().flatten();
+        }
+        false
     }
 
     pub fn clear_parent(&mut self, child: &str) -> &mut Self {
@@ -1472,6 +1489,28 @@ where
             .collect()
     }
 
+    pub fn sinks(&self) -> Vec<&str> {
+        if !self.options.directed {
+            return self.nodes().collect();
+        }
+        self.nodes
+            .iter()
+            .filter_map(|n| n.as_ref())
+            .filter(|n| self.out_edges(&n.id, None).is_empty())
+            .map(|n| n.id.as_str())
+            .collect()
+    }
+
+    pub fn is_leaf(&self, v: &str) -> bool {
+        if !self.has_node(v) {
+            return false;
+        }
+        if self.options.directed {
+            return self.successors(v).is_empty();
+        }
+        self.neighbors(v).is_empty()
+    }
+
     pub fn node_edges(&self, v: &str) -> Vec<EdgeKey> {
         let mut out: Vec<EdgeKey> = Vec::new();
         let mut seen: HashSet<EdgeKey> = HashSet::default();
@@ -1480,6 +1519,21 @@ where
                 continue;
             };
             if (e.key.v == v || e.key.w == v) && seen.insert(e.key.clone()) {
+                out.push(e.key.clone());
+            }
+        }
+        out
+    }
+
+    pub fn node_edges_between(&self, v: &str, w: &str) -> Vec<EdgeKey> {
+        let mut out: Vec<EdgeKey> = Vec::new();
+        let mut seen: HashSet<EdgeKey> = HashSet::default();
+        for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
+            let touches_both = (e.key.v == v && e.key.w == w) || (e.key.v == w && e.key.w == v);
+            if touches_both && seen.insert(e.key.clone()) {
                 out.push(e.key.clone());
             }
         }

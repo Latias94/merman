@@ -1,7 +1,7 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-05-30
+Last updated: 2026-06-02
 
 This document defines the first C ABI protocol for `merman-ffi`.
 
@@ -31,9 +31,10 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The current C ABI exposes SVG, semantic JSON, and layout JSON. Raster byte outputs are not part of
-this protocol version even though the Rust crate has a reserved `raster` feature gate.
-All render functions accept the shared `options_json` contract documented in
+The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, and binding
+metadata. Raster byte outputs are not part of this protocol version even though the Rust crate has a
+reserved `raster` feature gate. All source-processing functions accept the shared `options_json`
+contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
 ## Stability
@@ -51,7 +52,7 @@ first FFI release candidate:
 The current ABI protocol version is:
 
 ```c
-#define MERMAN_ABI_VERSION 1
+#define MERMAN_ABI_VERSION 2
 ```
 
 ```c
@@ -142,6 +143,20 @@ On error, `data` contains UTF-8 JSON:
 }
 ```
 
+## ASCII Rendering
+
+```c
+MermanResult merman_render_ascii(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+```
+
+On success, `data` contains UTF-8 terminal text. If the native library is built without the `ascii`
+feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
+
 ## Options JSON
 
 Pass `NULL/0` for defaults. Non-empty options use the shared tolerant JSON object documented in
@@ -174,6 +189,39 @@ MermanResult merman_layout_json(
 
 On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` shape as
 `merman-cli layout`.
+
+## Validation JSON
+
+```c
+MermanResult merman_validate_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+```
+
+This function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
+reported in `data`:
+
+```json
+{
+  "valid": false,
+  "error": "no Mermaid diagram detected",
+  "code": 4,
+  "code_name": "MERMAN_NO_DIAGRAM"
+}
+```
+
+## Metadata JSON
+
+```c
+MermanResult merman_supported_diagrams_json(void);
+MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_themes_json(void);
+```
+
+Each function returns a UTF-8 JSON string array. The same buffer ownership rules apply.
 
 ## Threading
 

@@ -12,6 +12,35 @@ use merman::render::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+pub const SUPPORTED_DIAGRAMS: &[&str] = &[
+    "architecture",
+    "block",
+    "c4",
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitgraph",
+    "info",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "pie",
+    "quadrantchart",
+    "radar",
+    "requirement",
+    "sankey",
+    "sequence",
+    "state",
+    "timeline",
+    "treemap",
+    "xychart",
+    "zenuml",
+];
+
+pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
+
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingStatus {
@@ -80,6 +109,14 @@ struct ErrorPayload<'a> {
     message: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+struct ValidationPayload<'a> {
+    valid: bool,
+    error: Option<String>,
+    code: i32,
+    code_name: &'a str,
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct BindingOptions {
     #[allow(dead_code)]
@@ -143,6 +180,21 @@ pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
 }
 
+pub fn supported_diagrams() -> &'static [&'static str] {
+    SUPPORTED_DIAGRAMS
+}
+
+pub fn ascii_supported_diagrams() -> &'static [&'static str] {
+    #[cfg(feature = "ascii")]
+    {
+        ASCII_SUPPORTED_DIAGRAMS
+    }
+    #[cfg(not(feature = "ascii"))]
+    {
+        &[]
+    }
+}
+
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
@@ -167,6 +219,24 @@ pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindin
         .ok_or_else(no_diagram_error)?;
 
     serde_json::to_vec(&layouted).map_err(internal_json_error)
+}
+
+pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let payload = match parse_json(source, options_json) {
+        Ok(_) => ValidationPayload {
+            valid: true,
+            error: None,
+            code: BindingStatus::Ok.code(),
+            code_name: BindingStatus::Ok.code_name(),
+        },
+        Err(error) => ValidationPayload {
+            valid: false,
+            error: Some(error.message().to_string()),
+            code: error.status().code(),
+            code_name: error.status().code_name(),
+        },
+    };
+    serde_json::to_vec(&payload).map_err(internal_json_error)
 }
 
 #[cfg(feature = "ascii")]
@@ -195,6 +265,18 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
         .ok_or_else(no_diagram_error)?;
 
     Ok(rendered.into_bytes())
+}
+
+pub fn supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(supported_diagrams()).map_err(internal_json_error)
+}
+
+pub fn ascii_supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(ascii_supported_diagrams()).map_err(internal_json_error)
+}
+
+pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(supported_themes()).map_err(internal_json_error)
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
@@ -426,6 +508,25 @@ mod tests {
     }
 
     #[test]
+    fn supported_diagrams_exposes_binding_surface() {
+        assert!(supported_diagrams().contains(&"flowchart"));
+        assert!(supported_diagrams().contains(&"sequence"));
+        assert!(supported_diagrams().contains(&"requirement"));
+    }
+
+    #[test]
+    fn ascii_supported_diagrams_reflects_feature_surface() {
+        if cfg!(feature = "ascii") {
+            assert_eq!(
+                ascii_supported_diagrams(),
+                &["class", "er", "flowchart", "sequence", "xychart"]
+            );
+        } else {
+            assert!(ascii_supported_diagrams().is_empty());
+        }
+    }
+
+    #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
             "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },
@@ -462,6 +563,48 @@ mod tests {
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[test]
+    fn validate_json_reports_success_and_errors_without_throwing() {
+        let valid: Value =
+            serde_json::from_slice(&validate_json(b"flowchart TD\nA[Hello]", b"").unwrap())
+                .unwrap();
+        assert_eq!(valid["valid"], true);
+        assert_eq!(valid["code_name"], BindingStatus::Ok.code_name());
+        assert_eq!(valid.get("error"), Some(&Value::Null));
+
+        let invalid: Value = serde_json::from_slice(&validate_json(b"", b"").unwrap()).unwrap();
+        assert_eq!(invalid["valid"], false);
+        assert_eq!(invalid["code_name"], BindingStatus::NoDiagram.code_name());
+        assert!(
+            invalid["error"]
+                .as_str()
+                .unwrap()
+                .contains("no Mermaid diagram")
+        );
+    }
+
+    #[test]
+    fn metadata_json_helpers_return_arrays() {
+        let diagrams: Value = serde_json::from_slice(&supported_diagrams_json().unwrap()).unwrap();
+        let ascii_diagrams: Value =
+            serde_json::from_slice(&ascii_supported_diagrams_json().unwrap()).unwrap();
+        let themes: Value = serde_json::from_slice(&supported_themes_json().unwrap()).unwrap();
+
+        assert!(
+            diagrams
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("flowchart".to_string()))
+        );
+        assert!(ascii_diagrams.is_array());
+        assert!(
+            themes
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("default".to_string()))
+        );
     }
 
     #[cfg(feature = "ascii")]

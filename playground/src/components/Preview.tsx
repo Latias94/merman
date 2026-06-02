@@ -9,7 +9,8 @@ import { useTranslation } from "react-i18next";
 import { useMerman } from "@/src/hooks/useMerman";
 import { useAppStore } from "@/src/store";
 import {
-  preloadMermaid,
+  isMermaidLoaded,
+  prewarmMermaidRenderer,
   renderMermaidSvg,
   MERMAID_JS_VERSION,
 } from "@/src/lib/mermaid-renderer";
@@ -29,8 +30,10 @@ import {
   AlertCircle,
   Copy,
   Check,
+  Code2,
   FileCode,
   ImageIcon,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,8 +48,10 @@ interface PreviewProps {
 }
 
 type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
+type SvgDisplayMode = "visual" | "source";
 type EngineKey = "merman" | "mermaid";
 type DiagnosticKey = "parse" | "layout";
+type MermaidStatus = "idle" | "preparing" | "rendering";
 
 interface CompareArtifact {
   key: EngineKey;
@@ -56,6 +61,7 @@ interface CompareArtifact {
   error: string | null;
   renderTime: number | null;
   loading: boolean;
+  loadingLabel: string | null;
 }
 
 interface DiagnosticArtifact {
@@ -86,6 +92,8 @@ export function Preview({ className }: PreviewProps) {
   const [ascii, setAscii] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
+  const [svgDisplayMode, setSvgDisplayMode] =
+    useState<SvgDisplayMode>("visual");
   const [copiedAscii, setCopiedAscii] = useState(false);
   const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
   const [copiedEngine, setCopiedEngine] = useState<EngineKey | null>(null);
@@ -99,7 +107,8 @@ export function Preview({ className }: PreviewProps) {
   const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const [mermaidRenderTime, setMermaidRenderTime] = useState<number | null>(null);
-  const [mermaidLoading, setMermaidLoading] = useState(false);
+  const [mermaidStatus, setMermaidStatus] = useState<MermaidStatus>("idle");
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagnosticsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,8 +154,8 @@ export function Preview({ className }: PreviewProps) {
 
   const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
   const warmMermaidRenderer = useCallback(() => {
-    void preloadMermaid();
-  }, []);
+    void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
+  }, [diagramTheme, mermaidConfig]);
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -196,6 +205,7 @@ export function Preview({ className }: PreviewProps) {
     diagramTheme,
     mermaidConfig,
     ready,
+    refreshNonce,
     render,
     renderAscii,
     setDiagramType,
@@ -205,7 +215,7 @@ export function Preview({ className }: PreviewProps) {
   useEffect(() => {
     if (!code.trim()) return;
 
-    const timeout = window.setTimeout(warmMermaidRenderer, 600);
+    const timeout = window.setTimeout(warmMermaidRenderer, 50);
     return () => window.clearTimeout(timeout);
   }, [code, warmMermaidRenderer]);
 
@@ -221,27 +231,31 @@ export function Preview({ className }: PreviewProps) {
     setMermaidRenderTime(null);
 
     if (previewMode !== "compare" || !code.trim()) {
-      setMermaidLoading(false);
+      setMermaidStatus("idle");
       return;
     }
 
     let cancelled = false;
-    setMermaidLoading(true);
+    setMermaidStatus(isMermaidLoaded() ? "rendering" : "preparing");
     const timeout = setTimeout(() => {
-      void renderMermaidSvg(code, diagramTheme, mermaidConfig).then((result) => {
+      void (async () => {
+        await prewarmMermaidRenderer(diagramTheme, mermaidConfig);
+        if (cancelled) return;
+        setMermaidStatus("rendering");
+        const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig);
         if (cancelled) return;
         setMermaidSvg(result.svg);
         setMermaidError(result.error);
         setMermaidRenderTime(result.renderTime);
-        setMermaidLoading(false);
-      });
+        setMermaidStatus("idle");
+      })();
     }, 300);
 
     return () => {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [code, diagramTheme, mermaidConfig, previewMode]);
+  }, [code, diagramTheme, mermaidConfig, previewMode, refreshNonce]);
 
   useEffect(() => {
     if (diagnosticsDebounceRef.current) {
@@ -372,6 +386,10 @@ export function Preview({ className }: PreviewProps) {
     }
   }, []);
 
+  const handleRefreshCompare = useCallback(() => {
+    setRefreshNonce((value) => value + 1);
+  }, []);
+
   const renderTabBar = (rightContent?: ReactNode) => (
     <TabBar
       mode={previewMode}
@@ -425,6 +443,7 @@ export function Preview({ className }: PreviewProps) {
     error,
     renderTime: svg ? mermanRenderTime : null,
     loading: false,
+    loadingLabel: null,
   };
   const mermaidArtifact: CompareArtifact = {
     key: "mermaid",
@@ -433,7 +452,13 @@ export function Preview({ className }: PreviewProps) {
     svg: mermaidSvg,
     error: mermaidError,
     renderTime: mermaidRenderTime,
-    loading: mermaidLoading,
+    loading: mermaidStatus !== "idle",
+    loadingLabel:
+      mermaidStatus === "preparing"
+        ? t("preview.preparingMermaid")
+        : mermaidStatus === "rendering"
+          ? t("preview.renderingMermaid")
+          : null,
   };
 
   return (
@@ -441,7 +466,45 @@ export function Preview({ className }: PreviewProps) {
       {renderTabBar(
         <>
           {previewMode === "svg" && (
-            <ViewportControls controller={svgViewport} t={t} />
+            <>
+              {svgDisplayMode === "visual" && (
+                <ViewportControls controller={svgViewport} t={t} />
+              )}
+              <IconButton
+                label={
+                  copiedEngine === "merman"
+                    ? t("preview.copied")
+                    : t("preview.copySvg")
+                }
+                onClick={() => handleCopySvg("merman", svg)}
+                disabled={!svg}
+              >
+                {copiedEngine === "merman" ? (
+                  <Check className="size-4 text-green-500" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
+              </IconButton>
+              <IconButton
+                label={
+                  svgDisplayMode === "visual"
+                    ? t("preview.viewSvgSource")
+                    : t("preview.viewSvgPreview")
+                }
+                onClick={() =>
+                  setSvgDisplayMode((value) =>
+                    value === "visual" ? "source" : "visual"
+                  )
+                }
+                disabled={!svg}
+              >
+                {svgDisplayMode === "visual" ? (
+                  <Code2 className="size-4" />
+                ) : (
+                  <ImageIcon className="size-4" />
+                )}
+              </IconButton>
+            </>
           )}
           {previewMode === "ascii" && ascii && (
             <Tooltip>
@@ -478,12 +541,24 @@ export function Preview({ className }: PreviewProps) {
               )}
             </IconButton>
           )}
+          {previewMode === "compare" && (
+            <IconButton
+              label={t("preview.refreshCompare")}
+              onClick={handleRefreshCompare}
+            >
+              <RefreshCw className="size-4" />
+            </IconButton>
+          )}
         </>
       )}
 
       <div className="flex-1 min-h-0 relative overflow-hidden">
         {previewMode === "svg" && (
-          <SvgViewport svg={svg} controller={svgViewport} />
+          svgDisplayMode === "source" ? (
+            <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
+          ) : (
+            <SvgViewport svg={svg} controller={svgViewport} />
+          )
         )}
 
         {previewMode === "compare" && (
@@ -494,6 +569,7 @@ export function Preview({ className }: PreviewProps) {
             mermaidController={mermaidCompareViewport}
             copiedEngine={copiedEngine}
             exportingEngine={exportingEngine}
+            isDarkMode={isDarkMode}
             onCopySvg={handleCopySvg}
             onExportSvg={handleExportSvg}
             onExportPng={handleExportPng}
@@ -762,6 +838,7 @@ function CompareView({
   mermaidController,
   copiedEngine,
   exportingEngine,
+  isDarkMode,
   onCopySvg,
   onExportSvg,
   onExportPng,
@@ -773,6 +850,7 @@ function CompareView({
   mermaidController: SvgViewportController;
   copiedEngine: EngineKey | null;
   exportingEngine: EngineKey | null;
+  isDarkMode: boolean;
   onCopySvg(engine: EngineKey, svg: string | null): void;
   onExportSvg(engine: EngineKey, svg: string | null): void;
   onExportPng(engine: EngineKey, svg: string | null): void;
@@ -786,6 +864,7 @@ function CompareView({
           controller={mermanController}
           copied={copiedEngine === "merman"}
           exporting={exportingEngine === "merman"}
+          isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}
           onExportPng={onExportPng}
@@ -796,6 +875,7 @@ function CompareView({
           controller={mermaidController}
           copied={copiedEngine === "mermaid"}
           exporting={exportingEngine === "mermaid"}
+          isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}
           onExportPng={onExportPng}
@@ -811,6 +891,7 @@ function ComparePane({
   controller,
   copied,
   exporting,
+  isDarkMode,
   onCopySvg,
   onExportSvg,
   onExportPng,
@@ -820,12 +901,15 @@ function ComparePane({
   controller: SvgViewportController;
   copied: boolean;
   exporting: boolean;
+  isDarkMode: boolean;
   onCopySvg(engine: EngineKey, svg: string | null): void;
   onExportSvg(engine: EngineKey, svg: string | null): void;
   onExportPng(engine: EngineKey, svg: string | null): void;
   t: (key: string) => string;
 }) {
   const hasSvg = Boolean(artifact.svg);
+  const [svgDisplayMode, setSvgDisplayMode] =
+    useState<SvgDisplayMode>("visual");
 
   return (
     <section className="flex min-h-[320px] flex-col overflow-hidden rounded-md border bg-background xl:min-h-0">
@@ -839,7 +923,7 @@ function ComparePane({
           </div>
           <p className="shrink-0 text-xs text-muted-foreground">
             {artifact.loading
-              ? t("preview.loadingMermaid")
+              ? (artifact.loadingLabel ?? t("preview.renderingMermaid"))
               : artifact.renderTime !== null
                 ? `${artifact.renderTime.toFixed(1)}ms`
                 : "-"}
@@ -868,6 +952,25 @@ function ComparePane({
               <FileCode className="size-4" />
             </IconButton>
             <IconButton
+              label={
+                svgDisplayMode === "visual"
+                  ? t("preview.viewSvgSource")
+                  : t("preview.viewSvgPreview")
+              }
+              onClick={() =>
+                setSvgDisplayMode((value) =>
+                  value === "visual" ? "source" : "visual"
+                )
+              }
+              disabled={!hasSvg}
+            >
+              {svgDisplayMode === "visual" ? (
+                <Code2 className="size-4" />
+              ) : (
+                <ImageIcon className="size-4" />
+              )}
+            </IconButton>
+            <IconButton
               label={t("preview.exportPng")}
               onClick={() => onExportPng(artifact.key, artifact.svg)}
               disabled={!hasSvg || exporting}
@@ -884,10 +987,12 @@ function ComparePane({
       <div className="min-h-0 flex-1">
         {artifact.loading ? (
           <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
-            {t("preview.loadingMermaid")}
+            {artifact.loadingLabel ?? t("preview.renderingMermaid")}
           </CenteredMessage>
         ) : artifact.error ? (
           <RenderError message={artifact.error} t={t} compact />
+        ) : svgDisplayMode === "source" ? (
+          <SvgSourceEditor svg={artifact.svg} isDarkMode={isDarkMode} />
         ) : (
           <SvgViewport
             svg={artifact.svg}
@@ -901,6 +1006,46 @@ function ComparePane({
         )}
       </div>
     </section>
+  );
+}
+
+function SvgSourceEditor({
+  svg,
+  isDarkMode,
+}: {
+  svg: string | null;
+  isDarkMode: boolean;
+}) {
+  if (!svg) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        -
+      </div>
+    );
+  }
+
+  return (
+    <Editor
+      height="100%"
+      language="xml"
+      value={svg}
+      theme={isDarkMode ? "vs-dark" : "light"}
+      options={{
+        readOnly: true,
+        domReadOnly: true,
+        minimap: { enabled: false },
+        fontSize: 12,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+        scrollBeyondLastLine: false,
+        wordWrap: "on",
+        renderLineHighlight: "none",
+        selectionHighlight: false,
+        occurrencesHighlight: "off",
+        folding: true,
+        automaticLayout: true,
+        padding: { top: 16, bottom: 16 },
+      }}
+    />
   );
 }
 

@@ -32,6 +32,18 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose render_svg"
     );
     assert!(
+        generated.contains("def render_ascii"),
+        "generated binding should expose render_ascii"
+    );
+    assert!(
+        generated.contains("def validate"),
+        "generated binding should expose validate"
+    );
+    assert!(
+        generated.contains("def supported_diagrams"),
+        "generated binding should expose supported_diagrams"
+    );
+    assert!(
         generated.contains("def abi_version"),
         "generated binding should expose abi_version"
     );
@@ -42,6 +54,10 @@ fn generates_python_binding_from_cdylib_metadata() {
     assert!(
         generated.contains("class MermanError"),
         "generated binding should expose structured MermanError"
+    );
+    assert!(
+        generated.contains("class MermanValidationResult"),
+        "generated binding should expose MermanValidationResult"
     );
 }
 
@@ -59,7 +75,7 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     fs::create_dir_all(&module_dir).expect("create staged Python module directory");
     fs::write(
         module_dir.join("__init__.py"),
-        "from .merman_uniffi import MermanEngine, MermanError\n__all__ = ['MermanEngine', 'MermanError']\n",
+        "from .merman_uniffi import MermanEngine, MermanError, MermanValidationResult\n__all__ = ['MermanEngine', 'MermanError', 'MermanValidationResult']\n",
     )
     .expect("write staged Python package shim");
 
@@ -91,7 +107,7 @@ import json
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 assert engine.package_version()
 source = "flowchart TD\nA[Hello] --> B[World]"
 
@@ -100,12 +116,29 @@ assert "<svg" in svg
 assert "Hello" in svg
 assert "World" in svg
 
+ascii_text = engine.render_ascii(source, None)
+assert "Hello" in ascii_text
+assert "World" in ascii_text
+
 parsed = json.loads(engine.parse_json(source, None))
 assert parsed["type"] == "flowchart-v2"
 
 layout = json.loads(engine.layout_json(source, None))
 assert "meta" in layout
 assert "layout" in layout
+
+validation = engine.validate(source, None)
+assert validation.valid
+assert validation.code_name == "MERMAN_OK"
+
+invalid = engine.validate("", None)
+assert not invalid.valid
+assert invalid.code_name == "MERMAN_NO_DIAGRAM"
+assert "no Mermaid diagram" in invalid.error
+
+assert "flowchart" in engine.supported_diagrams()
+assert "sequence" in engine.ascii_supported_diagrams()
+assert "default" in engine.themes()
 
 try:
     engine.render_svg(source, "{")

@@ -1,7 +1,7 @@
 """Python package shim for generated merman UniFFI bindings."""
 
 try:
-    from .merman_uniffi import MermanEngine, MermanError
+    from .merman_uniffi import MermanEngine, MermanError, MermanValidationResult
 except ModuleNotFoundError as exc:
     if exc.name == f"{__name__}.merman_uniffi":
         raise ImportError(
@@ -12,4 +12,4 @@ except ModuleNotFoundError as exc:
         ) from exc
     raise
 
-__all__ = ["MermanEngine", "MermanError"]
+__all__ = ["MermanEngine", "MermanError", "MermanValidationResult"]

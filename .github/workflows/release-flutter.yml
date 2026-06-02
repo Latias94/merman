@@ -116,6 +116,7 @@ jobs:
           flutter pub get
           flutter analyze
           dart format --set-exit-if-changed lib example
+          dart pub publish --dry-run
 
       - name: Publish to pub.dev
         working-directory: platforms/flutter

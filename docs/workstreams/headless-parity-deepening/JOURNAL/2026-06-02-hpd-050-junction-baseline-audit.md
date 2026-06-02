@@ -15,7 +15,7 @@ constraints.
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug.md`
 - Local debug still reports 9 relative constraints, including duplicate `join -> db` and
   `join -> cache` rows.
-- Comparing the saved Mermaid browser probe
+- Comparing the old saved Mermaid browser probe
   `target/compare/arch_junction_fork_join_probe_m15rv089.json` against the current local SVG shows
   service-position deltas at floating-point noise level.
 - Comparing the same probe against the stored upstream SVG shows concrete drift: `auth`/`cache` X
@@ -37,9 +37,10 @@ the stored fixture's root facts exactly:
 - `max-width: 2808.126708984375px`
 - `viewBox="-1362.063232421875 -1213.2674560546875 2808.126708984375 2557.534912109375"`
 
-The debug probe still matches local service positions exactly, but differs from the fixture/CLI
+That old debug probe matches local service positions exactly, but differs from the fixture/CLI
 baseline by offsets such as `auth.x=+10.376px`, `cache.x=+10.376px`, `api.y=-12.358px`, and
-`db.y=-12.358px`.
+`db.y=-12.358px`. A later HPD-050 probe-harness refresh produced a new diagnostic probe that is
+still closer to local than to the fixture, but no longer exactly matches local.
 
 ## Outcome
 

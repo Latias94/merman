@@ -5,6 +5,7 @@ public enum MermanError: Error, LocalizedError {
     case abiMismatch(expected: UInt32, actual: UInt32)
     case structSizeMismatch(name: String, expected: Int, actual: Int)
     case binding(code: Int32, codeName: String, message: String)
+    case jsonDecode(message: String)
     case utf8Output
 
     public var errorDescription: String? {
@@ -15,14 +16,30 @@ public enum MermanError: Error, LocalizedError {
             return "Merman ABI struct size mismatch for \(name): expected \(expected), got \(actual)"
         case let .binding(_, codeName, message):
             return "\(codeName): \(message)"
+        case let .jsonDecode(message):
+            return message
         case .utf8Output:
             return "Merman native output was not UTF-8"
         }
     }
 }
 
+public struct MermanValidationResult: Decodable {
+    public let valid: Bool
+    public let error: String?
+    public let code: Int32
+    public let codeName: String
+
+    enum CodingKeys: String, CodingKey {
+        case valid
+        case error
+        case code
+        case codeName = "code_name"
+    }
+}
+
 public final class MermanEngine {
-    public static let abiVersion: UInt32 = 1
+    public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
 
     public let packageVersion: String
@@ -36,12 +53,37 @@ public final class MermanEngine {
         try call(merman_render_svg, source: source, optionsJson: optionsJson)
     }
 
+    public func renderAscii(_ source: String, optionsJson: String? = nil) throws -> String {
+        try call(merman_render_ascii, source: source, optionsJson: optionsJson)
+    }
+
     public func parseJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
         try call(merman_parse_json, source: source, optionsJson: optionsJson)
     }
 
     public func layoutJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
         try call(merman_layout_json, source: source, optionsJson: optionsJson)
+    }
+
+    public func validateJsonRaw(_ source: String, optionsJson: String? = nil) throws -> String {
+        try call(merman_validate_json, source: source, optionsJson: optionsJson)
+    }
+
+    public func validate(_ source: String, optionsJson: String? = nil) throws -> MermanValidationResult {
+        let data = try Data(validateJsonRaw(source, optionsJson: optionsJson).utf8)
+        return try decodeJson(MermanValidationResult.self, from: data)
+    }
+
+    public func supportedDiagrams() throws -> [String] {
+        try metadata(merman_supported_diagrams_json)
+    }
+
+    public func asciiSupportedDiagrams() throws -> [String] {
+        try metadata(merman_ascii_supported_diagrams_json)
+    }
+
+    public func themes() throws -> [String] {
+        try metadata(merman_themes_json)
     }
 
     private static func checkAbi() throws {
@@ -130,6 +172,19 @@ public final class MermanEngine {
             codeName: "MERMAN_ERROR",
             message: text
         )
+    }
+
+    private func metadata(_ function: () -> MermanResult) throws -> [String] {
+        let text = try decode(function())
+        return try decodeJson([String].self, from: Data(text.utf8))
+    }
+
+    private func decodeJson<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw MermanError.jsonDecode(message: "Merman JSON decode failed: \(error)")
+        }
     }
 }
 

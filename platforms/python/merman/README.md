@@ -15,13 +15,17 @@ for the main library contract.
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"
 svg = engine.render_svg(source, None)
+ascii_text = engine.render_ascii(source, None)
 semantic_json = engine.parse_json(source, None)
 layout_json = engine.layout_json(source, None)
+validation = engine.validate(source, None)
+diagrams = engine.supported_diagrams()
+themes = engine.themes()
 
 try:
     engine.render_svg(source, "{")

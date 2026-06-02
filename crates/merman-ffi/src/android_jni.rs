@@ -54,6 +54,16 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeRenderSvg(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeRenderAscii(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+) -> jstring {
+    call_binding(&mut env, source, options_json, render_ascii_binding)
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanEngine_nativeParseJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
@@ -83,6 +93,48 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeLayoutJson(
     )
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeValidateJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+) -> jstring {
+    call_binding(
+        &mut env,
+        source,
+        options_json,
+        merman_bindings_core::validate_json,
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedDiagramsJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    call_metadata(&mut env, merman_bindings_core::supported_diagrams_json)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAsciiSupportedDiagramsJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    call_metadata(
+        &mut env,
+        merman_bindings_core::ascii_supported_diagrams_json,
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeThemesJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    call_metadata(&mut env, merman_bindings_core::supported_themes_json)
+}
+
 fn call_binding<F>(
     env: &mut JNIEnv<'_>,
     source: JString<'_>,
@@ -101,6 +153,29 @@ where
 
     let result = super::ffi_result(|| f(source.as_bytes(), options_json.as_bytes()));
     result_to_java_string(env, result)
+}
+
+fn call_metadata<F>(env: &mut JNIEnv<'_>, f: F) -> jstring
+where
+    F: FnOnce() -> Result<Vec<u8>, BindingError>,
+{
+    let result = super::ffi_result(f);
+    result_to_java_string(env, result)
+}
+
+fn render_ascii_binding(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    #[cfg(feature = "ascii")]
+    {
+        merman_bindings_core::render_ascii(source, options_json)
+    }
+    #[cfg(not(feature = "ascii"))]
+    {
+        let _ = (source, options_json);
+        Err(BindingError::new(
+            BindingStatus::UnsupportedFormat,
+            "ASCII rendering requires the ascii feature",
+        ))
+    }
 }
 
 fn required_java_string(env: &mut JNIEnv<'_>, value: JString<'_>, name: &str) -> Option<String> {

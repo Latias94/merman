@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-#define MERMAN_ABI_VERSION 1
+#define MERMAN_ABI_VERSION 2
 
 enum {
     MERMAN_OK = 0,
@@ -86,6 +86,19 @@ MermanResult merman_render_svg(
 );
 
 /*
+ * Render Mermaid source to Unicode ASCII-art text.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without ASCII support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ */
+MermanResult merman_render_ascii(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+/*
  * Parse Mermaid source to semantic JSON.
  *
  * Success and error ownership rules are identical to merman_render_svg.
@@ -108,6 +121,29 @@ MermanResult merman_layout_json(
     const uint8_t* options_json,
     size_t options_len
 );
+
+/*
+ * Validate Mermaid source and return a UTF-8 JSON validation payload.
+ *
+ * This function returns MERMAN_OK when the validation payload itself was produced. Invalid Mermaid
+ * source is represented inside data:
+ *   {"valid":false,"error":"...","code":5,"code_name":"MERMAN_PARSE_ERROR"}
+ */
+MermanResult merman_validate_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+/*
+ * Return UTF-8 JSON string arrays describing binding metadata.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ */
+MermanResult merman_supported_diagrams_json(void);
+MermanResult merman_ascii_supported_diagrams_json(void);
+MermanResult merman_themes_json(void);
 
 /*
  * Free a buffer returned by merman.

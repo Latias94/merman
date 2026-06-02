@@ -9,9 +9,10 @@ JSON, compute layout JSON, and render SVG through a headless Rust engine. See th
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for the main library contract.
 
-The package exposes a small Dart API for SVG, semantic JSON, and layout JSON. On Flutter targets,
-the plugin also carries the native `merman-ffi` library, so application code normally opens the
-engine with `Merman.open()` and does not pass a dynamic library path.
+The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, validation,
+and metadata. On Flutter targets, the plugin also carries the native `merman-ffi` library, so
+application code normally opens the engine with `Merman.open()` and does not pass a dynamic library
+path.
 
 ## Supported Flutter Platforms
 
@@ -37,6 +38,10 @@ final svg = merman.renderSvg(
 );
 final semantic = merman.parseJson(source);
 final layout = merman.layoutJson(source);
+final ascii = merman.renderAscii(source);
+final validation = merman.validate(source);
+final diagrams = merman.supportedDiagrams();
+final themes = merman.themes();
 
 try {
   merman.renderSvg(source, optionsJson: '{');

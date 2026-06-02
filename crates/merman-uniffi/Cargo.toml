@@ -20,7 +20,8 @@ name = "generate_python_package"
 required-features = ["bindgen-smoke"]
 
 [features]
-default = ["render"]
+default = ["render", "ascii"]
+ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]
 ratex-math = ["render", "merman-bindings-core/ratex-math"]
 raster = ["merman-bindings-core/raster"]
@@ -28,9 +29,9 @@ bindgen-smoke = ["uniffi/bindgen"]
 
 [dependencies]
 merman-bindings-core.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 uniffi.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tempfile = "3.14.0"

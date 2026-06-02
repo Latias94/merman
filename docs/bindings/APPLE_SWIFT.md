@@ -39,8 +39,11 @@ import Merman
 
 let engine = try MermanEngine()
 let svg = try engine.renderSvg("flowchart TD\nA[Hello] --> B[World]")
+let ascii = try engine.renderAscii("flowchart TD\nA[Hello] --> B[World]")
 let semanticJson = try engine.parseJsonRaw("flowchart TD\nA[Hello] --> B[World]")
 let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
+let validation = try engine.validate("flowchart TD\nA[Hello] --> B[World]")
+let diagrams = try engine.supportedDiagrams()
 ```
 
 The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are

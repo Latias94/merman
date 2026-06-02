@@ -1,4 +1,7 @@
-import { preloadMermaid, renderMermaidSvg } from "@/src/lib/mermaid-renderer";
+import {
+  prewarmMermaidRenderer,
+  renderMermaidSvg,
+} from "@/src/lib/mermaid-renderer";
 
 export type BenchEngine = "merman" | "mermaid";
 
@@ -60,7 +63,7 @@ export async function runLocalRenderBench({
 
   for (const engine of engines) {
     throwIfAborted(signal);
-    await prepareEngine(engine);
+    await prepareEngine(engine, theme, configJson);
     throwIfAborted(signal);
     await runWarmup({
       engine,
@@ -91,9 +94,13 @@ export async function runLocalRenderBench({
   };
 }
 
-async function prepareEngine(engine: BenchEngine) {
+async function prepareEngine(
+  engine: BenchEngine,
+  theme: string,
+  configJson: string
+) {
   if (engine === "mermaid") {
-    await preloadMermaid();
+    await prewarmMermaidRenderer(theme, configJson);
   }
 }
 

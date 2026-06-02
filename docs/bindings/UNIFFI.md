@@ -8,8 +8,13 @@ Status: experimental generated-binding surface.
 - `MermanEngine::abi_version()`
 - `MermanEngine::package_version()`
 - `MermanEngine::render_svg(source, options_json)`
+- `MermanEngine::render_ascii(source, options_json)`
 - `MermanEngine::parse_json(source, options_json)`
 - `MermanEngine::layout_json(source, options_json)`
+- `MermanEngine::validate(source, options_json)`
+- `MermanEngine::supported_diagrams()`
+- `MermanEngine::ascii_supported_diagrams()`
+- `MermanEngine::themes()`
 - `MermanError::Binding { code, code_name, message }`
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
@@ -28,8 +33,9 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 This test builds the `merman-uniffi` cdylib, generates Python bindings from the embedded UniFFI
 metadata into a temporary package, copies the native library beside the generated module, imports
 the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.package_version`,
-`MermanEngine.render_svg`, `MermanEngine.parse_json`, `MermanEngine.layout_json`, plus a
-`MermanError.Binding` error-path check.
+`MermanEngine.render_svg`, `MermanEngine.render_ascii`, `MermanEngine.parse_json`,
+`MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods, plus a `MermanError.Binding`
+error-path check.
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.
