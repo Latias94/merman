@@ -31,8 +31,62 @@ export const SUPPORTED_THEMES = [
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
 
+export const SUPPORTED_DIAGRAMS = [
+  "architecture",
+  "block",
+  "c4",
+  "class",
+  "er",
+  "flowchart",
+  "gantt",
+  "gitgraph",
+  "info",
+  "journey",
+  "kanban",
+  "mindmap",
+  "packet",
+  "pie",
+  "quadrantchart",
+  "radar",
+  "requirement",
+  "sankey",
+  "sequence",
+  "state",
+  "timeline",
+  "treemap",
+  "xychart",
+  "zenuml",
+] as const;
+
+export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
+
+export const BINDING_STATUS_CODE_NAMES = [
+  "MERMAN_OK",
+  "MERMAN_INVALID_ARGUMENT",
+  "MERMAN_UTF8_ERROR",
+  "MERMAN_OPTIONS_JSON_ERROR",
+  "MERMAN_NO_DIAGRAM",
+  "MERMAN_PARSE_ERROR",
+  "MERMAN_RENDER_ERROR",
+  "MERMAN_UNSUPPORTED_FORMAT",
+  "MERMAN_PANIC",
+  "MERMAN_INTERNAL_ERROR",
+] as const;
+
+export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
+
 export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
+}
+
+export function isDiagramType(diagram: string): diagram is DiagramType {
+  return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
+}
+
+export function isBindingStatusCodeName(
+  codeName: string
+): codeName is BindingStatusCodeName {
+  return (BINDING_STATUS_CODE_NAMES as readonly string[]).includes(codeName);
 }
 
 export function normalizeThemeName(theme: string | null | undefined): ThemeName {
@@ -43,7 +97,7 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
   code: number;
-  code_name: string;
+  code_name: BindingStatusCodeName;
 }
 
 export interface MermanWasmModule {
@@ -170,16 +224,16 @@ export function validate(source: string, options?: BindingOptions | string): Val
   return getMerman().validate(source, encodeOptions(options));
 }
 
-export function supportedDiagrams(): string[] {
-  return getMerman().supportedDiagrams();
+export function supportedDiagrams(): DiagramType[] {
+  return getMerman().supportedDiagrams().map(assertDiagramType);
 }
 
-export function asciiSupportedDiagrams(): string[] {
-  return getMerman().asciiSupportedDiagrams();
+export function asciiSupportedDiagrams(): DiagramType[] {
+  return getMerman().asciiSupportedDiagrams().map(assertDiagramType);
 }
 
 export function themes(): ThemeName[] {
-  return getMerman().themes().map(normalizeThemeName);
+  return getMerman().themes().map(assertThemeName);
 }
 
 export function abiVersion(): number {
@@ -195,4 +249,18 @@ export function encodeOptions(options?: BindingOptions | string): string | undef
     return undefined;
   }
   return typeof options === "string" ? options : JSON.stringify(options);
+}
+
+function assertDiagramType(diagram: string): DiagramType {
+  if (isDiagramType(diagram)) {
+    return diagram;
+  }
+  throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
+}
+
+function assertThemeName(theme: string): ThemeName {
+  if (isThemeName(theme)) {
+    return theme;
+  }
+  throw new Error(`Merman WASM returned unknown theme: ${theme}`);
 }

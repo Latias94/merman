@@ -10,6 +10,7 @@ Use the live build at [Merman Playground](https://frankorz.com/merman/).
 ```sh
 npm install --prefix platforms/web
 npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
 ```
 
 ## Usage
@@ -72,6 +73,8 @@ Concurrent calls share the same in-flight initialization promise.
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.
+`supportedDiagrams()`, `asciiSupportedDiagrams()`, and `themes()` return typed metadata and fail
+fast if the generated WebAssembly metadata drifts from the TypeScript surface.
 
 ## Benchmarking against Mermaid JS
 
