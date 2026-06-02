@@ -210,7 +210,8 @@ Last updated: 2026-06-02
   duplicate native/fallback cleanup as Rust `SvgPipeline` consumers without changing default
   `resvg_safe` behavior. A follow-up binding options slice added top-level `site_config`, so
   non-Rust hosts can pass Mermaid theme, `themeVariables`, diagram config, and `themeCSS` defaults
-  without injecting init directives into source text; host-owned palette CSS remains a separate
-  security/cascade/raster-safety design problem.
+  without injecting init directives into source text. A follow-up binding options slice then added
+  explicit host-owned `svg.scoped_css` and `svg.css_override_policy`; `resvg-safe` binding pipelines
+  sanitize injected host CSS after insertion, while default Mermaid parity output stays unchanged.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -152,6 +152,24 @@ embedding an init directive into the diagram source:
 }
 ```
 
+Binding consumers can also inject host-owned scoped CSS through `options_json.svg.scoped_css`:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "diagram_id": "host-diagram",
+    "scoped_css": ".node rect { stroke: #2563eb; stroke-width: 2px; } .merman-foreignobject-fallback-text { fill: #111827; }",
+    "css_override_policy": "strip-existing-important"
+  }
+}
+```
+
+The injected CSS is scoped to the root SVG id and inserted after Mermaid CSS. With
+`pipeline="resvg-safe"`, merman runs the built-in CSS sanitizer after injecting host CSS so the
+binding preset does not silently lose its raster-safety contract. Hosts still own the trust and
+compatibility policy for the CSS they provide.
+
 Binding consumers can opt into the generic duplicate-fallback cleanup without writing a Rust
 postprocessor:
 

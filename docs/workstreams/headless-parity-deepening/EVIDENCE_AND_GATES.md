@@ -1543,11 +1543,40 @@ Focused verification:
 
 Residual note:
 
-- Binding host-owned scoped CSS remains a possible future API, but it still needs an explicit
-  cascade/security/raster-safety design. Plain Mermaid `themeCSS` is already covered through
-  `site_config`.
+- Binding host-owned scoped CSS remains the next possible API split. Plain Mermaid `themeCSS` is
+  already covered through `site_config`.
 - The default MSVC linker was not on PATH in this shell (`link.exe` not found), so Rust tests were
   verified with the toolchain-provided `rust-lld` linker.
+
+Twenty-seventh slice outcome:
+
+- Closed the binding host-owned CSS half of the Zed/theme integration gap by adding `svg.scoped_css`
+  and `svg.css_override_policy` to [crates/merman-bindings-core/src/lib.rs](/F:/SourceCodes/Rust/merman/crates/merman-bindings-core/src/lib.rs).
+- The binding API maps `svg.scoped_css` to `ScopedCssPostprocessor`, scopes selectors to the root
+  SVG id, and injects host CSS after Mermaid CSS for normal cascade order.
+- `svg.css_override_policy` accepts `preserve`, `strip-existing-important`, and
+  `strip_existing_important`. Invalid values return `MERMAN_INVALID_ARGUMENT`.
+- For `svg.pipeline="resvg-safe"`, the binding pipeline now runs `SanitizeCssPostprocessor` after
+  host CSS injection, preserving the raster-safe preset's CSS-sanitization contract for injected
+  host CSS.
+- Updated `@merman/web`, `docs/bindings/OPTIONS_JSON.md`,
+  `docs/rendering/SVG_OUTPUT_PIPELINE.md`, and `THEME_RENDERING_COVERAGE.md`.
+- This still does not add Zed-specific palette defaults, root background stripping, or any change
+  to the default Mermaid parity SVG output.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-bindings-core scoped_css --lib`
+- `cargo fmt -p merman-bindings-core`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-bindings-core --lib`
+- `npm run build:ts --prefix platforms/web`
+- JSONL validation for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`
+- `git diff --check`
+
+Residual note:
+
+- Binding host CSS is now an explicit host-owned option. The remaining root white-background
+  question is still a source/capture audit before any default output policy changes.
 
 ## HPD-060 - Semantic / Render Unification Pilot
 

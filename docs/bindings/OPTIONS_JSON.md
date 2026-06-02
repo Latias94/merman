@@ -34,7 +34,9 @@ numeric values return binding errors instead of panicking.
   },
   "svg": {
     "diagram_id": "my-diagram",
-    "pipeline": "parity"
+    "pipeline": "parity",
+    "scoped_css": ".node rect { stroke-width: 2px; }",
+    "css_override_policy": "preserve"
   }
 }
 ```
@@ -99,11 +101,19 @@ font metrics when available.
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, `resvg-safe`, or `resvg_safe`. |
+| `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
+| `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Applies when `svg.scoped_css` is injected. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Drops generated fallback label groups only when their text duplicates native SVG `<text>`. Useful with `readable` or `resvg-safe` for hosts that rasterize or restyle SVG output. |
 
 `readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
 renderer compatibility. `drop_native_duplicate_fallbacks` is opt-in so fallback-only labels are not
 lost by default.
+
+`svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
+root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
+`svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
+raster-safe contract as far as the built-in sanitizer can. Hosts still own CSS trust, palette
+semantics, and renderer-specific compatibility.
 
 ## Examples
 
@@ -142,6 +152,19 @@ Resvg-safe SVG with duplicate native/fallback labels removed:
   "svg": {
     "pipeline": "resvg-safe",
     "drop_native_duplicate_fallbacks": true
+  }
+}
+```
+
+Resvg-safe SVG with host-scoped CSS:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "diagram_id": "host-preview",
+    "scoped_css": ".node rect { fill: #111827; } .merman-foreignobject-fallback-text { fill: #f8fafc; }",
+    "css_override_policy": "strip-existing-important"
   }
 }
 ```

@@ -144,6 +144,8 @@ struct LayoutOptionsJson {
 struct SvgOptionsJson {
     diagram_id: Option<String>,
     pipeline: Option<String>,
+    scoped_css: Option<String>,
+    css_override_policy: Option<String>,
     drop_native_duplicate_fallbacks: Option<bool>,
 }
 
@@ -160,9 +162,11 @@ impl Default for PipelineKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SvgPipelineOptions {
     kind: PipelineKind,
+    scoped_css: Option<String>,
+    css_override_policy: merman::render::CssOverridePolicy,
     drop_native_duplicate_fallbacks: bool,
 }
 
@@ -170,6 +174,8 @@ impl Default for SvgPipelineOptions {
     fn default() -> Self {
         Self {
             kind: PipelineKind::default(),
+            scoped_css: None,
+            css_override_policy: merman::render::CssOverridePolicy::Preserve,
             drop_native_duplicate_fallbacks: false,
         }
     }
@@ -185,6 +191,16 @@ impl SvgPipelineOptions {
 
         if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
+        }
+
+        if let Some(scoped_css) = self.scoped_css.filter(|css| !css.trim().is_empty()) {
+            pipeline.push_postprocessor(
+                merman::render::ScopedCssPostprocessor::new(scoped_css)
+                    .with_override_policy(self.css_override_policy),
+            );
+            if matches!(self.kind, PipelineKind::ResvgSafe) {
+                pipeline.push_postprocessor(merman::render::SanitizeCssPostprocessor);
+            }
         }
 
         pipeline
@@ -456,6 +472,23 @@ fn build_renderer(
                 }
             };
         }
+        if let Some(raw_policy) = svg.css_override_policy.as_deref() {
+            pipeline.css_override_policy = match normalize_option(raw_policy).as_str() {
+                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "strip-existing-important" | "strip_existing_important" => {
+                    merman::render::CssOverridePolicy::StripExistingImportant
+                }
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported svg.css_override_policy: {other}"),
+                    ));
+                }
+            };
+        }
+        if let Some(scoped_css) = svg.scoped_css.as_deref() {
+            pipeline.scoped_css = Some(scoped_css.to_string());
+        }
         pipeline.drop_native_duplicate_fallbacks =
             svg.drop_native_duplicate_fallbacks.unwrap_or(false);
     }
@@ -641,6 +674,83 @@ mod tests {
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("site_config"));
+    }
+
+    #[test]
+    fn svg_options_can_inject_host_scoped_css() {
+        let options = br##"{
+            "svg": {
+                "diagram_id": "bindings host css",
+                "scoped_css": ".node rect { fill: #abcdef; }"
+            }
+        }"##;
+        let svg = String::from_utf8(render_svg(b"flowchart TD\nA[Plain source]", options).unwrap())
+            .unwrap();
+
+        assert!(svg.contains(r#"data-merman-postprocess="scoped-css""#));
+        assert!(
+            svg.contains("#bindings-host-css .node rect { fill: #abcdef; }"),
+            "{svg}"
+        );
+    }
+
+    #[test]
+    fn svg_options_scoped_css_can_strip_existing_important() {
+        let options = parse_options(
+            br##"{
+                "svg": {
+                    "pipeline": "parity",
+                    "scoped_css": ".node { fill: #00ff00; }",
+                    "css_override_policy": "strip-existing-important"
+                }
+            }"##,
+        )
+        .unwrap();
+        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let out = pipeline
+            .to_pipeline()
+            .process_to_string(
+                r#"<svg id="host"><style>.node{fill:red !important;}</style><g/></svg>"#,
+            )
+            .unwrap();
+
+        assert!(!out.contains("!important"), "{out}");
+        assert!(out.contains("#host .node { fill: #00ff00; }"));
+    }
+
+    #[test]
+    fn resvg_safe_scoped_css_is_sanitized_after_injection() {
+        let options = parse_options(
+            br##"{
+                "svg": {
+                    "pipeline": "resvg-safe",
+                    "scoped_css": "@keyframes dash { to { stroke-dashoffset: 10; } } .edge { animation: dash 1s; transform: rotate(45deg); }"
+                }
+            }"##,
+        )
+        .unwrap();
+        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let out = pipeline
+            .to_pipeline()
+            .process_to_string(r#"<svg id="host"><path class="edge"/></svg>"#)
+            .unwrap();
+
+        assert!(!out.contains("@keyframes"), "{out}");
+        assert!(!out.contains("animation"), "{out}");
+        assert!(!out.contains("45deg"), "{out}");
+        assert!(out.contains("#host .edge"));
+    }
+
+    #[test]
+    fn invalid_css_override_policy_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "svg": { "css_override_policy": "remove-everything" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("svg.css_override_policy"));
     }
 
     #[test]

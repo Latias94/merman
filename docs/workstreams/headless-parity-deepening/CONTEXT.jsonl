@@ -188,3 +188,6 @@
 {"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web BindingOptions exposes site_config for typed Mermaid site defaults."}
 {"file":"docs/bindings/OPTIONS_JSON.md","reason":"HPD-080 docs: shared options_json contract documents top-level site_config and object-only validation."}
 {"file":"docs/rendering/SVG_OUTPUT_PIPELINE.md","reason":"HPD-080 docs: SVG pipeline guide distinguishes binding Mermaid site_config from host-owned palette postprocessing."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-binding-scoped-css-options.md","reason":"HPD-080 journal: binding scoped CSS options expose host-owned CSS while preserving resvg-safe sanitizer ordering."}
+{"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: svg.scoped_css maps to ScopedCssPostprocessor and resvg-safe binding pipelines sanitize injected host CSS after insertion."}
+{"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web SvgOptions exposes scoped_css and css_override_policy."}

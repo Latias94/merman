@@ -316,8 +316,14 @@ Current repository reality to preserve:
     `options_json.site_config` now accepts a Mermaid config object, validates that it is an object,
     and feeds `HeadlessRenderer::with_site_config(...)` / `HeadlessAsciiRenderer::with_site_config(...)`.
     Non-Rust hosts can now pass official themes, `themeVariables`, diagram config, and Mermaid
-    `themeCSS` without injecting directives into the diagram source. Host-owned palette CSS remains
-    manual or Rust-postprocessor-only until a security/cascade/raster-safety design exists.
+    `themeCSS` without injecting directives into the diagram source. At that point, host-owned
+    palette CSS was still manual or Rust-postprocessor-only pending a security/cascade/raster-safety
+    design.
+  - A twenty-seventh HPD-080 slice closed that binding host-CSS gap with an explicit host-owned API:
+    `svg.scoped_css` maps to `ScopedCssPostprocessor`, `svg.css_override_policy` controls whether
+    existing `!important` flags are preserved or stripped, and `resvg-safe` binding pipelines run
+    `SanitizeCssPostprocessor` after host CSS injection. This is for host-provided CSS only; it
+    still does not add Zed-specific default palette behavior or root background stripping.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
