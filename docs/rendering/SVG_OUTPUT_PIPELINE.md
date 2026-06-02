@@ -135,3 +135,18 @@ before rasterizing.
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
 `SvgPostprocessor` passes layered after these generic blocks.
+
+Binding consumers can opt into the generic duplicate-fallback cleanup without writing a Rust
+postprocessor:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "drop_native_duplicate_fallbacks": true
+  }
+}
+```
+
+This removes fallback groups only when their text duplicates native SVG `<text>` output. It does not
+apply host palette replacement or remove fallback-only labels.

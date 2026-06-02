@@ -1408,6 +1408,31 @@ Residual note:
   cleanup and possibly scoped host CSS policy; do not silently change `resvg_safe()` defaults for
   that.
 
+Twenty-fourth slice outcome:
+
+- Closed the generic part of the non-Rust host integration gap from the Zed/theme audit by adding
+  `svg.drop_native_duplicate_fallbacks` to the shared binding `options_json` surface.
+- The option defaults to `false`, so existing `parity`, `readable`, and `resvg-safe` pipeline
+  contracts stay unchanged.
+- When enabled, binding renderers build the selected `SvgPipeline` and append
+  `DropNativeDuplicateFallbacksPostprocessor`, removing only fallback groups whose text duplicates
+  native SVG `<text>` while preserving fallback-only labels.
+- Updated `@merman/web` TypeScript options and `docs/bindings/OPTIONS_JSON.md` so host consumers do
+  not need private JSON strings or downstream duplicate-fallback hacks.
+
+Focused verification:
+
+- `cargo fmt -p merman-bindings-core`
+- `cargo test -p merman-bindings-core svg_options_can_drop_native_duplicate_fallbacks`
+- `cargo test -p merman-bindings-core render_svg_accepts_options_json`
+- `npm run build:ts --prefix platforms/web`
+
+Residual note:
+
+- Host palette replacement, root background replacement, scoped CSS injection, and
+  `!important` cleanup are still not JSON options. Those require an explicit cascade/security
+  design rather than a quick binding flag.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

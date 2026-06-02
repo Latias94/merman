@@ -143,6 +143,7 @@ struct LayoutOptionsJson {
 struct SvgOptionsJson {
     diagram_id: Option<String>,
     pipeline: Option<String>,
+    drop_native_duplicate_fallbacks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,17 +159,45 @@ impl Default for PipelineKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SvgPipelineOptions {
+    kind: PipelineKind,
+    drop_native_duplicate_fallbacks: bool,
+}
+
+impl Default for SvgPipelineOptions {
+    fn default() -> Self {
+        Self {
+            kind: PipelineKind::default(),
+            drop_native_duplicate_fallbacks: false,
+        }
+    }
+}
+
+impl SvgPipelineOptions {
+    fn to_pipeline(self) -> merman::render::SvgPipeline {
+        let mut pipeline = match self.kind {
+            PipelineKind::Parity => merman::render::SvgPipeline::parity(),
+            PipelineKind::Readable => merman::render::SvgPipeline::readable(),
+            PipelineKind::ResvgSafe => merman::render::SvgPipeline::resvg_safe(),
+        };
+
+        if self.drop_native_duplicate_fallbacks {
+            pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
+        }
+
+        pipeline
+    }
+}
+
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
     let (renderer, pipeline) = build_renderer(&options)?;
 
-    let svg = match pipeline {
-        PipelineKind::Parity => renderer.render_svg_sync(source),
-        PipelineKind::Readable => renderer.render_svg_readable_sync(source),
-        PipelineKind::ResvgSafe => renderer.render_svg_resvg_safe_sync(source),
-    }
-    .map_err(classify_render_error)?;
+    let svg = renderer
+        .render_svg_with_pipeline_sync(source, &pipeline.to_pipeline())
+        .map_err(classify_render_error)?;
 
     match svg {
         Some(svg) => Ok(svg.into_bytes()),
@@ -330,7 +359,7 @@ fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
 
 fn build_renderer(
     options: &BindingOptions,
-) -> Result<(HeadlessRenderer, PipelineKind), BindingError> {
+) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
     let mut renderer = HeadlessRenderer::new();
 
     if options
@@ -401,13 +430,13 @@ fn build_renderer(
         }
     }
 
-    let mut pipeline = PipelineKind::default();
+    let mut pipeline = SvgPipelineOptions::default();
     if let Some(svg) = options.svg.as_ref() {
         if let Some(diagram_id) = svg.diagram_id.as_deref() {
             renderer = renderer.with_diagram_id(diagram_id);
         }
         if let Some(raw_pipeline) = svg.pipeline.as_deref() {
-            pipeline = match normalize_option(raw_pipeline).as_str() {
+            pipeline.kind = match normalize_option(raw_pipeline).as_str() {
                 "parity" => PipelineKind::Parity,
                 "readable" => PipelineKind::Readable,
                 "resvg-safe" | "resvg_safe" => PipelineKind::ResvgSafe,
@@ -419,6 +448,8 @@ fn build_renderer(
                 }
             };
         }
+        pipeline.drop_native_duplicate_fallbacks =
+            svg.drop_native_duplicate_fallbacks.unwrap_or(false);
     }
 
     Ok((renderer, pipeline))
@@ -549,6 +580,54 @@ mod tests {
 
         assert!(svg.contains("id=\"bindings-core-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[test]
+    fn svg_options_can_drop_native_duplicate_fallbacks() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+<text class="task">Make tea</text>
+<g transform="translate(0,0)">
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
+</g>
+<g transform="translate(0,40)">
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
+</g>
+</svg>"##;
+
+        let default_options = parse_options(br#"{"svg":{"pipeline":"resvg-safe"}}"#).unwrap();
+        let (_renderer, default_pipeline) = build_renderer(&default_options).unwrap();
+        let default_out = default_pipeline
+            .to_pipeline()
+            .process_to_string(svg)
+            .unwrap();
+        assert_eq!(
+            default_out
+                .matches(r#"data-merman-foreignobject="fallback""#)
+                .count(),
+            2,
+            "{default_out}"
+        );
+
+        let cleanup_options = parse_options(
+            br#"{"svg":{"pipeline":"resvg-safe","drop_native_duplicate_fallbacks":true}}"#,
+        )
+        .unwrap();
+        let (_renderer, cleanup_pipeline) = build_renderer(&cleanup_options).unwrap();
+        let cleanup_out = cleanup_pipeline
+            .to_pipeline()
+            .process_to_string(svg)
+            .unwrap();
+
+        assert_eq!(
+            cleanup_out
+                .matches(r#"data-merman-foreignobject="fallback""#)
+                .count(),
+            1,
+            "{cleanup_out}"
+        );
+        assert!(cleanup_out.contains("Only fallback"));
+        assert!(cleanup_out.contains(r#"<text class="task">Make tea</text>"#));
+        assert!(!cleanup_out.contains("<foreignObject"));
     }
 
     #[test]

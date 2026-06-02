@@ -196,6 +196,11 @@ Last updated: 2026-06-02
   while merman now emits a valid derived default and keeps valid explicit `quadrantPointFill`
   overrides. A follow-up raw-SVG cleanup then removed useless upstream
   `style="undefined;;;undefined"` artifacts from ER relationship paths and Mindmap edge paths
-  while preserving class-driven edge styling and structural parity.
+  while preserving class-driven edge styling and structural parity. A Mermaid 11.15 theme-surface
+  correction then exposed all 11 official theme names through core, bindings, and `@merman/web`
+  while keeping exact `neo/redux*` override derivation as an honest follow-up. A binding options
+  slice then exposed `svg.drop_native_duplicate_fallbacks` so non-Rust hosts can opt into the same
+  duplicate native/fallback cleanup as Rust `SvgPipeline` consumers without changing default
+  `resvg_safe` behavior.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

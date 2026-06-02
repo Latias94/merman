@@ -66,9 +66,11 @@ font metrics when available.
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, `resvg-safe`, or `resvg_safe`. |
+| `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Drops generated fallback label groups only when their text duplicates native SVG `<text>`. Useful with `readable` or `resvg-safe` for hosts that rasterize or restyle SVG output. |
 
 `readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
-renderer compatibility.
+renderer compatibility. `drop_native_duplicate_fallbacks` is opt-in so fallback-only labels are not
+lost by default.
 
 ## Examples
 
@@ -79,6 +81,17 @@ Readable SVG with a stable id:
   "svg": {
     "diagram_id": "docs-flow",
     "pipeline": "readable"
+  }
+}
+```
+
+Resvg-safe SVG with duplicate native/fallback labels removed:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "drop_native_duplicate_fallbacks": true
   }
 }
 ```

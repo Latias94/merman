@@ -287,6 +287,10 @@ Current repository reality to preserve:
     `redux-dark-color`. Extended theme defaults use the generated 11.15 snapshot; exact
     `neo/redux*` override derivation remains a follow-up audit rather than a fake full-parity
     claim.
+  - A twenty-fourth HPD-080 slice exposed the generic duplicate-fallback cleanup through shared
+    binding `options_json` as `svg.drop_native_duplicate_fallbacks`. The default remains unchanged;
+    non-Rust hosts can now opt into the same safe duplicate native/fallback label cleanup that Rust
+    users had through `DropNativeDuplicateFallbacksPostprocessor`.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

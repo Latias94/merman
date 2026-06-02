@@ -12,6 +12,7 @@ export interface LayoutOptions {
 export interface SvgOptions {
   diagram_id?: string;
   pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
+  drop_native_duplicate_fallbacks?: boolean;
 }
 
 export interface BindingOptions {

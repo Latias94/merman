@@ -159,3 +159,8 @@
 {"file":"repo-ref/mermaid/packages/mermaid/src/themes/index.js","reason":"HPD-080 source evidence: Mermaid 11.15 theme registry includes neo/redux extended theme names."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/config.type.ts","reason":"HPD-080 source evidence: MermaidConfig.theme public union includes neo/redux extended theme names."}
 {"file":"tools/mermaid-cli/node_modules/mermaid/dist/config.type.d.ts","reason":"HPD-080 installed baseline evidence: Mermaid 11.15 distributed config type includes the same public theme union."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-binding-svg-fallback-options.md","reason":"HPD-080 journal: shared binding options_json now exposes opt-in duplicate native/fallback cleanup for non-Rust hosts."}
+{"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: svg.drop_native_duplicate_fallbacks appends DropNativeDuplicateFallbacksPostprocessor to the selected binding SVG pipeline without changing defaults."}
+{"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web BindingOptions exposes svg.drop_native_duplicate_fallbacks."}
+{"file":"docs/bindings/OPTIONS_JSON.md","reason":"HPD-080 docs: shared options_json contract documents the duplicate fallback cleanup flag and example."}
+{"file":"docs/rendering/SVG_OUTPUT_PIPELINE.md","reason":"HPD-080 docs: SVG pipeline guide documents the binding-level duplicate fallback cleanup option for host consumers."}
