@@ -227,6 +227,9 @@ Last updated: 2026-06-02
   Mermaid 11.15 `setupGraphViewbox` does not emit root `background-color`, while local parity output
   preserves the capture-compatible white background. Rust hosts can now use
   `RootBackgroundPostprocessor`, and binding hosts can use `svg.root_background_color` to change the
-  root canvas explicitly, while default Mermaid parity output stays unchanged.
+  root canvas explicitly, while default Mermaid parity output stays unchanged. A source-checkout
+  audit then restored `repo-ref/mermaid` from accidental `develop` drift to the lockfile Mermaid
+  `11.15.0` commit and confirmed the theme coverage ledger still matches the pinned provider
+  inventory.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

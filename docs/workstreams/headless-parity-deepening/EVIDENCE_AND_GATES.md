@@ -1847,6 +1847,31 @@ Residual note:
   external plugin compatibility boundary. They should be audited only for concrete visible failures,
   not forced into the same theme smoke.
 
+Thirty-second slice Mermaid source-checkout audit:
+
+- Re-audited HPD-080 style-provider discovery against the workstream's source authority after a
+  suspicious `railroad` / `cynefin` provider hit. The local `repo-ref/mermaid` checkout had drifted
+  to `develop` at `9bae92cd3214f9ec99369ab314ef41ffb283f6b6`, while
+  `tools/upstreams/REPOS.lock.json` pins Mermaid `11.15.0` to
+  `41646dfd43ac83f001b03c70605feb036afae46d`.
+- Verified the pinned commit directly with `git -C repo-ref/mermaid ls-tree ...`: `railroad` and
+  `cynefin` are absent from the locked `packages/mermaid/src/diagrams` tree, while the unsupported
+  family set `treeView`, `ishikawa`, `eventmodeling`, `venn`, and `wardley` remains present.
+- Restored `repo-ref/mermaid` to detached HEAD at the lockfile commit. This was a reference-state
+  repair, not a renderer code change.
+- Re-ran style-provider discovery after the restore. The supported-family coverage in
+  `THEME_RENDERING_COVERAGE.md` remains consistent with the pinned Mermaid 11.15 source; no new
+  HPD-080 renderer defect was found in this scan.
+
+Focused verification:
+
+- `git -C repo-ref/mermaid rev-parse HEAD`
+  returned `41646dfd43ac83f001b03c70605feb036afae46d` after the restore.
+- `git -C repo-ref/mermaid ls-tree -d --name-only 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams`
+  listed no `railroad` or `cynefin` directory.
+- `rg --files repo-ref/mermaid/packages/mermaid/src/diagrams | rg "(style|styles|architectureStyles|ishikawaStyles|pieStyles)\.(ts|js)$"`
+  matched the expected pinned-provider inventory.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

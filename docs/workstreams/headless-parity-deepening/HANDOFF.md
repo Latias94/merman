@@ -364,6 +364,11 @@ Current repository reality to preserve:
     labels and source-backed theme/config colors survive the public `HeadlessRenderer` route. C4 is
     intentionally asserted through visible C4 config colors, while Info/Error/ZenUML remain
     boundary cases unless a concrete visible failure appears.
+  - A thirty-second HPD-080 source-checkout audit found that `repo-ref/mermaid` had drifted to
+    `develop`, which falsely exposed `railroad` and `cynefin` style providers. It was restored to
+    the lockfile Mermaid `11.15.0` commit `41646dfd43ac83f001b03c70605feb036afae46d`; under that
+    source authority, the current theme coverage ledger remains consistent and no supported-family
+    renderer defect was found.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
