@@ -13,16 +13,6 @@ pub(super) fn state_css(
     model: &StateSvgModel,
     effective_config: &serde_json::Value,
 ) -> String {
-    fn font_family_css(effective_config: &serde_json::Value) -> String {
-        let mut ff = config_string(effective_config, &["fontFamily"])
-            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-            .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
-        ff = ff.replace(", ", ",").replace(",\t", ",");
-        // Mermaid's default config value sometimes includes a trailing `;` in `fontFamily`
-        // (e.g. `"trebuchet ms", verdana, arial, sans-serif;`). Mermaid's emitted CSS does not.
-        ff.trim().trim_end_matches(';').to_string()
-    }
-
     fn normalize_decl(s: &str) -> Option<(String, String)> {
         let s = s.trim().trim_end_matches(';').trim();
         if s.is_empty() {
@@ -60,20 +50,55 @@ pub(super) fn state_css(
         styles.iter().any(|s| has_fontish(s)) || text_styles.iter().any(|s| has_fontish(s))
     }
 
-    let ff = font_family_css(effective_config);
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let theme = SvgTheme::new(effective_config);
+    let ff = theme.font_family_css();
+    let font_size = theme.font_size_px();
     let id = escape_xml(diagram_id);
+    let text_color = theme.color("textColor", "#333");
+    let error_bkg = theme.color("errorBkgColor", "#552222");
+    let error_text = theme.color("errorTextColor", "#552222");
+    let line_color = theme.color("lineColor", "#333333");
+    let transition_color = theme.color("transitionColor", line_color.as_str());
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let state_label_color = theme.color("stateLabelColor", "#131300");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let background = theme.color("background", "white");
+    let alt_background = theme.color("altBackground", "#efefef");
+    let stroke_width = theme.css_value("strokeWidth", "1");
+    let stroke_width_px = if stroke_width.trim_end().ends_with("px") {
+        stroke_width.clone()
+    } else {
+        format!("{stroke_width}px")
+    };
+    let note_border = theme.color("noteBorderColor", "#aaaa33");
+    let note_bkg = theme.color("noteBkgColor", "#fff5ad");
+    let note_text = theme.color("noteTextColor", "black");
+    let label_background = theme.color("labelBackgroundColor", main_bkg.as_str());
+    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+    let transition_label_color = theme
+        .optional_color("transitionLabelColor")
+        .or_else(|| theme.optional_color("tertiaryTextColor"))
+        .unwrap_or_else(|| text_color.clone());
+    let special_state_color = theme.color("specialStateColor", line_color.as_str());
+    let inner_end_background = theme.color("innerEndBackground", node_border.as_str());
+    let composite_background = theme
+        .optional_color("compositeBackground")
+        .unwrap_or_else(|| background.clone());
+    let state_bkg = theme
+        .optional_color("stateBkg")
+        .unwrap_or_else(|| main_bkg.clone());
+    let state_border = theme
+        .optional_color("stateBorder")
+        .unwrap_or_else(|| node_border.clone());
+    let composite_title_background = theme.color("compositeTitleBackground", main_bkg.as_str());
 
-    // Keep the base stylesheet byte-for-byte compatible with Mermaid@11.12.2.
+    // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
     let mut css = String::new();
     let font_size_s = fmt(font_size);
     let _ = write!(
         &mut css,
-        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
-        id, ff, font_size_s
+        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        id, ff, font_size_s, text_color
     );
     css.push_str("@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}");
     css.push_str("@keyframes dash{to{stroke-dashoffset:0;}}");
@@ -87,11 +112,11 @@ pub(super) fn state_css(
         r#"#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
         id
     );
-    let _ = write!(&mut css, r#"#{} .error-icon{{fill:#552222;}}"#, id);
+    let _ = write!(&mut css, r#"#{} .error-icon{{fill:{};}}"#, id, error_bkg);
     let _ = write!(
         &mut css,
-        r#"#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id
+        r#"#{} .error-text{{fill:{};stroke:{};}}"#,
+        id, error_text, error_text
     );
     let _ = write!(
         &mut css,
@@ -125,10 +150,14 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}"#,
-        id
+        r#"#{} .marker{{fill:{};stroke:{};}}"#,
+        id, line_color, line_color
     );
-    let _ = write!(&mut css, r#"#{} .marker.cross{{stroke:#333333;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} .marker.cross{{stroke:{};}}"#,
+        id, line_color
+    );
     let _ = write!(
         &mut css,
         r#"#{} svg{{font-family:{};font-size:{}px;}}"#,
@@ -137,43 +166,43 @@ pub(super) fn state_css(
     let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
     let _ = write!(
         &mut css,
-        r#"#{} defs #statediagram-barbEnd{{fill:#333333;stroke:#333333;}}"#,
-        id
+        r#"#{} defs [id$="-barbEnd"]{{fill:{};stroke:{};}}"#,
+        id, transition_color, transition_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} g.stateGroup text{{fill:#9370DB;stroke:none;font-size:10px;}}"#,
-        id
+        r#"#{} g.stateGroup text{{fill:{};stroke:none;font-size:10px;}}"#,
+        id, node_border
     );
     let _ = write!(
         &mut css,
-        r#"#{} g.stateGroup text{{fill:#333;stroke:none;font-size:10px;}}"#,
-        id
+        r#"#{} g.stateGroup text{{fill:{};stroke:none;font-size:10px;}}"#,
+        id, text_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} g.stateGroup .state-title{{font-weight:bolder;fill:#131300;}}"#,
-        id
+        r#"#{} g.stateGroup .state-title{{font-weight:bolder;fill:{};}}"#,
+        id, state_label_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} g.stateGroup rect{{fill:#ECECFF;stroke:#9370DB;}}"#,
-        id
+        r#"#{} g.stateGroup rect{{fill:{};stroke:{};}}"#,
+        id, main_bkg, node_border
     );
     let _ = write!(
         &mut css,
-        r#"#{} g.stateGroup line{{stroke:#333333;stroke-width:1;}}"#,
-        id
+        r#"#{} g.stateGroup line{{stroke:{};stroke-width:{};}}"#,
+        id, line_color, stroke_width
     );
     let _ = write!(
         &mut css,
-        r#"#{} .transition{{stroke:#333333;stroke-width:1;fill:none;}}"#,
-        id
+        r#"#{} .transition{{stroke:{};stroke-width:{};fill:none;}}"#,
+        id, transition_color, stroke_width
     );
     let _ = write!(
         &mut css,
-        r#"#{} .stateGroup .composit{{fill:white;border-bottom:1px;}}"#,
-        id
+        r#"#{} .stateGroup .composit{{fill:{};border-bottom:1px;}}"#,
+        id, background
     );
     let _ = write!(
         &mut css,
@@ -182,90 +211,98 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .state-note{{stroke:#aaaa33;fill:#fff5ad;}}"#,
-        id
+        r#"#{} .state-note{{stroke:{};fill:{};}}"#,
+        id, note_border, note_bkg
     );
     let _ = write!(
         &mut css,
-        r#"#{} .state-note text{{fill:black;stroke:none;font-size:10px;}}"#,
-        id
+        r#"#{} .state-note text{{fill:{};stroke:none;font-size:10px;}}"#,
+        id, note_text
     );
     let _ = write!(
         &mut css,
-        r#"#{} .stateLabel .box{{stroke:none;stroke-width:0;fill:#ECECFF;opacity:0.5;}}"#,
-        id
+        r#"#{} .stateLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}"#,
+        id, main_bkg
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edgeLabel .label rect{{fill:#ECECFF;opacity:0.5;}}"#,
-        id
+        r#"#{} .edgeLabel .label rect{{fill:{};opacity:0.5;}}"#,
+        id, label_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edgeLabel{{background-color:rgba(232,232,232, 0.8);text-align:center;}}"#,
-        id
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
+        id, edge_label_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edgeLabel p{{background-color:rgba(232,232,232, 0.8);}}"#,
-        id
+        r#"#{} .edgeLabel p{{background-color:{};}}"#,
+        id, edge_label_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .edgeLabel rect{{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}}"#,
-        id
-    );
-    let _ = write!(&mut css, r#"#{} .edgeLabel .label text{{fill:#333;}}"#, id);
-    let _ = write!(&mut css, r#"#{} .label div .edgeLabel{{color:#333;}}"#, id);
-    let _ = write!(
-        &mut css,
-        r#"#{} .stateLabel text{{fill:#131300;font-size:10px;font-weight:bold;}}"#,
-        id
+        r#"#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}"#,
+        id, edge_label_background, edge_label_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .node circle.state-start{{fill:#333333;stroke:#333333;}}"#,
-        id
+        r#"#{} .edgeLabel .label text{{fill:{};}}"#,
+        id, transition_label_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} .node .fork-join{{fill:#333333;stroke:#333333;}}"#,
-        id
+        r#"#{} .label div .edgeLabel{{color:{};}}"#,
+        id, transition_label_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} .node circle.state-end{{fill:#9370DB;stroke:white;stroke-width:1.5;}}"#,
-        id
+        r#"#{} .stateLabel text{{fill:{};font-size:10px;font-weight:bold;}}"#,
+        id, state_label_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} .end-state-inner{{fill:white;stroke-width:1.5;}}"#,
-        id
+        r#"#{} .node circle.state-start{{fill:{};stroke:{};}}"#,
+        id, special_state_color, special_state_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} .node rect{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
-        id
+        r#"#{} .node .fork-join{{fill:{};stroke:{};}}"#,
+        id, special_state_color, special_state_color
     );
     let _ = write!(
         &mut css,
-        r#"#{} .node polygon{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
-        id
+        r#"#{} .node circle.state-end{{fill:{};stroke:{};stroke-width:1.5;}}"#,
+        id, inner_end_background, background
     );
     let _ = write!(
         &mut css,
-        r#"#{} #statediagram-barbEnd{{fill:#333333;}}"#,
-        id
+        r#"#{} .end-state-inner{{fill:{};stroke-width:1.5;}}"#,
+        id, composite_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-cluster rect{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
-        id
+        r#"#{} .node rect{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, state_bkg, state_border, stroke_width_px
     );
     let _ = write!(
         &mut css,
-        r#"#{} .cluster-label,#{} .nodeLabel{{color:#131300;}}"#,
-        id, id
+        r#"#{} .node polygon{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, main_bkg, state_border, stroke_width_px
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [id$="-barbEnd"]{{fill:{};}}"#,
+        id, line_color
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, composite_title_background, state_border, stroke_width_px
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .cluster-label,#{} .nodeLabel{{color:{};}}"#,
+        id, id, state_label_color
     );
     let _ = write!(
         &mut css,
@@ -274,8 +311,8 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-state .divider{{stroke:#9370DB;}}"#,
-        id
+        r#"#{} .statediagram-state .divider{{stroke:{};}}"#,
+        id, state_border
     );
     let _ = write!(
         &mut css,
@@ -284,13 +321,13 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-cluster.statediagram-cluster .inner{{fill:white;}}"#,
-        id
+        r#"#{} .statediagram-cluster.statediagram-cluster .inner{{fill:{};}}"#,
+        id, composite_background
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-cluster.statediagram-cluster-alt .inner{{fill:#f0f0f0;}}"#,
-        id
+        r#"#{} .statediagram-cluster.statediagram-cluster-alt .inner{{fill:{};}}"#,
+        id, alt_background
     );
     let _ = write!(
         &mut css,
@@ -304,29 +341,29 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-state rect.divider{{stroke-dasharray:10,10;fill:#f0f0f0;}}"#,
-        id
+        r#"#{} .statediagram-state rect.divider{{stroke-dasharray:10,10;fill:{};}}"#,
+        id, alt_background
     );
     let _ = write!(&mut css, r#"#{} .note-edge{{stroke-dasharray:5;}}"#, id);
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note rect{{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}}"#,
-        id
+        r#"#{} .statediagram-note rect{{fill:{};stroke:{};stroke-width:1px;rx:0;ry:0;}}"#,
+        id, note_bkg, note_border
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note rect{{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}}"#,
-        id
+        r#"#{} .statediagram-note rect{{fill:{};stroke:{};stroke-width:1px;rx:0;ry:0;}}"#,
+        id, note_bkg, note_border
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note text{{fill:black;}}"#,
-        id
+        r#"#{} .statediagram-note text{{fill:{};}}"#,
+        id, note_text
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-note .nodeLabel{{color:black;}}"#,
-        id
+        r#"#{} .statediagram-note .nodeLabel{{color:{};}}"#,
+        id, note_text
     );
     let _ = write!(
         &mut css,
@@ -335,13 +372,8 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
-        r#"#{} #dependencyStart,#{} #dependencyEnd{{fill:#333333;stroke:#333333;stroke-width:1;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:#333;}}"#,
-        id
+        r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        id, text_color
     );
     let _ = write!(
         &mut css,
@@ -512,6 +544,80 @@ fn state_escape_amp_preserving_entities(raw: &str) -> String {
     }
     out.push_str(&raw[i..]);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn state_css_honors_mermaid_11_15_theme_options() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": "Inter, Arial",
+                "textColor": "#101010",
+                "errorBkgColor": "#111111",
+                "errorTextColor": "#121212",
+                "transitionColor": "#202020",
+                "lineColor": "#303030",
+                "nodeBorder": "#404040",
+                "stateLabelColor": "#505050",
+                "mainBkg": "#606060",
+                "background": "#707070",
+                "altBackground": "#808080",
+                "strokeWidth": 4,
+                "noteBorderColor": "#909090",
+                "noteBkgColor": "#a0a0a0",
+                "noteTextColor": "#b0b0b0",
+                "labelBackgroundColor": "#c0c0c0",
+                "edgeLabelBackground": "#d0d0d0",
+                "transitionLabelColor": "#e0e0e0",
+                "specialStateColor": "#f0f0f0",
+                "innerEndBackground": "#010101",
+                "compositeBackground": "#020202",
+                "stateBkg": "#030303",
+                "stateBorder": "#040404",
+                "compositeTitleBackground": "#050505"
+            }
+        });
+
+        let css = state_css("st", &StateSvgModel::default(), &cfg);
+
+        assert!(css.contains(r#"#st{font-family:Inter,Arial;font-size:16px;fill:#101010;}"#));
+        assert!(css.contains(
+            r#"#st .error-icon{fill:#111111;}#st .error-text{fill:#121212;stroke:#121212;}"#
+        ));
+        assert!(css.contains(
+            r#"#st .marker{fill:#303030;stroke:#303030;}#st .marker.cross{stroke:#303030;}"#
+        ));
+        assert!(css.contains(r#"#st defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#));
+        assert!(css.contains(r#"#st g.stateGroup rect{fill:#606060;stroke:#404040;}"#));
+        assert!(css.contains(r#"#st .transition{stroke:#202020;stroke-width:4;fill:none;}"#));
+        assert!(css.contains(r#"#st .state-note{stroke:#909090;fill:#a0a0a0;}"#));
+        assert!(css.contains(r#"#st .edgeLabel .label rect{fill:#c0c0c0;opacity:0.5;}"#));
+        assert!(css.contains(r#"#st .edgeLabel{background-color:#d0d0d0;text-align:center;}"#));
+        assert!(css.contains(r#"#st .edgeLabel .label text{fill:#e0e0e0;}"#));
+        assert!(
+            css.contains(r#"#st .stateLabel text{fill:#505050;font-size:10px;font-weight:bold;}"#)
+        );
+        assert!(css.contains(r#"#st .node circle.state-start{fill:#f0f0f0;stroke:#f0f0f0;}"#));
+        assert!(css.contains(
+            r#"#st .node circle.state-end{fill:#010101;stroke:#707070;stroke-width:1.5;}"#
+        ));
+        assert!(css.contains(r#"#st .node rect{fill:#030303;stroke:#040404;stroke-width:4px;}"#));
+        assert!(css.contains(
+            r#"#st .statediagram-cluster rect{fill:#050505;stroke:#040404;stroke-width:4px;}"#
+        ));
+        assert!(css.contains(r#"#st .statediagram-note text{fill:#b0b0b0;}"#));
+        assert!(css.contains(
+            r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
+        ));
+        assert!(
+            !css.contains("dependencyStart"),
+            "local State SVG does not emit dependency markers, so CSS should not advertise them"
+        );
+    }
 }
 
 fn state_normalize_br_tags(raw: &str) -> String {

@@ -165,6 +165,8 @@ Last updated: 2026-06-02
   overrides that were parsed but not emitted into CSS. A Block slice fixed composite cluster fade
   CSS for nested block readability. A Sequence slice fixed stale hardcoded actor, lifeline, signal,
   label, note, activation, marker/error, and rect node CSS by routing Sequence styles through
-  `effective_config` and the shared `SvgTheme` seam. Continue by scanning supported diagrams for
-  blank output, hidden labels, black blocks, lost theme colors, and other functional renderability
+  `effective_config` and the shared `SvgTheme` seam. A State slice fixed stale hardcoded state
+  node, cluster, transition, label, note, marker, start/end, special-state, and title CSS, including
+  the prefixed local barbEnd marker selector. Continue by scanning supported diagrams for blank
+  output, hidden labels, black blocks, lost theme colors, and other functional renderability
   failures before returning to fine root residual work.

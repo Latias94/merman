@@ -890,6 +890,46 @@ Residual note:
 - This slice fixes Sequence theme/readability CSS emission only. It does not claim to close the
   known Sequence generated-measurement/root-width residuals documented under HPD-040 and HPD-060.
 
+Tenth slice outcome:
+
+- Audited pinned Mermaid 11.15 State style provider:
+  - `packages/mermaid/src/diagrams/state/styles.js`
+- State CSS previously emitted a mostly hardcoded 11.12-era stylesheet for state nodes, clusters,
+  transitions, labels, notes, start/end markers, special states, and title text. This made dark and
+  custom themes visually stale even when DOM structural parity stayed green.
+- State CSS now reads Mermaid 11.15 theme variables through the shared `SvgTheme` seam for root
+  text, error colors, `lineColor`, `transitionColor`, `nodeBorder`, `stateLabelColor`, `mainBkg`,
+  `background`, `altBackground`, `strokeWidth`, `note*`, `labelBackgroundColor`,
+  `edgeLabelBackground`, `transitionLabelColor`/`tertiaryTextColor`, `specialStateColor`,
+  `innerEndBackground`, `compositeBackground`, `stateBkg`, `stateBorder`, and
+  `compositeTitleBackground`.
+- The local State marker id is prefixed (`<diagram>_stateDiagram-barbEnd`), so the stylesheet now
+  uses source-backed suffix selectors (`[id$="-barbEnd"]`) instead of the old exact
+  `#statediagram-barbEnd` selector that did not hit current output.
+- The old `dependencyStart` / `dependencyEnd` CSS rule was removed from local State CSS because
+  current local State SVG output does not emit those dependency marker ids.
+- Upstream State neo cluster gradient/drop-shadow selectors remain intentionally un-emitted in this
+  slice because local State rendering does not emit the corresponding gradient/drop-shadow defs.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/state/style.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/state/style.rs)
+- [crates/merman-render/tests/state_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/state_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render state_css_honors_mermaid_11_15_theme_options`
+- `cargo test -p merman-render state_svg_honors_mermaid_11_15_theme_css_options --test state_svg_test`
+- `cargo test -p merman-render --test state_svg_test`
+- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes State theme/readability CSS only. It does not claim State layout or root-bounds
+  closure.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

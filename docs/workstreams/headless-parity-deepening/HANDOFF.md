@@ -218,6 +218,11 @@ Current repository reality to preserve:
     `noteFontWeight` theme variables through `SvgTheme`. Upstream neo-only `data-look` /
     `outer-path` selectors remain intentionally un-emitted until local Sequence SVG nodes carry
     those attributes.
+  - A tenth HPD-080 slice fixed State theme CSS emission. State now reads Mermaid 11.15 state node,
+    cluster, transition, label, note, marker, start/end, special-state, and title theme variables
+    through `SvgTheme`; the prefixed local barbEnd marker now uses source-backed suffix selectors,
+    while dependency marker and neo gradient/drop-shadow rules remain intentionally un-emitted where
+    local SVG output/defs do not support them.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

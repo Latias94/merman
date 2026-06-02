@@ -91,3 +91,7 @@
 {"file":"crates/merman-render/src/svg/parity/sequence/render.rs","reason":"HPD-080 implementation: Sequence SVG rendering now passes effective_config into sequence_css so theme variables reach emitted styles."}
 {"file":"crates/merman-render/tests/sequence_svg_test.rs","reason":"HPD-080 regression: render-path test asserts Mermaid 11.15 Sequence theme variables are emitted in the SVG stylesheet."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/styles.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Sequence style provider for actor, signal, label, note, activation, rect, and drop-shadow CSS."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-state.md","reason":"HPD-080 journal: tenth source-backed style slice covers State node, cluster, transition, label, note, marker, start/end, special-state, and title theme CSS emission."}
+{"file":"crates/merman-render/src/svg/parity/state/style.rs","reason":"HPD-080 implementation: State CSS now consumes SvgTheme values and uses suffix selectors for the prefixed local barbEnd marker instead of stale hardcoded colors."}
+{"file":"crates/merman-render/tests/state_svg_test.rs","reason":"HPD-080 regression: render-path test asserts Mermaid 11.15 State theme variables are emitted in the SVG stylesheet."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/state/styles.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 State style provider for state nodes, clusters, transitions, labels, notes, markers, and title CSS."}
