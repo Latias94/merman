@@ -177,6 +177,33 @@ flowchart TB
 }
 
 #[test]
+fn flowchart_svg_honors_node_text_color_theme_variable() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "nodeTextColor": "#f8fafc", "textColor": "#fde68a"}}}%%
+flowchart TD
+    A[Dark Node] --> B[Other]
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r##"#merman .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#f8fafc;}"##
+        ),
+        "expected themeVariables.nodeTextColor to drive Flowchart label color CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#merman .label text,#merman span{fill:#f8fafc;color:#f8fafc;}"##),
+        "expected themeVariables.nodeTextColor to drive Flowchart label text fill CSS: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#fde68a;}"##
+        ),
+        "expected themeVariables.textColor to continue driving root SVG text fill CSS: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
     let text =
         "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";

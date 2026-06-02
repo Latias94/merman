@@ -1267,6 +1267,36 @@ Focused verification:
 - `cargo run -p xtask -- compare-xychart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `git diff --check`
 
+Twentieth slice outcome:
+
+- Added a public API dark-theme renderability smoke in
+  [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+  for Flowchart, Sequence, Kanban, GitGraph, and XYChart. The smoke checks readable labels,
+  absence of broken geometry, and source-backed theme colors in final SVG output through
+  `HeadlessRenderer`.
+- The smoke found a real Flowchart theme omission. Mermaid 11.15
+  `packages/mermaid/src/diagrams/flowchart/styles.ts` uses `nodeTextColor || textColor` for
+  labels, while local Flowchart CSS only used `textColor`.
+- Flowchart CSS now reads `themeVariables.nodeTextColor` and applies it to `.label` and
+  `.label text, span`; `themeVariables.textColor` continues to drive root text fill.
+- Added a focused renderer regression in
+  [crates/merman-render/tests/flowchart_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/flowchart_svg_test.rs).
+- The same smoke clarified a test boundary for Kanban: pinned Mermaid 11.15 source/fixtures emit
+  `class="cluster undefined ..."` and `class="node undefined"` placeholder classes, and priority
+  metadata is rendered as a side-line rather than priority text. The smoke therefore permits those
+  upstream placeholder class tokens but still rejects real `NaN` geometry and any remaining
+  `undefined` leakage outside that placeholder shape.
+
+Focused verification:
+
+- `cargo fmt -p merman-render -p merman`
+- `cargo test -p merman-render flowchart_svg_honors_node_text_color_theme_variable --test flowchart_svg_test`
+- `cargo test -p merman-render --test flowchart_svg_test`
+- `cargo test -p merman representative_dark_theme_diagrams_keep_visible_theme_signals --test theme_renderability_smoke --features render`
+- `cargo fmt --check -p merman-render -p merman`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

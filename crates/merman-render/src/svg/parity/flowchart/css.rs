@@ -16,6 +16,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     let node_border = theme.color("nodeBorder", "#9370DB");
     let main_bkg = theme.color("mainBkg", "#ECECFF");
     let text_color = theme.color("textColor", "#333");
+    let node_text_color = theme.color("nodeTextColor", text_color.as_str());
     let title_color = theme.color("titleColor", text_color.as_str());
     let stroke_width = theme.css_value("strokeWidth", "1");
     let error_bkg = theme.color("errorBkgColor", "#552222");
@@ -206,7 +207,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         id.as_str(),
         id.as_str(),
         font_family,
-        text_color
+        node_text_color
     );
     let _ = write!(
         &mut out,
@@ -218,8 +219,8 @@ pub(in crate::svg::parity) fn flowchart_css(
         id.as_str(),
         id.as_str(),
         id.as_str(),
-        text_color,
-        text_color
+        node_text_color,
+        node_text_color
     );
     let _ = write!(
         &mut out,

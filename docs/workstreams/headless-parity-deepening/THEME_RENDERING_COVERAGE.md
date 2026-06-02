@@ -41,7 +41,7 @@ Status terms:
 | C4 | `c4/styles.js` | Covered, narrow | Upstream provider only emits `.person`. Most C4 visible colors are inline C4 config or per-shape values, not generic themeVariables. Do not promote unrelated theme keys into C4 shapes. |
 | Class | `class/styles.js` | Covered | Current-output node shape, divider, cluster, class-label, edge-terminal, relation, and note colors are covered. Icon and neo-only rules remain deferred until local output emits the required support elements/attributes. |
 | ER | `er/styles.ts` | Covered | Entity, label, relationship, marker, edge-label, error, and current neo stroke rules are covered. `data-color-id` and unsupported neo label-background selectors remain deferred. |
-| Flowchart | `flowchart/styles.ts` | Covered for current HPD-080 gaps | `strokeWidth` now reaches node and edge-path CSS. Larger Flowchart CSS parity should stay fixture/source driven because many rules are tied to emitted shape attributes and renderer-specific DOM. |
+| Flowchart | `flowchart/styles.ts` | Covered for current HPD-080 gaps | `strokeWidth` reaches node and edge-path CSS, and `nodeTextColor || textColor` now drives Flowchart labels. Larger Flowchart CSS parity should stay fixture/source driven because many rules are tied to emitted shape attributes and renderer-specific DOM. |
 | Gantt | `gantt/styles.js` | Covered | Section, grid, today marker, task state, outside label contrast, marker, and title theme variables are emitted. |
 | GitGraph | `git/styles.js` | Covered | Branch label, commit, arrow, merge, reverse, highlight, and label color rules are emitted for classic/default branch theme variables. |
 | Info | none | Inline/shared base | No diagram-specific Mermaid provider in 11.15. Shared base CSS is sufficient unless a visible fixture proves otherwise. |
@@ -94,8 +94,8 @@ the measurement seams from HPD-040 and classify residuals honestly.
 
 ## Next Useful Work
 
-1. Add a small dark-theme visual smoke set across the implemented matrix, focused on unreadable
-   labels and black blocks rather than pixel parity.
+1. Extend the dark-theme renderability smoke only when a supported diagram has a source-backed
+   visible theme contract or a real consumer failure. Keep it semantic, not pixel-parity based.
 2. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
 3. Consider a documented host-theme postprocessor example for consumers that want Zed-like palette
    replacement.

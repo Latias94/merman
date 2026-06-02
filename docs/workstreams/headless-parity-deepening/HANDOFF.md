@@ -264,6 +264,12 @@ Current repository reality to preserve:
     XYChart style provider, so the correct parity shape is not invented CSS; the new test proves
     `themeVariables.xyChart` reaches chart background, title, axis labels/titles, ticks, axis lines,
     and bar/line plot palette colors in final SVG output.
+  - A twentieth HPD-080 slice added a public API dark-theme renderability smoke for Flowchart,
+    Sequence, Kanban, GitGraph, and XYChart. It found and fixed a real Flowchart CSS omission:
+    Mermaid 11.15 labels use `nodeTextColor || textColor`, and local Flowchart now emits that rule.
+    The same smoke was calibrated against pinned Kanban source/fixtures so upstream
+    `class="node undefined"` / `class="cluster undefined ..."` placeholders and priority side-line
+    rendering are not treated as local defects.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
