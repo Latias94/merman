@@ -212,6 +212,10 @@ Last updated: 2026-06-02
   non-Rust hosts can pass Mermaid theme, `themeVariables`, diagram config, and `themeCSS` defaults
   without injecting init directives into source text. A follow-up binding options slice then added
   explicit host-owned `svg.scoped_css` and `svg.css_override_policy`; `resvg-safe` binding pipelines
-  sanitize injected host CSS after insertion, while default Mermaid parity output stays unchanged.
+  sanitize injected host CSS after insertion. A root-background source/capture audit confirmed that
+  Mermaid 11.15 `setupGraphViewbox` does not emit root `background-color`, while local parity output
+  preserves the capture-compatible white background. Rust hosts can now use
+  `RootBackgroundPostprocessor`, and binding hosts can use `svg.root_background_color` to change the
+  root canvas explicitly, while default Mermaid parity output stays unchanged.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -36,7 +36,8 @@ numeric values return binding errors instead of panicking.
     "diagram_id": "my-diagram",
     "pipeline": "parity",
     "scoped_css": ".node rect { stroke-width: 2px; }",
-    "css_override_policy": "preserve"
+    "css_override_policy": "preserve",
+    "root_background_color": "#0f172a"
   }
 }
 ```
@@ -103,6 +104,7 @@ font metrics when available.
 | `svg.pipeline` | string | `parity` | `parity`, `readable`, `resvg-safe`, or `resvg_safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
 | `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Applies when `svg.scoped_css` is injected. |
+| `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Drops generated fallback label groups only when their text duplicates native SVG `<text>`. Useful with `readable` or `resvg-safe` for hosts that rasterize or restyle SVG output. |
 
 `readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
@@ -114,6 +116,11 @@ root SVG id and injected after Mermaid's styles so host rules have normal cascad
 `svg.pipeline` is `resvg-safe`, merman sanitizes the injected CSS after insertion to preserve the
 raster-safe contract as far as the built-in sanitizer can. Hosts still own CSS trust, palette
 semantics, and renderer-specific compatibility.
+
+`svg.root_background_color` is narrower than host CSS. It rewrites the root `<svg>` inline
+`background-color` value, or adds one when missing. This is useful for editor previews that need the
+diagram canvas to match the host surface. The value must be a single CSS declaration value; use
+`"transparent"` when the host wants no opaque root background.
 
 ## Examples
 
@@ -165,6 +172,18 @@ Resvg-safe SVG with host-scoped CSS:
     "diagram_id": "host-preview",
     "scoped_css": ".node rect { fill: #111827; } .merman-foreignobject-fallback-text { fill: #f8fafc; }",
     "css_override_policy": "strip-existing-important"
+  }
+}
+```
+
+Resvg-safe SVG with a host-owned canvas color:
+
+```json
+{
+  "svg": {
+    "pipeline": "resvg-safe",
+    "diagram_id": "host-preview",
+    "root_background_color": "#0f172a"
   }
 }
 ```

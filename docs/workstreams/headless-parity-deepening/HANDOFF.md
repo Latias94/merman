@@ -324,6 +324,11 @@ Current repository reality to preserve:
     existing `!important` flags are preserved or stripped, and `resvg-safe` binding pipelines run
     `SanitizeCssPostprocessor` after host CSS injection. This is for host-provided CSS only; it
     still does not add Zed-specific default palette behavior or root background stripping.
+  - A twenty-eighth HPD-080 slice reconciled the root white-background boundary. Pinned Mermaid
+    11.15 `setupGraphViewbox` emits root `max-width` but not `background-color`; our stored upstream
+    baselines get white backgrounds from the capture path, and local parity SVG preserves that
+    shape. Rust hosts can now use `RootBackgroundPostprocessor`, while binding hosts can pass
+    `svg.root_background_color` to rewrite only the root canvas color. Defaults stay unchanged.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

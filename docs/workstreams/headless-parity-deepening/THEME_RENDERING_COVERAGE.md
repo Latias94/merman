@@ -21,7 +21,7 @@ failure modes:
 | Host palette replacement, such as Zed markdown preview colors | Host integration boundary | Hosts can pass Mermaid config, compose Rust postprocessors, or use binding `svg.scoped_css`. merman should not inject Zed-specific edge-label, tag-label, or background colors by default. |
 | Native/fallback duplicate label cleanup | Optional host pipeline feature | Rust users can compose `DropNativeDuplicateFallbacksPostprocessor`; binding users can set `svg.drop_native_duplicate_fallbacks=true`. Both paths drop only fallback groups whose text duplicates native SVG `<text>`, preserving fallback-only labels. |
 | Exact browser font fallback and glyph rasterization | Host/rendering boundary | merman can expose configured font families and deterministic measurement approximations, but it should not claim browser font fallback parity in a headless renderer. |
-| Root background replacement | Open integration boundary | Many stored upstream SVG baselines currently include `background-color: white;`. Do not globally strip this until the upstream capture path and current source behavior are reconciled. Hosts can still postprocess backgrounds for their UI. |
+| Root background replacement | Supported and opt-in host policy | Mermaid 11.15 `setupGraphViewbox` emits `max-width` but not `background-color`; local parity output keeps fixture/capture-compatible white backgrounds. Rust hosts can use `RootBackgroundPostprocessor`; binding hosts can set `svg.root_background_color`. Defaults stay unchanged. |
 | Huge texture caps for previews | Host boundary with possible helper API | Zed/GPUI and similar hosts must cap preview textures. A future merman raster helper may expose explicit max-pixmap policy. |
 
 ## Implemented Matrix Coverage
@@ -91,7 +91,7 @@ default merman styling behavior.
 | Apply host-owned palette CSS | Supported | Rust consumers can append `ScopedCssPostprocessor` and optional `CssOverridePostprocessor`. Binding consumers can pass `svg.scoped_css` plus optional `svg.css_override_policy`; `resvg-safe` binding pipelines sanitize the injected CSS after insertion. |
 | Export through resvg/usvg | Supported | `SvgPipeline::resvg_safe()` and binding `svg.pipeline="resvg-safe"` handle fallback insertion, `foreignObject` stripping, and common CSS/attribute hazards. |
 | Remove duplicate fallback labels | Supported and opt-in | Rust uses `DropNativeDuplicateFallbacksPostprocessor`; bindings use `svg.drop_native_duplicate_fallbacks=true`. Fallback-only labels are preserved. |
-| Replace white SVG backgrounds with host background | Boundary | Useful for editors such as Zed, but it is host palette policy. Do not silently change Mermaid parity output or `resvg_safe()` defaults. |
+| Replace white SVG backgrounds with host background | Supported and opt-in | Rust uses `RootBackgroundPostprocessor`; bindings use `svg.root_background_color`. This changes only the root inline canvas color and does not rewrite Mermaid-owned node/edge/label palettes. |
 | Match browser font fallback/raster output exactly | Boundary | merman should expose deterministic, headless measurements honestly rather than pretending browser font fallback is exact. |
 
 ## Negative Gates
@@ -99,9 +99,10 @@ default merman styling behavior.
 Do not claim theme parity by adding inert CSS. A rule is useful only if the current renderer emits
 the elements, attributes, defs, or filters that make the rule visible.
 
-Do not globally strip root `background-color: white;` from emitted SVGs until the stored upstream
-baselines, Mermaid 11.15 source path, and CLI capture behavior are reconciled. This may become a
-host postprocessor or an explicit output policy, but it should not be a silent default change.
+Do not globally strip or rewrite root `background-color: white;` from default emitted SVGs. Stored
+upstream baselines include the capture-injected background and local parity output preserves that
+shape. Hosts that need a different canvas color must opt in through `RootBackgroundPostprocessor`
+or `svg.root_background_color`.
 
 Do not make browser font metrics look exact by hardcoding fixture-specific widths. Continue using
 the measurement seams from HPD-040 and classify residuals honestly.
@@ -120,7 +121,7 @@ artifact; their visible behavior remains class-driven.
 1. Extend the dark-theme renderability smoke only when a supported diagram has a source-backed
    visible theme contract or a real consumer failure. Keep it semantic, not pixel-parity based.
 2. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
-3. Reconcile the root white-background question as a separate source/capture audit before changing
-   default SVG output.
+3. Add root-background smoke coverage only when a host reports a concrete raster/export failure;
+   the output-policy seam is now explicit, so there is no reason to change defaults.
 4. Audit exact `neo/redux*` override derivation only if fixture or consumer evidence shows direct
    theme-variable overrides are insufficient.

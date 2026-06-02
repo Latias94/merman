@@ -191,3 +191,7 @@
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-binding-scoped-css-options.md","reason":"HPD-080 journal: binding scoped CSS options expose host-owned CSS while preserving resvg-safe sanitizer ordering."}
 {"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: svg.scoped_css maps to ScopedCssPostprocessor and resvg-safe binding pipelines sanitize injected host CSS after insertion."}
 {"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web SvgOptions exposes scoped_css and css_override_policy."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-root-background-output-policy.md","reason":"HPD-080 journal: root white-background source/capture audit and explicit opt-in host output policy."}
+{"file":"crates/merman-render/src/svg/pipeline/builtin/root_background.rs","reason":"HPD-080 API: RootBackgroundPostprocessor rewrites only the root SVG inline background-color for host canvas integration."}
+{"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: svg.root_background_color exposes root canvas color rewriting through shared binding options_json."}
+{"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web SvgOptions exposes root_background_color."}

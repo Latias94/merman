@@ -97,13 +97,16 @@ Host styling should use product-neutral postprocessors rather than modifying `re
 
 ```rust
 use merman::render::{
-    CssOverridePolicy, HeadlessRenderer, ScopedCssPostprocessor, SvgPipeline,
+    CssOverridePolicy, HeadlessRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor,
+    SvgPipeline,
 };
 
 let renderer = HeadlessRenderer::new().with_diagram_id("host-diagram");
-let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
-    ScopedCssPostprocessor::new(
-        r#"
+let pipeline = SvgPipeline::resvg_safe()
+    .with_postprocessor(RootBackgroundPostprocessor::new("#0f172a"))
+    .with_postprocessor(
+        ScopedCssPostprocessor::new(
+            r#"
 .node rect {
   stroke: #2563eb;
   stroke-width: 2px;
@@ -112,9 +115,9 @@ let pipeline = SvgPipeline::resvg_safe().with_postprocessor(
   fill: #111827;
 }
 "#,
-    )
-    .with_override_policy(CssOverridePolicy::StripExistingImportant),
-);
+        )
+        .with_override_policy(CssOverridePolicy::StripExistingImportant),
+    );
 
 let svg = renderer
     .render_svg_with_pipeline_sync("flowchart TD; A-->B;", &pipeline)?
@@ -134,7 +137,9 @@ before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
-`SvgPostprocessor` passes layered after these generic blocks.
+`SvgPostprocessor` passes layered after these generic blocks. `RootBackgroundPostprocessor` is the
+narrow exception for a common host canvas need: it rewrites only the root `<svg>` inline
+`background-color`, preserving all Mermaid-owned diagram colors.
 
 Binding consumers can pass external Mermaid defaults through `options_json.site_config` without
 embedding an init directive into the diagram source:
@@ -160,7 +165,8 @@ Binding consumers can also inject host-owned scoped CSS through `options_json.sv
     "pipeline": "resvg-safe",
     "diagram_id": "host-diagram",
     "scoped_css": ".node rect { stroke: #2563eb; stroke-width: 2px; } .merman-foreignobject-fallback-text { fill: #111827; }",
-    "css_override_policy": "strip-existing-important"
+    "css_override_policy": "strip-existing-important",
+    "root_background_color": "#0f172a"
   }
 }
 ```
@@ -169,6 +175,10 @@ The injected CSS is scoped to the root SVG id and inserted after Mermaid CSS. Wi
 `pipeline="resvg-safe"`, merman runs the built-in CSS sanitizer after injecting host CSS so the
 binding preset does not silently lose its raster-safety contract. Hosts still own the trust and
 compatibility policy for the CSS they provide.
+
+`svg.root_background_color` is a narrower host-owned option that sets the root SVG canvas color
+without relying on CSS cascade over an inline style. Passing `"transparent"` keeps the canvas
+transparent for hosts that composite diagrams over their own background.
 
 Binding consumers can opt into the generic duplicate-fallback cleanup without writing a Rust
 postprocessor:

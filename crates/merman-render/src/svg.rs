@@ -15,7 +15,7 @@ pub use fallback::foreign_object_label_fallback_svg_text;
 pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, SanitizeCssPostprocessor,
+    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
     SvgPostprocessor, resvg_safe_svg,

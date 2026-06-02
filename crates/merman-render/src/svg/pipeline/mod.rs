@@ -4,7 +4,7 @@ mod preset;
 
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, SanitizeCssPostprocessor,
+    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
 };
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};

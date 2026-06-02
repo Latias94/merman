@@ -146,6 +146,7 @@ struct SvgOptionsJson {
     pipeline: Option<String>,
     scoped_css: Option<String>,
     css_override_policy: Option<String>,
+    root_background_color: Option<String>,
     drop_native_duplicate_fallbacks: Option<bool>,
 }
 
@@ -167,6 +168,7 @@ struct SvgPipelineOptions {
     kind: PipelineKind,
     scoped_css: Option<String>,
     css_override_policy: merman::render::CssOverridePolicy,
+    root_background_color: Option<String>,
     drop_native_duplicate_fallbacks: bool,
 }
 
@@ -176,6 +178,7 @@ impl Default for SvgPipelineOptions {
             kind: PipelineKind::default(),
             scoped_css: None,
             css_override_policy: merman::render::CssOverridePolicy::Preserve,
+            root_background_color: None,
             drop_native_duplicate_fallbacks: false,
         }
     }
@@ -191,6 +194,12 @@ impl SvgPipelineOptions {
 
         if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
+        }
+
+        if let Some(root_background_color) = self.root_background_color {
+            pipeline.push_postprocessor(merman::render::RootBackgroundPostprocessor::new(
+                root_background_color,
+            ));
         }
 
         if let Some(scoped_css) = self.scoped_css.filter(|css| !css.trim().is_empty()) {
@@ -489,6 +498,12 @@ fn build_renderer(
         if let Some(scoped_css) = svg.scoped_css.as_deref() {
             pipeline.scoped_css = Some(scoped_css.to_string());
         }
+        if let Some(root_background_color) = svg.root_background_color.as_deref() {
+            pipeline.root_background_color = Some(css_declaration_value(
+                root_background_color,
+                "svg.root_background_color",
+            )?);
+        }
         pipeline.drop_native_duplicate_fallbacks =
             svg.drop_native_duplicate_fallbacks.unwrap_or(false);
     }
@@ -568,6 +583,28 @@ fn finite_positive(value: f64, name: &'static str) -> Result<f64, BindingError> 
 
 fn normalize_option(value: &str) -> String {
     value.trim().to_ascii_lowercase()
+}
+
+fn css_declaration_value(value: &str, name: &str) -> Result<String, BindingError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("{name} must be a non-empty CSS value"),
+        ));
+    }
+
+    let invalid = trimmed
+        .chars()
+        .any(|ch| ch.is_control() || matches!(ch, ';' | '"' | '\'' | '<' | '>' | '{' | '}'));
+    if invalid {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("{name} must be a single CSS declaration value"),
+        ));
+    }
+
+    Ok(trimmed.to_string())
 }
 
 #[cfg(test)]
@@ -739,6 +776,42 @@ mod tests {
         assert!(!out.contains("animation"), "{out}");
         assert!(!out.contains("45deg"), "{out}");
         assert!(out.contains("#host .edge"));
+    }
+
+    #[test]
+    fn svg_options_can_set_root_background_color() {
+        let options = parse_options(
+            br##"{
+                "svg": {
+                    "root_background_color": "#111827"
+                }
+            }"##,
+        )
+        .unwrap();
+        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let out = pipeline
+            .to_pipeline()
+            .process_to_string(
+                r#"<svg id="host" style="max-width: 400px; background-color: white;"><g/></svg>"#,
+            )
+            .unwrap();
+
+        assert_eq!(
+            out,
+            r#"<svg id="host" style="max-width: 400px; background-color: #111827;"><g/></svg>"#
+        );
+    }
+
+    #[test]
+    fn invalid_root_background_color_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br##"{ "svg": { "root_background_color": "white; color: red" } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("svg.root_background_color"));
     }
 
     #[test]

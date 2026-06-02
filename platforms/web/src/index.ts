@@ -14,6 +14,7 @@ export interface SvgOptions {
   pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
   scoped_css?: string;
   css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
 }
 

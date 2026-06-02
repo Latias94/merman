@@ -1578,6 +1578,46 @@ Residual note:
 - Binding host CSS is now an explicit host-owned option. The remaining root white-background
   question is still a source/capture audit before any default output policy changes.
 
+Twenty-eighth slice outcome:
+
+- Reconciled the root white-background question against pinned Mermaid 11.15 source, installed
+  Mermaid 11.15 dist, and local capture code.
+- Source-backed finding:
+  - pinned `packages/mermaid/src/setupGraphViewbox.js` sets root `width="100%"` and
+    `style="max-width: ...px;"` when `useMaxWidth` is enabled,
+  - installed Mermaid 11.15 dist has the same `calculateSvgSizeAttrs(...)` behavior,
+  - `xtask` upstream capture injects `background-color: white` by default through
+    `ensureSvgBackgroundColor(...)`,
+  - local parity renderers preserve that capture-compatible white root background across many
+    implemented diagram families.
+- Added `RootBackgroundPostprocessor` as the product-neutral host seam for this common editor/raster
+  integration need. It rewrites only the root `<svg>` inline `background-color` or adds one when
+  missing; it does not rewrite Mermaid-owned node, edge, label, or semantic palette colors.
+- Added shared binding option `svg.root_background_color`, plus `@merman/web` typing and binding
+  validation. This lets non-Rust hosts set the root canvas color without depending on CSS cascade
+  over an inline style.
+- Updated `THEME_RENDERING_COVERAGE.md`, `docs/rendering/SVG_OUTPUT_PIPELINE.md`, and
+  `docs/bindings/OPTIONS_JSON.md` to classify root canvas replacement as supported opt-in host
+  policy, not a default Mermaid parity output change.
+
+Focused verification:
+
+- `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/setupGraphViewbox.js`
+- `Get-Content tools/mermaid-cli/node_modules/mermaid/dist/chunks/mermaid.core/chunk-CSCIHK7Q.mjs`
+  around `calculateSvgSizeAttrs(...)`
+- `rg "ensureSvgBackgroundColor|background_color" crates/xtask/src/cmd/generate.rs`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-render root_background --lib`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p merman-bindings-core root_background --lib`
+- `npm run build:ts --prefix platforms/web`
+- JSONL validation for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`
+- `git diff --check`
+
+Residual note:
+
+- Do not globally strip or recolor default root backgrounds. They remain part of the current
+  fixture/capture comparison surface. Host canvas color is now explicit opt-in policy through the
+  Rust pipeline or binding options.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
