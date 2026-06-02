@@ -1,6 +1,7 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -908,7 +909,7 @@ pub fn layout_block_diagram(
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
     let model: BlockDiagramModel = crate::json::from_value_ref(semantic)?;
-
+    validate_block_model_depth(&model)?;
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {
         font_family: config_string(effective_config, &["themeVariables", "fontFamily"])
@@ -1010,4 +1011,22 @@ pub fn layout_block_diagram(
         edges,
         bounds,
     })
+}
+
+fn validate_block_model_depth(model: &BlockDiagramModel) -> Result<()> {
+    let mut stack: Vec<(&BlockNode, usize)> =
+        model.blocks_flat.iter().map(|block| (block, 1)).collect();
+    while let Some((block, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        for child in &block.children {
+            stack.push((child, depth + 1));
+        }
+    }
+    Ok(())
 }

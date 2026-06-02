@@ -3,6 +3,7 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLa
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use serde_json::Value;
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -320,6 +321,7 @@ fn layout_mindmap_diagram_model(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
+    validate_mindmap_model_depth(model)?;
     let timing_enabled = std::env::var("MERMAN_MINDMAP_LAYOUT_TIMING")
         .ok()
         .as_deref()
@@ -489,6 +491,19 @@ fn layout_mindmap_diagram_model(
         edges,
         bounds,
     })
+}
+
+fn validate_mindmap_model_depth(model: &MindmapModel) -> Result<()> {
+    for node in &model.nodes {
+        if usize::try_from(node.level).is_ok_and(|depth| depth > MAX_DIAGRAM_NESTING_DEPTH) {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "mindmap nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

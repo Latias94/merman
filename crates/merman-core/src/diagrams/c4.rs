@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
@@ -143,6 +143,7 @@ impl C4Db {
     }
 
     fn add_person_or_system_boundary(&mut self, args: Vec<Value>) -> Result<()> {
+        self.check_boundary_depth()?;
         let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let boundary_type = args.get(2).cloned();
@@ -187,6 +188,7 @@ impl C4Db {
     }
 
     fn add_deployment_node(&mut self, node_type: &str, args: Vec<Value>) -> Result<()> {
+        self.check_boundary_depth()?;
         let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let node_label_type = args.get(2).cloned();
@@ -226,6 +228,18 @@ impl C4Db {
         self.current_boundary = alias;
         self.boundary_stack.push(self.parent_boundary.clone());
 
+        Ok(())
+    }
+
+    fn check_boundary_depth(&self) -> Result<()> {
+        if self.boundary_stack.len() > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::DiagramParse {
+                diagram_type: "c4".to_string(),
+                message: format!(
+                    "C4 boundary nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
         Ok(())
     }
 

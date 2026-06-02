@@ -6,6 +6,13 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-02
+
+### Fixed
+
+- Hardened deeply nested diagram handling to prevent stack overflows in Flowchart, State,
+  Block, Mindmap, Treemap, C4, and Class diagram parsing/layout.
+
 ## [0.4.0] - 2026-03-12
 
 ### Added

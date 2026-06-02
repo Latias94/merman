@@ -8,6 +8,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -315,9 +316,22 @@ fn extract_descendants(
     id: &str,
     out: &mut Vec<String>,
 ) {
-    for child in graph.children(id) {
-        out.push(child.to_string());
-        extract_descendants(graph, child, out);
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = graph
+        .children(id)
+        .iter()
+        .rev()
+        .map(|s| s.to_string())
+        .collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        out.push(node.clone());
+        let children = graph.children(&node);
+        for child in children.iter().rev() {
+            stack.push(child.to_string());
+        }
     }
 }
 
@@ -376,15 +390,24 @@ fn find_non_cluster_child(
         return Some(id.to_string());
     }
     let mut reserve: Option<String> = None;
-    for child in children {
-        let Some(candidate) = find_non_cluster_child(graph, child, cluster_id) else {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = children.iter().rev().map(|s| s.to_string()).collect();
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
             continue;
-        };
-        let common_edges = find_common_edges(graph, cluster_id, &candidate);
+        }
+        let children = graph.children(&node);
+        if !children.is_empty() {
+            for child in children.iter().rev() {
+                stack.push(child.to_string());
+            }
+            continue;
+        }
+        let common_edges = find_common_edges(graph, cluster_id, &node);
         if !common_edges.is_empty() {
-            reserve = Some(candidate);
+            reserve = Some(node);
         } else {
-            return Some(candidate);
+            return Some(node);
         }
     }
     reserve
@@ -932,6 +955,7 @@ fn layout_state_diagram_v2_inner(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramV2Layout> {
+    validate_state_model_depth(model)?;
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
     // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
@@ -1841,6 +1865,40 @@ fn layout_state_diagram_v2_inner(
         clusters,
         bounds,
     })
+}
+
+fn validate_state_model_depth(model: &StateDiagramModel) -> Result<()> {
+    let parent_by_id: HashMap<&str, &str> = model
+        .nodes
+        .iter()
+        .filter_map(|node| {
+            node.parent_id
+                .as_deref()
+                .map(|parent| (node.id.as_str(), parent))
+        })
+        .collect();
+    for node in &model.nodes {
+        let mut depth = 0usize;
+        let mut current = Some(node.id.as_str());
+        let mut seen: HashSet<&str> = HashSet::new();
+        while let Some(id) = current {
+            if !seen.insert(id) {
+                return Err(Error::InvalidModel {
+                    message: format!("state parent cycle involving {id}"),
+                });
+            }
+            if depth > MAX_DIAGRAM_NESTING_DEPTH {
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "state nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                    ),
+                });
+            }
+            current = parent_by_id.get(id).copied();
+            depth += 1;
+        }
+    }
+    Ok(())
 }
 
 /// Debug-only helper: builds the Dagre input graph for stateDiagram-v2 *before* layout runs.

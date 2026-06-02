@@ -1,6 +1,7 @@
 use crate::generated::treemap_text_overrides_11_12_2 as treemap_text_overrides;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -426,6 +427,7 @@ pub fn layout_treemap_diagram(
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
     let model: TreemapModel = crate::json::from_value_ref(semantic)?;
+    validate_treemap_model_depth(&model.root)?;
     let cfg = treemap_config(effective_config);
 
     let title_height = if model.title.as_deref().is_some_and(|t| !t.trim().is_empty()) {
@@ -524,6 +526,25 @@ pub fn layout_treemap_diagram(
         sections,
         leaves,
     })
+}
+
+fn validate_treemap_model_depth(root: &TreemapNode) -> Result<()> {
+    let mut stack: Vec<(&TreemapNode, usize)> = vec![(root, 1)];
+    while let Some((node, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "treemap nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        if let Some(children) = node.children.as_ref() {
+            for child in children {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

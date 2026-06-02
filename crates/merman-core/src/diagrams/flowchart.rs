@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result};
 use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -62,12 +62,14 @@ pub(crate) struct FlowSubGraph {
 
 pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
+    validate_flowchart_source_depth(&code, meta)?;
     let ast = flowchart_grammar::FlowchartAstParser::new()
         .parse(Lexer::new(&code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
             message: format!("{e:?}"),
         })?;
+    validate_flowchart_nesting_depth(&ast.statements, meta)?;
 
     let mut build = FlowchartBuildState::new();
     build
@@ -226,17 +228,73 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }))
 }
 
+fn validate_flowchart_source_depth(code: &str, meta: &ParseMetadata) -> Result<()> {
+    let mut depth = 0usize;
+    for line in code.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("%%") {
+            continue;
+        }
+        if is_flowchart_subgraph_start(trimmed) {
+            depth += 1;
+            if depth > MAX_DIAGRAM_NESTING_DEPTH {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: format!(
+                        "flowchart subgraph nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                    ),
+                });
+            }
+        } else if trimmed == "end" && depth > 0 {
+            depth -= 1;
+        }
+    }
+    Ok(())
+}
+
+fn is_flowchart_subgraph_start(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("subgraph") else {
+        return false;
+    };
+    match rest.chars().next() {
+        None => true,
+        Some(ch) => ch.is_whitespace(),
+    }
+}
+
+fn validate_flowchart_nesting_depth(statements: &[Stmt], meta: &ParseMetadata) -> Result<()> {
+    let mut stack: Vec<(&[Stmt], usize)> = vec![(statements, 0)];
+    while let Some((stmts, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: format!(
+                    "flowchart subgraph nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
+                ),
+            });
+        }
+        for stmt in stmts {
+            if let Stmt::Subgraph(sg) = stmt {
+                stack.push((&sg.statements, depth + 1));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartV2Model> {
     let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
+    validate_flowchart_source_depth(&code, meta)?;
     let ast = flowchart_grammar::FlowchartAstParser::new()
         .parse(Lexer::new(&code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
             message: format!("{e:?}"),
         })?;
+    validate_flowchart_nesting_depth(&ast.statements, meta)?;
 
     let mut build = FlowchartBuildState::new();
     build
