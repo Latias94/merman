@@ -113,3 +113,7 @@
 {"file":"crates/merman-render/src/svg/parity/css.rs","reason":"HPD-080 implementation: Architecture CSS now reads Mermaid 11.15 archEdgeColor, archEdgeArrowColor, archEdgeWidth, archGroupBorderColor, and archGroupBorderWidth instead of generic fallbacks."}
 {"file":"crates/merman-render/tests/architecture_svg_test.rs","reason":"HPD-080 regression: render-path test asserts custom Architecture arch* theme variables reach the emitted SVG stylesheet."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureStyles.ts","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Architecture style provider maps edge/arrow/group CSS to ArchitectureStyleOptions arch* values."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-class-notes.md","reason":"HPD-080 journal: fifteenth source-backed style slice covers Class note fill/border theme color emission."}
+{"file":"crates/merman-render/src/svg/parity/class/note.rs","reason":"HPD-080 implementation: Class note shapes now read Mermaid 11.15 noteBkgColor and noteBorderColor for both HTML-label and htmlLabels:false render paths."}
+{"file":"crates/merman-render/tests/class_svg_test.rs","reason":"HPD-080 regression: render-path test asserts Class note fill, border, and text theme variables reach emitted SVG output."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Class note nodes store noteBkgColor and noteBorderColor in note cssStyles."}

@@ -176,6 +176,8 @@ Last updated: 2026-06-02
   colors instead of stale hardcoded fallback fills. An Architecture slice fixed source-backed
   `archEdgeColor`, `archEdgeArrowColor`, `archEdgeWidth`, `archGroupBorderColor`, and
   `archGroupBorderWidth` emission so custom Architecture edge/group styling reaches the final SVG
-  stylesheet instead of falling back to generic line/group-border colors.
+  stylesheet instead of falling back to generic line/group-border colors. A Class note slice fixed
+  `noteBkgColor` and `noteBorderColor` for both HTML-label and `htmlLabels:false` note shapes,
+  complementing the existing `noteTextColor` CSS coverage.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

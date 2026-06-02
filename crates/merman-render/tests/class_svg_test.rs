@@ -106,6 +106,42 @@ classDiagram
 }
 
 #[test]
+fn class_svg_honors_configured_note_theme_colors() {
+    for html_labels in [true, false] {
+        let svg = render_class_svg_from_text(&format!(
+            r##"%%{{init: {{"htmlLabels": {html_labels}, "themeVariables": {{"noteBkgColor": "#112233", "noteBorderColor": "#445566", "noteTextColor": "#778899"}}}}}}%%
+classDiagram
+    class Animal
+    note for Animal "hello"
+"##
+        ));
+
+        assert!(
+            svg.contains(
+                r##"fill="#112233" style="fill:#112233 !important;stroke:#445566 !important""##
+            ),
+            "expected configured noteBkgColor/noteBorderColor in note body for htmlLabels={html_labels}: {svg}"
+        );
+        assert!(
+            svg.contains(r##"stroke="#445566" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#112233 !important;stroke:#445566 !important""##),
+            "expected configured noteBorderColor in note rough stroke for htmlLabels={html_labels}: {svg}"
+        );
+        assert!(
+            svg.contains(
+                r#"#merman .noteLabel .nodeLabel,#merman .noteLabel .edgeLabel{color:#778899;}"#
+            ),
+            "expected noteTextColor CSS for htmlLabels={html_labels}: {svg}"
+        );
+        assert!(
+            !svg.contains(
+                r##"fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important""##
+            ),
+            "note shape must not ignore configured colors for htmlLabels={html_labels}: {svg}"
+        );
+    }
+}
+
+#[test]
 fn class_debug_svg_renders_terminal_labels() {
     let path = workspace_root()
         .join("fixtures")

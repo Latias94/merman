@@ -1077,6 +1077,38 @@ Residual note:
   Cytoscape/manatee phase modeling, SVG root bounds, or the known 26 Architecture `parity-root`
   residuals.
 
+Fifteenth slice outcome:
+
+- Audited pinned Mermaid 11.15 Class note construction:
+  - `packages/mermaid/src/diagrams/class/classDb.ts`
+  - `packages/mermaid/src/diagrams/class/styles.js`
+- Mermaid 11.15 writes `themeVariables.noteBkgColor` and `noteBorderColor` into each Class note
+  node's `cssStyles`, while Class stylesheet uses `noteTextColor` for `.noteLabel` text.
+- Local Class CSS already consumed `noteTextColor`, but both HTML-label and `htmlLabels:false`
+  note shape render paths still hardcoded `#fff5ad` / `#aaaa33`. Custom note backgrounds and
+  borders were therefore parsed but ignored in final SVG output.
+- Class note rendering now reads `noteBkgColor` and `noteBorderColor` from `effective_config` for
+  both note branches, preserving the same inline style shape that Mermaid emits after theme
+  expansion.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/class/note.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/class/note.rs)
+- [crates/merman-render/tests/class_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/class_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render class_svg_honors_configured_note_theme_colors --test class_svg_test`
+- `cargo test -p merman-render --test class_svg_test`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes Class note theme/readability only. It does not change Class namespace cluster
+  inline styling, Class layout, browser text measurement, or root-bounds residuals.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

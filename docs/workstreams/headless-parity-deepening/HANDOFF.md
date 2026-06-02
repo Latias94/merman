@@ -240,6 +240,9 @@ Current repository reality to preserve:
     `archGroupBorderColor`, and `archGroupBorderWidth` instead of falling back to generic
     `lineColor`, `primaryBorderColor`, and hardcoded widths. This is a visible style fix only; it
     does not alter Architecture layout/root residuals.
+  - A fifteenth HPD-080 slice fixed Class note theme colors. Class note shapes now use Mermaid
+    11.15 `noteBkgColor` and `noteBorderColor` for both HTML-label and `htmlLabels:false` render
+    paths, while existing Class CSS continues to drive `noteTextColor`.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

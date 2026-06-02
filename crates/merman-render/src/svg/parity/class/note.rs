@@ -4,7 +4,7 @@ use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 use web_time::Duration;
 
-use super::super::{escape_attr_display, escape_xml_into, fmt};
+use super::super::{escape_attr_display, escape_xml_into, fmt, theme_color};
 use super::ClassSvgNote;
 use super::bounds::{include_path_bounds, include_xywh};
 use super::label::class_note_html_div_style;
@@ -129,11 +129,15 @@ pub(super) fn render_class_note_node(
         stats.path_bounds += s.elapsed();
         stats.path_bounds_calls += 1;
     }
+
+    let note_fill = theme_color(ctx.effective_config, "noteBkgColor", "#fff5ad");
+    let note_stroke = theme_color(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     if ctx.use_html_labels {
         let note_div_style = class_note_html_div_style(label_w, 200);
         let _ = write!(
             out,
-            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
+            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel markdown-node-label"><p>"##,
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&note.id),
             fmt(position.node_tx),
@@ -146,7 +150,11 @@ pub(super) fn render_class_note_node(
             fmt(top + h),
             fmt(left),
             fmt(top + h),
+            escape_attr_display(&note_fill),
+            escape_attr_display(&note_shape_style),
             escape_attr_display(&note_stroke_d),
+            escape_attr_display(&note_stroke),
+            escape_attr_display(&note_shape_style),
             fmt(label_x),
             fmt(label_y),
             fmt(label_w),
@@ -169,7 +177,7 @@ pub(super) fn render_class_note_node(
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(
             out,
-            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
+            r##"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g><g class="label noteLabel" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"##,
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&note.id),
             fmt(position.node_tx),
@@ -182,7 +190,11 @@ pub(super) fn render_class_note_node(
             fmt(top + h),
             fmt(left),
             fmt(top + h),
+            escape_attr_display(&note_fill),
+            escape_attr_display(&note_shape_style),
             escape_attr_display(&note_stroke_d),
+            escape_attr_display(&note_stroke),
+            escape_attr_display(&note_shape_style),
             escape_attr_display(note_label_style),
             fmt(label_x),
             fmt(label_y),
