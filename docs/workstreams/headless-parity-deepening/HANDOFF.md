@@ -413,6 +413,11 @@ Current repository reality to preserve:
     filterable by `MERMAN_RESVG_SAFE_AUDIT_FAMILY` and `MERMAN_RESVG_SAFE_AUDIT_FILTER`. Render-only
     all-supported passed; unfiltered raster all-supported timed out, so future PNG-level triage
     should use filtered slices plus the representative raster smoke.
+  - A fortieth HPD-080 test-infra slice tightened the raster branch of the resvg-safe fixture smoke
+    to decode PNG output and reject contentful diagrams that rasterize as blank/all-background
+    images. The gate is source-aware: header-only, accessibility-only, and title-only metadata
+    fixtures still need valid SVG/PNG output but do not require non-background ink. A focused
+    Architecture/Class/Sequence raster audit passed after that calibration.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

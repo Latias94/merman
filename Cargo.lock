@@ -1881,6 +1881,7 @@ dependencies = [
  "merman-ascii",
  "merman-core",
  "merman-render",
+ "png 0.17.16",
  "resvg 0.46.0",
  "roxmltree 0.20.0",
  "serde_json",

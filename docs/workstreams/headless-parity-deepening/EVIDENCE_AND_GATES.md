@@ -2154,6 +2154,41 @@ Residual note:
   gate. The unfiltered raster corpus is still useful manually, but it should not be treated as a
   normal fast-pass command.
 
+## HPD-080 - Raster Ink Renderability Gate
+
+Outcome:
+
+- Tightened the raster branch of
+  [crates/merman/tests/resvg_safe_fixture_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/resvg_safe_fixture_smoke.rs)
+  so PNG conversion no longer proves only "bytes were produced".
+- The gate now decodes the generated PNG and requires contentful diagrams to contain visible pixels
+  that differ from the first-pixel background. This catches gross host-visible failures where an SVG
+  parses and rasterizes but the diagram is shifted out of the viewport or rendered as an
+  all-background image.
+- The gate is intentionally source-aware, not pixel-parity based. Header-only, accessibility-only,
+  and title-only metadata fixtures still must emit parseable/resvg-safe SVG and rasterize to PNG,
+  but they do not require non-background ink.
+- This calibration is source-backed. Pinned Mermaid 11.15 Architecture parses
+  `architecture-beta title ...` into `db.getDiagramTitle()`, but the stored upstream SVG for
+  `upstream_architecture_title_first_line_spec` contains no visible title and pinned
+  `architectureRenderer.ts` still says title support is TODO. Treating that title-only fixture as
+  required visible ink would be a false renderability failure.
+- Added a small source-content gate regression so inline content such as `graph TD;a-X-node;` is
+  still classified as visible content while `accTitle` / `accDescr` lines and `accDescr { ... }`
+  blocks are not.
+
+Focused verification:
+
+- `cargo fmt --check -p merman`
+- `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='architecture,class,sequence'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+
+Residual note:
+
+- This is a gross renderability smoke, not a visual diff. It should fail on blank/all-background
+  PNGs for diagrams with actual diagram content, while leaving fine color, antialiasing, and title
+  rendering parity to source-backed focused tests.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

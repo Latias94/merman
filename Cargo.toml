@@ -64,6 +64,7 @@ uuid = { version = "1.12.1", features = ["v4", "js"] }
 chrono = { version = "0.4.40", features = ["clock"] }
 console_error_panic_hook = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+png = "0.17.16"
 resvg = "0.46.0"
 serde-wasm-bindgen = "0.6"
 usvg = "0.46.0"

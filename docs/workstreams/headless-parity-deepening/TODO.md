@@ -259,5 +259,9 @@ Last updated: 2026-06-02
   The ignored all-supported `resvg-safe` audit now supports
   `MERMAN_RESVG_SAFE_AUDIT_FAMILY` and `MERMAN_RESVG_SAFE_AUDIT_FILTER` filters after render-only
   all-supported passed but unfiltered raster all-supported timed out without fixture-level signal.
+  A follow-up raster ink gate now decodes PNG output and rejects contentful diagrams that rasterize
+  as blank/all-background images, while treating header-only, accessibility-only, and title-only
+  metadata fixtures as non-visual. Architecture/Class/Sequence passed the focused filtered raster
+  audit after that calibration.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

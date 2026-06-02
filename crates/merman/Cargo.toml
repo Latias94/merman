@@ -43,6 +43,7 @@ svg2pdf = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
+png.workspace = true
 roxmltree.workspace = true
 serde_json.workspace = true
 

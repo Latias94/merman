@@ -186,7 +186,7 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
     )
 }
 
-fn assert_resvg_safe_output(name: &str, svg: &str) {
+fn assert_resvg_safe_output(name: &str, source: &str, svg: &str) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
     roxmltree::Document::parse(svg)
         .unwrap_or_else(|err| panic!("{name}: resvg-safe output should be XML-parseable: {err}"));
@@ -239,11 +239,11 @@ fn assert_resvg_safe_output(name: &str, svg: &str) {
         cursor = content_end + "</style>".len();
     }
 
-    assert_rasterizes_when_enabled(name, svg);
+    assert_rasterizes_when_enabled(name, source, svg);
 }
 
 #[cfg(feature = "raster")]
-fn assert_rasterizes_when_enabled(name: &str, svg: &str) {
+fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
     let png =
         merman::render::raster::svg_to_png(svg, &merman::render::raster::RasterOptions::default())
             .unwrap_or_else(|err| {
@@ -254,11 +254,200 @@ fn assert_rasterizes_when_enabled(name: &str, svg: &str) {
         png.starts_with(b"\x89PNG\r\n\x1a\n") && png.len() > 8,
         "{name}: expected non-empty PNG bytes from resvg-safe output"
     );
+    if source_has_visible_diagram_content(source) {
+        assert_png_has_visible_non_background_ink(name, &png);
+    }
+}
+
+#[cfg(feature = "raster")]
+fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
+    let decoder = png::Decoder::new(png_bytes);
+    let mut reader = decoder
+        .read_info()
+        .unwrap_or_else(|err| panic!("{name}: expected decodable PNG output: {err}"));
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut buf)
+        .unwrap_or_else(|err| panic!("{name}: expected readable PNG frame: {err}"));
+
+    assert_eq!(
+        info.color_type,
+        png::ColorType::Rgba,
+        "{name}: expected RGBA PNG output"
+    );
+    assert_eq!(
+        info.bit_depth,
+        png::BitDepth::Eight,
+        "{name}: expected 8-bit PNG output"
+    );
+
+    let pixels = &buf[..info.buffer_size()];
+    let Some(background) = pixels.chunks_exact(4).next() else {
+        panic!("{name}: expected at least one PNG pixel");
+    };
+
+    let differing_pixels = pixels
+        .chunks_exact(4)
+        .filter(|px| rgba_pixel_visibly_differs_from_background(px, background))
+        .take(16)
+        .count();
+    assert!(
+        differing_pixels >= 8,
+        "{name}: rasterized PNG appears blank or all background-colored"
+    );
+}
+
+#[cfg(feature = "raster")]
+fn rgba_pixel_visibly_differs_from_background(pixel: &[u8], background: &[u8]) -> bool {
+    let channel_delta = |i: usize| pixel[i].abs_diff(background[i]) as u16;
+    let alpha_delta = channel_delta(3);
+    let rgb_delta = channel_delta(0) + channel_delta(1) + channel_delta(2);
+    alpha_delta > 3 || (pixel[3] > 0 && rgb_delta > 8)
 }
 
 #[cfg(not(feature = "raster"))]
-fn assert_rasterizes_when_enabled(_name: &str, _svg: &str) {
+fn assert_rasterizes_when_enabled(_name: &str, _source: &str, _svg: &str) {
     // Raster validation runs when this test is executed with `--features raster`.
+}
+
+fn source_has_visible_diagram_content(source: &str) -> bool {
+    let mut in_frontmatter = false;
+    let mut in_accessibility_block = false;
+
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("%%") {
+            continue;
+        }
+        if in_accessibility_block {
+            if trimmed.contains('}') {
+                in_accessibility_block = false;
+            }
+            continue;
+        }
+        if trimmed == "---" {
+            in_frontmatter = !in_frontmatter;
+            continue;
+        }
+        if in_frontmatter {
+            continue;
+        }
+        if is_title_metadata(trimmed) {
+            continue;
+        }
+        if skip_accessibility_metadata(trimmed, &mut in_accessibility_block) {
+            continue;
+        }
+
+        if let Some(rest) = strip_mermaid_header(trimmed) {
+            let rest = rest.trim().trim_matches(';').trim();
+            if is_title_metadata(rest) {
+                continue;
+            }
+            if skip_accessibility_metadata(rest, &mut in_accessibility_block) {
+                continue;
+            }
+            if !rest.is_empty() {
+                return true;
+            }
+            continue;
+        }
+
+        return true;
+    }
+
+    false
+}
+
+fn is_title_metadata(line: &str) -> bool {
+    line.strip_prefix("title")
+        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_whitespace))
+        || line.starts_with("title:")
+}
+
+fn skip_accessibility_metadata(line: &str, in_accessibility_block: &mut bool) -> bool {
+    let Some(rest) = line
+        .strip_prefix("accTitle")
+        .or_else(|| line.strip_prefix("accDescr"))
+    else {
+        return false;
+    };
+
+    let rest = rest.trim_start();
+    if rest.starts_with(':') {
+        return true;
+    }
+    if rest.starts_with('{') {
+        *in_accessibility_block = !rest.contains('}');
+        return true;
+    }
+    false
+}
+
+fn strip_mermaid_header(line: &str) -> Option<&str> {
+    strip_flowchart_header(line, "flowchart")
+        .or_else(|| strip_flowchart_header(line, "graph"))
+        .or_else(|| strip_plain_header(line, "architecture-beta"))
+        .or_else(|| strip_plain_header(line, "block"))
+        .or_else(|| strip_plain_header(line, "C4Component"))
+        .or_else(|| strip_plain_header(line, "C4Container"))
+        .or_else(|| strip_plain_header(line, "C4Context"))
+        .or_else(|| strip_plain_header(line, "classDiagram"))
+        .or_else(|| strip_plain_header(line, "erDiagram"))
+        .or_else(|| strip_plain_header(line, "gitGraph"))
+        .or_else(|| strip_plain_header(line, "journey"))
+        .or_else(|| strip_plain_header(line, "kanban"))
+        .or_else(|| strip_plain_header(line, "mindmap"))
+        .or_else(|| strip_plain_header(line, "packet"))
+        .or_else(|| strip_plain_header(line, "pie"))
+        .or_else(|| strip_plain_header(line, "quadrantChart"))
+        .or_else(|| strip_plain_header(line, "radar"))
+        .or_else(|| strip_plain_header(line, "radar-beta"))
+        .or_else(|| strip_plain_header(line, "requirementDiagram"))
+        .or_else(|| strip_plain_header(line, "sankey"))
+        .or_else(|| strip_plain_header(line, "sequenceDiagram"))
+        .or_else(|| strip_plain_header(line, "stateDiagram"))
+        .or_else(|| strip_plain_header(line, "stateDiagram-v2"))
+        .or_else(|| strip_plain_header(line, "timeline"))
+        .or_else(|| strip_plain_header(line, "treemap"))
+        .or_else(|| strip_plain_header(line, "xychart"))
+        .or_else(|| strip_plain_header(line, "xychart-beta"))
+}
+
+fn strip_plain_header<'a>(line: &'a str, header: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(header)?;
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|ch| !ch.is_whitespace() && ch != ';')
+    {
+        return None;
+    }
+    Some(rest)
+}
+
+fn strip_flowchart_header<'a>(line: &'a str, header: &str) -> Option<&'a str> {
+    let rest = strip_plain_header(line, header)?;
+    Some(strip_flowchart_direction(rest.trim_start()))
+}
+
+fn strip_flowchart_direction(rest: &str) -> &str {
+    for direction in ["TB", "TD", "BT", "RL", "LR"] {
+        if rest.eq_ignore_ascii_case(direction) {
+            return "";
+        }
+        if rest
+            .get(..direction.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(direction))
+            && rest[direction.len()..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_whitespace() || ch == ';')
+        {
+            return rest[direction.len()..].trim_start();
+        }
+    }
+    rest
 }
 
 #[test]
@@ -319,7 +508,7 @@ flowchart TD
 
     for (name, source, expected_labels, expected_colors) in cases {
         let svg = render_resvg_safe(name, source);
-        assert_resvg_safe_output(name, &svg);
+        assert_resvg_safe_output(name, source, &svg);
 
         for label in *expected_labels {
             assert!(
@@ -357,7 +546,7 @@ fn representative_fixtures_render_headless_resvg_safe() {
             .and_then(|stem| stem.to_str())
             .unwrap_or("fixture");
         let svg = render_resvg_safe(diagram_id, &source);
-        assert_resvg_safe_output(&relative_name, &svg);
+        assert_resvg_safe_output(&relative_name, &source, &svg);
     }
 }
 
@@ -392,7 +581,7 @@ fn all_supported_fixtures_render_headless_resvg_safe_audit() {
             .and_then(|stem| stem.to_str())
             .unwrap_or("fixture");
         let svg = render_resvg_safe(diagram_id, &source);
-        assert_resvg_safe_output(&relative_name, &svg);
+        assert_resvg_safe_output(&relative_name, &source, &svg);
         rendered += 1;
     }
 
@@ -400,4 +589,25 @@ fn all_supported_fixtures_render_headless_resvg_safe_audit() {
         rendered > 100 || (filtered_audit && rendered > 0),
         "expected the manual audit to render a broad corpus; rendered={rendered}, skipped_unrenderable={skipped_unrenderable}"
     );
+}
+
+#[test]
+fn source_content_gate_distinguishes_accessibility_only_from_visible_content() {
+    assert!(!source_has_visible_diagram_content(
+        "architecture-beta\naccTitle: Accessibility Title\naccDescr: Accessibility Description\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "architecture-beta\naccDescr {\n    Accessibility Description\n}\n"
+    ));
+    assert!(!source_has_visible_diagram_content("packet\n"));
+    assert!(!source_has_visible_diagram_content(
+        "pie accDescr {\n    Accessibility Description\n}\n"
+    ));
+    assert!(!source_has_visible_diagram_content(
+        "architecture-beta title Simple Architecture Diagram\n"
+    ));
+    assert!(source_has_visible_diagram_content("graph TD;a-X-node;\n"));
+    assert!(source_has_visible_diagram_content(
+        "flowchart LR\n  A[Alpha] --> B[Beta]\n"
+    ));
 }
