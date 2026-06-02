@@ -1,6 +1,6 @@
 //! SVG emitted bounds scanner used for Mermaid parity.
 
-use super::super::svg_path_bounds_from_d;
+use super::svg_path_bounds_from_d;
 use crate::model::Bounds;
 
 #[derive(Debug, Clone)]

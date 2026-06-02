@@ -169,6 +169,62 @@ struct NoteTextMeasureRequest<'a, 'b> {
     ctx: &'b SequenceNoteLayoutContext<'a>,
 }
 
+pub(super) struct SequenceNoteFinalTextMeasure<'a> {
+    pub(super) text: &'a str,
+    pub(super) placement: i32,
+    pub(super) note_width: f64,
+    pub(super) note_text_pad_total: f64,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) note_text_style: &'a TextStyle,
+    pub(super) math_config: &'a MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+}
+
+pub(crate) fn sequence_note_final_wrapped_lines(
+    text: &str,
+    placement: i32,
+    note_width: f64,
+    note_text_pad_total: f64,
+    measurer: &dyn TextMeasurer,
+    note_text_style: &TextStyle,
+) -> Vec<String> {
+    let wrap_w = (note_width - note_text_pad_total).max(1.0);
+    let wrap_slack = if placement == 0 {
+        SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX
+    } else {
+        SEQUENCE_NOTE_WRAP_SLACK_PX
+    };
+    wrap_label_like_mermaid_lines_floored_bbox(
+        text,
+        measurer,
+        note_text_style,
+        (wrap_w + wrap_slack).max(1.0),
+    )
+}
+
+pub(super) fn measure_sequence_note_final_text(
+    req: SequenceNoteFinalTextMeasure<'_>,
+) -> (f64, f64) {
+    let lines = sequence_note_final_wrapped_lines(
+        req.text,
+        req.placement,
+        req.note_width,
+        req.note_text_pad_total,
+        req.measurer,
+        req.note_text_style,
+    );
+    let wrapped = lines.join("<br/>");
+    let (w, h) = measure_sequence_label_for_layout(
+        req.measurer,
+        &wrapped,
+        req.note_text_style,
+        req.math_config,
+        req.math_renderer,
+        SequenceMathHeightMode::Bound,
+    );
+    (w.max(0.0), h.max(0.0))
+}
+
 fn measure_note_text(req: NoteTextMeasureRequest<'_, '_>) -> (f64, f64) {
     if req.is_math_note {
         return measure_sequence_label_for_layout(
@@ -218,22 +274,16 @@ fn measure_note_text(req: NoteTextMeasureRequest<'_, '_>) -> (f64, f64) {
             *req.note_x = req.fx - NOTE_SIDE_OFFSET_PX - *req.note_w;
         }
 
-        let wrap_w = (*req.note_w - req.ctx.note_text_pad_total).max(1.0);
-        let wrap_slack = if req.placement == 0 {
-            SEQUENCE_LEFT_OF_NOTE_FINAL_WRAP_SLACK_PX
-        } else {
-            SEQUENCE_NOTE_WRAP_SLACK_PX
-        };
-        let lines = wrap_label_like_mermaid_lines_floored_bbox(
-            req.text,
-            req.ctx.measurer,
-            req.ctx.note_text_style,
-            (wrap_w + wrap_slack).max(1.0),
-        );
-        let wrapped = lines.join("<br/>");
-        let (w, h) =
-            measure_svg_like_with_html_br(req.ctx.measurer, &wrapped, req.ctx.note_text_style);
-        return (w.max(0.0), h.max(0.0));
+        return measure_sequence_note_final_text(SequenceNoteFinalTextMeasure {
+            text: req.text,
+            placement: req.placement,
+            note_width: *req.note_w,
+            note_text_pad_total: req.ctx.note_text_pad_total,
+            measurer: req.ctx.measurer,
+            note_text_style: req.ctx.note_text_style,
+            math_config: req.ctx.math_config,
+            math_renderer: req.ctx.math_renderer,
+        });
     }
 
     measure_svg_like_with_html_br(req.ctx.measurer, req.text, req.ctx.note_text_style)

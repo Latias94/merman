@@ -213,6 +213,15 @@ behavior, with a unit test covering the fork/join diamond. This did not change t
 `+13.976px` root tail, so treat it as source-input parity plus residual classification rather than
 a viewport fix.
 
+Later HPD-050 correction: a fresh local audit compared the old saved Mermaid debug probe
+`target/compare/arch_junction_fork_join_probe_m15rv089.json` against the current local SVG, the
+stored upstream SVG, and a fresh Edge-backed `check-upstream-svgs` output. Local service positions
+matched that old saved debug probe to floating-point noise, but the stored upstream fixture is
+reproducible by the current CLI/Edge baseline path. A refreshed HPD-050 probe still does not
+reproduce the CLI fixture, so treat
+`stress_architecture_junction_fork_join_026` as a debug-probe harness / CLI-harness divergence plus
+solver/phase residual candidate before touching manatee again.
+
 The group-padding source rule now applies in both places that approximate Cytoscape compound
 bounds. Final SVG group rectangles had already moved from `iconSize / 2` to configured
 `architecture.padding`; the pre-layout compound bbox used before FCoSE now also uses
@@ -253,6 +262,17 @@ compound `node.boundingBox()`-style bounds. Previously those two label-bbox appr
 interleaved inside one local loop variable. The new split did not aim to change residual counts;
 it makes future root-tail audits much easier because root vs compound measurement policy now has a
 named seam instead of duplicated inline arithmetic.
+
+HPD-050 continued the same boundary cleanup by extracting Architecture's pre-layout Cytoscape bbox
+adapter into `architecture_fcose_prelayout_bounds(...)`. That helper now owns the FCoSE
+`initial_center` and node `BoundsExtras` approximation. Group title state was removed from the
+layout view because current source/evidence says group titles do not affect the pre-layout
+`eles.boundingBox()` center. The batch5 long-title focused root tail stayed unchanged at upstream
+`542.926px` vs local `547.926px`, so this is auditability work rather than a hidden viewport tune.
+
+Superseded by a later HPD-050 cleanup: the renderer-side `initial_center` / pre-layout group bbox
+model was removed after confirming it was not consumed by layout. The retained renderer seam is
+the node `BoundsExtras` adapter; relocation and element bbox policy remain in `manatee`.
 
 Fresh 2026-06-02 focused probes then narrowed the remaining Architecture label-width family even
 further. Mermaid 11.15 source confirms the Cytoscape layout phase only sees single-line canvas
@@ -358,6 +378,13 @@ piecewise rule. The batch4 small-icon row is instead icon-floor dominated (`42x5
 bboxes). A single new global label scale would still be self-deceptive; future work should use
 generated Architecture canvas-label evidence or a better deterministic canvas measurer.
 
+Later HPD-050 correction: the small-icon service/group sizing diagnosis was still useful, but the
+root-width cause was not a service label scale. Re-auditing Mermaid `svgDraw.ts` and
+`setupGraphViewbox.js` showed that the rotated Y-axis edge label's non-centered `createText()`
+local y-range contributes to `svg.getBBox()`. Merman now transforms that y-range for Architecture
+edge-label root bounds and uses `fontSize + 1px` for compound label bottom. As a result,
+`stress_architecture_batch4_init_small_icons_061` is root-green without a root override.
+
 Fresh focused 2026-06-02 rechecks also show the three `reasonable_height` fixtures are not
 root-green: each still carries the same `+0.380px` width / tiny height rounding tail
 (`1859.440px -> 1859.820px` max-width). Treat those rows as part of the honest residual set unless
@@ -383,6 +410,11 @@ and transforms match upstream, but browser text bboxes are about `1.788px` wider
 headless estimate. `stress_architecture_nested_groups_002` is a nested compound/layout tail with
 matching source inputs; local services shift about `+1.25px` in X and the outer group right edge
 lands about `3.75px` farther right.
+
+Later HPD-050 correction: `stress_architecture_edge_label_corner_cases_012` and
+`stress_architecture_batch4_init_fontsize_wrap_063` were also closed by the source-backed
+`createText()` y-range edge-label bounds fix. Do not reopen them as browser text-scale tails unless
+a future Mermaid baseline changes the source behavior.
 
 ## Active Task
 
@@ -419,8 +451,10 @@ lands about `3.75px` farther right.
   Rust also now preserves Mermaid's duplicate queued-position BFS behavior for Architecture
   relative constraints; this aligns the `junction_fork_join` FCoSE input with the browser probe but
   does not reduce its remaining `+13.976px` tail.
-  Pre-layout compound bbox inflation now also uses configured `architecture.padding`, keeping the
-  FCoSE input and final group rectangle code on the same source rule.
+  HPD-050 later narrowed this statement: renderer-side pre-layout group bbox center calculation was
+  removed because it was not consumed by layout. Manatee owns relocation/element bbox policy; the
+  renderer now feeds only per-node `BoundsExtras` into manatee and keeps final SVG group rect
+  padding under a separately named helper.
   Batch5, batch4-small-icon, html-title/escape, unicode/xml, edge-label corner, fontsize-wrap,
   nested-group, and group-port rows now have focused diagnostic evidence; none justify a
   renderer-side one-off metric or root pin.
@@ -520,6 +554,11 @@ lands about `3.75px` farther right.
 - Architecture relative placement BFS must process duplicate queued current positions on pop, like
   Mermaid `getRelativeConstraints(...)`. Do not simplify it back to a visited-on-pop skip; that
   drops duplicate constraints such as `join -> db` and `join -> cache` in the fork/join fixture.
+- `stress_architecture_junction_fork_join_026` matched the old saved Mermaid debug probe at
+  service-position level, while the stored upstream SVG is reproducible by the current CLI/Edge
+  path. A refreshed HPD-050 probe remains diagnostic-only and still does not reproduce the CLI
+  fixture. Do not tune manatee against the debug probe until the probe harness / CLI harness
+  disagreement is resolved.
 - Do not tune `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` against a single residual. Batch5
   long labels and batch4 small-icon labels need different treatment. The current piecewise
   long-label branch (`>= 200px -> 1.01`) is already committed because it improved the targeted
@@ -538,7 +577,8 @@ lands about `3.75px` farther right.
   residual is group/service bbox width.
 - Do not alter Architecture edge-label wrapping from `stress_architecture_edge_label_corner_cases_012`
   or `stress_architecture_batch4_init_fontsize_wrap_063`; focused SVG text splitting already
-  matches upstream.
+  matches upstream. These rows are now root-green after the HPD-050 `createText()` y-range
+  root-bounds fix, so further work should not tune their wrapping or text scale.
 - Do not tune nested-group padding from `stress_architecture_nested_groups_002`; current evidence
   points to small FCoSE/compound-bound drift after source inputs match.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and

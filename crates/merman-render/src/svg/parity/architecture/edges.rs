@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crate::architecture_metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
-    architecture_create_text_bbox_height_px,
+    architecture_create_text_bbox_height_px, architecture_create_text_bbox_y_range_px,
 };
 use crate::model::Bounds;
 use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer};
@@ -31,8 +31,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
 
 struct ArchitectureEdgeLabelPlan {
     lines: Vec<super::labels::SvgLine>,
-    aabb_w: f64,
-    aabb_h: f64,
+    bounds: Bounds,
     dominant_baseline: &'static str,
     transform: String,
 }
@@ -179,6 +178,9 @@ fn architecture_edge_label_plan(
     let line_count = lines.len().max(1);
     let bbox_h = architecture_create_text_bbox_height_px(settings.svg_font_size_px, line_count);
     let half_bbox_h = bbox_h / 2.0;
+    let half_bbox_w = bbox_w / 2.0;
+    let (bbox_y_min, bbox_y_max) =
+        architecture_create_text_bbox_y_range_px(settings.svg_font_size_px, line_count);
 
     let (dominant_baseline, transform) = match axis {
         "Y" => (
@@ -227,20 +229,34 @@ fn architecture_edge_label_plan(
         ),
     };
 
-    let (aabb_w, aabb_h) = match axis {
-        "X" => (bbox_w, bbox_h),
-        "Y" => (bbox_h, bbox_w),
+    let bounds = match axis {
+        "X" => Bounds {
+            min_x: points.mid_x - half_bbox_w,
+            min_y: points.mid_y + bbox_y_min,
+            max_x: points.mid_x + half_bbox_w,
+            max_y: points.mid_y + bbox_y_max,
+        },
+        "Y" => Bounds {
+            min_x: points.mid_x + bbox_y_min,
+            min_y: points.mid_y - half_bbox_w,
+            max_x: points.mid_x + bbox_y_max,
+            max_y: points.mid_y + half_bbox_w,
+        },
         _ => {
             // |cos(45°)| == |sin(45°)| == sqrt(1/2)
             let a = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
-            (a, a)
+            Bounds {
+                min_x: points.mid_x - a / 2.0,
+                min_y: points.mid_y - a / 2.0,
+                max_x: points.mid_x + a / 2.0,
+                max_y: points.mid_y + a / 2.0,
+            }
         }
     };
 
     Some(ArchitectureEdgeLabelPlan {
         lines,
-        aabb_w: aabb_w.max(1.0),
-        aabb_h: aabb_h.max(1.0),
+        bounds,
         dominant_baseline,
         transform,
     })
@@ -443,15 +459,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess>(
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
             if let Some(label_plan) = label_plan.as_ref() {
-                extend_bounds(
-                    content_bounds,
-                    bounds_from_rect(
-                        points.mid_x - label_plan.aabb_w / 2.0,
-                        points.mid_y - label_plan.aabb_h / 2.0,
-                        label_plan.aabb_w,
-                        label_plan.aabb_h,
-                    ),
-                );
+                extend_bounds(content_bounds, label_plan.bounds.clone());
             }
 
             out.push_str("<g>");

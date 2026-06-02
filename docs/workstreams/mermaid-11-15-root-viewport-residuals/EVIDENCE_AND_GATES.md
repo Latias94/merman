@@ -1148,6 +1148,15 @@ Outcome:
   `+13.976px`; treat its remaining delta as solver/headless layout drift unless a new source rule
   is found.
 
+Superseded note from HPD-050:
+
+- Rechecking the old saved browser probe showed local service positions matched
+  `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise. A later
+  Edge-backed `check-upstream-svgs` run reproduced the stored upstream fixture exactly, so this is
+  not stale stored-baseline drift. A refreshed HPD-050 probe still does not reproduce the CLI
+  fixture and must be treated as diagnostic-only. Treat this row as a debug-probe harness /
+  CLI-harness divergence plus solver/phase residual candidate before changing manatee.
+
 ## M15RV-089 - Architecture Pre-Layout Group Padding Source Rule
 
 Fresh source evidence from 2026-06-02:
@@ -1194,6 +1203,15 @@ Outcome:
   now dominated by canvas label / Cytoscape bbox measurement tails rather than the old
   `iconSize / 2` padding proxy.
 
+Superseded note from HPD-050:
+
+- A later seam cleanup removed the renderer-side `initial_center` / pre-layout group bbox model
+  because it was not consumed by layout. Manatee owns relocation-centering from its indexed graph
+  adapter, while the renderer now only feeds per-node `BoundsExtras` into manatee.
+- The final SVG group rect padding helper was renamed to
+  `architecture_svg_group_bbox_padding_px(...)` so it is not confused with manatee's
+  relocation/element-bbox policy.
+
 ## M15RV-089 - Architecture Canvas Label Residual Diagnostics
 
 Fresh diagnostic evidence from 2026-06-02:
@@ -1227,6 +1245,14 @@ Outcome:
 - Do not replace `ARCHITECTURE_CYTOSCAPE_CANVAS_LABEL_WIDTH_SCALE` with a new one-off constant to
   fix `stress_architecture_batch5_long_titles_and_punct_076`; the probe evidence is mixed by label
   length and icon floor.
+
+Superseded note from HPD-050:
+
+- The batch5 long-label conclusion still stands, but
+  `stress_architecture_batch4_init_small_icons_061` was later closed without a label-scale tweak.
+  The reusable source-backed fix was to transform the local `createText()` y-range when estimating
+  rotated Architecture edge-label root bounds and to use `fontSize + 1px` for compound label
+  bottom.
 
 ## M15RV-089 - Architecture Group/Port Residual Diagnostics
 
@@ -1297,6 +1323,13 @@ Outcome:
   arrowheads to the routed edge segment. The parity comparator already treats that transform as
   geometry noise, and root gates still compare the rendered viewport.
 
+Superseded note from HPD-050:
+
+- `stress_architecture_edge_label_corner_cases_012` and
+  `stress_architecture_batch4_init_fontsize_wrap_063` were later closed by the source-backed
+  Architecture edge-label root-bounds fix. Their earlier text-splitting evidence remains valid;
+  the missing piece was bbox placement after `createText()` and rotation, not label wrapping.
+
 ## 2026-06-02 - Class HTML Label Width Investigation
 
 Fresh focused evidence from 2026-06-02:
@@ -1366,6 +1399,43 @@ Outcome:
   `createText(...).getBBox()` service-label path. The metric helper and constants were then renamed
   from generic `cytoscape/long-label` wording to explicit `layout_canvas_*` semantics without
   changing behavior. Focused Architecture residuals and the new metrics-seam tests stayed stable.
+
+## 2026-06-02 - Architecture FCoSE Prelayout Adapter Boundary
+
+Fresh implementation evidence:
+
+- `crates/merman-render/src/architecture.rs` now isolates the Architecture-specific Cytoscape
+  pre-layout bbox approximation in `architecture_fcose_prelayout_bounds(...)`.
+- The helper returns the FCoSE `initial_center` and node `BoundsExtras`, keeping Mermaid/Cytoscape
+  adapter policy in `merman-render` instead of pushing diagram-specific behavior into `manatee`.
+- The layout view no longer stores group title state. Current source-backed evidence says group
+  titles are rendered inside compound bounds and do not affect the pre-layout
+  `eles.boundingBox()` center.
+
+Fresh validation:
+
+- `cargo test -p merman-render architecture_prelayout_bounds_feed_label_extras_without_group_title_state --lib`:
+  passed.
+- `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops --lib`:
+  passed.
+- `cargo test -p merman-render --test architecture_layout_test`:
+  passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth`:
+  passed; Architecture root overrides remain `0`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch5_after_prelayout_adapter.md`:
+  expected failure with unchanged root-only residual, upstream `542.926px` vs local `547.926px`.
+
+Outcome:
+
+- This is a boundary cleanup and auditability improvement, not a residual-count reduction.
+- Continue using this seam to audit which remaining Architecture rows are input-model mismatches,
+  generated/bbox measurement tails, or source-input-matched FCoSE/compound residuals.
+
+Superseded note from HPD-050:
+
+- The renderer-side `initial_center` / pre-layout group bbox model was later removed because layout
+  did not consume it. The retained renderer seam is the node `BoundsExtras` adapter; relocation and
+  element bbox policy remain inside `manatee`.
 
 ## Gate Set
 

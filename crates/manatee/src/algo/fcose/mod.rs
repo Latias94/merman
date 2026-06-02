@@ -2701,7 +2701,6 @@ impl SimGraph {
         None
     }
 
-
     fn reset_edge_ideal_lengths(&mut self) {
         for e in &mut self.edges {
             e.ideal_length = e.base_ideal_length;
@@ -3929,7 +3928,7 @@ impl XorShift64Star {
     }
 
     fn next_f64_signed(&mut self) -> f64 {
-        // Map to [-1, 1] (exclusive).
+        // Map to [-1, 1) with the same 53-bit float path as the seeded browser prelude.
         let u = self.next_u64() >> 11;
         let v = (u as f64) / ((1u64 << 53) as f64);
         (v * 2.0) - 1.0
@@ -4441,7 +4440,6 @@ mod tests {
             );
         }
     }
-
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {

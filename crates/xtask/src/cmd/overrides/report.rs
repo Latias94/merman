@@ -1,12 +1,13 @@
 //! Inventory and reporting for parity overrides.
 
 use crate::XtaskError;
+use merman_core::baseline::{
+    LEGACY_GENERATED_BASELINE_SUFFIX, PINNED_MERMAID_BASELINE_TAG, PINNED_MERMAID_BASELINE_VERSION,
+};
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-
-pub(crate) const LEGACY_GENERATED_BASELINE_SUFFIX: &str = "11_12_2";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum OverrideCategory {
@@ -571,10 +572,10 @@ pub(crate) fn pinned_mermaid_baseline_label(workspace_root: &Path) -> String {
         .join("upstreams")
         .join("REPOS.lock.json");
     let Ok(text) = fs::read_to_string(lock_path) else {
-        return "pinned upstream".to_string();
+        return format!("@{PINNED_MERMAID_BASELINE_VERSION}");
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return "pinned upstream".to_string();
+        return format!("@{PINNED_MERMAID_BASELINE_VERSION}");
     };
     let Some(reference) = value
         .get("repos")
@@ -583,13 +584,18 @@ pub(crate) fn pinned_mermaid_baseline_label(workspace_root: &Path) -> String {
         .and_then(|reference| reference.as_str())
         .filter(|reference| !reference.trim().is_empty())
     else {
-        return "pinned upstream".to_string();
+        return format!("@{PINNED_MERMAID_BASELINE_VERSION}");
     };
 
     reference
         .strip_prefix("mermaid")
         .map(|suffix| suffix.to_string())
-        .unwrap_or_else(|| reference.to_string())
+        .unwrap_or_else(|| {
+            PINNED_MERMAID_BASELINE_TAG
+                .strip_prefix("mermaid")
+                .unwrap_or(PINNED_MERMAID_BASELINE_TAG)
+                .to_string()
+        })
 }
 
 fn count_root_viewport_entries(text: &str) -> usize {
@@ -837,9 +843,15 @@ pub fn lookup_class_rendered_width_px(font_size_px: i64, is_bold: bool, text: &s
 
         let entries = classify_class_text_override_file("class_text_overrides_11_12_2.rs", text);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].file_name, "class_text_overrides_11_12_2.rs::lookup_class_calc_text_width_px");
+        assert_eq!(
+            entries[0].file_name,
+            "class_text_overrides_11_12_2.rs::lookup_class_calc_text_width_px"
+        );
         assert_eq!(entries[0].count, 1);
-        assert_eq!(entries[1].file_name, "class_text_overrides_11_12_2.rs::lookup_class_rendered_width_px");
+        assert_eq!(
+            entries[1].file_name,
+            "class_text_overrides_11_12_2.rs::lookup_class_rendered_width_px"
+        );
         assert_eq!(entries[1].count, 2);
     }
 

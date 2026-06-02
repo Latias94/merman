@@ -385,11 +385,15 @@ fn sequence_long_leftof_notes_keep_mermaid_11_15_note_width() {
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
         "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
     ] {
-        let path = workspace_root().join("fixtures").join("sequence").join(fixture);
+        let path = workspace_root()
+            .join("fixtures")
+            .join("sequence")
+            .join(fixture);
         let text = std::fs::read_to_string(&path).expect("fixture");
-        let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
+        let parsed =
+            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
         let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
         let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
             panic!("expected SequenceDiagram layout");

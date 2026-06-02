@@ -58,7 +58,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         });
     if !examples_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream examples root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
+            "upstream examples root not found: {} (expected repo-ref checkout of the pinned Mermaid baseline)",
             examples_root.display()
         )));
     }
@@ -310,7 +310,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     let example_re = Regex::new(r#"(?s)\{\s*title:\s*(?:'([^']*)'|"([^"]*)").*?code:\s*`([^`]*)`"#)
         .map_err(|err| XtaskError::SnapshotUpdateFailed(format!("bad regex: {err}")))?;
 
-    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
 
     let mut existing_by_diagram: std::collections::HashMap<
         String,

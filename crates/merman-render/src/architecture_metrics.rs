@@ -6,13 +6,16 @@ pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE: f64 = 1.01;
 pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
-pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
+pub(crate) const ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureServiceBoundsEstimate {
-    pub(crate) icon_bounds: Bounds,
-    pub(crate) root_bounds: Bounds,
-    pub(crate) compound_bounds: Bounds,
+    // Actual emitted icon bounds used when grouped service labels should not affect root getBBox.
+    pub(crate) emitted_icon_bounds: Bounds,
+    // Approximation of Mermaid's final SVG getBBox() for top-level services.
+    pub(crate) svg_root_bounds: Bounds,
+    // Approximation of the child bounds that Cytoscape compounds use for group sizing.
+    pub(crate) cytoscape_group_child_bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -70,12 +73,21 @@ pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
     font_size_px * ((24.1875 / 16.0) + extra_lines * 1.1)
 }
 
-pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) * (17.0 / 16.0)
+pub(crate) fn architecture_create_text_bbox_y_range_px(
+    font_size_px: f64,
+    line_count: usize,
+) -> (f64, f64) {
+    let height = architecture_create_text_bbox_height_px(font_size_px, line_count);
+    let max_y = architecture_create_text_root_label_extra_bottom_px(font_size_px, line_count);
+    (max_y - height, max_y)
 }
 
-pub(crate) fn architecture_compound_bbox_padding_px(padding_px: f64) -> f64 {
-    padding_px.max(0.0) + ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX
+pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) + 1.0
+}
+
+pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
+    padding_px.max(0.0) + ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX
 }
 
 pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
@@ -149,14 +161,14 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
 where
     TLine: std::fmt::Debug,
 {
-    let icon_bounds = Bounds {
+    let emitted_icon_bounds = Bounds {
         min_x: x,
         min_y: y,
         max_x: x + icon_size_px,
         max_y: y + icon_size_px,
     };
-    let mut root_bounds = icon_bounds.clone();
-    let mut compound_bounds = icon_bounds.clone();
+    let mut svg_root_bounds = emitted_icon_bounds.clone();
+    let mut cytoscape_group_child_bounds = emitted_icon_bounds.clone();
     let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
         .ok()
         .filter(|value| !value.is_empty());
@@ -175,11 +187,8 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let metrics = architecture_cytoscape_canvas_label_metrics(
-            title,
-            text_measurer,
-            compound_text_style,
-        );
+        let metrics =
+            architecture_cytoscape_canvas_label_metrics(title, text_measurer, compound_text_style);
         let compound_half_width = metrics.half_width;
         let label_extra_bottom_compound =
             architecture_create_text_compound_label_extra_bottom_px(arch_font_size_px);
@@ -193,22 +202,22 @@ where
         let text_right_compound = cx + compound_half_width;
         let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
 
-        root_bounds = Bounds {
-            min_x: root_bounds.min_x.min(text_left_root),
-            min_y: root_bounds.min_y,
-            max_x: root_bounds.max_x.max(text_right_root),
-            max_y: root_bounds.max_y.max(text_bottom_root),
+        svg_root_bounds = Bounds {
+            min_x: svg_root_bounds.min_x.min(text_left_root),
+            min_y: svg_root_bounds.min_y,
+            max_x: svg_root_bounds.max_x.max(text_right_root),
+            max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        compound_bounds = Bounds {
-            min_x: compound_bounds.min_x.min(text_left_compound),
-            min_y: compound_bounds.min_y,
-            max_x: compound_bounds.max_x.max(text_right_compound),
-            max_y: compound_bounds.max_y.max(text_bottom_compound),
+        cytoscape_group_child_bounds = Bounds {
+            min_x: cytoscape_group_child_bounds.min_x.min(text_left_compound),
+            min_y: cytoscape_group_child_bounds.min_y,
+            max_x: cytoscape_group_child_bounds.max_x.max(text_right_compound),
+            max_y: cytoscape_group_child_bounds.max_y.max(text_bottom_compound),
         };
 
         if debug_service.as_deref() == Some(title) {
             eprintln!(
-                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} compound_bottom={} icon_bounds=({}, {})-({}, {}) compound_bounds=({}, {})-({}, {}) root_bounds=({}, {})-({}, {})",
+                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} emitted_icon_bounds=({}, {})-({}, {}) group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
                 title,
                 lines,
                 bbox_left_root,
@@ -216,26 +225,26 @@ where
                 label_extra_bottom_root,
                 metrics.half_width,
                 label_extra_bottom_compound,
-                icon_bounds.min_x,
-                icon_bounds.min_y,
-                icon_bounds.max_x,
-                icon_bounds.max_y,
-                compound_bounds.min_x,
-                compound_bounds.min_y,
-                compound_bounds.max_x,
-                compound_bounds.max_y,
-                root_bounds.min_x,
-                root_bounds.min_y,
-                root_bounds.max_x,
-                root_bounds.max_y,
+                emitted_icon_bounds.min_x,
+                emitted_icon_bounds.min_y,
+                emitted_icon_bounds.max_x,
+                emitted_icon_bounds.max_y,
+                cytoscape_group_child_bounds.min_x,
+                cytoscape_group_child_bounds.min_y,
+                cytoscape_group_child_bounds.max_x,
+                cytoscape_group_child_bounds.max_y,
+                svg_root_bounds.min_x,
+                svg_root_bounds.min_y,
+                svg_root_bounds.max_x,
+                svg_root_bounds.max_y,
             );
         }
     }
 
     ArchitectureServiceBoundsEstimate {
-        icon_bounds,
-        root_bounds,
-        compound_bounds,
+        emitted_icon_bounds,
+        svg_root_bounds,
+        cytoscape_group_child_bounds,
     }
 }
 
@@ -245,22 +254,37 @@ mod tests {
     fn architecture_text_constants_match_mermaid() {
         assert!((super::architecture_create_text_bbox_height_px(16.0, 2) - 36.6).abs() < 1e-9);
         assert_eq!(
+            super::architecture_create_text_bbox_y_range_px(16.0, 1),
+            (5.1875, 24.1875)
+        );
+        assert!((super::architecture_create_text_bbox_y_range_px(16.0, 2).0 - 5.1875).abs() < 1e-9);
+        assert!(
+            (super::architecture_create_text_bbox_y_range_px(16.0, 2).1 - 41.7875).abs() < 1e-9
+        );
+        assert_eq!(
             super::architecture_create_text_compound_label_extra_bottom_px(16.0),
             17.0
+        );
+        assert_eq!(
+            super::architecture_create_text_compound_label_extra_bottom_px(12.0),
+            13.0
         );
         assert_eq!(
             super::architecture_create_text_root_label_extra_bottom_px(16.0, 1),
             24.1875
         );
+        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE, 1.055);
         assert_eq!(
-            super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE,
-            1.055
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE,
+            1.01
         );
-        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE, 1.01);
-        assert_eq!(super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX, 200.0);
+        assert_eq!(
+            super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX,
+            200.0
+        );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
-        assert_eq!(super::ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, 2.5);
+        assert_eq!(super::ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX, 2.5);
     }
 
     #[test]
@@ -294,7 +318,8 @@ mod tests {
         assert!(metrics.width > 0.0);
         assert!(
             metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LABEL_WIDTH_SCALE
-                || metrics.applied_scale == super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
+                || metrics.applied_scale
+                    == super::ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE
         );
     }
 
@@ -315,9 +340,9 @@ mod tests {
     }
 
     #[test]
-    fn architecture_compound_bbox_padding_adds_mermaid_extra_padding() {
-        assert_eq!(super::architecture_compound_bbox_padding_px(0.0), 2.5);
-        assert_eq!(super::architecture_compound_bbox_padding_px(12.0), 14.5);
-        assert_eq!(super::architecture_compound_bbox_padding_px(-7.0), 2.5);
+    fn architecture_svg_group_bbox_padding_adds_headless_cytoscape_extra() {
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(0.0), 2.5);
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(12.0), 14.5);
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(-7.0), 2.5);
     }
 }

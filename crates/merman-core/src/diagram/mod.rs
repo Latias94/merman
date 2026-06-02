@@ -22,7 +22,7 @@ impl DiagramRegistry {
         self.parsers.get(diagram_type).copied()
     }
 
-    pub fn default_mermaid_11_12_2() -> Self {
+    pub fn for_pinned_mermaid_baseline() -> Self {
         let mut reg = Self::new();
 
         reg.insert("error", crate::diagrams::error_diagram::parse_error);
@@ -72,6 +72,11 @@ impl DiagramRegistry {
         reg.insert("xychart", crate::diagrams::xychart::parse_xychart);
 
         reg
+    }
+
+    #[deprecated(note = "use for_pinned_mermaid_baseline")]
+    pub fn default_mermaid_11_12_2() -> Self {
+        Self::for_pinned_mermaid_baseline()
     }
 }
 
@@ -189,7 +194,7 @@ impl RenderDiagramRegistry {
         self.parsers.get(diagram_type).copied()
     }
 
-    pub fn default_mermaid_11_12_2() -> Self {
+    pub fn for_pinned_mermaid_baseline() -> Self {
         let mut reg = Self::new();
 
         reg.insert("mindmap", |code, meta| {
@@ -305,6 +310,11 @@ impl RenderDiagramRegistry {
         });
 
         reg
+    }
+
+    #[deprecated(note = "use for_pinned_mermaid_baseline")]
+    pub fn default_mermaid_11_12_2() -> Self {
+        Self::for_pinned_mermaid_baseline()
     }
 }
 

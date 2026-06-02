@@ -1,6 +1,7 @@
 //! Global root viewport override governance audit.
 
 use crate::{XtaskError, cmd};
+use merman_core::baseline::LEGACY_GENERATED_BASELINE_SUFFIX;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -10,8 +11,6 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 const ROOT_REPORT_FAMILIES: &[&str] = &["flowchart", "gitgraph", "mindmap", "sequence", "state"];
-const LEGACY_ROOT_OVERRIDE_FILE_SUFFIX: &str = "_root_overrides_11_12_2.rs";
-
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
     family: String,
@@ -242,7 +241,10 @@ fn collect_root_override_tables(
             continue;
         };
         let Some(family) = file_name
-            .strip_suffix(LEGACY_ROOT_OVERRIDE_FILE_SUFFIX)
+            .strip_suffix(&format!(
+                "_root_overrides_{}.rs",
+                LEGACY_GENERATED_BASELINE_SUFFIX
+            ))
             .map(str::to_owned)
         else {
             continue;

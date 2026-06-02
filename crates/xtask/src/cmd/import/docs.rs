@@ -60,7 +60,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         .unwrap_or_else(|| crate::cmd::mermaid_repo_root().join("docs").join("syntax"));
     if !docs_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream docs root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
+            "upstream docs root not found: {} (expected repo-ref checkout of the pinned Mermaid baseline)",
             docs_root.display()
         )));
     }
@@ -322,7 +322,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         "xychart",
     ];
 
-    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
     let mut created: Vec<CreatedFixture> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 

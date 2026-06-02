@@ -210,6 +210,35 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
 }
 
 #[test]
+fn architecture_vertical_edge_label_bounds_use_create_text_y_offsets() {
+    let svg = render_architecture_fixture_with_options(
+        "stress_architecture_batch4_init_small_icons_061.mmd",
+        &SvgRenderOptions {
+            diagram_id: Some("architecture-small-icons".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let group = group_rect(&svg, "architecture-small-icons-group-g");
+    assert!(
+        group.2 > 158.5 && group.2 < 158.6,
+        "small-icon service/group sizing should remain icon-floor dominated, got group width {}",
+        group.2
+    );
+    assert!(
+        group.3 > 171.5 && group.3 < 171.6,
+        "compound label bottom should follow architecture.fontSize + 1px for custom font sizes, got group height {}",
+        group.3
+    );
+
+    let max_width = svg_max_width(&svg);
+    assert!(
+        (max_width - 187.85890197753906).abs() < 0.001,
+        "vertical edge label createText bbox should contribute to the root width, got {max_width}"
+    );
+}
+
+#[test]
 fn architecture_long_title_group_rect_uses_narrower_long_label_canvas_approximation() {
     let svg = render_architecture_fixture_with_options(
         "stress_architecture_batch5_long_titles_and_punct_076.mmd",
