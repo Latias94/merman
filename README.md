@@ -318,7 +318,10 @@ multiline and wrapped title rows.
 
 Sequence text output covers common messages, notes, lifecycle rows, participant boxes, and the
 primary Mermaid control-block subset: `loop`, `opt`, `break`, `rect`, `par_over`, `alt`, `par`,
-and `critical`.
+and `critical`. Mermaid-compatible output keeps bottom participant boxes disabled by default;
+`AsciiRenderOptions::with_sequence_mirror_actors(true)` and
+`merman-cli render --format ascii|unicode --sequence-mirror-actors` enable mirrored participant
+boxes for terminal output.
 
 Class, ER, and XYChart text output intentionally ship bounded terminal-native subsets: class and ER
 support boxes, labels, single relationships, layered chain/star multi-relationship layouts, and

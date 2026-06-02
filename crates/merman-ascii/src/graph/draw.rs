@@ -74,13 +74,14 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         {
             routing::draw_edge(
                 &mut route_drawing,
-                graph,
-                &graph_layout,
-                &graph.edges,
-                edge_index,
-                edge,
-                graph.direction,
-                &charset,
+                routing::DrawEdgeRequest {
+                    graph,
+                    graph_layout: &graph_layout,
+                    edges: &graph.edges,
+                    edge_index,
+                    edge,
+                    charset: &charset,
+                },
             );
         }
         for (edge_index, edge) in graph
@@ -91,13 +92,14 @@ pub(crate) fn render_graph(graph: &AsciiGraph, options: &AsciiRenderOptions) -> 
         {
             routing::draw_edge(
                 &mut route_drawing,
-                graph,
-                &graph_layout,
-                &graph.edges,
-                edge_index,
-                edge,
-                graph.direction,
-                &charset,
+                routing::DrawEdgeRequest {
+                    graph,
+                    graph_layout: &graph_layout,
+                    edges: &graph.edges,
+                    edge_index,
+                    edge,
+                    charset: &charset,
+                },
             );
         }
     }

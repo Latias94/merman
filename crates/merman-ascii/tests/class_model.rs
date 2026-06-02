@@ -383,6 +383,35 @@ fn class_parser_spanning_level_relationship_layout_routes_around_intermediate_bo
 }
 
 #[test]
+fn class_parser_namespace_qualified_relationships_do_not_render_duplicate_classes() {
+    let rendered = render_class(
+        r#"classDiagram
+namespace Platform["Platform Layer"] {
+  namespace FFI {
+    class DartBinding
+    class PythonBinding
+  }
+  namespace Core {
+    class Renderer
+  }
+}
+Platform.FFI.DartBinding --> Platform.Core.Renderer : calls
+Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls
+"#,
+        &AsciiRenderOptions::unicode(),
+    )
+    .expect("namespace-qualified class relationships should render");
+
+    assert!(!rendered.contains("Platform.FFI.DartBinding"));
+    assert!(!rendered.contains("Platform.FFI.PythonBinding"));
+    assert!(!rendered.contains("Platform.Core.Renderer"));
+    assert!(rendered.contains("DartBinding"));
+    assert!(rendered.contains("PythonBinding"));
+    assert!(rendered.contains("Renderer"));
+    assert!(rendered.contains("calls"));
+}
+
+#[test]
 fn class_parser_extension_star_renders_all_children() {
     let rendered = render_class(
         "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",

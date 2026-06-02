@@ -12,7 +12,7 @@ This document describes the current `merman-ascii` sequence support boundary. Th
 | Diagram family | Supported subset | `sequenceDiagram` inputs that parse into `SequenceDiagramRenderModel`. |
 | Diagram titles | Supported subset | `title`/`title:` render as a centered text row above the participant boxes. |
 | Participants | Supported | Participant order follows `actorOrder`; labels use actor descriptions. |
-| Participant boxes | Supported | ASCII and Unicode box drawing with centered labels. |
+| Participant boxes | Supported | ASCII and Unicode box drawing with centered labels. Mermaid-compatible output renders top participant boxes only by default; `AsciiRenderOptions::with_sequence_mirror_actors(true)` also renders bottom participant boxes. |
 | Lifelines | Supported | One lifeline row before each message and one trailing lifeline row. |
 | Solid filled messages | Supported | `A->>B` and reverse direction messages. |
 | Dotted filled messages | Supported | `A-->>B` and reverse direction messages. |
@@ -66,6 +66,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
   comparison; trailing spaces in golden files are not product-significant.
 - Diagram titles render as terminal text above the participant row; accessibility titles remain
   metadata and are not rendered in the text diagram.
+- Mermaid 11.15 defaults `sequence.mirrorActors` to `false`; bottom participant boxes are therefore
+  opt-in in `merman-ascii` instead of part of the default golden fixture contract.
 - Wrapped actor labels and wrapped boxes remain unsupported because they require multi-line
   participant and group-box layout.
 - Sequence messages and notes wrap with deterministic terminal display-width heuristics; this is a

@@ -13,7 +13,7 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, and cylinder/database shapes. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
-| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels, deterministic length spacing, and `mermaid-ascii` padding directives for simple LR/TD edges. |
+| Edges | Supported subset | Directed point arrows, open edges, dotted edges, thick edges, edge labels, deterministic length spacing, TD same-rank merge edges, and `mermaid-ascii` padding directives for simple LR/TD edges. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, external nodes, and subgraph edge crossings covered by copied `mermaid-ascii` graph fixtures. |
 | Layout | Supported subset | LR roots, child levels, multi-root graphs, fan-out/fan-in, self-loops, same-row back edges, crossing/backlink routes, TD branches, and subgraphs use a deterministic grid layout. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -76,8 +76,8 @@ reference implementation is only an implementation aid.
 
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
-- TD routing supports vertical chains, branch layouts, bent cross-column downward edges, and
-  right-side back-edge label lanes for the copied fixture set.
+- TD routing supports vertical chains, branch layouts, same-rank merge edges, bent cross-column
+  downward edges, and right-side back-edge label lanes for the copied fixture set.
 - `BT` and `RL` remain root-direction transforms only.
 - `FlowSubgraph.dir` currently ships only for internal, no-cross-boundary local `LR` subgraphs
   inside canonical `TD` roots. Cross-boundary mixed-direction edges and broader local `TD`/nested

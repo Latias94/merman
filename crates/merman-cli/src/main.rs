@@ -171,6 +171,7 @@ struct Args {
     math_renderer: MathRendererKind,
     render_format: RenderFormat,
     render_scale: f32,
+    sequence_mirror_actors: bool,
     background: Option<String>,
     viewport_width: f64,
     viewport_height: f64,
@@ -211,13 +212,14 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--math-renderer none|ratex] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--format svg|png|jpg|pdf|ascii|unicode] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--math-renderer none|ratex] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png|jpg|pdf|ascii|unicode] [--scale <n>] [--background <css-color>] [--sequence-mirror-actors] [--text-measurer deterministic|vendored] [--math-renderer none|ratex] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
   - render --format ascii|unicode prints terminal-friendly text output.\n\
+  - --sequence-mirror-actors mirrors sequence participants below the lifelines for ascii|unicode output.\n\
   - --math-renderer ratex requires building merman-cli with --features ratex-math.\n\
   - render can also rasterize SVG input when --format is png/jpg/pdf (input starts with '<svg').\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
@@ -281,6 +283,9 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                 if !(args.render_scale.is_finite() && args.render_scale > 0.0) {
                     return Err(CliError::Usage(usage()));
                 }
+            }
+            "--sequence-mirror-actors" => {
+                args.sequence_mirror_actors = true;
             }
             "--background" => {
                 let Some(bg) = it.next() else {
@@ -563,7 +568,8 @@ impl<'a> RenderRequest<'a> {
             RenderFormat::Ascii => merman::ascii::AsciiRenderOptions::ascii(),
             RenderFormat::Unicode => merman::ascii::AsciiRenderOptions::unicode(),
             _ => return Err(CliError::Usage(usage())),
-        };
+        }
+        .with_sequence_mirror_actors(self.args.sequence_mirror_actors);
         let Some(rendered) =
             merman::ascii::render_ascii_sync(self.engine, text, self.parse_options, &options)?
         else {

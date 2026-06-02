@@ -53,6 +53,7 @@ Useful flags:
 - `--id <diagram-id>` sets the root SVG id and internal marker id prefix.
 - `--scale <n>` controls PNG/JPG raster scale.
 - `--background <css-color>` sets raster background.
+- `--sequence-mirror-actors` mirrors sequence participant boxes below lifelines for `--format ascii|unicode`.
 - `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 - `--viewport-width <w>` and `--viewport-height <h>` configure viewport-sensitive layouts.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
@@ -62,6 +63,7 @@ ASCII/Unicode output is feature-gated in the Rust package:
 ```sh
 printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
 printf "classDiagram\nclass Animal\n" | cargo run -p merman-cli --features ascii -- render --format unicode -
+printf "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n" | cargo run -p merman-cli --features ascii -- render --format unicode --sequence-mirror-actors -
 ```
 
 With `--features ascii`, terminal text rendering currently supports flowchart/graph,

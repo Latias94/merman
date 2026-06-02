@@ -8,7 +8,38 @@ use super::super::path::{
 use super::{
     PlannedRouteCell, PlannedRouteSegment, RoutePlan, edge_arrow_cell_in_segment,
     edge_line_cell_in_segment, planned_label_on_canvas_lines, route_cell_in_segment,
+    route_turn_char,
 };
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct GridRouteOptions {
+    start_port: Option<Port>,
+    end_port: Option<Port>,
+    segment: PlannedRouteSegment,
+}
+
+impl GridRouteOptions {
+    pub(super) fn direct() -> Self {
+        Self {
+            start_port: None,
+            end_port: None,
+            segment: PlannedRouteSegment::Direct,
+        }
+    }
+
+    pub(super) fn with_ports(start_port: Option<Port>, end_port: Option<Port>) -> Self {
+        Self {
+            start_port,
+            end_port,
+            segment: PlannedRouteSegment::Direct,
+        }
+    }
+
+    pub(super) fn with_segment(mut self, segment: PlannedRouteSegment) -> Self {
+        self.segment = segment;
+        self
+    }
+}
 
 pub(super) fn plan_left_right_grid_path_route(
     graph_layout: &GraphLayout,
@@ -17,7 +48,14 @@ pub(super) fn plan_left_right_grid_path_route(
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
 ) -> Option<RoutePlan> {
-    plan_left_right_grid_path_route_with_ports(graph_layout, from, to, edge, charset, None, None)
+    plan_left_right_grid_path_route_with_options(
+        graph_layout,
+        from,
+        to,
+        edge,
+        charset,
+        GridRouteOptions::direct(),
+    )
 }
 
 pub(super) fn plan_left_right_grid_path_route_with_ports(
@@ -29,35 +67,37 @@ pub(super) fn plan_left_right_grid_path_route_with_ports(
     start_port: Option<Port>,
     end_port: Option<Port>,
 ) -> Option<RoutePlan> {
-    plan_left_right_grid_path_route_with_ports_and_segment(
+    plan_left_right_grid_path_route_with_options(
         graph_layout,
         from,
         to,
         edge,
         charset,
-        start_port,
-        end_port,
-        PlannedRouteSegment::Direct,
+        GridRouteOptions::with_ports(start_port, end_port),
     )
 }
 
-pub(super) fn plan_left_right_grid_path_route_with_ports_and_segment(
+pub(super) fn plan_left_right_grid_path_route_with_options(
     graph_layout: &GraphLayout,
     from: &NodeLayout,
     to: &NodeLayout,
     edge: &AsciiGraphEdge,
     charset: &GraphCharset,
-    start_port: Option<Port>,
-    end_port: Option<Port>,
-    segment: PlannedRouteSegment,
+    options: GridRouteOptions,
 ) -> Option<RoutePlan> {
-    let (path, start_port, end_port) =
-        route_grid_path_with_ports(&graph_layout.nodes, from, to, start_port, end_port)?;
+    let (path, start_port, end_port) = route_grid_path_with_ports(
+        &graph_layout.nodes,
+        from,
+        to,
+        options.start_port,
+        options.end_port,
+    )?;
     if path.len() < 2 {
         return None;
     }
 
     let path = merge_grid_path(path);
+    let segment = options.segment;
     let (mut cells, lines_drawn, line_dirs) =
         plan_grid_path(graph_layout, &path, edge, charset, segment);
     if lines_drawn.is_empty() || line_dirs.is_empty() {
@@ -178,31 +218,9 @@ fn plan_grid_corners(
         cells.push(route_cell_in_segment(
             coord.x,
             coord.y,
-            grid_corner_char(previous, next, charset),
+            route_turn_char(previous, next, charset),
             segment,
         ));
-    }
-}
-
-fn grid_corner_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {
-    if !charset.unicode {
-        return '+';
-    }
-
-    match (previous, next) {
-        (StepDirection::Right, StepDirection::Down) | (StepDirection::Up, StepDirection::Left) => {
-            charset.top_right
-        }
-        (StepDirection::Right, StepDirection::Up) | (StepDirection::Down, StepDirection::Left) => {
-            charset.corner_right_up
-        }
-        (StepDirection::Left, StepDirection::Down) | (StepDirection::Up, StepDirection::Right) => {
-            charset.top_left
-        }
-        (StepDirection::Left, StepDirection::Up) | (StepDirection::Down, StepDirection::Right) => {
-            charset.corner_down_right
-        }
-        _ => '+',
     }
 }
 

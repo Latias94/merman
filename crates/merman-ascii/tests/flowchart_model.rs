@@ -448,6 +448,34 @@ fn flowchart_parser_tb_edge_label_renders_between_nodes() {
 }
 
 #[test]
+fn flowchart_parser_top_down_branch_merge_uses_connected_unicode_bend_corner() {
+    let rendered = render_flowchart(
+        concat!(
+            "flowchart TD\n",
+            "    A[Start] --> B{Condition?}\n",
+            "    B -->|Yes| C[Execute]\n",
+            "    B -->|No| D[End]\n",
+            "    C --> D\n",
+        ),
+        &AsciiRenderOptions::unicode(),
+    )
+    .unwrap();
+
+    assert!(
+        rendered.contains("├────────┐"),
+        "top-down right/down branch should use a connected top-right bend: {rendered}"
+    );
+    assert!(
+        !rendered.contains("├────────└"),
+        "top-down right/down branch must not use a disconnected bottom-left bend: {rendered}"
+    );
+    assert!(
+        rendered.contains("│  Execute   ├────►│ End │"),
+        "top-down same-rank merge edge should be rendered instead of being dropped: {rendered}"
+    );
+}
+
+#[test]
 fn flowchart_parser_simple_subgraph_renders_group_box() {
     let rendered = render_flowchart(
         "flowchart TB\nsubgraph one\nA --> B\nend",

@@ -1,4 +1,6 @@
+use super::super::charset::GraphCharset;
 use super::super::layout::CanvasCoord;
+use super::path::StepDirection;
 
 mod grid;
 mod left_right;
@@ -125,6 +127,28 @@ fn planned_label_on_canvas_lines(
         end: last,
         text: label.to_string(),
     })
+}
+
+fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {
+    if !charset.unicode {
+        return '+';
+    }
+
+    match (previous, next) {
+        (StepDirection::Right, StepDirection::Down) | (StepDirection::Up, StepDirection::Left) => {
+            charset.top_right
+        }
+        (StepDirection::Right, StepDirection::Up) | (StepDirection::Down, StepDirection::Left) => {
+            charset.corner_right_up
+        }
+        (StepDirection::Left, StepDirection::Down) | (StepDirection::Up, StepDirection::Right) => {
+            charset.top_left
+        }
+        (StepDirection::Left, StepDirection::Up) | (StepDirection::Down, StepDirection::Right) => {
+            charset.corner_down_right
+        }
+        _ => '+',
+    }
 }
 
 #[cfg(test)]
