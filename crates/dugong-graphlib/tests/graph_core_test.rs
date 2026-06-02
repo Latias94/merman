@@ -787,6 +787,26 @@ fn set_parent_moves_node_from_previous_parent() {
 }
 
 #[test]
+fn parent_matches_graphlib_optional_query_shape() {
+    let mut simple: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    simple.ensure_node("a");
+    assert_eq!(simple.parent("a"), None);
+    assert_eq!(simple.parent("missing"), None);
+
+    let mut compound: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    assert_eq!(compound.parent("missing"), None);
+
+    compound.ensure_node("a");
+    assert_eq!(compound.parent("a"), None);
+
+    compound.set_parent("a", "parent");
+    assert_eq!(compound.parent("a"), Some("parent"));
+}
+
+#[test]
 fn clear_parent_returns_node_to_root_children() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
         compound: true,
@@ -794,6 +814,7 @@ fn clear_parent_returns_node_to_root_children() {
     });
     g.set_parent("a", "parent");
 
+    g.clear_parent("a");
     g.clear_parent("a");
 
     assert_eq!(g.parent("a"), None);

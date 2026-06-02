@@ -221,3 +221,5 @@
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-setnodes.md","reason":"HPD-050 journal: Graphlib setNodes(nodes, value) now has Rust set_nodes and set_nodes_with_label seams."}
 {"file":"repo-ref/dagre/test/order/sort-subgraph-test.js","reason":"HPD-050 source evidence: pinned Dagre tests use Graphlib setNodes for graph-construction fixtures."}
 {"file":"repo-ref/dagre/test/rank/network-simplex-test.js","reason":"HPD-050 source evidence: pinned Dagre tests use chainable setNodes in network-simplex fixtures; Rust maps state behavior without JS chaining."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-parent.md","reason":"HPD-050 journal: Graphlib parent(v) and clear-parent state behavior are now direct Rust regressions."}
+{"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib parent and setParent clear-parent cases define optional parent query behavior."}

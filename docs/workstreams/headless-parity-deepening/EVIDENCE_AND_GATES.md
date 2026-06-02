@@ -763,6 +763,32 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
   passed with `267` tests.
 
+Twenty-first slice Graphlib parent/clear-parent coverage:
+
+- Added direct regression coverage in
+  [crates/dugong-graphlib/tests/graph_core_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/graph_core_test.rs)
+  for Graphlib's `parent(v)` optional query shape: non-compound graphs, missing nodes, unassigned
+  compound nodes, and assigned compound parents.
+- Extended `clear_parent_returns_node_to_root_children` to cover idempotent parent removal, mapping
+  Graphlib's `setParent(v)` / `setParent(v, undefined)` clear-parent state behavior onto Rust's
+  explicit `clear_parent(v)` API.
+- Updated the Graphlib coverage ledger so source `setParent` parent-removal and `parent` query cases
+  are no longer implicit assumptions behind Dugong/renderer usage.
+- No production code changed in this slice. Current Rust APIs already matched the state behavior,
+  while JS chainability, optional-argument overloading, and ID stringification remain explicit shape
+  differences.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib parent`
+  passed with `9` tests.
+- `cargo fmt --check -p dugong-graphlib`
+  passed.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `84` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

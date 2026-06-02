@@ -110,8 +110,16 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `removeNode / removes parent / child relationships for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_clears_parent_child_relationships`
 - `setParent / creates the parent if it does not exist` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
 - `setParent / creates the child if it does not exist` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_creates_parent_and_child_nodes`
+- `setParent / has the parent as undefined if it has never been invoked` -> `crates/dugong-graphlib/tests/graph_core_test.rs::parent_matches_graphlib_optional_query_shape`
 - `setParent / moves the node from the previous parent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_moves_node_from_previous_parent`
+- `setParent / removes the parent if the parent is undefined` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
+- `setParent / removes the parent if no parent was specified` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
+- `setParent / is idempotent to remove a parent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::clear_parent_returns_node_to_root_children`
 - `setParent / preserves the tree invariant` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_parent_preserves_tree_invariant`
+- `parent / returns undefined if the graph is not compound` -> `crates/dugong-graphlib/tests/graph_core_test.rs::parent_matches_graphlib_optional_query_shape`
+- `parent / returns undefined if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::parent_matches_graphlib_optional_query_shape`
+- `parent / defaults to undefined for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::parent_matches_graphlib_optional_query_shape`
+- `parent / returns the current parent assignment` -> `crates/dugong-graphlib/tests/graph_core_test.rs::parent_matches_graphlib_optional_query_shape`
 - `children / returns undefined if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
 - `children / defaults to an empty list for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`
 - `children / returns undefined for a non-compound graph without the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::children_opt_distinguishes_missing_nodes_from_empty_children`

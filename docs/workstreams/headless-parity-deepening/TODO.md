@@ -107,8 +107,10 @@ Last updated: 2026-06-02
   `children_root()` behavior stable for Rust callers. A follow-up `setPath(nodes, value)` slice
   now adds `set_path_with_label(...)` with method-scoped `E: Clone` instead of forcing cloneability
   onto ordinary graph use. A follow-up `setNodes(nodes, value)` slice now adds `set_nodes(...)`
-  and `set_nodes_with_label(...)` with method-scoped `N: Clone` for the batch-label API. ARCH-022's
-  first Dagre reference adapter slice is also landed:
+  and `set_nodes_with_label(...)` with method-scoped `N: Clone` for the batch-label API. A follow-up
+  parent/clear-parent coverage slice maps Graphlib `parent(v)` and clear-parent state behavior to
+  existing Rust APIs without adding JS optional-argument overloading. ARCH-022's first Dagre
+  reference adapter slice is also landed:
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
