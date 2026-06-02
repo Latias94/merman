@@ -819,6 +819,27 @@ Architecture nested-groups finalElements audit (2026-06-03):
 - Classification stays nested compound-bounds phase residual. Do not change SVG group-rect
   translation, configured padding, root finalization, or edge path emission for this row alone.
 
+Architecture unicode-label finalElements audit (2026-06-03):
+
+- Re-audited `stress_architecture_unicode_and_xml_escapes_019` with finalElements, local group
+  debug, and focused text measurements.
+- Current focused compare remains expected-fail at upstream `469.822x463.593` vs local
+  `472.822x463.593`; height is exact and root width is wider by `3px`.
+- Browser final group `i` bbox is `node.boundingBox().w=389.822,h=383.593`, and the pinned
+  upstream SVG group rect matches it after Mermaid's `iconSize / 2` rect translation. Local group
+  rect is `w=392.822,h=383.593`.
+- Browser final service bboxes are `metrics.w=123,labelBounds.w=121`,
+  `logs.w=101,labelBounds.w=99`, `store.w=93,labelBounds.w=91`, and
+  `alert.w=97,labelBounds.w=95`.
+- Local SVG service positions are all about `-1.5px` on X compared with the browser probe, while Y
+  values match. Local group debug confirms configured `pad=42.5` and final width `392.822`.
+- Focused vendored text widths (`Metrics Exporter=118.055`, `Log Collector=94.945`,
+  `Store Query=84.773`, `Alert Service=91.961`) do not map to browser `labelBounds` or local
+  group-child bounds by one stable offset or scale.
+- The stored upstream and local SVGs emit the same decoded label words. This row is not an XML
+  entity or label-decode issue; classification stays service label / group child bbox phase
+  residual.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`

@@ -227,6 +227,11 @@ Current repository reality to preserve:
     SVG matches that. Local services are uniformly shifted about `+1.25px` on X, while nested
     `data` and `platform` group widths are `0.5px` short, producing the `+2.5px` root tail after
     propagation. Keep it classified as nested compound-bounds phase residual.
+  - A follow-up `unicode_and_xml_escapes_019` finalElements audit reconfirmed this is not parser
+    escaping, label decode, SVG group-rect translation, root-finalize, or edge-emission drift. The
+    stored upstream and local SVGs emit the same decoded label words. Browser group `i` final bbox
+    is `389.822x383.593`, while local emits `392.822x383.593`; local service positions are about
+    `-1.5px` on X with matching Y. Treat it as service label / group child bbox phase residual.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
