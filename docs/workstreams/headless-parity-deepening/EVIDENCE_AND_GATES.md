@@ -171,3 +171,50 @@ Residual evidence:
   `+5.000px`.
 - The unchanged focused tail is intentional evidence that this pass moved ownership boundaries
   without silently tuning Architecture root widths.
+
+Second slice outcome:
+
+- Re-audited `stress_architecture_batch4_init_small_icons_061` against Mermaid source and the
+  existing browser-probe evidence instead of treating it as a service-label scale problem.
+- Mermaid's `svgDraw.ts` renders Architecture edge labels through `createText(...)` and then
+  rotates Y-axis labels with `transform="translate(... ) rotate(-90)"`; the root viewport comes
+  from `setupGraphViewbox(svg.getBBox() + padding)`.
+- The old local root-bounds model treated edge-label bboxes as centered AABBs. That missed the
+  positive local `createText` y-range, which becomes a rightward x-extension after `rotate(-90)`.
+- Extracted `architecture_create_text_bbox_y_range_px(...)` in
+  [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+  and made Architecture edge-label plans carry transformed `Bounds` instead of only centered
+  width/height pairs.
+- Corrected `architecture_create_text_compound_label_extra_bottom_px(...)` to the source-backed
+  `fontSize + 1px` rule. The previous `fontSize * 17 / 16` formula was only equivalent at the
+  default `16px` font size and undercounted custom Architecture font sizes such as `12px`.
+- Added regression coverage for the small-icon fixture: service/group sizing remains icon-floor
+  dominated, but the vertical edge label now contributes to the root width and the compound label
+  bottom follows `architecture.fontSize + 1px`.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-render architecture_text_constants_match_mermaid --lib`
+- `cargo test -p merman-render architecture_vertical_edge_label_bounds_use_create_text_y_offsets --test architecture_svg_test`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch4_init_small_icons_061 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch4_small_icons_hpd050_edge_label_bounds.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_hpd050_edge_label_bounds.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_edge_label_bounds.md`
+- `cargo run -p xtask -- report-overrides --check-no-growth`
+- `git diff --check`
+
+Residual evidence after the second slice:
+
+- The focused small-icon row is now root-green: upstream and local both report
+  `187.859x191.571`.
+- The full Architecture structural `parity` gate remains green.
+- Full Architecture `parity-root` still fails, but the mismatch count dropped from `29` to `26`.
+  `stress_architecture_batch4_init_small_icons_061`,
+  `stress_architecture_batch4_init_fontsize_wrap_063`, and
+  `stress_architecture_edge_label_corner_cases_012` are now `+0.000` root delta rows.
+- The remaining top Architecture residuals are still led by
+  `stress_architecture_junction_fork_join_026` (`+13.976px`),
+  `stress_architecture_batch5_long_titles_and_punct_076` (`+5.000px`), and
+  `stress_architecture_html_titles_and_escapes_041` (`+5.000px`). These remain open and should not
+  be closed by constants without new source-backed evidence.

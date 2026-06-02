@@ -365,6 +365,13 @@ piecewise rule. The batch4 small-icon row is instead icon-floor dominated (`42x5
 bboxes). A single new global label scale would still be self-deceptive; future work should use
 generated Architecture canvas-label evidence or a better deterministic canvas measurer.
 
+Later HPD-050 correction: the small-icon service/group sizing diagnosis was still useful, but the
+root-width cause was not a service label scale. Re-auditing Mermaid `svgDraw.ts` and
+`setupGraphViewbox.js` showed that the rotated Y-axis edge label's non-centered `createText()`
+local y-range contributes to `svg.getBBox()`. Merman now transforms that y-range for Architecture
+edge-label root bounds and uses `fontSize + 1px` for compound label bottom. As a result,
+`stress_architecture_batch4_init_small_icons_061` is root-green without a root override.
+
 Fresh focused 2026-06-02 rechecks also show the three `reasonable_height` fixtures are not
 root-green: each still carries the same `+0.380px` width / tiny height rounding tail
 (`1859.440px -> 1859.820px` max-width). Treat those rows as part of the honest residual set unless
@@ -390,6 +397,11 @@ and transforms match upstream, but browser text bboxes are about `1.788px` wider
 headless estimate. `stress_architecture_nested_groups_002` is a nested compound/layout tail with
 matching source inputs; local services shift about `+1.25px` in X and the outer group right edge
 lands about `3.75px` farther right.
+
+Later HPD-050 correction: `stress_architecture_edge_label_corner_cases_012` and
+`stress_architecture_batch4_init_fontsize_wrap_063` were also closed by the source-backed
+`createText()` y-range edge-label bounds fix. Do not reopen them as browser text-scale tails unless
+a future Mermaid baseline changes the source behavior.
 
 ## Active Task
 
@@ -545,7 +557,8 @@ lands about `3.75px` farther right.
   residual is group/service bbox width.
 - Do not alter Architecture edge-label wrapping from `stress_architecture_edge_label_corner_cases_012`
   or `stress_architecture_batch4_init_fontsize_wrap_063`; focused SVG text splitting already
-  matches upstream.
+  matches upstream. These rows are now root-green after the HPD-050 `createText()` y-range
+  root-bounds fix, so further work should not tune their wrapping or text scale.
 - Do not tune nested-group padding from `stress_architecture_nested_groups_002`; current evidence
   points to small FCoSE/compound-bound drift after source inputs match.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and

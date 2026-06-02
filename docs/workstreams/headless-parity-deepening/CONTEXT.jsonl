@@ -7,3 +7,6 @@
 {"file":"docs/adr/0014-upstream-parity-policy.md","reason":"Parity policy and intended relationship to upstream Mermaid."}
 {"file":"docs/adr/0050-svg-viewbox-parity.md","reason":"Root viewport and viewBox parity decisions."}
 {"file":"docs/adr/0062-fixture-derived-overrides.md","reason":"Override policy boundary; useful when deciding what not to encode."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts","reason":"HPD-050 edge-label bounds source: Architecture edge labels are emitted via createText and rotated after layout."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/setupGraphViewbox.js","reason":"HPD-050 root-bounds source: Architecture viewBox uses svg.getBBox() plus configured padding."}
+{"file":"target/compare/architecture_report_parity_root_after_hpd050_edge_label_bounds.md","reason":"HPD-050 evidence: Architecture parity-root mismatch count dropped from 29 to 26; small-icons, init_fontsize_wrap, and edge_label_corner_cases are root-green."}

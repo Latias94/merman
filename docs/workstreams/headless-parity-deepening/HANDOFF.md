@@ -22,7 +22,7 @@ Current repository reality to preserve:
 
 - Structural `parity` is green for the implemented matrix.
 - `parity-root` remains the active residual front.
-- Honest top residual buckets are currently Flowchart `61`, Architecture `29`, Sequence `27`,
+- Honest top residual buckets are currently Flowchart `61`, Architecture `26`, Sequence `27`,
   Class `12`, Timeline `3`, Journey `2`.
 - Sequence left-of wrapped note width semantics were improved in commit `cd9f02ff`, but a small
   root-width residual remains and should not be overfit without stronger evidence.
@@ -59,3 +59,13 @@ Current repository reality to preserve:
     that group titles do not affect the pre-layout `eles.boundingBox()` relocation center.
   - The focused batch5 long-title residual stayed unchanged at upstream `542.926px` vs local
     `547.926px`; this pass was boundary cleanup, not a hidden root-width tune.
+  - A second source-backed bounds slice fixed Architecture edge-label root bounds:
+    `createText()` local y-range is now transformed for X/Y edge labels instead of being treated as
+    a centered AABB, and compound label bottom now uses the source-backed `fontSize + 1px` rule.
+  - This made `stress_architecture_batch4_init_small_icons_061`,
+    `stress_architecture_batch4_init_fontsize_wrap_063`, and
+    `stress_architecture_edge_label_corner_cases_012` root-green without adding root overrides.
+  - Full Architecture structural parity is still green; Architecture `parity-root` now has `26`
+    mismatches. The remaining top tails are still `junction_fork_join_026` (`+13.976px`),
+    `batch5_long_titles_and_punct_076` (`+5.000px`), and `html_titles_and_escapes_041`
+    (`+5.000px`).

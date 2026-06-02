@@ -70,8 +70,17 @@ pub(crate) fn architecture_create_text_root_label_extra_bottom_px(
     font_size_px * ((24.1875 / 16.0) + extra_lines * 1.1)
 }
 
+pub(crate) fn architecture_create_text_bbox_y_range_px(
+    font_size_px: f64,
+    line_count: usize,
+) -> (f64, f64) {
+    let height = architecture_create_text_bbox_height_px(font_size_px, line_count);
+    let max_y = architecture_create_text_root_label_extra_bottom_px(font_size_px, line_count);
+    (max_y - height, max_y)
+}
+
 pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) * (17.0 / 16.0)
+    font_size_px.max(1.0) + 1.0
 }
 
 pub(crate) fn architecture_compound_bbox_padding_px(padding_px: f64) -> f64 {
@@ -242,8 +251,20 @@ mod tests {
     fn architecture_text_constants_match_mermaid() {
         assert!((super::architecture_create_text_bbox_height_px(16.0, 2) - 36.6).abs() < 1e-9);
         assert_eq!(
+            super::architecture_create_text_bbox_y_range_px(16.0, 1),
+            (5.1875, 24.1875)
+        );
+        assert!((super::architecture_create_text_bbox_y_range_px(16.0, 2).0 - 5.1875).abs() < 1e-9);
+        assert!(
+            (super::architecture_create_text_bbox_y_range_px(16.0, 2).1 - 41.7875).abs() < 1e-9
+        );
+        assert_eq!(
             super::architecture_create_text_compound_label_extra_bottom_px(16.0),
             17.0
+        );
+        assert_eq!(
+            super::architecture_create_text_compound_label_extra_bottom_px(12.0),
+            13.0
         );
         assert_eq!(
             super::architecture_create_text_root_label_extra_bottom_px(16.0, 1),

@@ -1228,6 +1228,14 @@ Outcome:
   fix `stress_architecture_batch5_long_titles_and_punct_076`; the probe evidence is mixed by label
   length and icon floor.
 
+Superseded note from HPD-050:
+
+- The batch5 long-label conclusion still stands, but
+  `stress_architecture_batch4_init_small_icons_061` was later closed without a label-scale tweak.
+  The reusable source-backed fix was to transform the local `createText()` y-range when estimating
+  rotated Architecture edge-label root bounds and to use `fontSize + 1px` for compound label
+  bottom.
+
 ## M15RV-089 - Architecture Group/Port Residual Diagnostics
 
 Fresh diagnostic evidence from 2026-06-02:
@@ -1296,6 +1304,13 @@ Outcome:
   improvement: Mermaid emits translated port-direction polygons, while merman rotates diagonal
   arrowheads to the routed edge segment. The parity comparator already treats that transform as
   geometry noise, and root gates still compare the rendered viewport.
+
+Superseded note from HPD-050:
+
+- `stress_architecture_edge_label_corner_cases_012` and
+  `stress_architecture_batch4_init_fontsize_wrap_063` were later closed by the source-backed
+  Architecture edge-label root-bounds fix. Their earlier text-splitting evidence remains valid;
+  the missing piece was bbox placement after `createText()` and rotation, not label wrapping.
 
 ## 2026-06-02 - Class HTML Label Width Investigation
 
