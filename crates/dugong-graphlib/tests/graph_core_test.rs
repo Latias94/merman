@@ -86,6 +86,72 @@ fn sinks_returns_nodes_without_out_edges() {
 }
 
 #[test]
+fn filter_nodes_copies_selected_graph_labels_edges_and_options() {
+    let mut g: Graph<Option<i32>, Option<i32>, Option<String>> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(Some("graph label".to_string()));
+    g.set_node("a", Some(123));
+    g.set_path(&["a", "b", "c"]);
+    g.set_edge_named("a", "c", Some("named"), Some(Some(456)));
+
+    let g2 = g.filter_nodes(|_| true);
+
+    assert!(g2.is_directed());
+    assert!(g2.is_multigraph());
+    assert!(g2.is_compound());
+    assert_eq!(g2.graph().as_deref(), Some("graph label"));
+    assert_eq!(sorted(g2.nodes().collect()), vec!["a", "b", "c"]);
+    assert_eq!(sorted(g2.successors("a")), vec!["b", "c"]);
+    assert_eq!(sorted(g2.successors("b")), vec!["c"]);
+    assert_eq!(g2.node("a"), Some(&Some(123)));
+    assert_eq!(g2.edge("a", "c", Some("named")), Some(&Some(456)));
+
+    let undirected: Graph<(), (), ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    assert!(!undirected.filter_nodes(|_| true).is_directed());
+
+    let simple: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    assert!(!simple.filter_nodes(|_| true).is_multigraph());
+    assert!(!simple.filter_nodes(|_| true).is_compound());
+}
+
+#[test]
+fn filter_nodes_drops_rejected_nodes_and_incident_edges() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+
+    let g2 = g.filter_nodes(|v| v == "a");
+    let empty = g.filter_nodes(|_| false);
+
+    assert_eq!(g2.nodes().collect::<Vec<_>>(), vec!["a"]);
+    assert!(g2.edge_keys().is_empty());
+    assert!(empty.nodes().collect::<Vec<_>>().is_empty());
+    assert!(empty.edge_keys().is_empty());
+}
+
+#[test]
+fn filter_nodes_preserves_compound_subgraphs_and_promotes_missing_parent() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    g.set_parent("a", "parent");
+    g.set_parent("parent", "root");
+
+    let full = g.filter_nodes(|_| true);
+    let promoted = g.filter_nodes(|v| v != "parent");
+
+    assert_eq!(full.parent("a"), Some("parent"));
+    assert_eq!(full.parent("parent"), Some("root"));
+    assert_eq!(promoted.parent("a"), Some("root"));
+}
+
+#[test]
 fn ensure_node_uses_default_label_for_new_nodes() {
     let mut g: Graph<Option<i32>, (), ()> = Graph::new(GraphOptions::default());
     g.set_default_node_label(|| Some(7));
@@ -93,6 +159,26 @@ fn ensure_node_uses_default_label_for_new_nodes() {
     g.ensure_node("a");
 
     assert_eq!(g.node("a"), Some(&Some(7)));
+}
+
+#[test]
+fn default_node_label_can_read_node_id() {
+    let mut g: Graph<Option<String>, (), ()> = Graph::new(GraphOptions::default());
+    g.set_default_node_label_with_id(|v| Some(format!("{v}-foo")));
+
+    g.ensure_node("a");
+
+    assert_eq!(g.node("a").and_then(|v| v.as_deref()), Some("a-foo"));
+}
+
+#[test]
+fn default_node_label_is_not_used_if_explicit_label_is_set() {
+    let mut g: Graph<Option<i32>, (), ()> = Graph::new(GraphOptions::default());
+    g.set_default_node_label(|| Some(7));
+
+    g.set_node("a", Some(3));
+
+    assert_eq!(g.node("a"), Some(&Some(3)));
 }
 
 #[test]
@@ -140,6 +226,60 @@ fn set_edge_creates_endpoint_nodes_and_uses_default_edge_label() {
     assert!(g.has_node("b"));
     assert_eq!(g.edge("a", "b", None), Some(&Some(9)));
     assert_eq!(g.edge_count(), 1);
+}
+
+#[test]
+fn default_edge_label_can_read_endpoints_and_name() {
+    let mut g: Graph<(), Option<String>, ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_default_edge_label_with_endpoints(|v, w, name| {
+        Some(format!("{v}-{w}-{}-foo", name.unwrap_or("none")))
+    });
+
+    g.set_edge_named("a", "b", Some("name"), None);
+
+    assert_eq!(
+        g.edge("a", "b", Some("name")).and_then(|v| v.as_deref()),
+        Some("a-b-name-foo")
+    );
+}
+
+#[test]
+fn default_edge_label_does_not_change_existing_edge() {
+    let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+    g.set_default_edge_label(|| Some(9));
+
+    assert_eq!(g.edge("a", "b", None), Some(&None));
+}
+
+#[test]
+fn default_edge_label_is_not_used_if_explicit_label_is_set() {
+    let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());
+    g.set_default_edge_label(|| Some(9));
+
+    g.set_edge_with_label("a", "b", Some(3));
+
+    assert_eq!(g.edge("a", "b", None), Some(&Some(3)));
+}
+
+#[test]
+fn default_edge_label_does_not_replace_existing_named_edge() {
+    let mut g: Graph<(), Option<String>, ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_edge_named("a", "b", Some("name"), Some(Some("old".to_string())));
+    g.set_default_edge_label_with_endpoints(|_, _, _| Some("should not set this".to_string()));
+
+    g.set_edge_named("a", "b", Some("name"), None);
+
+    assert_eq!(
+        g.edge("a", "b", Some("name")).and_then(|v| v.as_deref()),
+        Some("old")
+    );
 }
 
 #[test]

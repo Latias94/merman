@@ -655,6 +655,34 @@ Focused verification:
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd050_isolated_root_bounds.md`
   remains an expected failure with `25` dom mismatches.
 
+Seventeenth slice Graphlib filter/default-label API coverage:
+
+- Added source-backed `Graph::filter_nodes(...)` in
+  [crates/dugong-graphlib/src/graph/core.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/graph/core.rs).
+  The method copies selected nodes, graph label, options, edge labels whose endpoints remain in the
+  filtered graph, and Graphlib's compound parent promotion behavior when an intermediate parent is
+  filtered out.
+- Deepened Graphlib default-label parity without adding a global graph type constraint:
+  `set_default_node_label(...)` and `set_default_edge_label(...)` keep the existing no-arg Rust API,
+  while `set_default_node_label_with_id(...)` and
+  `set_default_edge_label_with_endpoints(...)` expose Graphlib's source-backed callback arguments.
+- `filter_nodes(...)` has method-level `Clone` bounds only for the copied graph labels. Ordinary
+  Dagre graph construction and layout mutation remain unconstrained.
+- Updated
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  to map the newly ported `repo-ref/graphlib/test/graph-test.js` cases.
+- This is public Graph API parity work, not a renderer tune and not a move toward unused Graphlib
+  shortest-path algorithms.
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo test -p dugong-graphlib --test graph_core_test`
+  passed with `52` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong-graphlib`
+  passed with `78` tests.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p dugong`
+  passed with `267` tests.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

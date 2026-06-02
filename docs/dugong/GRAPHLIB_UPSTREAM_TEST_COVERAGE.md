@@ -83,11 +83,24 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `nodes / returns the ids of nodes in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::nodes_returns_inserted_node_ids`
 - `sources / returns nodes in the graph that have no in-edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::sources_returns_nodes_without_in_edges`
 - `sinks / returns nodes in the graph that have no out-edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::sinks_returns_nodes_without_out_edges`
+- `filterNodes / returns an identical graph when the filter selects everything` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_copies_selected_graph_labels_edges_and_options`
+- `filterNodes / returns an empty graph when the filter selects nothing` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_drops_rejected_nodes_and_incident_edges`
+- `filterNodes / only includes nodes for which the filter returns true` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_drops_rejected_nodes_and_incident_edges`
+- `filterNodes / removes edges that are connected to removed nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_drops_rejected_nodes_and_incident_edges`
+- `filterNodes / preserves the directed option` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_copies_selected_graph_labels_edges_and_options`
+- `filterNodes / preserves the multigraph option` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_copies_selected_graph_labels_edges_and_options`
+- `filterNodes / preserves the compound option` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_copies_selected_graph_labels_edges_and_options`
+- `filterNodes / includes subgraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_preserves_compound_subgraphs_and_promotes_missing_parent`
+- `filterNodes / includes multi-level subgraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_preserves_compound_subgraphs_and_promotes_missing_parent`
+- `filterNodes / promotes a node to a higher subgraph if its parent is not included` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_preserves_compound_subgraphs_and_promotes_missing_parent`
 - `setNode / creates the node if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNode / can set a value for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
 - `setNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
 - `setNodeDefaults / sets a default label for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNodeDefaults / does not change existing nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_does_not_change_existing_node_label`
+- `setNodeDefaults / is not used if an explicit value is set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_node_label_is_not_used_if_explicit_label_is_set`
+- `setNodeDefaults / can take a function` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
+- `setNodeDefaults / can take a function that takes the node's name` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_node_label_can_read_node_id`
 - `removeNode / does nothing if the node is not in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
 - `removeNode / removes the node if it is in the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
 - `removeNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::remove_node_is_idempotent_and_removes_incident_edges`
@@ -135,6 +148,12 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `nodeEdges / returns all edges that this node points at` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_returns_all_incident_edges`
 - `nodeEdges / works for multigraphs` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_returns_parallel_multigraph_edges`
 - `nodeEdges / can return only edges between specific nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::node_edges_between_returns_edges_between_specific_nodes`
+- `setDefaultEdgeLabel / sets a default label for new edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
+- `setDefaultEdgeLabel / does not change existing edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_does_not_change_existing_edge`
+- `setDefaultEdgeLabel / is not used if an explicit value is set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_is_not_used_if_explicit_label_is_set`
+- `setDefaultEdgeLabel / can take a function` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_creates_endpoint_nodes_and_uses_default_edge_label`
+- `setDefaultEdgeLabel / can take a function that takes the edge's endpoints and name` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_can_read_endpoints_and_name`
+- `setDefaultEdgeLabel / does not set a default value for a multi-edge that already exists` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_does_not_replace_existing_named_edge`
 
 ## Open API Shape Differences
 
@@ -154,8 +173,8 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 ## Next Priority
 
 1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers:
-   filterNodes if a Rust seam exists or should exist, default-label endpoint-aware callbacks if
-   useful, and additional compound child/root cases.
+   additional compound child/root API-shape cases may still be useful, but `filterNodes` and
+   endpoint-aware default label callbacks now have direct Rust coverage.
 2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
    before adding ad hoc snapshot serializers elsewhere.
 3. Keep non-used algorithms such as shortest paths, Prim, and Floyd-Warshall out of scope unless a

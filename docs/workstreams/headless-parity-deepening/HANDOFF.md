@@ -144,6 +144,12 @@ Current repository reality to preserve:
     guard: named edge insertion panics on simple graphs, and named lookup/removal does not alias the
     unnamed edge. Renderer graph construction that uses edge names is already multigraph-based, so
     this should be treated as a source-backed invariant fix rather than a rendering tune.
+  - The next Graphlib public API slice is also landed: `filter_nodes(...)` now copies selected
+    nodes/edges/options/graph label and applies Graphlib's compound parent promotion when an
+    intermediate parent is filtered out. Default node and edge label callbacks can now receive the
+    node id or edge endpoints/name through explicit Rust API methods while the existing no-arg
+    setters remain available. These APIs are method-scoped parity seams; they do not add broad
+    Clone bounds to ordinary layout graphs.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and

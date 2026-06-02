@@ -20,8 +20,8 @@ where
     options: GraphOptions,
 
     graph_label: G,
-    default_node_label: Box<dyn Fn() -> N + Send + Sync>,
-    default_edge_label: Box<dyn Fn() -> E + Send + Sync>,
+    default_node_label: Box<dyn Fn(&str) -> N + Send + Sync>,
+    default_edge_label: Box<dyn Fn(&str, &str, Option<&str>) -> E + Send + Sync>,
 
     nodes: Vec<Option<NodeEntry<N>>>,
     node_len: usize,
@@ -405,8 +405,8 @@ where
         Self {
             options,
             graph_label: G::default(),
-            default_node_label: Box::new(N::default),
-            default_edge_label: Box::new(E::default),
+            default_node_label: Box::new(|_| N::default()),
+            default_edge_label: Box::new(|_, _, _| E::default()),
             nodes: Vec::new(),
             node_len: 0,
             node_index: HashMap::default(),
@@ -470,6 +470,14 @@ where
     where
         F: Fn() -> N + Send + Sync + 'static,
     {
+        self.default_node_label = Box::new(move |_| f());
+        self
+    }
+
+    pub fn set_default_node_label_with_id<F>(&mut self, f: F) -> &mut Self
+    where
+        F: Fn(&str) -> N + Send + Sync + 'static,
+    {
         self.default_node_label = Box::new(f);
         self
     }
@@ -477,6 +485,14 @@ where
     pub fn set_default_edge_label<F>(&mut self, f: F) -> &mut Self
     where
         F: Fn() -> E + Send + Sync + 'static,
+    {
+        self.default_edge_label = Box::new(move |_, _, _| f());
+        self
+    }
+
+    pub fn set_default_edge_label_with_endpoints<F>(&mut self, f: F) -> &mut Self
+    where
+        F: Fn(&str, &str, Option<&str>) -> E + Send + Sync + 'static,
     {
         self.default_edge_label = Box::new(f);
         self
@@ -555,7 +571,7 @@ where
         if self.node_index.contains_key(&id) {
             return self;
         }
-        let label = (self.default_node_label)();
+        let label = (self.default_node_label)(&id);
         self.set_node(id, label)
     }
 
@@ -563,7 +579,7 @@ where
         if self.node_index.contains_key(id) {
             return self;
         }
-        let label = (self.default_node_label)();
+        let label = (self.default_node_label)(id);
         self.set_node(id.to_string(), label)
     }
 
@@ -706,6 +722,50 @@ where
             .collect()
     }
 
+    pub fn filter_nodes<F>(&self, mut filter: F) -> Self
+    where
+        N: Clone,
+        E: Clone,
+        G: Clone,
+        F: FnMut(&str) -> bool,
+    {
+        let mut copy = Self::new(self.options);
+        copy.set_graph(self.graph_label.clone());
+
+        for node in self.nodes.iter().filter_map(|n| n.as_ref()) {
+            if filter(&node.id) {
+                copy.set_node(node.id.clone(), node.label.clone());
+            }
+        }
+
+        for edge in self.edges.iter().filter_map(|e| e.as_ref()) {
+            if copy.has_node(&edge.key.v) && copy.has_node(&edge.key.w) {
+                copy.set_edge_named(
+                    edge.key.v.clone(),
+                    edge.key.w.clone(),
+                    edge.key.name.clone(),
+                    Some(edge.label.clone()),
+                );
+            }
+        }
+
+        if self.options.compound {
+            let copied_ids = copy.node_ids();
+            for id in copied_ids {
+                let mut parent = self.parent(&id);
+                while let Some(parent_id) = parent {
+                    if copy.has_node(parent_id) {
+                        copy.set_parent_ref(&id, parent_id);
+                        break;
+                    }
+                    parent = self.parent(parent_id);
+                }
+            }
+        }
+
+        copy
+    }
+
     pub fn set_edge(&mut self, v: impl Into<String>, w: impl Into<String>) -> &mut Self {
         self.set_edge_named(v, w, None::<String>, None)
     }
@@ -756,7 +816,9 @@ where
             key: key.clone(),
             v_ix,
             w_ix,
-            label: label.unwrap_or_else(|| (self.default_edge_label)()),
+            label: label.unwrap_or_else(|| {
+                (self.default_edge_label)(key.v.as_str(), key.w.as_str(), key.name.as_deref())
+            }),
         }));
         self.edge_len += 1;
         self.edge_index.insert(key, idx);

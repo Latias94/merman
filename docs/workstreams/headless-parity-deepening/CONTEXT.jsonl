@@ -195,3 +195,9 @@
 {"file":"crates/merman-render/src/svg/pipeline/builtin/root_background.rs","reason":"HPD-080 API: RootBackgroundPostprocessor rewrites only the root SVG inline background-color for host canvas integration."}
 {"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: svg.root_background_color exposes root canvas color rewriting through shared binding options_json."}
 {"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web SvgOptions exposes root_background_color."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-050-graphlib-filter-default-labels.md","reason":"HPD-050 journal: Graphlib filterNodes and endpoint-aware default label callbacks are source-backed public Graph API parity work."}
+{"file":"crates/dugong-graphlib/src/graph/core.rs","reason":"HPD-050 implementation: Graph::filter_nodes plus argument-aware default node/edge label callbacks align current Rust public API with Graphlib graph-test.js behavior."}
+{"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 regression: graph_core_test covers filterNodes copying, compound parent promotion, and default label callback arguments."}
+{"file":"docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md","reason":"HPD-050 ledger: upstream graph-test.js mapping now includes filterNodes and endpoint-aware default label callback cases."}
+{"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib tests define filterNodes and default-label callback behavior."}
+{"file":"repo-ref/graphlib/lib/graph.js","reason":"HPD-050 source evidence: pinned Graphlib implementation defines filterNodes parent promotion and default label callback arguments."}
