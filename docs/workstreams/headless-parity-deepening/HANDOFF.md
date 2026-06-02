@@ -335,6 +335,11 @@ Current repository reality to preserve:
     baselines get white backgrounds from the capture path, and local parity SVG preserves that
     shape. Rust hosts can now use `RootBackgroundPostprocessor`, while binding hosts can pass
     `svg.root_background_color` to rewrite only the root canvas color. Defaults stay unchanged.
+  - A twenty-ninth HPD-080 slice re-audited common host theme needs against Zed PR 57967 and the
+    current 0.7 API. Common flows are covered by site config, `themeCSS`, scoped host CSS,
+    `resvg-safe`, optional duplicate fallback cleanup, and root background replacement. Advanced
+    element/inline-style palette rewriting remains a host-owned postprocessor boundary, not a
+    default merman theme behavior.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

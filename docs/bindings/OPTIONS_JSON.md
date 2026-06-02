@@ -37,7 +37,8 @@ numeric values return binding errors instead of panicking.
     "pipeline": "parity",
     "scoped_css": ".node rect { stroke-width: 2px; }",
     "css_override_policy": "preserve",
-    "root_background_color": "#0f172a"
+    "root_background_color": "#0f172a",
+    "drop_native_duplicate_fallbacks": false
   }
 }
 ```

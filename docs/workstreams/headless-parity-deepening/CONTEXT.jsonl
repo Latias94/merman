@@ -201,3 +201,6 @@
 {"file":"docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md","reason":"HPD-050 ledger: upstream graph-test.js mapping now includes filterNodes and endpoint-aware default label callback cases."}
 {"file":"repo-ref/graphlib/test/graph-test.js","reason":"HPD-050 source evidence: pinned Graphlib tests define filterNodes and default-label callback behavior."}
 {"file":"repo-ref/graphlib/lib/graph.js","reason":"HPD-050 source evidence: pinned Graphlib implementation defines filterNodes parent promotion and default label callback arguments."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-host-theme-common-needs-audit.md","reason":"HPD-080 journal: re-audits Zed PR 57967 against current 0.7 host-theme API and records common host needs versus product-specific palette boundaries."}
+{"file":"docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md","reason":"HPD-080 ledger: common host theme needs now explicitly distinguish supported site_config/scoped CSS/root canvas/fallback options from arbitrary element rewrite host policy."}
+{"file":"docs/bindings/OPTIONS_JSON.md","reason":"HPD-080 binding docs: full options_json shape now includes svg.drop_native_duplicate_fallbacks alongside site_config, scoped_css, and root_background_color."}

@@ -1646,6 +1646,43 @@ Residual note:
   fixture/capture comparison surface. Host canvas color is now explicit opt-in policy through the
   Rust pipeline or binding options.
 
+Twenty-ninth slice outcome:
+
+- Re-audited Zed PR 57967 and the current 0.7 host-theme surface for common consumer needs after
+  the `site_config`, scoped CSS, duplicate fallback, and root-background binding options landed.
+- The current product-neutral support is sufficient for common host theme flows:
+  - official Mermaid theme selection and `themeVariables` through Rust `with_site_config(...)` or
+    binding `options_json.site_config`,
+  - Mermaid diagram-owned `themeCSS`,
+  - host-owned scoped CSS with optional `!important` stripping,
+  - `resvg-safe` fallback insertion / `foreignObject` stripping / CSS and attribute cleanup,
+  - optional duplicate native/fallback text cleanup,
+  - optional root canvas color replacement.
+- Kept Zed-style exact editor palette cleanup as a host boundary. Rust hosts can write custom
+  `SvgPostprocessor` passes for arbitrary element/inline-style rewrites; shared bindings expose
+  only product-neutral controls and intentionally do not provide a generic XML rewrite DSL.
+- Tightened docs so `docs/bindings/OPTIONS_JSON.md` shows
+  `svg.drop_native_duplicate_fallbacks` in the full JSON shape, and
+  `THEME_RENDERING_COVERAGE.md` now calls out the optional exact-text nature of fallback
+  de-duplication instead of implying semantic/geometric equivalence.
+
+Focused verification:
+
+- `gh pr view 57967 --repo zed-industries/zed --comments --json title,url,state,mergeStateStatus,body,files,commits,comments,reviews`
+- `gh api repos/zed-industries/zed/commits/c85f29cd2e78ec8a68b20349606d8298eecf37bb --jq '.files[] | {filename,patch}'`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-bindings-core`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render drop_native_duplicate_fallbacks`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render root_background`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render external_`
+
+Residual note:
+
+- Exact `neo/redux*` override derivation remains an honest follow-up only if a fixture or consumer
+  proves direct `themeVariables` plus generated snapshots are insufficient.
+- The duplicate fallback cleanup is exact-text based and optional. It is useful for Zed-like
+  raster duplicate labels, but hosts with intentionally repeated labels may still prefer a custom
+  geometry-aware cleanup pass.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
