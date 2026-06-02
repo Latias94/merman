@@ -74,6 +74,11 @@ source-backed theme/config signal is available: Architecture, Block, C4, Class, 
 Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Pie, QuadrantChart, Radar, Requirement, Sankey,
 Sequence, State, Timeline, Treemap, and XYChart.
 
+The `resvg_safe` fixture smoke also has a separate boundary renderability gate for `info`,
+`error`, and `zenuml`. That gate proves XML/raster-safe output for public boundary entrypoints,
+including lenient suppressed-error rendering, but it does not promote those entries into the
+implemented-family style-provider matrix.
+
 The gate is intentionally semantic. It checks that output is SVG, geometry does not leak `NaN`,
 unexpected `undefined` tokens are absent, representative labels remain visible in the output, and
 diagram-owned theme colors or inline theme settings survive through the public API. It does not

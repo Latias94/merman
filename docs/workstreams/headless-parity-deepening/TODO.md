@@ -272,5 +272,9 @@ Last updated: 2026-06-03
   State `classDef`-only, State parser-only floating note declarations, and Flowchart `click`-only
   fixtures. The fix is limited to the source-content gate; renderer behavior was not changed because
   pinned Mermaid 11.15 treats these inputs as parser/metadata cases with no required visible marks.
+  A boundary renderability slice then added a separate `info` / `error` / `zenuml`
+  `resvg_safe` fixture smoke. These entrypoints stay out of the supported-family style-provider
+  matrix, but now have the same XML, foreignObject, invalid-token, empty-style, and raster ink
+  regression gate used for public renderability.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

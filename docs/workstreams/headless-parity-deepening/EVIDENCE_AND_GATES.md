@@ -2283,6 +2283,31 @@ Residual note:
   source-content calibration prevents false blank-output claims, while real contentful blank PNGs
   should still fail.
 
+## HPD-080 - Boundary Resvg-Safe Renderability
+
+Outcome:
+
+- Added a separate public renderability smoke for `fixtures/error`, `fixtures/info`, and
+  `fixtures/zenuml`.
+- Kept these directories out of `SUPPORTED_FIXTURE_DIRS`. `info` uses shared info-like rendering,
+  `error` is also a suppress-errors host entrypoint, and local `zenuml` is a documented headless
+  Sequence-compatibility subset rather than full Mermaid browser-plugin parity.
+- The new boundary smoke still reuses the same resvg-safe hazards as the main public smoke:
+  XML parseability, no `foreignObject`, unsupported CSS cleanup, invalid visual token rejection,
+  non-empty style elements, and optional PNG raster ink checks.
+- The `error` fixture corpus runs through lenient parsing so invalid State samples exercise the
+  host-visible suppressed error diagram. For those inputs, the raster ink sentinel is `error\n`
+  because the original source may be parser-only while the generated error diagram must be visible.
+- No production renderer defect was found in this slice; the change is a regression gate for
+  boundary entrypoints that the implemented-family audit intentionally excludes.
+
+Focused verification:
+
+- `cargo fmt -p merman`
+- `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
+- `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
+- `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

@@ -434,6 +434,11 @@ Current repository reality to preserve:
     those narrow State non-visual forms, while keeping visible State declarations and Flowchart
     `style ...` lines contentful. Full State and split-prefix Flowchart raster audits passed after
     the calibration.
+  - A forty-third HPD-080 boundary renderability slice added a separate `resvg_safe` fixture smoke
+    for `info`, `error`, and `zenuml`. These remain boundary/compatibility entrypoints rather than
+    full supported-family style-provider parity claims. The `error` corpus now exercises lenient
+    suppressed-error rendering, and all three boundary dirs reuse the XML, foreignObject,
+    invalid-token, empty-style, and raster ink assertions from the public renderability gate.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

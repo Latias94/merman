@@ -29,8 +29,31 @@ const SUPPORTED_FIXTURE_DIRS: &[&str] = &[
     "xychart",
 ];
 
+const BOUNDARY_FIXTURE_DIRS: &[&str] = &["error", "info", "zenuml"];
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+}
+
+fn fixture_paths_for_dirs(family_dirs: &[&str]) -> Vec<PathBuf> {
+    let fixtures_root = workspace_root().join("fixtures");
+    let mut out = Vec::new();
+
+    for family in family_dirs {
+        let dir = fixtures_root.join(family);
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        out.extend(
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("mmd")),
+        );
+    }
+
+    out.sort();
+    out
 }
 
 fn fixture_sample_paths() -> Vec<PathBuf> {
@@ -116,6 +139,10 @@ fn all_supported_fixture_paths() -> Vec<PathBuf> {
     out
 }
 
+fn boundary_fixture_paths() -> Vec<PathBuf> {
+    fixture_paths_for_dirs(BOUNDARY_FIXTURE_DIRS)
+}
+
 fn audit_family_filter() -> Option<BTreeSet<&'static str>> {
     let raw = std::env::var("MERMAN_RESVG_SAFE_AUDIT_FAMILY").ok()?;
     let requested = raw
@@ -155,7 +182,21 @@ fn is_representative_fixture_name(name: &str) -> bool {
 }
 
 fn render_resvg_safe(name: &str, source: &str) -> String {
-    HeadlessRenderer::new()
+    render_resvg_safe_with_options(name, source, false)
+}
+
+fn render_resvg_safe_lenient(name: &str, source: &str) -> String {
+    render_resvg_safe_with_options(name, source, true)
+}
+
+fn render_resvg_safe_with_options(name: &str, source: &str, lenient: bool) -> String {
+    let renderer = if lenient {
+        HeadlessRenderer::new().with_lenient_parsing()
+    } else {
+        HeadlessRenderer::new().with_strict_parsing()
+    };
+
+    renderer
         .with_vendored_text_measurer()
         .with_diagram_id(name)
         .render_svg_resvg_safe_sync(source)
@@ -667,6 +708,44 @@ fn representative_fixtures_render_headless_resvg_safe() {
             .unwrap_or("fixture");
         let svg = render_resvg_safe(diagram_id, &source);
         assert_resvg_safe_output(&relative_name, &source, &svg);
+    }
+}
+
+#[test]
+fn boundary_fixtures_render_headless_resvg_safe() {
+    let fixtures = boundary_fixture_paths();
+    assert!(
+        fixtures.len() >= 30,
+        "expected boundary fixtures for error/info/zenuml renderability"
+    );
+
+    for path in fixtures {
+        let relative_name = path
+            .strip_prefix(workspace_root())
+            .unwrap_or(path.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{relative_name}: read {}: {err}", path.display()));
+        let diagram_id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("fixture");
+        let lenient_error_entrypoint = relative_name.starts_with("fixtures/error/");
+        let svg = if lenient_error_entrypoint {
+            render_resvg_safe_lenient(diagram_id, &source)
+        } else {
+            render_resvg_safe(diagram_id, &source)
+        };
+
+        // The `error` corpus includes suppressed parse-error fixtures whose source may be
+        // parser-only, but the host-visible error diagram must still rasterize with ink.
+        let ink_source = if lenient_error_entrypoint {
+            "error\n"
+        } else {
+            source.as_str()
+        };
+        assert_resvg_safe_output(&relative_name, ink_source, &svg);
     }
 }
 
