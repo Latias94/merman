@@ -7,6 +7,15 @@ const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), ".."
 const repoRoot = path.join(packageRoot, "..", "..");
 
 const api = await import(pathToFileURL(path.join(packageRoot, "dist", "index.js")).href);
+const exportedWasmModule = await import("@merman/web/pkg/merman_wasm.js");
+
+assert.equal(typeof exportedWasmModule.default, "function");
+if (typeof import.meta.resolve === "function") {
+  assert.match(
+    import.meta.resolve("@merman/web/pkg/merman_wasm_bg.wasm"),
+    /merman_wasm_bg\.wasm$/
+  );
+}
 
 await api.initMerman({
   wasm: {

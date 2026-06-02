@@ -54,8 +54,9 @@ needs to provide the wasm-bindgen module or wasm URL explicitly, pass initializa
 import type { MermanWasmModule } from "@merman/web";
 
 await initMerman({
-  loader: async () => (await import("./merman_wasm.js")) as MermanWasmModule,
-  wasm: new URL("./merman_wasm_bg.wasm", import.meta.url),
+  loader: async () =>
+    (await import("@merman/web/pkg/merman_wasm.js")) as MermanWasmModule,
+  wasm: new URL("@merman/web/pkg/merman_wasm_bg.wasm", import.meta.url),
 });
 ```
 
