@@ -1,7 +1,5 @@
 use super::super::{Bounds, fmt};
-use crate::architecture_metrics::{
-    ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, architecture_compound_bbox_padding_px,
-};
+use crate::architecture_metrics::architecture_svg_group_bbox_padding_px;
 
 pub(super) fn is_arch_dir_x(dir: char) -> bool {
     matches!(dir, 'L' | 'R')
@@ -208,17 +206,11 @@ impl<'a> GroupRectComputer<'a> {
             }
         }
 
-        // Upstream Mermaid draws group rectangles from `cytoscape-node.boundingBox()` (default
-        // includes labels), then offsets by `halfIconSize`.
-        //
-        // The extra padding is a small empirical correction to approximate browser `boundingBox()`
-        // behavior in headless mode.
-        let _has_child_groups = self
-            .child_groups
-            .get(group_id)
-            .is_some_and(|v| !v.is_empty());
-        let _extra = ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX;
-        let pad = architecture_compound_bbox_padding_px(self.padding_px);
+        // Upstream Mermaid draws group rectangles from Cytoscape `node.boundingBox()` values and
+        // then offsets them by `halfIconSize`. This renderer-side approximation is intentionally
+        // named separately from manatee's relocation/element-bbox policy; they are different
+        // Cytoscape phases and should not silently share a generic compound-padding helper.
+        let pad = architecture_svg_group_bbox_padding_px(self.padding_px);
         if debug_this_group {
             if let Some(content_bounds) = &content {
                 eprintln!(

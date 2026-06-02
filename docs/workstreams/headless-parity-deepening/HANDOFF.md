@@ -53,8 +53,8 @@ Current repository reality to preserve:
   - The Sequence long leftOf note root-width residual remains open (`570px` deterministic local vs.
     `566px` upstream; headless vendored report `585px` vs `566px`) and should not be overfit.
 - HPD-050 in-progress outcome:
-  - Architecture's pre-layout Cytoscape bbox / `BoundsExtras` adapter is now a named helper
-    (`architecture_fcose_prelayout_bounds`) with direct unit coverage.
+  - Architecture's FCoSE node `BoundsExtras` adapter is now a named helper
+    (`architecture_fcose_node_bounds_extras`) with direct unit coverage.
   - The layout view no longer carries group title state, matching the current source-backed rule
     that group titles do not affect the pre-layout `eles.boundingBox()` relocation center.
   - The focused batch5 long-title residual stayed unchanged at upstream `542.926px` vs local
@@ -74,3 +74,8 @@ Current repository reality to preserve:
     `target/compare/arch_junction_fork_join_probe_m15rv089.json` to floating-point noise, while the
     stored upstream SVG differs by about `7-10px` in X and `6-12px` in Y on service positions.
     Treat this row as a generated-baseline / seed-lattice audit candidate before touching manatee.
+  - A follow-up bounds-seam cleanup removed the unused renderer-side `initial_center` / pre-layout
+    group bbox model and renamed the old generic compound padding helper to
+    `architecture_svg_group_bbox_padding_px(...)`. The remaining `batch5_long_titles` and
+    `html_titles` `+5px` tails are confirmed group/service Cytoscape bbox measurement residuals;
+    do not close them by globally removing the final SVG group bbox extra.

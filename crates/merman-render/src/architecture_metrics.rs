@@ -6,7 +6,7 @@ pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_SCALE: f64 = 1.01;
 pub(crate) const ARCHITECTURE_LAYOUT_CANVAS_LONG_LABEL_WIDTH_THRESHOLD_PX: f64 = 200.0;
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
-pub(crate) const ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
+pub(crate) const ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX: f64 = 2.5;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureServiceBoundsEstimate {
@@ -83,8 +83,8 @@ pub(crate) fn architecture_create_text_compound_label_extra_bottom_px(font_size_
     font_size_px.max(1.0) + 1.0
 }
 
-pub(crate) fn architecture_compound_bbox_padding_px(padding_px: f64) -> f64 {
-    padding_px.max(0.0) + ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX
+pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
+    padding_px.max(0.0) + ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX
 }
 
 pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
@@ -281,7 +281,7 @@ mod tests {
         );
         assert_eq!(super::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, 18.0);
         assert_eq!(super::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, 200.0);
-        assert_eq!(super::ARCHITECTURE_COMPOUND_BBOX_EXTRA_PADDING_PX, 2.5);
+        assert_eq!(super::ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX, 2.5);
     }
 
     #[test]
@@ -337,9 +337,9 @@ mod tests {
     }
 
     #[test]
-    fn architecture_compound_bbox_padding_adds_mermaid_extra_padding() {
-        assert_eq!(super::architecture_compound_bbox_padding_px(0.0), 2.5);
-        assert_eq!(super::architecture_compound_bbox_padding_px(12.0), 14.5);
-        assert_eq!(super::architecture_compound_bbox_padding_px(-7.0), 2.5);
+    fn architecture_svg_group_bbox_padding_adds_headless_cytoscape_extra() {
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(0.0), 2.5);
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(12.0), 14.5);
+        assert_eq!(super::architecture_svg_group_bbox_padding_px(-7.0), 2.5);
     }
 }

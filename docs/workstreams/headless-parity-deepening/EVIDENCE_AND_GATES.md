@@ -141,16 +141,16 @@ Negative / residual evidence:
 
 First slice outcome:
 
-- Extracted `architecture_fcose_prelayout_bounds(...)` from the main Architecture layout function.
-  The helper owns the Mermaid/Cytoscape pre-layout `eles.boundingBox()` approximation that produces:
-  - the initial FCoSE coordinate-frame center,
-  - per-node `BoundsExtras` fed into `manatee`,
-  - top-level compound bbox selection with configured Architecture padding.
+- Extracted Architecture's FCoSE node-bounds adapter from the main Architecture layout function.
+  After the later HPD-050 seam cleanup this adapter is named
+  `architecture_fcose_node_bounds_extras(...)` and owns only the part the renderer actually feeds
+  into `manatee`: per-node `BoundsExtras` for Cytoscape
+  `compound-sizing-wrt-labels: include` approximation.
 - Removed the layout-view group-title field. Current source/evidence says group titles are rendered
   inside compound bounds and do not participate in the pre-layout center used for FCoSE relocation;
   final SVG rendering still reads titles from semantic model data.
-- Added direct unit coverage for the pre-layout helper so the service label bottom extra and
-  coordinate-frame center stay explicit.
+- Added direct unit coverage for the node-bounds helper so service label border/bottom extras stay
+  explicit.
 - This is an adapter-boundary refactor, not a residual-count claim. It keeps Mermaid/Cytoscape
   approximation policy in `merman-render` instead of leaking another diagram-specific rule into
   `manatee`.
@@ -158,7 +158,7 @@ First slice outcome:
 Focused verification:
 
 - `cargo fmt --all`
-- `cargo test -p merman-render architecture_prelayout_bounds_feed_label_extras_without_group_title_state --lib`
+- `cargo test -p merman-render architecture_fcose_node_bounds_extras_feed_label_bounds --lib`
 - `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops --lib`
 - `cargo test -p merman-render --test architecture_layout_test`
 - `cargo run -p xtask -- report-overrides --check-no-growth`
@@ -245,3 +245,49 @@ Focused verification:
 - The same comparison against `fixtures/upstream-svgs/architecture/stress_architecture_junction_fork_join_026.svg`
   showed concrete stored-baseline drift: e.g. `auth` and `cache` X differ by about `10.376px`,
   while `api`/`db` Y differ by about `12.358px`.
+
+Fourth slice seam cleanup:
+
+- Audited the remaining `+5px` Architecture root rows
+  `stress_architecture_batch5_long_titles_and_punct_076` and
+  `stress_architecture_html_titles_and_escapes_041` against saved Mermaid browser probes and the
+  current upstream/local SVGs.
+- For both rows, upstream service positions match the saved browser probe while local service
+  positions differ only by about `0.5px` in X. The root-width delta is controlled by the final
+  group rectangle:
+  - `batch5_long_titles`: upstream group width `462.925633px`, local `467.925633px`
+  - `html_titles`: upstream group width `399.925633px`, local `404.925633px`
+- The shared old name `architecture_compound_bbox_padding_px(...)` implied one padding policy for
+  multiple Cytoscape phases. That was misleading. Mermaid's final group rect path reads
+  `node.boundingBox()` in `svgDraw.ts`, while manatee's relocation/element bbox approximation is a
+  separate layout-engine phase.
+- Renamed the renderer helper to `architecture_svg_group_bbox_padding_px(...)` and removed the
+  unused renderer-side `initial_center` / pre-layout group bbox model. Relocation-centering remains
+  owned by `manatee`'s indexed graph adapter, where the actual layout consumes it.
+- This was an honesty/refactor slice, not a root-width tune. The two focused `+5px` rows remain
+  open as group/service Cytoscape bbox measurement residuals until generated browser evidence or a
+  better deterministic canvas-bbox seam justifies narrowing the approximation.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-render architecture_fcose_node_bounds_extras_feed_label_bounds --lib`
+- `cargo test -p merman-render architecture_svg_group_bbox_padding_adds_headless_cytoscape_extra --lib`
+- `cargo test -p merman-render architecture_text_constants_match_mermaid --lib`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch5_hpd050_bounds_extras_refactor.md`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_html_titles_and_escapes_041 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_html_titles_hpd050_bounds_extras_refactor.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_after_hpd050_bounds_extras_refactor.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_bounds_extras_refactor.md`
+- `cargo run -p xtask -- report-overrides --check-no-growth`
+- `git diff --check`
+
+Residual evidence after the fourth slice:
+
+- Full Architecture structural `parity` remains green.
+- Full Architecture `parity-root` remains an expected failure with `26` mismatches.
+- `stress_architecture_batch5_long_titles_and_punct_076` remains upstream `542.926px` vs local
+  `547.926px` (`+5.000px`).
+- `stress_architecture_html_titles_and_escapes_041` remains upstream `479.926px` vs local
+  `484.926px` (`+5.000px`).
+- Override growth remains unchanged.

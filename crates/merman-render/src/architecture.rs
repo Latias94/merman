@@ -1,6 +1,5 @@
 use crate::architecture_metrics::{
-    architecture_compound_bbox_padding_px, architecture_measure_cytoscape_node_bbox_extras,
-    architecture_node_bbox_extras_to_manatee,
+    architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::config_f64;
 use crate::json::from_value_ref;
@@ -290,81 +289,28 @@ impl<'a> ArchitectureModelView<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ArchitecturePrelayoutBBox {
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-}
-
-impl ArchitecturePrelayoutBBox {
-    fn from_rect(x: f64, y: f64, w: f64, h: f64) -> Self {
-        Self {
-            min_x: x,
-            min_y: y,
-            max_x: x + w,
-            max_y: y + h,
-        }
-    }
-
-    fn union(self, other: Self) -> Self {
-        Self {
-            min_x: self.min_x.min(other.min_x),
-            min_y: self.min_y.min(other.min_y),
-            max_x: self.max_x.max(other.max_x),
-            max_y: self.max_y.max(other.max_y),
-        }
-    }
-
-    fn inflate(self, pad: f64) -> Self {
-        Self {
-            min_x: self.min_x - pad,
-            min_y: self.min_y - pad,
-            max_x: self.max_x + pad,
-            max_y: self.max_y + pad,
-        }
-    }
-
-    fn center(self) -> (f64, f64) {
-        (
-            (self.min_x + self.max_x) / 2.0,
-            (self.min_y + self.max_y) / 2.0,
-        )
-    }
-}
-
-struct ArchitectureFcosePrelayoutInput<'m, 'a> {
+struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     model: &'m ArchitectureModelView<'a>,
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
-    padding_px: f64,
     font_size_px: f64,
 }
 
-struct ArchitectureFcosePrelayout<'a> {
-    initial_center: (f64, f64),
-    node_bounds_extras: FxHashMap<&'a str, manatee::BoundsExtras>,
-}
-
-fn architecture_fcose_prelayout_bounds<'a>(
-    input: ArchitectureFcosePrelayoutInput<'_, 'a>,
-) -> ArchitectureFcosePrelayout<'a> {
-    // Approximate Cytoscape `eles.boundingBox()` in the pre-layout state where nodes are not
-    // explicitly positioned (default `{x: 0, y: 0}` in Cytoscape). The returned center is used
-    // as our initial coordinate frame so FCoSE's relocation step matches upstream outputs.
+fn architecture_fcose_node_bounds_extras<'a>(
+    input: ArchitectureFcoseNodeBoundsExtrasInput<'_, 'a>,
+) -> FxHashMap<&'a str, manatee::BoundsExtras> {
+    // Capture per-node service label extents for the FCoSE port. These extras do not change
+    // layout node size, but they let manatee approximate Cytoscape's
+    // `compound-sizing-wrt-labels: include` behavior when computing compound and element bboxes.
     //
-    // Additionally, capture per-node extra bounds (service label extents). These are later fed
-    // into the FCoSE port so compound bounds can include labels (`compound-sizing-wrt-labels:
-    // include` parity).
-    let ArchitectureFcosePrelayoutInput {
+    // Relocation-centering stays inside manatee's indexed graph adapter; keeping it out of this
+    // renderer-side helper avoids a second, unused pre-layout bbox model.
+    let ArchitectureFcoseNodeBoundsExtrasInput {
         model,
         text_measurer,
         icon_size,
-        padding_px,
         font_size_px,
     } = input;
-    let half_icon = icon_size / 2.0;
     let text_style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: font_size_px,
@@ -373,33 +319,16 @@ fn architecture_fcose_prelayout_bounds<'a>(
 
     let mut node_title: FxHashMap<&str, &str> = FxHashMap::default();
     node_title.reserve(model.nodes.len().saturating_mul(2));
-    let mut group_parent: FxHashMap<&str, &str> = FxHashMap::default();
-    group_parent.reserve(model.groups.len().saturating_mul(2));
 
     for n in &model.nodes {
         if let Some(t) = n.title {
             node_title.insert(n.id, t);
         }
     }
-    for g in &model.groups {
-        if let Some(p) = g.in_group {
-            group_parent.insert(g.id, p);
-        }
-    }
 
-    // Leaf bboxes at Cytoscape default node center (0,0), expressed in our top-left space.
-    let node_x = -half_icon;
-    let node_y = -half_icon;
-    let mut node_bbox: FxHashMap<&str, ArchitecturePrelayoutBBox> = FxHashMap::default();
-    node_bbox.reserve(model.nodes.len().saturating_mul(2));
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        // Cytoscape `eles.boundingBox()` (used by FCoSE for relocation) includes label bounds
-        // by default, even when FCoSE is configured with `nodeDimensionsIncludeLabels: false`.
-        // This affects the "original center" used by `aux.relocateComponent(...)` and is
-        // observable as a stable vertical offset (e.g. ~8.5px for single-line service titles).
-        let mut bb = ArchitecturePrelayoutBBox::from_rect(node_x, node_y, icon_size, icon_size);
         let title = node_title.get(n.id).copied();
         let bounds_extras = architecture_measure_cytoscape_node_bbox_extras(
             title,
@@ -408,88 +337,13 @@ fn architecture_fcose_prelayout_bounds<'a>(
             icon_size,
             font_size_px,
         );
-        bb.min_x -= bounds_extras.left;
-        bb.max_x += bounds_extras.right;
-        bb.min_y -= bounds_extras.top;
-        bb.max_y += bounds_extras.bottom;
-        node_bbox.insert(n.id, bb);
         node_bounds_extras.insert(
             n.id,
             architecture_node_bbox_extras_to_manatee(bounds_extras),
         );
     }
 
-    // Group bboxes: approximate Cytoscape compound bounds as leaf-node bounds + padding.
-    //
-    // Notably, we do *not* accumulate padding across nested compounds here. This matches the
-    // observed behavior of Mermaid/Cytoscape `eles.boundingBox()` in the pre-layout state for
-    // deep group chains, where intermediate compounds do not expand the relocation center as
-    // if their padding stacked recursively.
-    let mut group_to_leaves: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
-    group_to_leaves.reserve(model.groups.len().saturating_mul(2));
-    for g in &model.groups {
-        group_to_leaves.entry(g.id).or_default();
-    }
-    for n in &model.nodes {
-        let mut cur = n.in_group;
-        while let Some(gid) = cur {
-            group_to_leaves.entry(gid).or_default().push(n.id);
-            cur = group_parent.get(gid).copied();
-        }
-    }
-
-    let mut group_bbox: FxHashMap<&str, ArchitecturePrelayoutBBox> = FxHashMap::default();
-    group_bbox.reserve(model.groups.len().saturating_mul(2));
-    let base_pad = architecture_compound_bbox_padding_px(padding_px);
-    for g in &model.groups {
-        let Some(members) = group_to_leaves.get(g.id) else {
-            continue;
-        };
-        let mut bb: Option<ArchitecturePrelayoutBBox> = None;
-        for &nid in members {
-            if let Some(nbb) = node_bbox.get(nid).copied() {
-                bb = Some(bb.map(|b| b.union(nbb)).unwrap_or(nbb));
-            }
-        }
-        if let Some(bb) = bb {
-            let bb = bb.inflate(base_pad);
-
-            // Group titles are rendered inside the compound bounds in Mermaid/Cytoscape and
-            // do not affect the pre-layout `eles.boundingBox()` center used for relocation.
-            group_bbox.insert(g.id, bb);
-        }
-    }
-
-    let mut overall: Option<ArchitecturePrelayoutBBox> = None;
-    // Prefer top-level groups if any exist; otherwise fall back to leaf nodes.
-    let mut any_group = false;
-    for g in &model.groups {
-        if g.in_group.is_none() {
-            if let Some(bb) = group_bbox.get(g.id).copied() {
-                overall = Some(overall.map(|b| b.union(bb)).unwrap_or(bb));
-                any_group = true;
-            }
-        }
-    }
-    if !any_group {
-        for bb in node_bbox.values().copied() {
-            overall = Some(overall.map(|b| b.union(bb)).unwrap_or(bb));
-        }
-    }
-
-    // `cose-base` operates in a top-left rect coordinate frame internally (see `rect.x/y`),
-    // and Cytoscape FCoSE ends up transferring those coordinates back onto nodes as their
-    // `position()` values. Mermaid's Architecture renderer then uses those `position()` values
-    // directly as the SVG `<g transform="translate(x,y)">` origin (top-left of the 80x80 icon).
-    //
-    // Our bbox math above is expressed in a "center at (0,0)" frame (leaf rects start at
-    // `(-halfIcon,-halfIcon)`). Shift by `halfIcon` so the returned center matches the
-    // effective top-left-origin coordinate frame used by upstream outputs.
-    let (cx, cy) = overall.map(|b| b.center()).unwrap_or((0.0, 0.0));
-    ArchitectureFcosePrelayout {
-        initial_center: (cx + half_icon, cy + half_icon),
-        node_bounds_extras,
-    }
+    node_bounds_extras
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -588,29 +442,24 @@ fn layout_architecture_diagram_model(
         .map(|v| v.round() as u64)
         .unwrap_or(1);
 
-    let prelayout = architecture_fcose_prelayout_bounds(ArchitectureFcosePrelayoutInput {
-        model,
-        text_measurer,
-        icon_size,
-        padding_px,
-        font_size_px,
-    });
-    let initial_center = prelayout.initial_center;
-    let node_bounds_extras = prelayout.node_bounds_extras;
-    if std::env::var("MERMAN_ARCH_DEBUG_INIT_CENTER")
+    let node_bounds_extras =
+        architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
+            model,
+            text_measurer,
+            icon_size,
+            font_size_px,
+        });
+    if std::env::var("MERMAN_ARCH_DEBUG_NODE_BOUNDS_EXTRAS")
         .ok()
         .as_deref()
         == Some("1")
     {
         eprintln!(
-            "[arch-init-center] icon_size={:.3} padding={:.3} font_size={:.3} center=({:.6},{:.6}) groups={} nodes={}",
+            "[arch-node-bounds-extras] icon_size={:.3} font_size={:.3} nodes={} extras={}",
             icon_size,
-            padding_px,
             font_size_px,
-            initial_center.0,
-            initial_center.1,
-            model.groups.len(),
             model.nodes.len(),
+            node_bounds_extras.len(),
         );
     }
 
@@ -1559,7 +1408,7 @@ fn layout_architecture_diagram_model(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn architecture_prelayout_bounds_feed_label_extras_without_group_title_state() {
+    fn architecture_fcose_node_bounds_extras_feed_label_bounds() {
         let model = super::ArchitectureModelView {
             nodes: vec![super::ArchitectureNodeView {
                 id: "api",
@@ -1575,29 +1424,20 @@ mod tests {
         };
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
-        let prelayout =
-            super::architecture_fcose_prelayout_bounds(super::ArchitectureFcosePrelayoutInput {
+        let node_bounds_extras = super::architecture_fcose_node_bounds_extras(
+            super::ArchitectureFcoseNodeBoundsExtrasInput {
                 model: &model,
                 text_measurer: &measurer,
                 icon_size: 80.0,
-                padding_px: 40.0,
                 font_size_px: 16.0,
-            });
-        let extras = prelayout
-            .node_bounds_extras
-            .get("api")
-            .expect("api node extras");
+            },
+        );
+        let extras = node_bounds_extras.get("api").expect("api node extras");
 
         assert_eq!(extras.top, 1.0);
         assert_eq!(extras.bottom, 18.0);
-        assert!(
-            (prelayout.initial_center.0 - 40.0).abs() < 1e-9,
-            "symmetric padding and label extras should preserve x center"
-        );
-        assert!(
-            (prelayout.initial_center.1 - 48.5).abs() < 1e-9,
-            "single-line service label bottom extra should move the Cytoscape prelayout center"
-        );
+        assert_eq!(extras.left, 1.0);
+        assert_eq!(extras.right, 1.0);
     }
 
     #[test]

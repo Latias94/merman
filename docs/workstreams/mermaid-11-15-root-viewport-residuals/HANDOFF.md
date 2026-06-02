@@ -268,6 +268,10 @@ layout view because current source/evidence says group titles do not affect the 
 `eles.boundingBox()` center. The batch5 long-title focused root tail stayed unchanged at upstream
 `542.926px` vs local `547.926px`, so this is auditability work rather than a hidden viewport tune.
 
+Superseded by a later HPD-050 cleanup: the renderer-side `initial_center` / pre-layout group bbox
+model was removed after confirming it was not consumed by layout. The retained renderer seam is
+the node `BoundsExtras` adapter; relocation and element bbox policy remain in `manatee`.
+
 Fresh 2026-06-02 focused probes then narrowed the remaining Architecture label-width family even
 further. Mermaid 11.15 source confirms the Cytoscape layout phase only sees single-line canvas
 `label` + `font-size` on `node[label]`; it does not reuse the final SVG `createText(..., width:
@@ -445,8 +449,10 @@ a future Mermaid baseline changes the source behavior.
   Rust also now preserves Mermaid's duplicate queued-position BFS behavior for Architecture
   relative constraints; this aligns the `junction_fork_join` FCoSE input with the browser probe but
   does not reduce its remaining `+13.976px` tail.
-  Pre-layout compound bbox inflation now also uses configured `architecture.padding`, keeping the
-  FCoSE input and final group rectangle code on the same source rule.
+  HPD-050 later narrowed this statement: renderer-side pre-layout group bbox center calculation was
+  removed because it was not consumed by layout. Manatee owns relocation/element bbox policy; the
+  renderer now feeds only per-node `BoundsExtras` into manatee and keeps final SVG group rect
+  padding under a separately named helper.
   Batch5, batch4-small-icon, html-title/escape, unicode/xml, edge-label corner, fontsize-wrap,
   nested-group, and group-port rows now have focused diagnostic evidence; none justify a
   renderer-side one-off metric or root pin.

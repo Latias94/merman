@@ -1201,6 +1201,15 @@ Outcome:
   now dominated by canvas label / Cytoscape bbox measurement tails rather than the old
   `iconSize / 2` padding proxy.
 
+Superseded note from HPD-050:
+
+- A later seam cleanup removed the renderer-side `initial_center` / pre-layout group bbox model
+  because it was not consumed by layout. Manatee owns relocation-centering from its indexed graph
+  adapter, while the renderer now only feeds per-node `BoundsExtras` into manatee.
+- The final SVG group rect padding helper was renamed to
+  `architecture_svg_group_bbox_padding_px(...)` so it is not confused with manatee's
+  relocation/element-bbox policy.
+
 ## M15RV-089 - Architecture Canvas Label Residual Diagnostics
 
 Fresh diagnostic evidence from 2026-06-02:
@@ -1419,6 +1428,12 @@ Outcome:
 - This is a boundary cleanup and auditability improvement, not a residual-count reduction.
 - Continue using this seam to audit which remaining Architecture rows are input-model mismatches,
   generated/bbox measurement tails, or source-input-matched FCoSE/compound residuals.
+
+Superseded note from HPD-050:
+
+- The renderer-side `initial_center` / pre-layout group bbox model was later removed because layout
+  did not consume it. The retained renderer seam is the node `BoundsExtras` adapter; relocation and
+  element bbox policy remain inside `manatee`.
 
 ## Gate Set
 
