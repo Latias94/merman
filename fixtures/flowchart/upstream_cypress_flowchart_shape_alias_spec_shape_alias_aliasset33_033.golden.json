@@ -26,7 +26,7 @@
       {
         "id": "n0",
         "label": "docs",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "docs",
         "layoutShape": "docs",
         "icon": null,
@@ -45,7 +45,7 @@
       {
         "id": "n1",
         "label": "documents",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "documents",
         "layoutShape": "documents",
         "icon": null,
@@ -64,7 +64,7 @@
       {
         "id": "n2",
         "label": "st-doc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "st-doc",
         "layoutShape": "st-doc",
         "icon": null,
@@ -83,7 +83,7 @@
       {
         "id": "n3",
         "label": "stacked-document",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stacked-document",
         "layoutShape": "stacked-document",
         "icon": null,

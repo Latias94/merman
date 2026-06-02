@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Stop",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "dbl-circ",
         "layoutShape": "dbl-circ",
         "icon": null,

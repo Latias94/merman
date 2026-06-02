@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "trap-t",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trap-t",
         "layoutShape": "trap-t",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "trapezoid-top",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trapezoid-top",
         "layoutShape": "trapezoid-top",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "manual",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "manual",
         "layoutShape": "manual",
         "icon": null,

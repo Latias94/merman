@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "stadium",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stadium",
         "layoutShape": "stadium",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "pill",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "pill",
         "layoutShape": "pill",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "terminal",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "terminal",
         "layoutShape": "terminal",
         "icon": null,

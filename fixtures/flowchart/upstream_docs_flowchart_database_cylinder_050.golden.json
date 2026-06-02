@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Database",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cyl",
         "layoutShape": "cyl",
         "icon": null,

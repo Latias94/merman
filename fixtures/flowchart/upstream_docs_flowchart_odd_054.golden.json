@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Odd shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "odd",
         "layoutShape": "odd",
         "icon": null,

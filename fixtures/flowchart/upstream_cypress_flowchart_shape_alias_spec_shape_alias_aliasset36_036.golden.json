@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "bow-rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "bow-rect",
         "layoutShape": "bow-rect",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "stored-data",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stored-data",
         "layoutShape": "stored-data",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "bow-tie-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "bow-tie-rectangle",
         "layoutShape": "bow-tie-rectangle",
         "icon": null,

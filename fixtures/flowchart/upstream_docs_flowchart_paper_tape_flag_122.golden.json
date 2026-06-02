@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Paper tape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "flag",
         "layoutShape": "flag",
         "icon": null,

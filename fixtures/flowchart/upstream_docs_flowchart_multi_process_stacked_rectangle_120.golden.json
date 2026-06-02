@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Multiple processes",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "processes",
         "layoutShape": "processes",
         "icon": null,

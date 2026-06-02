@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "f-circ",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "f-circ",
         "layoutShape": "f-circ",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "junction",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "junction",
         "layoutShape": "junction",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "filled-circle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "filled-circle",
         "layoutShape": "filled-circle",
         "icon": null,

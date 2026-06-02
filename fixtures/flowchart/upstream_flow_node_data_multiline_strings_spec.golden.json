@@ -30,7 +30,7 @@
       {
         "id": "A",
         "label": "This is a\nmultiline string\n",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -49,7 +49,7 @@
       {
         "id": "B",
         "label": "This is a<br/>multiline string",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -68,7 +68,7 @@
       {
         "id": "C",
         "label": "This is }",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -87,7 +87,7 @@
       {
         "id": "D",
         "label": "This is a string with @",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

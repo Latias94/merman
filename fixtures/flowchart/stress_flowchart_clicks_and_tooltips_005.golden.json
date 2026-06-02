@@ -8,9 +8,9 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "cache": "Cache docs",
       "db": "DB docs",
-      "api": "API docs"
+      "api": "API docs",
+      "cache": "Cache docs"
     },
     "edgeDefaults": {
       "style": [],

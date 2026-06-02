@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Priority action",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trap-b",
         "layoutShape": "trap-b",
         "icon": null,

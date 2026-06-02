@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Manual operation",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trap-t",
         "layoutShape": "trap-t",
         "icon": null,

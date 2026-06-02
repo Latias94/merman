@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "extract",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "extract",
         "layoutShape": "extract",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "tri",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tri",
         "layoutShape": "tri",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "triangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "triangle",
         "layoutShape": "triangle",
         "icon": null,

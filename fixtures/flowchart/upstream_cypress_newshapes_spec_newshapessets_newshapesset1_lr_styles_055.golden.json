@@ -57,7 +57,7 @@
       {
         "id": "n00",
         "label": "new triangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "triangle",
         "layoutShape": "triangle",
         "icon": null,
@@ -99,7 +99,7 @@
       {
         "id": "n11",
         "label": "new sloped-rectangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "sloped-rectangle",
         "layoutShape": "sloped-rectangle",
         "icon": null,
@@ -141,7 +141,7 @@
       {
         "id": "n22",
         "label": "new horizontal-cylinder shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "horizontal-cylinder",
         "layoutShape": "horizontal-cylinder",
         "icon": null,
@@ -183,7 +183,7 @@
       {
         "id": "n33",
         "label": "new flipped-triangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "flipped-triangle",
         "layoutShape": "flipped-triangle",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new hourglass shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hourglass",
         "layoutShape": "hourglass",
         "icon": null,

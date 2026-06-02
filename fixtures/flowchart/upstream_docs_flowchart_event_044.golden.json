@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "This is an event",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
         "icon": null,

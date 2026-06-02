@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Divided process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "div-rect",
         "layoutShape": "div-rect",
         "icon": null,

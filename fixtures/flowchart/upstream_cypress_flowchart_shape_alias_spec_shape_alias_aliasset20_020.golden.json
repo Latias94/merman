@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "doc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "doc",
         "layoutShape": "doc",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "document",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "document",
         "layoutShape": "document",
         "icon": null,

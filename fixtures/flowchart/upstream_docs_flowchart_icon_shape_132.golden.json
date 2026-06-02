@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "User Icon",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "iconSquare",
         "icon": "fa:user",

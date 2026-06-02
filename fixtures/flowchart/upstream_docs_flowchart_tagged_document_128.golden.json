@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Tagged document",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tag-doc",
         "layoutShape": "tag-doc",
         "icon": null,

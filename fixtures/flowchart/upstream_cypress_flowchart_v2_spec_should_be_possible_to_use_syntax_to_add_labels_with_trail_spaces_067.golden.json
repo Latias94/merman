@@ -64,7 +64,7 @@
       {
         "id": "C",
         "label": "for c",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -83,7 +83,7 @@
       {
         "id": "E",
         "label": "for E",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -102,7 +102,7 @@
       {
         "id": "D",
         "label": "for D",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

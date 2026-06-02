@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Display",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "curv-trap",
         "layoutShape": "curv-trap",
         "icon": null,

@@ -57,7 +57,7 @@
       {
         "id": "n00",
         "label": "new fork shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "fork",
         "layoutShape": "fork",
         "icon": null,
@@ -99,7 +99,7 @@
       {
         "id": "n11",
         "label": "new choice shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "choice",
         "layoutShape": "choice",
         "icon": null,
@@ -141,7 +141,7 @@
       {
         "id": "n22",
         "label": "new note shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "note",
         "layoutShape": "note",
         "icon": null,
@@ -183,7 +183,7 @@
       {
         "id": "n33",
         "label": "new stadium shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stadium",
         "layoutShape": "stadium",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new odd shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "odd",
         "layoutShape": "odd",
         "icon": null,

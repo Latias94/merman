@@ -26,7 +26,7 @@
       {
         "id": "n0",
         "label": "div-rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "div-rect",
         "layoutShape": "div-rect",
         "icon": null,
@@ -45,7 +45,7 @@
       {
         "id": "n1",
         "label": "div-proc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "div-proc",
         "layoutShape": "div-proc",
         "icon": null,
@@ -64,7 +64,7 @@
       {
         "id": "n2",
         "label": "divided-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "divided-rectangle",
         "layoutShape": "divided-rectangle",
         "icon": null,
@@ -83,7 +83,7 @@
       {
         "id": "n3",
         "label": "divided-process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "divided-process",
         "layoutShape": "divided-process",
         "icon": null,

@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "fr-circ",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "fr-circ",
         "layoutShape": "fr-circ",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "framed-circle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "framed-circle",
         "layoutShape": "framed-circle",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "stop",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stop",
         "layoutShape": "stop",
         "icon": null,

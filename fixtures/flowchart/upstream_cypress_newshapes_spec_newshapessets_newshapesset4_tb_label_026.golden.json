@@ -52,7 +52,7 @@
       {
         "id": "n00",
         "label": "This is a label for document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "document",
         "layoutShape": "document",
         "icon": null,
@@ -90,7 +90,7 @@
       {
         "id": "n11",
         "label": "This is a label for notched-pentagon shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notched-pentagon",
         "layoutShape": "notched-pentagon",
         "icon": null,
@@ -128,7 +128,7 @@
       {
         "id": "n22",
         "label": "This is a label for lined-cylinder shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-cylinder",
         "layoutShape": "lined-cylinder",
         "icon": null,
@@ -166,7 +166,7 @@
       {
         "id": "n33",
         "label": "This is a label for stacked-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stacked-document",
         "layoutShape": "stacked-document",
         "icon": null,
@@ -204,7 +204,7 @@
       {
         "id": "n44",
         "label": "This is a label for half-rounded-rectangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "half-rounded-rectangle",
         "layoutShape": "half-rounded-rectangle",
         "icon": null,

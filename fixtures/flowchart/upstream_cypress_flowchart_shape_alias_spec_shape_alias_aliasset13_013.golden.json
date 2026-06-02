@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "notched-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notched-rectangle",
         "layoutShape": "notched-rectangle",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "card",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "card",
         "layoutShape": "card",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "notch-rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notch-rect",
         "layoutShape": "notch-rect",
         "icon": null,

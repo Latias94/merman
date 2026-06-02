@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Fork or Join",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "fork",
         "layoutShape": "fork",
         "icon": null,

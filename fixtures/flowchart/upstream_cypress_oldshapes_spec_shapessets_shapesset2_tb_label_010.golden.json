@@ -49,7 +49,7 @@
       {
         "id": "n00",
         "label": "This is a label for rounded shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
         "icon": null,
@@ -87,7 +87,7 @@
       {
         "id": "n11",
         "label": "This is a label for rect shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rect",
         "layoutShape": "rect",
         "icon": null,
@@ -125,7 +125,7 @@
       {
         "id": "n22",
         "label": "This is a label for start shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "start",
         "layoutShape": "start",
         "icon": null,
@@ -163,7 +163,7 @@
       {
         "id": "n33",
         "label": "This is a label for stop shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stop",
         "layoutShape": "stop",
         "icon": null,

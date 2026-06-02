@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Manual file",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "flip-tri",
         "layoutShape": "flip-tri",
         "icon": null,

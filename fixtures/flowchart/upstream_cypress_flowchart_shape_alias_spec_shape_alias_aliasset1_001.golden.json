@@ -26,7 +26,7 @@
       {
         "id": "n0",
         "label": "process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "process",
         "layoutShape": "process",
         "icon": null,
@@ -45,7 +45,7 @@
       {
         "id": "n1",
         "label": "rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rect",
         "layoutShape": "rect",
         "icon": null,
@@ -64,7 +64,7 @@
       {
         "id": "n2",
         "label": "proc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "proc",
         "layoutShape": "proc",
         "icon": null,
@@ -83,7 +83,7 @@
       {
         "id": "n3",
         "label": "rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rectangle",
         "layoutShape": "rectangle",
         "icon": null,

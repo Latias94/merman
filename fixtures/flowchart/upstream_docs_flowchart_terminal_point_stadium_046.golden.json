@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Terminal point",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "stadium",
         "layoutShape": "stadium",
         "icon": null,

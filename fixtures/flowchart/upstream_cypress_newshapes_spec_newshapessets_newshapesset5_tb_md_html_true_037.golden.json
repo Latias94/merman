@@ -55,7 +55,7 @@
       {
         "id": "n00",
         "label": "This is **bold** </br>and <strong>strong</strong> for lined-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-document",
         "layoutShape": "lined-document",
         "icon": null,
@@ -93,7 +93,7 @@
       {
         "id": "n11",
         "label": "This is **bold** </br>and <strong>strong</strong> for tagged-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
         "icon": null,
@@ -131,7 +131,7 @@
       {
         "id": "n22",
         "label": "This is **bold** </br>and <strong>strong</strong> for brace-l shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-l",
         "layoutShape": "brace-l",
         "icon": null,
@@ -169,7 +169,7 @@
       {
         "id": "n33",
         "label": "This is **bold** </br>and <strong>strong</strong> for comment shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "comment",
         "layoutShape": "comment",
         "icon": null,
@@ -207,7 +207,7 @@
       {
         "id": "n44",
         "label": "This is **bold** </br>and <strong>strong</strong> for braces shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "braces",
         "layoutShape": "braces",
         "icon": null,
@@ -245,7 +245,7 @@
       {
         "id": "n55",
         "label": "This is **bold** </br>and <strong>strong</strong> for brace-r shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",
         "icon": null,

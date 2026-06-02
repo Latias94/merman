@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Small start",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "sm-circ",
         "layoutShape": "sm-circ",
         "icon": null,

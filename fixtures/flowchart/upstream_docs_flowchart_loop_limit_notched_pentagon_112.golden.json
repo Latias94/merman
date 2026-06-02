@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Loop limit",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notch-pent",
         "layoutShape": "notch-pent",
         "icon": null,

@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "delay",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "delay",
         "layoutShape": "delay",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "half-rounded-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "half-rounded-rectangle",
         "layoutShape": "half-rounded-rectangle",
         "icon": null,

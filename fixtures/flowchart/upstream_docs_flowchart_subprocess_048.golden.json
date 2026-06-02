@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "This is a subprocess",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "subproc",
         "layoutShape": "subproc",
         "icon": null,

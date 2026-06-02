@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "This is a\nmultiline string\n",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

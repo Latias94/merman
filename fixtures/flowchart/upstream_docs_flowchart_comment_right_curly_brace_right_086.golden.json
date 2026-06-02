@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Comment",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",
         "icon": null,

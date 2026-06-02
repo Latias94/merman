@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Card",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notch-rect",
         "layoutShape": "notch-rect",
         "icon": null,

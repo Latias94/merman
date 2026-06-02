@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Collate",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hourglass",
         "layoutShape": "hourglass",
         "icon": null,

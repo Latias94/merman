@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Summary",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cross-circ",
         "layoutShape": "cross-circ",
         "icon": null,

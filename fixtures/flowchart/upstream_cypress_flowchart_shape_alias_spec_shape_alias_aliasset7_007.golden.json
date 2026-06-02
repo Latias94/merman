@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "hex",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hex",
         "layoutShape": "hex",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "hexagon",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hexagon",
         "layoutShape": "hexagon",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "prepare",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "prepare",
         "layoutShape": "prepare",
         "icon": null,

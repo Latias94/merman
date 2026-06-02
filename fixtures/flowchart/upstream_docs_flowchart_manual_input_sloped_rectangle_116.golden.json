@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Manual input",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "sl-rect",
         "layoutShape": "sl-rect",
         "icon": null,

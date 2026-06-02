@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "lean-r",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lean-r",
         "layoutShape": "lean-r",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "lean-right",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lean-right",
         "layoutShape": "lean-right",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "in-out",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "in-out",
         "layoutShape": "in-out",
         "icon": null,

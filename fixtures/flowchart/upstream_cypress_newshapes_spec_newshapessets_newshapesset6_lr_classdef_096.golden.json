@@ -53,7 +53,7 @@
       {
         "id": "n00",
         "label": "new brace-r shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",
         "icon": null,
@@ -93,7 +93,7 @@
       {
         "id": "n11",
         "label": "new braces shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "braces",
         "layoutShape": "braces",
         "icon": null,

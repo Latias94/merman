@@ -28,7 +28,7 @@
       {
         "id": "n0",
         "label": "fr-rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "fr-rect",
         "layoutShape": "fr-rect",
         "icon": null,
@@ -47,7 +47,7 @@
       {
         "id": "n1",
         "label": "subproc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "subproc",
         "layoutShape": "subproc",
         "icon": null,
@@ -66,7 +66,7 @@
       {
         "id": "n2",
         "label": "subprocess",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "subprocess",
         "layoutShape": "subprocess",
         "icon": null,
@@ -85,7 +85,7 @@
       {
         "id": "n3",
         "label": "framed-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "framed-rectangle",
         "layoutShape": "framed-rectangle",
         "icon": null,
@@ -104,7 +104,7 @@
       {
         "id": "n4",
         "label": "subroutine",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "subroutine",
         "layoutShape": "subroutine",
         "icon": null,

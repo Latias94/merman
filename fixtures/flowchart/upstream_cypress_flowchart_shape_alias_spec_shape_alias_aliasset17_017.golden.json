@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "fork",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "fork",
         "layoutShape": "fork",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "join",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "join",
         "layoutShape": "join",
         "icon": null,

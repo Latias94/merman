@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "lin-doc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-doc",
         "layoutShape": "lin-doc",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "lined-document",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-document",
         "layoutShape": "lined-document",
         "icon": null,

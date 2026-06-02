@@ -46,7 +46,7 @@
       {
         "id": "B",
         "label": "BB",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
         "icon": null,
@@ -65,7 +65,7 @@
       {
         "id": "C",
         "label": "This is a\nmultiline string\n",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

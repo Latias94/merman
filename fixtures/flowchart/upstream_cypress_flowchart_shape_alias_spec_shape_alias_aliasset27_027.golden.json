@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "win-pane",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "win-pane",
         "layoutShape": "win-pane",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "internal-storage",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "internal-storage",
         "layoutShape": "internal-storage",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "window-pane",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "window-pane",
         "layoutShape": "window-pane",
         "icon": null,

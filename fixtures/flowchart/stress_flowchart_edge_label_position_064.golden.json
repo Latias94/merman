@@ -28,7 +28,7 @@
       {
         "id": "A",
         "label": "A: (Edge Text)",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -47,7 +47,7 @@
       {
         "id": "B",
         "label": "B: (Edge Text)",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -66,7 +66,7 @@
       {
         "id": "C",
         "label": "C: (Edge Text)",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

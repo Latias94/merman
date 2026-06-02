@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Tagged process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tag-rect",
         "layoutShape": "tag-rect",
         "icon": null,

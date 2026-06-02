@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Prepare conditional",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hex",
         "layoutShape": "hex",
         "icon": null,

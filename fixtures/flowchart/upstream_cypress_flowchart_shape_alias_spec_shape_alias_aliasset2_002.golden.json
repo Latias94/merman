@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "event",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "event",
         "layoutShape": "event",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "rounded",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
         "icon": null,

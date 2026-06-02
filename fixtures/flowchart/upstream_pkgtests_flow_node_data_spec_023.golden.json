@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "This is a string with @",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

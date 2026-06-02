@@ -26,7 +26,7 @@
       {
         "id": "A",
         "label": "Login form",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rounded",
         "layoutShape": "rounded",
         "icon": null,
@@ -45,7 +45,7 @@
       {
         "id": "B",
         "label": "Password should:<br>- Be at least 8 characters long<br>- Include at least one uppercase letter<br>- Include at least one number<br>- Include at least one special character",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "rect",
         "layoutShape": "rect",
         "icon": null,

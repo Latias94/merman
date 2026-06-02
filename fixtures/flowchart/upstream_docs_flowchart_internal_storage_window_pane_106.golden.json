@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Internal storage",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "win-pane",
         "layoutShape": "win-pane",
         "icon": null,

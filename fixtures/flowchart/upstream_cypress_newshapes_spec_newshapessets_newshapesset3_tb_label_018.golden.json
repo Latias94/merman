@@ -52,7 +52,7 @@
       {
         "id": "n00",
         "label": "This is a label for curved-trapezoid shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "curved-trapezoid",
         "layoutShape": "curved-trapezoid",
         "icon": null,
@@ -90,7 +90,7 @@
       {
         "id": "n11",
         "label": "This is a label for bow-rect shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "bow-rect",
         "layoutShape": "bow-rect",
         "icon": null,
@@ -128,7 +128,7 @@
       {
         "id": "n22",
         "label": "This is a label for tagged-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
         "icon": null,
@@ -166,7 +166,7 @@
       {
         "id": "n33",
         "label": "This is a label for divided-rectangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "divided-rectangle",
         "layoutShape": "divided-rectangle",
         "icon": null,
@@ -204,7 +204,7 @@
       {
         "id": "n44",
         "label": "This is a label for crossed-circle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "crossed-circle",
         "layoutShape": "crossed-circle",
         "icon": null,

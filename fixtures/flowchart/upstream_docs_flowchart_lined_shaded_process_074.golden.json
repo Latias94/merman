@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Lined process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-rect",
         "layoutShape": "lin-rect",
         "icon": null,

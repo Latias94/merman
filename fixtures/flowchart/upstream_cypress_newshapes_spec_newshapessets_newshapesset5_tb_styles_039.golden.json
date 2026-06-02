@@ -61,7 +61,7 @@
       {
         "id": "n00",
         "label": "new lined-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-document",
         "layoutShape": "lined-document",
         "icon": null,
@@ -103,7 +103,7 @@
       {
         "id": "n11",
         "label": "new tagged-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
         "icon": null,
@@ -145,7 +145,7 @@
       {
         "id": "n22",
         "label": "new brace-l shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-l",
         "layoutShape": "brace-l",
         "icon": null,
@@ -187,7 +187,7 @@
       {
         "id": "n33",
         "label": "new comment shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "comment",
         "layoutShape": "comment",
         "icon": null,
@@ -229,7 +229,7 @@
       {
         "id": "n44",
         "label": "new braces shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "braces",
         "layoutShape": "braces",
         "icon": null,
@@ -271,7 +271,7 @@
       {
         "id": "n55",
         "label": "new brace-r shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",
         "icon": null,

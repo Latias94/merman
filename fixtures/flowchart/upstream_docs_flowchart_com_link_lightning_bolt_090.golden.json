@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Communication link",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "bolt",
         "layoutShape": "bolt",
         "icon": null,

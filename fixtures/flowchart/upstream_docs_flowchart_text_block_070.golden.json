@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "This is a text block",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "text",
         "layoutShape": "text",
         "icon": null,

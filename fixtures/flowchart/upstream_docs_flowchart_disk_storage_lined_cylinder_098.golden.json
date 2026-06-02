@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Disk storage",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-cyl",
         "layoutShape": "lin-cyl",
         "icon": null,

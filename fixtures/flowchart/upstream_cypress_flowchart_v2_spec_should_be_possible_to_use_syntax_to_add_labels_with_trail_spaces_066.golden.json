@@ -42,7 +42,7 @@
       {
         "id": "n4",
         "label": "label for n4",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
@@ -61,7 +61,7 @@
       {
         "id": "n5",
         "label": "label for n5",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "squareRect",
         "icon": null,

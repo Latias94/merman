@@ -57,7 +57,7 @@
       {
         "id": "n00",
         "label": "new subroutine shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "subroutine",
         "layoutShape": "subroutine",
         "icon": null,
@@ -99,7 +99,7 @@
       {
         "id": "n11",
         "label": "new cylinder shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cylinder",
         "layoutShape": "cylinder",
         "icon": null,
@@ -141,7 +141,7 @@
       {
         "id": "n22",
         "label": "new circle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "circle",
         "layoutShape": "circle",
         "icon": null,
@@ -183,7 +183,7 @@
       {
         "id": "n33",
         "label": "new doublecircle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "doublecircle",
         "layoutShape": "doublecircle",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new odd shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "odd",
         "layoutShape": "odd",
         "icon": null,

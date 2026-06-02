@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "notch-pent",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notch-pent",
         "layoutShape": "notch-pent",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "loop-limit",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "loop-limit",
         "layoutShape": "loop-limit",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "notched-pentagon",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "notched-pentagon",
         "layoutShape": "notched-pentagon",
         "icon": null,

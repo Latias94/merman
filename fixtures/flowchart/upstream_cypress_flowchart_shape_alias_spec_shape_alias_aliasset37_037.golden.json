@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "cross-circ",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cross-circ",
         "layoutShape": "cross-circ",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "summary",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "summary",
         "layoutShape": "summary",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "crossed-circle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "crossed-circle",
         "layoutShape": "crossed-circle",
         "icon": null,

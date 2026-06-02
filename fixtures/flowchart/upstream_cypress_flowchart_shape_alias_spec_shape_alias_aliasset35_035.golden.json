@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "flag",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "flag",
         "layoutShape": "flag",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "paper-tape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "paper-tape",
         "layoutShape": "paper-tape",
         "icon": null,

@@ -24,7 +24,7 @@
       {
         "id": "n0",
         "label": "diam",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "diam",
         "layoutShape": "diam",
         "icon": null,
@@ -43,7 +43,7 @@
       {
         "id": "n1",
         "label": "decision",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "decision",
         "layoutShape": "decision",
         "icon": null,
@@ -62,7 +62,7 @@
       {
         "id": "n2",
         "label": "diamond",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "diamond",
         "layoutShape": "diamond",
         "icon": null,

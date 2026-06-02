@@ -8,10 +8,10 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "B": "This is a tooltip for a link",
-      "D": "This is a tooltip for a link",
+      "A": "Tooltip for a callback",
       "C": "Tooltip for a callback",
-      "A": "Tooltip for a callback"
+      "B": "This is a tooltip for a link",
+      "D": "This is a tooltip for a link"
     },
     "edgeDefaults": {
       "style": [],

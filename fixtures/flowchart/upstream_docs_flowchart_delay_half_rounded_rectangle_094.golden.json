@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Delay",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "delay",
         "layoutShape": "delay",
         "icon": null,

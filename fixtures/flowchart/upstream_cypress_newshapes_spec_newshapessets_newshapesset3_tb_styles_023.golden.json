@@ -57,7 +57,7 @@
       {
         "id": "n00",
         "label": "new curved-trapezoid shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "curved-trapezoid",
         "layoutShape": "curved-trapezoid",
         "icon": null,
@@ -99,7 +99,7 @@
       {
         "id": "n11",
         "label": "new bow-rect shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "bow-rect",
         "layoutShape": "bow-rect",
         "icon": null,
@@ -141,7 +141,7 @@
       {
         "id": "n22",
         "label": "new tagged-document shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
         "icon": null,
@@ -183,7 +183,7 @@
       {
         "id": "n33",
         "label": "new divided-rectangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "divided-rectangle",
         "layoutShape": "divided-rectangle",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new crossed-circle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "crossed-circle",
         "layoutShape": "crossed-circle",
         "icon": null,

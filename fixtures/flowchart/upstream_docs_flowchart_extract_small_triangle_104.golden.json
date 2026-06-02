@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Extract",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tri",
         "layoutShape": "tri",
         "icon": null,

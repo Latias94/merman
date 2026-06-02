@@ -28,7 +28,7 @@
       {
         "id": "Cloudwatch",
         "label": "CloudWatch",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "icon",
         "icon": "aws:arch-amazon-cloudwatch",
@@ -47,7 +47,7 @@
       {
         "id": "Route53",
         "label": "Route 53",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "icon",
         "icon": "aws:arch-amazon-route-53",
@@ -66,7 +66,7 @@
       {
         "id": "EKS",
         "label": "EKS Cloud",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "icon",
         "icon": "aws:arch-amazon-eks-cloud",

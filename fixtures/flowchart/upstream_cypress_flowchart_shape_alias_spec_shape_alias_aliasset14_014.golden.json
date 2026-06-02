@@ -28,7 +28,7 @@
       {
         "id": "n0",
         "label": "lin-rect",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-rect",
         "layoutShape": "lin-rect",
         "icon": null,
@@ -47,7 +47,7 @@
       {
         "id": "n1",
         "label": "lined-rectangle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-rectangle",
         "layoutShape": "lined-rectangle",
         "icon": null,
@@ -66,7 +66,7 @@
       {
         "id": "n2",
         "label": "lin-proc",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-proc",
         "layoutShape": "lin-proc",
         "icon": null,
@@ -85,7 +85,7 @@
       {
         "id": "n3",
         "label": "lined-process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lined-process",
         "layoutShape": "lined-process",
         "icon": null,
@@ -104,7 +104,7 @@
       {
         "id": "n4",
         "label": "shaded-process",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "shaded-process",
         "layoutShape": "shaded-process",
         "icon": null,

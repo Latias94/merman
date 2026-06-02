@@ -26,7 +26,7 @@
       {
         "id": "n0",
         "label": "db",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "db",
         "layoutShape": "db",
         "icon": null,
@@ -45,7 +45,7 @@
       {
         "id": "n1",
         "label": "database",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "database",
         "layoutShape": "database",
         "icon": null,
@@ -64,7 +64,7 @@
       {
         "id": "n2",
         "label": "cylinder",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cylinder",
         "layoutShape": "cylinder",
         "icon": null,
@@ -83,7 +83,7 @@
       {
         "id": "n3",
         "label": "cyl",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "cyl",
         "layoutShape": "cyl",
         "icon": null,

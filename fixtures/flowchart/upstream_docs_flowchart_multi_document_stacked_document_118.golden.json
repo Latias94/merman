@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Multiple documents",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "docs",
         "layoutShape": "docs",
         "icon": null,

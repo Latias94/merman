@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "comment",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "comment",
         "layoutShape": "comment",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "brace-l",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "brace-l",
         "layoutShape": "brace-l",
         "icon": null,

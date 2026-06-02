@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Input/Output",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lean-r",
         "layoutShape": "lean-r",
         "icon": null,

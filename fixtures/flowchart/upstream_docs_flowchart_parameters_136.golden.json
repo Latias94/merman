@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "My example image label",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": null,
         "layoutShape": "imageSquare",
         "icon": null,

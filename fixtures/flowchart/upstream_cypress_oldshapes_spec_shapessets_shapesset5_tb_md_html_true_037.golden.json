@@ -52,7 +52,7 @@
       {
         "id": "n00",
         "label": "This is **bold** </br>and <strong>strong</strong> for anchor shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "anchor",
         "layoutShape": "anchor",
         "icon": null,
@@ -90,7 +90,7 @@
       {
         "id": "n11",
         "label": "This is **bold** </br>and <strong>strong</strong> for lean-r shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lean-r",
         "layoutShape": "lean-r",
         "icon": null,
@@ -128,7 +128,7 @@
       {
         "id": "n22",
         "label": "This is **bold** </br>and <strong>strong</strong> for lean-l shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lean-l",
         "layoutShape": "lean-l",
         "icon": null,
@@ -166,7 +166,7 @@
       {
         "id": "n33",
         "label": "This is **bold** </br>and <strong>strong</strong> for trap-t shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trap-t",
         "layoutShape": "trap-t",
         "icon": null,
@@ -204,7 +204,7 @@
       {
         "id": "n44",
         "label": "This is **bold** </br>and <strong>strong</strong> for trap-b shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "trap-b",
         "layoutShape": "trap-b",
         "icon": null,

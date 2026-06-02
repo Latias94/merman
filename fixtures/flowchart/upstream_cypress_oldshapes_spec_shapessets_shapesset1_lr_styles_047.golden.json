@@ -57,7 +57,7 @@
       {
         "id": "n00",
         "label": "new text shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "text",
         "layoutShape": "text",
         "icon": null,
@@ -99,7 +99,7 @@
       {
         "id": "n11",
         "label": "new card shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "card",
         "layoutShape": "card",
         "icon": null,
@@ -141,7 +141,7 @@
       {
         "id": "n22",
         "label": "new lin-rect shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-rect",
         "layoutShape": "lin-rect",
         "icon": null,
@@ -183,7 +183,7 @@
       {
         "id": "n33",
         "label": "new diamond shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "diamond",
         "layoutShape": "diamond",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new hexagon shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hexagon",
         "layoutShape": "hexagon",
         "icon": null,

@@ -48,7 +48,7 @@
       {
         "id": "n00",
         "label": "This is a label for text shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "text",
         "layoutShape": "text",
         "icon": null,
@@ -67,7 +67,7 @@
       {
         "id": "n11",
         "label": "This is a label for card shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "card",
         "layoutShape": "card",
         "icon": null,
@@ -86,7 +86,7 @@
       {
         "id": "n22",
         "label": "This is a label for lin-rect shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lin-rect",
         "layoutShape": "lin-rect",
         "icon": null,
@@ -105,7 +105,7 @@
       {
         "id": "n33",
         "label": "This is a label for diamond shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "diamond",
         "layoutShape": "diamond",
         "icon": null,
@@ -124,7 +124,7 @@
       {
         "id": "n44",
         "label": "This is a label for hexagon shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "hexagon",
         "layoutShape": "hexagon",
         "icon": null,

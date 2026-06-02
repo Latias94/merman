@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Decision",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "diamond",
         "layoutShape": "diamond",
         "icon": null,

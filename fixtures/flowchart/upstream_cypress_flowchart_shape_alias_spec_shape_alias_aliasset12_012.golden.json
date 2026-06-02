@@ -22,7 +22,7 @@
       {
         "id": "n0",
         "label": "dbl-circ",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "dbl-circ",
         "layoutShape": "dbl-circ",
         "icon": null,
@@ -41,7 +41,7 @@
       {
         "id": "n1",
         "label": "double-circle",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "double-circle",
         "layoutShape": "double-circle",
         "icon": null,

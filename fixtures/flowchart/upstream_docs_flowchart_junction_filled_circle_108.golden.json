@@ -20,7 +20,7 @@
       {
         "id": "A",
         "label": "Junction",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "f-circ",
         "layoutShape": "f-circ",
         "icon": null,

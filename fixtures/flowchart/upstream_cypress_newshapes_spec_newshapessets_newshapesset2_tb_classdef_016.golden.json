@@ -65,7 +65,7 @@
       {
         "id": "n00",
         "label": "new tagged-rectangle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "tagged-rectangle",
         "layoutShape": "tagged-rectangle",
         "icon": null,
@@ -105,7 +105,7 @@
       {
         "id": "n11",
         "label": "new documents shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "documents",
         "layoutShape": "documents",
         "icon": null,
@@ -145,7 +145,7 @@
       {
         "id": "n22",
         "label": "new lightning-bolt shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "lightning-bolt",
         "layoutShape": "lightning-bolt",
         "icon": null,
@@ -185,7 +185,7 @@
       {
         "id": "n33",
         "label": "new filled-circle shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "filled-circle",
         "layoutShape": "filled-circle",
         "icon": null,
@@ -225,7 +225,7 @@
       {
         "id": "n44",
         "label": "new window-pane shape",
-        "labelType": "text",
+        "labelType": "markdown",
         "shape": "window-pane",
         "layoutShape": "window-pane",
         "icon": null,

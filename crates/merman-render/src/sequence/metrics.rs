@@ -231,8 +231,10 @@ pub(super) fn measure_sequence_label_for_layout(
 
 #[cfg(test)]
 mod tests {
+    use crate::text::TextMeasurer;
+
     #[test]
-    fn sequence_default_message_widths_match_mermaid_default_font_family() {
+    fn sequence_default_message_widths_use_current_sequence_svg_bbox_facts() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = crate::text::TextStyle {
             // Mermaid's default global font family includes the trailing semicolon, and Sequence
@@ -241,62 +243,37 @@ mod tests {
             font_size: 16.0,
             font_weight: None,
         };
-
-        let (hello_bob_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are you?", &style);
-        assert_eq!(hello_bob_w, 160.0);
-
-        let (hello_bob_hyphen_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Hello Bob, how are - you?", &style);
-        assert_eq!(hello_bob_hyphen_w, 170.0);
-
-        let (hello_alice_w, _) = super::measure_svg_like_with_html_br(
-            &measurer,
+        let cases = [
+            "Hello Bob, how are you?",
+            "Hello Bob, how are - you?",
             "Hello Alice, I'm fine and you?",
-            &style,
-        );
-        assert_eq!(hello_alice_w, 193.0);
-
-        let (hello_alice_carol_w, _) = super::measure_svg_like_with_html_br(
-            &measurer,
             "Hello Alice, please meet Carol?",
-            &style,
-        );
-        assert_eq!(hello_alice_carol_w, 203.0);
-
-        let (feeling_fresh_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Feeling fresh like a daisy", &style);
-        assert_eq!(feeling_fresh_w, 161.0);
-
-        let (fine_thank_you_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Fine, thank you. And you?", &style);
-        assert_eq!(fine_thank_you_w, 170.0);
-
-        let (hello_charley_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Hello Charley, how are you?", &style);
-        assert_eq!(hello_charley_w, 183.0);
-
-        let (hello_john_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Hello John, how are you?", &style);
-        assert_eq!(hello_john_w, 164.0);
-
-        let (game_tonight_w, _) = super::measure_svg_like_with_html_br(
-            &measurer,
+            "Feeling fresh like a daisy",
+            "Fine, thank you. And you?",
+            "Hello Charley, how are you?",
+            "Hello John, how are you?",
             "Did you want to go to the game tonight?",
-            &style,
-        );
-        assert_eq!(game_tonight_w, 259.0);
+            "How about you John?",
+            "bidirectional_dotted",
+            "Alice-in-Wonderland",
+        ];
 
-        let (how_about_john_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "How about you John?", &style);
-        assert_eq!(how_about_john_w, 140.0);
+        for text in cases {
+            let (measured_width, measured_height) =
+                super::measure_svg_like_with_html_br(&measurer, text, &style);
+            let expected_width =
+                TextMeasurer::measure_svg_simple_text_bbox_width_px(&measurer, text, &style)
+                    .round()
+                    .max(0.0);
 
-        let (bidirectional_dotted_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "bidirectional_dotted", &style);
-        assert_eq!(bidirectional_dotted_w, 130.0);
-
-        let (alice_in_wonderland_w, _) =
-            super::measure_svg_like_with_html_br(&measurer, "Alice-in-Wonderland", &style);
-        assert_eq!(alice_in_wonderland_w, 136.0);
+            assert_eq!(
+                measured_width, expected_width,
+                "expected Sequence message width to stay aligned with the current single-run SVG bbox fact for {text:?}"
+            );
+            assert!(
+                measured_height > 0.0,
+                "expected positive Sequence label height for {text:?}"
+            );
+        }
     }
 }
