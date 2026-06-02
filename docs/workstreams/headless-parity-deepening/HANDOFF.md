@@ -154,6 +154,14 @@ Current repository reality to preserve:
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
     preserving the known 26 Architecture root residuals; SVG root `createText(...)` measurement
     remains separate from Cytoscape compound-child label measurement.
+  - A follow-up disconnected-islands root-bounds audit confirmed why that phase split matters.
+    `stress_architecture_disconnected_islands_046` is width-aligned but height-off: current local
+    final root is `823.346x775.647` versus upstream `823.346x768.460`. The emitted SVG scanner alone
+    is too short (`823.346x751.460`), while the final root becomes too tall after unioning synthetic
+    label `content_bounds`. A temporary top-level-service switch from `svg_root_bounds` to
+    `cytoscape_group_child_bounds` fixed this one row but expanded full Architecture root mismatches
+    from `26` to `84`, so it was rejected. The next valid fix needs a phase-specific root label
+    contribution model, not a global service-bounds switch.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

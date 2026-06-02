@@ -602,6 +602,30 @@ Verification notes:
   `batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`, and
   `batch6_init_fontsize_icon_size_wrap_093`.
 
+Fifteenth slice Architecture disconnected-islands root-bounds audit:
+
+- Re-audited `stress_architecture_disconnected_islands_046`, a height-only residual where width is
+  already aligned: upstream `823.346x768.460`, current local `823.346x775.647`.
+- Source check: pinned Mermaid 11.15 `setupGraphViewbox(...)` uses browser `svg.getBBox()` plus
+  padding for both size attributes and `viewBox`.
+- Fresh `debug-svg-bbox` evidence shows local emitted geometry alone is too short
+  (`823.346x751.460` with padding), while the final local root is too tall only after the root
+  viewport code unions synthetic `content_bounds` for label extents.
+- A temporary experiment that used `cytoscape_group_child_bounds` for top-level services fixed this
+  single fixture, but full Architecture `parity-root` mismatches grew from `26` to `84`. The
+  experiment was rejected and reverted.
+- Conclusion: the next fix must be a phase-specific root label contribution model. Do not globally
+  collapse top-level services from `svg_root_bounds` to Cytoscape group-child bounds.
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_disconnected_islands_046 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_disconnected_islands_current_hpd050_audit.md`
+  failed as expected on the current residual.
+- `cargo run -p xtask -- debug-svg-bbox --svg fixtures\upstream-svgs\architecture\stress_architecture_disconnected_islands_046.svg --padding 40`
+- `cargo run -p xtask -- debug-svg-bbox --svg target\compare\architecture\stress_architecture_disconnected_islands_046.svg --padding 40`
+- `Select-String` counts confirmed current full root report has `26` mismatches, while the rejected
+  top-level Cytoscape experiment report has `84`.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

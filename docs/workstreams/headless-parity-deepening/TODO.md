@@ -107,7 +107,11 @@ Last updated: 2026-06-02
   service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
   by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. This keeps SVG
   root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
-  preserves the known 26 Architecture root residuals.
+  preserves the known 26 Architecture root residuals. A disconnected-islands root-bounds audit then
+  rejected a tempting global top-level-service switch from `svg_root_bounds` to
+  `cytoscape_group_child_bounds`: it made that one height-only row exact but expanded full
+  Architecture root mismatches from `26` to `84`. The next valid Architecture root fix needs a
+  phase-specific root label contribution model.
 
 ## M5 - Semantic / Render Unification Pilot
 
