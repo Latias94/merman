@@ -117,3 +117,7 @@
 {"file":"crates/merman-render/src/svg/parity/class/note.rs","reason":"HPD-080 implementation: Class note shapes now read Mermaid 11.15 noteBkgColor and noteBorderColor for both HTML-label and htmlLabels:false render paths."}
 {"file":"crates/merman-render/tests/class_svg_test.rs","reason":"HPD-080 regression: render-path test asserts Class note fill, border, and text theme variables reach emitted SVG output."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Class note nodes store noteBkgColor and noteBorderColor in note cssStyles."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-theme-css-rendering-defects-class-stylesheet.md","reason":"HPD-080 journal: sixteenth source-backed style slice covers Class stylesheet rules and numeric strokeWidth theme emission."}
+{"file":"crates/merman-render/src/svg/parity/class/css.rs","reason":"HPD-080 implementation: Class CSS now emits current-output rules from Mermaid 11.15 class/styles.js and reads strokeWidth through SvgTheme::css_value."}
+{"file":"crates/merman-render/tests/class_svg_test.rs","reason":"HPD-080 regression: render-path test asserts numeric Class strokeWidth theme values reach node shape and relation CSS."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/class/styles.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 Class style provider maps node shapes, dividers, clusters, edge terminals, class labels, and relations to theme variables."}

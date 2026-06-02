@@ -1109,6 +1109,42 @@ Residual note:
 - This slice fixes Class note theme/readability only. It does not change Class namespace cluster
   inline styling, Class layout, browser text measurement, or root-bounds residuals.
 
+Sixteenth slice outcome:
+
+- Audited pinned Mermaid 11.15 Class style provider:
+  - `packages/mermaid/src/diagrams/class/styles.js`
+- Class CSS already covered the basic label, relation, marker, and note text color rules, but it
+  still missed source-backed rules that apply to current local output: `g.classGroup text`, cluster
+  labels/rects, node shape selectors, dividers, `g.classGroup` rect/line, `.classLabel`,
+  `.edgeTerminals`, and the source-shaped `.classTitleText` rule.
+- The same audit found that Class `strokeWidth` was read through `theme.color(...)`, so numeric
+  `themeVariables.strokeWidth` values were silently ignored. Mermaid 11.15 treats `strokeWidth` as
+  a CSS token in the Class stylesheet.
+- Class CSS now reads `strokeWidth` through `SvgTheme::css_value(...)` and emits the source-backed
+  rules above for selectors that hit the current local SVG surface. This makes custom node/relation
+  stroke widths and Class theme colors visible without adding browser-dependent measurement logic.
+- Upstream icon rules and neo-only rules remain intentionally deferred where local Class rendering
+  does not yet emit `.label-icon`, `data-look="neo"`, or the matching neo support shapes.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/class/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/class/css.rs)
+- [crates/merman-render/tests/class_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/class_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render class_svg_honors_numeric_stroke_width_theme_css --test class_svg_test`
+- `cargo test -p merman-render --test class_svg_test`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `git diff --check`
+
+Residual note:
+
+- This slice fixes Class stylesheet/theme emission only. It does not claim Class root-bounds,
+  namespace cluster inline style, icon label, or neo rendering support closure.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

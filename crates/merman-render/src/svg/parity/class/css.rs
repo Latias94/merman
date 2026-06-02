@@ -21,8 +21,15 @@ pub(super) fn class_css(
     let note_text = theme.color("noteTextColor", "#333");
     let line_color = theme.color("lineColor", "#333333");
     let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let class_group_text = theme
+        .optional_color("nodeBorder")
+        .unwrap_or_else(|| class_text.clone());
+    let cluster_bkg = theme.color("clusterBkg", "#ffffde");
+    let cluster_border = theme.color("clusterBorder", "#aaaa33");
+    let title_color = theme.color("titleColor", "#333");
     let text_color = theme.color("textColor", class_text.as_str());
-    let stroke_width = theme.color("strokeWidth", "1");
+    let stroke_width = theme.css_value("strokeWidth", "1");
 
     let mut out = String::new();
     let _ = write!(
@@ -35,8 +42,24 @@ pub(super) fn class_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} p{{margin:0;}}#{} .nodeLabel,#{} .edgeLabel{{color:{};}}#{} .noteLabel .nodeLabel,#{} .noteLabel .edgeLabel{{color:{};}}#{} .label text{{fill:{};}}#{} .label span{{fill:{};color:{};}}"#,
+        r#"#{} p{{margin:0;}}#{} g.classGroup text{{fill:{};stroke:none;font-family:{};font-size:10px;}}#{} g.classGroup text .title{{font-weight:bolder;}}#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .cluster rect{{fill:{};stroke:{};stroke-width:1px;}}#{} .cluster text{{fill:{};}}#{} .cluster span{{color:{};}}#{} .nodeLabel,#{} .edgeLabel{{color:{};}}#{} .noteLabel .nodeLabel,#{} .noteLabel .edgeLabel{{color:{};}}#{} .label text{{fill:{};}}#{} .label span{{fill:{};color:{};}}"#,
         id.as_str(),
+        id.as_str(),
+        class_group_text,
+        font_family,
+        id.as_str(),
+        id.as_str(),
+        title_color,
+        id.as_str(),
+        title_color,
+        id.as_str(),
+        id.as_str(),
+        cluster_bkg,
+        cluster_border,
+        id.as_str(),
+        title_color,
+        id.as_str(),
+        title_color,
         id.as_str(),
         id.as_str(),
         class_text,
@@ -51,13 +74,33 @@ pub(super) fn class_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .edgeLabel .label rect{{fill:{};}}#{} .labelBkg{{background:{}}}#{} .edgeLabel .label span{{background:{}}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
+        r#"#{} .edgeLabel .label rect{{fill:{};}}#{} .labelBkg{{background:{}}}#{} .edgeLabel .label span{{background:{}}}#{} .classTitle{{font-weight:bolder;}}#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{}}}#{} .divider{{stroke:{};stroke-width:1;}}#{} g.classGroup rect{{fill:{};stroke:{};}}#{} g.classGroup line{{stroke:{};stroke-width:1;}}#{} .classLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}#{} .classLabel .label{{fill:{};font-size:10px;}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
         id.as_str(),
         main_bkg,
         id.as_str(),
         main_bkg,
         id.as_str(),
         main_bkg,
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        id.as_str(),
+        main_bkg,
+        node_border,
+        stroke_width,
+        id.as_str(),
+        node_border,
+        id.as_str(),
+        main_bkg,
+        node_border,
+        id.as_str(),
+        node_border,
+        id.as_str(),
+        main_bkg,
+        id.as_str(),
+        node_border,
         id.as_str(),
         line_color,
         stroke_width,
@@ -96,7 +139,7 @@ pub(super) fn class_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} g.clickable{{cursor:pointer;}}#{} .classTitle,#{} .classTitleText,#{} .classDiagramTitleText{{font-weight:bolder;text-anchor:middle;font-size:18px;fill:{};}}"#,
+        r#"#{} g.clickable{{cursor:pointer;}}#{} .edgeTerminals{{font-size:11px;line-height:initial;}}#{} .classTitleText,#{} .classDiagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
         id.as_str(),
         id.as_str(),
         id.as_str(),

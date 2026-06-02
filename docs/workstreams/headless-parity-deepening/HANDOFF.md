@@ -243,6 +243,12 @@ Current repository reality to preserve:
   - A fifteenth HPD-080 slice fixed Class note theme colors. Class note shapes now use Mermaid
     11.15 `noteBkgColor` and `noteBorderColor` for both HTML-label and `htmlLabels:false` render
     paths, while existing Class CSS continues to drive `noteTextColor`.
+  - A sixteenth HPD-080 slice fixed remaining source-backed Class stylesheet coverage that applies
+    to current output. Class CSS now emits Mermaid 11.15 node shape, divider, cluster,
+    class-label, edge-terminal, and relation rules from `class/styles.js`, and reads numeric
+    `themeVariables.strokeWidth` through `SvgTheme::css_value(...)` instead of dropping it through
+    a string-only color lookup. Icon and neo-only rules remain intentionally deferred where local
+    Class output does not emit the required support attributes/elements.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

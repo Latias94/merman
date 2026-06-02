@@ -178,6 +178,9 @@ Last updated: 2026-06-02
   `archGroupBorderWidth` emission so custom Architecture edge/group styling reaches the final SVG
   stylesheet instead of falling back to generic line/group-border colors. A Class note slice fixed
   `noteBkgColor` and `noteBorderColor` for both HTML-label and `htmlLabels:false` note shapes,
-  complementing the existing `noteTextColor` CSS coverage.
+  complementing the existing `noteTextColor` CSS coverage. A follow-up Class stylesheet slice
+  restored source-backed node shape, divider, cluster, class-label, edge-terminal, and relation CSS
+  rules that apply to current output, including numeric `themeVariables.strokeWidth` via the shared
+  CSS-token path.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -106,6 +106,37 @@ classDiagram
 }
 
 #[test]
+fn class_svg_honors_numeric_stroke_width_theme_css() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"themeVariables": {"mainBkg": "#112233", "nodeBorder": "#445566", "lineColor": "#778899", "strokeWidth": 7}}}%%
+classDiagram
+    Animal <|-- Dog
+    class Animal
+    class Dog
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#merman .node rect,#merman .node circle,#merman .node ellipse,#merman .node polygon,#merman .node path{fill:#112233;stroke:#445566;stroke-width:7}"#
+        ),
+        "expected numeric strokeWidth to drive Class node shape CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .divider{stroke:#445566;stroke-width:1;}"#),
+        "expected nodeBorder to drive Class divider CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#merman .relation{stroke:#778899;stroke-width:7;fill:none;}"#),
+        "expected numeric strokeWidth to drive Class relation CSS: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"#merman .relation{stroke:#778899;stroke-width:1;fill:none;}"#),
+        "Class relation CSS must not drop numeric strokeWidth overrides: {svg}"
+    );
+}
+
+#[test]
 fn class_svg_honors_configured_note_theme_colors() {
     for html_labels in [true, false] {
         let svg = render_class_svg_from_text(&format!(
