@@ -244,5 +244,9 @@ Last updated: 2026-06-02
   finite headless-safe viewBoxes, and fixed a Treemap classDef compatibility gap: Mermaid accepts
   bare label-style tokens such as `color`, while local SVG emission now drops empty-valued
   declarations instead of leaking invalid `color: !important` / `fill: !important` styles.
+  A follow-up extended-theme slice fixed a real host theme override gap in the official
+  `neo/redux*` themes: defaults still come from generated Mermaid 11.15 snapshots, but user base
+  overrides now recompute source-backed visible derived keys consumed by current renderers, while
+  direct derived-key overrides keep winning after derivation.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

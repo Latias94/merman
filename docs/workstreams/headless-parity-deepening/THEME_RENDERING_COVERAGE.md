@@ -15,7 +15,7 @@ failure modes:
 | Consumer need | merman stance | Current support |
 | --- | --- | --- |
 | Mermaid-compatible default SVG readability | Product requirement | Diagram-specific source-backed CSS is emitted for the implemented matrix where Mermaid 11.15 has a provider and local SVG elements can consume the rules. |
-| Official Mermaid theme names | Product requirement | Core, bindings, and `@merman/web` expose all 11 Mermaid 11.15 themes: `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. Extended theme defaults use generated upstream snapshots; exact `neo/redux*` override derivation is a follow-up audit. |
+| Official Mermaid theme names | Product requirement | Core, bindings, and `@merman/web` expose all 11 Mermaid 11.15 themes: `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. Extended theme defaults use generated upstream snapshots; source-backed user override derivation now covers visible current-renderer keys. |
 | Custom Mermaid theme variables | Product requirement | Renderers pass `effective_config` into CSS or inline style generation. Rust and shared binding consumers can pass external Mermaid defaults through site config; non-color CSS tokens use string/number-aware paths such as `SvgTheme::css_value(...)` where needed. |
 | Browser-free raster-safe output | Product requirement | `SvgPipeline::resvg_safe()` inserts SVG text fallbacks for `<foreignObject>` labels, strips unsupported foreignObject content, and sanitizes CSS/attributes for resvg. |
 | Host palette replacement, such as Zed markdown preview colors | Host integration boundary | Hosts can pass Mermaid config, compose Rust postprocessors, or use binding `svg.scoped_css`. merman should not inject Zed-specific edge-label, tag-label, or background colors by default. |
@@ -109,7 +109,7 @@ default merman styling behavior.
 | Need | Current status | Notes |
 | --- | --- | --- |
 | Select an official Mermaid theme | Supported | Rust uses `HeadlessRenderer::with_site_config(...)`; binding consumers use top-level `options_json.site_config`; public metadata exposes all Mermaid 11.15 theme names. |
-| Override Mermaid `themeVariables` | Supported | Rust can pass site config; shared binding options now expose top-level `site_config`; ordinary Mermaid init directives also work. |
+| Override Mermaid `themeVariables` | Supported | Rust can pass site config; shared binding options now expose top-level `site_config`; ordinary Mermaid init directives also work. Classic themes derive source-backed defaults, and `neo/redux*` extended themes now recompute visible derived keys such as edge-label, line, Architecture edge, Requirement relation, actor/state background, and tag label colors from user base overrides while preserving explicit derived-key overrides. |
 | Apply diagram-owned custom CSS | Supported | Mermaid `themeCSS` is emitted as scoped SVG CSS through the parity renderer, including when it comes from binding `site_config`. |
 | Apply host-owned palette CSS | Supported | Rust consumers can append `ScopedCssPostprocessor` and optional `CssOverridePostprocessor`. Binding consumers can pass `svg.scoped_css` plus optional `svg.css_override_policy`; `resvg-safe` binding pipelines sanitize the injected CSS after insertion. |
 | Rewrite arbitrary element attributes or inline styles | Host boundary | Rust consumers can write a custom `SvgPostprocessor`. Shared bindings intentionally do not expose a generic XML rewrite DSL; product-specific palette cleanup such as Zed's accent/tag/edge-label rules should remain host code unless a common, product-neutral contract emerges. |
@@ -152,5 +152,6 @@ leaking invalid `color: !important` or `fill: !important` into headless output.
 2. Audit Info/Error only for actual user-visible failures, not for absent provider parity.
 3. Add root-background smoke coverage only when a host reports a concrete raster/export failure;
    the output-policy seam is now explicit, so there is no reason to change defaults.
-4. Audit exact `neo/redux*` override derivation only if fixture or consumer evidence shows direct
-   theme-variable overrides are insufficient.
+4. Extend `neo/redux*` override derivation only when fixture or consumer evidence points to a
+   currently emitted surface not covered by the visible-key seam. Do not replace the generated
+   default snapshots with broad fixture-keyed constants.

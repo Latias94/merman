@@ -239,3 +239,7 @@
 {"file":"crates/merman-render/src/svg/parity/treemap.rs","reason":"HPD-080 implementation: Treemap SVG style compilation drops empty-valued declarations from Mermaid-compatible bare style tokens."}
 {"file":"crates/merman-render/tests/treemap_svg_test.rs","reason":"HPD-080 regression: Treemap bare classDef label-style tokens parse and render without leaking empty CSS values."}
 {"file":"crates/merman-render/tests/pie_svg_test.rs","reason":"HPD-080 regression: empty Pie root viewport remains finite for headless SVG output."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-extended-theme-override-derivations.md","reason":"HPD-080 journal: official neo/redux theme defaults stay snapshot-backed while user override derivations now cover visible current-renderer keys."}
+{"file":"crates/merman-core/src/theme.rs","reason":"HPD-080 implementation: extended theme user overrides recompute source-backed visible derived keys while explicit derived-key overrides still win."}
+{"file":"crates/merman-render/tests/flowchart_svg_test.rs","reason":"HPD-080 regression: Redux primaryColor override derives the source-backed secondary edge-label CSS without incorrectly changing mainBkg-driven node fill."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/themes/theme-redux.js","reason":"HPD-080 source evidence: pinned Mermaid 11.15 extended theme calculate(overrides) order defines user base-key derivation and explicit override precedence."}

@@ -322,9 +322,9 @@ Current repository reality to preserve:
   - A twenty-third HPD-080 slice corrected the Mermaid 11.15 public theme surface after rechecking
     the upstream theme registry and config types. Core, bindings, and `@merman/web` now expose all
     11 official theme names, including `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and
-    `redux-dark-color`. Extended theme defaults use the generated 11.15 snapshot; exact
-    `neo/redux*` override derivation remains a follow-up audit rather than a fake full-parity
-    claim.
+    `redux-dark-color`. Extended theme defaults use the generated 11.15 snapshot; later HPD-080
+    work added a visible derived-key override seam without claiming a full hand-port of every
+    extended theme rule.
   - A twenty-fourth HPD-080 slice exposed the generic duplicate-fallback cleanup through shared
     binding `options_json` as `svg.drop_native_duplicate_fallbacks`. The default remains unchanged;
     non-Rust hosts can now opt into the same safe duplicate native/fallback label cleanup that Rust
@@ -392,6 +392,13 @@ Current repository reality to preserve:
     leaking invalid `color: !important` / `fill: !important` styles. The same slice made empty Pie
     roots finite for headless/raster safety rather than preserving Mermaid's invalid `-Infinity`
     capture artifact.
+  - A thirty-sixth HPD-080 extended-theme override slice fixed a host theme gap in official
+    `neo/redux*` themes. Defaults still come from generated Mermaid 11.15 snapshots, but when users
+    override source base keys such as `primaryColor`, `secondaryColor`, `background`, `lineColor`,
+    or `mainBkg`, local theme expansion now recomputes source-backed visible derived keys consumed
+    by current renderers. Direct derived-key overrides still win, matching Mermaid's
+    `calculate(overrides)` order. The Flowchart regression intentionally confirms Redux node fill
+    stays on `mainBkg` while the derived secondary color reaches visible edge-label CSS.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

@@ -2001,6 +2001,58 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
 - `git diff --check`
 
+## HPD-080 - Extended Theme Override Derivations
+
+Outcome:
+
+- Re-audited official Mermaid 11.15 `neo/redux*` theme behavior after the host-theme boundary work
+  left exact extended-theme override derivation as an honest follow-up.
+- Confirmed that no-override defaults should continue to come from the generated
+  `theme_variables_11_15_0.json` snapshots, but user override handling cannot be a static snapshot
+  merge. Mermaid theme modules run `calculate(overrides)`: copy user base keys, call
+  `updateColors()`, then re-apply explicit user keys so direct derived-key overrides win.
+- Added a bounded source-backed derivation seam in
+  [crates/merman-core/src/theme.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/theme.rs).
+  It recomputes visible current-renderer derived keys for extended themes when users override
+  source base keys such as `primaryColor`, `secondaryColor`, `background`, `lineColor`, and
+  `mainBkg`.
+- Kept the seam intentionally narrower than a full hand-port of every extended theme line. It
+  covers keys consumed by current SVG renderers: Flowchart edge-label/icon surfaces, shared line and
+  arrow colors, Architecture edge colors, Requirement relation colors, Sequence actor/label-box
+  backgrounds, C4 person backgrounds, State backgrounds/transitions, and GitGraph tag-label
+  background.
+- Preserved explicit override precedence. If the user directly sets a derived key such as
+  `nodeBkg` or `edgeLabelBackground`, local theme expansion leaves that value in place after
+  derivation.
+- Added a Flowchart SVG regression proving `theme: "redux"` plus
+  `themeVariables.primaryColor = "#123456"` derives the Mermaid source secondary color into
+  visible edge-label CSS, while correctly keeping Redux node fill on the `mainBkg` default
+  `#ffffff`.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/themes/index.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-neo.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-color.js`
+- `repo-ref/mermaid/packages/mermaid/src/themes/theme-redux-dark-color.js`
+- Installed Mermaid `11.15.0` dist probes through
+  `tools/mermaid-cli/node_modules/mermaid/dist/mermaid.core.mjs`.
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-core theme`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test flowchart_svg_test`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
+
+Residual note:
+
+- Future `neo/redux*` work should extend the source-backed derivation seam only when a fixture or
+  consumer proves a currently emitted surface still misses Mermaid's override-derived value. Do not
+  replace the generated default snapshots with fixture-keyed constants.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

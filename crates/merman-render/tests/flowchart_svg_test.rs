@@ -204,6 +204,27 @@ flowchart TD
 }
 
 #[test]
+fn flowchart_svg_uses_extended_theme_derived_secondary_color_overrides() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"theme": "redux", "themeVariables": {"primaryColor": "#123456"}}}%%
+flowchart TD
+    A[Redux Node] -- Edge Label --> B[Other]
+"##,
+    );
+
+    assert!(
+        svg.contains("fill:#ffffff;stroke:#28253D;stroke-width:2px;"),
+        "expected Mermaid redux mainBkg default to remain the visible node fill: {svg}"
+    );
+    assert!(
+        svg.contains(
+            "#merman .edgeLabel{background-color:hsl(90, 65.3846153846%, 20.3921568627%);"
+        ),
+        "expected Mermaid redux primaryColor override to derive visible secondary edge-label color: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
     let text =
         "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
