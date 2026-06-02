@@ -209,6 +209,11 @@ Current repository reality to preserve:
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
     `batch5_long_titles_and_punct_076` residual rows.
+  - A follow-up `group_port_edges_017` finalElements audit reconfirmed this is not a group-edge
+    shift or SVG path emission bug. Local X spread is about `1.468px` wider, and local Y spacing is
+    about `17.845px` more compressed than the browser/Cytoscape result, matching the root deltas.
+    Treat it as manatee-vs-Cytoscape FCoSE solution / compound-bound drift unless a reusable
+    source-backed solver rule appears.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

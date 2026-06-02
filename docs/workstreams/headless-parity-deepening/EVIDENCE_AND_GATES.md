@@ -764,6 +764,22 @@ Architecture final bbox probe enhancement (2026-06-03):
 - Use this probe output for future Architecture bbox-phase audits before changing renderer or
   manatee math.
 
+Architecture group-port finalElements audit (2026-06-03):
+
+- Re-audited `stress_architecture_group_port_edges_017` with the enhanced finalElements probe.
+- Current focused compare remains expected-fail at upstream `707.769x542.448` vs local
+  `709.238x524.603`.
+- Browser final service positions are `in1/out1.x=-6.611`, `in2.x=193.385`, `ext.x=-270.385`,
+  top row `y=-121.724`, bottom row `y=117.224`.
+- Local SVG positions are `in1/out1.x=-5.907`, `in2.x=194.119`, `ext.x=-271.119`, top row
+  `y=-112.801`, bottom row `y=108.301`.
+- The local X spread is wider by about `1.468px`, and local Y spacing is compressed by about
+  `17.845px`, matching the root width/height deltas. Probe bboxes confirm ordinary icon-floor
+  service nodes (`82x100`) and source-side group bboxes.
+- Classification stays source-input-matched manatee-vs-Cytoscape FCoSE solution / compound-bound
+  drift. Do not tune group-edge shifts, SVG path emission, service label measurement, or root
+  viewBox logic for this row alone.
+
 Focused verification:
 
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_residual_classification_refresh.md`
