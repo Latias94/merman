@@ -30,22 +30,15 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let font = parts.font_family;
     let text_color = parts.text_color;
     let line_color = parts.line_color;
-    let face_color = theme_color(effective_config, "faceColor", "#FFF8DC");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
-    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let arrowhead_color = theme_color(effective_config, "arrowheadColor", "#333333");
-    let edge_label_background = theme_color(
-        effective_config,
-        "edgeLabelBackground",
-        "rgba(232,232,232, 0.8)",
-    );
-    let title_color = theme_color(effective_config, "titleColor", text_color.as_str());
-    let tertiary_color = theme_color(
-        effective_config,
-        "tertiaryColor",
-        "hsl(80, 100%, 96.2745098039%)",
-    );
-    let border2 = theme_color(effective_config, "border2", "#aaaa33");
+    let theme = SvgTheme::new(effective_config);
+    let face_color = theme.color("faceColor", "#FFF8DC");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let arrowhead_color = theme.color("arrowheadColor", "#333333");
+    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+    let title_color = theme.color("titleColor", text_color.as_str());
+    let tertiary_color = theme.color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)");
+    let border2 = theme.color("border2", "#aaaa33");
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -117,7 +110,7 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         "hsl(188, 100%, 93.5294117647%)",
     ];
     for (i, default_fill) in DEFAULT_FILL_TYPES.iter().enumerate() {
-        let fill = theme_color(effective_config, &format!("fillType{}", i), default_fill);
+        let fill = theme.color(&format!("fillType{}", i), default_fill);
         let _ = write!(
             &mut out,
             r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
@@ -125,10 +118,7 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         );
     }
     for i in 0..6 {
-        if let Some(fill) = config_string(
-            effective_config,
-            &["themeVariables", &format!("actor{}", i)],
-        ) {
+        if let Some(fill) = theme.optional_color(&format!("actor{}", i)) {
             let _ = write!(&mut out, r#"#{} .actor-{}{{fill:{};}}"#, id, i, fill);
         }
     }

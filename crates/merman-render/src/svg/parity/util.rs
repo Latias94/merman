@@ -97,8 +97,17 @@ impl<'a> SvgTheme<'a> {
         Self { effective_config }
     }
 
+    pub(super) fn optional_color(&self, key: &str) -> Option<String> {
+        config_string(self.effective_config, &["themeVariables", key])
+    }
+
     pub(super) fn color(&self, key: &str, fallback: &str) -> String {
         theme_color(self.effective_config, key, fallback)
+    }
+
+    pub(super) fn css_value(&self, key: &str, fallback: &str) -> String {
+        crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
+            .unwrap_or_else(|| fallback.to_string())
     }
 
     pub(super) fn font_family_css(&self) -> String {

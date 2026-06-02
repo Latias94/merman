@@ -495,8 +495,7 @@ fn pie_theme_option(
     key: &str,
     default_value: &str,
 ) -> String {
-    crate::config::config_css_number_or_string(effective_config, &["themeVariables", key])
-        .unwrap_or_else(|| default_value.to_string())
+    SvgTheme::new(effective_config).css_value(key, default_value)
 }
 
 pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
@@ -506,30 +505,19 @@ pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) ->
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let font = parts.font_family;
-    let task_text_dark_color = theme_color(effective_config, "taskTextDarkColor", "black");
+    let theme = SvgTheme::new(effective_config);
+    let task_text_dark_color = theme.color("taskTextDarkColor", "black");
     let pie_stroke_color = pie_theme_option(effective_config, "pieStrokeColor", "black");
     let pie_stroke_width = pie_theme_option(effective_config, "pieStrokeWidth", "2px");
     let pie_opacity = pie_theme_option(effective_config, "pieOpacity", "0.7");
     let pie_outer_stroke_color = pie_theme_option(effective_config, "pieOuterStrokeColor", "black");
     let pie_outer_stroke_width = pie_theme_option(effective_config, "pieOuterStrokeWidth", "2px");
     let pie_title_text_size = pie_theme_option(effective_config, "pieTitleTextSize", "25px");
-    let pie_title_text_color = theme_color(
-        effective_config,
-        "pieTitleTextColor",
-        task_text_dark_color.as_str(),
-    );
+    let pie_title_text_color = theme.color("pieTitleTextColor", task_text_dark_color.as_str());
     let pie_section_text_size = pie_theme_option(effective_config, "pieSectionTextSize", "17px");
-    let pie_section_text_color = theme_color(
-        effective_config,
-        "pieSectionTextColor",
-        parts.text_color.as_str(),
-    );
+    let pie_section_text_color = theme.color("pieSectionTextColor", parts.text_color.as_str());
     let pie_legend_text_size = pie_theme_option(effective_config, "pieLegendTextSize", "17px");
-    let pie_legend_text_color = theme_color(
-        effective_config,
-        "pieLegendTextColor",
-        task_text_dark_color.as_str(),
-    );
+    let pie_legend_text_color = theme.color("pieLegendTextColor", task_text_dark_color.as_str());
     let _ = write!(
         &mut out,
         r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
