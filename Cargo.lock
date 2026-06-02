@@ -1883,6 +1883,7 @@ dependencies = [
  "merman-render",
  "resvg 0.46.0",
  "roxmltree 0.20.0",
+ "serde_json",
  "svg2pdf",
  "thiserror 2.0.18",
  "tiny-skia",

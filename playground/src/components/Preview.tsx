@@ -153,6 +153,13 @@ export function Preview({ className }: PreviewProps) {
       clearTimeout(debounceRef.current);
     }
 
+    if (code.trim()) {
+      setSvg(null);
+      setAscii(null);
+      setError(null);
+      setMermanRenderTime(null);
+    }
+
     debounceRef.current = setTimeout(() => {
       if (ready && code.trim()) {
         const diagramType = detectDiagramType(code);
@@ -209,13 +216,12 @@ export function Preview({ className }: PreviewProps) {
   }, [isAsciiSupported, previewMode]);
 
   useEffect(() => {
+    setMermaidSvg(null);
+    setMermaidError(null);
+    setMermaidRenderTime(null);
+
     if (previewMode !== "compare" || !code.trim()) {
       setMermaidLoading(false);
-      if (!code.trim()) {
-        setMermaidSvg(null);
-        setMermaidError(null);
-        setMermaidRenderTime(null);
-      }
       return;
     }
 
@@ -241,6 +247,8 @@ export function Preview({ className }: PreviewProps) {
     if (diagnosticsDebounceRef.current) {
       clearTimeout(diagnosticsDebounceRef.current);
     }
+
+    setDiagnostics(EMPTY_DIAGNOSTICS);
 
     if (previewMode !== "diagnostics") {
       setDiagnosticsLoading(false);

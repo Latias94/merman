@@ -3,9 +3,9 @@
   "slug": "theme-parity",
   "title": "Theme Parity Refactor",
   "status": "complete",
-  "updated": "2026-06-01",
+  "updated": "2026-06-02",
   "scope_kind": "execution",
-  "problem": "Merman's theme support is partial: default theme variables are not expanded, renderer fallback logic is duplicated, and Web/WASM theme lists are maintained separately.",
+  "problem": "Merman's theme parity regressed after the Mermaid 11.15 refresh: snapshot-only neo/redux theme names leaked into public theme surfaces, playground compare mode diverged from Mermaid's official theme fallback behavior, and representative theme fixtures/resolver cleanup remain follow-up work.",
   "authoritative_docs": [
     {
       "role": "design",
@@ -41,11 +41,12 @@
   "gates": [
     "cargo fmt",
     "cargo nextest run -p merman-core theme",
+    "cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface",
     "cargo nextest run -p merman-render block_svg class_svg flowchart_svg",
     "cargo check -p merman-wasm --target wasm32-unknown-unknown",
-    "npm run build --prefix platforms/web",
+    "npm run build:ts --prefix platforms/web",
     "npm run build --prefix playground",
-    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3"
+    "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter theme"
   ],
   "evidence": [
     "docs/workstreams/theme-parity/EVIDENCE_AND_GATES.md"
@@ -70,6 +71,6 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "split-follow-up",
-    "notes": "Theme refactor lane is complete. Follow up separately for broad theme fixtures, neo/redux theme families, and remaining diagram-specific resolver migrations."
+    "notes": "Post-11.15 theme hardening is complete for the observed playground parity regression. Continue separately for broad fixture tooling and opportunistic remaining diagram resolver migrations."
   }
 }

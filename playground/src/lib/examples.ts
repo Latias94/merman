@@ -379,7 +379,7 @@ export const examples: Example[] = [
     code: `requirementDiagram
     requirement ffi_api {
       id: 1
-      text: Stable parse, layout, and render API
+      text: Stable parse layout and render API
       risk: medium
       verifymethod: test
     }

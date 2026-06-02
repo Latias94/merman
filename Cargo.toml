@@ -92,3 +92,10 @@ manatee = { path = "crates/manatee", version = "0.7.0" }
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[profile.wasm-size]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

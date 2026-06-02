@@ -8,6 +8,8 @@
 {"role":"adr","path":"docs/adr/0064-host-styling-svg-postprocessors.md","reason":"Host styling isolation decision relevant to theme CSS and inherited text color."}
 {"role":"adr","path":"docs/adr/0042-rendering-strategy.md","reason":"Rendering architecture baseline for SVG parity work."}
 {"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/themes","reason":"Upstream Mermaid theme preset implementations."}
+{"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/themes/index.js","reason":"Mermaid 11.15 official theme registry used by config theme selection."}
+{"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/config.type.ts","reason":"Generated Mermaid 11.15 config theme union that confirms the public theme names."}
 {"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/mermaidAPI.ts","reason":"Upstream theme initialization, themeCSS, and CSS scoping behavior."}
 {"role":"reference","path":"repo-ref/mermaid/packages/mermaid/src/styles.ts","reason":"Upstream shared style generation entrypoint."}
 {"role":"workstream","path":"docs/workstreams/web-wasm-playground/DESIGN.md","reason":"Existing Web/WASM playground integration and theme UI context."}

@@ -33,10 +33,9 @@ export async function renderMermaidSvg(
   theme: string,
   configJson = DEFAULT_MERMAID_CONFIG
 ): Promise<MermaidRenderResult> {
-  const startTime = performance.now();
-
   try {
     const mermaid = await loadMermaid();
+    const startTime = performance.now();
     const normalizedTheme = normalizeThemeName(theme);
     const effectiveConfig = buildMermaidConfig(configJson, normalizedTheme);
     mermaid.initialize({

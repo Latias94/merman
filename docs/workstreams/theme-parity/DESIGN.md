@@ -1,8 +1,8 @@
 # Theme Parity Refactor - Design
 
 Status: Complete
-Last updated: 2026-06-01
-Baseline upstream: Mermaid `@11.12.3`
+Last updated: 2026-06-02
+Baseline upstream: Mermaid `@11.15.0`
 
 ## Problem
 
@@ -11,6 +11,12 @@ same path as other themes, renderer modules carry repeated fallback defaults, an
 surface maintains its own theme list separately from core behavior. This makes SVG parity fragile:
 small host styling or theme-variable gaps can change rendered text, fills, strokes, or compare-mode
 output.
+
+After the Mermaid 11.15 reference refresh, Merman also regressed in the opposite direction:
+snapshot-only `neo/redux*` theme variable files leaked into the public supported-theme surface even
+though Mermaid 11.15 config theme selection exposes only `default`, `base`, `dark`, `forest`, and
+`neutral`. That mismatch is visible in playground compare mode because Mermaid falls unsupported
+theme names back to default while Merman previously applied the snapshot-only theme variables.
 
 ## Intent
 
@@ -27,6 +33,10 @@ those defaults authoritative.
 ## Target State
 
 - `merman-core` expands `default`, `base`, `dark`, `forest`, and `neutral` theme variables.
+- Public supported-theme lists expose only Mermaid 11.15 config themes:
+  `default/base/dark/forest/neutral`.
+- Snapshot-only `neo/redux*` theme names are treated as unsupported and fall back to the default
+  theme unless a separate experimental-theme surface is deliberately designed.
 - Theme overrides remain user-controlled: explicit `themeVariables` values win after derived values
   are calculated, matching Mermaid's two-pass override behavior where relevant.
 - `merman-render` has a shared theme resolver for SVG parity code instead of repeated ad hoc JSON
@@ -53,7 +63,8 @@ those defaults authoritative.
 
 - Do not implement every Mermaid theme in the first pass.
 - Do not expose `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, or `redux-dark-color`
-  until their visual semantics are covered or clearly labeled experimental.
+  as config themes unless Mermaid exposes them through config theme selection or Merman clearly
+  labels them as an experimental, non-Mermaid-compatible surface.
 - Do not rewrite diagram layout algorithms for theme work.
 - Do not delete upstream fixtures or parity baselines to reduce failures.
 - Do not accept unscoped user CSS into SVG output.
@@ -116,6 +127,8 @@ static type for ergonomics, but it must agree with the WASM-exported list and Me
 
 - Add broad theme parity fixtures for Flowchart, Class, Block, and ER across
   `default/base/dark/forest/neutral` plus overrides.
+- Extend ordinary-source playground/theme-selector coverage where useful, especially if xtask gains
+  explicit external-theme injection for fixture comparisons.
 - Continue migrating remaining diagram-specific theme reads to shared resolver helpers where that
   removes duplication without weakening parity.
 - Treat Mermaid `neo` and `redux` theme families as a separate design lane because their visual
