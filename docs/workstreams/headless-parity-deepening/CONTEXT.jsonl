@@ -55,3 +55,7 @@
 {"file":"target/compare/sequence_report_parity_after_hpd060_typed_projection.md","reason":"HPD-060 evidence: Sequence structural parity remained green after typed compatibility JSON projection."}
 {"file":"target/compare/sequence_report_parity_root_after_hpd060_typed_projection.md","reason":"HPD-060 residual evidence: Sequence parity-root remains an expected 28-mismatch measurement/root front after the semantic projection pilot."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-060-sequence-typed-json-projection.md","reason":"HPD-060 journal: Sequence typed JSON projection pilot, validation, and measurement residual non-claim."}
+{"file":"docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md","reason":"HPD-070 deliverable: pinned-source admission gates and priority order for unsupported Mermaid families."}
+{"file":"docs/alignment/STATUS.md","reason":"HPD-070 alignment update: unsupported-family table now distinguishes pinned Mermaid 11.15 source presence from future/develop families."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams","reason":"HPD-070 source evidence: locked Mermaid 41646dfd... contains eventmodeling, ishikawa, treeView, venn, and wardley, but not railroad or cynefin."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-hpd-070-unsupported-family-rubric.md","reason":"HPD-070 journal: unsupported-family source checks, admission rubric, and priority outcome."}

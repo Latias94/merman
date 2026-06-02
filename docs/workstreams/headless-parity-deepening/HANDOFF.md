@@ -9,16 +9,16 @@ Current priority order:
 
 1. HPD-050 Architecture-first layout engine audit
 2. HPD-060 semantic/render unification pilot - done for Sequence
-3. HPD-070 unsupported-family rubric
+3. HPD-070 unsupported-family rubric - done
 
 Immediate next task:
 
-- HPD-010, HPD-020, HPD-030, HPD-040, and HPD-060 are done.
+- HPD-010, HPD-020, HPD-030, HPD-040, HPD-060, and HPD-070 are done.
 - HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
   when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
   rewrite.
-- HPD-070 is the next bounded planner/docs task if the next move should be unsupported-family
-  admission policy.
+- The remaining same-workstream choice is whether to continue focused HPD-050 child audits or close /
+  split HPD-050 into a narrower follow-on lane.
 
 Current repository reality to preserve:
 
@@ -157,3 +157,13 @@ Current repository reality to preserve:
   - Sequence structural SVG parity stayed green after the change. Sequence root parity still has the
     existing measurement residual front (`28` dom mismatches in the focused post-HPD-060 report);
     do not present this pilot as root-bounds closure.
+- HPD-070 outcome to preserve:
+  - `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md` owns the unsupported-family admission
+    gates and priority order.
+  - Priority order for pinned Mermaid 11.15 unsupported families is `treeView`, `ishikawa`,
+    `eventmodeling`, `venn`, then `wardley`.
+  - `venn` must not be implemented with a guessed circle layout; it needs a source-backed
+    `@upsetjs/venn.js` layout plan.
+  - `railroad-*` and `cynefin-beta` are absent from the pinned Mermaid 11.15 source, even if a newer
+    `repo-ref/mermaid` checkout later contains them. Do not include them in the 11.15 parity backlog
+    unless the baseline is bumped.

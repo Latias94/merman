@@ -84,15 +84,20 @@ directory. M15C-080 final decision check was refreshed on 2026-06-01 against
 implemented matrix without a child workstream because the families below still have no local parser,
 semantic model, layout, renderer, fixtures, or upstream SVG baselines.
 
-| Upstream header or id | Upstream source | Local 11.15 status | Decision |
+Admission policy and priority order are now tracked in
+`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That rubric uses the locked Mermaid commit
+from `tools/upstreams/REPOS.lock.json` as source authority, not the current `repo-ref/mermaid`
+working tree if it has moved beyond the pinned baseline.
+
+| Upstream header or id | Pinned 11.15 source status | Local 11.15 status | Admission decision |
 |---|---|---|---|
-| `eventmodeling` | `repo-ref/mermaid/packages/mermaid/src/diagrams/eventmodeling` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
-| `wardley-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
-| `treeView-beta` / `treeView` | `repo-ref/mermaid/packages/mermaid/src/diagrams/treeView` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
-| `venn-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/venn` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
-| `ishikawa` / `ishikawa-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Deferred to a follow-on diagram-family lane. |
-| `cynefin-beta` | `repo-ref/mermaid/packages/mermaid/src/diagrams/cynefin` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Out of scope for this baseline unless explicitly promoted later. |
-| `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | `repo-ref/mermaid/packages/mermaid/src/diagrams/railroad` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Out of scope for this baseline unless explicitly promoted later. |
+| `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 1 candidate when a new-family lane is approved. |
+| `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 2 candidate; port upstream specs before renderer work. |
+| `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 3 medium semantic/layout lane. |
+| `venn-beta` | Present at `packages/mermaid/src/diagrams/venn` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 4 only after a source-backed `@upsetjs/venn.js` layout plan exists. |
+| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 5; large family lane, not a starter task. |
+| `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
+| `cynefin-beta` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
 
 These families should enter the main coverage matrix only after they have at least parse coverage
 and an accepted support plan for layout/render behavior.

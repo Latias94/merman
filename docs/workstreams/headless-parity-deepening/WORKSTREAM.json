@@ -37,7 +37,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
-  "current_task": "HPD-070",
+  "current_task": "HPD-050",
   "gates": [
     "cargo fmt --check",
     "git diff --check",
@@ -69,6 +69,6 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "execute-next-task",
-    "notes": "Baseline truth, residual taxonomy, first measurement/root-bounds seams, the Sequence semantic projection pilot, and multiple source-backed HPD-050 layout audit slices are in place. Continue with HPD-070 unsupported-family rubric or focused HPD-050 child audits; avoid broad rewrites or fake browser-bound parity claims."
+    "notes": "Baseline truth, residual taxonomy, first measurement/root-bounds seams, the Sequence semantic projection pilot, unsupported-family admission rubric, and multiple source-backed HPD-050 layout audit slices are in place. Remaining active work is focused HPD-050 child audits or closing/splitting that audit lane; avoid broad rewrites or fake browser-bound parity claims."
   }
 }

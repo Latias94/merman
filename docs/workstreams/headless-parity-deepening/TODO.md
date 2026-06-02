@@ -127,7 +127,7 @@ Last updated: 2026-06-02
 
 ## M6 - New Family Rubric
 
-- [ ] HPD-070 [owner=planner] [deps=HPD-010,HPD-030] [scope=docs/alignment,repo-ref/mermaid/packages/mermaid/src/diagrams]
+- [x] HPD-070 [owner=planner] [deps=HPD-010,HPD-030] [scope=docs/alignment,repo-ref/mermaid/packages/mermaid/src/diagrams]
   Goal: Define a durable rubric and priority order for unsupported Mermaid families so new scope is
   promoted intentionally and only when it fits the headless architecture.
   Validation: rubric and priority list documented; `treeView`, `venn`, `ishikawa`, `eventmodeling`,
@@ -135,4 +135,8 @@ Last updated: 2026-06-02
   Review: Do not silently imply these families are “next up” without a capability fit argument.
   Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
-  Handoff: This task should make later family workstreams easier to open, not start them.
+  Handoff: DONE. Added `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md` and corrected the
+  unsupported-family table in `docs/alignment/STATUS.md` against the locked Mermaid 11.15 commit.
+  New-family priority is `treeView`, `ishikawa`, `eventmodeling`, `venn`, then `wardley`.
+  `railroad-*` and `cynefin-beta` are absent from the pinned 11.15 source and should not be treated
+  as 11.15 backlog items.
