@@ -163,6 +163,8 @@ Last updated: 2026-06-02
   lines, markers, and edge-label backgrounds while explicitly skipping inert upstream rules that
   require local SVG attributes we do not emit yet. A Radar slice fixed top-level `radar.*` style
   overrides that were parsed but not emitted into CSS. A Block slice fixed composite cluster fade
-  CSS for nested block readability. Continue by scanning supported diagrams for blank output,
-  hidden labels, black blocks, lost theme colors, and other functional renderability failures before
-  returning to fine root residual work.
+  CSS for nested block readability. A Sequence slice fixed stale hardcoded actor, lifeline, signal,
+  label, note, activation, marker/error, and rect node CSS by routing Sequence styles through
+  `effective_config` and the shared `SvgTheme` seam. Continue by scanning supported diagrams for
+  blank output, hidden labels, black blocks, lost theme colors, and other functional renderability
+  failures before returning to fine root residual work.

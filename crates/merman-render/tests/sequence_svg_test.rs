@@ -160,6 +160,78 @@ Bob->>Alice:Again"#,
 }
 
 #[test]
+fn sequence_svg_honors_mermaid_11_15_theme_css_options() {
+    let svg = render_sequence_svg_from_text(
+        r##"%%{init: {"themeVariables": {"actorBorder": "#220000", "actorBkg": "#330000", "actorTextColor": "#fafafa", "actorLineColor": "#444444", "signalColor": "#555555", "signalTextColor": "#777777", "labelBoxBorderColor": "#888888", "labelBoxBkgColor": "#999999", "labelTextColor": "#aaaaaa", "loopTextColor": "#bbbbbb", "noteBorderColor": "#cccccc", "noteBkgColor": "#dddddd", "noteTextColor": "#eeeeee", "noteFontWeight": 600, "activationBkgColor": "#010203", "activationBorderColor": "#040506", "nodeBorder": "#070809"}}}%%
+sequenceDiagram
+autonumber
+participant Alice
+participant Bob
+Alice->>Bob: Hello
+activate Bob
+Note over Alice,Bob: Readable note
+loop Retry
+Alice-->>Bob: Again
+end"##,
+    );
+
+    assert!(
+        svg.contains(r#".actor{stroke:#220000;fill:#330000;"#),
+        "expected actor theme variables in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"text.actor>tspan{fill:#fafafa;stroke:none;}"#),
+        "expected actor text theme color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".actor-line{stroke:#444444;}"#),
+        "expected actor lifeline theme color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#555555;}"#),
+        "expected signal color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".messageText{fill:#777777;stroke:none;}"#),
+        "expected signal text color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".labelBox{stroke:#888888;fill:#999999;filter:none;}"#),
+        "expected label box theme colors in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".labelText,#merman .labelText>tspan{fill:#aaaaaa;stroke:none;}"#),
+        "expected label text theme color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".loopText,#merman .loopText>tspan{fill:#bbbbbb;stroke:none;}"#),
+        "expected loop text theme color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".sectionTitle,#merman .sectionTitle>tspan{fill:#bbbbbb;stroke:none;}"#),
+        "expected section title theme color in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".note{stroke:#cccccc;fill:#dddddd;}"#),
+        "expected note theme colors in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#".noteText,#merman .noteText>tspan{fill:#eeeeee;stroke:none;font-weight:600;}"#
+        ),
+        "expected note text theme color and weight in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#".activation0{fill:#010203;stroke:#040506;}"#),
+        "expected activation theme colors in Sequence CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"g rect.rect{filter:"#) && svg.contains(r#"stroke:#070809;"#),
+        "expected Sequence rect node border theme color in CSS: {svg}"
+    );
+}
+
+#[test]
 fn sequence_debug_svg_renders_generic_polyline_points() {
     let layout = SequenceDiagramLayout {
         nodes: Vec::new(),

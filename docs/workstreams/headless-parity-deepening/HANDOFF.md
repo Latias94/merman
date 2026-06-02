@@ -212,6 +212,12 @@ Current repository reality to preserve:
   - An eighth HPD-080 slice fixed Block composite cluster theme CSS. Nested block clusters now use
     source-backed `fade(clusterBkg, 0.5)` and `fade(clusterBorder, 0.2)` semantics where colors are
     parseable, preserving the configured color only for unresolved runtime CSS expressions.
+  - A ninth HPD-080 slice fixed Sequence theme CSS emission. Sequence now passes
+    `effective_config` into CSS generation and reads Mermaid 11.15 actor, lifeline, signal, label,
+    loop/section, note, activation, root text, marker/error, node-border, drop-shadow, and optional
+    `noteFontWeight` theme variables through `SvgTheme`. Upstream neo-only `data-look` /
+    `outer-path` selectors remain intentionally un-emitted until local Sequence SVG nodes carry
+    those attributes.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

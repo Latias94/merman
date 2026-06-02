@@ -849,6 +849,47 @@ Focused verification:
 - `cargo test -p merman-render block_svg_fades_cluster_theme_colors --test block_svg_test`
 - `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Ninth slice outcome:
+
+- Audited pinned Mermaid 11.15 Sequence style provider:
+  - `packages/mermaid/src/diagrams/sequence/styles.js`
+- Sequence CSS previously still mirrored an older hardcoded stylesheet: actor boxes, actor labels,
+  lifelines, signal lines, message labels, label boxes, loop/section titles, notes, activation
+  bars, base markers, and root text color ignored effective Mermaid theme variables.
+- Sequence CSS now receives `effective_config`, uses the shared `SvgTheme` seam, and maps the
+  source-backed Mermaid 11.15 options for `actorBorder`, `actorBkg`, `strokeWidth`, `actorTextColor`,
+  `actorLineColor`, `signalColor`, `sequenceNumberColor`, `signalTextColor`,
+  `labelBoxBorderColor`, `labelBoxBkgColor`, `labelTextColor`, `loopTextColor`,
+  `noteBorderColor`, `noteBkgColor`, `noteTextColor`, optional numeric/string
+  `noteFontWeight`, `activationBkgColor`, `activationBorderColor`, `nodeBorder`, `dropShadow`,
+  `textColor`, `lineColor`, and error colors.
+- Added `SvgTheme::optional_value(...)` so non-color CSS values such as `noteFontWeight` are not
+  read through the misleading `optional_color(...)` API.
+- Upstream Sequence `data-look` / `outer-path` neo selectors remain intentionally un-emitted in
+  this slice because current local Sequence SVG elements do not emit those attributes; emitted CSS
+  is limited to selectors that affect current render output.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/sequence/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/sequence/css.rs)
+- [crates/merman-render/src/svg/parity/sequence/render.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/sequence/render.rs)
+- [crates/merman-render/src/svg/parity/util.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/util.rs)
+- [crates/merman-render/tests/sequence_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/sequence_svg_test.rs)
+
+Focused verification:
+
+- `cargo fmt -p merman-render`
+- `cargo fmt --check -p merman-render`
+- `cargo test -p merman-render sequence_css_uses_configured_font_size`
+- `cargo test -p merman-render sequence_css_honors_mermaid_11_15_theme_options`
+- `cargo test -p merman-render sequence_svg_honors_mermaid_11_15_theme_css_options --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice fixes Sequence theme/readability CSS emission only. It does not claim to close the
+  known Sequence generated-measurement/root-width residuals documented under HPD-040 and HPD-060.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
