@@ -807,6 +807,27 @@ Focused verification:
 - `cargo test -p merman-render css_rgba_fade_parses_css_colors`
 - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Seventh slice outcome:
+
+- Audited pinned Mermaid 11.15 Radar style provider:
+  - `packages/mermaid/src/diagrams/radar/styles.ts`
+- Radar already consumed `themeVariables.radar.*`, but ignored top-level `radar.*` style overrides.
+  Mermaid 11.15 merges `themeVariables.radar` with the top-level `radar` config before emitting
+  CSS, so user overrides such as `radar.axisColor`, `radar.curveOpacity`, and
+  `radar.graticuleStrokeWidth` should affect visible output.
+- Radar CSS now resolves `radar.<styleKey>` before `themeVariables.radar.<styleKey>` for axis,
+  graticule, curve, and legend style options while keeping `cScale*` palette rules sourced from
+  theme variables.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/radar.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/radar.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render radar_css_honors_top_level_style_overrides`
+- `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
