@@ -503,7 +503,19 @@ mod tests {
     fn supported_themes_exposes_core_theme_surface() {
         assert_eq!(
             supported_themes(),
-            &["default", "base", "dark", "forest", "neutral"]
+            &[
+                "default",
+                "base",
+                "dark",
+                "forest",
+                "neutral",
+                "neo",
+                "neo-dark",
+                "redux",
+                "redux-dark",
+                "redux-color",
+                "redux-dark-color"
+            ]
         );
     }
 

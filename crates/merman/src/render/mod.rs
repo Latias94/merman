@@ -504,19 +504,36 @@ flowchart TD
     }
 
     #[test]
-    fn render_svg_sync_falls_back_for_external_snapshot_only_theme() {
+    fn render_svg_sync_applies_external_neo_theme_to_plain_source() {
         let renderer = HeadlessRenderer::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({
                 "theme": "neo"
             })))
             .with_diagram_id("external-neo");
-        let source = "flowchart TD\n  A[Plain source] --> B[Unsupported theme]";
+        let source = "flowchart TD\n  A[Plain source] --> B[Neo theme]";
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(svg.contains("fill:#ffffff;stroke:#000000;stroke-width:2px;"));
+        assert!(
+            svg.contains("#external-neo .labelBkg{background-color:rgba(204, 204, 204, 0.5);}")
+        );
+    }
+
+    #[test]
+    fn render_svg_sync_falls_back_for_unknown_external_theme() {
+        let renderer = HeadlessRenderer::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(json!({
+                "theme": "unknown"
+            })))
+            .with_diagram_id("external-unknown");
+        let source = "flowchart TD\n  A[Plain source] --> B[Unknown theme]";
 
         let svg = renderer.render_svg_sync(source).unwrap().unwrap();
 
         assert!(svg.contains("fill:#ECECFF;stroke:#9370DB;stroke-width:1px;"));
         assert!(
-            svg.contains("#external-neo .labelBkg{background-color:rgba(232, 232, 232, 0.5);}")
+            svg.contains("#external-unknown .labelBkg{background-color:rgba(232, 232, 232, 0.5);}")
         );
     }
 }

@@ -43,7 +43,7 @@ cargo nextest run -p merman-core theme
 cargo nextest run -p merman-bindings-core supported_themes_exposes_core_theme_surface
 cargo nextest run -p merman-render flowchart_svg
 cargo nextest run -p merman-render neutral_named_white_edge_label_background_fades_to_white unknown_edge_label_background_keeps_mermaid_default_fade
-cargo nextest run -p merman --features render external_site_theme external_snapshot_only_theme
+cargo test -p merman external_ --features render
 npm run build:ts --prefix platforms/web
 cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter theme
 ```
@@ -98,10 +98,10 @@ cargo run -p xtask -- verify --strict
     diagram-specific resolver migrations are recorded as follow-ups.
 - 2026-06-02: TPR-090 reopened the lane for Mermaid 11.15 theme surface hardening.
   Finding:
-  - Mermaid 11.15 config theme selection exposes `default`, `base`, `dark`, `forest`, and
-    `neutral`. Snapshot-only `neo/redux*` variable files are not official config theme names.
-  - Playground compare mode diverged when Merman exposed `neo/redux*`: Mermaid fell back to
-    default while Merman applied snapshot-only variables.
+  - Initial source reading treated Mermaid `neo/redux*` theme variables as snapshot-only; this was
+    later corrected by the 2026-06-02 pinned registry re-check recorded below.
+  - The lasting TPR-090 finding is that public theme lists must be single-sourced from the pinned
+    Mermaid registry and core expansion behavior.
   - Flowchart neutral `.labelBkg` used `rgba(232, 232, 232, 0.5)` because CSS color fading did not
     parse the named color `white`; Mermaid emits white for neutral `edgeLabelBackground`.
   Evidence:
@@ -125,16 +125,36 @@ cargo run -p xtask -- verify --strict
   - `cargo nextest run -p merman-render neutral_named_white_edge_label_background_fades_to_white unknown_edge_label_background_keeps_mermaid_default_fade`
     passed: 2 tests run, 2 passed.
   - `cargo nextest run -p merman --features render external_site_theme external_snapshot_only_theme`
-    passed: 2 tests run, 2 passed.
+    passed before the registry correction: 2 tests run, 2 passed.
+  - `cargo test -p merman external_ --features render` passed after the registry correction:
+    3 tests run, 3 passed.
   - `cargo nextest run -p merman-render flowchart_svg` passed: 11 tests run, 11 passed.
   - `npm run build:ts --prefix platforms/web` passed.
   Notes:
   - The `merman` high-level tests use `HeadlessRenderer::with_site_config` to model a playground
     theme selector on plain source, rather than embedding a Mermaid directive in the source.
+  - The high-level cases now cover external neutral, external neo, and unknown-theme fallback.
   - `crates/merman` now has `serde_json` as a dev-dependency only, so tests can construct
     `MermaidConfig` values without expanding production dependencies.
   - Remaining diagram-specific resolver migration is split; no additional abstraction was forced
     without per-diagram parity evidence.
+- 2026-06-02: Corrected the Mermaid 11.15 theme surface after re-checking pinned upstream source.
+  Finding:
+  - `repo-ref/mermaid/packages/mermaid/src/themes/index.js` registers `neo`, `neo-dark`, `redux`,
+    `redux-dark`, `redux-color`, and `redux-dark-color`.
+  - `repo-ref/mermaid/packages/mermaid/src/config.type.ts` includes the same names in the public
+    `MermaidConfig.theme` union.
+  Change:
+  - Core, bindings, and `@merman/web` now expose all official Mermaid 11.15 theme names.
+  - Extended theme defaults use the generated `theme_variables_11_15_0.json` snapshots; explicit
+    `themeVariables` still override direct keys.
+  - Unknown theme values continue to fall back to the default theme.
+  Evidence:
+  - `cargo fmt -p merman-core -p merman-bindings-core -p merman`
+  - `cargo test -p merman-core theme`
+  - `cargo test -p merman-bindings-core supported_themes_exposes_core_theme_surface`
+  - `cargo test -p merman external_ --features render`
+  - `npm run build:ts --prefix platforms/web`
 
 ## Known Risks
 
@@ -142,6 +162,7 @@ cargo run -p xtask -- verify --strict
 - Exact color serialization must remain stable for upstream parity.
 - Remaining diagram modules still contain local theme reads where no common resolver migration was
   justified in this lane.
-- Snapshot-only `neo/redux*` theme variable files remain unsupported as config theme names.
+- Exact `neo/redux*` override derivation remains less deep than `default/base/dark/forest/neutral`;
+  default values are source-generated snapshots, and explicit overrides win for direct keys.
 - Broad theme fixture parity is not yet a closed asset; add representative fixtures before claiming
   full theme parity across all diagram types.

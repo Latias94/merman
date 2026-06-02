@@ -3,7 +3,19 @@ use ryu_js::Buffer;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &["default", "base", "dark", "forest", "neutral"];
+pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
+    "default",
+    "base",
+    "dark",
+    "forest",
+    "neutral",
+    "neo",
+    "neo-dark",
+    "redux",
+    "redux-dark",
+    "redux-color",
+    "redux-dark-color",
+];
 
 // Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.15.0.
 static UPSTREAM_THEME_VARIABLES: OnceLock<Value> = OnceLock::new();
@@ -346,8 +358,17 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
         "dark" => apply_dark_theme_defaults(config),
         "forest" => apply_forest_theme_defaults(config),
         "neutral" => apply_neutral_theme_defaults(config),
+        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color" => {
+            apply_snapshot_theme_defaults(config, &theme)
+        }
         _ => apply_default_theme_defaults(config),
     }
+}
+
+fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
+    let tv = theme_variables_map(config);
+    let has_user_theme_variables = !tv.is_empty();
+    finish_theme_defaults(config, theme, tv, has_user_theme_variables);
 }
 
 fn apply_default_theme_defaults(config: &mut MermaidConfig) {
@@ -1941,7 +1962,19 @@ mod tests {
     fn supported_theme_names_match_core_expansion_surface() {
         assert_eq!(
             crate::supported_themes(),
-            &["default", "base", "dark", "forest", "neutral"]
+            &[
+                "default",
+                "base",
+                "dark",
+                "forest",
+                "neutral",
+                "neo",
+                "neo-dark",
+                "redux",
+                "redux-dark",
+                "redux-color",
+                "redux-dark-color"
+            ]
         );
     }
 
@@ -2104,15 +2137,17 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_only_theme_names_fall_back_to_default_theme_variables() {
-        for theme in [
-            "neo",
-            "neo-dark",
-            "redux",
-            "redux-dark",
-            "redux-color",
-            "redux-dark-color",
-        ] {
+    fn mermaid_11_15_extended_theme_names_use_their_snapshots() {
+        let cases = [
+            ("neo", "#cccccc", "#000000"),
+            ("neo-dark", "#1f2020", "#ccc"),
+            ("redux", "#cccccc", "#28253D"),
+            ("redux-dark", "#1f2020", "#FFFFFF"),
+            ("redux-color", "#cccccc", "#28253D"),
+            ("redux-dark-color", "#1f2020", "#FFFFFF"),
+        ];
+
+        for (theme, primary, node_border) in cases {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme
             }));
@@ -2126,15 +2161,46 @@ mod tests {
 
             assert_eq!(
                 tv.get("primaryColor").and_then(|v| v.as_str()),
-                Some("#ECECFF"),
+                Some(primary),
                 "theme {theme}"
             );
             assert_eq!(
                 tv.get("nodeBorder").and_then(|v| v.as_str()),
-                Some("#9370DB"),
+                Some(node_border),
                 "theme {theme}"
             );
         }
+    }
+
+    #[test]
+    fn extended_theme_preserves_explicit_theme_variable_overrides() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "redux",
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "nodeBorder": "#abcdef"
+            }
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(
+            tv.get("primaryColor").and_then(|v| v.as_str()),
+            Some("#123456")
+        );
+        assert_eq!(
+            tv.get("nodeBorder").and_then(|v| v.as_str()),
+            Some("#abcdef")
+        );
+        assert_eq!(
+            tv.get("fontFamily").and_then(|v| v.as_str()),
+            Some("\"Recursive Variable\", arial, sans-serif")
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@
   "status": "complete",
   "updated": "2026-06-02",
   "scope_kind": "execution",
-  "problem": "Merman's theme parity regressed after the Mermaid 11.15 refresh: snapshot-only neo/redux theme names leaked into public theme surfaces, playground compare mode diverged from Mermaid's official theme fallback behavior, and representative theme fixtures/resolver cleanup remain follow-up work.",
+  "problem": "Merman's theme parity regressed after the Mermaid 11.15 refresh: public theme surfaces drifted from the pinned Mermaid theme registry, Flowchart neutral label backgrounds needed source-backed correction, and representative theme fixtures/resolver cleanup remain follow-up work.",
   "authoritative_docs": [
     {
       "role": "design",
@@ -71,6 +71,6 @@
   "lane_slug": null,
   "continue_policy": {
     "default_action": "split-follow-up",
-    "notes": "Post-11.15 theme hardening is complete for the observed playground parity regression. Continue separately for broad fixture tooling and opportunistic remaining diagram resolver migrations."
+    "notes": "Post-11.15 theme hardening is complete for the observed theme surface and Flowchart background regressions. Continue separately for broad fixture tooling, opportunistic remaining diagram resolver migrations, and exact neo/redux override-derivation audits."
   }
 }

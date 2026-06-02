@@ -15,6 +15,7 @@ failure modes:
 | Consumer need | merman stance | Current support |
 | --- | --- | --- |
 | Mermaid-compatible default SVG readability | Product requirement | Diagram-specific source-backed CSS is emitted for the implemented matrix where Mermaid 11.15 has a provider and local SVG elements can consume the rules. |
+| Official Mermaid theme names | Product requirement | Core, bindings, and `@merman/web` expose all 11 Mermaid 11.15 themes: `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and `redux-dark-color`. Extended theme defaults use generated upstream snapshots; exact `neo/redux*` override derivation is a follow-up audit. |
 | Custom Mermaid theme variables | Product requirement | Renderers pass `effective_config` into CSS or inline style generation. Non-color CSS tokens use string/number-aware paths such as `SvgTheme::css_value(...)` where needed. |
 | Browser-free raster-safe output | Product requirement | `SvgPipeline::resvg_safe()` inserts SVG text fallbacks for `<foreignObject>` labels, strips unsupported foreignObject content, and sanitizes CSS/attributes for resvg. |
 | Host palette replacement, such as Zed markdown preview colors | Host integration boundary | Hosts should pass Mermaid config and/or compose postprocessors. merman should not inject Zed-specific edge-label, tag-label, or background colors by default. |
@@ -110,3 +111,5 @@ artifact; their visible behavior remains class-driven.
    replacement.
 4. Reconcile the root white-background question as a separate source/capture audit before changing
    default SVG output.
+5. Audit exact `neo/redux*` override derivation only if fixture or consumer evidence shows direct
+   theme-variable overrides are insufficient.

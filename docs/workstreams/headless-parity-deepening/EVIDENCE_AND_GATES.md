@@ -1367,6 +1367,47 @@ Residual note:
 - This is a narrow raw-SVG cleanliness fix. It does not imply that all empty `style=""` attributes
   should be removed, and it does not change ER or Mindmap layout/root residuals.
 
+Twenty-third slice outcome:
+
+- Rechecked Mermaid 11.15 theme registry evidence after the Zed host-theme audit:
+  - `repo-ref/mermaid/packages/mermaid/src/themes/index.js`
+  - `repo-ref/mermaid/packages/mermaid/src/config.type.ts`
+  - `tools/mermaid-cli/node_modules/mermaid/dist/config.type.d.ts`
+- Corrected the previous `neo/redux*` interpretation. These names are official Mermaid 11.15
+  config themes, not snapshot-only local artifacts:
+  - `neo`
+  - `neo-dark`
+  - `redux`
+  - `redux-dark`
+  - `redux-color`
+  - `redux-dark-color`
+- Core, bindings, and `@merman/web` now expose all 11 official Mermaid 11.15 theme names:
+  `default`, `base`, `dark`, `forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`,
+  `redux-color`, and `redux-dark-color`.
+- Extended theme defaults expand from the generated Mermaid 11.15 theme-variable snapshot. Explicit
+  direct `themeVariables` overrides still win, and unknown theme names still fall back to the
+  default theme.
+- This does not claim exact browser/source-equivalent override derivation for every `neo/redux*`
+  variable. That remains a narrower follow-up audit instead of a fake parity claim.
+- The Zed PR color cleanup remains classified as host palette policy. The common merman integration
+  need is still fallback marking and optional duplicate fallback cleanup, not default editor-color
+  rewriting.
+
+Focused verification:
+
+- `cargo fmt -p merman-core -p merman-bindings-core -p merman`
+- `cargo test -p merman-core theme`
+- `cargo test -p merman-bindings-core supported_themes_exposes_core_theme_surface`
+- `cargo test -p merman external_ --features render`
+- `npm run build:ts --prefix platforms/web`
+
+Residual note:
+
+- The Rust API can already support common host theme workflows through composed postprocessors.
+  Non-Rust/JSON option consumers still need a first-class way to opt into duplicate fallback
+  cleanup and possibly scoped host CSS policy; do not silently change `resvg_safe()` defaults for
+  that.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

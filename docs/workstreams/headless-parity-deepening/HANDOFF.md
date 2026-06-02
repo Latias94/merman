@@ -281,6 +281,12 @@ Current repository reality to preserve:
     Mindmap edge paths. Upstream fixtures contain `style="undefined;;;undefined"`, but the visible
     edge behavior is class-driven and the token is not a meaningful style contract. Local raw SVG
     no longer leaks that string while ER and Mindmap structural parity remain green.
+  - A twenty-third HPD-080 slice corrected the Mermaid 11.15 public theme surface after rechecking
+    the upstream theme registry and config types. Core, bindings, and `@merman/web` now expose all
+    11 official theme names, including `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and
+    `redux-dark-color`. Extended theme defaults use the generated 11.15 snapshot; exact
+    `neo/redux*` override derivation remains a follow-up audit rather than a fake full-parity
+    claim.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

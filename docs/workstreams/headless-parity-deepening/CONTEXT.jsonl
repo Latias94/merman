@@ -151,3 +151,11 @@
 {"file":"crates/merman-render/src/svg/parity/mindmap.rs","reason":"HPD-080 implementation: Mindmap edge paths rely on edge/section/depth CSS classes and no longer emit useless invalid inline style tokens."}
 {"file":"crates/merman-render/tests/er_svg_test.rs","reason":"HPD-080 regression: ER renderer test rejects style=\"undefined\" leakage on relationship paths."}
 {"file":"crates/merman/tests/mindmap_br_variants_031.rs","reason":"HPD-080 regression: public Mindmap render test rejects style=\"undefined\" leakage while preserving node geometry assertions."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-mermaid-11-15-extended-themes.md","reason":"HPD-080 journal: Mermaid 11.15 extended theme names are official config themes, not snapshot-only artifacts."}
+{"file":"crates/merman-core/src/theme.rs","reason":"HPD-080 implementation: core supported theme names now include all official Mermaid 11.15 themes and expands neo/redux defaults from the generated snapshot."}
+{"file":"crates/merman-bindings-core/src/lib.rs","reason":"HPD-080 API: bindings supported_themes exposes the corrected Mermaid 11.15 theme surface."}
+{"file":"platforms/web/src/index.ts","reason":"HPD-080 API: @merman/web supported theme list mirrors the corrected core Mermaid 11.15 theme surface."}
+{"file":"crates/merman/src/render/mod.rs","reason":"HPD-080 regression: high-level render tests cover external neo theme application and unknown-theme fallback."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/themes/index.js","reason":"HPD-080 source evidence: Mermaid 11.15 theme registry includes neo/redux extended theme names."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/config.type.ts","reason":"HPD-080 source evidence: MermaidConfig.theme public union includes neo/redux extended theme names."}
+{"file":"tools/mermaid-cli/node_modules/mermaid/dist/config.type.d.ts","reason":"HPD-080 installed baseline evidence: Mermaid 11.15 distributed config type includes the same public theme union."}
