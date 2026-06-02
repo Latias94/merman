@@ -30,7 +30,7 @@
   "scripts": {
     "build": "npm run build:wasm && npm run build:ts",
     "build:ts": "tsc -p tsconfig.build.json",
-    "build:wasm": "wasm-pack build ../../crates/merman-wasm --target web --profile wasm-size --out-dir ../../platforms/web/pkg && node scripts/clean-pkg.mjs",
+    "build:wasm": "wasm-pack build ../../crates/merman-wasm --target web --release --out-dir ../../platforms/web/pkg && node scripts/clean-pkg.mjs",
     "smoke": "node scripts/smoke.mjs",
     "prepack": "node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"
