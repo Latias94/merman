@@ -378,13 +378,24 @@ export function Preview({ className }: PreviewProps) {
 
     setExportingEngine(engine);
     try {
-      await exportPNG(value, `merman-compare-${engine}`, 2);
+      let exportSvg = value;
+      if (engine === "merman") {
+        const pngResult = render(code, diagramTheme, mermaidConfig, {
+          pipeline: "resvg-safe",
+        });
+        if (!pngResult.svg) {
+          throw new Error(pngResult.error ?? "Failed to render PNG SVG");
+        }
+        exportSvg = pngResult.svg;
+      }
+
+      await exportPNG(exportSvg, `merman-compare-${engine}`, 2);
     } catch (err) {
       console.error("Failed to export PNG:", err);
     } finally {
       setExportingEngine(null);
     }
-  }, []);
+  }, [code, diagramTheme, mermaidConfig, render]);
 
   const handleRefreshCompare = useCallback(() => {
     setRefreshNonce((value) => value + 1);

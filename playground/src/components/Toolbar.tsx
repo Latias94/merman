@@ -17,7 +17,6 @@ import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
-import { formatMermaidCode } from "@/src/lib/mermaid-language";
 import { normalizeThemeName } from "@merman/web";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,7 +52,6 @@ import {
   FileText,
   Code,
   ExternalLink,
-  WandSparkles,
 } from "lucide-react";
 
 const UI_THEME_ICONS: Record<UITheme, ReactNode> = {
@@ -69,7 +67,6 @@ export function Toolbar() {
     diagramTheme,
     mermaidConfig,
     setDiagramTheme,
-    setCode,
     uiTheme,
     setUITheme,
     toggleExamples,
@@ -127,14 +124,21 @@ export function Toolbar() {
     }
     setIsExporting(true);
     try {
-      await exportPNG(currentSvg, "merman-diagram", 2);
+      const pngResult = render(code, diagramTheme, mermaidConfig, {
+        pipeline: "resvg-safe",
+      });
+      if (!pngResult.svg) {
+        throw new Error(pngResult.error ?? "Failed to render PNG SVG");
+      }
+
+      await exportPNG(pngResult.svg, "merman-diagram", 2);
       toast.success(t("export.png") + " - OK");
     } catch {
       toast.error(t("export.title") + " failed");
     } finally {
       setIsExporting(false);
     }
-  }, [currentSvg, t]);
+  }, [code, currentSvg, diagramTheme, mermaidConfig, render, t]);
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
@@ -220,17 +224,6 @@ export function Toolbar() {
     );
   }, [code, diagramTheme, mermaidConfig, t]);
 
-  const handleFormatCode = useCallback(() => {
-    const formatted = formatMermaidCode(code);
-    if (formatted === code) {
-      toast.success(t("editor.formatAlreadyClean"));
-      return;
-    }
-
-    setCode(formatted);
-    toast.success(t("editor.formatted"));
-  }, [code, setCode, t]);
-
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(
     (theme: UITheme) => {
@@ -290,21 +283,6 @@ export function Toolbar() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t("toolbar.examples")}</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleFormatCode}
-                disabled={!code.trim()}
-              >
-                <WandSparkles className="size-4" />
-                <span className="hidden sm:inline">{t("editor.format")}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t("editor.format")}</TooltipContent>
           </Tooltip>
 
           <BenchDialog />

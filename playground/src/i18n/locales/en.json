@@ -92,9 +92,6 @@
   "editor": {
     "placeholder": "Enter your Mermaid code here...",
     "loading": "Loading editor...",
-    "format": "Format",
-    "formatted": "Formatted",
-    "formatAlreadyClean": "Already formatted",
     "hover": {
       "flowchart": "Declares a flowchart. Common directions are TD, LR, BT, and RL.",
       "graph": "Alternative flowchart header used by Mermaid.",

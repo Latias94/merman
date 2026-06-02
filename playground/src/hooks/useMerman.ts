@@ -4,6 +4,7 @@ import {
   loadWasm,
   SUPPORTED_THEMES,
   type MermanWasm,
+  type SvgPipeline,
   type ValidationResult,
 } from "@/src/lib/wasm-loader";
 
@@ -11,6 +12,10 @@ export interface RenderResult {
   svg: string | null;
   error: string | null;
   renderTime: number;
+}
+
+interface RenderOptions {
+  pipeline?: SvgPipeline;
 }
 
 export function useMerman() {
@@ -46,7 +51,8 @@ export function useMerman() {
     (
       code: string,
       theme: string,
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: RenderOptions
     ): RenderResult => {
       if (!ready || !wasmRef.current) {
         return {
@@ -59,7 +65,12 @@ export function useMerman() {
       const startTime = performance.now();
 
       try {
-        const svg = wasmRef.current.render_svg(code, theme, configJson);
+        const svg = wasmRef.current.render_svg(
+          code,
+          theme,
+          configJson,
+          options?.pipeline
+        );
         const renderTime = performance.now() - startTime;
         return { svg, error: null, renderTime };
       } catch (e) {
