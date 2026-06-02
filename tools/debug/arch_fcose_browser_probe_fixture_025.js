@@ -439,15 +439,38 @@ async function main() {
     })();
 
     function dumpPreLayoutElements() {
+      const cloneMetricObject = (value) =>
+        value == null ? value : JSON.parse(JSON.stringify(value));
       const nodes = [];
       for (const n of cy.nodes().toArray()) {
         const id = n.id();
         const p = n.position();
         const bb = n.boundingBox();
+        const scratch = n._private?.rscratch ?? {};
+        const style = n._private?.rstyle ?? {};
+        const labelBounds = n._private?.labelBounds ?? {};
+        const bodyBounds = n._private?.bodyBounds ?? {};
         nodes.push({
           id,
           pos: { x: p.x, y: p.y },
           bb,
+          metrics: {
+            width: n.width ? n.width() : undefined,
+            height: n.height ? n.height() : undefined,
+            outerWidth: n.outerWidth ? n.outerWidth() : undefined,
+            outerHeight: n.outerHeight ? n.outerHeight() : undefined,
+            padding: n.padding ? n.padding() : undefined,
+            autoWidth: n._private?.autoWidth,
+            autoHeight: n._private?.autoHeight,
+            autoPadding: n._private?.autoPadding,
+            labelX: scratch.labelX ?? style.labelX,
+            labelY: scratch.labelY ?? style.labelY,
+            labelWidth: scratch.labelWidth ?? style.labelWidth,
+            labelHeight: scratch.labelHeight ?? style.labelHeight,
+            labelLineHeight: scratch.labelLineHeight,
+          },
+          labelBounds: cloneMetricObject(labelBounds),
+          bodyBounds: cloneMetricObject(bodyBounds),
           classes: n.classes ? n.classes() : undefined,
           data: n.data ? n.data() : undefined,
         });

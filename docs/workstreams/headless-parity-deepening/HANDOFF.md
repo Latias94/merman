@@ -94,3 +94,11 @@ Current repository reality to preserve:
     use `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:<path>`, the
     installed `tools/mermaid-cli` dist, or fresh `check-upstream-svgs` output. Do not treat the
     current repo-ref working tree as baseline truth without this check.
+  - A follow-up Cytoscape bbox phase audit enhanced the debug probe to expose pre-layout
+    `labelWidth`, `labelHeight`, `labelBounds`, `bodyBounds`, `autoWidth`, `autoHeight`, and
+    `autoPadding`. For `batch6_init_fontsize_icon_size_wrap_093`, the probe explains the remaining
+    `-2.5px` row: leaf service `node.boundingBox()` differs from the child contribution used by
+    `updateCompoundBounds()`. An exploratory global production formula made that row exact but
+    expanded the full Architecture root mismatch count from `26` to `47`, so it was rejected and
+    reverted. The next real fix needs a phase-specific bbox model rather than a single global group
+    padding/label-width rule.

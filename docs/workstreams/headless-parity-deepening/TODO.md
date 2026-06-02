@@ -83,6 +83,10 @@ Last updated: 2026-06-02
   Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
   Handoff: This task may split child work if one audited seam becomes a large implementation lane.
+  The current candidate split is Architecture Cytoscape bbox phase modeling: leaf default
+  `node.boundingBox()`, child `updateCompoundBounds()` contribution, final group
+  `node.boundingBox()`, and manatee relocation bbox currently cannot be represented by one global
+  label/padding formula without broad root regressions.
 
 ## M5 - Semantic / Render Unification Pilot
 

@@ -365,3 +365,38 @@ Residual evidence after the fourth slice:
 - `stress_architecture_html_titles_and_escapes_041` remains upstream `479.926px` vs local
   `484.926px` (`+5.000px`).
 - Override growth remains unchanged.
+
+Seventh slice Cytoscape bbox phase split:
+
+- Enhanced
+  [tools/debug/arch_fcose_browser_probe_fixture_025.js](/F:/SourceCodes/Rust/merman/tools/debug/arch_fcose_browser_probe_fixture_025.js)
+  so pre-layout node diagnostics include Cytoscape `labelWidth`, `labelHeight`, `labelBounds`,
+  `bodyBounds`, `autoWidth`, `autoHeight`, and `autoPadding`.
+- The refreshed diagnostic probe for
+  `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` reports:
+  - `api` service `labelWidth=95`, `labelBounds=99x22`, `bodyBounds=42x42`,
+    `node.boundingBox()=101x62`
+  - `db` service `labelWidth=78`, `labelBounds=82x22`, `node.boundingBox()=84x62`
+  - `left` group `autoWidth=99`, `autoHeight=61`, `outerWidth=160x122`,
+    `node.boundingBox()=162x124`
+- This proves the row needs separate handling for leaf default `node.boundingBox()`, child
+  `updateCompoundBounds()` contribution, final group `node.boundingBox()`, and manatee relocation
+  bbox approximation.
+- A source-shaped exploratory production patch changed Architecture bbox math to
+  `ceil(canvas)+labelBounds` and group extra `+1.5`. It was rejected before commit:
+  - `batch6_init_fontsize_icon_size_wrap_093` became root-exact (`325.105x380.479`)
+  - `batch4_init_small_icons_061` stayed root-exact (`187.859x191.571`)
+  - full Architecture root mismatches increased from `26` to `47`
+  - `batch5_long_titles_and_punct_076` worsened from `+5.000px` to `+7.500px`
+  - `html_titles_and_escapes_041` worsened from `+5.000px` to `+7.500px`
+- The production patch was reverted. Keep the diagnostic probe output, but do not apply a single
+  global Cytoscape bbox formula until the renderer/manatee seam can represent the separate phases.
+
+Focused verification:
+
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; node tools/debug/arch_fcose_browser_probe_fixture_025.js stress_architecture_batch6_init_fontsize_icon_size_wrap_093 > target/compare/arch_batch6_init_fontsize_icon_size_wrap_probe_hpd050_metrics.json`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_init_fontsize_icon_size_wrap_hpd050_cytoscape_bbox_seam_y.md`
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch4_init_small_icons_061 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch4_small_icons_hpd050_cytoscape_bbox_seam_y.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_cytoscape_bbox_seam.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_probe_metrics_only.md`
+- `cargo test -p merman-render architecture_text_constants_match_mermaid --lib`
