@@ -103,7 +103,11 @@ Last updated: 2026-06-02
   first Dagre reference adapter slice is also landed: `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
-  composite, and internal-cluster State comparisons all stayed zero-delta.
+  composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
+  service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
+  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. This keeps SVG
+  root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
+  preserves the known 26 Architecture root residuals.
 
 ## M5 - Semantic / Render Unification Pilot
 

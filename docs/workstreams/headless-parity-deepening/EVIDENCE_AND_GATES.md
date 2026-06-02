@@ -572,3 +572,32 @@ Verification notes:
   `max edge delta: 0.000000`.
 - This is an ARCH-022 seam cleanup, not a claim that the Dagre reference adapter now supports every
   diagram family. Add non-State graph producers only when a source-backed residual audit needs one.
+
+Fourteenth slice Architecture Cytoscape label-extension seam:
+
+- Added `ArchitectureCytoscapeServiceLabelExtension` in
+  [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+  so FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation share the same
+  Cytoscape service-label half-width and compound-label bottom-extension calculation.
+- Kept SVG root `createText(...)` measurement separate from Cytoscape compound-child label
+  measurement. This is a phase split, not a root-width tune.
+- Added focused unit coverage for the shared extension and empty-title behavior.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-render architecture_cytoscape_service_label_extension_centralizes_compound_label_phase --lib`
+- `cargo test -p merman-render architecture_text_constants_match_mermaid --lib`
+- `cargo test -p merman-render architecture_fcose_node_bounds_extras_feed_label_bounds --lib`
+- `cargo test -p merman-render architecture_node_bbox_extras_convert_to_manatee_bounds_extras --lib`
+- `cargo test -p merman-render --test architecture_svg_test`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_hpd050_cy_label_extension.md`
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd050_cy_label_extension.md`
+
+Verification notes:
+
+- Architecture structural parity remained green.
+- Architecture parity-root remained the expected 26 mismatches.
+- The root report top rows remained the known residual front, led by `junction_fork_join_026`,
+  `batch5_long_titles_and_punct_076`, `html_titles_and_escapes_041`, and
+  `batch6_init_fontsize_icon_size_wrap_093`.

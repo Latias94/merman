@@ -140,3 +140,8 @@ Current repository reality to preserve:
     acts as a graph producer/command wrapper. Basic, composite, and internal-cluster State Dagre
     comparisons all reported zero node and edge delta after the extraction. Do not broaden this to
     other diagrams until a real Dagre-backed residual audit needs that producer.
+  - Architecture Cytoscape service-label measurement now has a shared
+    `ArchitectureCytoscapeServiceLabelExtension` seam used by both FCoSE node `BoundsExtras` and
+    SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
+    preserving the known 26 Architecture root residuals; SVG root `createText(...)` measurement
+    remains separate from Cytoscape compound-child label measurement.
