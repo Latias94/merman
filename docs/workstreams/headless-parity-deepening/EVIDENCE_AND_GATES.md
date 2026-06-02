@@ -328,6 +328,34 @@ Focused verification:
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_fork_join_hpd050_debug_tool_refresh.md`
   expected failure remains `2808.127px` upstream vs `2822.102px` local (`+13.976px`).
 
+Sixth slice source-checkout guard:
+
+- Checked the local reference checkout before continuing source-backed Architecture work:
+  - `git -C repo-ref/mermaid rev-parse HEAD` => `9bae92cd3214f9ec99369ab314ef41ffb283f6b6`
+  - `git -C repo-ref/mermaid status --short --branch` => `develop...origin/develop`
+  - `tools/upstreams/REPOS.lock.json` pins Mermaid to
+    `41646dfd43ac83f001b03c70605feb036afae46d` (`mermaid@11.15.0`)
+- The repo-ref checkout is therefore ahead of the active baseline. This explains why reading
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureRenderer.ts` directly
+  exposed a later `withSeededRandom` path that is absent from the installed
+  `tools/mermaid-cli/node_modules/mermaid/dist/mermaid.js` and from the locked
+  `41646dfd...` source.
+- For HPD-050 source-backed claims, use one of:
+  - `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:<path>` for source,
+  - `tools/mermaid-cli/node_modules/mermaid/dist/mermaid.js` for the actual baseline renderer
+    bundle, or
+  - fresh `check-upstream-svgs` output for rendered behavior.
+- Do not use the current `repo-ref/mermaid` working tree path as baseline truth unless it has first
+  been verified against `tools/upstreams/REPOS.lock.json`.
+
+Focused verification:
+
+- `git -C repo-ref/mermaid show --no-patch --oneline 41646dfd43ac83f001b03c70605feb036afae46d`
+- `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:packages/mermaid/src/diagrams/architecture/architectureRenderer.ts`
+  confirmed locked source has `gap: 1.5 * db.getConfigField('iconSize')`, reads
+  `idealEdgeLengthMultiplier`, `edgeElasticity`, `randomize`, `nodeSeparation`, and `numIter`, and
+  has no `withSeededRandom` path.
+
 Residual evidence after the fourth slice:
 
 - Full Architecture structural `parity` remains green.

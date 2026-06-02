@@ -88,3 +88,9 @@ Current repository reality to preserve:
     the installed `mermaid@11.15.0` dist used by `tools/mermaid-cli` does not contain the later
     repo-ref `withSeededRandom` Architecture seed path, so do not change `manatee` to that
     `mulberry32` behavior unless the baseline package changes.
+  - The local `repo-ref/mermaid` checkout is currently on `develop` at
+    `9bae92cd3214f9ec99369ab314ef41ffb283f6b6`, while `tools/upstreams/REPOS.lock.json` pins
+    Mermaid to `41646dfd43ac83f001b03c70605feb036afae46d`. For any source-backed HPD-050 claim,
+    use `git -C repo-ref/mermaid show 41646dfd43ac83f001b03c70605feb036afae46d:<path>`, the
+    installed `tools/mermaid-cli` dist, or fresh `check-upstream-svgs` output. Do not treat the
+    current repo-ref working tree as baseline truth without this check.
