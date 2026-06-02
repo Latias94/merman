@@ -256,5 +256,8 @@ Last updated: 2026-06-02
   `arrowheadColor` from visible-signal assertions: Mermaid 11.15 emits `.arrowheadPath`, but current
   Journey marker DOM has no matching class, so counting that CSS token as visible coverage was
   self-deceptive.
+  The ignored all-supported `resvg-safe` audit now supports
+  `MERMAN_RESVG_SAFE_AUDIT_FAMILY` and `MERMAN_RESVG_SAFE_AUDIT_FILTER` filters after render-only
+  all-supported passed but unfiltered raster all-supported timed out without fixture-level signal.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

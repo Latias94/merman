@@ -1,6 +1,7 @@
 #![cfg(feature = "render")]
 
 use merman::render::HeadlessRenderer;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const SUPPORTED_FIXTURE_DIRS: &[&str] = &[
@@ -79,8 +80,16 @@ fn fixture_sample_paths() -> Vec<PathBuf> {
 fn all_supported_fixture_paths() -> Vec<PathBuf> {
     let fixtures_root = workspace_root().join("fixtures");
     let mut out = Vec::new();
+    let family_filter = audit_family_filter();
+    let name_filter = audit_name_filter();
 
     for family in SUPPORTED_FIXTURE_DIRS {
+        if let Some(filter) = &family_filter {
+            if !filter.contains(*family) {
+                continue;
+            }
+        }
+
         let dir = fixtures_root.join(family);
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -89,12 +98,50 @@ fn all_supported_fixture_paths() -> Vec<PathBuf> {
             entries
                 .flatten()
                 .map(|entry| entry.path())
-                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("mmd")),
+                .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("mmd"))
+                .filter(|path| {
+                    let Some(filter) = &name_filter else {
+                        return true;
+                    };
+                    let name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or_default();
+                    name.contains(filter)
+                }),
         );
     }
 
     out.sort();
     out
+}
+
+fn audit_family_filter() -> Option<BTreeSet<&'static str>> {
+    let raw = std::env::var("MERMAN_RESVG_SAFE_AUDIT_FAMILY").ok()?;
+    let requested = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| part.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    if requested.is_empty() {
+        return None;
+    }
+
+    Some(
+        SUPPORTED_FIXTURE_DIRS
+            .iter()
+            .copied()
+            .filter(|family| requested.contains(*family))
+            .collect(),
+    )
+}
+
+fn audit_name_filter() -> Option<String> {
+    std::env::var("MERMAN_RESVG_SAFE_AUDIT_FILTER")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn is_representative_fixture_name(name: &str) -> bool {
@@ -318,9 +365,11 @@ fn representative_fixtures_render_headless_resvg_safe() {
 #[ignore = "manual HPD-080 audit over all supported fixtures; default smoke stays representative"]
 fn all_supported_fixtures_render_headless_resvg_safe_audit() {
     let fixtures = all_supported_fixture_paths();
+    let filtered_audit =
+        audit_family_filter().is_some() || audit_name_filter().as_deref().is_some();
     assert!(
-        fixtures.len() > 100,
-        "expected a broad supported fixture corpus"
+        fixtures.len() > 100 || (filtered_audit && !fixtures.is_empty()),
+        "expected a broad supported fixture corpus, or a non-empty filtered audit"
     );
 
     let mut rendered = 0usize;
@@ -348,7 +397,7 @@ fn all_supported_fixtures_render_headless_resvg_safe_audit() {
     }
 
     assert!(
-        rendered > 100,
+        rendered > 100 || (filtered_audit && rendered > 0),
         "expected the manual audit to render a broad corpus; rendered={rendered}, skipped_unrenderable={skipped_unrenderable}"
     );
 }

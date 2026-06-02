@@ -409,6 +409,10 @@ Current repository reality to preserve:
     longer counted as a public smoke visible signal because Mermaid 11.15 emits the
     `.arrowheadPath` CSS rule but current Journey marker DOM has no matching class. This was a
     measurement correction, not a renderer DOM change.
+  - A thirty-ninth HPD-080 test-infra slice made the ignored all-supported `resvg-safe` audit
+    filterable by `MERMAN_RESVG_SAFE_AUDIT_FAMILY` and `MERMAN_RESVG_SAFE_AUDIT_FILTER`. Render-only
+    all-supported passed; unfiltered raster all-supported timed out, so future PNG-level triage
+    should use filtered slices plus the representative raster smoke.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

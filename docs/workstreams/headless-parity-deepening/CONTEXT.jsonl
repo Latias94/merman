@@ -253,3 +253,5 @@
 {"file":"crates/merman/tests/theme_renderability_smoke.rs","reason":"HPD-080 regression correction: public dark-theme smoke no longer counts Journey arrowheadColor as a visible signal when no marker path class applies it."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/styles.js","reason":"HPD-080 source evidence: Mermaid 11.15 emits the Journey .arrowheadPath theme rule."}
 {"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js","reason":"HPD-080 source evidence: Mermaid 11.15 Journey marker path lacks the arrowheadPath class, making the provider rule inert for current DOM."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-resvg-safe-audit-filtering.md","reason":"HPD-080 journal: all-supported resvg-safe raster triage is now filterable after the unfiltered raster audit timed out without fixture-level signal."}
+{"file":"crates/merman/tests/resvg_safe_fixture_smoke.rs","reason":"HPD-080 test infrastructure: ignored all-supported resvg-safe audit supports MERMAN_RESVG_SAFE_AUDIT_FAMILY and MERMAN_RESVG_SAFE_AUDIT_FILTER."}

@@ -2127,6 +2127,33 @@ Residual note:
   headless renderability improvement, it should be tracked explicitly as a deliberate DOM divergence
   from pinned Mermaid output.
 
+## HPD-080 - Resvg-Safe Audit Filtering
+
+Outcome:
+
+- Ran the ignored all-supported `resvg-safe` audit with render-only features and confirmed it passes
+  across the current supported fixture corpus.
+- Attempted the unfiltered all-supported raster audit; it exceeded the command timeout before
+  producing fixture-level signal. Representative raster `resvg-safe` smoke still passed.
+- Added optional filters to
+  [crates/merman/tests/resvg_safe_fixture_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/resvg_safe_fixture_smoke.rs):
+  `MERMAN_RESVG_SAFE_AUDIT_FAMILY` and `MERMAN_RESVG_SAFE_AUDIT_FILTER`.
+- Default ignored-audit behavior is unchanged. Filtered audits now accept non-empty filtered corpora,
+  which makes PNG-level triage usable without turning the full all-supported raster pass into a
+  blocking gate.
+
+Focused verification:
+
+- `cargo fmt --check -p merman`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; $env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='journey'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit`
+
+Residual note:
+
+- Use filtered raster audits for failure triage and keep representative raster smoke as the routine
+  gate. The unfiltered raster corpus is still useful manually, but it should not be treated as a
+  normal fast-pass command.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:
