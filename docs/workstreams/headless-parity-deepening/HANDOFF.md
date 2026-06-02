@@ -201,6 +201,10 @@ Current repository reality to preserve:
     `faceColor`, `mainBkg`, `nodeBorder`, `arrowheadColor`, `edgeLabelBackground`, `titleColor`,
     `tertiaryColor`, `border2`, `fillType0..7`, and optional `actor0..5` variables; this matters
     because task/section CSS classes override SVG `fill` presentation attributes.
+  - A sixth HPD-080 slice fixed ER theme CSS emission. ER now reads source-backed entity, label,
+    relationship line, marker, edge-label, error, and `look: neo` stroke variables instead of stale
+    default-theme colors. Upstream ER `data-color-id` and neo label-background rules remain
+    intentionally un-emitted where local SVG elements do not carry the required attributes.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

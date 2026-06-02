@@ -778,6 +778,35 @@ Focused verification:
 - `cargo test -p merman-render journey_css_honors_mermaid_11_15_theme_options`
 - `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Sixth slice outcome:
+
+- Audited pinned Mermaid 11.15 ER style provider:
+  - `packages/mermaid/src/diagrams/er/styles.ts`
+- ER previously emitted older hardcoded default-theme CSS for entity boxes, relationship labels,
+  node shapes, relationship lines, markers, and label text. This could make custom/dark-theme ER
+  diagrams structurally valid but visually stale or low contrast.
+- ER CSS now reads Mermaid 11.15 theme variables for `mainBkg`, `nodeBorder`, `nodeTextColor`,
+  `textColor`, `lineColor`, `errorBkgColor`, `errorTextColor`, `tertiaryColor`,
+  `edgeLabelBackground`, optional `erEdgeLabelBackground`, and `strokeWidth` when `look: neo`.
+- Added a narrow render-side `css_rgba_fade(...)` utility for the ER `fade(tertiaryColor, 0.5)`
+  rule. It uses the existing `svgtypes` CSS color parser and returns `None` for unresolved runtime
+  CSS values rather than pretending browser expression support.
+- The upstream ER `[data-look][data-color-id]` color-theme rules and `[data-look=neo].labelBkg`
+  rule were intentionally not emitted because current local ER SVGs do not emit the required
+  attributes on those elements. Adding those inert rules would not improve visible renderability.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity.rs)
+- [crates/merman-render/src/svg/parity/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/css.rs)
+- [crates/merman-render/src/svg/parity/util.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/util.rs)
+
+Focused verification:
+
+- `cargo test -p merman-render er_css_honors_mermaid_11_15_theme_options`
+- `cargo test -p merman-render css_rgba_fade_parses_css_colors`
+- `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

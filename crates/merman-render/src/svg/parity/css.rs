@@ -373,31 +373,56 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
 }
 
 pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.12.2 ER unified renderer stylesheet ordering (see `diagrams/er/styles.js`
+    // Mirrors Mermaid@11.15.0 ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let font = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-    let font = normalize_css_font_family(font.as_str());
-    let font = if font.is_empty() {
-        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-    } else {
-        font
-    };
+    let theme = SvgTheme::new(effective_config);
+    let font = theme.font_family_css();
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
         .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
         .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);
+    let text_color = theme.color("textColor", "#333");
+    let line_color = theme.color("lineColor", "#333333");
+    let error_bkg = theme.color("errorBkgColor", "#552222");
+    let error_text = theme.color("errorTextColor", "#552222");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let node_text_color = theme
+        .optional_color("nodeTextColor")
+        .unwrap_or_else(|| text_color.clone());
+    const DEFAULT_ER_TERTIARY: &str = "hsl(80, 100%, 96.2745098039%)";
+    const DEFAULT_ER_TERTIARY_FADE: &str = "rgba(248.6666666666, 255, 235.9999999999, 0.5)";
+    let tertiary_color = theme.color("tertiaryColor", DEFAULT_ER_TERTIARY);
+    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
+    let er_edge_label_background = match theme.theme_name().as_str() {
+        "redux-color" | "redux-dark-color" => theme.optional_color("erEdgeLabelBackground"),
+        _ => None,
+    };
+    let label_background = er_edge_label_background.clone().unwrap_or_else(|| {
+        if tertiary_color == DEFAULT_ER_TERTIARY {
+            DEFAULT_ER_TERTIARY_FADE.to_string()
+        } else {
+            css_rgba_fade(&tertiary_color, 0.5)
+                .unwrap_or_else(|| DEFAULT_ER_TERTIARY_FADE.to_string())
+        }
+    });
+    let edge_label_background = er_edge_label_background.unwrap_or(edge_label_background);
+    let stroke_width = if theme.look() == "neo" {
+        theme.css_value("strokeWidth", "1px")
+    } else {
+        "1px".to_string()
+    };
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
+        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
         id,
         font,
-        fmt(font_size)
+        fmt(font_size),
+        text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -409,8 +434,8 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     );
     let _ = write!(
         &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
+        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
+        id, error_bkg, id, error_text, error_text
     );
     let _ = write!(
         &mut out,
@@ -419,8 +444,8 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     );
     let _ = write!(
         &mut out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
+        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
+        id, line_color, line_color, id, line_color
     );
     let _ = write!(
         &mut out,
@@ -432,13 +457,13 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     );
     let _ = write!(
         &mut out,
-        r#"#{} .entityBox{{fill:#ECECFF;stroke:#9370DB;}}"#,
-        id
+        r#"#{} .entityBox{{fill:{};stroke:{};}}"#,
+        id, main_bkg, node_border
     );
     let _ = write!(
         &mut out,
-        r#"#{} .relationshipLabelBox{{fill:hsl(80, 100%, 96.2745098039%);opacity:0.7;background-color:hsl(80, 100%, 96.2745098039%);}}"#,
-        id
+        r#"#{} .relationshipLabelBox{{fill:{};opacity:0.7;background-color:{};}}"#,
+        id, tertiary_color, tertiary_color
     );
     let _ = write!(
         &mut out,
@@ -447,18 +472,18 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     );
     let _ = write!(
         &mut out,
-        r#"#{} .labelBkg{{background-color:rgba(248.6666666666, 255, 235.9999999999, 0.5);}}"#,
-        id
+        r#"#{} .labelBkg{{background-color:{};}}"#,
+        id, label_background
     );
     let _ = write!(
         &mut out,
-        r#"#{} .edgeLabel .label{{fill:#9370DB;font-size:14px;}}"#,
-        id
+        r#"#{} .edgeLabel{{background-color:{};}}#{} .edgeLabel .label rect{{fill:{};}}#{} .edgeLabel .label text{{fill:{};}}#{} .edgeLabel .label{{fill:{};font-size:14px;}}"#,
+        id, edge_label_background, id, edge_label_background, id, text_color, id, node_border
     );
     let _ = write!(
         &mut out,
-        r#"#{} .label{{font-family:{};color:#333;}}"#,
-        id, font
+        r#"#{} .label{{font-family:{};color:{};}}"#,
+        id, font, node_text_color
     );
     // Mermaid duplicates `.edge-pattern-dashed` (base rule earlier sets dasharray:3).
     let _ = write!(
@@ -468,19 +493,19 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     );
     let _ = write!(
         &mut out,
-        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
-        id, id, id, id
+        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, id, id, id, main_bkg, node_border, stroke_width
     );
     let _ = write!(
         &mut out,
-        r#"#{} .relationshipLine{{stroke:#333333;stroke-width:1;fill:none;}}"#,
-        id
+        r#"#{} .relationshipLine{{stroke:{};stroke-width:{};fill:none;}}"#,
+        id, line_color, stroke_width
     );
-    // Mermaid duplicates `.marker` (base rule earlier sets fill/stroke to #333333).
+    // Mermaid duplicates `.marker` (base rule earlier sets fill/stroke from the line color).
     let _ = write!(
         &mut out,
-        r#"#{} .marker{{fill:none!important;stroke:#333333!important;stroke-width:1;}}"#,
-        id
+        r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
+        id, line_color
     );
     let _ = write!(
         &mut out,
@@ -924,6 +949,51 @@ mod tests {
         assert!(css.contains(r#"#pie .pieTitleText{text-anchor:middle;font-size:26px;fill:#555555;font-family:"ibm plex sans",arial,sans-serif;}"#));
         assert!(css.contains(r#"#pie .slice{font-family:"ibm plex sans",arial,sans-serif;fill:#666666;font-size:18px;}"#));
         assert!(css.contains(r#"#pie .legend text{fill:#777777;font-family:"ibm plex sans",arial,sans-serif;font-size:19px;}"#));
+    }
+
+    #[test]
+    fn er_css_honors_mermaid_11_15_theme_options() {
+        let cfg = serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "fontSize": "18px",
+                "textColor": "#101010",
+                "lineColor": "#202020",
+                "errorBkgColor": "#303030",
+                "errorTextColor": "#404040",
+                "mainBkg": "#505050",
+                "nodeBorder": "#606060",
+                "nodeTextColor": "#707070",
+                "tertiaryColor": "#8090a0",
+                "edgeLabelBackground": "#b0c0d0",
+                "strokeWidth": 3
+            }
+        });
+
+        let css = er_css("er", &cfg);
+
+        assert!(css.contains(
+            r#"#er{font-family:"ibm plex sans",arial,sans-serif;font-size:18px;fill:#101010;}"#
+        ));
+        assert!(css.contains(
+            r#"#er .error-icon{fill:#303030;}#er .error-text{fill:#404040;stroke:#404040;}"#
+        ));
+        assert!(css.contains(r#"#er .marker{fill:#202020;stroke:#202020;}"#));
+        assert!(css.contains(r#"#er .entityBox{fill:#505050;stroke:#606060;}"#));
+        assert!(css.contains(
+            r#"#er .relationshipLabelBox{fill:#8090a0;opacity:0.7;background-color:#8090a0;}"#
+        ));
+        assert!(css.contains(r#"#er .labelBkg{background-color:rgba(128, 144, 160, 0.5);}"#));
+        assert!(css.contains(r#"#er .edgeLabel{background-color:#b0c0d0;}#er .edgeLabel .label rect{fill:#b0c0d0;}#er .edgeLabel .label text{fill:#101010;}#er .edgeLabel .label{fill:#606060;font-size:14px;}"#));
+        assert!(css.contains(
+            r#"#er .label{font-family:"ibm plex sans",arial,sans-serif;color:#707070;}"#
+        ));
+        assert!(css.contains(r#"#er .node rect,#er .node circle,#er .node ellipse,#er .node polygon{fill:#505050;stroke:#606060;stroke-width:3;}"#));
+        assert!(css.contains(r#"#er .relationshipLine{stroke:#202020;stroke-width:3;fill:none;}"#));
+        assert!(css.contains(
+            r#"#er .marker{fill:none!important;stroke:#202020!important;stroke-width:1;}"#
+        ));
     }
 
     #[test]

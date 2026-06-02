@@ -3,6 +3,7 @@
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
 use std::borrow::Cow;
+use std::str::FromStr as _;
 
 pub(super) use crate::config::{config_f64, config_f64_css_px};
 
@@ -105,6 +106,14 @@ impl<'a> SvgTheme<'a> {
         theme_color(self.effective_config, key, fallback)
     }
 
+    pub(super) fn theme_name(&self) -> String {
+        config_string(self.effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
+    }
+
+    pub(super) fn look(&self) -> String {
+        config_string(self.effective_config, &["look"]).unwrap_or_else(|| "classic".to_string())
+    }
+
     pub(super) fn css_value(&self, key: &str, fallback: &str) -> String {
         crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
             .unwrap_or_else(|| fallback.to_string())
@@ -128,6 +137,17 @@ impl<'a> SvgTheme<'a> {
             .unwrap_or(16.0)
             .max(1.0)
     }
+}
+
+pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> Option<String> {
+    let color = svgtypes::Color::from_str(color.trim()).ok()?;
+    Some(format!(
+        "rgba({}, {}, {}, {})",
+        color.red,
+        color.green,
+        color.blue,
+        fmt(opacity)
+    ))
 }
 
 pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
@@ -675,6 +695,19 @@ mod tests {
             assert_eq!(fmt_display(v).to_string(), fmt_string(v));
             assert_eq!(fmt(v).to_string(), fmt_string(v));
         }
+    }
+
+    #[test]
+    fn css_rgba_fade_parses_css_colors() {
+        assert_eq!(
+            css_rgba_fade("#8090a0", 0.5).as_deref(),
+            Some("rgba(128, 144, 160, 0.5)")
+        );
+        assert_eq!(
+            css_rgba_fade("hsl(80, 100%, 96.2745098039%)", 0.5).as_deref(),
+            Some("rgba(248, 255, 235, 0.5)")
+        );
+        assert!(css_rgba_fade("var(--not-runtime-resolved)", 0.5).is_none());
     }
 
     #[test]

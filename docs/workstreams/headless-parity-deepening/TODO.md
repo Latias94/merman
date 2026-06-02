@@ -159,6 +159,8 @@ Last updated: 2026-06-02
   now render with readable labels and semantic branch/card styling. Follow-up slices fixed Gantt,
   Treemap, Requirement, Mindmap, Pie, and Journey theme/readability gaps, including Mindmap XHTML
   `span` label colors, Pie title/slice/legend text variables, and Journey task/section fillType
-  rules. Continue by scanning supported diagrams for blank output, hidden labels, black blocks,
-  lost theme colors, and other functional renderability failures before returning to fine root
-  residual work.
+  rules. A later ER slice fixed stale default-theme CSS for entity boxes, labels, relationship
+  lines, markers, and edge-label backgrounds while explicitly skipping inert upstream rules that
+  require local SVG attributes we do not emit yet. Continue by scanning supported diagrams for
+  blank output, hidden labels, black blocks, lost theme colors, and other functional renderability
+  failures before returning to fine root residual work.

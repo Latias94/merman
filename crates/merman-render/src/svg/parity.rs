@@ -64,11 +64,11 @@ use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
     SvgTheme, apply_root_viewport_override, config_bool, config_f64, config_f64_css_px,
-    config_string, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
-    escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into,
-    fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
-    json_stringify_points_into, normalize_css_font_family, push_points_attr, scoped_svg_id,
-    scoped_svg_url, theme_color,
+    config_string, css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr,
+    escape_attr_display, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp,
+    fmt_display, fmt_into, fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string,
+    json_stringify_points, json_stringify_points_into, normalize_css_font_family, push_points_attr,
+    scoped_svg_id, scoped_svg_url, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
