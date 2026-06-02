@@ -1936,6 +1936,30 @@ Focused verification:
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke`
 - `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test zed_pr_57644_corpus`
 
+Thirty-fourth slice outcome:
+
+- Added a public API resvg-safe host-integration smoke in
+  [crates/merman/tests/resvg_safe_fixture_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/resvg_safe_fixture_smoke.rs).
+- The smoke covers the user-provided Kanban metadata and GitGraph merge samples, plus a compact
+  dark-theme Flowchart case that proves visible theme colors survive
+  `HeadlessRenderer::render_svg_resvg_safe_sync(...)`.
+- It also samples supported fixture families deterministically: each available `basic.mmd`, any
+  `zed_pr_57644_*.mmd` fixture, and a small sorted set of representative stress/upstream fixtures
+  per family.
+- The gate rejects host-visible/raster hazards: malformed XML, remaining `<foreignObject>`,
+  unsupported CSS constructs, invalid visual values such as `NaN`, `Infinity`, and
+  `fill="undefined"`, and empty style elements.
+- When executed with the `raster` feature, the same gate converts each resvg-safe SVG to PNG bytes.
+  This catches usvg/resvg-level failures that a string-only SVG check would miss.
+- No production renderer defect was found in this slice. Treat this as a functional regression
+  safety net, not a precise all-fixture or pixel parity metric.
+
+Focused verification:
+
+- `cargo fmt --check -p merman`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke`
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

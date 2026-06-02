@@ -235,6 +235,9 @@ Last updated: 2026-06-02
   inventory. A follow-up Zed-feedback audit reconfirmed that common host theme needs are covered
   without making Zed's exact editor palette cleanup a merman default, and used Zed PR `58325` to
   fix a serious Flowchart deep-subgraph stack-overflow risk by moving cluster tree traversals onto
-  explicit stacks.
+  explicit stacks. A follow-up resvg-safe fixture smoke slice added a public API host-integration
+  gate for the user Kanban/GitGraph examples, a dark-theme Flowchart sample, and representative
+  supported-family fixtures; the gate rejects foreignObject reliance, invalid visual tokens, empty
+  style elements, and, under the `raster` feature, SVGs that cannot convert to PNG.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

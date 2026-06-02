@@ -378,6 +378,12 @@ Current repository reality to preserve:
     subgraph stack overflow in its fork. Local Flowchart cluster direction, descendant, anchor, and
     copy traversals now use explicit stacks, with a 512 KB stack-thread regression for 10,000 nested
     subgraphs.
+  - A thirty-fourth HPD-080 resvg-safe smoke slice added a public `HeadlessRenderer` host-integration
+    gate for the user Kanban metadata sample, the GitGraph merge sample, a dark-theme Flowchart
+    sample, and representative supported-family fixtures. It checks XML parseability, absence of
+    `foreignObject`, raster-unsafe CSS/token cleanup, non-empty style elements, and actual PNG
+    conversion when the `raster` feature is enabled. No new renderer defect was found in that scan;
+    treat it as a functional regression gate, not an all-fixture parity percentage.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

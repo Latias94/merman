@@ -231,3 +231,5 @@
 {"file":"crates/merman-render/src/flowchart/layout.rs","reason":"HPD-080 implementation: Flowchart cluster direction, descendant, anchor, and copy traversals now use explicit stacks for deep subgraph safety."}
 {"file":"https://github.com/zed-industries/zed/pull/58325","reason":"HPD-080 external evidence: Zed fixed stack overflow for deeply nested Flowchart subgraphs on its merman fork."}
 {"file":"https://github.com/zed-industries/merman/commit/1c765dcca2ef5092fcde7bebe8374819563623ef","reason":"HPD-080 external evidence: Zed fork patch changed recursive Flowchart descendant extraction to an explicit stack."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-resvg-safe-fixture-smoke.md","reason":"HPD-080 journal: public resvg-safe host-integration smoke now covers user Kanban/GitGraph examples, dark-theme Flowchart, representative fixtures, and optional PNG rasterization."}
+{"file":"crates/merman/tests/resvg_safe_fixture_smoke.rs","reason":"HPD-080 regression gate: supported-family representative fixtures and host examples must render through HeadlessRenderer resvg-safe output without raster hazards."}
