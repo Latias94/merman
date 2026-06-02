@@ -13,8 +13,13 @@ typedef struct MermanApi {
     size_t (*buffer_struct_size)(void);
     size_t (*result_struct_size)(void);
     MermanCall render_svg;
+    MermanCall render_ascii;
     MermanCall parse_json;
     MermanCall layout_json;
+    MermanCall validate_json;
+    MermanResult (*supported_diagrams_json)(void);
+    MermanResult (*ascii_supported_diagrams_json)(void);
+    MermanResult (*themes_json)(void);
     MermanFree buffer_free;
 } MermanApi;
 
@@ -84,8 +89,13 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.buffer_struct_size == NULL ||
         api.result_struct_size == NULL ||
         api.render_svg == NULL ||
+        api.render_ascii == NULL ||
         api.parse_json == NULL ||
         api.layout_json == NULL ||
+        api.validate_json == NULL ||
+        api.supported_diagrams_json == NULL ||
+        api.ascii_supported_diagrams_json == NULL ||
+        api.themes_json == NULL ||
         api.buffer_free == NULL
     ) {
         return 1;
@@ -114,6 +124,15 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
 
     rc = expect_ok_with(
+        api.render_ascii(source, sizeof(source) - 1, NULL, 0),
+        api.buffer_free,
+        "Hello"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
         api.parse_json(source, sizeof(source) - 1, NULL, 0),
         api.buffer_free,
         "flowchart-v2"
@@ -127,6 +146,30 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.buffer_free,
         "layout"
     );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.validate_json(source, sizeof(source) - 1, NULL, 0),
+        api.buffer_free,
+        "\"valid\":true"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(api.supported_diagrams_json(), api.buffer_free, "flowchart");
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(api.ascii_supported_diagrams_json(), api.buffer_free, "sequence");
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(api.themes_json(), api.buffer_free, "default");
     if (rc != 0) {
         return rc;
     }

@@ -1,7 +1,7 @@
 package io.merman
 
 object MermanEngine {
-    const val ABI_VERSION: Int = 1
+    const val ABI_VERSION: Int = 2
 
     init {
         System.loadLibrary("merman_ffi")
@@ -16,12 +16,32 @@ object MermanEngine {
         nativeRenderSvg(source, optionsJson)
 
     @JvmStatic
+    fun renderAscii(source: String, optionsJson: String? = null): String =
+        nativeRenderAscii(source, optionsJson)
+
+    @JvmStatic
     fun parseJson(source: String, optionsJson: String? = null): String =
         nativeParseJson(source, optionsJson)
 
     @JvmStatic
     fun layoutJson(source: String, optionsJson: String? = null): String =
         nativeLayoutJson(source, optionsJson)
+
+    @JvmStatic
+    fun validateJson(source: String, optionsJson: String? = null): String =
+        nativeValidateJson(source, optionsJson)
+
+    @JvmStatic
+    fun supportedDiagramsJson(): String =
+        nativeSupportedDiagramsJson()
+
+    @JvmStatic
+    fun asciiSupportedDiagramsJson(): String =
+        nativeAsciiSupportedDiagramsJson()
+
+    @JvmStatic
+    fun themesJson(): String =
+        nativeThemesJson()
 
     private fun checkNativeAbi() {
         val nativeAbi = nativeAbiVersion()
@@ -49,8 +69,23 @@ object MermanEngine {
     private external fun nativeRenderSvg(source: String, optionsJson: String?): String
 
     @JvmStatic
+    private external fun nativeRenderAscii(source: String, optionsJson: String?): String
+
+    @JvmStatic
     private external fun nativeParseJson(source: String, optionsJson: String?): String
 
     @JvmStatic
     private external fun nativeLayoutJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
+    private external fun nativeValidateJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
+    private external fun nativeSupportedDiagramsJson(): String
+
+    @JvmStatic
+    private external fun nativeAsciiSupportedDiagramsJson(): String
+
+    @JvmStatic
+    private external fun nativeThemesJson(): String
 }

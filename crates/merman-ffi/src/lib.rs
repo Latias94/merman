@@ -13,7 +13,7 @@ use std::ptr;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub const MERMAN_ABI_VERSION: u32 = 1;
+pub const MERMAN_ABI_VERSION: u32 = 2;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
@@ -82,6 +82,24 @@ pub unsafe extern "C" fn merman_render_svg(
     ffi_result(|| unsafe { render_svg_impl(source, source_len, options_json, options_len) })
 }
 
+/// Render Mermaid source to Unicode ASCII-art text.
+///
+/// # Safety
+///
+/// - `source` may be null only when `source_len == 0`.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_render_ascii(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe { render_ascii_impl(source, source_len, options_json, options_len) })
+}
+
 /// Parse Mermaid source to semantic JSON bytes.
 ///
 /// # Safety
@@ -116,6 +134,42 @@ pub unsafe extern "C" fn merman_layout_json(
     options_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe { layout_json_impl(source, source_len, options_json, options_len) })
+}
+
+/// Validate Mermaid source and return a JSON validation payload.
+///
+/// # Safety
+///
+/// - `source` may be null only when `source_len == 0`.
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of their paired length for the duration of the call.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_validate_json(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe { validate_json_impl(source, source_len, options_json, options_len) })
+}
+
+/// Return supported diagram type metadata as a JSON string array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_supported_diagrams_json() -> MermanResult {
+    ffi_result(merman_bindings_core::supported_diagrams_json)
+}
+
+/// Return ASCII-supported diagram type metadata as a JSON string array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_ascii_supported_diagrams_json() -> MermanResult {
+    ffi_result(merman_bindings_core::ascii_supported_diagrams_json)
+}
+
+/// Return supported theme metadata as a JSON string array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_themes_json() -> MermanResult {
+    ffi_result(merman_bindings_core::supported_themes_json)
 }
 
 /// Free a buffer returned by this crate.
@@ -162,6 +216,28 @@ unsafe fn render_svg_impl(
     merman_bindings_core::render_svg(source_bytes, options_bytes)
 }
 
+unsafe fn render_ascii_impl(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> Result<Vec<u8>, BindingError> {
+    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+    #[cfg(feature = "ascii")]
+    {
+        merman_bindings_core::render_ascii(source_bytes, options_bytes)
+    }
+    #[cfg(not(feature = "ascii"))]
+    {
+        let _ = (source_bytes, options_bytes);
+        Err(BindingError::new(
+            BindingStatus::UnsupportedFormat,
+            "ASCII rendering requires the ascii feature",
+        ))
+    }
+}
+
 unsafe fn parse_json_impl(
     source: *const u8,
     source_len: usize,
@@ -182,6 +258,17 @@ unsafe fn layout_json_impl(
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
     merman_bindings_core::layout_json(source_bytes, options_bytes)
+}
+
+unsafe fn validate_json_impl(
+    source: *const u8,
+    source_len: usize,
+    options_json: *const u8,
+    options_len: usize,
+) -> Result<Vec<u8>, BindingError> {
+    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
+    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+    merman_bindings_core::validate_json(source_bytes, options_bytes)
 }
 
 unsafe fn raw_bytes<'a>(
@@ -243,9 +330,31 @@ mod tests {
         }
     }
 
+    fn call_render_ascii(source: &[u8], options: &[u8]) -> MermanResult {
+        unsafe {
+            merman_render_ascii(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+            )
+        }
+    }
+
     fn call_parse(source: &[u8], options: &[u8]) -> MermanResult {
         unsafe {
             merman_parse_json(
+                source.as_ptr(),
+                source.len(),
+                options.as_ptr(),
+                options.len(),
+            )
+        }
+    }
+
+    fn call_validate(source: &[u8], options: &[u8]) -> MermanResult {
+        unsafe {
+            merman_validate_json(
                 source.as_ptr(),
                 source.len(),
                 options.as_ptr(),
@@ -324,6 +433,25 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_returns_text_or_feature_error() {
+        let result = call_render_ascii(b"flowchart TD\nA[Hello] --> B[World]", b"");
+
+        if cfg!(feature = "ascii") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let text = take_text(result.data);
+            assert!(text.contains("Hello"));
+            assert!(text.contains("World"));
+        } else {
+            assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
+            let error = take_error(result);
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::UnsupportedFormat.code_name()
+            );
+        }
+    }
+
+    #[test]
     fn parse_json_returns_semantic_model() {
         let result = call_parse(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
@@ -346,6 +474,50 @@ mod tests {
         let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[test]
+    fn validate_json_returns_status_payload() {
+        let valid = call_validate(b"flowchart TD\nA[Hello]", b"");
+        assert_eq!(valid.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+
+        let invalid = call_validate(b"", b"");
+        assert_eq!(invalid.code, BindingStatus::Ok.code());
+        let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+    }
+
+    #[test]
+    fn metadata_entry_points_return_json_arrays() {
+        let diagrams = merman_supported_diagrams_json();
+        let ascii_diagrams = merman_ascii_supported_diagrams_json();
+        let themes = merman_themes_json();
+
+        assert_eq!(diagrams.code, BindingStatus::Ok.code());
+        assert_eq!(ascii_diagrams.code, BindingStatus::Ok.code());
+        assert_eq!(themes.code, BindingStatus::Ok.code());
+
+        let diagrams: Value = serde_json::from_str(&take_text(diagrams.data)).unwrap();
+        let ascii_diagrams: Value = serde_json::from_str(&take_text(ascii_diagrams.data)).unwrap();
+        let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
+
+        assert!(
+            diagrams
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("flowchart".to_string()))
+        );
+        assert!(ascii_diagrams.is_array());
+        assert!(
+            themes
+                .as_array()
+                .unwrap()
+                .contains(&Value::String("default".to_string()))
+        );
     }
 
     #[test]

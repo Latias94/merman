@@ -14,7 +14,7 @@ fn header_smoke() {
         r#"
 #include "merman.h"
 
-#if MERMAN_ABI_VERSION != 1
+#if MERMAN_ABI_VERSION != 2
 #error "unexpected merman ABI version"
 #endif
 
@@ -26,16 +26,26 @@ int merman_header_smoke(void) {
     size_t (*buffer_struct_size)(void) = &merman_buffer_struct_size;
     size_t (*result_struct_size)(void) = &merman_result_struct_size;
     MermanResult (*render_svg)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_svg;
+    MermanResult (*render_ascii)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_ascii;
     MermanResult (*parse_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_parse_json;
     MermanResult (*layout_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_layout_json;
+    MermanResult (*validate_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_validate_json;
+    MermanResult (*supported_diagrams_json)(void) = &merman_supported_diagrams_json;
+    MermanResult (*ascii_supported_diagrams_json)(void) = &merman_ascii_supported_diagrams_json;
+    MermanResult (*themes_json)(void) = &merman_themes_json;
     void (*free_buffer)(MermanBuffer) = &merman_buffer_free;
     (void)abi_version;
     (void)package_version;
     (void)buffer_struct_size;
     (void)result_struct_size;
     (void)render_svg;
+    (void)render_ascii;
     (void)parse_json;
     (void)layout_json;
+    (void)validate_json;
+    (void)supported_diagrams_json;
+    (void)ascii_supported_diagrams_json;
+    (void)themes_json;
     (void)free_buffer;
     return result.code + (int)result.data.len;
 }

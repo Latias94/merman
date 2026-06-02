@@ -10,6 +10,11 @@ fun runMermanSmoke() {
         "SVG smoke failed"
     }
 
+    val ascii = MermanEngine.renderAscii(source)
+    check(ascii.contains("Hello") && ascii.contains("World")) {
+        "ASCII smoke failed"
+    }
+
     val semanticJson = MermanEngine.parseJson(source)
     check(semanticJson.contains("flowchart-v2")) {
         "semantic JSON smoke failed"
@@ -18,5 +23,20 @@ fun runMermanSmoke() {
     val layoutJson = MermanEngine.layoutJson(source)
     check(layoutJson.contains("layout")) {
         "layout JSON smoke failed"
+    }
+
+    val validationJson = MermanEngine.validateJson(source)
+    check(validationJson.contains("\"valid\":true")) {
+        "validation JSON smoke failed"
+    }
+
+    check(MermanEngine.supportedDiagramsJson().contains("flowchart")) {
+        "supported diagrams smoke failed"
+    }
+    check(MermanEngine.asciiSupportedDiagramsJson().contains("sequence")) {
+        "ASCII supported diagrams smoke failed"
+    }
+    check(MermanEngine.themesJson().contains("default")) {
+        "themes smoke failed"
     }
 }

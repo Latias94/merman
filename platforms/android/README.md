@@ -3,8 +3,8 @@
 Experimental Android wrapper for `merman-ffi`.
 
 The Kotlin layer loads `libmerman_ffi.so`, checks the native ABI version, then exposes blocking
-string APIs for SVG, semantic JSON, and layout JSON. Rendering work should be called from a
-background dispatcher in app code.
+string APIs for SVG, ASCII text, semantic JSON, layout JSON, validation JSON, and metadata.
+Rendering work should be called from a background dispatcher in app code.
 
 ## Kotlin API
 
@@ -21,6 +21,10 @@ val svg = MermanEngine.renderSvg(
 )
 val semanticJson = MermanEngine.parseJson(source)
 val layoutJson = MermanEngine.layoutJson(source)
+val ascii = MermanEngine.renderAscii(source)
+val validationJson = MermanEngine.validateJson(source)
+val diagramsJson = MermanEngine.supportedDiagramsJson()
+val themesJson = MermanEngine.themesJson()
 
 try {
     MermanEngine.renderSvg(source, optionsJson = "{")

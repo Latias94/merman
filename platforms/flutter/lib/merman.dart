@@ -3,6 +3,7 @@ export 'src/merman_ffi.dart'
         Merman,
         MermanException,
         MermanStatus,
+        MermanValidationResult,
         mermanAbiVersion,
         openMermanLibrary,
         openMermanLibraryFromPath;

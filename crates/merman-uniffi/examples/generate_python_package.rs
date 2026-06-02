@@ -121,8 +121,8 @@ fn ensure_init_file(module_dir: &Path) -> io::Result<()> {
             init,
             concat!(
                 "\"\"\"Generated merman UniFFI package shim.\"\"\"\n",
-                "from .merman_uniffi import MermanEngine, MermanError\n\n",
-                "__all__ = [\"MermanEngine\", \"MermanError\"]\n",
+                "from .merman_uniffi import MermanEngine, MermanError, MermanValidationResult\n\n",
+                "__all__ = [\"MermanEngine\", \"MermanError\", \"MermanValidationResult\"]\n",
             ),
         )?;
     }

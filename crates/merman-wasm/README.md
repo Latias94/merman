@@ -3,7 +3,8 @@
 WebAssembly bindings for browser use.
 
 This crate is a thin `wasm-bindgen` transport over `merman-bindings-core`. It exposes SVG,
-semantic JSON, and layout JSON with the same options JSON contract used by the native bindings.
+semantic JSON, layout JSON, ASCII rendering, validation, and metadata helpers with the same
+options JSON contract used by the native bindings.
 
 ## Build
 

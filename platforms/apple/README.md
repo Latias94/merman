@@ -36,6 +36,10 @@ let svg = try engine.renderSvg(
 )
 let semanticJson = try engine.parseJsonRaw(source)
 let layoutJson = try engine.layoutJsonRaw(source)
+let ascii = try engine.renderAscii(source)
+let validation = try engine.validate(source)
+let diagrams = try engine.supportedDiagrams()
+let themes = try engine.themes()
 
 do {
     _ = try engine.renderSvg(source, optionsJson: "{")
@@ -64,8 +68,8 @@ bash scripts/build-apple-xcframework.sh
 swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 ```
 
-The example lives in `platforms/apple/examples/smoke` and exercises SVG, semantic JSON, and layout
-JSON through the Swift wrapper.
+The example lives in `platforms/apple/examples/smoke` and exercises SVG, ASCII, semantic JSON,
+layout JSON, validation, and metadata through the Swift wrapper.
 
 Release builds upload a zipped `Merman.xcframework` to GitHub Releases and patch the release-tag
 Swift package checksum for SwiftPM consumers.

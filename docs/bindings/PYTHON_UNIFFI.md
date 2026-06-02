@@ -48,12 +48,15 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 1
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+ascii_text = engine.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
+validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
+diagrams = engine.supported_diagrams()
 ```
 
 Errors are exposed through the generated `MermanError` type. The underlying status code, status
@@ -70,7 +73,8 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
-`MermanEngine.parse_json`, `MermanEngine.layout_json`, `MermanEngine.abi_version`,
+`MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
+`MermanEngine.validate`, metadata methods, `MermanEngine.abi_version`,
 `MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.
 
 ## Build A Local Wheel
@@ -81,9 +85,9 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 
 The script builds `merman-uniffi`, stages generated UniFFI Python files into
 `platforms/python/merman`, builds a platform wheel under `target/python-wheels`, then
-optionally installs it into a temporary venv and calls `MermanEngine.render_svg`. The build script
-fails if setuptools emits a universal `py3-none-any` wheel, because the package carries a native
-library.
+optionally installs it into a temporary venv and exercises SVG, ASCII, parse, layout, validation,
+and metadata calls. The build script fails if setuptools emits a universal `py3-none-any` wheel,
+because the package carries a native library.
 
 ## Release
 

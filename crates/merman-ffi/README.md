@@ -47,8 +47,9 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The first C ABI release candidate exposes SVG, semantic JSON, and layout JSON. Native raster byte
-outputs are intentionally split into a later ABI lane.
+The first C ABI release candidate exposes SVG, ASCII text, semantic JSON, layout JSON, validation
+JSON, and binding metadata. Native raster byte outputs are intentionally split into a later ABI
+lane.
 
 ## Minimal C Usage
 
@@ -91,8 +92,13 @@ target/merman-ffi-render-svg
 - `merman_buffer_struct_size`
 - `merman_result_struct_size`
 - `merman_render_svg`
+- `merman_render_ascii`
 - `merman_parse_json`
 - `merman_layout_json`
+- `merman_validate_json`
+- `merman_supported_diagrams_json`
+- `merman_ascii_supported_diagrams_json`
+- `merman_themes_json`
 - `merman_buffer_free`
 
 See
