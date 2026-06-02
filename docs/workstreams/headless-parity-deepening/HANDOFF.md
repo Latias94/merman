@@ -106,3 +106,16 @@ Current repository reality to preserve:
     fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`,
     `cytoscape_group_child_bounds`). This did not change behavior: structural Architecture parity
     is green, and `parity-root` remains the expected 26 mismatches.
+  - `repo-ref/dagre` and `repo-ref/graphlib` are now present and checked out to the pinned
+    lockfile commits, so dugong/graphlib source-backed audits no longer have to proceed from stale
+    assumptions.
+  - `dugong-graphlib` now has an explicit upstream coverage ledger in
+    `docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md`. The first direct Graphlib source-test slice
+    ports the exposed helper algorithms (`components`, `findCycles`, `preorder`, `postorder`) and
+    tightens missing-root traversal behavior to panic like upstream Graphlib throws.
+  - `tools/dagre-harness/run.mjs` now imports `dagre-d3-es` from the installed
+    `tools/mermaid-cli/node_modules` baseline and is executable again. A focused State `basic`
+    Dagre layout comparison reported zero node and edge delta.
+  - The next dugong-adjacent audit should target the public Graphlib `Graph` API subset used by
+    `dugong` and Mermaid-facing renderers. Do not spend HPD-050 budget implementing unused
+    shortest-path algorithms unless a real Mermaid/Dagre path needs them.

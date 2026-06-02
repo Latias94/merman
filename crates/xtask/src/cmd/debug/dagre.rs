@@ -295,7 +295,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
                     (
                         if v == id1 { id2.to_string() } else { v },
                         // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w`
-                        // side back to `id1` rather than `id2` (Mermaid@11.12.2).
+                        // side back to `id1` rather than `id2` in the pinned Mermaid baseline.
                         if w == id1 { id1.to_string() } else { w },
                     )
                 })

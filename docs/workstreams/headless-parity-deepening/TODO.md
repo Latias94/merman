@@ -86,7 +86,12 @@ Last updated: 2026-06-02
   The current candidate split is Architecture Cytoscape bbox phase modeling: leaf default
   `node.boundingBox()`, child `updateCompoundBounds()` contribution, final group
   `node.boundingBox()`, and manatee relocation bbox currently cannot be represented by one global
-  label/padding formula without broad root regressions.
+  label/padding formula without broad root regressions. The dugong-adjacent source audit has also
+  begun: `repo-ref/dagre` and `repo-ref/graphlib` are now checked out to their pinned commits,
+  `dugong-graphlib` has a Graphlib coverage ledger, exposed Graphlib helper algorithm tests are
+  ported, and the Dagre reference harness is executable again against the installed Mermaid
+  `11.15.0` / `dagre-d3-es@7.0.14` toolchain. The next useful dugong slice is public Graphlib
+  `Graph` API coverage, not unused shortest-path algorithms.
 
 ## M5 - Semantic / Render Unification Pilot
 

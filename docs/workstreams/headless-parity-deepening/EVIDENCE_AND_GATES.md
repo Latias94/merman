@@ -422,3 +422,42 @@ Focused verification:
   passed.
 - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_after_hpd050_phase_names_refactor.md`
   expected failure remains `26` Architecture root mismatches.
+
+Ninth slice Dugong / Graphlib audit:
+
+- Cloned `repo-ref/dagre` and `repo-ref/graphlib`, then checked them out to the lockfile commits:
+  - Dagre: `ba986662394f8f3ed608717194e5958f3386ce01`
+  - Graphlib: `380d5efa1f4ab0904539f046bdba583d14ac2add`
+- Added
+  [docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md](/F:/SourceCodes/Rust/merman/docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md)
+  so Graphlib test coverage is no longer only an implicit assumption behind Dagre coverage.
+- Ported the currently exposed Graphlib helper algorithm cases from upstream:
+  `components`, `findCycles`, `preorder`, and `postorder`.
+- Tightened `dugong_graphlib::alg::{preorder, postorder}` so missing roots panic instead of
+  silently traversing a non-existent root, matching upstream Graphlib's invalid-root throw
+  behavior in Rust form.
+- Fixed
+  [tools/dagre-harness/run.mjs](/F:/SourceCodes/Rust/merman/tools/dagre-harness/run.mjs)
+  to import `dagre-d3-es` from `tools/mermaid-cli/node_modules`, which makes the reference runner
+  executable in the current repository layout.
+- Updated
+  [tools/dagre-harness/README.md](/F:/SourceCodes/Rust/merman/tools/dagre-harness/README.md)
+  so it describes the pinned Mermaid `11.15.0` / `dagre-d3-es@7.0.14` toolchain instead of the old
+  11.12-era package facts.
+
+Focused verification:
+
+- `cargo test -p dugong-graphlib --tests`
+- `cargo test -p dugong --tests`
+- `node tools/dagre-harness/run.mjs --help`
+- `cargo run -p xtask -- compare-dagre-layout --fixture basic --out-dir target/compare/dagre-layout-hpd050-graphlib-audit`
+
+Verification notes:
+
+- `cargo run -p xtask -- compare-dagre-layout --help` still returns `Error: Usage`; that is the
+  command's existing lack of help output, not a harness import failure.
+- The focused `compare-dagre-layout` run for `fixtures/state/basic.mmd` completed and reported
+  `max node delta: 0.000000` and `max edge delta: 0.000000`.
+- This slice does not claim full Graphlib parity. The next useful audit target is the public
+  `Graph` API subset consumed by `dugong` and Mermaid-facing renderers, not unused shortest-path
+  algorithms.
