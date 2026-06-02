@@ -136,3 +136,38 @@ Negative / residual evidence:
   reported headless vendored local `585.000px` vs upstream `566.000px` (`+19.000px`). Treat this as
   a Sequence measurement/root residual for later classification, not as a reason to add a local
   width override.
+
+## HPD-050 - Architecture Layout Engine Audit
+
+First slice outcome:
+
+- Extracted `architecture_fcose_prelayout_bounds(...)` from the main Architecture layout function.
+  The helper owns the Mermaid/Cytoscape pre-layout `eles.boundingBox()` approximation that produces:
+  - the initial FCoSE coordinate-frame center,
+  - per-node `BoundsExtras` fed into `manatee`,
+  - top-level compound bbox selection with configured Architecture padding.
+- Removed the layout-view group-title field. Current source/evidence says group titles are rendered
+  inside compound bounds and do not participate in the pre-layout center used for FCoSE relocation;
+  final SVG rendering still reads titles from semantic model data.
+- Added direct unit coverage for the pre-layout helper so the service label bottom extra and
+  coordinate-frame center stay explicit.
+- This is an adapter-boundary refactor, not a residual-count claim. It keeps Mermaid/Cytoscape
+  approximation policy in `merman-render` instead of leaking another diagram-specific rule into
+  `manatee`.
+
+Focused verification:
+
+- `cargo fmt --all`
+- `cargo test -p merman-render architecture_prelayout_bounds_feed_label_extras_without_group_title_state --lib`
+- `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops --lib`
+- `cargo test -p merman-render --test architecture_layout_test`
+- `cargo run -p xtask -- report-overrides --check-no-growth`
+- `git diff --check`
+
+Residual evidence:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch5_after_prelayout_adapter.md`
+  still fails with the known root-only tail: upstream `542.926px`, local `547.926px`, delta
+  `+5.000px`.
+- The unchanged focused tail is intentional evidence that this pass moved ownership boundaries
+  without silently tuning Architecture root widths.

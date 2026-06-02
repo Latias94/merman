@@ -254,6 +254,13 @@ interleaved inside one local loop variable. The new split did not aim to change 
 it makes future root-tail audits much easier because root vs compound measurement policy now has a
 named seam instead of duplicated inline arithmetic.
 
+HPD-050 continued the same boundary cleanup by extracting Architecture's pre-layout Cytoscape bbox
+adapter into `architecture_fcose_prelayout_bounds(...)`. That helper now owns the FCoSE
+`initial_center` and node `BoundsExtras` approximation. Group title state was removed from the
+layout view because current source/evidence says group titles do not affect the pre-layout
+`eles.boundingBox()` center. The batch5 long-title focused root tail stayed unchanged at upstream
+`542.926px` vs local `547.926px`, so this is auditability work rather than a hidden viewport tune.
+
 Fresh 2026-06-02 focused probes then narrowed the remaining Architecture label-width family even
 further. Mermaid 11.15 source confirms the Cytoscape layout phase only sees single-line canvas
 `label` + `font-size` on `node[label]`; it does not reuse the final SVG `createText(..., width:

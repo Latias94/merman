@@ -1367,6 +1367,37 @@ Outcome:
   from generic `cytoscape/long-label` wording to explicit `layout_canvas_*` semantics without
   changing behavior. Focused Architecture residuals and the new metrics-seam tests stayed stable.
 
+## 2026-06-02 - Architecture FCoSE Prelayout Adapter Boundary
+
+Fresh implementation evidence:
+
+- `crates/merman-render/src/architecture.rs` now isolates the Architecture-specific Cytoscape
+  pre-layout bbox approximation in `architecture_fcose_prelayout_bounds(...)`.
+- The helper returns the FCoSE `initial_center` and node `BoundsExtras`, keeping Mermaid/Cytoscape
+  adapter policy in `merman-render` instead of pushing diagram-specific behavior into `manatee`.
+- The layout view no longer stores group title state. Current source-backed evidence says group
+  titles are rendered inside compound bounds and do not affect the pre-layout
+  `eles.boundingBox()` center.
+
+Fresh validation:
+
+- `cargo test -p merman-render architecture_prelayout_bounds_feed_label_extras_without_group_title_state --lib`:
+  passed.
+- `cargo test -p merman-render architecture_relative_constraints_preserve_mermaid_duplicate_bfs_pops --lib`:
+  passed.
+- `cargo test -p merman-render --test architecture_layout_test`:
+  passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth`:
+  passed; Architecture root overrides remain `0`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch5_after_prelayout_adapter.md`:
+  expected failure with unchanged root-only residual, upstream `542.926px` vs local `547.926px`.
+
+Outcome:
+
+- This is a boundary cleanup and auditability improvement, not a residual-count reduction.
+- Continue using this seam to audit which remaining Architecture rows are input-model mismatches,
+  generated/bbox measurement tails, or source-input-matched FCoSE/compound residuals.
+
 ## Gate Set
 
 Run after any code or generated-data change:

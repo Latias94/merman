@@ -52,3 +52,10 @@ Current repository reality to preserve:
   - No new override growth or ad hoc constants were introduced.
   - The Sequence long leftOf note root-width residual remains open (`570px` deterministic local vs.
     `566px` upstream; headless vendored report `585px` vs `566px`) and should not be overfit.
+- HPD-050 in-progress outcome:
+  - Architecture's pre-layout Cytoscape bbox / `BoundsExtras` adapter is now a named helper
+    (`architecture_fcose_prelayout_bounds`) with direct unit coverage.
+  - The layout view no longer carries group title state, matching the current source-backed rule
+    that group titles do not affect the pre-layout `eles.boundingBox()` relocation center.
+  - The focused batch5 long-title residual stayed unchanged at upstream `542.926px` vs local
+    `547.926px`; this pass was boundary cleanup, not a hidden root-width tune.
