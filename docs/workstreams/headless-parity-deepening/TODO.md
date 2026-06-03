@@ -189,6 +189,12 @@ Last updated: 2026-06-04
   now exposes `children body -> children labels -> final node.boundingBox()` in one row, so future
   group-bbox formula work can separate child label contribution from final compound expansion
   without manual subtraction. This remains evidence tooling only.
+  A follow-up label-phase join regenerated current-HEAD local deltas under
+  `target\compare\architecture-delta-label-phase-current-hpd050\` and joined them with that probe
+  batch. `group_port_edges_017` is now zero-delta on current HEAD and should not be reopened from
+  stale pre-Procrustes artifacts. The remaining direct group-width tails are `batch5` `+5px`,
+  `html_titles` `+5px`, and `unicode` `+3px`, but the joined child-label and final-group phases
+  reject another standalone group-padding, font-family switch, or exact labelWidth lookup attempt.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

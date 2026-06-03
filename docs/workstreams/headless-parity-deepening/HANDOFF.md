@@ -339,6 +339,13 @@ Current repository reality to preserve:
     group row be read as `children body -> children labels -> final node.boundingBox()` without
     manual subtraction; for example, `batch5_long_titles` `pipeline` reports label contribution
     `dw=97px dh=17px`, then final group expansion `dw=83px dh=83px`. This is still evidence only.
+  - A follow-up label-phase join regenerated current-HEAD local delta reports under
+    `target\compare\architecture-delta-label-phase-current-hpd050\` and joined them to that probe
+    batch. This confirms `group_port_edges_017` is no longer a current root/group residual
+    (`group-outer` and `group-inner` are zero-delta); do not use older pre-Procrustes delta
+    artifacts for that row. The remaining direct group-width rows are still `batch5` `+5px`,
+    `html_titles` `+5px`, and `unicode` `+3px`, but their source child-label and final-group
+    phases do not support a standalone group-padding, font-family, or exact labelWidth fix.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

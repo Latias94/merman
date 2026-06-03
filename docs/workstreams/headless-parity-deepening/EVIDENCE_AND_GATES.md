@@ -3,6 +3,54 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Label Phase Join
+
+Outcome:
+
+- Joined the current-HEAD local Architecture delta reports with the browser/Cytoscape
+  label-contribution probe batch.
+- Regenerated current local delta reports for the seven representative residual samples under
+  `target\compare\architecture-delta-label-phase-current-hpd050`.
+- Confirmed `group_port_edges_017` is no longer an active current group/root residual after the
+  narrow Procrustes compatibility slice: upstream and local max-width both report `707.769226`, and
+  `group-outer` / `group-inner` have zero `dx`, `dy`, `dw`, and `dh`.
+- The active direct group-width tails remain:
+  - `batch5_long_titles` `pipeline`: local `dw=+5`, browser child-label contribution
+    `dw=97 dh=17`, final group expansion `dw=83 dh=83`.
+  - `html_titles` `ui`: local `dw=+5`, browser child-label contribution `dw=34 dh=17`,
+    final group expansion `dw=83 dh=83`.
+  - `unicode` `i`: local `dw=+3`, browser child-label contribution `dw=24 dh=17`, final group
+    expansion `dw=83 dh=83`.
+- `nested_groups` and `batch6_init` stay separate phase classes: `nested_groups` is dominated by
+  placement and tiny `dw=-0.5` tails, while `batch6_init` has custom-init group sizing
+  (`left dw=-3`, `right dw=-1`) plus large `dx` shifts.
+- This join rejects another production formula attempt in this slice. The focused `+5px` rows are
+  not explained by final group expansion alone, and prior exact labelWidth lookup evidence already
+  showed label width alone reduced focused rows only to `+2px` while raising the full root queue.
+- No production code, layout formula, renderer output, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-label-phase-join.md`
+- `target\compare\architecture-delta-label-phase-current-hpd050`
+- `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050`
+
+Focused verification:
+
+- `cargo run -p xtask -- debug-architecture-delta --fixture <seven representative fixtures> --out target\compare\architecture-delta-label-phase-current-hpd050` -
+  passed for all `7` fixtures.
+- Current `group_port_edges_017` report shows exact upstream/local max-width and zero
+  service/group deltas.
+- `rg -n "| group-rect" target\compare\architecture-delta-label-phase-current-hpd050 -g "*.md"` -
+  extracted current group deltas for the joined rows.
+
+Residual note:
+
+- Do not reopen `group_port_edges_017` unless a fresh current report regresses. The next viable
+  production candidate for the remaining group rows must explain child label contribution, final
+  compound group bbox, and root SVG consumption together; standalone group padding, font-family
+  switching, or exact labelWidth lookup remains rejected.
+
 ## HPD-050 - Architecture Probe Label Contribution Summary
 
 Outcome:
