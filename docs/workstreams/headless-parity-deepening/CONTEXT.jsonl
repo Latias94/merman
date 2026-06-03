@@ -494,3 +494,10 @@
 {"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Architecture FCoSE probe repeated-fixture support recorded as batch evidence infrastructure, not root residual closure."}
 {"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: future small Architecture residual sets can be collected with repeated --fixture flags while keeping per-fixture artifacts."}
 {"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture FCoSE probe batch fixture support recorded under active source-backed layout audit work."}
+{"file":"crates/xtask/src/cmd/debug/architecture.rs","reason":"HPD-050 Architecture FCoSE probe batch index: multi-fixture probe runs now write architecture-fcose-probe-batch.md with per-fixture artifact links and counts."}
+{"file":"target/compare/architecture-fcose-probe-batch-index-hpd050/architecture-fcose-probe-batch.md","reason":"HPD-050 evidence: batch index for the active Architecture residual probe set."}
+{"file":"target/compare/architecture_report_parity_hpd050_fcose_probe_batch_index.md","reason":"HPD-050 evidence: Architecture structural parity stayed green after adding batch index output to the probe command."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-050-architecture-fcose-probe-batch-index.md","reason":"HPD-050 journal: Architecture FCoSE probe batch index, verification, and residual boundary."}
+{"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Architecture FCoSE probe batch index recorded as artifact navigation infrastructure, not root residual closure."}
+{"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: future multi-fixture probe evidence should cite architecture-fcose-probe-batch.md before per-fixture artifacts."}
+{"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture FCoSE probe batch index recorded under active source-backed layout audit work."}

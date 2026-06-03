@@ -179,6 +179,9 @@ Last updated: 2026-06-03
   residual samples can be captured in one command while still writing per-fixture JSON/Markdown
   artifacts. Use this batch mode for future small residual classes before changing production
   layout formulas.
+  A follow-up batch-index slice writes `architecture-fcose-probe-batch.md` beside batch outputs,
+  listing each fixture's JSON/Markdown artifact and captured stage/node/edge counts. Use the index
+  as the first entrypoint when citing multi-fixture source-backed probe evidence.
 
 ## M5 - Semantic / Render Unification Pilot
 

@@ -18,6 +18,16 @@ struct ArchitectureFcoseProbeCli {
     browser_exe: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone)]
+struct ArchitectureFcoseProbeRunSummary {
+    stem: String,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    stage_count: usize,
+    node_count: usize,
+    edge_count: usize,
+}
+
 fn parse_architecture_fcose_probe_args(
     args: &[String],
 ) -> Result<ArchitectureFcoseProbeCli, XtaskError> {
@@ -110,6 +120,10 @@ fn architecture_fcose_probe_json_path(out_dir: &Path, stem: &str) -> PathBuf {
 
 fn architecture_fcose_probe_markdown_path(out_dir: &Path, stem: &str) -> PathBuf {
     out_dir.join(format!("{stem}.fcose-browser-probe.md"))
+}
+
+fn architecture_fcose_probe_batch_markdown_path(out_dir: &Path) -> PathBuf {
+    out_dir.join("architecture-fcose-probe-batch.md")
 }
 
 fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
@@ -281,6 +295,31 @@ fn render_architecture_fcose_probe_markdown(
     md
 }
 
+fn render_architecture_fcose_probe_batch_markdown(
+    summaries: &[ArchitectureFcoseProbeRunSummary],
+) -> String {
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture FCoSE Browser Probe Batch\n");
+    let _ = writeln!(
+        &mut md,
+        "| fixture | json | summary | stages | nodes | edges |"
+    );
+    let _ = writeln!(&mut md, "|---|---|---|---:|---:|---:|");
+    for summary in summaries {
+        let _ = writeln!(
+            &mut md,
+            "| `{}` | `{}` | `{}` | {} | {} | {} |",
+            summary.stem,
+            summary.json_path.display(),
+            summary.markdown_path.display(),
+            summary.stage_count,
+            summary.node_count,
+            summary.edge_count,
+        );
+    }
+    md
+}
+
 pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), XtaskError> {
     let cli = parse_architecture_fcose_probe_args(&args)?;
     let fixtures: Vec<(PathBuf, String)> = cli
@@ -304,6 +343,8 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
         path: cli.out_dir.display().to_string(),
         source,
     })?;
+
+    let mut summaries = Vec::new();
 
     for (idx, (mmd_path, stem)) in fixtures.iter().enumerate() {
         let mut command = Command::new("node");
@@ -358,6 +399,14 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
             .pointer("/finalElements/edges")
             .and_then(|v| v.as_array())
             .map_or(0, Vec::len);
+        summaries.push(ArchitectureFcoseProbeRunSummary {
+            stem: stem.clone(),
+            json_path: out_json.clone(),
+            markdown_path: out_markdown.clone(),
+            stage_count,
+            node_count,
+            edge_count,
+        });
 
         if idx > 0 {
             println!();
@@ -377,6 +426,19 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
         if !stderr.trim().is_empty() {
             println!("probe stderr: {}", stderr.trim());
         }
+    }
+    if summaries.len() > 1 {
+        let out_batch = architecture_fcose_probe_batch_markdown_path(&cli.out_dir);
+        fs::write(
+            &out_batch,
+            render_architecture_fcose_probe_batch_markdown(&summaries),
+        )
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_batch.display().to_string(),
+            source,
+        })?;
+        println!();
+        println!("batch:   {}", out_batch.display());
     }
 
     Ok(())
@@ -1317,6 +1379,34 @@ mod tests {
             parsed.fixture_filters,
             vec!["batch5_long_titles", "group_port_edges"]
         );
+    }
+
+    #[test]
+    fn fcose_probe_batch_markdown_links_per_fixture_artifacts() {
+        let summaries = vec![
+            ArchitectureFcoseProbeRunSummary {
+                stem: "fixture_a".to_string(),
+                json_path: PathBuf::from("target/probe/fixture_a.fcose-browser-probe.json"),
+                markdown_path: PathBuf::from("target/probe/fixture_a.fcose-browser-probe.md"),
+                stage_count: 4,
+                node_count: 5,
+                edge_count: 3,
+            },
+            ArchitectureFcoseProbeRunSummary {
+                stem: "fixture_b".to_string(),
+                json_path: PathBuf::from("target/probe/fixture_b.fcose-browser-probe.json"),
+                markdown_path: PathBuf::from("target/probe/fixture_b.fcose-browser-probe.md"),
+                stage_count: 4,
+                node_count: 6,
+                edge_count: 4,
+            },
+        ];
+
+        let md = render_architecture_fcose_probe_batch_markdown(&summaries);
+
+        assert!(md.contains("# Architecture FCoSE Browser Probe Batch"));
+        assert!(md.contains("| `fixture_a` | `target/probe/fixture_a.fcose-browser-probe.json` | `target/probe/fixture_a.fcose-browser-probe.md` | 4 | 5 | 3 |"));
+        assert!(md.contains("| `fixture_b` | `target/probe/fixture_b.fcose-browser-probe.json` | `target/probe/fixture_b.fcose-browser-probe.md` | 4 | 6 | 4 |"));
     }
 
     #[test]

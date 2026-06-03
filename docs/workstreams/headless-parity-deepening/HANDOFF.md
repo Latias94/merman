@@ -288,6 +288,9 @@ Current repository reality to preserve:
   - A follow-up batch-probe slice lets `xtask debug-architecture-fcose-probe` accept repeated
     `--fixture` flags. Use batch mode when collecting the small active Architecture residual set;
     it still writes per-fixture JSON/Markdown artifacts, so review remains fixture-local.
+  - A follow-up batch-index slice writes `architecture-fcose-probe-batch.md` beside batch probe
+    outputs. Use that index as the first file to cite for multi-fixture probe evidence; drill into
+    per-fixture Markdown/JSON from there.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

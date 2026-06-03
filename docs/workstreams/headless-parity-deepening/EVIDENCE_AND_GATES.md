@@ -3,6 +3,40 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture FCoSE Probe Batch Index
+
+Outcome:
+
+- Extended batch `debug-architecture-fcose-probe` runs to write
+  `architecture-fcose-probe-batch.md` in the output directory.
+- The batch index lists each fixture, its raw JSON artifact, its Markdown summary artifact, and the
+  captured stage/node/edge counts.
+- The per-fixture JSON/Markdown artifacts remain unchanged; the index is only a navigation and
+  audit overview file for multi-fixture residual probes.
+- No renderer, layout, measurement constant, or SVG output behavior changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+
+Focused verification:
+
+- `cargo nextest run -p xtask fcose_probe_batch_markdown` - passed, `1` test run.
+- `cargo nextest run -p xtask fcose_probe` - passed, `6` tests run.
+- `cargo nextest run -p xtask` - passed, `92` tests run.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_group_port_edges_017 --out-dir target\compare\architecture-fcose-probe-batch-index-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote per-fixture JSON/Markdown artifacts plus
+  `target\compare\architecture-fcose-probe-batch-index-hpd050\architecture-fcose-probe-batch.md`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_fcose_probe_batch_index.md` -
+  passed.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is batch artifact navigation infrastructure. It does not alter Architecture layout or close
+  residuals, but it makes small residual-class probe batches easier to review and cite.
+
 ## HPD-050 - Architecture FCoSE Probe Batch Fixture Support
 
 Outcome:
