@@ -86,6 +86,8 @@ struct ArchitectureProbeNode {
     bb: Option<DebugRect>,
     body: Option<DebugRect>,
     label: Option<DebugRect>,
+    label_width: Option<f64>,
+    label_height: Option<f64>,
     children_labels: Option<DebugRect>,
 }
 
@@ -303,6 +305,12 @@ fn architecture_probe_nodes_by_id(
                 bb: json_debug_rect(node.get("bb")),
                 body: json_debug_rect(node.get("bodyBounds")),
                 label: json_debug_rect(node.pointer("/labelBounds/all")),
+                label_width: json_f64(node, "labelWidth")
+                    .or_else(|| node.pointer("/metrics/labelWidth").and_then(|v| v.as_f64())),
+                label_height: json_f64(node, "labelHeight").or_else(|| {
+                    node.pointer("/metrics/labelHeight")
+                        .and_then(|v| v.as_f64())
+                }),
                 children_labels: json_debug_rect(node.get("childrenBoundingBoxIncludeLabels")),
             },
         );
@@ -380,6 +388,31 @@ fn service_local_pos_key(service_id: &str) -> String {
 
 fn group_local_rect_key(group_id: &str) -> String {
     format!("group-{group_id}")
+}
+
+fn format_browser_label_metrics(node: Option<&ArchitectureProbeNode>) -> String {
+    match (
+        node.and_then(|node| node.label_width),
+        node.and_then(|node| node.label_height),
+    ) {
+        (Some(w), Some(h)) => format!("w={w:.6} h={h:.6}"),
+        (Some(w), None) => format!("w={w:.6} h=<none>"),
+        (None, Some(h)) => format!("w=<none> h={h:.6}"),
+        (None, None) => "<none>".to_string(),
+    }
+}
+
+fn format_local_label_metrics(
+    metrics: Option<&merman_render::model::ArchitectureCytoscapeServiceLabelMetrics>,
+) -> String {
+    metrics
+        .map(|metrics| {
+            format!(
+                "text_w={:.6} half={:.6} scale={:.6}",
+                metrics.text_width, metrics.half_width, metrics.applied_scale
+            )
+        })
+        .unwrap_or_else(|| "<none>".to_string())
 }
 
 fn format_probe_f64(v: f64) -> String {
@@ -762,16 +795,16 @@ fn render_architecture_probe_join_markdown(
     let _ = writeln!(report, "### Service bbox join\n");
     let _ = writeln!(
         report,
-        "This table joins local service contribution phases with browser final service nodes. `label dw` compares local contribution-label width with browser label width; `union dw/dh` compares local group-content contribution with browser final `node.boundingBox()`.\n"
+        "This table joins local service contribution phases with browser final service nodes. `label metric dw` compares local measured label text width with browser `labelWidth`; `label dw` compares local contribution-label width with browser label bounds width; `union dw/dh` compares local group-content contribution with browser final `node.boundingBox()`.\n"
     );
     let _ = writeln!(
         report,
-        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label | local contribution label | label dw | browser bb | local union | union dw | union dh |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---:|"
+        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label metrics | local label metrics | label metric dw | browser label | local contribution label | label dw | browser bb | local union | union dw | union dh |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---|---|---:|---:|"
     );
     if layout.cytoscape_service_bounds.is_empty() {
         let _ = writeln!(
             report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
         );
     } else {
         for service in &layout.cytoscape_service_bounds {
@@ -799,6 +832,11 @@ fn render_architecture_probe_join_markdown(
                 .label_bounds
                 .as_ref()
                 .map(DebugRect::from_model_bounds);
+            let label_metric_dw = service
+                .label_metrics
+                .as_ref()
+                .zip(browser.and_then(|node| node.label_width))
+                .map(|(local, browser_width)| local.text_width - browser_width);
             let label_dw = local_label
                 .zip(browser_label)
                 .map(|(local, browser)| local.w - browser.w);
@@ -810,7 +848,7 @@ fn render_architecture_probe_join_markdown(
 
             let _ = writeln!(
                 report,
-                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
                 service.id,
                 service.in_group.as_deref().unwrap_or("<none>"),
                 format_debug_point(browser_pos),
@@ -821,6 +859,9 @@ fn render_architecture_probe_join_markdown(
                 format_debug_rect(Some(local_body)),
                 format_debug_optional_f64(body_dw),
                 format_debug_optional_f64(body_dh),
+                format_browser_label_metrics(browser),
+                format_local_label_metrics(service.label_metrics.as_ref()),
+                format_debug_optional_f64(label_metric_dw),
                 format_debug_rect(browser_label),
                 format_debug_rect(local_label),
                 format_debug_optional_f64(label_dw),
@@ -1534,22 +1575,23 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
     );
     let _ = writeln!(
         &mut report,
-        "| id | group | body bounds | label bounds | union bounds |\n|---|---|---|---|---|"
+        "| id | group | body bounds | label bounds | label metrics | union bounds |\n|---|---|---|---|---|---|"
     );
     if layout.cytoscape_service_bounds.is_empty() {
         let _ = writeln!(
             &mut report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
         );
     } else {
         for service in &layout.cytoscape_service_bounds {
             let _ = writeln!(
                 &mut report,
-                "| `{}` | `{}` | `{}` | `{}` | `{}` |",
+                "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
                 service.id,
                 service.in_group.as_deref().unwrap_or("<none>"),
                 fmt_model_bounds(Some(&service.body_bounds)),
                 fmt_model_bounds(service.label_bounds.as_ref()),
+                format_local_label_metrics(service.label_metrics.as_ref()),
                 fmt_model_bounds(Some(&service.union_bounds))
             );
         }
@@ -2308,6 +2350,8 @@ mod tests {
                         "pos": { "x": 20.0, "y": 30.0 },
                         "bb": { "x1": 20.0, "y1": 30.0, "w": 101.0, "h": 50.0 },
                         "bodyBounds": { "x1": 20.0, "y1": 30.0, "w": 82.0, "h": 42.0 },
+                        "labelWidth": 99.0,
+                        "labelHeight": 16.0,
                         "labelBounds": {
                             "all": { "x1": 20.0, "y1": 30.0, "w": 101.0, "h": 20.0 }
                         },
@@ -2335,6 +2379,13 @@ mod tests {
                         max_x: 123.0,
                         max_y: 78.0,
                     }),
+                    label_metrics: Some(
+                        merman_render::model::ArchitectureCytoscapeServiceLabelMetrics {
+                            text_width: 103.0,
+                            half_width: 51.5,
+                            applied_scale: 1.055,
+                        },
+                    ),
                     union_bounds: merman_render::model::Bounds {
                         min_x: 20.0,
                         min_y: 30.0,
@@ -2391,7 +2442,8 @@ mod tests {
             )
         );
         assert!(md.contains("| `storage` | `pipeline` | `x=20.000000 y=30.000000` | `x=21.000000 y=31.000000` | 1.000000 | 1.000000 |"));
-        assert!(md.contains("| -2.000000 | -2.000000 | `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 |"));
+        assert!(md.contains("| -2.000000 | -2.000000 | `w=99.000000 h=16.000000` | `text_w=103.000000 half=51.500000 scale=1.055000` | 4.000000 |"));
+        assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 |"));
         assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 | -2.000000 |"));
     }
 }

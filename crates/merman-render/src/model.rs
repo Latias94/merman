@@ -182,7 +182,16 @@ pub struct ArchitectureCytoscapeServiceBounds {
     pub body_bounds: Bounds,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_bounds: Option<Bounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_metrics: Option<ArchitectureCytoscapeServiceLabelMetrics>,
     pub union_bounds: Bounds,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureCytoscapeServiceLabelMetrics {
+    pub text_width: f64,
+    pub half_width: f64,
+    pub applied_scale: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

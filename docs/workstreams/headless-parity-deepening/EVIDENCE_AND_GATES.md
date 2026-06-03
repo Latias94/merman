@@ -3,6 +3,67 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Label Metrics
+
+Outcome:
+
+- Extended `ArchitectureCytoscapeServiceBounds` with optional `label_metrics`
+  (`text_width`, `half_width`, `applied_scale`) so local service child contribution rows expose the
+  raw deterministic label measurement inputs behind local Cytoscape contribution bounds.
+- Extended `debug-architecture-delta --probe-dir` service joins to read browser final-node
+  `metrics.labelWidth` / `metrics.labelHeight` from the FCoSE probe JSON and report local-vs-browser
+  label metric deltas beside existing body/label/union bbox deltas.
+- Regenerated focused reports under
+  `target\compare\architecture-delta-service-label-metrics-hpd050`.
+- Representative service metric readings:
+  - `batch5` / `storage`: browser labelWidth `217.000`, local text_width `222.828`, metric
+    `dw=+5.828`, contribution-label `dw=+4`, local union versus browser final service bbox
+    `+2w/-3h`.
+  - `html_titles` / `web`: browser labelWidth `123.000`, local text_width `122.570`, metric
+    `dw=-0.430`, contribution-label `dw=+2`, local union versus browser final service bbox
+    `0w/-3h`.
+  - `unicode` / `metrics`: browser labelWidth `117.000`, local text_width `118.055`, metric
+    `dw=+1.055`, contribution-label `dw=+4`, local union versus browser final service bbox
+    `+2w/-3h`.
+- This narrows the seam but still rejects a single global label-scale or body-border production
+  tweak: raw font metric drift, local scale/rounding, browser label padding, body border, and group
+  height cancellation are separate phases.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/merman-render/src/model.rs`
+- `crates/merman-render/src/architecture.rs`
+- `crates/merman-render/tests/architecture_layout_test.rs`
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-label-metrics.md`
+- `target\compare\architecture-delta-service-label-metrics-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id` -
+  passed, `1` test run.
+- `cargo nextest run -p xtask architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-label-metrics-hpd050` -
+  passed and wrote the `storage` label-metric join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-label-metrics-hpd050` -
+  passed and wrote the `web` label-metric join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-label-metrics-hpd050` -
+  passed and wrote the `metrics` label-metric join.
+- `cargo nextest run -p merman-render --test architecture_layout_test` - passed, `7` tests run.
+- `cargo nextest run -p xtask` - passed, `97` tests run.
+- `cargo fmt --check -p merman-render -p xtask` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- Continue from a phase-specific service final-bbox contribution model rather than a global label
+  scale, body border, group padding, or final group rect tweak. The next candidate must preserve
+  the observed group-level height cancellation while explaining body border, label padding, font
+  metric drift, and service position drift together.
+
 ## HPD-050 - Architecture Probe Phase Join
 
 Outcome:

@@ -375,6 +375,13 @@ Current repository reality to preserve:
     `target\compare\architecture-delta-probe-phase-join-hpd050\`. This is evidence tooling only;
     the next production seam is still service label/content contribution width and service
     position drift.
+  - A follow-up service-label-metrics slice now exposes local service label `text_width`,
+    `half_width`, and `applied_scale`, then joins them with browser final-node
+    `metrics.labelWidth` / `metrics.labelHeight` in the same delta report. The focused rows show
+    `storage` raw metric `dw=+5.828` / contribution-label `dw=+4`, `web` raw metric `dw=-0.430` /
+    contribution-label `dw=+2`, and `metrics` raw metric `dw=+1.055` / contribution-label
+    `dw=+4`. This rejects a single global label-scale or body-border tweak; continue from a
+    phase-specific service final-bbox contribution model.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

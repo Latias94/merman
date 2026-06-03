@@ -229,6 +229,15 @@ Last updated: 2026-06-04
   cancellation without manual table subtraction. Treat this as evidence tooling only; the next
   production seam remains individual service label/content contribution width plus service
   position drift.
+  A follow-up service-label-metrics slice adds local label `text_width`, `half_width`, and
+  `applied_scale` to `ArchitectureCytoscapeServiceBounds`, then joins those values with browser
+  final-node `metrics.labelWidth` / `metrics.labelHeight` in `debug-architecture-delta --probe-dir`.
+  The focused reports under `target\compare\architecture-delta-service-label-metrics-hpd050\` show
+  this is not a one-constant drift: `storage` has raw metric `dw=+5.828` and contribution-label
+  `dw=+4`, `web` has raw metric `dw=-0.430` but contribution-label `dw=+2`, and `metrics` has raw
+  metric `dw=+1.055` but contribution-label `dw=+4`. Continue from a phase-specific service
+  final-bbox contribution model; do not try a global label-scale, body-border, group-padding, or
+  final-rect tweak.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

@@ -5,8 +5,9 @@ use crate::architecture_metrics::{
 use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
-    ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout,
-    Bounds, LayoutEdge, LayoutNode, LayoutPoint,
+    ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
+    LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -388,6 +389,11 @@ fn architecture_cytoscape_service_bounds<'a>(
             &text_style,
             font_size_px,
         );
+        let label_metrics = label_bounds.map(|label| ArchitectureCytoscapeServiceLabelMetrics {
+            text_width: label.metrics.width,
+            half_width: label.half_width,
+            applied_scale: label.metrics.applied_scale,
+        });
         let contribution =
             architecture_cytoscape_child_contribution_bounds(&body_bounds, label_bounds.as_ref());
         out.push(ArchitectureCytoscapeServiceBounds {
@@ -395,6 +401,7 @@ fn architecture_cytoscape_service_bounds<'a>(
             in_group: node.in_group.map(str::to_string),
             body_bounds: contribution.body_bounds,
             label_bounds: contribution.label_bounds,
+            label_metrics,
             union_bounds: contribution.union_bounds,
         });
     }

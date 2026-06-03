@@ -136,6 +136,21 @@ fn architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id() {
         .find(|b| b.id == "gateway")
         .expect("gateway service bounds");
     assert_eq!(service.in_group.as_deref(), Some("app"));
+    let metrics = service
+        .label_metrics
+        .as_ref()
+        .expect("gateway service label metrics");
+    assert!(
+        metrics.text_width > 80.0 && metrics.half_width > 40.0,
+        "expected raw label metrics to be exposed for service contribution audit, got text_width={:.3} half_width={:.3}",
+        metrics.text_width,
+        metrics.half_width
+    );
+    assert!(
+        metrics.applied_scale >= 1.0,
+        "expected service label metric scale to be recorded, got {:.3}",
+        metrics.applied_scale
+    );
     let (width, height) = cytoscape_service_union_size(&layout, "gateway");
     assert!(
         width > 80.0 && height > 80.0,
