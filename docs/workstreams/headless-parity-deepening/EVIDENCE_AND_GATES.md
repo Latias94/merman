@@ -3,6 +3,46 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Requirement Visible Signal Audit And Neo Node Border
+
+Outcome:
+
+- Re-audited Requirement theme renderability after the public dark-theme smoke was still counting
+  provider CSS colors that current Requirement DOM does not consume.
+- Confirmed against pinned Mermaid 11.15 source and a fresh Mermaid CLI render that `.reqBox`,
+  `.reqTitle`, `.reqLabel`, `.reqLabelBox`, and `.relationshipLabel` can be emitted by
+  `requirement/styles.js` without matching current node or edge-label DOM in the ordinary
+  `requirementDiagram` render path.
+- Tightened the public smoke so Requirement now counts only current visible surfaces in the compact
+  sample: relationship line/marker color, edge-label background, `look: neo` node border, and
+  stroke width. It no longer treats legacy Requirement provider colors as visible just because the
+  stylesheet contains them.
+- Fixed a real local visible gap found during that audit: `look: neo` Requirement output now emits
+  the `data-look="neo"` / `outer-path` / `divider` DOM surfaces needed for the Mermaid 11.15
+  `nodeBorder` selector to affect current node and divider paths. The DOM attributes are limited
+  to the `neo` path so default Requirement structural parity remains green.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/requirementBox.ts`
+- Fresh Mermaid CLI evidence in `target/compare/requirement_theme_audit_upstream.svg` showed
+  `data-look="neo"`, `outer-path`, `.relationshipLine`, `.labelBkg`, and the neo node path selector
+  are consumed, while `.reqBox` / `.reqTitle` / `.relationshipLabel` remain provider-only for the
+  current DOM shape.
+
+Focused verification:
+
+- `cargo nextest run -p merman-render requirement_css_honors_mermaid_11_15_theme_options`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- Requirement still emits several upstream provider rules that are not visible in the current DOM.
+  Keep them as provider coverage, not public renderability signals, unless a future renderer change
+  emits matching elements/classes or a source-backed Mermaid change makes those rules visible.
+
 ## HPD-080 - Journey And Timeline Visible Signal Audit Tightening
 
 Outcome:

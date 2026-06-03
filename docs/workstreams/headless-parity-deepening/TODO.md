@@ -297,6 +297,11 @@ Last updated: 2026-06-03
   Journey no longer counts inherited Flowchart-like provider rules (`.flowchart-link`, `.edgeLabel`,
   `.edgePath .path`, `.node ...`, `.cluster text`, `.arrowheadPath`); Timeline no longer counts
   `.disabled` CSS from a compact source that emits no disabled DOM. Focused tests document both
-  source-backed boundaries.
+  source-backed boundaries. A follow-up Requirement audit applied the same standard: legacy
+  `.reqBox` / `.reqTitle` / `.relationshipLabel` provider rules stay tracked as provider coverage,
+  but the public dark-theme smoke now counts only current DOM-consumed Requirement signals. The same
+  slice fixed the actual visible gap by emitting `look: neo` Requirement node/edge DOM surfaces so
+  `nodeBorder` can style current node and divider strokes while default structural parity stays
+  green.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

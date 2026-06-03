@@ -278,7 +278,7 @@ radar-beta
         ),
         (
             "theme-requirement",
-            r##"%%{init: {"look": "neo", "themeVariables": {"relationColor": "#22c55e", "lineColor": "#38bdf8", "requirementBackground": "#111827", "requirementBorderColor": "#facc15", "requirementTextColor": "#f8fafc", "relationLabelBackground": "#1f2937", "relationLabelColor": "#fde68a", "edgeLabelBackground": "#0f172a", "requirementEdgeLabelBackground": "#334155", "nodeBorder": "#f97316", "strokeWidth": 3}}}%%
+            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "relationColor": "#22c55e", "edgeLabelBackground": "#0f172a", "nodeBorder": "#f97316", "strokeWidth": 3}}}%%
 requirementDiagram
   requirement req1 {
     id: 1
@@ -286,17 +286,20 @@ requirementDiagram
     risk: high
     verifymethod: analysis
   }
+  element sys {
+    type: system
+  }
+  sys - satisfies -> req1
 "##,
             &[
                 "req1",
                 "Dark requirement",
                 "Risk: High",
                 "Verification: Analysis",
+                "sys",
+                "satisfies",
             ],
-            &[
-                "#22c55e", "#38bdf8", "#111827", "#facc15", "#f8fafc", "#1f2937", "#fde68a",
-                "#0f172a", "#334155",
-            ],
+            &["#22c55e", "#0f172a", "#f97316", "stroke-width:3"],
         ),
         (
             "theme-timeline",
@@ -368,6 +371,65 @@ xychart
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
     }
+}
+
+#[test]
+fn requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals() {
+    let svg = render_svg(
+        "requirement-visible-audit",
+        r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "relationColor": "#22c55e", "edgeLabelBackground": "#0f172a", "nodeBorder": "#f97316", "requirementBackground": "#111827", "requirementTextColor": "#fde68a", "relationLabelBackground": "#1f2937", "relationLabelColor": "#facc15", "strokeWidth": 3}}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Dark requirement
+    risk: high
+    verifymethod: analysis
+  }
+  element sys {
+    type: system
+  }
+  sys - satisfies -> req1
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"data-look="neo""#),
+        "Requirement nodes and edges should expose the current look for Mermaid 11.15 CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="basic label-container outer-path""#),
+        "Requirement node containers should expose the current neo outer path surface: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#requirement-visible-audit [data-look="neo"].node path{stroke:#f97316;stroke-width:3px;}"#),
+        "nodeBorder should reach a selector consumed by current Requirement node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"#requirement-visible-audit .relationshipLine{stroke:#22c55e;stroke-width:3;}"#
+        ),
+        "relationColor should reach the visible Requirement relationship path: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="labelBkg""#),
+        "edgeLabelBackground should have current edge label DOM to style: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#requirement-visible-audit .reqBox{fill:#111827"#),
+        "Mermaid 11.15 still emits legacy Requirement provider rules: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="reqBox""#),
+        "Requirement should not count .reqBox colors as visible while current DOM has no reqBox element: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="reqTitle""#),
+        "Requirement should not count .reqTitle colors as visible while current DOM has no reqTitle element: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="relationshipLabel""#),
+        "Requirement should not count .relationshipLabel colors as visible while current edge labels are XHTML spans: {svg}"
+    );
 }
 
 #[test]

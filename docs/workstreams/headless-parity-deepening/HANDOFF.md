@@ -535,6 +535,13 @@ Current repository reality to preserve:
     text color, face fill, task/section fill types, and actor colors. Timeline smoke now counts
     visible section `cScale0` / `cScaleLabel0` / `cScaleInv0` colors instead of `.disabled` CSS from
     a source that emits no disabled DOM. Focused public render tests document both boundaries.
+  - A forty-sixth HPD-080 visible-signal audit tightened Requirement coverage. Fresh Mermaid 11.15
+    CLI evidence showed the ordinary Requirement render path emits current DOM for
+    `.relationshipLine`, `.labelBkg`, `data-look="neo"`, and `outer-path`, while legacy provider
+    rules such as `.reqBox`, `.reqTitle`, `.reqLabelBox`, and `.relationshipLabel` remain inert
+    without matching DOM. Local Requirement now emits the `neo` DOM surfaces needed for
+    `nodeBorder` to affect visible node/divider strokes, and the public dark-theme smoke no longer
+    counts provider-only colors as visible signals.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

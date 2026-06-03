@@ -248,6 +248,13 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
+    let look = config_string(effective_config, &["look"]).unwrap_or_default();
+    let is_neo_look = look.trim() == "neo";
+    let look_attr = if is_neo_look {
+        r#" data-look="neo""#
+    } else {
+        ""
+    };
 
     let relationships = &model.relationships;
     let req_by_id: std::collections::HashMap<&str, _> = model
@@ -561,12 +568,13 @@ pub(super) fn render_requirement_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{marker_attr}/>"#,
+            r#"<path d="{d}" id="{id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
             d = escape_xml(&d),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
             style = escape_xml(style),
             data_points = escape_xml(&data_points_b64),
+            look_attr = look_attr,
             marker_attr = marker_attr,
         );
     }
@@ -936,9 +944,10 @@ pub(super) fn render_requirement_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<g class="{class}"{id_attr} transform="translate({cx}, {cy})">"#,
+            r#"<g class="{class}"{id_attr}{look_attr} transform="translate({cx}, {cy})">"#,
             class = escape_xml(&classes_str),
             id_attr = id_attr,
+            look_attr = look_attr,
             cx = fmt(cx),
             cy = fmt(cy),
         );
@@ -983,7 +992,12 @@ pub(super) fn render_requirement_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<g class="basic label-container" style="{style}">"#,
+            r#"<g class="{class}" style="{style}">"#,
+            class = if is_neo_look {
+                "basic label-container outer-path"
+            } else {
+                "basic label-container"
+            },
             style = escape_xml(&node_styles)
         );
         let _ = write!(
@@ -1096,9 +1110,15 @@ pub(super) fn render_requirement_diagram_svg_model(
             } else {
                 rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
             };
+            let divider_class_attr = if is_neo_look {
+                r#" class="divider""#
+            } else {
+                ""
+            };
             let _ = write!(
                 &mut out,
-                r##"<g style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                r##"<g{divider_class_attr} style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                divider_class_attr = divider_class_attr,
                 style = escape_xml(&node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),

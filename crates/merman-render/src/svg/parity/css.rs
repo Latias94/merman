@@ -340,6 +340,19 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     } else {
         "1px".to_string()
     };
+    let neo_node_stroke_width = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "strokeWidth"],
+    )
+    .map(|value| {
+        let value = value.trim().to_string();
+        if value.parse::<f64>().is_ok() {
+            format!("{value}px")
+        } else {
+            value
+        }
+    })
+    .unwrap_or_else(|| "1px".to_string());
 
     let _ = write!(
         &mut out,
@@ -387,6 +400,13 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
         id,
         requirement_edge_label_background
     );
+    if look.trim() == "neo" {
+        let _ = write!(
+            &mut out,
+            r#"#{} .node .neo-node{{stroke:{};}}#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
+            id, node_border, id, node_border, neo_node_stroke_width
+        );
+    }
     out.push_str(&parts.root_rule);
     out
 }
@@ -1144,5 +1164,8 @@ mod tests {
         assert!(css.contains(r#"#req .relationshipLabel{fill:#888888;}"#));
         assert!(css.contains(r#"#req .edgeLabel .label rect{fill:#999999;}"#));
         assert!(css.contains(r#"#req .labelBkg{background-color:#aaaaaa;}"#));
+        assert!(
+            css.contains(r#"#req [data-look="neo"].node path{stroke:#bbbbbb;stroke-width:3px;}"#)
+        );
     }
 }
