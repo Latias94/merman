@@ -425,6 +425,106 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
 }
 
 #[test]
+fn packet_and_sankey_theme_smoke_count_dom_consumed_selectors_as_visible() {
+    let packet = render_svg(
+        "packet-visible-audit",
+        r##"%%{init: {"packet": {"startByteColor": "#22c55e", "endByteColor": "#f97316", "labelColor": "#f8fafc", "titleColor": "#fde68a", "blockStrokeColor": "#38bdf8", "blockStrokeWidth": 3, "blockFillColor": "#111827"}}}%%
+packet
+title Packet Visible Audit
++8: "Byte"
++16: "Word"
+"##,
+    );
+
+    assert!(
+        packet.contains(r#"class="packetBlock""#),
+        "Packet block colors should only count with packetBlock DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetLabel""#),
+        "Packet label colors should only count with packetLabel DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetByte start""#),
+        "Packet start byte colors should only count with packetByte start DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetByte end""#),
+        "Packet end byte colors should only count with packetByte end DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetTitle""#),
+        "Packet title colors should only count with packetTitle DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetByte.start{fill:#22c55e;}"##),
+        "Packet startByteColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetByte.end{fill:#f97316;}"##),
+        "Packet endByteColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetLabel{fill:#f8fafc;font-size:12px;}"##),
+        "Packet labelColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetTitle{fill:#fde68a;font-size:14px;}"##),
+        "Packet titleColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(
+            r##"#packet-visible-audit .packetBlock{stroke:#38bdf8;stroke-width:3;fill:#111827;}"##
+        ),
+        "Packet block colors should reach a current DOM selector: {packet}"
+    );
+
+    let sankey = render_svg(
+        "sankey-visible-audit",
+        r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "mainBkg": "#111827"}, "sankey": {"labelStyle": "outlined", "nodeColors": {"Source": "#22c55e", "Target": "#38bdf8", "Done": "#facc15"}, "showValues": true, "prefix": "$", "suffix": " units"}}}%%
+sankey
+Source,Target,10
+Target,Done,2
+"##,
+    );
+
+    assert!(
+        sankey.contains(r#"class="sankey-label-bg""#),
+        "Sankey outlined label background should only count with sankey-label-bg DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="sankey-label-fg""#),
+        "Sankey label foreground should only count with sankey-label-fg DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="node""#),
+        "Sankey node colors should only count with node DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="link""#),
+        "Sankey link styling should only count with link DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(
+            r##"#sankey-visible-audit .sankey-label-bg{stroke:#111827;stroke-width:4px;"##
+        ),
+        "Sankey mainBkg should reach the outlined label background selector: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"#sankey-visible-audit .sankey-label-fg{fill:#f8fafc;}"##),
+        "Sankey textColor should reach the outlined label foreground selector: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"<rect height=""##) && sankey.contains(r##"fill="#22c55e""##),
+        "Sankey nodeColors should reach visible node rect fills: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"fill="#38bdf8""##) && sankey.contains(r##"fill="#facc15""##),
+        "Sankey nodeColors should reach all configured node rect fills: {sankey}"
+    );
+}
+
+#[test]
 fn gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible() {
     let svg = render_svg(
         "gantt-visible-audit",

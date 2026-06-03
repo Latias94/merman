@@ -330,5 +330,8 @@ Last updated: 2026-06-03
   A follow-up C4 visible-signal audit found no production defect, but tightened public smoke
   coverage so inert `.person` provider CSS is not counted as visible C4 coverage. C4 visible colors
   are now proven through inline `c4` config plus `UpdateElementStyle` / `UpdateRelStyle` output.
+  A follow-up Packet/Sankey visible-signal audit found no production defect, but now proves their
+  public theme colors only when matching Packet DOM classes, Sankey outlined-label DOM, node rect
+  fills, and link groups exist.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

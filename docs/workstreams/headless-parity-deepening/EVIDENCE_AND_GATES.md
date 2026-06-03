@@ -3,6 +3,46 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Packet And Sankey Visible Signal Boundary
+
+Outcome:
+
+- Re-audited Packet and Sankey public theme smoke coverage against pinned Mermaid 11.15 source and
+  current local SVG DOM.
+- Confirmed Packet visible style signals are source-backed CSS selectors with matching current DOM:
+  `.packetBlock`, `.packetLabel`, `.packetByte.start`, `.packetByte.end`, and `.packetTitle`.
+- Confirmed Sankey visible style signals are source-backed CSS/inline paths with matching current
+  DOM: outlined `.sankey-label-bg` / `.sankey-label-fg`, node `<rect>` fills from
+  `sankey.nodeColors`, and `.link` groups.
+- Added a public `HeadlessRenderer` smoke test that fails if those colors are counted without the
+  matching current DOM classes/elements.
+- No production renderer change was needed. This is a smoke-honesty calibration for two already
+  covered style-provider families.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/renderer.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyRenderer.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke packet_and_sankey_theme_smoke_count_dom_consumed_selectors_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `8`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `358` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- Packet and Sankey remain covered for their current DOM shapes. Future public-smoke additions
+  should only count config/theme colors when the fixture renders the corresponding class or inline
+  node fill surface.
+
 ## HPD-080 - C4 Visible Signal Boundary
 
 Outcome:

@@ -584,6 +584,10 @@ Current repository reality to preserve:
     C4 DOM uses `person-man` groups and inline `c4` config / `Update*Style` colors. The new smoke
     proves `c4` config, `UpdateElementStyle`, and `UpdateRelStyle` colors reach visible output, and
     prevents `.person` provider CSS from being counted as visible coverage without matching DOM.
+  - A fifty-fourth HPD-080 Packet/Sankey visible-signal audit found no production defect, but
+    tightened public smoke coverage so Packet colors are counted only with current
+    `.packetBlock`/`.packetLabel`/`.packetByte`/`.packetTitle` DOM and Sankey colors are counted
+    only with outlined label DOM, node rect fills, and link groups.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
