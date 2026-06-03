@@ -3,6 +3,56 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Contribution Report
+
+Outcome:
+
+- Exposed local Architecture service child contribution phases as
+  `ArchitectureDiagramLayout.cytoscape_service_bounds`, preserving each service's body, label, and
+  union bounds by service id and optional parent group id.
+- Added a `Local Cytoscape service child bounds` table to `debug-architecture-delta` reports so the
+  child content inputs to `GroupRectComputer` can be audited from Markdown instead of stderr-only
+  `MERMAN_ARCH_DEBUG_GROUP_RECT` runs.
+- Focused reports for the direct group-width rows now show representative local child union inputs:
+  `batch5` / `pipeline` / `storage` is `225x97`, `html_titles` / `ui` / `web` is `129x97`, and
+  `unicode` / `i` / `metrics` is `125x97`.
+- The same reports keep the emitted local-vs-upstream group-width tails unchanged at `+5px`,
+  `+5px`, and `+3px`; this is evidence tooling, not a layout or SVG output change.
+
+Touched surfaces:
+
+- `crates/merman-render/src/model.rs`
+- `crates/merman-render/src/architecture.rs`
+- `crates/merman-render/tests/architecture_layout_test.rs`
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-contribution-report.md`
+- `target\compare\architecture-delta-service-contribution-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id` -
+  passed, `1` test run.
+- `cargo nextest run -p merman-render --test architecture_layout_test` - passed, `7` tests run.
+- `cargo nextest run -p xtask fcose_probe_markdown_summarizes_stage_and_node_bounds` - passed,
+  `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-delta-service-contribution-hpd050` -
+  passed and wrote service child contribution rows, including `storage` union `225x97`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --out target\compare\architecture-delta-service-contribution-hpd050` -
+  passed and wrote `web` union `129x97`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --out target\compare\architecture-delta-service-contribution-hpd050` -
+  passed and wrote `metrics` union `125x97`.
+- `cargo nextest run -p merman-render --test architecture_svg_test` - passed, `7` tests run
+  (`1` skipped).
+- `cargo nextest run -p xtask` - passed, `95` tests run.
+- `cargo fmt --check -p merman-render -p xtask` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- Keep `cytoscape_service_bounds` as a child-contribution evidence surface. It should not become a
+  generic root-bounds source or a broad renderer-side formula without a source-backed phase model.
+
 ## HPD-050 - Architecture FCoSE Compound Bounds Output
 
 Outcome:

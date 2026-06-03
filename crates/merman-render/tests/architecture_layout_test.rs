@@ -59,6 +59,22 @@ fn fcose_compound_size(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f6
     )
 }
 
+fn cytoscape_service_union_size(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {
+    let bounds = layout
+        .cytoscape_service_bounds
+        .iter()
+        .find(|b| b.id == id)
+        .unwrap_or_else(|| panic!("missing cytoscape service bounds for {id}"));
+    assert!(
+        bounds.label_bounds.is_some(),
+        "expected {id} to preserve a label contribution phase"
+    );
+    (
+        bounds.union_bounds.max_x - bounds.union_bounds.min_x,
+        bounds.union_bounds.max_y - bounds.union_bounds.min_y,
+    )
+}
+
 fn with_architecture_config(diagram: &str, config: &str) -> String {
     format!("%%{{init: {{\"architecture\": {config}}}}}%%\n{diagram}")
 }
@@ -102,6 +118,28 @@ fn architecture_layout_exposes_fcose_compound_bounds_by_group_id() {
     assert!(
         width > 80.0 && height > 80.0,
         "expected FCoSE compound bounds to include child graph padding, got {width:.3}x{height:.3}"
+    );
+}
+
+#[test]
+fn architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id() {
+    let layout = layout_architecture(
+        r#"architecture-beta
+  group app(cloud)[App]
+  service gateway(server)[A very long gateway label for group sizing] in app
+"#,
+    );
+
+    let service = layout
+        .cytoscape_service_bounds
+        .iter()
+        .find(|b| b.id == "gateway")
+        .expect("gateway service bounds");
+    assert_eq!(service.in_group.as_deref(), Some("app"));
+    let (width, height) = cytoscape_service_union_size(&layout, "gateway");
+    assert!(
+        width > 80.0 && height > 80.0,
+        "expected label contribution to expand service child union, got {width:.3}x{height:.3}"
     );
 }
 

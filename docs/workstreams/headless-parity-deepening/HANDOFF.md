@@ -358,6 +358,11 @@ Current repository reality to preserve:
     focused `pipeline`, `ui`, and `i` rows show emitted group rects are `+107px`, `+44px`, and
     `+32px` wider than the FCoSE layout-base rects, while their upstream/local emitted tails remain
     `+5px`, `+5px`, and `+3px`. Do not wire this field into SVG group rendering as a shortcut.
+  - A follow-up service-contribution report slice exposes
+    `ArchitectureDiagramLayout.cytoscape_service_bounds` and prints service body/label/union phases
+    in `debug-architecture-delta`. The focused rows now make local child inputs reviewable from
+    Markdown: `batch5/storage=225x97`, `html_titles/web=129x97`, and `unicode/metrics=125x97`.
+    Treat this as a child-contribution evidence surface, not a generic root-bounds source.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

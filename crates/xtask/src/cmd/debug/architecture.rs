@@ -872,6 +872,20 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             .unwrap_or_else(|| "<n/a>".to_string())
     }
 
+    fn fmt_model_bounds(bounds: Option<&merman_render::model::Bounds>) -> String {
+        bounds
+            .map(|b| {
+                format!(
+                    "x={:.6} y={:.6} w={:.6} h={:.6}",
+                    b.min_x,
+                    b.min_y,
+                    b.max_x - b.min_x,
+                    b.max_y - b.min_y
+                )
+            })
+            .unwrap_or_else(|| "<none>".to_string())
+    }
+
     fn split_missing<T>(
         upstream: &BTreeMap<String, T>,
         local: &BTreeMap<String, T>,
@@ -1123,6 +1137,35 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                     id, fcose.x, fcose.y, fcose.w, fcose.h
                 );
             }
+        }
+    }
+    let _ = writeln!(&mut report);
+
+    let _ = writeln!(&mut report, "## Local Cytoscape service child bounds\n");
+    let _ = writeln!(
+        &mut report,
+        "These rows are the local body/label/union phases that feed Architecture group content bounds.\n"
+    );
+    let _ = writeln!(
+        &mut report,
+        "| id | group | body bounds | label bounds | union bounds |\n|---|---|---|---|---|"
+    );
+    if layout.cytoscape_service_bounds.is_empty() {
+        let _ = writeln!(
+            &mut report,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+        );
+    } else {
+        for service in &layout.cytoscape_service_bounds {
+            let _ = writeln!(
+                &mut report,
+                "| `{}` | `{}` | `{}` | `{}` | `{}` |",
+                service.id,
+                service.in_group.as_deref().unwrap_or("<none>"),
+                fmt_model_bounds(Some(&service.body_bounds)),
+                fmt_model_bounds(service.label_bounds.as_ref()),
+                fmt_model_bounds(Some(&service.union_bounds))
+            );
         }
     }
     let _ = writeln!(&mut report);

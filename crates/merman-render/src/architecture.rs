@@ -1,11 +1,12 @@
 use crate::architecture_metrics::{
+    architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
     architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
-    ArchitectureCompoundBounds, ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode,
-    LayoutPoint,
+    ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds, ArchitectureDiagramLayout,
+    Bounds, LayoutEdge, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -299,6 +300,14 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     font_size_px: f64,
 }
 
+fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
+    TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: font_size_px,
+        font_weight: None,
+    }
+}
+
 fn architecture_fcose_node_bounds_extras<'a>(
     input: ArchitectureFcoseNodeBoundsExtrasInput<'_, 'a>,
 ) -> FxHashMap<&'a str, manatee::BoundsExtras> {
@@ -314,11 +323,7 @@ fn architecture_fcose_node_bounds_extras<'a>(
         icon_size,
         font_size_px,
     } = input;
-    let text_style = TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: font_size_px,
-        font_weight: None,
-    };
+    let text_style = architecture_cytoscape_text_style(font_size_px);
 
     let mut node_title: FxHashMap<&str, &str> = FxHashMap::default();
     node_title.reserve(model.nodes.len().saturating_mul(2));
@@ -347,6 +352,53 @@ fn architecture_fcose_node_bounds_extras<'a>(
     }
 
     node_bounds_extras
+}
+
+fn architecture_cytoscape_service_bounds<'a>(
+    model: &ArchitectureModelView<'a>,
+    nodes: &[LayoutNode],
+    text_measurer: &dyn TextMeasurer,
+    icon_size: f64,
+    font_size_px: f64,
+) -> Vec<ArchitectureCytoscapeServiceBounds> {
+    let text_style = architecture_cytoscape_text_style(font_size_px);
+    let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
+    node_by_id.reserve(nodes.len().saturating_mul(2));
+    for node in nodes {
+        node_by_id.insert(node.id.as_str(), node);
+    }
+
+    let mut out = Vec::new();
+    for node in &model.nodes {
+        if node.node_type != ArchitectureNodeType::Service {
+            continue;
+        }
+        let Some(layout_node) = node_by_id.get(node.id).copied() else {
+            continue;
+        };
+        let body_bounds = Bounds {
+            min_x: layout_node.x,
+            min_y: layout_node.y,
+            max_x: layout_node.x + icon_size,
+            max_y: layout_node.y + icon_size,
+        };
+        let label_bounds = architecture_cytoscape_child_label_bounds(
+            node.title,
+            text_measurer,
+            &text_style,
+            font_size_px,
+        );
+        let contribution =
+            architecture_cytoscape_child_contribution_bounds(&body_bounds, label_bounds.as_ref());
+        out.push(ArchitectureCytoscapeServiceBounds {
+            id: node.id.to_string(),
+            in_group: node.in_group.map(str::to_string),
+            body_bounds: contribution.body_bounds,
+            label_bounds: contribution.label_bounds,
+            union_bounds: contribution.union_bounds,
+        });
+    }
+    out
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -1210,6 +1262,14 @@ fn layout_architecture_diagram_model(
         }
     }
 
+    let cytoscape_service_bounds = architecture_cytoscape_service_bounds(
+        model,
+        &nodes,
+        text_measurer,
+        icon_size,
+        font_size_px,
+    );
+
     let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
@@ -1420,6 +1480,7 @@ fn layout_architecture_diagram_model(
     Ok(ArchitectureDiagramLayout {
         nodes,
         edges,
+        cytoscape_service_bounds,
         fcose_compound_bounds,
         bounds,
     })

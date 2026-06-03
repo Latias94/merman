@@ -209,6 +209,12 @@ Last updated: 2026-06-04
   FCoSE layout-base space, while their upstream/local emitted width tails remain only `+5px`,
   `+5px`, and `+3px`. Keep the new field as evidence only; do not wire it into group rendering as
   a shortcut.
+  A follow-up service-contribution report slice now exposes
+  `ArchitectureDiagramLayout.cytoscape_service_bounds` and adds a stable Markdown table for local
+  service body/label/union phases in `debug-architecture-delta`. The direct width-tail reports now
+  show child inputs such as `batch5/storage=225x97`, `html_titles/web=129x97`, and
+  `unicode/metrics=125x97` without relying on stderr-only `MERMAN_ARCH_DEBUG_GROUP_RECT` output.
+  Keep this as a child-contribution evidence surface, not a generic root-bounds source.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
