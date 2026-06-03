@@ -3,6 +3,44 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Phase Join
+
+Outcome:
+
+- Joined the local service contribution reports with the browser/Cytoscape final node probe for the
+  active direct Architecture group-width rows.
+- Decomposed the current emitted group-width tails:
+  - `batch5` / `pipeline`: browser children-labels width `379.926`, local content width `382.926`,
+    content `dw=+3`, expansion `dw=+2`, emitted group `dw=+5`.
+  - `html_titles` / `ui`: browser `316.926`, local `319.926`, content `dw=+3`, expansion `dw=+2`,
+    emitted group `dw=+5`.
+  - `unicode` / `i`: browser `306.822`, local `307.822`, content `dw=+1`, expansion `dw=+2`,
+    emitted group `dw=+3`.
+- Confirmed why a pure group-padding change is still rejected: in the same rows, local content
+  height is `-2px` versus browser children-label height, while local final expansion is `+2px`,
+  giving zero emitted group `dh`.
+- No code, layout formula, renderer output, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-phase-join.md`
+- `target\compare\architecture-delta-service-contribution-hpd050`
+- `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050`
+
+Focused verification:
+
+- Read local service contribution rows from
+  `target\compare\architecture-delta-service-contribution-hpd050\*.md`.
+- Read browser group `childrenBoundingBoxIncludeLabels` and final service `node.boundingBox()` rows
+  from `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050\*.md`.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+
+Residual note:
+
+- The next source-backed candidate is not group padding or final group rect emission. It is the
+  individual service label/content union width versus browser final service `node.boundingBox()`,
+  including service position drift and label width rounding.
+
 ## HPD-050 - Architecture Service Contribution Report
 
 Outcome:

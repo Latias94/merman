@@ -215,6 +215,12 @@ Last updated: 2026-06-04
   show child inputs such as `batch5/storage=225x97`, `html_titles/web=129x97`, and
   `unicode/metrics=125x97` without relying on stderr-only `MERMAN_ARCH_DEBUG_GROUP_RECT` output.
   Keep this as a child-contribution evidence surface, not a generic root-bounds source.
+  A follow-up service phase-join slice used that table beside the browser/Cytoscape final-node
+  probe to decompose the direct width tails: `batch5/pipeline` and `html_titles/ui` are
+  `content dw=+3` plus `expansion dw=+2`, while `unicode/i` is `content dw=+1` plus
+  `expansion dw=+2`. The height side has the opposite content/expansion split (`content dh=-2`,
+  `expansion dh=+2`), so group padding still cannot be changed alone without regressing height.
+  Continue from individual service label/content union width versus browser final service bbox.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
