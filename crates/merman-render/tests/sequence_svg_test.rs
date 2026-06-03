@@ -128,6 +128,19 @@ fn render_sequence_svg_from_text(text: &str) -> String {
     .expect("render svg")
 }
 
+fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+    *layout
+}
+
 #[test]
 fn sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15() {
     let svg = render_sequence_svg_from_text(
@@ -172,6 +185,49 @@ fn sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15()
     assert!(
         (n5 - (activation_right - 1.0)).abs() <= 0.0001,
         "expected message 5 number to sit inside the right activation bound, got {n5} for activation {activation}"
+    );
+}
+
+#[test]
+fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15() {
+    let layout = layout_sequence_from_text(
+        r#"sequenceDiagram
+    participant C as Caller
+    participant A as Active
+
+    C->>+A: Open outer
+    A->>+A: Open inner
+    C->>A: Call nested
+    A-->>-A: Close inner
+    C->>A: Call outer"#,
+    );
+
+    let a_center = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "actor-top-A")
+        .map(|node| node.x)
+        .expect("actor A center");
+    let c_to_a_edges: Vec<&LayoutEdge> = layout
+        .edges
+        .iter()
+        .filter(|edge| edge.from == "C" && edge.to == "A")
+        .collect();
+    assert_eq!(c_to_a_edges.len(), 3, "expected three C->A messages");
+
+    let nested_call = c_to_a_edges[1];
+    let outer_call = c_to_a_edges[2];
+    let expected_left_target = a_center - 5.0 - 3.0;
+
+    assert!(
+        (nested_call.points[1].x - expected_left_target).abs() <= 0.0001,
+        "expected nested activation target to use the full activation stack left bound, got {} with A center {a_center}",
+        nested_call.points[1].x
+    );
+    assert!(
+        (outer_call.points[1].x - expected_left_target).abs() <= 0.0001,
+        "expected remaining outer activation target to keep the same left bound, got {} with A center {a_center}",
+        outer_call.points[1].x
     );
 }
 

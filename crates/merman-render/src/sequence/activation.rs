@@ -53,8 +53,14 @@ impl<'a> SequenceActivationState<'a> {
     pub(super) fn actor_bounds(&self, actor_id: &str, center_x: f64) -> (f64, f64) {
         self.stacks
             .get(actor_id)
-            .and_then(|s| s.last().copied())
-            .map(|startx| (startx, startx + self.width))
+            .map(|stack| {
+                stack
+                    .iter()
+                    .copied()
+                    .fold((center_x - 1.0, center_x + 1.0), |(left, right), x| {
+                        (left.min(x), right.max(x + self.width))
+                    })
+            })
             .unwrap_or((center_x - 1.0, center_x + 1.0))
     }
 

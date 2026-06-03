@@ -569,6 +569,12 @@ Current repository reality to preserve:
     reported sample places numbers `2` and `4` inside the left edge of the Server activation rect
     and `5` inside the right edge, matching upstream behavior without changing Sequence
     root-width/font-metric residuals.
+  - A fifty-first HPD-080 Sequence layout slice fixed the same source-backed activation-bounds
+    rule for message endpoints. `SequenceActivationState::actor_bounds(...)` now folds all active
+    activation rectangles for an actor and returns the min-left / max-right pair, matching Mermaid
+    11.15 `activationBounds(actor, actors)`. A nested activation regression covers the old
+    stack-top-only bug where messages from a left-side actor targeted the inner activation edge
+    instead of the outer active stack boundary.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

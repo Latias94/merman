@@ -3,6 +3,41 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Sequence Nested Activation Bounds
+
+Outcome:
+
+- Continued the Sequence activation audit after the autonumber marker fix and found the same
+  Mermaid 11.15 bounds rule was missing from the layout pass.
+- Reproduced a visible endpoint defect with nested activations: when a left-side actor targets a
+  participant with two active activation rectangles, local layout used only the innermost left edge
+  while Mermaid uses the minimum left edge across the full active stack.
+- Updated `SequenceActivationState::actor_bounds(...)` to fold all active activation rectangles and
+  return the min-left / max-right pair used by Mermaid `activationBounds(...)`.
+- Added a focused layout regression that fails on the old `center - 3px` nested endpoint and passes
+  on the source-backed outer-left-bound endpoint.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- update-layout-snapshots --filter ...` for the five affected Sequence
+  activation fixtures
+- `cargo nextest run -p merman-render`
+- `cargo fmt -p merman-render --check`
+- `git diff --check`
+
+Residual note:
+
+- This is Sequence endpoint geometry parity, not a text measurement or root-bounds change.
+  Existing Sequence measurement residuals remain open and should not be tuned through activation
+  endpoint code.
+
 ## HPD-080 - Sequence Autonumber Activation Bounds
 
 Outcome:

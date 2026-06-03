@@ -321,5 +321,8 @@ Last updated: 2026-06-03
   `activationBounds(...)` / `fromBounds` / `toBounds` formula instead of using the message line's
   first point, so messages sent from an active participant anchor on the same side of the activation
   rectangle as upstream.
+  A follow-up Sequence layout slice fixed the same full-stack activation-bounds rule for message
+  endpoints. Nested activations now use the min-left / max-right across all active rectangles,
+  matching Mermaid's `activationBounds(actor, actors)` instead of only the current stack top.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
