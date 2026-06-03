@@ -7,6 +7,13 @@ enum StatementItem {
     Dir(String),
 }
 
+struct EvalFrame<'a> {
+    statements: &'a [Stmt],
+    index: usize,
+    subgraph: Option<&'a SubgraphBlock>,
+    items: Vec<StatementItem>,
+}
+
 pub(super) struct SubgraphBuilder {
     sub_count: usize,
     pub(super) subgraphs: Vec<FlowSubGraph>,
@@ -29,44 +36,64 @@ impl SubgraphBuilder {
     }
 
     fn eval_statements(&mut self, statements: &[Stmt]) -> Vec<StatementItem> {
-        let mut out: Vec<StatementItem> = Vec::new();
-        for stmt in statements {
-            match stmt {
-                Stmt::Chain { nodes, edges } => {
-                    // Mermaid FlowDB's subgraph membership list is based on the Jison `vertexStatement.nodes`
-                    // shape, which prepends the last node in a chain first (e.g. `a-->b` yields `[b, a]`).
-                    //
-                    // For node-only group statements (e.g. `A & B`), there are no edges and the list
-                    // preserves the input order.
-                    if edges.is_empty() {
-                        for n in nodes {
-                            out.push(StatementItem::Id(n.id.clone()));
+        enum EvalStep<'a> {
+            Statement(&'a Stmt),
+            Finish,
+        }
+
+        let mut stack = vec![EvalFrame {
+            statements,
+            index: 0,
+            subgraph: None,
+            items: Vec::new(),
+        }];
+        let mut root_items = Vec::new();
+
+        while !stack.is_empty() {
+            let step = {
+                let frame = stack.last_mut().expect("frame stack should not be empty");
+                if frame.index >= frame.statements.len() {
+                    EvalStep::Finish
+                } else {
+                    let stmt = &frame.statements[frame.index];
+                    frame.index += 1;
+                    EvalStep::Statement(stmt)
+                }
+            };
+
+            match step {
+                EvalStep::Statement(Stmt::Subgraph(sg)) => stack.push(EvalFrame {
+                    statements: &sg.statements,
+                    index: 0,
+                    subgraph: Some(sg),
+                    items: Vec::new(),
+                }),
+                EvalStep::Statement(stmt) => {
+                    let frame = stack.last_mut().expect("current frame should exist");
+                    push_statement_items(&mut frame.items, stmt);
+                }
+                EvalStep::Finish => {
+                    let frame = stack.pop().expect("finished frame should exist");
+                    if let Some(sg) = frame.subgraph {
+                        let id = self.eval_subgraph_from_items(sg, frame.items);
+                        if let Some(parent) = stack.last_mut() {
+                            parent.items.push(StatementItem::Id(id));
                         }
                     } else {
-                        for n in nodes.iter().rev() {
-                            out.push(StatementItem::Id(n.id.clone()));
-                        }
+                        root_items = frame.items;
                     }
                 }
-                Stmt::Node(n) => out.push(StatementItem::Id(n.id.clone())),
-                Stmt::Direction(d) => out.push(StatementItem::Dir(d.clone())),
-                Stmt::Subgraph(sg) => {
-                    let id = self.eval_subgraph(sg);
-                    out.push(StatementItem::Id(id));
-                }
-                Stmt::Style(_) => {}
-                Stmt::ClassDef(_) => {}
-                Stmt::ClassAssign(_) => {}
-                Stmt::Click(_) => {}
-                Stmt::LinkStyle(_) => {}
-                Stmt::ShapeData { target, .. } => out.push(StatementItem::Id(target.clone())),
             }
         }
-        out
+
+        root_items
     }
 
-    fn eval_subgraph(&mut self, sg: &SubgraphBlock) -> String {
-        let items = self.eval_statements(&sg.statements);
+    fn eval_subgraph_from_items(
+        &mut self,
+        sg: &SubgraphBlock,
+        items: Vec<StatementItem>,
+    ) -> String {
         let mut seen: HashSet<String> = HashSet::new();
         let mut members: Vec<String> = Vec::new();
         let mut dir: Option<String> = None;
@@ -140,6 +167,37 @@ impl SubgraphBuilder {
         });
 
         id
+    }
+}
+
+fn push_statement_items(out: &mut Vec<StatementItem>, stmt: &Stmt) {
+    match stmt {
+        Stmt::Chain { nodes, edges } => {
+            // Mermaid FlowDB's subgraph membership list is based on the Jison
+            // `vertexStatement.nodes` shape, which prepends the last node in a chain first
+            // (e.g. `a-->b` yields `[b, a]`).
+            //
+            // For node-only group statements (e.g. `A & B`), there are no edges and the list
+            // preserves the input order.
+            if edges.is_empty() {
+                for n in nodes {
+                    out.push(StatementItem::Id(n.id.clone()));
+                }
+            } else {
+                for n in nodes.iter().rev() {
+                    out.push(StatementItem::Id(n.id.clone()));
+                }
+            }
+        }
+        Stmt::Node(n) => out.push(StatementItem::Id(n.id.clone())),
+        Stmt::Direction(d) => out.push(StatementItem::Dir(d.clone())),
+        Stmt::ShapeData { target, .. } => out.push(StatementItem::Id(target.clone())),
+        Stmt::Subgraph(_)
+        | Stmt::Style(_)
+        | Stmt::ClassDef(_)
+        | Stmt::ClassAssign(_)
+        | Stmt::Click(_)
+        | Stmt::LinkStyle(_) => {}
     }
 }
 
