@@ -343,5 +343,10 @@ Last updated: 2026-06-03
   choice, fork/join, end, and note surfaces render as rough inline shapes, so source-backed theme
   defaults now feed final visible SVG attributes for those paths/circles instead of only emitting
   stylesheet tokens that the current DOM would not consume.
+  A follow-up Flowchart visible-edge slice fixed the same class of production seam for ordinary
+  edges. Pinned Mermaid 11.15's shared stylesheet drives `.edge-thickness-normal` from
+  `themeVariables.strokeWidth`, and current Flowchart paths emit that class; local output had only
+  updated `.edgePath .path`, which current paths do not carry. Flowchart now themes the visible
+  edge class while preserving explicit `linkStyle` stroke-width overrides.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

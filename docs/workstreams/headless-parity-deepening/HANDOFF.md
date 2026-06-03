@@ -608,6 +608,14 @@ Current repository reality to preserve:
     preserving explicit `style` / `classDef` `!important` overrides. Focused State SVG tests now
     assert the final visible path/circle attributes, and State `parity`, `parity-root`, and the
     public dark-theme smoke all stayed green.
+  - A fifty-eighth HPD-080 Flowchart visible-edge slice fixed the ordinary edge stroke-width seam.
+    Earlier Flowchart coverage had made `.edgePath .path` consume `themeVariables.strokeWidth`, but
+    current ordinary edge paths do not carry the `.path` class; they visibly consume
+    `.edge-thickness-normal`. Pinned Mermaid 11.15's shared stylesheet sets that class from
+    `strokeWidth`, while local output still hardcoded it to `1px`. Local Flowchart CSS now themes
+    `.edge-thickness-normal`, focused tests assert the visible path class and `linkStyle`
+    override precedence, public dark-theme smoke counts the matching DOM, structural Flowchart
+    `parity` stayed green, and `parity-root` remains the known max-width/root diagnostic surface.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

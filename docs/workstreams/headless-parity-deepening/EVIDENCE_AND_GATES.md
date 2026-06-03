@@ -3134,6 +3134,47 @@ Focused verification:
 - `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
 - `cargo nextest run -p merman --features raster --test resvg_safe_fixture_smoke`
 
+## HPD-080 - Flowchart Visible Edge Stroke Width
+
+Outcome:
+
+- Fixed a real Flowchart visible-DOM seam for ordinary edge thickness.
+- Earlier Flowchart `strokeWidth` coverage updated the diagram-owned `.edgePath .path` provider
+  rule, but current ordinary Flowchart paths do not carry the `.path` class. Their final visible
+  stroke width is controlled by the shared `.edge-thickness-normal` rule.
+- Pinned Mermaid 11.15 shared `styles.ts` sets `.edge-thickness-normal` to
+  `themeVariables.strokeWidth ?? 1`, and `flowDb.ts` / the installed Mermaid 11.15 CLI output show
+  ordinary Flowchart paths carry `edge-thickness-normal edge-pattern-solid flowchart-link`.
+- Local Flowchart CSS now drives `.edge-thickness-normal` from the same `SvgTheme::css_value(
+  "strokeWidth", "1")` source used by node and edge-path provider rules.
+- Explicit `linkStyle` / edge inline style precedence is preserved: the themed class remains the
+  default, while visible path `style="...stroke-width:...;..."` can still override it.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/flowchart/css.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/flowchart/css.rs)
+- [crates/merman-render/tests/flowchart_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/flowchart_svg_test.rs)
+- [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman-render --test flowchart_svg_test` - passed, `28` tests run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `10`
+  tests run.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed, structural Flowchart DOM parity stayed green.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\flowchart_report_parity_root_hpd080_edge_strokewidth.md` -
+  expected-failed on existing Flowchart max-width/root residual rows; the failures were root/style
+  width mismatches, not new structural edge-style mismatches.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This slice fixes visible ordinary Flowchart edge stroke-width theming. It does not claim
+  Flowchart root-bounds closure or broad Flowchart CSS parity beyond current source-backed DOM
+  consumers.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

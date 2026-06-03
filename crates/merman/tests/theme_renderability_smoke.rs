@@ -49,12 +49,19 @@ fn representative_dark_theme_diagrams_keep_visible_theme_signals() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "theme-flowchart",
-            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "nodeTextColor": "#f8fafc"}}}%%
+            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "nodeTextColor": "#f8fafc", "strokeWidth": 4}}}%%
 flowchart TD
   A[Dark Node] -->|Readable Edge| B[Other]
 "##,
             &["Dark Node", "Readable Edge", "Other"],
-            &["#111827", "#f8fafc", "#38bdf8", "#f59e0b"],
+            &[
+                "#111827",
+                "#f8fafc",
+                "#38bdf8",
+                "#f59e0b",
+                r#"#theme-flowchart .edge-thickness-normal{stroke-width:4px;}"#,
+                r#"class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link""#,
+            ],
         ),
         (
             "theme-sequence",

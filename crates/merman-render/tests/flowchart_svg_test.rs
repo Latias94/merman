@@ -174,6 +174,45 @@ flowchart TB
         svg.contains(r#"#merman .edgePath .path{stroke:#112233;stroke-width:4px;}"#),
         "expected numeric themeVariables.strokeWidth to drive Flowchart edge path stroke width CSS: {svg}"
     );
+    assert!(
+        svg.contains(r#"#merman .edge-thickness-normal{stroke-width:4px;}"#),
+        "expected visible Flowchart edge class width to follow Mermaid 11.15 theme strokeWidth: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link""#
+        ),
+        "expected the visible Flowchart edge path to carry the themed edge-thickness-normal class: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_link_style_stroke_width_overrides_theme_default_edge_width() {
+    let svg = render_flowchart_svg_from_text(
+        r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233"}}}%%
+flowchart TB
+    A --> B
+    linkStyle 0 stroke-width:7px,stroke:#abcdef
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#merman .edge-thickness-normal{stroke-width:4px;}"#),
+        "expected themeVariables.strokeWidth to remain the default Flowchart edge width: {svg}"
+    );
+
+    let edge_start = svg.find(r#"id="merman-L_A_B_0""#).expect("edge path");
+    let edge_end = svg[edge_start..].find("/>").expect("edge path end") + edge_start;
+    let edge_chunk = &svg[edge_start..edge_end];
+
+    assert!(
+        edge_chunk.contains("stroke-width:7px"),
+        "expected linkStyle stroke-width to stay on the visible Flowchart edge path: {edge_chunk}"
+    );
+    assert!(
+        edge_chunk.contains("stroke:#abcdef"),
+        "expected linkStyle stroke color to stay on the visible Flowchart edge path: {edge_chunk}"
+    );
 }
 
 #[test]
