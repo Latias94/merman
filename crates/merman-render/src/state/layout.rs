@@ -8,7 +8,6 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -1326,7 +1325,7 @@ fn layout_state_diagram_v2_inner(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramV2Layout> {
-    validate_state_model_depth(model)?;
+    validate_state_parent_cycles(model)?;
     let StateDagreInput {
         graph,
         hidden_prefixes,
@@ -1914,7 +1913,7 @@ fn layout_state_diagram_v2_inner(
     })
 }
 
-fn validate_state_model_depth(model: &StateDiagramModel) -> Result<()> {
+fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
     let parent_by_id: HashMap<&str, &str> = model
         .nodes
         .iter()
@@ -1925,7 +1924,6 @@ fn validate_state_model_depth(model: &StateDiagramModel) -> Result<()> {
         })
         .collect();
     for node in &model.nodes {
-        let mut depth = 0usize;
         let mut current = Some(node.id.as_str());
         let mut seen: HashSet<&str> = HashSet::new();
         while let Some(id) = current {
@@ -1934,15 +1932,7 @@ fn validate_state_model_depth(model: &StateDiagramModel) -> Result<()> {
                     message: format!("state parent cycle involving {id}"),
                 });
             }
-            if depth > MAX_DIAGRAM_NESTING_DEPTH {
-                return Err(Error::InvalidModel {
-                    message: format!(
-                        "state nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                    ),
-                });
-            }
             current = parent_by_id.get(id).copied();
-            depth += 1;
         }
     }
     Ok(())

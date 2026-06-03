@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, Result};
+use crate::{Error, MermaidConfig, Result};
 use serde_json::{Map, Value, json};
 
 use super::render_model::{MindmapDiagramRenderEdge, MindmapDiagramRenderNode};
@@ -74,15 +74,6 @@ impl MindmapDb {
             is_root = false;
         } else {
             is_root = false;
-        }
-
-        if usize::try_from(level).is_ok_and(|depth| depth > MAX_DIAGRAM_NESTING_DEPTH) {
-            return Err(Error::DiagramParse {
-                diagram_type: input.diagram_type.to_string(),
-                message: format!(
-                    "mindmap nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                ),
-            });
         }
 
         let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);

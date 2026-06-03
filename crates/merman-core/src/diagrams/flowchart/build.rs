@@ -26,7 +26,15 @@ impl FlowchartBuildState {
         &mut self,
         statements: &[Stmt],
     ) -> std::result::Result<(), String> {
-        for stmt in statements {
+        // Keep Mermaid's preorder statement handling without using the Rust call stack for
+        // deeply nested subgraphs.
+        let mut stack = vec![statements.iter()];
+        while let Some(iter) = stack.last_mut() {
+            let Some(stmt) = iter.next() else {
+                stack.pop();
+                continue;
+            };
+
             match stmt {
                 Stmt::Chain { nodes, edges } => {
                     let mut deferred_shape_data_vertex_calls: Vec<String> = Vec::new();
@@ -100,7 +108,7 @@ impl FlowchartBuildState {
                         self.node_index.insert(target.clone(), idx);
                     }
                 }
-                Stmt::Subgraph(sg) => self.add_statements(&sg.statements)?,
+                Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
                 Stmt::Direction(_)
                 | Stmt::ClassDef(_)
                 | Stmt::ClassAssign(_)

@@ -77,23 +77,183 @@ fn add_border_node(
 }
 
 fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, usize> {
-    fn dfs(
-        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        v: &str,
-        depth: usize,
-        out: &mut BTreeMap<String, usize>,
-    ) {
-        for child in g.children_iter(v) {
-            dfs(g, child, depth + 1, out);
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    let mut stack: Vec<(String, usize)> = g
+        .children_root()
+        .into_iter()
+        .rev()
+        .map(|v| (v.to_string(), 1))
+        .collect();
+
+    while let Some((v, depth)) = stack.pop() {
+        out.insert(v.clone(), depth);
+        let children: Vec<String> = g.children_iter(&v).map(|s| s.to_string()).collect();
+        for child in children.into_iter().rev() {
+            stack.push((child, depth + 1));
         }
-        out.insert(v.to_string(), depth);
     }
 
-    let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    for v in g.children_root() {
-        dfs(g, v, 1, &mut out);
-    }
     out
+}
+
+enum NestingDfsFrame {
+    Enter(String),
+    LinkChild {
+        parent: String,
+        top: String,
+        bottom: String,
+        child: String,
+    },
+    LinkRoot {
+        node: String,
+        top: String,
+    },
+}
+
+fn add_root_leaf_edge(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ctx: &NestingDfsCtx<'_>,
+    v: &str,
+) {
+    if v != ctx.root {
+        g.set_edge_with_label(
+            ctx.root,
+            v,
+            EdgeLabel {
+                weight: 0.0,
+                minlen: ctx.node_sep,
+                ..Default::default()
+            },
+        );
+    }
+}
+
+fn add_child_nesting_edges(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ctx: &NestingDfsCtx<'_>,
+    parent: &str,
+    top: &str,
+    bottom: &str,
+    child: &str,
+) {
+    let child_node = g.node(child).cloned().unwrap_or_default();
+    let child_top = child_node
+        .border_top
+        .as_deref()
+        .unwrap_or(child)
+        .to_string();
+    let child_bottom = child_node
+        .border_bottom
+        .as_deref()
+        .unwrap_or(child)
+        .to_string();
+    let this_weight = if child_node.border_top.is_some() {
+        ctx.weight
+    } else {
+        2.0 * ctx.weight
+    };
+    let minlen = if child_top != child_bottom {
+        1usize
+    } else {
+        let dv = ctx.depths.get(parent).copied().unwrap_or(1);
+        ctx.height.saturating_sub(dv).saturating_add(1)
+    };
+
+    g.set_edge_with_label(
+        top.to_string(),
+        child_top,
+        EdgeLabel {
+            weight: this_weight,
+            minlen,
+            nesting_edge: true,
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label(
+        child_bottom,
+        bottom.to_string(),
+        EdgeLabel {
+            weight: this_weight,
+            minlen,
+            nesting_edge: true,
+            ..Default::default()
+        },
+    );
+}
+
+fn add_root_cluster_edge(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ctx: &NestingDfsCtx<'_>,
+    v: &str,
+    top: &str,
+) {
+    if g.parent(v).is_none() {
+        let dv = ctx.depths.get(v).copied().unwrap_or(1);
+        g.set_edge_with_label(
+            ctx.root,
+            top,
+            EdgeLabel {
+                weight: 0.0,
+                minlen: ctx.height + dv,
+                nesting_edge: true,
+                ..Default::default()
+            },
+        );
+    }
+}
+
+fn nesting_dfs(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ctx: &NestingDfsCtx<'_>,
+    ids: &mut DummyNodeIdGen,
+    root_child: String,
+) {
+    let mut stack = vec![NestingDfsFrame::Enter(root_child)];
+
+    while let Some(frame) = stack.pop() {
+        match frame {
+            NestingDfsFrame::Enter(v) => {
+                let children: Vec<String> = g.children_iter(&v).map(|s| s.to_string()).collect();
+                if children.is_empty() {
+                    add_root_leaf_edge(g, ctx, &v);
+                    continue;
+                }
+
+                let top = add_border_node(g, ids, "_bt");
+                let bottom = add_border_node(g, ids, "_bb");
+
+                g.set_parent_ref(top.as_str(), &v);
+                if let Some(lbl) = g.node_mut(&v) {
+                    lbl.border_top = Some(top.clone());
+                }
+                g.set_parent_ref(bottom.as_str(), &v);
+                if let Some(lbl) = g.node_mut(&v) {
+                    lbl.border_bottom = Some(bottom.clone());
+                }
+
+                stack.push(NestingDfsFrame::LinkRoot {
+                    node: v.clone(),
+                    top: top.clone(),
+                });
+                for child in children.into_iter().rev() {
+                    stack.push(NestingDfsFrame::LinkChild {
+                        parent: v.clone(),
+                        top: top.clone(),
+                        bottom: bottom.clone(),
+                        child: child.clone(),
+                    });
+                    stack.push(NestingDfsFrame::Enter(child));
+                }
+            }
+            NestingDfsFrame::LinkChild {
+                parent,
+                top,
+                bottom,
+                child,
+            } => add_child_nesting_edges(g, ctx, &parent, &top, &bottom, &child),
+            NestingDfsFrame::LinkRoot { node, top } => add_root_cluster_edge(g, ctx, &node, &top),
+        }
+    }
 }
 
 fn sum_weights(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> f64 {
@@ -108,103 +268,6 @@ struct NestingDfsCtx<'a> {
     weight: f64,
     height: usize,
     depths: &'a BTreeMap<String, usize>,
-}
-
-fn dfs(
-    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ctx: &NestingDfsCtx<'_>,
-    ids: &mut DummyNodeIdGen,
-    v: &str,
-) {
-    let children: Vec<String> = g.children_iter(v).map(|s| s.to_string()).collect();
-    if children.is_empty() {
-        if v != ctx.root {
-            g.set_edge_with_label(
-                ctx.root,
-                v,
-                EdgeLabel {
-                    weight: 0.0,
-                    minlen: ctx.node_sep,
-                    ..Default::default()
-                },
-            );
-        }
-        return;
-    }
-
-    let top = add_border_node(g, ids, "_bt");
-    let bottom = add_border_node(g, ids, "_bb");
-
-    g.set_parent_ref(top.as_str(), v);
-    if let Some(lbl) = g.node_mut(v) {
-        lbl.border_top = Some(top.clone());
-    }
-    g.set_parent_ref(bottom.as_str(), v);
-    if let Some(lbl) = g.node_mut(v) {
-        lbl.border_bottom = Some(bottom.clone());
-    }
-
-    for child in children {
-        dfs(g, ctx, ids, &child);
-
-        let child_node = g.node(&child).cloned().unwrap_or_default();
-        let child_top = child_node
-            .border_top
-            .as_deref()
-            .unwrap_or(&child)
-            .to_string();
-        let child_bottom = child_node
-            .border_bottom
-            .as_deref()
-            .unwrap_or(&child)
-            .to_string();
-        let this_weight = if child_node.border_top.is_some() {
-            ctx.weight
-        } else {
-            2.0 * ctx.weight
-        };
-        let minlen = if child_top != child_bottom {
-            1usize
-        } else {
-            let dv = ctx.depths.get(v).copied().unwrap_or(1);
-            ctx.height.saturating_sub(dv).saturating_add(1)
-        };
-
-        g.set_edge_with_label(
-            top.clone(),
-            child_top.clone(),
-            EdgeLabel {
-                weight: this_weight,
-                minlen,
-                nesting_edge: true,
-                ..Default::default()
-            },
-        );
-        g.set_edge_with_label(
-            child_bottom.clone(),
-            bottom.clone(),
-            EdgeLabel {
-                weight: this_weight,
-                minlen,
-                nesting_edge: true,
-                ..Default::default()
-            },
-        );
-    }
-
-    if g.parent(v).is_none() {
-        let dv = ctx.depths.get(v).copied().unwrap_or(1);
-        g.set_edge_with_label(
-            ctx.root,
-            top,
-            EdgeLabel {
-                weight: 0.0,
-                minlen: ctx.height + dv,
-                nesting_edge: true,
-                ..Default::default()
-            },
-        );
-    }
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -251,7 +314,7 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
     for child in children {
-        dfs(g, &ctx, &mut ids, &child);
+        nesting_dfs(g, &ctx, &mut ids, child);
     }
 
     g.graph_mut().node_rank_factor = Some(node_sep);

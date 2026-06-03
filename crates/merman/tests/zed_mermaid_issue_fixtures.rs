@@ -1,6 +1,7 @@
 #![cfg(feature = "render")]
 
 use merman::render::HeadlessRenderer;
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 const ZED_57389_SEQUENCE_LOOP_END: &str =
@@ -33,6 +34,18 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
         .render_svg_resvg_safe_sync(source)
         .unwrap_or_else(|err| panic!("{name}: headless render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+}
+
+fn deeply_nested_flowchart(depth: usize) -> String {
+    let mut lines = vec!["flowchart TD".to_string()];
+    for i in 0..depth {
+        lines.push(format!("subgraph n{i}"));
+    }
+    lines.push("leaf[leaf]".to_string());
+    for _ in 0..depth {
+        lines.push("end".to_string());
+    }
+    lines.join("\n")
 }
 
 #[test]
@@ -167,6 +180,15 @@ fn zed_class_generics_fallback_text_is_not_double_escaped() {
         svg.contains("List&lt;Animal"),
         "expected class generic marker to remain readable in fallback text: {svg}"
     );
+}
+
+#[test]
+fn zed_deeply_nested_flowchart_renders_past_legacy_depth_limit() {
+    let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
+    let svg = render_resvg_safe("zed-deep-flowchart", &source);
+
+    assert!(svg.contains("<svg"));
+    assert!(!svg.contains(r#"aria-roledescription="error""#));
 }
 
 #[test]

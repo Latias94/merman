@@ -32,11 +32,17 @@ pub(super) fn apply_semantic_statements(
 
 impl<'a> FlowchartSemanticContext<'a> {
     fn apply_statements(&mut self, statements: &[Stmt]) -> Result<()> {
-        for stmt in statements {
+        // Preserve the recursive preorder semantics while avoiding stack growth on nested
+        // subgraphs.
+        let mut stack = vec![statements.iter()];
+        while let Some(iter) = stack.last_mut() {
+            let Some(stmt) = iter.next() else {
+                stack.pop();
+                continue;
+            };
+
             match stmt {
-                Stmt::Subgraph(sg) => {
-                    self.apply_statements(&sg.statements)?;
-                }
+                Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
                 Stmt::Style(s) => {
                     if let Some(&idx) = self.subgraph_index.get(&s.target) {
                         self.subgraphs[idx].styles.extend(s.styles.iter().cloned());

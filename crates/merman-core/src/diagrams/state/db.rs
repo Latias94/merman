@@ -44,7 +44,7 @@ impl StateRecord {
             "id": self.id,
             "type": self.ty,
             "descriptions": self.descriptions,
-            "doc": self.doc.as_ref().map(|d| d.iter().map(stmt_to_json).collect::<Vec<_>>()),
+            "doc": self.doc.as_ref().map(|d| doc_to_json(d)),
             "note": self.note.as_ref().map(|n| json!({"position": n.position, "text": n.text})),
             "classes": self.classes,
             "styles": self.styles,
@@ -160,17 +160,37 @@ impl StateDb {
     }
 
     fn translate_doc(&mut self, parent_id: &str, doc: &mut [Stmt]) {
-        for stmt in doc.iter_mut() {
+        struct TranslateFrame<'a> {
+            parent_id: String,
+            iter: std::slice::IterMut<'a, Stmt>,
+        }
+
+        let mut stack = vec![TranslateFrame {
+            parent_id: parent_id.to_string(),
+            iter: doc.iter_mut(),
+        }];
+
+        while let Some(frame) = stack.last_mut() {
+            let Some(stmt) = frame.iter.next() else {
+                stack.pop();
+                continue;
+            };
+            let parent_id = frame.parent_id.clone();
+
             match stmt {
                 Stmt::Relation(relation) => {
-                    self.translate_state_ref(parent_id, &mut relation.state1, true);
-                    self.translate_state_ref(parent_id, &mut relation.state2, false);
+                    self.translate_state_ref(&parent_id, &mut relation.state1, true);
+                    self.translate_state_ref(&parent_id, &mut relation.state2, false);
                 }
                 Stmt::State(s) => {
-                    self.translate_state_ref(parent_id, s, true);
+                    self.translate_state_ref(&parent_id, s, true);
+                    let child_parent_id = s.id.clone();
                     if let Some(inner) = s.doc.as_mut() {
                         self.translate_state_concurrency_split(inner);
-                        self.translate_doc(&s.id, inner);
+                        stack.push(TranslateFrame {
+                            parent_id: child_parent_id,
+                            iter: inner.iter_mut(),
+                        });
                     }
                 }
                 _ => {}
@@ -714,9 +734,41 @@ fn build_layout_data_typed(
         doc: &[Stmt],
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
-        for item in doc {
+        struct DocFrame<'a> {
+            parent: Option<&'a StateStmt>,
+            doc: &'a [Stmt],
+            index: usize,
+            alt_flag: bool,
+        }
+
+        let mut stack = vec![DocFrame {
+            parent,
+            doc,
+            index: 0,
+            alt_flag,
+        }];
+
+        while let Some(frame) = stack.last_mut() {
+            let Some(item) = frame.doc.get(frame.index) else {
+                stack.pop();
+                continue;
+            };
+            frame.index += 1;
+            let parent = frame.parent;
+            let alt_flag = frame.alt_flag;
+
             match item {
-                Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
+                Stmt::State(s) => {
+                    data_fetcher(ctx, parent, s, alt_flag)?;
+                    if let Some(doc) = s.doc.as_ref() {
+                        stack.push(DocFrame {
+                            parent: Some(s),
+                            doc,
+                            index: 0,
+                            alt_flag: !alt_flag,
+                        });
+                    }
+                }
                 Stmt::Relation(relation) => {
                     let relation = relation.as_ref();
                     data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
@@ -972,10 +1024,6 @@ fn build_layout_data_typed(
             upsert_node_typed(ctx.nodes, ctx.node_index, node);
         }
 
-        if let Some(doc) = parsed_item.doc.as_ref() {
-            setup_doc(ctx, Some(parsed_item), doc, !alt_flag)?;
-        }
-
         Ok(())
     }
 
@@ -1054,9 +1102,41 @@ fn build_layout_data(
         doc: &[Stmt],
         alt_flag: bool,
     ) -> std::result::Result<(), String> {
-        for item in doc {
+        struct DocFrame<'a> {
+            parent: Option<&'a StateStmt>,
+            doc: &'a [Stmt],
+            index: usize,
+            alt_flag: bool,
+        }
+
+        let mut stack = vec![DocFrame {
+            parent,
+            doc,
+            index: 0,
+            alt_flag,
+        }];
+
+        while let Some(frame) = stack.last_mut() {
+            let Some(item) = frame.doc.get(frame.index) else {
+                stack.pop();
+                continue;
+            };
+            frame.index += 1;
+            let parent = frame.parent;
+            let alt_flag = frame.alt_flag;
+
             match item {
-                Stmt::State(s) => data_fetcher(ctx, parent, s, alt_flag)?,
+                Stmt::State(s) => {
+                    data_fetcher(ctx, parent, s, alt_flag)?;
+                    if let Some(doc) = s.doc.as_ref() {
+                        stack.push(DocFrame {
+                            parent: Some(s),
+                            doc,
+                            index: 0,
+                            alt_flag: !alt_flag,
+                        });
+                    }
+                }
                 Stmt::Relation(relation) => {
                     let relation = relation.as_ref();
                     data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
@@ -1360,10 +1440,6 @@ fn build_layout_data(
             upsert_node(ctx.nodes, ctx.node_index, node_data);
         }
 
-        if let Some(doc) = parsed_item.doc.as_ref() {
-            setup_doc(ctx, Some(parsed_item), doc, !alt_flag)?;
-        }
-
         Ok(())
     }
 
@@ -1409,7 +1485,11 @@ fn build_layout_data(
     Ok((nodes, edges))
 }
 
-fn stmt_to_json(stmt: &Stmt) -> Value {
+fn doc_to_json(doc: &[Stmt]) -> Vec<Value> {
+    doc.iter().map(stmt_to_json).collect()
+}
+
+fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
     match stmt {
         Stmt::Noop => json!(null),
         Stmt::State(s) => json!({
@@ -1417,7 +1497,7 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
             "id": s.id,
             "type": s.ty,
             "description": s.description,
-            "doc": s.doc.as_ref().map(|d| d.iter().map(stmt_to_json).collect::<Vec<_>>()),
+            "doc": doc,
             "classes": s.classes,
         }),
         Stmt::Relation(relation) => json!({
@@ -1440,6 +1520,43 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
             json!({ "stmt": "click", "id": c.id, "url": c.url, "tooltip": c.tooltip })
         }
     }
+}
+
+fn stmt_to_json(stmt: &Stmt) -> Value {
+    let mut stack: Vec<(&Stmt, bool)> = vec![(stmt, false)];
+    let mut completed: HashMap<*const Stmt, Value> = HashMap::new();
+
+    while let Some((current, visited)) = stack.pop() {
+        if visited {
+            let doc = match current {
+                Stmt::State(s) => s.doc.as_ref().map(|children| {
+                    children
+                        .iter()
+                        .map(|child| {
+                            completed
+                                .remove(&(child as *const Stmt))
+                                .expect("child state statement JSON should be completed")
+                        })
+                        .collect::<Vec<_>>()
+                }),
+                _ => None,
+            };
+            completed.insert(current as *const Stmt, stmt_to_json_shallow(current, doc));
+        } else {
+            stack.push((current, true));
+            if let Stmt::State(s) = current {
+                if let Some(doc) = s.doc.as_ref() {
+                    for child in doc.iter().rev() {
+                        stack.push((child, false));
+                    }
+                }
+            }
+        }
+    }
+
+    completed
+        .remove(&(stmt as *const Stmt))
+        .expect("state statement JSON should be completed")
 }
 
 fn normalize_multiline_ws(input: &str) -> String {

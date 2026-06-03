@@ -69,8 +69,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
-- Hardened deeply nested diagram handling to prevent stack overflows in Flowchart, State,
-  Block, Mindmap, Treemap, C4, and Class diagram parsing/layout.
+- Aligned deeply nested State, Block, Mindmap, Treemap, C4, and Flowchart handling with Mermaid by
+  removing Merman's custom 256-level depth-limit error for valid inputs and using stack-safe
+  parser/layout traversals.
+- Kept Class diagrams stack-safe with a Class-specific namespace strategy: parent cycles still
+  return an explicit error, while valid deeply nested namespaces bound recursive cluster extraction
+  and fall back to compound graph layout instead of growing the call stack.
 - Fixed Class and Block diagram SVG labels so HTML and SVG text get diagram-scoped colors instead
   of inheriting light text from dark host pages; labels remain visible in the playground and
   exported SVG.

@@ -151,22 +151,26 @@ fn postorder(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, Po
     let mut result: BTreeMap<String, PostorderNum> = BTreeMap::new();
     let mut lim: usize = 0;
 
-    fn dfs(
-        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        v: &str,
-        lim: &mut usize,
-        result: &mut BTreeMap<String, PostorderNum>,
-    ) {
-        let low = *lim;
-        for child in g.children(v) {
-            dfs(g, child, lim, result);
+    let mut stack: Vec<(String, bool, usize)> = g
+        .children_root()
+        .into_iter()
+        .rev()
+        .map(|v| (v.to_string(), false, 0))
+        .collect();
+
+    while let Some((v, expanded, low)) = stack.pop() {
+        if expanded {
+            result.insert(v, PostorderNum { low, lim });
+            lim += 1;
+            continue;
         }
-        result.insert(v.to_string(), PostorderNum { low, lim: *lim });
-        *lim += 1;
+
+        let low = lim;
+        stack.push((v.clone(), true, low));
+        for child in g.children(&v).into_iter().rev() {
+            stack.push((child.to_string(), false, 0));
+        }
     }
 
-    for v in g.children_root() {
-        dfs(g, v, &mut lim, &mut result);
-    }
     result
 }

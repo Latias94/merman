@@ -14,8 +14,6 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
-
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
@@ -174,6 +172,50 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
         .is_some_and(|set| set.contains(id))
 }
 
+fn graph_parent_depths<N, E, G>(graph: &Graph<N, E, G>, ids: &[String]) -> HashMap<String, usize>
+where
+    N: Default + 'static,
+    E: Default + 'static,
+    G: Default,
+{
+    let mut depths: HashMap<String, usize> = HashMap::new();
+
+    for id in ids {
+        if depths.contains_key(id) {
+            continue;
+        }
+
+        let mut current = id.clone();
+        let mut chain: Vec<String> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut base_depth = 0usize;
+
+        loop {
+            if let Some(depth) = depths.get(&current).copied() {
+                base_depth = depth;
+                break;
+            }
+            if !seen.insert(current.clone()) {
+                break;
+            }
+            let Some(parent) = graph.parent(&current).map(|s| s.to_string()) else {
+                break;
+            };
+            chain.push(current);
+            current = parent;
+        }
+
+        for node in chain.into_iter().rev() {
+            base_depth += 1;
+            depths.insert(node, base_depth);
+        }
+
+        depths.entry(id.clone()).or_insert(base_depth);
+    }
+
+    depths
+}
+
 fn prepare_graph(
     mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     depth: usize,
@@ -204,6 +246,14 @@ fn prepare_graph(
         .into_iter()
         .filter(|id| !graph.children(id).is_empty())
         .collect();
+    let parent_depths = graph_parent_depths(&graph, &cluster_ids);
+    if depth + parent_depths.values().copied().max().unwrap_or_default() > 10 {
+        return Ok(PreparedGraph {
+            graph,
+            extracted: BTreeMap::new(),
+            injected_cluster_root_id: None,
+        });
+    }
 
     let mut descendants: HashMap<String, HashSet<String>> = HashMap::new();
     for id in &cluster_ids {
@@ -236,6 +286,9 @@ fn prepare_graph(
         .node_ids()
         .into_iter()
         .filter(|id| {
+            if depth + parent_depths.get(id).copied().unwrap_or(0) > 10 {
+                return false;
+            }
             let has_children = !graph.children(id).is_empty();
             let is_external = external.get(id).copied().unwrap_or(false);
             has_children && !is_external
@@ -1845,7 +1898,7 @@ fn layout_class_diagram_v2_typed_inner(
     note_html_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramV2Layout> {
-    validate_class_model_depth(model)?;
+    validate_class_namespace_parent_cycles(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let conf = effective_config
         .get("flowchart")
@@ -2418,9 +2471,8 @@ fn layout_class_diagram_v2_typed_inner(
     })
 }
 
-fn validate_class_model_depth(model: &ClassDiagramModel) -> Result<()> {
+fn validate_class_namespace_parent_cycles(model: &ClassDiagramModel) -> Result<()> {
     for id in model.namespaces.keys() {
-        let mut depth = 0usize;
         let mut current = Some(id.as_str());
         let mut seen: HashSet<&str> = HashSet::new();
         while let Some(ns_id) = current {
@@ -2429,18 +2481,10 @@ fn validate_class_model_depth(model: &ClassDiagramModel) -> Result<()> {
                     message: format!("class namespace parent cycle involving {ns_id}"),
                 });
             }
-            if depth > MAX_DIAGRAM_NESTING_DEPTH {
-                return Err(Error::InvalidModel {
-                    message: format!(
-                        "class namespace nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                    ),
-                });
-            }
             current = model
                 .namespaces
                 .get(ns_id)
                 .and_then(|ns| ns.parent.as_deref());
-            depth += 1;
         }
     }
     Ok(())

@@ -53,63 +53,73 @@ pub fn add_border_segments(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         return;
     }
 
-    fn dfs(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str, ids: &mut DummyNodeIdGen) {
-        let children: Vec<String> = g.children_iter(v).map(|s| s.to_string()).collect();
-        for c in children {
-            dfs(g, &c, ids);
-        }
-
-        let Some((min_rank, max_rank)) = g.node(v).and_then(|n| Some((n.min_rank?, n.max_rank?)))
-        else {
-            return;
-        };
-
-        let max_rank_usize: usize = max_rank.max(0) as usize;
-        if let Some(n) = g.node_mut(v) {
-            n.border_left = vec![None; max_rank_usize + 1];
-            n.border_right = vec![None; max_rank_usize + 1];
-        }
-
-        let mut prev_left: Option<String> = None;
-        let mut prev_right: Option<String> = None;
-
-        for rank in min_rank..=max_rank {
-            let left = add_border_node(g, ids, "borderLeft", "_bl", v, rank, true);
-            if let Some(prev) = prev_left {
-                g.set_edge_with_label(
-                    prev,
-                    left.clone(),
-                    EdgeLabel {
-                        weight: 1.0,
-                        ..Default::default()
-                    },
-                );
-            }
-            prev_left = Some(left);
-
-            let right = add_border_node(g, ids, "borderRight", "_br", v, rank, false);
-            if let Some(prev) = prev_right {
-                g.set_edge_with_label(
-                    prev,
-                    right.clone(),
-                    EdgeLabel {
-                        weight: 1.0,
-                        ..Default::default()
-                    },
-                );
-            }
-            prev_right = Some(right);
-        }
-    }
-
     let roots: Vec<String> = g
         .children_root()
         .into_iter()
         .map(|s| s.to_string())
         .collect();
     let mut ids = DummyNodeIdGen::default();
-    for v in roots {
-        dfs(g, &v, &mut ids);
+
+    let mut stack: Vec<(String, bool)> = roots.into_iter().rev().map(|v| (v, false)).collect();
+    while let Some((v, expanded)) = stack.pop() {
+        if expanded {
+            add_border_segments_for_node(g, &v, &mut ids);
+            continue;
+        }
+
+        stack.push((v.clone(), true));
+        let children: Vec<String> = g.children_iter(&v).map(|s| s.to_string()).collect();
+        for child in children.into_iter().rev() {
+            stack.push((child, false));
+        }
+    }
+}
+
+fn add_border_segments_for_node(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    v: &str,
+    ids: &mut DummyNodeIdGen,
+) {
+    let Some((min_rank, max_rank)) = g.node(v).and_then(|n| Some((n.min_rank?, n.max_rank?)))
+    else {
+        return;
+    };
+
+    let max_rank_usize: usize = max_rank.max(0) as usize;
+    if let Some(n) = g.node_mut(v) {
+        n.border_left = vec![None; max_rank_usize + 1];
+        n.border_right = vec![None; max_rank_usize + 1];
+    }
+
+    let mut prev_left: Option<String> = None;
+    let mut prev_right: Option<String> = None;
+
+    for rank in min_rank..=max_rank {
+        let left = add_border_node(g, ids, "borderLeft", "_bl", v, rank, true);
+        if let Some(prev) = prev_left {
+            g.set_edge_with_label(
+                prev,
+                left.clone(),
+                EdgeLabel {
+                    weight: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        prev_left = Some(left);
+
+        let right = add_border_node(g, ids, "borderRight", "_br", v, rank, false);
+        if let Some(prev) = prev_right {
+            g.set_edge_with_label(
+                prev,
+                right.clone(),
+                EdgeLabel {
+                    weight: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+        prev_right = Some(right);
     }
 }
 
