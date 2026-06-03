@@ -549,6 +549,19 @@ Current repository reality to preserve:
     `taskTextOutsideRight taskTextOutside0`, and a done task, so `taskBkgColor`,
     `taskBorderColor`, `taskTextOutsideColor`, `doneTaskBkgColor`, and `doneTaskBorderColor` are
     all backed by matching DOM.
+  - A forty-eighth HPD-080 GitGraph official-theme slice confirmed the user-provided merge sample
+    renders finite/readable default output, then fixed the source-backed theme gap it exposed:
+    Mermaid 11.15 `git/styles.js` switches `neo` / `redux*` themes away from classic `git0`
+    rules into `genColor(...)`. Local GitGraph now emits redux geometry rules, redux color-theme
+    `borderColorArray` rules, neo first-branch/subsequent-branch rules, scoped neo gradient label
+    backgrounds with matching `<defs>`, and `mainBkg` merge/reverse/highlight-inner fills without
+    changing layout or root bounds.
+  - A forty-ninth HPD-080 raster integration slice fixed the Ubuntu CI blank-PNG failure for the
+    boundary `info` fixture. `info` is visible version-text output, so the fix stayed in the
+    PNG/JPEG `usvg` path: raster options now bind missing generic font aliases to loaded faces,
+    use a browser-like fallback resolver when a requested family such as `courier` is unavailable,
+    and parse no-`viewBox` `max-width` SVGs with a matching default viewport width. Parity SVG
+    output is unchanged.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

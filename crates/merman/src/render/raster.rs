@@ -193,10 +193,7 @@ struct RasterGeometry {
 
 fn svg_to_pixmap(svg: &str, scale: f32, background: Option<&str>) -> Result<tiny_skia::Pixmap> {
     let mut opt = usvg::Options::default();
-    // Keep output stable-ish across environments while still using system fonts.
-    opt.fontdb_mut().load_system_fonts();
-    // Mermaid baseline assumes a sans-serif stack; system selection may vary, but this is best-effort.
-    opt.font_family = "Arial".to_string();
+    configure_usvg_options_for_raster(&mut opt, svg);
 
     let tree = usvg::Tree::from_str(svg, &opt).map_err(|_| RasterError::SvgParse)?;
 
@@ -279,6 +276,146 @@ fn svg_to_pixmap(svg: &str, scale: f32, background: Option<&str>) -> Result<tiny
     Ok(pixmap)
 }
 
+fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
+    opt.fontdb_mut().load_system_fonts();
+
+    if parse_svg_viewbox(svg).is_none() {
+        if let Some(max_width) = parse_svg_max_width_px(svg) {
+            if max_width.is_finite() && max_width > 0.0 {
+                if let Some(size) = usvg::Size::from_wh(max_width, opt.default_size.height()) {
+                    opt.default_size = size;
+                }
+            }
+        }
+    }
+
+    configure_fontdb_generic_families(opt.fontdb_mut());
+    opt.font_family =
+        raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
+    opt.font_resolver = browser_like_font_resolver();
+}
+
+fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
+    let default_select = usvg::FontResolver::default_font_selector();
+
+    usvg::FontResolver {
+        select_font: Box::new(move |font, fontdb| {
+            default_select(font, fontdb)
+                .or_else(|| query_browser_like_fallback_font(font, fontdb.as_ref()))
+                .or_else(|| fontdb.faces().next().map(|face| face.id))
+        }),
+        select_fallback: usvg::FontResolver::default_fallback_selector(),
+    }
+}
+
+fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
+    let sans = first_font_family(fontdb, |face| !face.monospaced)
+        .or_else(|| first_font_family(fontdb, |_| true));
+    let mono = first_font_family(fontdb, |face| face.monospaced).or_else(|| sans.clone());
+
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif).is_none() {
+        if let Some(family) = sans.as_ref() {
+            fontdb.set_sans_serif_family(family.clone());
+        }
+    }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Serif).is_none() {
+        if let Some(family) = sans.as_ref() {
+            fontdb.set_serif_family(family.clone());
+        }
+    }
+    if query_normal_font_family(fontdb, usvg::fontdb::Family::Monospace).is_none() {
+        if let Some(family) = mono.as_ref() {
+            fontdb.set_monospace_family(family.clone());
+        }
+    }
+}
+
+fn raster_default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
+    query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
+        .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
+        .or_else(|| first_font_family(fontdb, |_| true))
+}
+
+fn query_browser_like_fallback_font(
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
+    let mut families = Vec::with_capacity(3);
+    if font_requests_monospace(font) {
+        families.push(usvg::fontdb::Family::Monospace);
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+    } else {
+        families.push(usvg::fontdb::Family::SansSerif);
+        families.push(usvg::fontdb::Family::Serif);
+        families.push(usvg::fontdb::Family::Monospace);
+    }
+
+    let query = usvg::fontdb::Query {
+        families: &families,
+        weight: usvg::fontdb::Weight(font.weight()),
+        stretch: font.stretch().into(),
+        style: font.style().into(),
+    };
+    fontdb.query(&query)
+}
+
+fn query_normal_font_family(
+    fontdb: &usvg::fontdb::Database,
+    family: usvg::fontdb::Family<'_>,
+) -> Option<String> {
+    let families = [family];
+    let query = usvg::fontdb::Query {
+        families: &families,
+        weight: usvg::fontdb::Weight::NORMAL,
+        stretch: usvg::fontdb::Stretch::Normal,
+        style: usvg::fontdb::Style::Normal,
+    };
+    fontdb
+        .query(&query)
+        .and_then(|id| fontdb.face(id))
+        .and_then(face_family_name)
+}
+
+fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
+where
+    F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
+{
+    fontdb
+        .faces()
+        .find(|face| predicate(face))
+        .and_then(face_family_name)
+}
+
+fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
+    face.families
+        .iter()
+        .find(|(_, lang)| *lang == usvg::fontdb::Language::English_UnitedStates)
+        .or_else(|| face.families.first())
+        .map(|(family, _)| family.clone())
+}
+
+fn font_requests_monospace(font: &usvg::Font) -> bool {
+    font.families().iter().any(|family| match family {
+        usvg::FontFamily::Monospace => true,
+        usvg::FontFamily::Named(name) => {
+            let name = name.to_ascii_lowercase();
+            name.contains("mono")
+                || name.contains("courier")
+                || name.contains("consolas")
+                || name.contains("menlo")
+        }
+        _ => false,
+    })
+}
+
+fn parse_svg_max_width_px(svg: &str) -> Option<f32> {
+    let start = svg.find("max-width:")? + "max-width:".len();
+    let rest = svg[start..].trim_start();
+    let px_end = rest.find("px")?;
+    rest[..px_end].trim().parse::<f32>().ok()
+}
+
 fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
     let s = text.trim().to_ascii_lowercase();
     match s.as_str() {
@@ -345,5 +482,35 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let bytes = svg_to_pdf(svg).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn svg_to_png_keeps_text_visible_when_requested_font_is_missing() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v11.12.2</text></svg>"##;
+        let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        assert_png_has_visible_non_background_ink(&bytes);
+    }
+
+    fn assert_png_has_visible_non_background_ink(bytes: &[u8]) {
+        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .unwrap()
+            .to_rgba8();
+        let pixels = img.as_raw();
+        let background = &pixels[..4];
+        let differing_pixels = pixels
+            .chunks_exact(4)
+            .filter(|px| {
+                let alpha_delta = px[3].abs_diff(background[3]) as u16;
+                let rgb_delta = px[0].abs_diff(background[0]) as u16
+                    + px[1].abs_diff(background[1]) as u16
+                    + px[2].abs_diff(background[2]) as u16;
+                alpha_delta > 3 || (px[3] > 0 && rgb_delta > 8)
+            })
+            .take(16)
+            .count();
+        assert!(
+            differing_pixels >= 8,
+            "expected visible text ink in rasterized PNG"
+        );
     }
 }

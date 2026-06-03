@@ -417,6 +417,77 @@ gantt
 }
 
 #[test]
+fn gitgraph_official_themes_use_mermaid_11_15_color_generation() {
+    let redux = render_svg(
+        "gitgraph-redux-visible",
+        r##"%%{init: {"theme": "redux"}}%%
+gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+  checkout main
+  merge dev
+"##,
+    );
+
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .branch-label0{fill:#28253D;font-weight:600;}"#),
+        "redux GitGraph should use Mermaid 11.15 nodeBorder branch label rules: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .label0{fill:#ffffff;stroke:#28253D;stroke-width:2;font-weight:600;}"#),
+        "redux GitGraph branch label backgrounds should use mainBkg/nodeBorder geometry rules: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .branch{stroke-width:2;stroke:#BDBCCC;stroke-dasharray:4 2;}"#),
+        "redux GitGraph branches should use Mermaid 11.15 redux stroke width and dash pattern: {redux}"
+    );
+    assert!(
+        redux.contains(
+            r#"#gitgraph-redux-visible .arrow{stroke-width:2;stroke-linecap:round;fill:none;}"#
+        ),
+        "redux GitGraph arrows should use redux geometry stroke width: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .commit-merge{stroke:#ffffff;fill:#ffffff;}"#),
+        "redux GitGraph merge commits should use mainBkg for the inner merge mark: {redux}"
+    );
+
+    let neo = render_svg(
+        "gitgraph-neo-visible",
+        r##"%%{init: {"theme": "neo"}}%%
+gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+"##,
+    );
+
+    assert!(
+        neo.contains(r#"<defs><linearGradient id="gitgraph-neo-visible-gradient""#),
+        "neo GitGraph should emit the gradient defs consumed by branch label backgrounds: {neo}"
+    );
+    assert!(
+        neo.contains(r#"#gitgraph-neo-visible .label0{fill:#ffffff;stroke:url(#gitgraph-neo-visible-gradient);stroke-width:2;}"#),
+        "neo GitGraph branch label backgrounds should consume the scoped gradient: {neo}"
+    );
+    assert!(
+        neo.contains(
+            r#"#gitgraph-neo-visible .branch{stroke-width:2;stroke:#000000;stroke-dasharray:4 2;}"#
+        ),
+        "neo GitGraph branches should use Mermaid 11.15 color-generation dash pattern: {neo}"
+    );
+    assert!(
+        neo.contains(
+            r#"#gitgraph-neo-visible .arrow{stroke-width:8;stroke-linecap:round;fill:none;}"#
+        ),
+        "neo GitGraph should keep Mermaid's bold classic arrow width: {neo}"
+    );
+}
+
+#[test]
 fn requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals() {
     let svg = render_svg(
         "requirement-visible-audit",

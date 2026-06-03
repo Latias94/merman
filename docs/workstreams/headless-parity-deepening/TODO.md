@@ -308,5 +308,13 @@ Last updated: 2026-06-03
   task, and it counted outside-label color without proving outside-label DOM. The smoke now includes
   a wide ordinary task, a narrow long-label task, and a done task so normal task, outside text, and
   done task colors each have matching DOM before being counted as visible renderability signals.
+  A follow-up GitGraph official-theme audit confirmed the user-provided merge sample itself was
+  readable, then found a source-backed CSS gap for Mermaid 11.15 `neo` / `redux*` themes. Local
+  GitGraph now mirrors the upstream color-generation branches for redux geometry, redux color
+  themes, and neo gradient label backgrounds, including scoped gradient defs for `neo` output.
+  A follow-up raster integration slice fixed the Ubuntu-only blank PNG failure for the boundary
+  `info` fixture without pretending `info` is metadata-only. PNG/JPEG raster options now provide
+  browser-like fallback when a configured family such as `courier` is unavailable and use
+  `max-width` as the default viewport width for no-`viewBox` Mermaid SVGs.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

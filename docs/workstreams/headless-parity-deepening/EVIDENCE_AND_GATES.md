@@ -3,6 +3,84 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Info Raster Font Fallback
+
+Outcome:
+
+- Diagnosed the Ubuntu-only `boundary_fixtures_render_headless_resvg_safe` failure for the bare
+  `info` fixture with `fontFamily: courier`.
+- Confirmed against pinned Mermaid source that `info` is a visible diagram, not metadata-only:
+  Mermaid's `infoRenderer.ts` appends version text and configures `width="100%"` plus
+  `max-width: 400px` without a root `viewBox`.
+- Fixed the raster integration path instead of weakening the source-content gate. PNG/JPEG `usvg`
+  options now install browser-like font fallback over loaded system fonts and bind missing generic
+  aliases to real faces when possible.
+- No-`viewBox` SVGs with `max-width: Npx` now parse with a matching default viewport width, reducing
+  platform-specific clipping/bounds behavior for Mermaid's `configureSvgSize(..., true)` output.
+- Added a regression test proving a missing requested font family still rasterizes visible text.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/info/infoRenderer.ts`
+- `repo-ref/mermaid/packages/mermaid/src/setupGraphViewbox.js`
+- `fontdb` documentation/source notes that it provides matching, not browser-style fallback.
+
+Focused verification:
+
+- `cargo test -p merman --features raster render::raster::tests -- --nocapture`
+- `cargo nextest run -p merman --features render,raster --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
+
+Residual note:
+
+- This keeps raster output host-font-backed. It does not claim exact browser font metrics or full
+  host-font independence. The deeper version would bundle an explicit fallback font; this slice
+  fixes the CI-visible blank output without changing parity SVG output.
+
+## HPD-080 - GitGraph Official Theme Color Generation
+
+Outcome:
+
+- Re-audited the user-provided multi-branch GitGraph merge sample and found the default render was
+  readable, finite, and covered by existing DOM/fixture smoke.
+- The source-backed gap was in official theme handling: Mermaid 11.15's `git/styles.js` does not
+  use the classic `git0` / `gitBranchLabel0` / `gitInv0` rules for `neo` and `redux*` themes. It
+  switches to `genColor(...)`, with separate rules for `redux`, `redux-color`, `neo`, and dark
+  variants.
+- Updated local GitGraph CSS generation so:
+  - classic/default themes keep the existing per-branch `git0..7` behavior;
+  - `redux` / `redux-dark` use `nodeBorder`, `mainBkg`, redux font weight, `strokeWidth`, and the
+    `4 2` branch dash pattern;
+  - `redux-color` / `redux-dark-color` use `borderColorArray` for colored branches and the
+    Mermaid dark-theme `mainBkg` label-fill rule;
+  - `neo` / `neo-dark` use the first-branch `nodeBorder` rule, subsequent `git*` colors, scoped
+    gradient-backed label backgrounds, `mainBkg` merge/reverse/highlight-inner fills, and the
+    color-generation dash pattern.
+- Added scoped GitGraph gradient defs when the active theme variables require them, matching the
+  current Mermaid CLI `neo` output and avoiding a broken `url(#...-gradient)` reference.
+- Added public `HeadlessRenderer` coverage for `redux` and `neo` GitGraph theme output.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/git/styles.js`
+- Fresh Mermaid CLI evidence in `target/compare/gitgraph_redux_audit_upstream.svg` showed
+  `redux` consumes `nodeBorder`, `mainBkg`, `noteFontWeight`, `strokeWidth`, and the `4 2` branch
+  dash pattern.
+- Fresh Mermaid CLI evidence in `target/compare/gitgraph_neo_audit_upstream.svg` showed `neo`
+  emits `<defs><linearGradient id="...-gradient" ...>` after `<g/>` and consumes that gradient
+  through `.label*` branch-label background rules.
+
+Focused verification:
+
+- `cargo nextest run -p merman-render gitgraph_css`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke gitgraph_official_themes_use_mermaid_11_15_color_generation`
+- `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice does not change GitGraph layout geometry, branch indexing, commit ids, root bounds, or
+  font measurement. Those remain separate parity surfaces. It only fixes source-backed CSS/defs
+  that current GitGraph DOM can consume.
+
 ## HPD-080 - Gantt Visible Signal Smoke Calibration
 
 Outcome:
