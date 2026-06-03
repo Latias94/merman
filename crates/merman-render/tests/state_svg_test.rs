@@ -83,3 +83,46 @@ Active --> [*]: done"##,
         "expected State node CSS to follow stateBkg/stateBorder/strokeWidth: {svg}"
     );
 }
+
+#[test]
+fn state_svg_honors_theme_options_on_visible_rough_paths() {
+    let svg = render_state_svg_from_text(
+        r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
+stateDiagram-v2
+[*] --> Idle
+state Decide <<choice>>
+Idle --> Decide
+Decide --> Fork
+state Fork <<fork>>
+Fork --> Join
+state Join <<join>>
+Join --> [*]
+note right of Idle : themed note"##,
+    );
+
+    assert!(
+        svg.contains(r##"fill="#101827""##),
+        "ordinary State rough paths should consume stateBkg, not the default fill: {svg}"
+    );
+    assert!(
+        svg.contains(r##"stroke="#38bdf8" stroke-width="4""##),
+        "ordinary State rough paths should consume stateBorder/strokeWidth: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#0f172a""##),
+        "choice rough paths should consume mainBkg like Mermaid's State polygon rule: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#f97316""##) && svg.contains(r##"stroke="#f97316""##),
+        "fork/join rough paths should consume specialStateColor: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#22c55e""##) && svg.contains(r##"stroke="#020617""##),
+        "end-state inner rough path should consume innerEndBackground/background: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#fef3c7""##)
+            && svg.contains(r##"stroke="#92400e" stroke-width="1.3""##),
+        "note rough paths should consume noteBkgColor/noteBorderColor: {svg}"
+    );
+}

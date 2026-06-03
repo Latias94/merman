@@ -211,21 +211,27 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
             let shape_style_escaped = escape_attr(&shape_style_attr);
-            let fill_attr = fill_override.unwrap_or("#ECECFF");
+            let outer_fill = fill_override.unwrap_or(ctx.theme_defaults.end_outer_fill.as_str());
+            let outer_stroke = ctx.theme_defaults.end_outer_stroke.as_str();
+            let inner_fill = ctx.theme_defaults.inner_end_background.as_str();
+            let inner_stroke = ctx.theme_defaults.end_inner_stroke.as_str();
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
                 escape_attr(&node.dom_id),
                 fmt(cx),
                 fmt(cy),
                 outer_d.as_str(),
-                escape_attr(fill_attr),
+                escape_attr(outer_fill),
                 shape_style_escaped,
                 outer_d.as_str(),
+                escape_attr(outer_stroke),
                 shape_style_escaped,
                 inner_d.as_str(),
-                inner_d.as_str()
+                escape_attr(inner_fill),
+                inner_d.as_str(),
+                escape_attr(inner_stroke),
             );
             drop(_g_emit);
         }
@@ -257,16 +263,27 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
+            let fill_attr =
+                fill_override.unwrap_or(ctx.theme_defaults.special_state_color.as_str());
+            let stroke_attr =
+                stroke_override.unwrap_or(ctx.theme_defaults.special_state_color.as_str());
+            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
+            let shape_style_escaped = escape_attr(&shape_style_attr);
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="{}" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
                 fill_d.as_str(),
-                stroke_d.as_str()
+                escape_xml_display(fill_attr),
+                shape_style_escaped,
+                stroke_d.as_str(),
+                escape_xml_display(stroke_attr),
+                fmt_display(stroke_width_attr),
+                shape_style_escaped
             );
             drop(_g_emit);
         }
@@ -297,16 +314,27 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_roughjs += s.elapsed();
             }
 
+            let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.main_bkg.as_str());
+            let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
+                .max(0.0);
+            let shape_style_escaped = escape_attr(&shape_style_attr);
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
                 fill_d.as_str(),
-                stroke_d.as_str()
+                escape_xml_display(fill_attr),
+                shape_style_escaped,
+                stroke_d.as_str(),
+                escape_xml_display(stroke_attr),
+                fmt_display(stroke_width_attr),
+                shape_style_escaped
             );
             drop(_g_emit);
         }
@@ -365,13 +393,15 @@ pub(super) fn render_state_node_svg(
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g></g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
                 fill_d.as_str(),
+                escape_xml_display(ctx.theme_defaults.note_bkg.as_str()),
                 stroke_d.as_str(),
+                escape_xml_display(ctx.theme_defaults.note_border.as_str()),
                 fmt_display(-lw / 2.0),
                 fmt_display(-lh / 2.0),
                 fmt_display(lw),
@@ -635,9 +665,11 @@ pub(super) fn render_state_node_svg(
                 }
             }
 
-            let fill_attr = fill_override.unwrap_or("#ECECFF");
-            let stroke_attr = stroke_override.unwrap_or("#9370DB");
-            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
+            let fill_attr = fill_override.unwrap_or(ctx.theme_defaults.state_bkg.as_str());
+            let stroke_attr = stroke_override.unwrap_or(ctx.theme_defaults.state_border.as_str());
+            let stroke_width_attr = stroke_width_override
+                .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
+                .max(0.0);
 
             let rough_start = timing_enabled.then(web_time::Instant::now);
             let key = StateRoughCacheKey {

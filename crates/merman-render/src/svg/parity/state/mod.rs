@@ -62,6 +62,7 @@ struct StateRenderCtx<'a> {
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
+    theme_defaults: StateThemeDefaults,
     rough_circle_cache: std::cell::RefCell<FxHashMap<StateRoughCacheKey, Arc<String>>>,
     rough_paths_cache: std::cell::RefCell<StateRoughPathsCache>,
 }

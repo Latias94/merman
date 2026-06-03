@@ -150,6 +150,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         include_nodes: options.include_nodes,
         measurer,
         text_style,
+        theme_defaults: StateThemeDefaults::from_config(effective_config),
         rough_circle_cache: std::cell::RefCell::new(FxHashMap::default()),
         rough_paths_cache: std::cell::RefCell::new(FxHashMap::default()),
     };

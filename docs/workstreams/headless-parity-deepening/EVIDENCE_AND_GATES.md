@@ -3,6 +3,55 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - State Visible Rough-Path Theme Consumption
+
+Outcome:
+
+- Re-audited State theme coverage against pinned Mermaid 11.15 source and current local SVG DOM.
+- Confirmed Mermaid 11.15 `state/styles.js` expects themed `.node rect`, `.node polygon`,
+  `.node .fork-join`, `.node circle.state-end`, and `.statediagram-note rect` surfaces, but current
+  local State output renders many of those visible shapes as rough inline `<path>` pairs instead.
+- Confirmed the stylesheet already emitted the right Mermaid 11.15 tokens, but ordinary State,
+  choice, fork/join, end, and note visible surfaces still used stale hardcoded inline
+  fill/stroke/stroke-width defaults, so CSS/provider parity alone did not recolor the current DOM.
+- Added `StateThemeDefaults` sourced from `effective_config`, threaded it through
+  `StateRenderCtx`, and applied those defaults only at final visible SVG attribute emission for the
+  current rough State surfaces.
+- Kept rough geometry caches color-free: `StateRoughCacheKey` and cached rough path/circle `d`
+  values still depend only on geometry and seed, not theme colors.
+- Preserved existing baseline and override behavior: the default Mermaid rough stroke still stays at
+  `1.3` when `strokeWidth` remains the default `1`, explicit `style` / `classDef` overrides still
+  serialize as `!important` style attributes on themed rough paths, and focused State compare
+  parity stayed green.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/state/styles.js`
+- `crates/merman-render/src/svg/parity/state/style.rs`
+- `crates/merman-render/src/svg/parity/state/node.rs`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman-render --test state_svg_test state_svg_honors_theme_options_on_visible_rough_paths` -
+  passed, `1` test run.
+- `cargo nextest run -p merman-render --test state_svg_test` - passed, `3` tests run.
+- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\state_report_parity_after_hpd080_state_inline_theme.md` -
+  passed, all fixtures matched.
+- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\state_report_parity_root_after_hpd080_state_inline_theme.md` -
+  passed, no structural root regression.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `10`
+  tests run.
+- `git diff --check` - passed.
+
+Residual note:
+
+- State public dark-theme smoke still proves top-level renderability signals, but honest protection
+  for the rough render-path seam now lives in focused `state_svg_test` assertions over the final
+  visible `<path>` / `<circle>` attributes.
+- Neo gradient/drop-shadow and dependency-marker rules remain deferred until local State output
+  emits the corresponding support DOM.
+
 ## HPD-080 - ER Visible Signal Boundary
 
 Outcome:

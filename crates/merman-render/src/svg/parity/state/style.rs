@@ -1,5 +1,85 @@
 use super::*;
 
+#[derive(Debug, Clone)]
+pub(super) struct StateThemeDefaults {
+    pub(super) background: String,
+    pub(super) main_bkg: String,
+    pub(super) state_bkg: String,
+    pub(super) state_border: String,
+    pub(super) stroke_width: String,
+    pub(super) stroke_width_px: String,
+    pub(super) rough_stroke_width_value: f64,
+    pub(super) special_state_color: String,
+    pub(super) inner_end_background: String,
+    pub(super) end_outer_fill: String,
+    pub(super) end_outer_stroke: String,
+    pub(super) end_inner_stroke: String,
+    pub(super) note_bkg: String,
+    pub(super) note_border: String,
+}
+
+impl StateThemeDefaults {
+    pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
+        let theme = SvgTheme::new(effective_config);
+        let line_color = theme.color("lineColor", "#333333");
+        let node_border = theme.color("nodeBorder", "#9370DB");
+        let main_bkg = theme.color("mainBkg", "#ECECFF");
+        let background = theme.color("background", "white");
+        let stroke_width = theme.css_value("strokeWidth", "1");
+        let stroke_width_px = if stroke_width.trim_end().ends_with("px") {
+            stroke_width.clone()
+        } else {
+            format!("{stroke_width}px")
+        };
+        let stroke_width_value = stroke_width
+            .trim()
+            .trim_end_matches("px")
+            .trim()
+            .parse::<f64>()
+            .unwrap_or(1.0)
+            .max(0.0);
+        let rough_stroke_width_value = if (stroke_width_value - 1.0).abs() <= 1e-9 {
+            1.3
+        } else {
+            stroke_width_value
+        };
+        let special_state_color = theme.color("specialStateColor", line_color.as_str());
+        let inner_end_background = theme.color("innerEndBackground", node_border.as_str());
+        let end_outer_fill = if special_state_color.eq_ignore_ascii_case("#333333") {
+            "#ECECFF".to_string()
+        } else {
+            special_state_color.clone()
+        };
+        let end_outer_stroke = special_state_color.clone();
+        let end_inner_stroke = if background.eq_ignore_ascii_case("white") {
+            inner_end_background.clone()
+        } else {
+            background.clone()
+        };
+
+        Self {
+            background: background.clone(),
+            main_bkg: main_bkg.clone(),
+            state_bkg: theme
+                .optional_color("stateBkg")
+                .unwrap_or_else(|| main_bkg.clone()),
+            state_border: theme
+                .optional_color("stateBorder")
+                .unwrap_or_else(|| node_border.clone()),
+            stroke_width,
+            stroke_width_px,
+            rough_stroke_width_value,
+            special_state_color,
+            inner_end_background,
+            end_outer_fill,
+            end_outer_stroke,
+            end_inner_stroke,
+            note_bkg: theme.color("noteBkgColor", "#fff5ad"),
+            note_border: theme.color("noteBorderColor", "#aaaa33"),
+        }
+    }
+}
+
 pub(super) fn state_markers(out: &mut String, diagram_id: &str) {
     let diagram_id = escape_xml(diagram_id);
     let _ = write!(
@@ -61,17 +141,14 @@ pub(super) fn state_css(
     let transition_color = theme.color("transitionColor", line_color.as_str());
     let node_border = theme.color("nodeBorder", "#9370DB");
     let state_label_color = theme.color("stateLabelColor", "#131300");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let background = theme.color("background", "white");
+    let defaults = StateThemeDefaults::from_config(effective_config);
+    let main_bkg = &defaults.main_bkg;
+    let background = &defaults.background;
     let alt_background = theme.color("altBackground", "#efefef");
-    let stroke_width = theme.css_value("strokeWidth", "1");
-    let stroke_width_px = if stroke_width.trim_end().ends_with("px") {
-        stroke_width.clone()
-    } else {
-        format!("{stroke_width}px")
-    };
-    let note_border = theme.color("noteBorderColor", "#aaaa33");
-    let note_bkg = theme.color("noteBkgColor", "#fff5ad");
+    let stroke_width = &defaults.stroke_width;
+    let stroke_width_px = &defaults.stroke_width_px;
+    let note_border = &defaults.note_border;
+    let note_bkg = &defaults.note_bkg;
     let note_text = theme.color("noteTextColor", "black");
     let label_background = theme.color("labelBackgroundColor", main_bkg.as_str());
     let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
@@ -79,17 +156,13 @@ pub(super) fn state_css(
         .optional_color("transitionLabelColor")
         .or_else(|| theme.optional_color("tertiaryTextColor"))
         .unwrap_or_else(|| text_color.clone());
-    let special_state_color = theme.color("specialStateColor", line_color.as_str());
-    let inner_end_background = theme.color("innerEndBackground", node_border.as_str());
+    let special_state_color = &defaults.special_state_color;
+    let inner_end_background = &defaults.inner_end_background;
     let composite_background = theme
         .optional_color("compositeBackground")
-        .unwrap_or_else(|| background.clone());
-    let state_bkg = theme
-        .optional_color("stateBkg")
-        .unwrap_or_else(|| main_bkg.clone());
-    let state_border = theme
-        .optional_color("stateBorder")
-        .unwrap_or_else(|| node_border.clone());
+        .unwrap_or_else(|| background.to_string());
+    let state_bkg = &defaults.state_bkg;
+    let state_border = &defaults.state_border;
     let composite_title_background = theme.color("compositeTitleBackground", main_bkg.as_str());
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.

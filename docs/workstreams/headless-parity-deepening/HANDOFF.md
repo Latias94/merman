@@ -598,6 +598,16 @@ Current repository reality to preserve:
     `.edgeLabel .label text` CSS without matching current DOM. The visible smoke now counts
     line/node colors, XHTML node labels, `.labelBkg` rgba background, and XHTML edge-label
     background.
+  - A fifty-seventh HPD-080 State visible-signal slice fixed a real production seam rather than a
+    smoke-only boundary. Pinned Mermaid 11.15 State CSS already exposed the right tokens, but many
+    current visible State surfaces render as rough inline `<path>` / `<circle>` DOM instead of the
+    stylesheet-targeted `rect` / `polygon` / `circle` selectors, so ordinary State, choice,
+    fork/join, end, and note output kept stale hardcoded fill/stroke defaults. Local State now
+    threads source-backed `StateThemeDefaults` through `StateRenderCtx` and applies them only at
+    final visible rough-path attribute emission, while keeping rough geometry caches color-free and
+    preserving explicit `style` / `classDef` `!important` overrides. Focused State SVG tests now
+    assert the final visible path/circle attributes, and State `parity`, `parity-root`, and the
+    public dark-theme smoke all stayed green.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

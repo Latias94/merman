@@ -339,5 +339,9 @@ Last updated: 2026-06-03
   A follow-up ER visible-signal audit found no production defect, but stopped the public smoke from
   counting direct `.relationshipLabelBox` and native edge-label text CSS when current ER labels are
   XHTML spans.
+  A follow-up State visible-signal slice then fixed a real production seam: current State ordinary,
+  choice, fork/join, end, and note surfaces render as rough inline shapes, so source-backed theme
+  defaults now feed final visible SVG attributes for those paths/circles instead of only emitting
+  stylesheet tokens that the current DOM would not consume.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
