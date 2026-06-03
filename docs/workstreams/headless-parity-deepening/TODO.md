@@ -221,6 +221,14 @@ Last updated: 2026-06-04
   `expansion dw=+2`. The height side has the opposite content/expansion split (`content dh=-2`,
   `expansion dh=+2`), so group padding still cannot be changed alone without regressing height.
   Continue from individual service label/content union width versus browser final service bbox.
+  A follow-up probe phase-join automation slice adds optional `--probe-dir` support to
+  `debug-architecture-delta`, reading the matching browser probe JSON and emitting the group
+  content decomposition plus service bbox join directly in each local delta report. The generated
+  reports under `target\compare\architecture-delta-probe-phase-join-hpd050\` reproduce the same
+  `+3/+3/+1` content width split, stable `+2` final expansion split, and height-side `-2/+2`
+  cancellation without manual table subtraction. Treat this as evidence tooling only; the next
+  production seam remains individual service label/content contribution width plus service
+  position drift.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

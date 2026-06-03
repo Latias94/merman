@@ -28,6 +28,67 @@ struct ArchitectureFcoseProbeRunSummary {
     edge_count: usize,
 }
 
+#[derive(Debug, Clone)]
+struct ArchitectureDeltaCli {
+    fixture: String,
+    out_dir: Option<PathBuf>,
+    probe_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DebugPt {
+    x: f64,
+    y: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DebugRect {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+impl DebugRect {
+    fn from_model_bounds(bounds: &merman_render::model::Bounds) -> Self {
+        Self {
+            x: bounds.min_x,
+            y: bounds.min_y,
+            w: (bounds.max_x - bounds.min_x).max(0.0),
+            h: (bounds.max_y - bounds.min_y).max(0.0),
+        }
+    }
+
+    fn x2(self) -> f64 {
+        self.x + self.w
+    }
+
+    fn y2(self) -> f64 {
+        self.y + self.h
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DebugRectExpansion {
+    left: f64,
+    right: f64,
+    top: f64,
+    bottom: f64,
+    dw: f64,
+    dh: f64,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureProbeNode {
+    id: String,
+    node_type: String,
+    pos: Option<DebugPt>,
+    bb: Option<DebugRect>,
+    body: Option<DebugRect>,
+    label: Option<DebugRect>,
+    children_labels: Option<DebugRect>,
+}
+
 fn normalize_arch_svg_id_with_marker(id: &str, marker: &str) -> Option<String> {
     if id.starts_with(marker) {
         return Some(id.to_string());
@@ -46,6 +107,46 @@ fn normalize_arch_junction_svg_id(id: &str) -> Option<String> {
     normalize_arch_svg_id_with_marker(id, "node-").map(|id| {
         let junction = id.strip_prefix("node-").unwrap_or(&id);
         format!("junction-{junction}")
+    })
+}
+
+fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli, XtaskError> {
+    let mut fixture: Option<String> = None;
+    let mut out_dir: Option<PathBuf> = None;
+    let mut probe_dir: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(|s| s.trim().to_string());
+            }
+            "--out" | "--out-dir" => {
+                i += 1;
+                out_dir = args.get(i).map(PathBuf::from);
+            }
+            "--probe-dir" => {
+                i += 1;
+                probe_dir = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let Some(fixture) = fixture else {
+        return Err(XtaskError::Usage);
+    };
+    if fixture.trim().is_empty() {
+        return Err(XtaskError::Usage);
+    }
+
+    Ok(ArchitectureDeltaCli {
+        fixture,
+        out_dir,
+        probe_dir,
     })
 }
 
@@ -153,6 +254,132 @@ fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
 
 fn json_string<'a>(v: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(|v| v.as_str())
+}
+
+fn json_debug_point(v: Option<&serde_json::Value>) -> Option<DebugPt> {
+    let v = v.filter(|v| !v.is_null())?;
+    Some(DebugPt {
+        x: json_f64(v, "x")?,
+        y: json_f64(v, "y")?,
+    })
+}
+
+fn json_debug_rect(v: Option<&serde_json::Value>) -> Option<DebugRect> {
+    let v = v.filter(|v| !v.is_null())?;
+    Some(DebugRect {
+        x: json_f64(v, "x1")?,
+        y: json_f64(v, "y1")?,
+        w: json_f64(v, "w")?,
+        h: json_f64(v, "h")?,
+    })
+}
+
+fn architecture_probe_nodes_by_id(
+    probe: &serde_json::Value,
+) -> BTreeMap<String, ArchitectureProbeNode> {
+    let mut out = BTreeMap::new();
+    let Some(nodes) = probe
+        .pointer("/finalElements/nodes")
+        .and_then(|v| v.as_array())
+    else {
+        return out;
+    };
+
+    for node in nodes {
+        let Some(id) = json_string(node, "id") else {
+            continue;
+        };
+        let node_type = node
+            .pointer("/data/type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<unknown>")
+            .to_string();
+        out.insert(
+            id.to_string(),
+            ArchitectureProbeNode {
+                id: id.to_string(),
+                node_type,
+                pos: json_debug_point(node.get("pos")),
+                bb: json_debug_rect(node.get("bb")),
+                body: json_debug_rect(node.get("bodyBounds")),
+                label: json_debug_rect(node.pointer("/labelBounds/all")),
+                children_labels: json_debug_rect(node.get("childrenBoundingBoxIncludeLabels")),
+            },
+        );
+    }
+
+    out
+}
+
+fn debug_rect_union(rects: impl IntoIterator<Item = DebugRect>) -> Option<DebugRect> {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    let mut any = false;
+
+    for rect in rects {
+        any = true;
+        min_x = min_x.min(rect.x);
+        min_y = min_y.min(rect.y);
+        max_x = max_x.max(rect.x2());
+        max_y = max_y.max(rect.y2());
+    }
+
+    any.then_some(DebugRect {
+        x: min_x,
+        y: min_y,
+        w: (max_x - min_x).max(0.0),
+        h: (max_y - min_y).max(0.0),
+    })
+}
+
+fn debug_rect_expansion(outer: DebugRect, inner: DebugRect) -> DebugRectExpansion {
+    DebugRectExpansion {
+        left: inner.x - outer.x,
+        right: outer.x2() - inner.x2(),
+        top: inner.y - outer.y,
+        bottom: outer.y2() - inner.y2(),
+        dw: outer.w - inner.w,
+        dh: outer.h - inner.h,
+    }
+}
+
+fn format_debug_f64(v: f64) -> String {
+    format!("{v:.6}")
+}
+
+fn format_debug_optional_f64(v: Option<f64>) -> String {
+    v.map(format_debug_f64)
+        .unwrap_or_else(|| "<n/a>".to_string())
+}
+
+fn format_debug_point(v: Option<DebugPt>) -> String {
+    v.map(|p| format!("x={:.6} y={:.6}", p.x, p.y))
+        .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn format_debug_rect(v: Option<DebugRect>) -> String {
+    v.map(|r| format!("x={:.6} y={:.6} w={:.6} h={:.6}", r.x, r.y, r.w, r.h))
+        .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn format_debug_rect_expansion(v: Option<DebugRectExpansion>) -> String {
+    v.map(|e| {
+        format!(
+            "l={:.6} r={:.6} t={:.6} b={:.6} dw={:.6} dh={:.6}",
+            e.left, e.right, e.top, e.bottom, e.dw, e.dh
+        )
+    })
+    .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn service_local_pos_key(service_id: &str) -> String {
+    format!("service-{service_id}")
+}
+
+fn group_local_rect_key(group_id: &str) -> String {
+    format!("group-{group_id}")
 }
 
 fn format_probe_f64(v: f64) -> String {
@@ -427,6 +654,186 @@ fn render_architecture_fcose_probe_batch_markdown(
     md
 }
 
+fn render_architecture_probe_join_markdown(
+    report: &mut String,
+    probe_json_path: &Path,
+    probe: &serde_json::Value,
+    layout: &merman_render::model::ArchitectureDiagramLayout,
+    local_service_positions: &BTreeMap<String, DebugPt>,
+    upstream_groups: &BTreeMap<String, DebugRect>,
+    local_groups: &BTreeMap<String, DebugRect>,
+) {
+    let probe_nodes = architecture_probe_nodes_by_id(probe);
+
+    let mut group_ids: Vec<String> = probe_nodes
+        .values()
+        .filter(|node| node.node_type == "group")
+        .map(|node| node.id.clone())
+        .chain(
+            layout
+                .cytoscape_service_bounds
+                .iter()
+                .filter_map(|service| service.in_group.clone()),
+        )
+        .collect();
+    group_ids.sort();
+    group_ids.dedup();
+
+    let _ = writeln!(report, "## Browser probe phase join\n");
+    let _ = writeln!(report, "Probe JSON: `{}`\n", probe_json_path.display());
+
+    let _ = writeln!(report, "### Group content decomposition\n");
+    let _ = writeln!(
+        report,
+        "This table compares browser `childrenBoundingBoxIncludeLabels`, local direct-service content, and final emitted group expansion. Local content is direct-service contribution only; nested group or junction content should be audited separately.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| group | direct services | browser children labels | local service content | content dw | content dh | browser final expansion | local emitted expansion | expansion dw | expansion dh | emitted dw | emitted dh |\n|---|---:|---|---|---:|---:|---|---|---:|---:|---:|---:|"
+    );
+
+    if group_ids.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | 0 | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for group_id in &group_ids {
+            let direct_services: Vec<DebugRect> = layout
+                .cytoscape_service_bounds
+                .iter()
+                .filter(|service| service.in_group.as_deref() == Some(group_id.as_str()))
+                .map(|service| DebugRect::from_model_bounds(&service.union_bounds))
+                .collect();
+            let direct_service_count = direct_services.len();
+            let local_content = debug_rect_union(direct_services);
+            let browser_group = probe_nodes.get(group_id);
+            let browser_children = browser_group.and_then(|node| node.children_labels);
+            let browser_expansion = browser_group
+                .and_then(|node| node.bb.zip(node.children_labels))
+                .map(|(bb, children)| debug_rect_expansion(bb, children));
+            let local_emitted = local_groups.get(&group_local_rect_key(group_id)).copied();
+            let upstream_emitted = upstream_groups
+                .get(&group_local_rect_key(group_id))
+                .copied();
+            let local_expansion = local_emitted
+                .zip(local_content)
+                .map(|(emitted, content)| debug_rect_expansion(emitted, content));
+
+            let content_dw = local_content
+                .zip(browser_children)
+                .map(|(local, browser)| local.w - browser.w);
+            let content_dh = local_content
+                .zip(browser_children)
+                .map(|(local, browser)| local.h - browser.h);
+            let expansion_dw = local_expansion
+                .zip(browser_expansion)
+                .map(|(local, browser)| local.dw - browser.dw);
+            let expansion_dh = local_expansion
+                .zip(browser_expansion)
+                .map(|(local, browser)| local.dh - browser.dh);
+            let emitted_dw = local_emitted
+                .zip(upstream_emitted)
+                .map(|(local, upstream)| local.w - upstream.w);
+            let emitted_dh = local_emitted
+                .zip(upstream_emitted)
+                .map(|(local, upstream)| local.h - upstream.h);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | {} | {} |",
+                group_id,
+                direct_service_count,
+                format_debug_rect(browser_children),
+                format_debug_rect(local_content),
+                format_debug_optional_f64(content_dw),
+                format_debug_optional_f64(content_dh),
+                format_debug_rect_expansion(browser_expansion),
+                format_debug_rect_expansion(local_expansion),
+                format_debug_optional_f64(expansion_dw),
+                format_debug_optional_f64(expansion_dh),
+                format_debug_optional_f64(emitted_dw),
+                format_debug_optional_f64(emitted_dh)
+            );
+        }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(report, "### Service bbox join\n");
+    let _ = writeln!(
+        report,
+        "This table joins local service contribution phases with browser final service nodes. `label dw` compares local contribution-label width with browser label width; `union dw/dh` compares local group-content contribution with browser final `node.boundingBox()`.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label | local contribution label | label dw | browser bb | local union | union dw | union dh |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---:|"
+    );
+    if layout.cytoscape_service_bounds.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for service in &layout.cytoscape_service_bounds {
+            let browser = probe_nodes
+                .get(&service.id)
+                .filter(|node| node.node_type == "service");
+            let browser_pos = browser.and_then(|node| node.pos);
+            let local_pos = local_service_positions
+                .get(&service_local_pos_key(&service.id))
+                .copied();
+            let pos_dx = local_pos
+                .zip(browser_pos)
+                .map(|(local, browser)| local.x - browser.x);
+            let pos_dy = local_pos
+                .zip(browser_pos)
+                .map(|(local, browser)| local.y - browser.y);
+
+            let browser_body = browser.and_then(|node| node.body);
+            let local_body = DebugRect::from_model_bounds(&service.body_bounds);
+            let body_dw = browser_body.map(|body| local_body.w - body.w);
+            let body_dh = browser_body.map(|body| local_body.h - body.h);
+
+            let browser_label = browser.and_then(|node| node.label);
+            let local_label = service
+                .label_bounds
+                .as_ref()
+                .map(DebugRect::from_model_bounds);
+            let label_dw = local_label
+                .zip(browser_label)
+                .map(|(local, browser)| local.w - browser.w);
+
+            let browser_bb = browser.and_then(|node| node.bb);
+            let local_union = DebugRect::from_model_bounds(&service.union_bounds);
+            let union_dw = browser_bb.map(|bb| local_union.w - bb.w);
+            let union_dh = browser_bb.map(|bb| local_union.h - bb.h);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+                service.id,
+                service.in_group.as_deref().unwrap_or("<none>"),
+                format_debug_point(browser_pos),
+                format_debug_point(local_pos),
+                format_debug_optional_f64(pos_dx),
+                format_debug_optional_f64(pos_dy),
+                format_debug_rect(browser_body),
+                format_debug_rect(Some(local_body)),
+                format_debug_optional_f64(body_dw),
+                format_debug_optional_f64(body_dh),
+                format_debug_rect(browser_label),
+                format_debug_rect(local_label),
+                format_debug_optional_f64(label_dw),
+                format_debug_rect(browser_bb),
+                format_debug_rect(Some(local_union)),
+                format_debug_optional_f64(union_dw),
+                format_debug_optional_f64(union_dh)
+            );
+        }
+    }
+    let _ = writeln!(report);
+}
+
 pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), XtaskError> {
     let cli = parse_architecture_fcose_probe_args(&args)?;
     let fixtures: Vec<(PathBuf, String)> = cli
@@ -552,30 +959,11 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
 }
 
 pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut fixture: Option<String> = None;
-    let mut out_dir: Option<PathBuf> = None;
-
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--fixture" => {
-                i += 1;
-                fixture = args.get(i).map(|s| s.trim().to_string());
-            }
-            "--out" => {
-                i += 1;
-                out_dir = args.get(i).map(PathBuf::from);
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let fixture = fixture.ok_or(XtaskError::Usage)?;
-    if fixture.trim().is_empty() {
-        return Err(XtaskError::Usage);
-    }
+    let ArchitectureDeltaCli {
+        fixture,
+        out_dir,
+        probe_dir,
+    } = parse_architecture_delta_args(&args)?;
 
     fn parse_viewbox(v: &str) -> Option<(f64, f64, f64, f64)> {
         let nums: Vec<f64> = v
@@ -628,26 +1016,12 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             .collect()
     }
 
-    #[derive(Debug, Clone, Copy)]
-    struct Pt {
-        x: f64,
-        y: f64,
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    struct Rect {
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-    }
-
     type ArchPositions = (
         Option<(f64, f64, f64, f64)>,
         Option<f64>,
-        BTreeMap<String, Pt>,
-        BTreeMap<String, Pt>,
-        BTreeMap<String, Rect>,
+        BTreeMap<String, DebugPt>,
+        BTreeMap<String, DebugPt>,
+        BTreeMap<String, DebugRect>,
     );
 
     fn extract_arch_positions(svg: &str) -> Result<ArchPositions, XtaskError> {
@@ -657,9 +1031,9 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let viewbox = root.attribute("viewBox").and_then(parse_viewbox);
         let max_width = root.attribute("style").and_then(parse_max_width_px);
 
-        let mut services: BTreeMap<String, Pt> = BTreeMap::new();
-        let mut junctions: BTreeMap<String, Pt> = BTreeMap::new();
-        let mut groups: BTreeMap<String, Rect> = BTreeMap::new();
+        let mut services: BTreeMap<String, DebugPt> = BTreeMap::new();
+        let mut junctions: BTreeMap<String, DebugPt> = BTreeMap::new();
+        let mut groups: BTreeMap<String, DebugRect> = BTreeMap::new();
 
         for n in doc.descendants().filter(|n| n.is_element()) {
             let tag = n.tag_name().name();
@@ -673,7 +1047,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                     id.and_then(|id| normalize_arch_svg_id_with_marker(id, "service-")),
                     n.attribute("transform").and_then(parse_translate),
                 ) {
-                    services.insert(id, Pt { x, y });
+                    services.insert(id, DebugPt { x, y });
                 }
             }
 
@@ -694,7 +1068,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                     junction_id,
                     n.attribute("transform").and_then(parse_translate),
                 ) {
-                    junctions.insert(id, Pt { x, y });
+                    junctions.insert(id, DebugPt { x, y });
                 }
             }
 
@@ -717,7 +1091,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                     .unwrap_or(0.0);
                 if let Some(id) = id.and_then(|id| normalize_arch_svg_id_with_marker(id, "group-"))
                 {
-                    groups.insert(id, Rect { x, y, w, h });
+                    groups.insert(id, DebugRect { x, y, w, h });
                 }
             }
         }
@@ -843,6 +1217,18 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
     let (up_vb, up_mw, up_services, up_junctions, up_groups) =
         extract_arch_positions(&upstream_svg)?;
     let (lo_vb, lo_mw, lo_services, lo_junctions, lo_groups) = extract_arch_positions(&local_svg)?;
+    let probe_json: Option<(PathBuf, serde_json::Value)> = if let Some(probe_dir) = probe_dir {
+        let probe_path = architecture_fcose_probe_json_path(&probe_dir, &stem);
+        let probe_text =
+            fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
+                path: probe_path.display().to_string(),
+                source,
+            })?;
+        let probe = serde_json::from_str(&probe_text)?;
+        Some((probe_path, probe))
+    } else {
+        None
+    };
 
     #[derive(Debug, Clone)]
     struct DeltaRow {
@@ -971,12 +1357,12 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         });
     }
 
-    let fcose_compound_rows: Vec<(String, Rect, Option<Rect>)> = layout
+    let fcose_compound_rows: Vec<(String, DebugRect, Option<DebugRect>)> = layout
         .fcose_compound_bounds
         .iter()
         .map(|compound| {
             let b = &compound.bounds;
-            let fcose = Rect {
+            let fcose = DebugRect {
                 x: b.min_x,
                 y: b.min_y,
                 w: (b.max_x - b.min_x).max(0.0),
@@ -1169,6 +1555,18 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         }
     }
     let _ = writeln!(&mut report);
+
+    if let Some((probe_path, probe)) = &probe_json {
+        render_architecture_probe_join_markdown(
+            &mut report,
+            probe_path,
+            probe,
+            layout,
+            &lo_services,
+            &up_groups,
+            &lo_groups,
+        );
+    }
 
     let _ = writeln!(
         &mut report,
@@ -1718,6 +2116,23 @@ mod tests {
     }
 
     #[test]
+    fn architecture_delta_args_accept_probe_dir() {
+        let parsed = parse_architecture_delta_args(&args(&[
+            "--fixture",
+            "batch5_long_titles",
+            "--out-dir",
+            "target/custom-delta",
+            "--probe-dir",
+            "target/custom-probe",
+        ]))
+        .unwrap();
+
+        assert_eq!(parsed.fixture, "batch5_long_titles");
+        assert_eq!(parsed.out_dir, Some(PathBuf::from("target/custom-delta")));
+        assert_eq!(parsed.probe_dir, Some(PathBuf::from("target/custom-probe")));
+    }
+
+    #[test]
     fn fcose_probe_args_require_fixture() {
         assert!(matches!(
             parse_architecture_fcose_probe_args(&[]),
@@ -1869,5 +2284,114 @@ mod tests {
         assert!(md.contains("| `group` | `group` | `node-group` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=10.000 h=12.000` | `x1=5.000 y1=7.000 w=6.000 h=4.000` | `l=1.000 r=3.000 t=2.000 b=6.000 dw=4.000 dh=8.000` | `l=3.000 r=7.000 t=3.000 b=15.000 dw=10.000 dh=18.000` | `Group Label` |"));
         assert!(md.contains("## Final Edge Bounds"));
         assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
+    }
+
+    #[test]
+    fn architecture_probe_join_decomposes_group_and_service_bounds() {
+        let probe = serde_json::json!({
+            "finalElements": {
+                "nodes": [
+                    {
+                        "id": "pipeline",
+                        "pos": { "x": 0.0, "y": 0.0 },
+                        "bb": { "x1": 0.0, "y1": 10.0, "w": 183.0, "h": 133.0 },
+                        "childrenBoundingBoxIncludeLabels": {
+                            "x1": 10.0,
+                            "y1": 20.0,
+                            "w": 100.0,
+                            "h": 50.0
+                        },
+                        "data": { "type": "group" }
+                    },
+                    {
+                        "id": "storage",
+                        "pos": { "x": 20.0, "y": 30.0 },
+                        "bb": { "x1": 20.0, "y1": 30.0, "w": 101.0, "h": 50.0 },
+                        "bodyBounds": { "x1": 20.0, "y1": 30.0, "w": 82.0, "h": 42.0 },
+                        "labelBounds": {
+                            "all": { "x1": 20.0, "y1": 30.0, "w": 101.0, "h": 20.0 }
+                        },
+                        "data": { "type": "service" }
+                    }
+                ]
+            }
+        });
+        let layout = merman_render::model::ArchitectureDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            cytoscape_service_bounds: vec![
+                merman_render::model::ArchitectureCytoscapeServiceBounds {
+                    id: "storage".to_string(),
+                    in_group: Some("pipeline".to_string()),
+                    body_bounds: merman_render::model::Bounds {
+                        min_x: 20.0,
+                        min_y: 30.0,
+                        max_x: 100.0,
+                        max_y: 70.0,
+                    },
+                    label_bounds: Some(merman_render::model::Bounds {
+                        min_x: 20.0,
+                        min_y: 30.0,
+                        max_x: 123.0,
+                        max_y: 78.0,
+                    }),
+                    union_bounds: merman_render::model::Bounds {
+                        min_x: 20.0,
+                        min_y: 30.0,
+                        max_x: 123.0,
+                        max_y: 78.0,
+                    },
+                },
+            ],
+            fcose_compound_bounds: Vec::new(),
+            bounds: None,
+        };
+        let local_service_positions =
+            BTreeMap::from([("service-storage".to_string(), DebugPt { x: 21.0, y: 31.0 })]);
+        let upstream_groups = BTreeMap::from([(
+            "group-pipeline".to_string(),
+            DebugRect {
+                x: 10.0,
+                y: 20.0,
+                w: 183.0,
+                h: 133.0,
+            },
+        )]);
+        let local_groups = BTreeMap::from([(
+            "group-pipeline".to_string(),
+            DebugRect {
+                x: 10.0,
+                y: 20.0,
+                w: 188.0,
+                h: 133.0,
+            },
+        )]);
+
+        let mut md = String::new();
+        render_architecture_probe_join_markdown(
+            &mut md,
+            Path::new("target/probe/sample.fcose-browser-probe.json"),
+            &probe,
+            &layout,
+            &local_service_positions,
+            &upstream_groups,
+            &local_groups,
+        );
+
+        assert!(md.contains("## Browser probe phase join"));
+        assert!(md.contains("| `pipeline` | 1 | `x=10.000000 y=20.000000 w=100.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 3.000000 | -2.000000 |"));
+        assert!(
+            md.contains(
+                "l=10.000000 r=73.000000 t=10.000000 b=73.000000 dw=83.000000 dh=83.000000"
+            )
+        );
+        assert!(
+            md.contains(
+                "l=10.000000 r=75.000000 t=10.000000 b=75.000000 dw=85.000000 dh=85.000000"
+            )
+        );
+        assert!(md.contains("| `storage` | `pipeline` | `x=20.000000 y=30.000000` | `x=21.000000 y=31.000000` | 1.000000 | 1.000000 |"));
+        assert!(md.contains("| -2.000000 | -2.000000 | `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 |"));
+        assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 | -2.000000 |"));
     }
 }

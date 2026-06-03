@@ -3,6 +3,62 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Probe Phase Join
+
+Outcome:
+
+- Added optional `--probe-dir` support to `xtask debug-architecture-delta`, so local Architecture
+  delta reports can read the matching browser/Cytoscape FCoSE probe JSON and emit phase-joined
+  Markdown directly.
+- Added a `Group content decomposition` table that reports browser
+  `childrenBoundingBoxIncludeLabels`, local direct-service content union, content `dw` / `dh`,
+  browser final expansion, local emitted expansion, expansion `dw` / `dh`, and emitted group
+  `dw` / `dh`.
+- Added a `Service bbox join` table that reports browser final service `bodyBounds`,
+  `labelBounds.all`, `node.boundingBox()`, local service contribution body/label/union, service
+  position drift, label-width delta, and local-union-vs-browser-final-bbox delta.
+- The automated output reproduces the earlier manual direct-width decomposition:
+  - `batch5` / `pipeline`: content `dw=+3`, expansion `dw=+2`, emitted `dw=+5`; height content
+    `dh=-2` plus expansion `dh=+2` gives emitted `dh=0`.
+  - `html_titles` / `ui`: content `dw=+3`, expansion `dw=+2`, emitted `dw=+5`; height again
+    cancels as `-2 + 2 = 0`.
+  - `unicode` / `i`: content `dw=+1`, expansion `dw=+2`, emitted `dw=+3`; height again cancels
+    as `-2 + 2 = 0`.
+- The service join now exposes the next seam without manual subtraction: `storage` and `metrics`
+  each have local contribution-label width `+4px` over browser label width and local union
+  `+2px/-3px` versus browser final service bbox; `web` has label width `+2px`, union width `0`,
+  and union height `-3px`.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-probe-phase-join.md`
+- `target\compare\architecture-delta-probe-phase-join-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p xtask architecture_delta_args_accept_probe_dir architecture_probe_join_decomposes_group_and_service_bounds fcose_probe_markdown_summarizes_stage_and_node_bounds` -
+  passed, `3` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-probe-phase-join-hpd050` -
+  passed and wrote the automatic `pipeline` phase join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-probe-phase-join-hpd050` -
+  passed and wrote the automatic `ui` phase join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-probe-phase-join-hpd050` -
+  passed and wrote the automatic `i` phase join.
+- `cargo nextest run -p xtask` - passed, `97` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is evidence tooling only. The new automated join reinforces the rejection of standalone
+  group-padding, root-padding, group-title-bounds, final-rect-emission, and direct FCoSE compound
+  rect substitution fixes for these rows. Continue from individual service label/content
+  contribution width, service position drift, and their feed into final group expansion.
+
 ## HPD-050 - Architecture Service Phase Join
 
 Outcome:
