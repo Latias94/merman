@@ -90,6 +90,7 @@ fn print_help(topic: Option<&str>) {
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
     println!("  report-overrides");
+    println!("  gen-c4-text-overrides");
     println!("  audit-root-overrides");
     println!("  triage-flowchart-root-pins");
     println!();
@@ -171,6 +172,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-class-svgs" => cmd::gen_class_svgs(args.collect()),
         "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
+        "gen-c4-text-overrides" => cmd::gen_c4_text_overrides(args.collect()),
         "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),

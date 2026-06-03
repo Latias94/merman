@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 847.0,
+        "max_x": 876.0,
         "max_y": 1943.0
       },
-      "width": 897.0,
+      "width": 926.0,
       "height": 1953.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 697.0,
+          "width": 726.0,
           "height": 1827.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 973.0,
-          "width": 514.0,
+          "width": 543.0,
           "height": 870.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "API Application",
             "y": 8.0,
-            "width": 100.0,
+            "width": 119.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
             "y": 30.0,
-            "width": 81.0,
+            "width": 89.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -79,7 +79,7 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 502.0,
+          "width": 520.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -97,7 +97,7 @@
           "label": {
             "text": "Single Page Application",
             "y": 38.0,
-            "width": 151.0,
+            "width": 182.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -112,7 +112,7 @@
           "descr": {
             "text": "Provides all the internet banking functionality to customers via their web browser.",
             "y": 94.0,
-            "width": 482.0,
+            "width": 500.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -123,7 +123,7 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 371.0,
-          "width": 597.0,
+          "width": 626.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -141,7 +141,7 @@
           "label": {
             "text": "Mobile App",
             "y": 38.0,
-            "width": 68.0,
+            "width": 86.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -156,7 +156,7 @@
           "descr": {
             "text": "Provides a limited subset to the internet banking functionality to customers via their mobile device.",
             "y": 94.0,
-            "width": 577.0,
+            "width": 606.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -167,7 +167,7 @@
           "type_c4_shape": "container_db",
           "x": 150.0,
           "y": 576.0,
-          "width": 529.0,
+          "width": 566.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -185,7 +185,7 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 58.0,
+            "width": 71.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -200,7 +200,7 @@
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
             "y": 94.0,
-            "width": 509.0,
+            "width": 546.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -211,7 +211,7 @@
           "type_c4_shape": "external_system",
           "x": 150.0,
           "y": 781.0,
-          "width": 527.0,
+          "width": 559.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -229,7 +229,7 @@
           "label": {
             "text": "Mainframe Banking System",
             "y": 38.0,
-            "width": 180.0,
+            "width": 209.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -238,7 +238,7 @@
           "descr": {
             "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
             "y": 75.0,
-            "width": 507.0,
+            "width": 539.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -249,7 +249,7 @@
           "type_c4_shape": "component",
           "x": 200.0,
           "y": 1073.0,
-          "width": 335.0,
+          "width": 351.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -267,7 +267,7 @@
           "label": {
             "text": "Sign In Controller",
             "y": 38.0,
-            "width": 117.0,
+            "width": 135.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -282,7 +282,7 @@
           "descr": {
             "text": "Allows users to sign in to the internet banking system",
             "y": 94.0,
-            "width": 315.0,
+            "width": 331.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -293,7 +293,7 @@
           "type_c4_shape": "component",
           "x": 200.0,
           "y": 1278.0,
-          "width": 365.0,
+          "width": 386.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -311,7 +311,7 @@
           "label": {
             "text": "Accounts Summary Controller",
             "y": 38.0,
-            "width": 199.0,
+            "width": 233.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -326,7 +326,7 @@
           "descr": {
             "text": "Provides customers with a summary of their bank accounts",
             "y": 94.0,
-            "width": 345.0,
+            "width": 366.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -337,7 +337,7 @@
           "type_c4_shape": "component",
           "x": 200.0,
           "y": 1483.0,
-          "width": 414.0,
+          "width": 443.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -355,7 +355,7 @@
           "label": {
             "text": "Security Component",
             "y": 38.0,
-            "width": 133.0,
+            "width": 157.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -370,7 +370,7 @@
           "descr": {
             "text": "Provides functionality related to singing in, changing passwords, etc.",
             "y": 94.0,
-            "width": 394.0,
+            "width": 423.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -381,7 +381,7 @@
           "type_c4_shape": "component",
           "x": 200.0,
           "y": 1688.0,
-          "width": 285.0,
+          "width": 305.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -399,7 +399,7 @@
           "label": {
             "text": "Mainframe Banking System Facade",
             "y": 38.0,
-            "width": 230.0,
+            "width": 269.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -414,7 +414,7 @@
           "descr": {
             "text": "A facade onto the mainframe banking system.",
             "y": 94.0,
-            "width": 265.0,
+            "width": 285.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -426,11 +426,11 @@
           "to": "security",
           "rel_type": "rel",
           "start_point": {
-            "x": 390.997,
+            "x": 400.643,
             "y": 1178.0
           },
           "end_point": {
-            "x": 431.598,
+            "x": 447.273,
             "y": 1483.0
           },
           "offset_x": -160.0,
@@ -438,7 +438,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -450,11 +450,11 @@
           "to": "mbsfacade",
           "rel_type": "rel",
           "start_point": {
-            "x": 398.676,
+            "x": 410.311,
             "y": 1383.0
           },
           "end_point": {
-            "x": 369.301,
+            "x": 380.843,
             "y": 1688.0
           },
           "offset_x": 140.0,
@@ -462,7 +462,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -474,11 +474,11 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 420.179,
+            "x": 435.815,
             "y": 1483.0
           },
           "end_point": {
-            "x": 428.562,
+            "x": 447.855,
             "y": 681.0
           },
           "offset_x": null,
@@ -486,7 +486,7 @@
           "label": {
             "text": "Read & write to",
             "y": 0.0,
-            "width": 80.0,
+            "width": 82.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -504,11 +504,11 @@
           "to": "mbs",
           "rel_type": "rel",
           "start_point": {
-            "x": 355.473,
+            "x": 366.445,
             "y": 1688.0
           },
           "end_point": {
-            "x": 422.127,
+            "x": 438.575,
             "y": 867.0
           },
           "offset_x": null,
@@ -516,7 +516,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -534,11 +534,11 @@
           "to": "sign",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 412.901,
+            "x": 422.338,
             "y": 271.0
           },
           "end_point": {
-            "x": 379.849,
+            "x": 388.402,
             "y": 1073.0
           },
           "offset_x": null,
@@ -546,7 +546,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -564,11 +564,11 @@
           "to": "accounts",
           "rel_type": "rel",
           "start_point": {
-            "x": 411.482,
+            "x": 420.955,
             "y": 271.0
           },
           "end_point": {
-            "x": 392.46,
+            "x": 403.406,
             "y": 1278.0
           },
           "offset_x": 40.0,
@@ -576,7 +576,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -594,11 +594,11 @@
           "to": "sign",
           "rel_type": "rel",
           "start_point": {
-            "x": 463.634,
+            "x": 478.691,
             "y": 476.0
           },
           "end_point": {
-            "x": 387.587,
+            "x": 396.759,
             "y": 1073.0
           },
           "offset_x": -90.0,
@@ -606,7 +606,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -624,11 +624,11 @@
           "to": "accounts",
           "rel_type": "rel",
           "start_point": {
-            "x": 461.221,
+            "x": 476.296,
             "y": 476.0
           },
           "end_point": {
-            "x": 397.768,
+            "x": 409.159,
             "y": 1278.0
           },
           "offset_x": null,
@@ -636,7 +636,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

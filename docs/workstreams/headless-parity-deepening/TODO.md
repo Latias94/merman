@@ -370,5 +370,10 @@ Last updated: 2026-06-03
   use the source-backed redux shape branch. Current SVG output emits `data-look="neo"` only for
   `neo` nodes/edges, then applies the matching Mermaid 11.15 neo node/root/edge/drop-shadow and
   gradient CSS/defs while preserving default structural parity.
+  A follow-up C4 text measurement slice fixed a baseline-environment seam: stored C4 upstream SVGs
+  match `mmdc + chrome-headless-shell` text bboxes, so local C4 layout now uses a generated,
+  C4-scoped headless-shell text lookup table keyed by font family, size, weight, and exact text
+  before falling back to deterministic SVG bbox measurement. The key long C4 description now
+  produces the expected `552px` box and C4 structural/root compare stays green.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

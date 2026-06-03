@@ -58,14 +58,14 @@
           "label": {
             "text": "NL",
             "y": 8.0,
-            "width": 19.0,
+            "width": 22.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
             "y": 30.0,
-            "width": 33.0,
+            "width": 39.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -86,14 +86,14 @@
           "label": {
             "text": "NR",
             "y": 8.0,
-            "width": 19.0,
+            "width": 24.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
             "y": 30.0,
-            "width": 33.0,
+            "width": 39.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -114,14 +114,14 @@
           "label": {
             "text": "ND",
             "y": 8.0,
-            "width": 19.0,
+            "width": 24.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
             "y": 30.0,
-            "width": 33.0,
+            "width": 39.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -153,7 +153,7 @@
           "label": {
             "text": "P1",
             "y": 86.0,
-            "width": 19.0,
+            "width": 20.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -185,7 +185,7 @@
           "label": {
             "text": "P2",
             "y": 86.0,
-            "width": 19.0,
+            "width": 20.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -217,7 +217,7 @@
           "label": {
             "text": "P3",
             "y": 86.0,
-            "width": 19.0,
+            "width": 20.0,
             "height": 17.0,
             "line_count": 1.0
           },

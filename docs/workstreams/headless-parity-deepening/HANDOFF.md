@@ -651,6 +651,13 @@ Current repository reality to preserve:
     matching Mermaid 11.15 `neo` node/root/edge/drop-shadow/gradient CSS and scoped gradient defs.
     Mindmap structural `parity` stayed green; the known `4` Mindmap `parity-root` rows remain
     diagnostic.
+  - A sixty-second HPD-080 C4 text measurement slice fixed a baseline-environment drift rather than
+    a renderer CSS defect. The pinned C4 upstream SVGs match `mmdc + chrome-headless-shell`
+    `getBBox()` text widths, while Edge/generic vendored metrics diverged on long C4 descriptions.
+    C4 now defaults layout measurement to the emitted `"Open Sans", sans-serif` font family and
+    uses a generated, C4-scoped headless-shell text lookup table before falling back to deterministic
+    SVG bbox measurement. The key `SystemAA` description now lands at `532.484375px`, producing the
+    expected `552px` C4 box width and keeping C4 structural/root compare green.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

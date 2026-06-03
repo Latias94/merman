@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 814.0,
+        "max_x": 826.0,
         "max_y": 419.0
       },
-      "width": 864.0,
+      "width": 876.0,
       "height": 429.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 664.0,
+          "width": 676.0,
           "height": 303.0,
           "image": {
             "width": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 248.0,
+          "width": 259.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -69,7 +69,7 @@
           "label": {
             "text": "Web App",
             "y": 38.0,
-            "width": 56.0,
+            "width": 70.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -84,7 +84,7 @@
           "descr": {
             "text": "Provides Internet banking functionality.",
             "y": 94.0,
-            "width": 228.0,
+            "width": 239.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -93,9 +93,9 @@
           "alias": "q",
           "parent_boundary": "global",
           "type_c4_shape": "external_container_queue",
-          "x": 498.0,
+          "x": 509.0,
           "y": 166.0,
-          "width": 216.0,
+          "width": 217.0,
           "height": 153.0,
           "margin": 50.0,
           "image": {
@@ -113,7 +113,7 @@
           "label": {
             "text": "External Container Queue",
             "y": 86.0,
-            "width": 165.0,
+            "width": 197.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -128,7 +128,7 @@
           "descr": {
             "text": "External queue container.",
             "y": 142.0,
-            "width": 144.0,
+            "width": 159.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -140,19 +140,19 @@
           "to": "q",
           "rel_type": "rel",
           "start_point": {
-            "x": 398.0,
-            "y": 239.303
+            "x": 409.0,
+            "y": 239.691
           },
           "end_point": {
-            "x": 498.0,
-            "y": 267.813
+            "x": 509.0,
+            "y": 267.32
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Publishes",
             "y": 0.0,
-            "width": 45.0,
+            "width": 52.0,
             "height": 14.0,
             "line_count": 1.0
           },

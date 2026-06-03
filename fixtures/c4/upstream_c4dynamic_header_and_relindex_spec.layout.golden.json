@@ -69,7 +69,7 @@
           "label": {
             "text": "A",
             "y": 86.0,
-            "width": 10.0,
+            "width": 13.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -101,7 +101,7 @@
           "label": {
             "text": "B",
             "y": 38.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -128,7 +128,7 @@
           "label": {
             "text": "1: calls",
             "y": 0.0,
-            "width": 36.0,
+            "width": 37.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -152,7 +152,7 @@
           "label": {
             "text": "2: returns",
             "y": 0.0,
-            "width": 50.0,
+            "width": 51.0,
             "height": 14.0,
             "line_count": 1.0
           },

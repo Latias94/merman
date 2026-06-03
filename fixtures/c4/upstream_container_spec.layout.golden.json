@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 782.0,
+        "max_x": 802.0,
         "max_y": 1146.0
       },
-      "width": 832.0,
+      "width": 852.0,
       "height": 1156.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 632.0,
+          "width": 652.0,
           "height": 1030.0,
           "image": {
             "width": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 518.0,
+          "width": 552.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -84,7 +84,7 @@
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
             "y": 94.0,
-            "width": 498.0,
+            "width": 532.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -245,7 +245,7 @@
           "label": {
             "text": "External Container DB",
             "y": 38.0,
-            "width": 147.0,
+            "width": 170.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -271,7 +271,7 @@
           "type_c4_shape": "external_container_queue",
           "x": 150.0,
           "y": 781.0,
-          "width": 216.0,
+          "width": 217.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -289,7 +289,7 @@
           "label": {
             "text": "External Container Queue",
             "y": 38.0,
-            "width": 165.0,
+            "width": 197.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -313,7 +313,7 @@
           "alias": "ContainerSprite",
           "parent_boundary": "global",
           "type_c4_shape": "container",
-          "x": 466.0,
+          "x": 467.0,
           "y": 781.0,
           "width": 216.0,
           "height": 60.0,

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 1858.0,
+        "max_x": 1932.0,
         "max_y": 1639.0
       },
-      "width": 1908.0,
+      "width": 1982.0,
       "height": 1649.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 1708.0,
+          "width": 1782.0,
           "height": 1523.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 122.0,
-          "width": 700.0,
+          "width": 729.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "Customer's mobile device",
             "y": 8.0,
-            "width": 171.0,
+            "width": 198.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Apple IOS or Android]",
             "y": 30.0,
-            "width": 129.0,
+            "width": 139.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -74,9 +74,9 @@
         {
           "alias": "comp",
           "parent_boundary": "global",
-          "x": 900.0,
+          "x": 929.0,
           "y": 122.0,
-          "width": 721.0,
+          "width": 738.0,
           "height": 377.0,
           "image": {
             "width": 0.0,
@@ -86,14 +86,14 @@
           "label": {
             "text": "Customer's computer",
             "y": 8.0,
-            "width": 146.0,
+            "width": 166.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Microsoft Windows or Apple macOS]",
             "y": 30.0,
-            "width": 215.0,
+            "width": 231.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -102,9 +102,9 @@
         {
           "alias": "browser",
           "parent_boundary": "comp",
-          "x": 950.0,
+          "x": 979.0,
           "y": 194.0,
-          "width": 621.0,
+          "width": 638.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -114,14 +114,14 @@
           "label": {
             "text": "Web Browser",
             "y": 8.0,
-            "width": 89.0,
+            "width": 104.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Google Chrome, Mozilla Firefox,<br/> Apple Safari or Microsoft Edge]",
             "y": 30.0,
-            "width": 187.0,
+            "width": 205.0,
             "height": 32.0,
             "line_count": 2.0
           },
@@ -132,7 +132,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 605.0,
-          "width": 1608.0,
+          "width": 1682.0,
           "height": 934.0,
           "image": {
             "width": 0.0,
@@ -142,14 +142,14 @@
           "label": {
             "text": "Big Bank plc",
             "y": 8.0,
-            "width": 82.0,
+            "width": 97.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Big Bank plc data center]",
             "y": 30.0,
-            "width": 150.0,
+            "width": 160.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -160,7 +160,7 @@
           "parent_boundary": "plc",
           "x": 200.0,
           "y": 661.0,
-          "width": 592.0,
+          "width": 612.0,
           "height": 361.0,
           "image": {
             "width": 0.0,
@@ -170,14 +170,14 @@
           "label": {
             "text": "bigbank-api*** x8",
             "y": 8.0,
-            "width": 114.0,
+            "width": 131.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Ubuntu 16.04 LTS]",
             "y": 30.0,
-            "width": 117.0,
+            "width": 120.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -188,7 +188,7 @@
           "parent_boundary": "dn",
           "x": 250.0,
           "y": 717.0,
-          "width": 492.0,
+          "width": 512.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -198,14 +198,14 @@
           "label": {
             "text": "Apache Tomcat",
             "y": 8.0,
-            "width": 99.0,
+            "width": 120.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Apache Tomcat 8.x]",
             "y": 30.0,
-            "width": 118.0,
+            "width": 127.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -214,9 +214,9 @@
         {
           "alias": "bb2",
           "parent_boundary": "plc",
-          "x": 842.0,
+          "x": 862.0,
           "y": 661.0,
-          "width": 653.0,
+          "width": 687.0,
           "height": 361.0,
           "image": {
             "width": 0.0,
@@ -226,14 +226,14 @@
           "label": {
             "text": "bigbank-web*** x4",
             "y": 8.0,
-            "width": 122.0,
+            "width": 139.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Ubuntu 16.04 LTS]",
             "y": 30.0,
-            "width": 117.0,
+            "width": 120.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -242,9 +242,9 @@
         {
           "alias": "apache2",
           "parent_boundary": "bb2",
-          "x": 892.0,
+          "x": 912.0,
           "y": 717.0,
-          "width": 553.0,
+          "width": 587.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -254,14 +254,14 @@
           "label": {
             "text": "Apache Tomcat",
             "y": 8.0,
-            "width": 99.0,
+            "width": 120.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Apache Tomcat 8.x]",
             "y": 30.0,
-            "width": 118.0,
+            "width": 127.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -272,7 +272,7 @@
           "parent_boundary": "plc",
           "x": 200.0,
           "y": 1128.0,
-          "width": 729.0,
+          "width": 766.0,
           "height": 361.0,
           "image": {
             "width": 0.0,
@@ -282,14 +282,14 @@
           "label": {
             "text": "bigbank-db01",
             "y": 8.0,
-            "width": 85.0,
+            "width": 104.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Ubuntu 16.04 LTS]",
             "y": 30.0,
-            "width": 117.0,
+            "width": 120.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -300,7 +300,7 @@
           "parent_boundary": "bigbankdb01",
           "x": 250.0,
           "y": 1184.0,
-          "width": 629.0,
+          "width": 666.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -310,14 +310,14 @@
           "label": {
             "text": "Oracle - Primary",
             "y": 8.0,
-            "width": 113.0,
+            "width": 124.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Oracle 12c]",
             "y": 30.0,
-            "width": 72.0,
+            "width": 76.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -326,9 +326,9 @@
         {
           "alias": "bigbankdb02",
           "parent_boundary": "plc",
-          "x": 979.0,
+          "x": 1016.0,
           "y": 1128.0,
-          "width": 729.0,
+          "width": 766.0,
           "height": 361.0,
           "image": {
             "width": 0.0,
@@ -338,14 +338,14 @@
           "label": {
             "text": "bigbank-db02",
             "y": 8.0,
-            "width": 85.0,
+            "width": 104.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Ubuntu 16.04 LTS]",
             "y": 30.0,
-            "width": 117.0,
+            "width": 120.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -354,9 +354,9 @@
         {
           "alias": "oracle2",
           "parent_boundary": "bigbankdb02",
-          "x": 1029.0,
+          "x": 1066.0,
           "y": 1184.0,
-          "width": 629.0,
+          "width": 666.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -366,14 +366,14 @@
           "label": {
             "text": "Oracle - Secondary",
             "y": 8.0,
-            "width": 124.0,
+            "width": 146.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Oracle 12c]",
             "y": 30.0,
-            "width": 72.0,
+            "width": 76.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -387,7 +387,7 @@
           "type_c4_shape": "container",
           "x": 200.0,
           "y": 222.0,
-          "width": 600.0,
+          "width": 629.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -405,7 +405,7 @@
           "label": {
             "text": "Mobile App",
             "y": 38.0,
-            "width": 68.0,
+            "width": 86.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -420,7 +420,7 @@
           "descr": {
             "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device.",
             "y": 94.0,
-            "width": 580.0,
+            "width": 609.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -429,9 +429,9 @@
           "alias": "spa",
           "parent_boundary": "browser",
           "type_c4_shape": "container",
-          "x": 1000.0,
+          "x": 1029.0,
           "y": 294.0,
-          "width": 521.0,
+          "width": 538.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -449,7 +449,7 @@
           "label": {
             "text": "Single Page Application",
             "y": 38.0,
-            "width": 151.0,
+            "width": 182.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -464,7 +464,7 @@
           "descr": {
             "text": "Provides all of the Internet Banking functionality to customers via their web browser.",
             "y": 94.0,
-            "width": 501.0,
+            "width": 518.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -475,7 +475,7 @@
           "type_c4_shape": "container",
           "x": 300.0,
           "y": 817.0,
-          "width": 392.0,
+          "width": 412.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -493,7 +493,7 @@
           "label": {
             "text": "API Application",
             "y": 38.0,
-            "width": 100.0,
+            "width": 119.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -508,7 +508,7 @@
           "descr": {
             "text": "Provides Internet Banking functionality via a JSON/HTTPS API.",
             "y": 94.0,
-            "width": 372.0,
+            "width": 392.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -517,9 +517,9 @@
           "alias": "web",
           "parent_boundary": "apache2",
           "type_c4_shape": "container",
-          "x": 942.0,
+          "x": 962.0,
           "y": 817.0,
-          "width": 453.0,
+          "width": 487.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -537,7 +537,7 @@
           "label": {
             "text": "Web Application",
             "y": 38.0,
-            "width": 104.0,
+            "width": 126.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -552,7 +552,7 @@
           "descr": {
             "text": "Delivers the static content and the Internet Banking single page application.",
             "y": 94.0,
-            "width": 433.0,
+            "width": 467.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -563,7 +563,7 @@
           "type_c4_shape": "container_db",
           "x": 300.0,
           "y": 1284.0,
-          "width": 529.0,
+          "width": 566.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -581,7 +581,7 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 58.0,
+            "width": 71.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -596,7 +596,7 @@
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
             "y": 94.0,
-            "width": 509.0,
+            "width": 546.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -605,9 +605,9 @@
           "alias": "db2",
           "parent_boundary": "oracle2",
           "type_c4_shape": "container_db",
-          "x": 1079.0,
+          "x": 1116.0,
           "y": 1284.0,
-          "width": 529.0,
+          "width": 566.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -625,7 +625,7 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 58.0,
+            "width": 71.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -640,7 +640,7 @@
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
             "y": 94.0,
-            "width": 509.0,
+            "width": 546.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -652,11 +652,11 @@
           "to": "api",
           "rel_type": "rel",
           "start_point": {
-            "x": 524.0,
+            "x": 539.311,
             "y": 327.0
           },
           "end_point": {
-            "x": 515.355,
+            "x": 526.758,
             "y": 817.0
           },
           "offset_x": null,
@@ -664,7 +664,7 @@
           "label": {
             "text": "Makes API calls to",
             "y": 0.0,
-            "width": 92.0,
+            "width": 98.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -682,11 +682,11 @@
           "to": "api",
           "rel_type": "rel",
           "start_point": {
-            "x": 1214.523,
+            "x": 1250.289,
             "y": 399.0
           },
           "end_point": {
-            "x": 603.176,
+            "x": 617.36,
             "y": 817.0
           },
           "offset_x": null,
@@ -694,7 +694,7 @@
           "label": {
             "text": "Makes API calls to",
             "y": 0.0,
-            "width": 92.0,
+            "width": 98.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -712,11 +712,11 @@
           "to": "spa",
           "rel_type": "rel_u",
           "start_point": {
-            "x": 1204.039,
+            "x": 1242.992,
             "y": 817.0
           },
           "end_point": {
-            "x": 1275.871,
+            "x": 1314.101,
             "y": 399.0
           },
           "offset_x": null,
@@ -724,7 +724,7 @@
           "label": {
             "text": "Delivers to the customer's web browser",
             "y": 0.0,
-            "width": 203.0,
+            "width": 210.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -736,11 +736,11 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 522.73,
+            "x": 534.6,
             "y": 922.0
           },
           "end_point": {
-            "x": 589.325,
+            "x": 609.092,
             "y": 1284.0
           },
           "offset_x": 5.0,
@@ -748,7 +748,7 @@
           "label": {
             "text": "Reads from and writes to",
             "y": 0.0,
-            "width": 128.0,
+            "width": 134.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -766,11 +766,11 @@
           "to": "db2",
           "rel_type": "rel",
           "start_point": {
-            "x": 601.455,
+            "x": 617.064,
             "y": 922.0
           },
           "end_point": {
-            "x": 1269.658,
+            "x": 1321.738,
             "y": 1284.0
           },
           "offset_x": -40.0,
@@ -778,7 +778,7 @@
           "label": {
             "text": "Reads from and writes to",
             "y": 0.0,
-            "width": 128.0,
+            "width": 134.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -796,19 +796,19 @@
           "to": "db2",
           "rel_type": "rel_r",
           "start_point": {
-            "x": 829.0,
-            "y": 1349.807
+            "x": 866.0,
+            "y": 1350.019
           },
           "end_point": {
-            "x": 1079.0,
-            "y": 1363.49
+            "x": 1116.0,
+            "y": 1364.375
           },
           "offset_x": null,
           "offset_y": -10.0,
           "label": {
             "text": "Replicates data to",
             "y": 0.0,
-            "width": 89.0,
+            "width": 96.0,
             "height": 14.0,
             "line_count": 1.0
           },

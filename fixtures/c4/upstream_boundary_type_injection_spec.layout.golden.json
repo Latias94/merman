@@ -58,14 +58,14 @@
           "label": {
             "text": "Enterprise",
             "y": 8.0,
-            "width": 69.0,
+            "width": 79.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[ENTERPRISE]",
             "y": 30.0,
-            "width": 89.0,
+            "width": 97.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -86,14 +86,14 @@
           "label": {
             "text": "System",
             "y": 8.0,
-            "width": 52.0,
+            "width": 57.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[SYSTEM]",
             "y": 30.0,
-            "width": 60.0,
+            "width": 65.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -114,14 +114,14 @@
           "label": {
             "text": "Container",
             "y": 8.0,
-            "width": 62.0,
+            "width": 75.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
             "y": 30.0,
-            "width": 81.0,
+            "width": 89.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -153,7 +153,7 @@
           "label": {
             "text": "C1",
             "y": 38.0,
-            "width": 19.0,
+            "width": 20.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -168,7 +168,7 @@
           "descr": {
             "text": "Desc",
             "y": 94.0,
-            "width": 26.0,
+            "width": 33.0,
             "height": 16.0,
             "line_count": 1.0
           }

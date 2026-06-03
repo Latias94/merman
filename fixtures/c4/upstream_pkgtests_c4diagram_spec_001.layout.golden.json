@@ -69,7 +69,7 @@
           "label": {
             "text": "Person",
             "y": 86.0,
-            "width": 44.0,
+            "width": 54.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "Person",
             "y": 123.0,
-            "width": 39.0,
+            "width": 45.0,
             "height": 16.0,
             "line_count": 1.0
           }

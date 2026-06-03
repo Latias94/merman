@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 895.0,
-        "max_y": 352.0
+        "max_x": 565.0,
+        "max_y": 538.0
       },
-      "width": 945.0,
-      "height": 362.0,
+      "width": 615.0,
+      "height": 548.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Context",
@@ -20,8 +20,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 745.0,
-          "height": 236.0,
+          "width": 415.0,
+          "height": 422.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 166.0,
-          "width": 250.0,
+          "width": 265.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -69,7 +69,7 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 165.0,
+            "width": 188.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "Allows customers to view account data.",
             "y": 75.0,
-            "width": 230.0,
+            "width": 245.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -87,9 +87,9 @@
           "alias": "s2",
           "parent_boundary": "global",
           "type_c4_shape": "external_system",
-          "x": 500.0,
-          "y": 166.0,
-          "width": 295.0,
+          "x": 150.0,
+          "y": 352.0,
+          "width": 315.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -107,7 +107,7 @@
           "label": {
             "text": "E-mail system",
             "y": 38.0,
-            "width": 97.0,
+            "width": 108.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -116,7 +116,7 @@
           "descr": {
             "text": "The internal Microsoft Exchange e-mail system.",
             "y": 75.0,
-            "width": 275.0,
+            "width": 295.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -128,19 +128,19 @@
           "to": "s2",
           "rel_type": "rel",
           "start_point": {
-            "x": 400.0,
-            "y": 219.804
+            "x": 312.074,
+            "y": 252.0
           },
           "end_point": {
-            "x": 500.0,
-            "y": 237.189
+            "x": 347.343,
+            "y": 352.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Sends e-mails",
             "y": 0.0,
-            "width": 67.0,
+            "width": 76.0,
             "height": 14.0,
             "line_count": 1.0
           },

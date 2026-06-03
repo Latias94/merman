@@ -62,7 +62,7 @@ impl OverrideCategory {
     fn no_growth_budget(self) -> usize {
         match self {
             OverrideCategory::RootViewport => 299,
-            OverrideCategory::TextLookup => 495,
+            OverrideCategory::TextLookup => 689,
             OverrideCategory::SvgTextMetrics => 1036,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::HandCuratedHelpers => 0,
@@ -208,7 +208,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         "- Root viewport lookups in parity renderers must be applied through `apply_root_viewport_override`."
     );
     println!(
-        "- Text lookup entries count generated or hand-curated `=> Some(...)` parity branches and rows in `*_OVERRIDES_*` lookup tables."
+        "- Text lookup entries count generated or hand-curated `=> Some(...)` parity branches and rows in generated lookup tables."
     );
     println!("- Table rows count tuple rows in generated font/SVG metric arrays.");
 
@@ -473,6 +473,15 @@ fn classify_generated_override_file(file_name: String, text: &str) -> Vec<Overri
     }
 
     if file_name.contains("_text_overrides_") {
+        if file_name == format!("c4_text_overrides_{LEGACY_GENERATED_BASELINE_SUFFIX}.rs") {
+            return vec![OverrideFootprintEntry {
+                file_name,
+                category: OverrideCategory::TextLookup,
+                count: count_local_lookup_table_rows(text),
+                unit: "lookup entries",
+            }];
+        }
+
         if file_name == format!("class_text_overrides_{LEGACY_GENERATED_BASELINE_SUFFIX}.rs") {
             let class_entries = classify_class_text_override_file(&file_name, text);
             if !class_entries.is_empty() {
@@ -639,6 +648,31 @@ fn count_static_override_table_rows(text: &str) -> usize {
 
         if trimmed.starts_with("];") {
             in_override_table = false;
+            continue;
+        }
+
+        if trimmed.starts_with('(') {
+            rows += 1;
+        }
+    }
+
+    rows
+}
+
+fn count_local_lookup_table_rows(text: &str) -> usize {
+    let mut in_lookup_table = false;
+    let mut rows = 0usize;
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if !in_lookup_table {
+            in_lookup_table =
+                trimmed.starts_with("let ") && trimmed.contains("tbl") && trimmed.contains("&[");
+            continue;
+        }
+
+        if trimmed.starts_with("];") {
+            in_lookup_table = false;
             continue;
         }
 
@@ -871,6 +905,36 @@ pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64>
 
         let entries =
             classify_generated_override_file("er_text_overrides_11_12_2.rs".to_string(), text);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].category, OverrideCategory::TextLookup);
+        assert_eq!(entries[0].count, 2);
+        assert_eq!(entries[0].unit, "lookup entries");
+    }
+
+    #[test]
+    fn classifies_c4_local_text_tables_as_lookup_entries() {
+        let text = r#"
+pub fn lookup_c4_text_width_px(
+    font_key: &str,
+    font_size_key: usize,
+    font_weight: &str,
+    text: &str,
+) -> Option<f64> {
+    match (font_key, font_size_key, font_weight) {
+        ("opensans,sans-serif", 14000, "normal") => {
+            let tbl: &[(&str, f64)] = &[
+                ("Customer", 75.0),
+                ("System", 47.0),
+            ];
+            lookup_in(tbl, text)
+        }
+        _ => None,
+    }
+}
+"#;
+
+        let entries =
+            classify_generated_override_file("c4_text_overrides_11_12_2.rs".to_string(), text);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].category, OverrideCategory::TextLookup);
         assert_eq!(entries[0].count, 2);

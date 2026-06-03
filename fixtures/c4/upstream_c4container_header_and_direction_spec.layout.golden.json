@@ -69,7 +69,7 @@
           "label": {
             "text": "C1",
             "y": 38.0,
-            "width": 19.0,
+            "width": 20.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -84,7 +84,7 @@
           "descr": {
             "text": "Desc",
             "y": 94.0,
-            "width": 26.0,
+            "width": 33.0,
             "height": 16.0,
             "line_count": 1.0
           }

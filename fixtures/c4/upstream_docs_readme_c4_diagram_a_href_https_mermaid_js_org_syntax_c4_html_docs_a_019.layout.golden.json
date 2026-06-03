@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 1238.0,
+        "max_x": 1278.0,
         "max_y": 2276.0
       },
-      "width": 1288.0,
+      "width": 1328.0,
       "height": 2286.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 1088.0,
+          "width": 1128.0,
           "height": 2160.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 1040.0,
-          "width": 988.0,
+          "width": 1028.0,
           "height": 1136.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "BankBoundary",
             "y": 8.0,
-            "width": 92.0,
+            "width": 114.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[ENTERPRISE]",
             "y": 30.0,
-            "width": 89.0,
+            "width": 97.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -76,7 +76,7 @@
           "parent_boundary": "b1",
           "x": 200.0,
           "y": 1704.0,
-          "width": 419.0,
+          "width": 439.0,
           "height": 396.0,
           "image": {
             "width": 0.0,
@@ -86,14 +86,14 @@
           "label": {
             "text": "BankBoundary2",
             "y": 8.0,
-            "width": 101.0,
+            "width": 123.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[SYSTEM]",
             "y": 30.0,
-            "width": 60.0,
+            "width": 65.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -102,9 +102,9 @@
         {
           "alias": "b3",
           "parent_boundary": "b1",
-          "x": 669.0,
+          "x": 689.0,
           "y": 1704.0,
-          "width": 419.0,
+          "width": 439.0,
           "height": 422.0,
           "image": {
             "width": 0.0,
@@ -114,14 +114,14 @@
           "label": {
             "text": "BankBoundary3",
             "y": 8.0,
-            "width": 101.0,
+            "width": 123.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[boundary]",
             "y": 30.0,
-            "width": 59.0,
+            "width": 66.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -135,7 +135,7 @@
           "type_c4_shape": "person",
           "x": 150.0,
           "y": 166.0,
-          "width": 329.0,
+          "width": 353.0,
           "height": 134.0,
           "margin": 50.0,
           "image": {
@@ -153,7 +153,7 @@
           "label": {
             "text": "Banking Customer A",
             "y": 86.0,
-            "width": 134.0,
+            "width": 158.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -162,7 +162,7 @@
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
             "y": 123.0,
-            "width": 309.0,
+            "width": 333.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -171,8 +171,8 @@
           "alias": "customerB",
           "parent_boundary": "global",
           "type_c4_shape": "person",
-          "x": 579.0,
-          "y": 166.0,
+          "x": 150.0,
+          "y": 400.0,
           "width": 216.0,
           "height": 103.0,
           "margin": 50.0,
@@ -191,7 +191,7 @@
           "label": {
             "text": "Banking Customer B",
             "y": 86.0,
-            "width": 134.0,
+            "width": 159.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -203,7 +203,7 @@
           "alias": "customerC",
           "parent_boundary": "global",
           "type_c4_shape": "external_person",
-          "x": 150.0,
+          "x": 466.0,
           "y": 400.0,
           "width": 216.0,
           "height": 103.0,
@@ -223,7 +223,7 @@
           "label": {
             "text": "Banking Customer C",
             "y": 86.0,
-            "width": 134.0,
+            "width": 159.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -237,7 +237,7 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 603.0,
-          "width": 518.0,
+          "width": 552.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -255,7 +255,7 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 165.0,
+            "width": 188.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -264,7 +264,7 @@
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
             "y": 75.0,
-            "width": 498.0,
+            "width": 532.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -293,7 +293,7 @@
           "label": {
             "text": "Banking Customer D",
             "y": 86.0,
-            "width": 134.0,
+            "width": 159.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -313,7 +313,7 @@
           "type_c4_shape": "external_system_db",
           "x": 200.0,
           "y": 1140.0,
-          "width": 527.0,
+          "width": 559.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -331,7 +331,7 @@
           "label": {
             "text": "Mainframe Banking System",
             "y": 38.0,
-            "width": 180.0,
+            "width": 209.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -340,7 +340,7 @@
           "descr": {
             "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
             "y": 75.0,
-            "width": 507.0,
+            "width": 539.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -369,7 +369,7 @@
           "label": {
             "text": "Banking System A",
             "y": 38.0,
-            "width": 122.0,
+            "width": 140.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -383,7 +383,7 @@
           "type_c4_shape": "system",
           "x": 250.0,
           "y": 1964.0,
-          "width": 319.0,
+          "width": 339.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -401,7 +401,7 @@
           "label": {
             "text": "Banking System B",
             "y": 38.0,
-            "width": 122.0,
+            "width": 141.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -410,7 +410,7 @@
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
             "y": 75.0,
-            "width": 299.0,
+            "width": 319.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -421,7 +421,7 @@
           "type_c4_shape": "external_system",
           "x": 200.0,
           "y": 1326.0,
-          "width": 295.0,
+          "width": 315.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -439,7 +439,7 @@
           "label": {
             "text": "E-mail system",
             "y": 38.0,
-            "width": 97.0,
+            "width": 108.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -448,7 +448,7 @@
           "descr": {
             "text": "The internal Microsoft Exchange e-mail system.",
             "y": 75.0,
-            "width": 275.0,
+            "width": 295.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -459,7 +459,7 @@
           "type_c4_shape": "system_db",
           "x": 200.0,
           "y": 1512.0,
-          "width": 319.0,
+          "width": 339.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -477,7 +477,7 @@
           "label": {
             "text": "Banking System D Database",
             "y": 38.0,
-            "width": 185.0,
+            "width": 216.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -486,7 +486,7 @@
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
             "y": 75.0,
-            "width": 299.0,
+            "width": 319.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -495,9 +495,9 @@
           "alias": "SystemF",
           "parent_boundary": "b3",
           "type_c4_shape": "system_queue",
-          "x": 719.0,
+          "x": 739.0,
           "y": 1804.0,
-          "width": 319.0,
+          "width": 339.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -515,7 +515,7 @@
           "label": {
             "text": "Banking System F Queue",
             "y": 38.0,
-            "width": 164.0,
+            "width": 193.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -524,7 +524,7 @@
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
             "y": 75.0,
-            "width": 299.0,
+            "width": 319.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -533,9 +533,9 @@
           "alias": "SystemG",
           "parent_boundary": "b3",
           "type_c4_shape": "external_system_queue",
-          "x": 719.0,
+          "x": 739.0,
           "y": 1990.0,
-          "width": 319.0,
+          "width": 339.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -553,7 +553,7 @@
           "label": {
             "text": "Banking System G Queue",
             "y": 38.0,
-            "width": 164.0,
+            "width": 196.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -562,7 +562,7 @@
           "descr": {
             "text": "A system of the bank, with personal bank accounts.",
             "y": 75.0,
-            "width": 299.0,
+            "width": 319.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -574,11 +574,11 @@
           "to": "SystemAA",
           "rel_type": "birel",
           "start_point": {
-            "x": 350.652,
+            "x": 365.025,
             "y": 300.0
           },
           "end_point": {
-            "x": 428.118,
+            "x": 446.512,
             "y": 603.0
           },
           "offset_x": null,
@@ -586,7 +586,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -598,11 +598,11 @@
           "to": "SystemE",
           "rel_type": "birel",
           "start_point": {
-            "x": 432.242,
+            "x": 450.428,
             "y": 689.0
           },
           "end_point": {
-            "x": 481.692,
+            "x": 499.172,
             "y": 1140.0
           },
           "offset_x": null,
@@ -610,7 +610,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -622,11 +622,11 @@
           "to": "SystemC",
           "rel_type": "rel",
           "start_point": {
-            "x": 420.087,
+            "x": 437.648,
             "y": 689.0
           },
           "end_point": {
-            "x": 360.716,
+            "x": 371.791,
             "y": 1326.0
           },
           "offset_x": null,
@@ -634,7 +634,7 @@
           "label": {
             "text": "Sends e-mails",
             "y": 0.0,
-            "width": 67.0,
+            "width": 76.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -652,11 +652,11 @@
           "to": "customerA",
           "rel_type": "rel",
           "start_point": {
-            "x": 352.005,
+            "x": 362.477,
             "y": 1326.0
           },
           "end_point": {
-            "x": 325.5,
+            "x": 338.057,
             "y": 300.0
           },
           "offset_x": null,
@@ -664,7 +664,7 @@
           "label": {
             "text": "Sends e-mails to",
             "y": 0.0,
-            "width": 82.0,
+            "width": 90.0,
             "height": 14.0,
             "line_count": 1.0
           },

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 944.0,
+        "max_x": 973.0,
         "max_y": 1953.0
       },
-      "width": 994.0,
+      "width": 1023.0,
       "height": 1963.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 794.0,
+          "width": 823.0,
           "height": 1837.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 778.0,
-          "width": 694.0,
+          "width": 723.0,
           "height": 1075.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "Internet Banking",
             "y": 8.0,
-            "width": 109.0,
+            "width": 126.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
             "y": 30.0,
-            "width": 81.0,
+            "width": 89.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -79,7 +79,7 @@
           "type_c4_shape": "external_system",
           "x": 150.0,
           "y": 166.0,
-          "width": 251.0,
+          "width": 269.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -97,7 +97,7 @@
           "label": {
             "text": "E-Mail System",
             "y": 38.0,
-            "width": 97.0,
+            "width": 108.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -106,7 +106,7 @@
           "descr": {
             "text": "The internal Microsoft Exchange system",
             "y": 75.0,
-            "width": 231.0,
+            "width": 249.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -117,7 +117,7 @@
           "type_c4_shape": "person",
           "x": 150.0,
           "y": 352.0,
-          "width": 325.0,
+          "width": 349.0,
           "height": 134.0,
           "margin": 50.0,
           "image": {
@@ -135,7 +135,7 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 63.0,
+            "width": 75.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -144,7 +144,7 @@
           "descr": {
             "text": "A customer of the bank, with personal bank accounts",
             "y": 123.0,
-            "width": 305.0,
+            "width": 329.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -155,7 +155,7 @@
           "type_c4_shape": "container",
           "x": 200.0,
           "y": 878.0,
-          "width": 498.0,
+          "width": 519.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -173,7 +173,7 @@
           "label": {
             "text": "Single-Page App",
             "y": 38.0,
-            "width": 103.0,
+            "width": 127.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -188,7 +188,7 @@
           "descr": {
             "text": "Provides all the Internet banking functionality to customers via their web browser",
             "y": 94.0,
-            "width": 478.0,
+            "width": 499.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -199,7 +199,7 @@
           "type_c4_shape": "external_container",
           "x": 200.0,
           "y": 1083.0,
-          "width": 594.0,
+          "width": 623.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -217,7 +217,7 @@
           "label": {
             "text": "Mobile App",
             "y": 38.0,
-            "width": 68.0,
+            "width": 86.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -232,7 +232,7 @@
           "descr": {
             "text": "Provides a limited subset of the Internet banking functionality to customers via their mobile device",
             "y": 94.0,
-            "width": 574.0,
+            "width": 603.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -243,7 +243,7 @@
           "type_c4_shape": "container",
           "x": 200.0,
           "y": 1288.0,
-          "width": 347.0,
+          "width": 367.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -261,7 +261,7 @@
           "label": {
             "text": "Web Application",
             "y": 38.0,
-            "width": 104.0,
+            "width": 126.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -276,7 +276,7 @@
           "descr": {
             "text": "Delivers the static content and the Internet banking SPA",
             "y": 94.0,
-            "width": 327.0,
+            "width": 347.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -287,7 +287,7 @@
           "type_c4_shape": "container_db",
           "x": 200.0,
           "y": 1493.0,
-          "width": 473.0,
+          "width": 506.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -305,7 +305,7 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 58.0,
+            "width": 71.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -320,7 +320,7 @@
           "descr": {
             "text": "Stores user registration information, hashed auth credentials, access logs, etc.",
             "y": 94.0,
-            "width": 453.0,
+            "width": 486.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -331,7 +331,7 @@
           "type_c4_shape": "external_container_db",
           "x": 200.0,
           "y": 1698.0,
-          "width": 290.0,
+          "width": 304.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -349,7 +349,7 @@
           "label": {
             "text": "API Application",
             "y": 38.0,
-            "width": 100.0,
+            "width": 119.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -364,7 +364,7 @@
           "descr": {
             "text": "Provides Internet banking functionality via API",
             "y": 94.0,
-            "width": 270.0,
+            "width": 284.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -375,7 +375,7 @@
           "type_c4_shape": "external_system",
           "x": 150.0,
           "y": 586.0,
-          "width": 527.0,
+          "width": 559.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -393,7 +393,7 @@
           "label": {
             "text": "Mainframe Banking System",
             "y": 38.0,
-            "width": 180.0,
+            "width": 209.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -402,7 +402,7 @@
           "descr": {
             "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
             "y": 75.0,
-            "width": 507.0,
+            "width": 539.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -414,11 +414,11 @@
           "to": "web_app",
           "rel_type": "rel",
           "start_point": {
-            "x": 327.649,
+            "x": 340.327,
             "y": 486.0
           },
           "end_point": {
-            "x": 380.297,
+            "x": 391.022,
             "y": 1288.0
           },
           "offset_x": 90.0,
@@ -426,7 +426,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -444,11 +444,11 @@
           "to": "spa",
           "rel_type": "rel",
           "start_point": {
-            "x": 347.129,
+            "x": 360.345,
             "y": 486.0
           },
           "end_point": {
-            "x": 461.868,
+            "x": 473.74,
             "y": 878.0
           },
           "offset_x": null,
@@ -456,7 +456,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -474,11 +474,11 @@
           "to": "mobile_app",
           "rel_type": "rel",
           "start_point": {
-            "x": 342.173,
+            "x": 355.413,
             "y": 486.0
           },
           "end_point": {
-            "x": 505.895,
+            "x": 521.344,
             "y": 1083.0
           },
           "offset_x": null,
@@ -486,7 +486,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -498,11 +498,11 @@
           "to": "spa",
           "rel_type": "rel",
           "start_point": {
-            "x": 410.066,
+            "x": 421.608,
             "y": 1288.0
           },
           "end_point": {
-            "x": 468.695,
+            "x": 480.33,
             "y": 983.0
           },
           "offset_x": 130.0,
@@ -510,7 +510,7 @@
           "label": {
             "text": "Delivers",
             "y": 0.0,
-            "width": 40.0,
+            "width": 43.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -522,11 +522,11 @@
           "to": "backend_api",
           "rel_type": "rel",
           "start_point": {
-            "x": 457.725,
+            "x": 468.646,
             "y": 983.0
           },
           "end_point": {
-            "x": 362.033,
+            "x": 369.751,
             "y": 1698.0
           },
           "offset_x": null,
@@ -534,7 +534,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -552,11 +552,11 @@
           "to": "backend_api",
           "rel_type": "rel",
           "start_point": {
-            "x": 508.404,
+            "x": 523.455,
             "y": 1188.0
           },
           "end_point": {
-            "x": 372.72,
+            "x": 381.073,
             "y": 1698.0
           },
           "offset_x": null,
@@ -564,7 +564,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -582,11 +582,11 @@
           "to": "backend_api",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 466.063,
+            "x": 483.99,
             "y": 1598.0
           },
           "end_point": {
-            "x": 426.418,
+            "x": 439.098,
             "y": 1698.0
           },
           "offset_x": null,
@@ -594,7 +594,7 @@
           "label": {
             "text": "Reads from and writes to",
             "y": 0.0,
-            "width": 128.0,
+            "width": 134.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -612,11 +612,11 @@
           "to": "customer",
           "rel_type": "rel",
           "start_point": {
-            "x": 303.119,
+            "x": 314.158,
             "y": 252.0
           },
           "end_point": {
-            "x": 371.301,
+            "x": 387.517,
             "y": 352.0
           },
           "offset_x": -45.0,
@@ -624,7 +624,7 @@
           "label": {
             "text": "Sends e-mails to",
             "y": 0.0,
-            "width": 82.0,
+            "width": 90.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -636,11 +636,11 @@
           "to": "email_system",
           "rel_type": "rel",
           "start_point": {
-            "x": 347.662,
+            "x": 354.979,
             "y": 1698.0
           },
           "end_point": {
-            "x": 280.792,
+            "x": 289.982,
             "y": 252.0
           },
           "offset_x": null,
@@ -648,7 +648,7 @@
           "label": {
             "text": "Sends e-mails using",
             "y": 0.0,
-            "width": 95.0,
+            "width": 108.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -666,11 +666,11 @@
           "to": "banking_system",
           "rel_type": "rel",
           "start_point": {
-            "x": 355.485,
+            "x": 363.271,
             "y": 1698.0
           },
           "end_point": {
-            "x": 420.701,
+            "x": 436.959,
             "y": 672.0
           },
           "offset_x": -140.0,
@@ -678,7 +678,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

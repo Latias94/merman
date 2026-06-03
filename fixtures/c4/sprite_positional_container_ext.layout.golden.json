@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 814.0,
+        "max_x": 825.0,
         "max_y": 653.0
       },
-      "width": 864.0,
+      "width": 875.0,
       "height": 663.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 664.0,
+          "width": 675.0,
           "height": 537.0,
           "image": {
             "width": 0.0,
@@ -69,7 +69,7 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 63.0,
+            "width": 75.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "A customer of the bank.",
             "y": 123.0,
-            "width": 140.0,
+            "width": 148.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -89,7 +89,7 @@
           "type_c4_shape": "container",
           "x": 466.0,
           "y": 166.0,
-          "width": 248.0,
+          "width": 259.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -107,7 +107,7 @@
           "label": {
             "text": "Web App",
             "y": 38.0,
-            "width": 56.0,
+            "width": 70.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -122,7 +122,7 @@
           "descr": {
             "text": "Provides Internet banking functionality.",
             "y": 94.0,
-            "width": 228.0,
+            "width": 239.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -133,7 +133,7 @@
           "type_c4_shape": "external_container",
           "x": 150.0,
           "y": 400.0,
-          "width": 287.0,
+          "width": 295.0,
           "height": 153.0,
           "margin": 50.0,
           "image": {
@@ -151,7 +151,7 @@
           "label": {
             "text": "Mobile App",
             "y": 86.0,
-            "width": 68.0,
+            "width": 86.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -166,7 +166,7 @@
           "descr": {
             "text": "Provides a limited subset of the functionality.",
             "y": 142.0,
-            "width": 267.0,
+            "width": 275.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -179,18 +179,18 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 245.886
+            "y": 245.727
           },
           "end_point": {
             "x": 466.0,
-            "y": 258.442
+            "y": 260.214
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -208,11 +208,11 @@
           "to": "mobile",
           "rel_type": "rel",
           "start_point": {
-            "x": 288.965,
+            "x": 289.828,
             "y": 300.0
           },
           "end_point": {
-            "x": 342.973,
+            "x": 346.973,
             "y": 400.0
           },
           "offset_x": null,
@@ -220,7 +220,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

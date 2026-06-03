@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 752.0,
+        "max_x": 770.0,
         "max_y": 732.0
       },
-      "width": 802.0,
+      "width": 820.0,
       "height": 742.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 602.0,
+          "width": 620.0,
           "height": 616.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 377.0,
-          "width": 435.0,
+          "width": 451.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "API Application",
             "y": 8.0,
-            "width": 100.0,
+            "width": 119.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
             "y": 30.0,
-            "width": 81.0,
+            "width": 89.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -79,7 +79,7 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 502.0,
+          "width": 520.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -97,7 +97,7 @@
           "label": {
             "text": "Single Page Application",
             "y": 38.0,
-            "width": 151.0,
+            "width": 182.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -112,7 +112,7 @@
           "descr": {
             "text": "Provides all the internet banking functionality to customers via their web browser.",
             "y": 94.0,
-            "width": 482.0,
+            "width": 500.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -123,7 +123,7 @@
           "type_c4_shape": "component",
           "x": 200.0,
           "y": 477.0,
-          "width": 335.0,
+          "width": 351.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -141,7 +141,7 @@
           "label": {
             "text": "Sign In Controller",
             "y": 38.0,
-            "width": 117.0,
+            "width": 135.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -156,7 +156,7 @@
           "descr": {
             "text": "Allows users to sign in to the internet banking system",
             "y": 94.0,
-            "width": 315.0,
+            "width": 331.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -168,11 +168,11 @@
           "to": "sign",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 432.413,
+            "x": 442.569,
             "y": 271.0
           },
           "end_point": {
-            "x": 408.322,
+            "x": 418.15,
             "y": 477.0
           },
           "offset_x": null,
@@ -180,7 +180,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

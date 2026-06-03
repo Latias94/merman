@@ -69,7 +69,7 @@
           "label": {
             "text": "API",
             "y": 38.0,
-            "width": 24.0,
+            "width": 28.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -84,7 +84,7 @@
           "descr": {
             "text": "Handles requests.",
             "y": 94.0,
-            "width": 99.0,
+            "width": 113.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -113,7 +113,7 @@
           "label": {
             "text": "External Service",
             "y": 86.0,
-            "width": 109.0,
+            "width": 125.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -128,7 +128,7 @@
           "descr": {
             "text": "Third-party dependency.",
             "y": 142.0,
-            "width": 137.0,
+            "width": 151.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -152,7 +152,7 @@
           "label": {
             "text": "Calls",
             "y": 0.0,
-            "width": 24.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 816.0,
+        "max_x": 831.0,
         "max_y": 400.0
       },
-      "width": 866.0,
+      "width": 881.0,
       "height": 410.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 666.0,
+          "width": 681.0,
           "height": 284.0,
           "image": {
             "width": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 166.0,
-          "width": 250.0,
+          "width": 265.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -69,7 +69,7 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 165.0,
+            "width": 188.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "Allows customers to view account data.",
             "y": 75.0,
-            "width": 230.0,
+            "width": 245.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -87,7 +87,7 @@
           "alias": "db",
           "parent_boundary": "global",
           "type_c4_shape": "external_system_db",
-          "x": 500.0,
+          "x": 515.0,
           "y": 166.0,
           "width": 216.0,
           "height": 134.0,
@@ -107,7 +107,7 @@
           "label": {
             "text": "External System DB",
             "y": 86.0,
-            "width": 137.0,
+            "width": 153.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -116,7 +116,7 @@
           "descr": {
             "text": "PostgreSQL",
             "y": 123.0,
-            "width": 70.0,
+            "width": 76.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -128,19 +128,19 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 400.0,
-            "y": 227.286
+            "x": 415.0,
+            "y": 227.768
           },
           "end_point": {
-            "x": 500.0,
-            "y": 253.64
+            "x": 515.0,
+            "y": 252.974
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Reads/Writes",
             "y": 0.0,
-            "width": 66.0,
+            "width": 72.0,
             "height": 14.0,
             "line_count": 1.0
           },

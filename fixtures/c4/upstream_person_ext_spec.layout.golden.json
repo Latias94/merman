@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 895.0,
-        "max_y": 603.0
+        "max_x": 782.0,
+        "max_y": 806.0
       },
-      "width": 945.0,
-      "height": 613.0,
+      "width": 832.0,
+      "height": 816.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Context",
@@ -20,8 +20,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 745.0,
-          "height": 487.0,
+          "width": 632.0,
+          "height": 690.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "external_person",
           "x": 150.0,
           "y": 166.0,
-          "width": 329.0,
+          "width": 353.0,
           "height": 134.0,
           "margin": 50.0,
           "image": {
@@ -69,7 +69,7 @@
           "label": {
             "text": "Banking Customer A",
             "y": 86.0,
-            "width": 134.0,
+            "width": 158.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
             "y": 123.0,
-            "width": 309.0,
+            "width": 333.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -87,8 +87,8 @@
           "alias": "customerSprite",
           "parent_boundary": "global",
           "type_c4_shape": "external_person",
-          "x": 579.0,
-          "y": 166.0,
+          "x": 150.0,
+          "y": 400.0,
           "width": 216.0,
           "height": 103.0,
           "margin": 50.0,
@@ -119,7 +119,7 @@
           "alias": "customerLink",
           "parent_boundary": "global",
           "type_c4_shape": "external_person",
-          "x": 150.0,
+          "x": 466.0,
           "y": 400.0,
           "width": 216.0,
           "height": 103.0,
@@ -151,8 +151,8 @@
           "alias": "customerTags",
           "parent_boundary": "global",
           "type_c4_shape": "external_person",
-          "x": 466.0,
-          "y": 400.0,
+          "x": 150.0,
+          "y": 603.0,
           "width": 216.0,
           "height": 103.0,
           "margin": 50.0,

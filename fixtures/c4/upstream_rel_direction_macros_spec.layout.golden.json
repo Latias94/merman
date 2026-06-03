@@ -69,7 +69,7 @@
           "label": {
             "text": "A",
             "y": 86.0,
-            "width": 10.0,
+            "width": 13.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -101,7 +101,7 @@
           "label": {
             "text": "B",
             "y": 86.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -133,7 +133,7 @@
           "label": {
             "text": "C",
             "y": 86.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -165,7 +165,7 @@
           "label": {
             "text": "D",
             "y": 86.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -197,7 +197,7 @@
           "label": {
             "text": "E",
             "y": 86.0,
-            "width": 10.0,
+            "width": 11.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -261,7 +261,7 @@
           "label": {
             "text": "G",
             "y": 86.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -293,7 +293,7 @@
           "label": {
             "text": "H",
             "y": 86.0,
-            "width": 10.0,
+            "width": 12.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -325,7 +325,7 @@
           "label": {
             "text": "I",
             "y": 86.0,
-            "width": 5.0,
+            "width": 4.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -357,7 +357,7 @@
           "label": {
             "text": "J",
             "y": 86.0,
-            "width": 10.0,
+            "width": 9.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -384,7 +384,7 @@
           "label": {
             "text": "up",
             "y": 0.0,
-            "width": 10.0,
+            "width": 14.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -408,7 +408,7 @@
           "label": {
             "text": "down",
             "y": 0.0,
-            "width": 25.0,
+            "width": 29.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -432,7 +432,7 @@
           "label": {
             "text": "left",
             "y": 0.0,
-            "width": 19.0,
+            "width": 17.0,
             "height": 14.0,
             "line_count": 1.0
           },
@@ -480,7 +480,7 @@
           "label": {
             "text": "back",
             "y": 0.0,
-            "width": 22.0,
+            "width": 26.0,
             "height": 14.0,
             "line_count": 1.0
           },

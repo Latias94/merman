@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 916.0,
+        "max_x": 931.0,
         "max_y": 554.0
       },
-      "width": 966.0,
+      "width": 981.0,
       "height": 564.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 766.0,
+          "width": 781.0,
           "height": 438.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 170.0,
-          "width": 666.0,
+          "width": 681.0,
           "height": 284.0,
           "image": {
             "width": 48.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "Bank Boundary",
             "y": 56.0,
-            "width": 97.0,
+            "width": 118.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[company]",
             "y": 78.0,
-            "width": 58.0,
+            "width": 65.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -97,7 +97,7 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 63.0,
+            "width": 75.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -106,7 +106,7 @@
           "descr": {
             "text": "A customer of the bank.",
             "y": 123.0,
-            "width": 140.0,
+            "width": 148.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -117,7 +117,7 @@
           "type_c4_shape": "system",
           "x": 516.0,
           "y": 270.0,
-          "width": 250.0,
+          "width": 265.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -135,7 +135,7 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 165.0,
+            "width": 188.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -144,7 +144,7 @@
           "descr": {
             "text": "Allows customers to view account data.",
             "y": 75.0,
-            "width": 230.0,
+            "width": 245.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -157,18 +157,18 @@
           "rel_type": "rel",
           "start_point": {
             "x": 416.0,
-            "y": 347.531
+            "y": 347.355
           },
           "end_point": {
             "x": 516.0,
-            "y": 353.264
+            "y": 355.68
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

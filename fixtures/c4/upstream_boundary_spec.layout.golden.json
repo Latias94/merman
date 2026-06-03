@@ -58,7 +58,7 @@
           "label": {
             "text": "BankBoundary",
             "y": 8.0,
-            "width": 92.0,
+            "width": 114.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -93,7 +93,7 @@
           "ty": {
             "text": "[company]",
             "y": 30.0,
-            "width": 58.0,
+            "width": 65.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -181,7 +181,7 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 165.0,
+            "width": 188.0,
             "height": 17.0,
             "line_count": 1.0
           },

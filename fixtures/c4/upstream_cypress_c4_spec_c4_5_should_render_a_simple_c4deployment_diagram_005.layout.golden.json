@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 1692.0,
+        "max_x": 1741.0,
         "max_y": 689.0
       },
-      "width": 1742.0,
+      "width": 1791.0,
       "height": 699.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 1542.0,
+          "width": 1591.0,
           "height": 573.0,
           "image": {
             "width": 0.0,
@@ -48,7 +48,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 122.0,
-          "width": 700.0,
+          "width": 729.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -58,14 +58,14 @@
           "label": {
             "text": "Customer's mobile device",
             "y": 8.0,
-            "width": 171.0,
+            "width": 198.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Apple IOS or Android]",
             "y": 30.0,
-            "width": 129.0,
+            "width": 139.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -74,9 +74,9 @@
         {
           "alias": "plc",
           "parent_boundary": "global",
-          "x": 900.0,
+          "x": 929.0,
           "y": 122.0,
-          "width": 692.0,
+          "width": 712.0,
           "height": 467.0,
           "image": {
             "width": 0.0,
@@ -86,14 +86,14 @@
           "label": {
             "text": "Big Bank plc",
             "y": 8.0,
-            "width": 82.0,
+            "width": 97.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Big Bank plc data center]",
             "y": 30.0,
-            "width": 150.0,
+            "width": 160.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -102,9 +102,9 @@
         {
           "alias": "dn",
           "parent_boundary": "plc",
-          "x": 950.0,
+          "x": 979.0,
           "y": 178.0,
-          "width": 592.0,
+          "width": 612.0,
           "height": 361.0,
           "image": {
             "width": 0.0,
@@ -114,14 +114,14 @@
           "label": {
             "text": "bigbank-api*** x8",
             "y": 8.0,
-            "width": 114.0,
+            "width": 131.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Ubuntu 16.04 LTS]",
             "y": 30.0,
-            "width": 117.0,
+            "width": 120.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -130,9 +130,9 @@
         {
           "alias": "apache",
           "parent_boundary": "dn",
-          "x": 1000.0,
+          "x": 1029.0,
           "y": 234.0,
-          "width": 492.0,
+          "width": 512.0,
           "height": 255.0,
           "image": {
             "width": 0.0,
@@ -142,14 +142,14 @@
           "label": {
             "text": "Apache Tomcat",
             "y": 8.0,
-            "width": 99.0,
+            "width": 120.0,
             "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[Apache Tomcat 8.x]",
             "y": 30.0,
-            "width": 118.0,
+            "width": 127.0,
             "height": 16.0,
             "line_count": 1.0
           },
@@ -163,7 +163,7 @@
           "type_c4_shape": "container",
           "x": 200.0,
           "y": 222.0,
-          "width": 600.0,
+          "width": 629.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -181,7 +181,7 @@
           "label": {
             "text": "Mobile App",
             "y": 38.0,
-            "width": 68.0,
+            "width": 86.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -196,7 +196,7 @@
           "descr": {
             "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device.",
             "y": 94.0,
-            "width": 580.0,
+            "width": 609.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -205,9 +205,9 @@
           "alias": "api",
           "parent_boundary": "apache",
           "type_c4_shape": "container",
-          "x": 1050.0,
+          "x": 1079.0,
           "y": 334.0,
-          "width": 392.0,
+          "width": 412.0,
           "height": 105.0,
           "margin": 50.0,
           "image": {
@@ -225,7 +225,7 @@
           "label": {
             "text": "API Application",
             "y": 38.0,
-            "width": 100.0,
+            "width": 119.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -240,7 +240,7 @@
           "descr": {
             "text": "Provides Internet Banking functionality via a JSON/HTTPS API.",
             "y": 94.0,
-            "width": 372.0,
+            "width": 392.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -252,19 +252,19 @@
           "to": "api",
           "rel_type": "rel",
           "start_point": {
-            "x": 800.0,
-            "y": 321.68
+            "x": 829.0,
+            "y": 322.182
           },
           "end_point": {
-            "x": 1050.0,
-            "y": 365.296
+            "x": 1079.0,
+            "y": 364.787
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Makes API calls to",
             "y": 0.0,
-            "width": 92.0,
+            "width": 98.0,
             "height": 14.0,
             "line_count": 1.0
           },

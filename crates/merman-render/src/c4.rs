@@ -11,6 +11,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 type C4Model = C4DiagramRenderModel;
+const C4_DEFAULT_FONT_FAMILY: &str = r#""Open Sans", sans-serif"#;
 
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
@@ -52,12 +53,18 @@ impl C4Conf {
         // `setConf(diagObj.db.getConfig())`, where `getConfig()` yields the diagram config object
         // (i.e. `config.c4`), not the global config root. As a result, top-level `fontFamily`,
         // `fontSize`, and `fontWeight` do not override C4-specific font defaults.
-        let message_font_family = config_string(effective_config, &["c4", "messageFontFamily"]);
+        let message_font_family = Some(
+            config_string(effective_config, &["c4", "messageFontFamily"])
+                .unwrap_or_else(|| C4_DEFAULT_FONT_FAMILY.to_string()),
+        );
         let message_font_size =
             config_f64(effective_config, &["c4", "messageFontSize"]).unwrap_or(12.0);
         let message_font_weight = config_string(effective_config, &["c4", "messageFontWeight"]);
 
-        let boundary_font_family = config_string(effective_config, &["c4", "boundaryFontFamily"]);
+        let boundary_font_family = Some(
+            config_string(effective_config, &["c4", "boundaryFontFamily"])
+                .unwrap_or_else(|| C4_DEFAULT_FONT_FAMILY.to_string()),
+        );
         let boundary_font_size =
             config_f64(effective_config, &["c4", "boundaryFontSize"]).unwrap_or(14.0);
         let boundary_font_weight = config_string(effective_config, &["c4", "boundaryFontWeight"]);
@@ -105,7 +112,10 @@ impl C4Conf {
         let key_size = format!("{type_c4_shape}FontSize");
         let key_weight = format!("{type_c4_shape}FontWeight");
 
-        let font_family = config_string(effective_config, &["c4", &key_family]);
+        let font_family = Some(
+            config_string(effective_config, &["c4", &key_family])
+                .unwrap_or_else(|| C4_DEFAULT_FONT_FAMILY.to_string()),
+        );
         let font_size = config_f64(effective_config, &["c4", &key_size]).unwrap_or(14.0);
         let font_weight = config_string(effective_config, &["c4", &key_weight]);
 
@@ -130,6 +140,46 @@ fn js_round_pos(v: f64) -> f64 {
     } else {
         (v + 0.5).floor()
     }
+}
+
+fn c4_normalize_font_key(font_family: &str) -> String {
+    font_family
+        .chars()
+        .filter_map(|ch| {
+            if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ';' {
+                None
+            } else {
+                Some(ch.to_ascii_lowercase())
+            }
+        })
+        .collect()
+}
+
+fn c4_font_weight_key(style: &TextStyle) -> String {
+    style
+        .font_weight
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("normal")
+        .to_ascii_lowercase()
+}
+
+fn c4_text_width_override_px(style: &TextStyle, text: &str) -> Option<f64> {
+    let font_family = style
+        .font_family
+        .as_deref()
+        .unwrap_or(C4_DEFAULT_FONT_FAMILY);
+    let font_key = c4_normalize_font_key(font_family);
+    let font_size_key = (style.font_size.max(1.0) * 1000.0).round().max(1.0) as usize;
+    let font_weight = c4_font_weight_key(style);
+
+    crate::generated::c4_text_overrides_11_12_2::lookup_c4_text_width_px(
+        &font_key,
+        font_size_key,
+        &font_weight,
+        text.trim_end(),
+    )
 }
 
 fn c4_svg_bbox_line_height_px(style: &TextStyle) -> f64 {
@@ -173,8 +223,9 @@ fn measure_c4_text(
     let mut width: f64 = 0.0;
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     for line in &lines {
-        let m = measurer.measure(line, style);
-        width = width.max(js_round_pos(m.width));
+        let bbox_width = c4_text_width_override_px(style, line)
+            .unwrap_or_else(|| measurer.measure_svg_simple_text_bbox_width_px(line, style));
+        width = width.max(js_round_pos(bbox_width));
     }
     let height = c4_svg_bbox_line_height_px(style) * lines.len().max(1) as f64;
     TextMeasure {
@@ -1033,7 +1084,7 @@ pub(crate) fn layout_c4_diagram(
 
 #[cfg(test)]
 mod tests {
-    use super::{TextStyle, c4_svg_bbox_line_height_px};
+    use super::{TextStyle, c4_svg_bbox_line_height_px, c4_text_width_override_px};
 
     #[test]
     fn c4_svg_bbox_line_height_uses_owner_rules() {
@@ -1051,5 +1102,22 @@ mod tests {
         assert_eq!(c4_svg_bbox_line_height_px(&style(16.0)), 17.0);
 
         assert_eq!(c4_svg_bbox_line_height_px(&style(15.0)), 17.0);
+    }
+
+    #[test]
+    fn c4_text_width_override_uses_headless_shell_metric() {
+        let style = TextStyle {
+            font_family: Some(r#""Open Sans", sans-serif"#.to_string()),
+            font_size: 14.0,
+            font_weight: None,
+        };
+
+        assert_eq!(
+            c4_text_width_override_px(
+                &style,
+                "Allows customers to view information about their bank accounts, and make payments."
+            ),
+            Some(532.484375)
+        );
     }
 }

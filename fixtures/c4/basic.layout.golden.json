@@ -69,7 +69,7 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 63.0,
+            "width": 75.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,7 +78,7 @@
           "descr": {
             "text": "A customer",
             "y": 123.0,
-            "width": 66.0,
+            "width": 72.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -107,7 +107,7 @@
           "label": {
             "text": "Banking System",
             "y": 38.0,
-            "width": 107.0,
+            "width": 124.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -116,7 +116,7 @@
           "descr": {
             "text": "Does banking",
             "y": 75.0,
-            "width": 73.0,
+            "width": 86.0,
             "height": 16.0,
             "line_count": 1.0
           }
@@ -140,7 +140,7 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 23.0,
+            "width": 27.0,
             "height": 14.0,
             "line_count": 1.0
           },

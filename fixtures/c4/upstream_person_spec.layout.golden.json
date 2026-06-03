@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 895.0,
+        "max_x": 782.0,
         "max_y": 885.0
       },
-      "width": 945.0,
+      "width": 832.0,
       "height": 895.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
@@ -20,7 +20,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 745.0,
+          "width": 632.0,
           "height": 769.0,
           "image": {
             "width": 0.0,
@@ -51,7 +51,7 @@
           "type_c4_shape": "person",
           "x": 150.0,
           "y": 166.0,
-          "width": 329.0,
+          "width": 353.0,
           "height": 134.0,
           "margin": 50.0,
           "image": {
@@ -69,7 +69,7 @@
           "label": {
             "text": "Banking Customer A",
             "y": 86.0,
-            "width": 134.0,
+            "width": 158.0,
             "height": 17.0,
             "line_count": 1.0
           },
@@ -78,45 +78,13 @@
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
             "y": 123.0,
-            "width": 309.0,
+            "width": 333.0,
             "height": 16.0,
             "line_count": 1.0
           }
         },
         {
           "alias": "customerSprite",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 579.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 103.0,
-          "margin": 50.0,
-          "image": {
-            "width": 48.0,
-            "height": 48.0,
-            "y": 30.0
-          },
-          "type_block": {
-            "text": "«person»",
-            "y": 20.0,
-            "width": 45.36,
-            "height": 14.0,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "",
-            "y": 86.0,
-            "width": 0.0,
-            "height": 17.0,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "customerLink",
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
@@ -148,7 +116,7 @@
           "descr": null
         },
         {
-          "alias": "customerTags",
+          "alias": "customerLink",
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
@@ -180,10 +148,42 @@
           "descr": null
         },
         {
-          "alias": "customerAll",
+          "alias": "customerTags",
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
+          "y": 603.0,
+          "width": 216.0,
+          "height": 103.0,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 45.36,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 86.0,
+            "width": 0.0,
+            "height": 17.0,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "customerAll",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 466.0,
           "y": 603.0,
           "width": 216.0,
           "height": 182.0,
@@ -212,7 +212,7 @@
           "descr": {
             "text": "Desc",
             "y": 171.0,
-            "width": 26.0,
+            "width": 33.0,
             "height": 16.0,
             "line_count": 1.0
           }
