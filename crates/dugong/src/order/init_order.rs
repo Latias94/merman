@@ -30,34 +30,6 @@ where
 
     let mut layers: Vec<Vec<String>> = vec![Vec::new(); (max_rank + 1).max(0) as usize];
 
-    fn dfs<N, E, G>(
-        g: &Graph<N, E, G>,
-        v: &str,
-        visited: &mut HashMap<String, bool>,
-        layers: &mut [Vec<String>],
-    ) where
-        N: Default + OrderNodeRange + 'static,
-        E: Default + 'static,
-        G: Default,
-    {
-        if visited.get(v).copied().unwrap_or(false) {
-            return;
-        }
-        visited.insert(v.to_string(), true);
-
-        let Some(rank) = g.node(v).and_then(|n| n.rank()) else {
-            return;
-        };
-        let idx = rank.max(0) as usize;
-        if let Some(layer) = layers.get_mut(idx) {
-            layer.push(v.to_string());
-        }
-
-        for w in g.successors(v) {
-            dfs(g, w, visited, layers);
-        }
-    }
-
     let mut ordered_vs = simple_nodes.clone();
 
     let mut insertion_idx: HashMap<String, usize> = HashMap::default();
@@ -75,7 +47,26 @@ where
         (rank, idx)
     });
     for v in ordered_vs {
-        dfs(g, &v, &mut visited, &mut layers);
+        let mut stack = vec![v];
+        while let Some(v) = stack.pop() {
+            if visited.get(v.as_str()).copied().unwrap_or(false) {
+                continue;
+            }
+            visited.insert(v.clone(), true);
+
+            let Some(rank) = g.node(&v).and_then(|n| n.rank()) else {
+                continue;
+            };
+            let idx = rank.max(0) as usize;
+            if let Some(layer) = layers.get_mut(idx) {
+                layer.push(v.clone());
+            }
+
+            let successors = g.successors(&v);
+            for w in successors.into_iter().rev() {
+                stack.push(w.to_string());
+            }
+        }
     }
 
     layers

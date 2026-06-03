@@ -4,22 +4,7 @@ use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
 fn parse_ok(input: &str) {
     let engine = Engine::new();
     block_on(engine.parse_diagram(input, ParseOptions::strict()))
-        .expect("deeply nested flowchart should parse like Mermaid.js");
-}
-
-fn parse_err(input: &str) -> String {
-    let engine = Engine::new();
-    block_on(engine.parse_diagram(input, ParseOptions::strict()))
-        .expect_err("deeply nested diagram should return a parse error")
-        .to_string()
-}
-
-fn assert_nesting_error(name: &str, input: String) {
-    let err = parse_err(&input);
-    assert!(
-        err.contains("nesting depth exceeds maximum"),
-        "{name} error should mention nesting depth, got: {err}"
-    );
+        .expect("deeply nested diagram should parse like Mermaid.js");
 }
 
 fn flowchart(depth: usize) -> String {
@@ -87,6 +72,18 @@ fn c4(depth: usize) -> String {
     lines.join("\n")
 }
 
+fn class_diagram(depth: usize) -> String {
+    let mut lines = vec!["classDiagram".to_string()];
+    for i in 0..depth {
+        lines.push(format!("{}namespace N{i} {{", "  ".repeat(i)));
+    }
+    lines.push(format!("{}class Leaf", "  ".repeat(depth)));
+    for i in (0..depth).rev() {
+        lines.push(format!("{}}}", "  ".repeat(i)));
+    }
+    lines.join("\n")
+}
+
 #[test]
 fn deeply_nested_flowchart_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
@@ -94,31 +91,37 @@ fn deeply_nested_flowchart_parses_without_custom_depth_error() {
 }
 
 #[test]
-fn deeply_nested_state_returns_parse_error() {
+fn deeply_nested_state_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("state", state(depth));
+    parse_ok(&state(depth));
 }
 
 #[test]
-fn deeply_nested_block_returns_parse_error() {
+fn deeply_nested_block_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("block", block(depth));
+    parse_ok(&block(depth));
 }
 
 #[test]
-fn deeply_nested_mindmap_returns_parse_error() {
+fn deeply_nested_mindmap_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("mindmap", mindmap(depth));
+    parse_ok(&mindmap(depth));
 }
 
 #[test]
-fn deeply_nested_treemap_returns_parse_error() {
+fn deeply_nested_treemap_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("treemap", treemap(depth));
+    parse_ok(&treemap(depth));
 }
 
 #[test]
-fn deeply_nested_c4_returns_parse_error() {
+fn deeply_nested_c4_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("c4", c4(depth));
+    parse_ok(&c4(depth));
+}
+
+#[test]
+fn deeply_nested_class_parses_without_custom_depth_error() {
+    let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
+    parse_ok(&class_diagram(depth));
 }

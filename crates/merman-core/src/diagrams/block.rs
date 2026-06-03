@@ -1,5 +1,5 @@
 use crate::sanitize::sanitize_text;
-use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseMetadata, Result};
+use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -196,7 +196,6 @@ impl BlockDb {
     }
 
     fn set_hierarchy(&mut self, blocks: Vec<Block>, config: &MermaidConfig) -> Result<()> {
-        validate_block_depth(&blocks)?;
         let root_id = self.root_id.clone();
         self.populate_block_database(blocks, &root_id, config)?;
         let root = self
@@ -214,14 +213,30 @@ impl BlockDb {
         parent_id: &str,
         config: &MermaidConfig,
     ) -> Result<()> {
-        let col = blocks
-            .iter()
-            .find(|b| b.block_type == "column-setting")
-            .and_then(|b| b.columns)
-            .unwrap_or(-1);
+        let mut stack = vec![PopulateFrame::new(parent_id.to_string(), blocks)];
 
-        let mut child_ids: Vec<String> = Vec::new();
-        for mut block in blocks {
+        while !stack.is_empty() {
+            let next = {
+                let frame = stack.last_mut().expect("populate frame should exist");
+                frame
+                    .blocks
+                    .next()
+                    .map(|block| (block, frame.parent_id.clone(), frame.col))
+            };
+
+            let Some((mut block, parent_id, col)) = next else {
+                let frame = stack.pop().expect("populate frame should exist");
+                let child_blocks: Vec<Block> = frame
+                    .child_ids
+                    .iter()
+                    .filter_map(|id| self.block_database.get(id).cloned())
+                    .collect();
+                if let Some(parent) = self.block_database.get_mut(&frame.parent_id) {
+                    parent.children = child_blocks;
+                }
+                continue;
+            };
+
             if col > 0
                 && block.block_type != "column-setting"
                 && block.width_in_columns.is_some_and(|w| w > col)
@@ -256,7 +271,7 @@ impl BlockDb {
                     continue;
                 }
                 "column-setting" => {
-                    if let Some(parent) = self.block_database.get_mut(parent_id) {
+                    if let Some(parent) = self.block_database.get_mut(&parent_id) {
                         parent.columns = block.columns;
                     }
                     continue;
@@ -281,6 +296,7 @@ impl BlockDb {
             }
 
             let parsed_children = std::mem::take(&mut block.children);
+            let block_id = block.id.clone();
 
             let existed = self.block_database.contains_key(&block.id);
             if !existed {
@@ -306,10 +322,6 @@ impl BlockDb {
                 self.insert_block(block.id.clone(), existing);
             }
 
-            if !parsed_children.is_empty() {
-                self.populate_block_database(parsed_children, &block.id, config)?;
-            }
-
             if block.block_type == "space" {
                 let w = block.width.unwrap_or(1).max(0);
                 for j in 0..w {
@@ -317,22 +329,25 @@ impl BlockDb {
                     let mut new_block = block.clone();
                     new_block.id = id.clone();
                     self.insert_block(id.clone(), new_block);
-                    child_ids.push(id);
+                    if let Some(frame) = stack.last_mut() {
+                        frame.child_ids.push(id);
+                    }
+                }
+                if !parsed_children.is_empty() {
+                    stack.push(PopulateFrame::new(block_id, parsed_children));
                 }
                 continue;
             }
 
             if !existed {
-                child_ids.push(block.id.clone());
+                if let Some(frame) = stack.last_mut() {
+                    frame.child_ids.push(block.id.clone());
+                }
             }
-        }
 
-        let child_blocks: Vec<Block> = child_ids
-            .iter()
-            .filter_map(|id| self.block_database.get(id).cloned())
-            .collect();
-        if let Some(parent) = self.block_database.get_mut(parent_id) {
-            parent.children = child_blocks;
+            if !parsed_children.is_empty() {
+                stack.push(PopulateFrame::new(block_id, parsed_children));
+            }
         }
 
         Ok(())
@@ -346,17 +361,37 @@ impl BlockDb {
     }
 }
 
-fn block_to_value(b: &Block) -> Value {
+struct PopulateFrame {
+    parent_id: String,
+    blocks: std::vec::IntoIter<Block>,
+    col: i64,
+    child_ids: Vec<String>,
+}
+
+impl PopulateFrame {
+    fn new(parent_id: String, blocks: Vec<Block>) -> Self {
+        let col = blocks
+            .iter()
+            .find(|b| b.block_type == "column-setting")
+            .and_then(|b| b.columns)
+            .unwrap_or(-1);
+        Self {
+            parent_id,
+            blocks: blocks.into_iter(),
+            col,
+            child_ids: Vec::new(),
+        }
+    }
+}
+
+fn block_to_value_shallow(b: &Block, children: Vec<Value>) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), json!(b.id));
     obj.insert("type".to_string(), json!(b.block_type));
     if let Some(label) = &b.label {
         obj.insert("label".to_string(), json!(label));
     }
-    obj.insert(
-        "children".to_string(),
-        Value::Array(b.children.iter().map(block_to_value).collect()),
-    );
+    obj.insert("children".to_string(), Value::Array(children));
 
     if let Some(v) = &b.start {
         obj.insert("start".to_string(), json!(v));
@@ -401,6 +436,38 @@ fn block_to_value(b: &Block) -> Value {
     Value::Object(obj)
 }
 
+fn block_to_value(b: &Block) -> Value {
+    let mut stack: Vec<(&Block, bool)> = vec![(b, false)];
+    let mut completed: HashMap<*const Block, Value> = HashMap::new();
+
+    while let Some((block, visited)) = stack.pop() {
+        if visited {
+            let children = block
+                .children
+                .iter()
+                .map(|child| {
+                    completed
+                        .remove(&(child as *const Block))
+                        .expect("child value should be completed before parent")
+                })
+                .collect();
+            completed.insert(
+                block as *const Block,
+                block_to_value_shallow(block, children),
+            );
+        } else {
+            stack.push((block, true));
+            for child in block.children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    completed
+        .remove(&(b as *const Block))
+        .expect("root value should be completed")
+}
+
 fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
     let mut obj = Map::new();
     for (k, v) in classes {
@@ -416,30 +483,15 @@ fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
     Value::Object(obj)
 }
 
-fn validate_block_depth(blocks: &[Block]) -> Result<()> {
-    let mut stack: Vec<(&Block, usize)> = blocks.iter().map(|block| (block, 1)).collect();
-    while let Some((block, depth)) = stack.pop() {
-        if depth > MAX_DIAGRAM_NESTING_DEPTH {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: format!(
-                    "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                ),
-            });
-        }
-        for child in &block.children {
-            stack.push((child, depth + 1));
-        }
-    }
-    Ok(())
-}
-
-fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
+fn block_to_render_node_shallow(
+    b: &Block,
+    children: Vec<BlockNodeRenderModel>,
+) -> BlockNodeRenderModel {
     BlockNodeRenderModel {
         id: b.id.clone(),
         label: b.label.clone().unwrap_or_default(),
         block_type: b.block_type.clone(),
-        children: b.children.iter().map(block_to_render_node).collect(),
+        children,
         columns: b.columns,
         width_in_columns: b.width_in_columns,
         width: b.width,
@@ -447,6 +499,38 @@ fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
         styles: b.styles.clone().unwrap_or_default(),
         directions: b.directions.clone().unwrap_or_default(),
     }
+}
+
+fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
+    let mut stack: Vec<(&Block, bool)> = vec![(b, false)];
+    let mut completed: HashMap<*const Block, BlockNodeRenderModel> = HashMap::new();
+
+    while let Some((block, visited)) = stack.pop() {
+        if visited {
+            let children = block
+                .children
+                .iter()
+                .map(|child| {
+                    completed
+                        .remove(&(child as *const Block))
+                        .expect("child render node should be completed before parent")
+                })
+                .collect();
+            completed.insert(
+                block as *const Block,
+                block_to_render_node_shallow(block, children),
+            );
+        } else {
+            stack.push((block, true));
+            for child in block.children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    completed
+        .remove(&(b as *const Block))
+        .expect("root render node should be completed")
 }
 
 fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
@@ -468,7 +552,6 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
 }
 
 fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
-    validate_block_source_depth(code)?;
     let mut parser = Parser::new(code);
     parser.parse_header()?;
     let blocks = parser.parse_document(false)?;
@@ -477,55 +560,6 @@ fn parse_block_db(code: &str, meta: &ParseMetadata) -> Result<BlockDb> {
     db.clear();
     db.set_hierarchy(blocks, &meta.effective_config)?;
     Ok(db)
-}
-
-fn validate_block_source_depth(code: &str) -> Result<()> {
-    let mut depth = 0usize;
-    let mut header_consumed = false;
-
-    for line in code.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("%%") {
-            continue;
-        }
-        if !header_consumed && is_block_header(trimmed) {
-            header_consumed = true;
-            continue;
-        }
-        if is_block_start(trimmed) {
-            depth += 1;
-            if depth > MAX_DIAGRAM_NESTING_DEPTH {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: format!(
-                        "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                    ),
-                });
-            }
-        } else if trimmed == "end" && depth > 0 {
-            depth -= 1;
-        }
-    }
-
-    Ok(())
-}
-
-fn is_block_header(line: &str) -> bool {
-    is_block_keyword(line, "block-beta") || is_block_keyword(line, "block")
-}
-
-fn is_block_start(line: &str) -> bool {
-    line.starts_with("block:") || is_block_header(line)
-}
-
-fn is_block_keyword(line: &str, keyword: &str) -> bool {
-    let Some(rest) = line.strip_prefix(keyword) else {
-        return false;
-    };
-    match rest.chars().next() {
-        None => true,
-        Some(ch) => ch.is_whitespace() || ch == ':',
-    }
 }
 
 pub fn parse_block_model_for_render(
@@ -734,11 +768,68 @@ fn node_delims_at_start(input: &str) -> Option<NodeDelims> {
     None
 }
 
+enum DocumentFrameKind {
+    Root,
+    IdBlock(Block),
+    AnonymousBlock,
+}
+
+struct DocumentFrame {
+    kind: DocumentFrameKind,
+    children: Vec<Block>,
+}
+
+impl DocumentFrame {
+    fn root() -> Self {
+        Self {
+            kind: DocumentFrameKind::Root,
+            children: Vec::new(),
+        }
+    }
+
+    fn id_block(header: Block) -> Self {
+        Self {
+            kind: DocumentFrameKind::IdBlock(header),
+            children: Vec::new(),
+        }
+    }
+
+    fn anonymous_block() -> Self {
+        Self {
+            kind: DocumentFrameKind::AnonymousBlock,
+            children: Vec::new(),
+        }
+    }
+
+    fn into_block(self, parser: &mut Parser<'_>) -> Block {
+        match self.kind {
+            DocumentFrameKind::Root => {
+                let mut b = Block::new(parser.generate_id());
+                b.block_type = "composite".to_string();
+                b.label = Some("".to_string());
+                b.children = self.children;
+                b
+            }
+            DocumentFrameKind::IdBlock(mut header) => {
+                header.block_type = "composite".to_string();
+                header.children = self.children;
+                header
+            }
+            DocumentFrameKind::AnonymousBlock => {
+                let mut b = Block::new(parser.generate_id());
+                b.block_type = "composite".to_string();
+                b.label = Some("".to_string());
+                b.children = self.children;
+                b
+            }
+        }
+    }
+}
+
 struct Parser<'a> {
     input: &'a str,
     pos: usize,
     gen_counter: i64,
-    document_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -747,7 +838,6 @@ impl<'a> Parser<'a> {
             input,
             pos: 0,
             gen_counter: 0,
-            document_depth: 0,
         }
     }
 
@@ -871,101 +961,118 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_document(&mut self, stop_on_end: bool) -> Result<Vec<Block>> {
-        if self.document_depth > MAX_DIAGRAM_NESTING_DEPTH {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: format!(
-                    "block diagram nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                ),
-            });
-        }
+        let mut frames = vec![DocumentFrame::root()];
 
-        self.document_depth += 1;
-        let result = (|| {
-            let mut out = Vec::<Block>::new();
-            loop {
-                self.skip_ws_and_comments();
-                if self.is_eof() {
-                    break;
-                }
-                if stop_on_end && self.peek_keyword("end") {
-                    self.consume_keyword("end");
-                    break;
-                }
-
-                if self.peek_keyword("block:") {
-                    out.push(self.parse_id_block()?);
-                    continue;
-                }
-                if self.peek_keyword("block-beta") || self.peek_keyword("block") {
-                    out.push(self.parse_anonymous_block()?);
-                    continue;
-                }
-                if self.peek_keyword("columns") {
-                    out.push(self.parse_columns_statement()?);
-                    continue;
-                }
-                if self.peek_keyword("space") {
-                    out.push(self.parse_space_statement()?);
-                    continue;
-                }
-                if self.peek_keyword("classDef") {
-                    out.push(self.parse_classdef_statement()?);
-                    continue;
-                }
-                if self.peek_keyword("class") {
-                    out.push(self.parse_apply_class_statement()?);
-                    continue;
-                }
-                if self.peek_keyword("style") {
-                    out.push(self.parse_style_statement()?);
-                    continue;
-                }
-
-                let mut blocks = self.parse_node_statement()?;
-                out.append(&mut blocks);
+        loop {
+            self.skip_ws_and_comments();
+            if self.is_eof() {
+                break;
             }
-            Ok(out)
-        })();
-        self.document_depth -= 1;
-        result
+
+            let current_is_root = frames.len() == 1;
+            if ((!current_is_root) || stop_on_end) && self.peek_keyword("end") {
+                self.consume_keyword("end");
+                if current_is_root {
+                    break;
+                }
+                self.finish_document_frame(&mut frames);
+                continue;
+            }
+
+            if self.peek_keyword("block:") {
+                self.consume_keyword("block:");
+                let mut stm = self.parse_node_statement()?;
+                let header = stm
+                    .drain(..)
+                    .find(|b| b.block_type != "edge")
+                    .unwrap_or_else(|| Block::new(self.generate_id()));
+                frames.push(DocumentFrame::id_block(header));
+                continue;
+            }
+
+            if self.peek_keyword("block-beta") || self.peek_keyword("block") {
+                if !(self.consume_keyword("block-beta") || self.consume_keyword("block")) {
+                    return Err(Error::DiagramParse {
+                        diagram_type: "block".to_string(),
+                        message: "expected block".to_string(),
+                    });
+                }
+                frames.push(DocumentFrame::anonymous_block());
+                continue;
+            }
+
+            if self.peek_keyword("columns") {
+                let block = self.parse_columns_statement()?;
+                frames
+                    .last_mut()
+                    .expect("document frame should exist")
+                    .children
+                    .push(block);
+                continue;
+            }
+            if self.peek_keyword("space") {
+                let block = self.parse_space_statement()?;
+                frames
+                    .last_mut()
+                    .expect("document frame should exist")
+                    .children
+                    .push(block);
+                continue;
+            }
+            if self.peek_keyword("classDef") {
+                let block = self.parse_classdef_statement()?;
+                frames
+                    .last_mut()
+                    .expect("document frame should exist")
+                    .children
+                    .push(block);
+                continue;
+            }
+            if self.peek_keyword("class") {
+                let block = self.parse_apply_class_statement()?;
+                frames
+                    .last_mut()
+                    .expect("document frame should exist")
+                    .children
+                    .push(block);
+                continue;
+            }
+            if self.peek_keyword("style") {
+                let block = self.parse_style_statement()?;
+                frames
+                    .last_mut()
+                    .expect("document frame should exist")
+                    .children
+                    .push(block);
+                continue;
+            }
+
+            let mut blocks = self.parse_node_statement()?;
+            frames
+                .last_mut()
+                .expect("document frame should exist")
+                .children
+                .append(&mut blocks);
+        }
+
+        while frames.len() > 1 {
+            self.finish_document_frame(&mut frames);
+        }
+
+        Ok(frames
+            .pop()
+            .expect("root document frame should exist")
+            .children)
     }
 
-    fn parse_anonymous_block(&mut self) -> Result<Block> {
-        self.skip_ws_and_comments();
-        if !(self.consume_keyword("block-beta") || self.consume_keyword("block")) {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected block".to_string(),
-            });
-        }
-        let children = self.parse_document(true)?;
-        let mut b = Block::new(self.generate_id());
-        b.block_type = "composite".to_string();
-        b.label = Some("".to_string());
-        b.children = children;
-        Ok(b)
-    }
-
-    fn parse_id_block(&mut self) -> Result<Block> {
-        self.skip_ws_and_comments();
-        if !self.consume_keyword("block:") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected block:".to_string(),
-            });
-        }
-        let mut stm = self.parse_node_statement()?;
-        let header = stm
-            .drain(..)
-            .find(|b| b.block_type != "edge")
-            .unwrap_or_else(|| Block::new(self.generate_id()));
-        let children = self.parse_document(true)?;
-
-        let mut out = header;
-        out.block_type = "composite".to_string();
-        out.children = children;
-        Ok(out)
+    fn finish_document_frame(&mut self, frames: &mut Vec<DocumentFrame>) {
+        let frame = frames.pop().expect("document frame should exist");
+        let block = frame.into_block(self);
+        frames
+            .last_mut()
+            .expect("parent document frame should exist")
+            .children
+            .push(block);
     }
 
     fn parse_columns_statement(&mut self) -> Result<Block> {

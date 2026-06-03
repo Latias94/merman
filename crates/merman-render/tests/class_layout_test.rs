@@ -45,6 +45,18 @@ fn layout_class_text(
     (*layout, out.semantic)
 }
 
+fn nested_class_namespace_text(depth: usize) -> String {
+    let mut lines = vec!["classDiagram".to_string()];
+    for i in 0..depth {
+        lines.push(format!("{}namespace N{i} {{", "  ".repeat(i)));
+    }
+    lines.push(format!("{}class Leaf", "  ".repeat(depth)));
+    for i in (0..depth).rev() {
+        lines.push(format!("{}}}", "  ".repeat(i)));
+    }
+    lines.join("\n")
+}
+
 fn rect_from_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
     let hw = n.width / 2.0;
     let hh = n.height / 2.0;
@@ -446,6 +458,24 @@ namespace Company.Project {
         rect_contains(rect_from_cluster(cluster), rect_from_node(note), 0.01),
         "namespace cluster should contain its note"
     );
+}
+
+#[test]
+fn class_layout_deep_namespaces_fall_back_without_stack_growth() {
+    let depth = 24;
+    let (layout, _semantic) = layout_class_text(&nested_class_namespace_text(depth));
+
+    assert_eq!(layout.clusters.len(), depth);
+    assert!(
+        layout.nodes.iter().any(|node| node.id == "Leaf"),
+        "expected deeply nested class member to remain in the layout"
+    );
+
+    for cluster in &layout.clusters {
+        assert!(cluster.width.is_finite() && cluster.width > 0.0);
+        assert!(cluster.height.is_finite() && cluster.height > 0.0);
+        assert!(cluster.x.is_finite() && cluster.y.is_finite());
+    }
 }
 
 #[test]
