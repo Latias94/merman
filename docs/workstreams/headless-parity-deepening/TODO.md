@@ -203,6 +203,12 @@ Last updated: 2026-06-03
   the two `+5px` rows as direct group `dw=+5.000px` tails and `group_port_edges_017` as
   `group-outer dh=-17.845px`. This keeps the next comparison source-backed instead of relying on
   manual parsing of `x/y/w/h` strings.
+  A follow-up phase-join pass then compared those local group `dw` / `dh` rows against the browser
+  probe final group bboxes. Non-junction rows now have a direct final-bbox-to-upstream-group-width
+  join, while `junction_fork_join_026` is explicitly marked as probe-vs-baseline divergence before
+  it can drive a formula change. `group_port_edges_017` is the clearest next phase seam: local
+  outer group height equals browser `bbAfterSegments.h=444.603px`, but upstream final outer group
+  height is `462.448px`, producing the `-17.845px` root-height tail.
 
 ## M5 - Semantic / Render Unification Pilot
 

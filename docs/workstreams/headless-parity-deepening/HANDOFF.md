@@ -347,6 +347,18 @@ Current repository reality to preserve:
     the active `+5px` rows, `unicode`, `nested_groups`, `batch6_init`, `group_port_edges`, and
     `junction_fork_join` phase differences directly reviewable without reading width/height out of
     formatted SVG strings.
+  - A follow-up phase-join pass compared the browser final group bboxes with those local group
+    `dw` / `dh` rows. The non-junction rows now show browser final group `w/h` matching the stored
+    upstream SVG group rect `w/h`, so local `dw` / `dh` can be interpreted as renderer phase drift.
+    The direct group-width rows are `batch5_long_titles_and_punct_076` (`+5px`),
+    `html_titles_and_escapes_041` (`+5px`), and `unicode_and_xml_escapes_019` (`+3px`).
+    `nested_groups_002` and `batch6_init_fontsize_icon_size_wrap_093` combine smaller width tails
+    with placement/root aggregation, so do not treat them as one global width constant.
+    `group_port_edges_017` is now the sharpest implementation candidate: local outer group height
+    equals browser `bbAfterSegments.h=444.603px`, while upstream final outer group bbox height is
+    `462.448px`. `junction_fork_join_026` remains a harness/baseline divergence first: an Edge
+    rerun reproduced the probe geometry, but the stored upstream SVG group/service positions differ
+    from that probe.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

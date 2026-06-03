@@ -3,6 +3,65 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Active Residual Phase Join
+
+Outcome:
+
+- Joined the existing seven-fixture browser/Cytoscape FCoSE probe batch with the local
+  upstream-vs-rendered group-size delta reports. No renderer, layout, measurement constant, SVG
+  output behavior, or xtask command changed.
+- For all non-junction focused group rows, the browser probe final `node.boundingBox().w/h`
+  matches the stored upstream SVG group rect `w/h` at report precision. That means those rows can
+  use final browser group bbox as the source phase when comparing local group `dw` / `dh`.
+- `junction_fork_join_026` is the exception: an explicit Edge rerun reproduced the probe geometry,
+  but the stored upstream SVG group rects and service positions differ from the probe. Treat that
+  row as a probe-harness / CLI-baseline divergence plus solver/phase residual before attempting a
+  production formula change.
+- `group_port_edges_017` exposes a concrete phase seam: local `group-outer h=444.603px` matches the
+  browser probe `bbAfterSegments.h=444.603px`, while the upstream final outer group bbox is
+  `462.448px`. The root height delta (`-17.845px`) follows that stage-bbox-vs-final-compound-bbox
+  gap.
+- The two `+5px` rows and `unicode_and_xml_escapes_019` are direct group width tails: local group
+  `dw` equals the root width delta.
+- `nested_groups_002` and `batch6_init_fontsize_icon_size_wrap_093` are not pure final group size
+  rows. Their root width tails combine small group `dw` with nested/position propagation, so they
+  need phase-specific placement/root aggregation evidence before a production fix.
+
+Source phase join:
+
+| fixture | group | browser final group w/h | upstream group w/h | local group dw/dh | root dw/dh |
+|---|---|---:|---:|---:|---:|
+| `batch5_long_titles_and_punct_076` | `pipeline` | `462.926 / 382.926` | `462.926 / 382.926` | `+5.000 / +0.000` | `+5.000 / +0.000` |
+| `html_titles_and_escapes_041` | `ui` | `399.926 / 382.926` | `399.926 / 382.926` | `+5.000 / +0.000` | `+5.000 / +0.000` |
+| `unicode_and_xml_escapes_019` | `i` | `389.822 / 383.593` | `389.822 / 383.593` | `+3.000 / -0.000` | `+3.000 / +0.000` |
+| `nested_groups_002` | `platform` | `459.154 / 542.658` | `459.154 / 542.658` | `-0.500 / +0.000` | `+2.500 / +0.000` |
+| `nested_groups_002` | `data` | `376.154 / 182.000` | `376.154 / 182.000` | `-0.500 / +0.000` | `+2.500 / +0.000` |
+| `nested_groups_002` | `runtime` | `365.654 / 182.000` | `365.654 / 182.000` | `+0.000 / +0.000` | `+2.500 / +0.000` |
+| `batch6_init_fontsize_icon_size_wrap_093` | `left` | `162.000 / 124.000` | `162.000 / 124.000` | `-3.000 / +0.000` | `-2.500 / +0.000` |
+| `batch6_init_fontsize_icon_size_wrap_093` | `right` | `236.605 / 160.924` | `236.605 / 160.924` | `-1.000 / +0.000` | `-2.500 / +0.000` |
+| `group_port_edges_017` | `outer` | `447.995 / 462.448` | `447.995 / 462.448` | `+0.030 / -17.845` | `+1.468 / -17.845` |
+| `group_port_edges_017` | `inner` | `364.995 / 182.000` | `364.995 / 182.000` | `+0.030 / +0.000` | `+1.468 / -17.845` |
+| `junction_fork_join_026` | `left` | `1809.785 / 1626.571` | `1788.557 / 1649.154` | `+17.331 / -18.609` | `+13.976 / -12.502` |
+| `junction_fork_join_026` | `right` | `941.374 / 1017.806` | `945.473 / 1010.381` | `-3.388 / +6.107` | `+13.976 / -12.502` |
+
+Focused verification:
+
+- Read-only PowerShell JSON/Markdown join over
+  `target\compare\architecture-fcose-probe-active-residuals-hpd050\*.json` and
+  `target\compare\architecture-delta-active-residuals-hpd050-group-size\*.md` - passed and
+  produced the table above.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture junction_fork_join_026 --out target\compare\architecture-fcose-probe-junction-rerun-hpd050` - expected-failed because the
+  default Puppeteer Chrome cache is absent locally.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture junction_fork_join_026 --out target\compare\architecture-fcose-probe-junction-rerun-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed and reproduced the earlier `junction_fork_join_026` probe geometry.
+
+Residual note:
+
+- This is an evidence/classification step. It narrows the next implementation candidates to
+  phase-specific fixes only: direct service/group width phase for the `+5px` / `unicode` rows, a
+  final-compound-vs-layout-stage phase audit for `group_port_edges_017`, and a separate
+  probe-vs-baseline harness check before using `junction_fork_join_026` as a formula target.
+
 ## HPD-050 - Architecture Delta Group Size Columns
 
 Outcome:
