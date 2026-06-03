@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 authors = ["Mingzhen Zhuang <superfrankie621@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -61,13 +61,13 @@ unicode-width = "0.2.2"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
-merman = { path = "crates/merman", version = "0.6.1" }
-merman-core = { path = "crates/merman-core", version = "0.6.1" }
-merman-render = { path = "crates/merman-render", version = "0.6.1" }
-merman-cli = { path = "crates/merman-cli", version = "0.6.1" }
-dugong = { path = "crates/dugong", version = "0.6.1" }
-dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.6.1" }
-manatee = { path = "crates/manatee", version = "0.6.1" }
+merman = { path = "crates/merman", version = "0.6.2" }
+merman-core = { path = "crates/merman-core", version = "0.6.2" }
+merman-render = { path = "crates/merman-render", version = "0.6.2" }
+merman-cli = { path = "crates/merman-cli", version = "0.6.2" }
+dugong = { path = "crates/dugong", version = "0.6.2" }
+dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.6.2" }
+manatee = { path = "crates/manatee", version = "0.6.2" }
 
 # The profile that 'dist' will build with
 [profile.dist]

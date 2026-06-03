@@ -6,6 +6,17 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-06-03
+
+### Fixed
+
+- Completed the 0.6.x deep-nesting fix by matching Mermaid for valid deeply nested Flowchart
+  subgraphs: diagrams past 256 nested subgraphs now parse and render instead of returning the
+  v0.6.1 custom depth-limit error.
+- Kept Class diagrams on their Class-specific stack-safe path: recursive namespace cluster
+  extraction is bounded instead of following arbitrary nesting depth, so valid deep namespaces avoid
+  call-stack growth without changing the existing Class parser contract.
+
 ## [0.6.1] - 2026-06-02
 
 ### Fixed
