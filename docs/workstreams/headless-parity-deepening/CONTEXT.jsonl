@@ -478,3 +478,10 @@
 {"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Architecture FCoSE probe Markdown summary recorded as reference-harness infrastructure, not root residual closure."}
 {"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: future Architecture bbox audits should inspect probe Markdown summaries before drilling into raw JSON."}
 {"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture FCoSE probe Markdown summary recorded under active source-backed layout audit work."}
+{"file":"crates/xtask/src/cmd/debug/architecture.rs","reason":"HPD-050 Architecture FCoSE probe edge summary: Markdown output now includes final edge bboxes, endpoint coordinates, directions, and segment style values."}
+{"file":"target/compare/architecture-fcose-probe-edge-summary-hpd050/stress_architecture_group_port_edges_017.fcose-browser-probe.md","reason":"HPD-050 evidence: Markdown summary for the group_port_edges_017 edge/endpoint residual probe."}
+{"file":"target/compare/architecture_report_parity_hpd050_fcose_probe_edge_summary.md","reason":"HPD-050 evidence: Architecture structural parity stayed green after adding final edge rows to probe Markdown summaries."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-050-architecture-fcose-probe-edge-summary.md","reason":"HPD-050 journal: Architecture FCoSE probe edge summary, focused group_port_edges artifact, verification, and residual boundary."}
+{"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Architecture FCoSE probe final edge summary recorded as reference-harness infrastructure, not root residual closure."}
+{"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: future Architecture edge/endpoint residual audits should inspect probe edge summary tables before renderer routing claims."}
+{"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture FCoSE probe final edge summary recorded under active source-backed layout audit work."}

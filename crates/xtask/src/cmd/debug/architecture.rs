@@ -237,6 +237,40 @@ fn render_architecture_fcose_probe_markdown(
             );
         }
     }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Final Edge Bounds\n");
+    let _ = writeln!(
+        &mut md,
+        "| id | endpoints | classes | dirs | bb | source endpoint | target endpoint | curve | weights | distances | edge distances |"
+    );
+    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|---|");
+    if let Some(edges) = probe
+        .pointer("/finalElements/edges")
+        .and_then(|v| v.as_array())
+    {
+        for edge in edges {
+            let id = json_string(edge, "id").unwrap_or("<missing>");
+            let data = edge.get("data").unwrap_or(&serde_json::Value::Null);
+            let style = edge.get("style").unwrap_or(&serde_json::Value::Null);
+            let source = json_string(data, "source").unwrap_or("<missing>");
+            let target = json_string(data, "target").unwrap_or("<missing>");
+            let source_dir = json_string(data, "sourceDir").unwrap_or("<none>");
+            let target_dir = json_string(data, "targetDir").unwrap_or("<none>");
+            let classes = format_probe_classes(edge.get("classes"));
+            let bb = format_probe_rect(edge.get("bb"));
+            let source_endpoint = format_probe_point(edge.get("sourceEndpoint"));
+            let target_endpoint = format_probe_point(edge.get("targetEndpoint"));
+            let curve = json_string(style, "curveStyle").unwrap_or("<none>");
+            let weights = json_string(style, "segmentWeights").unwrap_or("<none>");
+            let distances = json_string(style, "segmentDistances").unwrap_or("<none>");
+            let edge_distances = json_string(style, "edgeDistances").unwrap_or("<none>");
+            let _ = writeln!(
+                &mut md,
+                "| `{id}` | `{source} -> {target}` | `{classes}` | `{source_dir} -> {target_dir}` | `{bb}` | `{source_endpoint}` | `{target_endpoint}` | `{curve}` | `{weights}` | `{distances}` | `{edge_distances}` |"
+            );
+        }
+    }
 
     md
 }
@@ -1282,7 +1316,20 @@ mod tests {
                     "classes": ["node-service"],
                     "data": { "type": "service", "label": "Service Label" }
                 }],
-                "edges": []
+                "edges": [{
+                    "id": "svc-other",
+                    "bb": { "x1": 7.0, "y1": 8.0, "w": 9.0, "h": 10.0 },
+                    "sourceEndpoint": { "x": 11.0, "y": 12.0 },
+                    "targetEndpoint": { "x": 13.0, "y": 14.0 },
+                    "classes": ["straight"],
+                    "data": { "source": "svc", "target": "other", "sourceDir": "R", "targetDir": "L" },
+                    "style": {
+                        "curveStyle": "straight",
+                        "segmentWeights": "0.5",
+                        "segmentDistances": "20px",
+                        "edgeDistances": "intersection"
+                    }
+                }]
             }
         });
 
@@ -1296,5 +1343,7 @@ mod tests {
         assert!(md.contains("# Architecture FCoSE Browser Probe"));
         assert!(md.contains("| `bbBeforeRun2` | `x1=1.000 y1=2.000 w=30.000 h=40.000` |"));
         assert!(md.contains("| `svc` | `service` | `node-service` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=3.000 h=4.000` | `x1=2.000 y1=3.000 w=4.000 h=5.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `<none>` | `Service Label` |"));
+        assert!(md.contains("## Final Edge Bounds"));
+        assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
     }
 }

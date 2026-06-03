@@ -281,6 +281,10 @@ Current repository reality to preserve:
     summary tables expose config, bbox stages, final `node.boundingBox()`, `bodyBounds`,
     `labelBounds.all`, and children bbox phases. Use the Markdown first for residual triage, then
     drill into JSON only when a row needs full raw data.
+  - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
+    `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
+    coordinates, source/target directions, and segment style values. Use this table before making
+    any renderer routing claim for edge/endpoint residuals.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

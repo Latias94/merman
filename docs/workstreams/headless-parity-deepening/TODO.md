@@ -171,6 +171,10 @@ Last updated: 2026-06-03
   `labelBounds.all`, and children bbox phases. The two active `+5px` group/service bbox rows
   (`batch5_long_titles_and_punct_076` and `html_titles_and_escapes_041`) both generated summaries;
   continue using these artifacts before attempting another source-formula change.
+  A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
+  `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
+  source/target directions, and segment style values as table evidence; keep using this for
+  edge/endpoint residual triage instead of reopening renderer routing from SVG shape alone.
 
 ## M5 - Semantic / Render Unification Pilot
 

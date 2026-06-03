@@ -3,6 +3,41 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture FCoSE Probe Edge Summary
+
+Outcome:
+
+- Extended the `debug-architecture-fcose-probe` Markdown summary with a `Final Edge Bounds` table.
+- The edge summary records each browser/Cytoscape final edge id, source/target endpoint ids,
+  source/target directions, final edge `boundingBox()`, source/target endpoint coordinates,
+  `curve-style`, `segment-weights`, `segment-distances`, and `edge-distances`.
+- Generated a focused summary for `stress_architecture_group_port_edges_017`, the active
+  group-port residual row whose previous classification depends on final edge endpoint and segment
+  evidence.
+- No renderer, layout, measurement constant, or SVG output behavior changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+
+Focused verification:
+
+- `cargo nextest run -p xtask fcose_probe_markdown` - passed, `1` test run.
+- `cargo nextest run -p xtask fcose_probe` - passed, `4` tests run.
+- `cargo nextest run -p xtask` - passed, `90` tests run.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_group_port_edges_017 --out-dir target\compare\architecture-fcose-probe-edge-summary-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote JSON plus Markdown summary with `4` captured stages, `6` final nodes, and `4`
+  final edges.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_fcose_probe_edge_summary.md` -
+  passed.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is source-evidence ergonomics for edge/endpoint residual audits. It does not change
+  Architecture edge routing or claim `group_port_edges_017` root closure.
+
 ## HPD-050 - Architecture FCoSE Probe Markdown Summary
 
 Outcome:
