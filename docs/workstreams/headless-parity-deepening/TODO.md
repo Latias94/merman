@@ -166,6 +166,11 @@ Last updated: 2026-06-03
   stable artifact naming, and an optional `--browser-exe` bridge for the existing Edge-backed
   Puppeteer workflow. This is source-evidence infrastructure only; it did not change layout or
   root-bounds behavior.
+  A follow-up probe-summary slice now writes a Markdown table beside the raw JSON, exposing config,
+  `bbBeforeRun2` / `bbAfterSegments`, final `node.boundingBox()`, `bodyBounds`,
+  `labelBounds.all`, and children bbox phases. The two active `+5px` group/service bbox rows
+  (`batch5_long_titles_and_punct_076` and `html_titles_and_escapes_041`) both generated summaries;
+  continue using these artifacts before attempting another source-formula change.
 
 ## M5 - Semantic / Render Unification Pilot
 

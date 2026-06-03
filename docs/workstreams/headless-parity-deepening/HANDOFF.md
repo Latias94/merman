@@ -277,6 +277,10 @@ Current repository reality to preserve:
     fixture resolution, JSON validation, artifact naming, and optional Edge/Chrome executable
     selection are recorded consistently instead of relying on raw `node ... > file` shell
     redirection.
+  - A follow-up probe-summary slice now writes a Markdown summary next to the raw probe JSON. The
+    summary tables expose config, bbox stages, final `node.boundingBox()`, `bodyBounds`,
+    `labelBounds.all`, and children bbox phases. Use the Markdown first for residual triage, then
+    drill into JSON only when a row needs full raw data.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

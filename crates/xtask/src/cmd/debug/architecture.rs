@@ -102,6 +102,145 @@ fn architecture_fcose_probe_json_path(out_dir: &Path, stem: &str) -> PathBuf {
     out_dir.join(format!("{stem}.fcose-browser-probe.json"))
 }
 
+fn architecture_fcose_probe_markdown_path(out_dir: &Path, stem: &str) -> PathBuf {
+    out_dir.join(format!("{stem}.fcose-browser-probe.md"))
+}
+
+fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
+    v.get(key).and_then(|v| v.as_f64())
+}
+
+fn json_string<'a>(v: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    v.get(key).and_then(|v| v.as_str())
+}
+
+fn format_probe_f64(v: f64) -> String {
+    format!("{v:.3}")
+}
+
+fn format_probe_rect(v: Option<&serde_json::Value>) -> String {
+    let Some(v) = v.filter(|v| !v.is_null()) else {
+        return "<none>".to_string();
+    };
+
+    let mut parts = Vec::new();
+    for key in ["x1", "y1", "w", "h"] {
+        if let Some(n) = json_f64(v, key) {
+            parts.push(format!("{key}={}", format_probe_f64(n)));
+        }
+    }
+    if parts.is_empty() {
+        "<none>".to_string()
+    } else {
+        parts.join(" ")
+    }
+}
+
+fn format_probe_point(v: Option<&serde_json::Value>) -> String {
+    let Some(v) = v.filter(|v| !v.is_null()) else {
+        return "<none>".to_string();
+    };
+    let Some(x) = json_f64(v, "x") else {
+        return "<none>".to_string();
+    };
+    let Some(y) = json_f64(v, "y") else {
+        return "<none>".to_string();
+    };
+    format!("x={} y={}", format_probe_f64(x), format_probe_f64(y))
+}
+
+fn format_probe_classes(v: Option<&serde_json::Value>) -> String {
+    let Some(classes) = v.and_then(|v| v.as_array()) else {
+        return "<none>".to_string();
+    };
+    let out: Vec<&str> = classes.iter().filter_map(|v| v.as_str()).collect();
+    if out.is_empty() {
+        "<none>".to_string()
+    } else {
+        out.join(" ")
+    }
+}
+
+fn format_probe_config_value(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(v) => v.to_string(),
+        serde_json::Value::Null => "<null>".to_string(),
+        _ => serde_json::to_string(v).unwrap_or_else(|_| "<unprintable>".to_string()),
+    }
+}
+
+fn render_architecture_fcose_probe_markdown(
+    stem: &str,
+    source_path: &Path,
+    json_path: &Path,
+    probe: &serde_json::Value,
+) -> String {
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture FCoSE Browser Probe\n");
+    let _ = writeln!(&mut md, "- Fixture: `{stem}`");
+    let _ = writeln!(&mut md, "- Source: `{}`", source_path.display());
+    let _ = writeln!(&mut md, "- JSON: `{}`\n", json_path.display());
+
+    let _ = writeln!(&mut md, "## Config\n");
+    let _ = writeln!(&mut md, "| key | value |\n|---|---|");
+    if let Some(config) = probe.get("config").and_then(|v| v.as_object()) {
+        for (key, value) in config {
+            let _ = writeln!(
+                &mut md,
+                "| `{key}` | `{}` |",
+                format_probe_config_value(value)
+            );
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Layout BBox Stages\n");
+    let _ = writeln!(&mut md, "| tag | bbox |\n|---|---|");
+    if let Some(stages) = probe.get("stages").and_then(|v| v.as_array()) {
+        for stage in stages {
+            let Some(tag) = json_string(stage, "tag") else {
+                continue;
+            };
+            let bbox = format_probe_rect(stage.get("bb"));
+            let _ = writeln!(&mut md, "| `{tag}` | `{bbox}` |");
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Final Node Bounds\n");
+    let _ = writeln!(
+        &mut md,
+        "| id | type | classes | pos | bb | body | label | children labels | children body | label text |"
+    );
+    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|");
+    if let Some(nodes) = probe
+        .pointer("/finalElements/nodes")
+        .and_then(|v| v.as_array())
+    {
+        for node in nodes {
+            let id = json_string(node, "id").unwrap_or("<missing>");
+            let data = node.get("data").unwrap_or(&serde_json::Value::Null);
+            let node_type = json_string(data, "type").unwrap_or("<missing>");
+            let label = json_string(data, "label").unwrap_or("<none>");
+            let classes = format_probe_classes(node.get("classes"));
+            let pos = format_probe_point(node.get("pos"));
+            let bb = format_probe_rect(node.get("bb"));
+            let body = format_probe_rect(node.get("bodyBounds"));
+            let label_bounds = format_probe_rect(node.pointer("/labelBounds/all"));
+            let children_labels = format_probe_rect(node.get("childrenBoundingBoxIncludeLabels"));
+            let children_body = format_probe_rect(node.get("childrenBoundingBoxBodyOnly"));
+            let _ = writeln!(
+                &mut md,
+                "| `{id}` | `{node_type}` | `{classes}` | `{pos}` | `{bb}` | `{body}` | `{label_bounds}` | `{children_labels}` | `{children_body}` | `{label}` |"
+            );
+        }
+    }
+
+    md
+}
+
 pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), XtaskError> {
     let cli = parse_architecture_fcose_probe_args(&args)?;
     let (mmd_path, stem) = resolve_architecture_probe_fixture(&cli.fixture_filter)?;
@@ -152,6 +291,15 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
             source,
         }
     })?;
+    let out_markdown = architecture_fcose_probe_markdown_path(&cli.out_dir, &stem);
+    fs::write(
+        &out_markdown,
+        render_architecture_fcose_probe_markdown(&stem, &mmd_path, &out_json, &probe),
+    )
+    .map_err(|source| XtaskError::WriteFile {
+        path: out_markdown.display().to_string(),
+        source,
+    })?;
 
     let stage_count = probe
         .get("stages")
@@ -173,6 +321,7 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
         println!("browser: {}", browser_exe.display());
     }
     println!("json:    {}", out_json.display());
+    println!("summary: {}", out_markdown.display());
     println!("stages:  {stage_count}");
     println!("final elements: nodes={node_count} edges={edge_count}");
 
@@ -1111,5 +1260,41 @@ mod tests {
             architecture_fcose_probe_json_path(Path::new("target/probe"), "fixture_001"),
             PathBuf::from("target/probe").join("fixture_001.fcose-browser-probe.json")
         );
+    }
+
+    #[test]
+    fn fcose_probe_markdown_summarizes_stage_and_node_bounds() {
+        let probe = serde_json::json!({
+            "config": { "iconSize": 80, "fontSize": 16 },
+            "stages": [
+                { "tag": "probe-installed" },
+                { "tag": "bbBeforeRun2", "bb": { "x1": 1.0, "y1": 2.0, "w": 30.0, "h": 40.0 } }
+            ],
+            "finalElements": {
+                "nodes": [{
+                    "id": "svc",
+                    "pos": { "x": 10.0, "y": 20.0 },
+                    "bb": { "x1": 1.0, "y1": 2.0, "w": 3.0, "h": 4.0 },
+                    "bodyBounds": { "x1": 2.0, "y1": 3.0, "w": 4.0, "h": 5.0 },
+                    "labelBounds": { "all": { "x1": 3.0, "y1": 4.0, "w": 5.0, "h": 6.0 } },
+                    "childrenBoundingBoxIncludeLabels": { "x1": 4.0, "y1": 5.0, "w": 6.0, "h": 7.0 },
+                    "childrenBoundingBoxBodyOnly": null,
+                    "classes": ["node-service"],
+                    "data": { "type": "service", "label": "Service Label" }
+                }],
+                "edges": []
+            }
+        });
+
+        let md = render_architecture_fcose_probe_markdown(
+            "fixture_001",
+            Path::new("fixtures/architecture/fixture_001.mmd"),
+            Path::new("target/probe/fixture_001.fcose-browser-probe.json"),
+            &probe,
+        );
+
+        assert!(md.contains("# Architecture FCoSE Browser Probe"));
+        assert!(md.contains("| `bbBeforeRun2` | `x1=1.000 y1=2.000 w=30.000 h=40.000` |"));
+        assert!(md.contains("| `svc` | `service` | `node-service` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=3.000 h=4.000` | `x1=2.000 y1=3.000 w=4.000 h=5.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `<none>` | `Service Label` |"));
     }
 }

@@ -3,6 +3,48 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture FCoSE Probe Markdown Summary
+
+Outcome:
+
+- Deepened the new `debug-architecture-fcose-probe` xtask entry so each browser/Cytoscape probe now
+  writes both raw JSON and a compact Markdown summary.
+- The summary records fixture/source paths, Architecture config values, layout bbox stages such as
+  `bbBeforeRun2` / `bbAfterSegments`, and final node rows with position, `node.boundingBox()`,
+  `bodyBounds`, `labelBounds.all`, `childrenBoundingBoxIncludeLabels`, and
+  `childrenBoundingBoxBodyOnly`.
+- Focused probe runs for the two active `+5px` group/service bbox rows now produce directly
+  reviewable summaries:
+  - `stress_architecture_batch5_long_titles_and_punct_076`
+  - `stress_architecture_html_titles_and_escapes_041`
+- No renderer, layout, measurement constant, or SVG output behavior changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+
+Focused verification:
+
+- `cargo nextest run -p xtask fcose_probe_markdown` - passed, `1` test run.
+- `cargo nextest run -p xtask fcose_probe` - passed, `4` tests run.
+- `cargo nextest run -p xtask` - passed, `90` tests run.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch5_long_titles_and_punct_076 --out-dir target\compare\architecture-fcose-probe-summary-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote JSON plus Markdown summary with `4` captured stages, `5` final nodes, and `4`
+  final edges.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_html_titles_and_escapes_041 --out-dir target\compare\architecture-fcose-probe-summary-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote JSON plus Markdown summary with `4` captured stages, `4` final nodes, and `3`
+  final edges.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_fcose_probe_summary.md` -
+  passed.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is still reference-harness infrastructure, not a root residual fix. The value is that future
+  source-backed Cytoscape bbox audits can inspect group and child bbox phases from a small Markdown
+  table before drilling into the raw JSON.
+
 ## HPD-050 - Architecture FCoSE Browser Probe xtask Entry
 
 Outcome:
