@@ -218,6 +218,18 @@ Last updated: 2026-06-03
   service/inner-group positions are also vertically compressed by `8.922571px` on each side, so the
   next production path must separate layout relocation bboxes, final compound group bboxes, and
   `{group}` endpoint propagation rather than exporting layout-base compound rects directly.
+  A follow-up relocation/repulsion audit narrowed that implementation path further. Disabling
+  relocation made `group_port_edges_017` root-exact, but it increased full Architecture
+  `parity-root` mismatches from `25` to `27`, so relocation is not a global switch fix. Enhanced
+  browser probe evidence shows first-run relocation matches local exactly, and second-run
+  `originalCenter` also matches at `(1.500,17.750)`. The divergence starts in the second run's
+  first CoSE tick before constraint relaxation: upstream gives the `inner` compound
+  `repulsion=(0,250)` / displacement `(0,30)`, while local gives `repulsion=(40,40)` /
+  displacement `(6,6)`. Current evidence points to a `layout-base` clipping / near-touching
+  rectangle boundary after `ConstraintHandler.handleConstraints(...)`, not renderer group padding
+  or a wrong `eles.boundingBox()` original-center input. Do not globally change
+  `rects_intersect(...)` or add an epsilon without a focused clipping parity test and full
+  Architecture verification.
 
 ## M5 - Semantic / Render Unification Pilot
 

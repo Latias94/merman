@@ -68,6 +68,38 @@ function deterministicPagePreludeScript(seedStr) {
 `;
 }
 
+function instrumentFcoseUmd(source) {
+  const marker = `      // find difference between current and original center
+      var _diffOnX = originalCenter.x - (maxXCoord + minXCoord) / 2;
+      var _diffOnY = originalCenter.y - (maxYCoord + minYCoord) / 2;
+      // move component to original center`;
+  const replacement = `      // find difference between current and original center
+      var _diffOnX = originalCenter.x - (maxXCoord + minXCoord) / 2;
+      var _diffOnY = originalCenter.y - (maxYCoord + minYCoord) / 2;
+      try {
+        globalThis.__archFcoseStages = globalThis.__archFcoseStages || [];
+        var _archFcoseRunIndex = globalThis.__archFcoseStages.filter(function (stage) {
+          return stage && stage.tag === "relocateComponent";
+        }).length;
+        globalThis.__archFcoseStages.push({
+          tag: "relocateComponent",
+          runIndex: _archFcoseRunIndex,
+          quality: options && options.quality,
+          originalCenter: { x: originalCenter.x, y: originalCenter.y },
+          rectBbox: { x1: minXCoord, y1: minYCoord, x2: maxXCoord, y2: maxYCoord, w: maxXCoord - minXCoord, h: maxYCoord - minYCoord },
+          rectCenter: { x: (maxXCoord + minXCoord) / 2, y: (maxYCoord + minYCoord) / 2 },
+          delta: { x: _diffOnX, y: _diffOnY },
+        });
+      } catch (e) {
+        // Probe-only instrumentation must not change layout behavior.
+      }
+      // move component to original center`;
+  if (!source.includes(marker)) {
+    throw new Error("Unable to instrument cytoscape-fcose relocation hook");
+  }
+  return source.replace(marker, replacement);
+}
+
 async function main() {
   const fixtureStem = process.argv[2] || "stress_architecture_many_small_groups_025";
   const fixtureMmd = path.join(workspaceRoot, "fixtures", "architecture", `${fixtureStem}.mmd`);
@@ -113,7 +145,6 @@ async function main() {
   await page.evaluateOnNewDocument(deterministicPagePreludeScript("1"));
 
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-  await page.addScriptTag({ path: mermaidIifePath });
   await page.addScriptTag({ path: cytoscapeUmd });
   await page.addScriptTag({ path: layoutBaseUmd });
   await page.addScriptTag({ path: coseBaseUmd });
@@ -130,15 +161,39 @@ async function main() {
   });
   function dumpLayoutNodes(tag, layout) {
     try {
-      const leaf = layout.getAllNodes().filter((n) => n.getChild() == null);
+      const all = layout.getAllNodes();
+      const toRow = (n) => ({
+        id: n.id,
+        center: [n.getCenterX(), n.getCenterY()],
+        leftTop: [n.getLeft(), n.getTop()],
+        size: [n.getWidth(), n.getHeight()],
+        owner: n.getOwner && n.getOwner() && n.getOwner().getParent ? (n.getOwner().getParent() ? n.getOwner().getParent().id : 'root') : 'unknown',
+        childCount: n.getChild && n.getChild() ? n.getChild().getNodes().length : 0,
+      });
+      const leaf = all.filter((n) => n.getChild() == null);
       return {
         tag,
-        leaf: leaf.map((n) => ({
+        leaf: leaf.map(toRow),
+        all: all.map(toRow),
+      };
+    } catch (e) {
+      return { tag, error: String(e && e.message ? e.message : e) };
+    }
+  }
+
+  function dumpDisplacements(tag, layout) {
+    try {
+      const all = layout.getAllNodes();
+      return {
+        tag,
+        nodes: all.map((n) => ({
           id: n.id,
+          displacement: [n.displacementX, n.displacementY],
+          spring: [n.springForceX, n.springForceY],
+          repulsion: [n.repulsionForceX, n.repulsionForceY],
+          gravity: [n.gravitationForceX, n.gravitationForceY],
           center: [n.getCenterX(), n.getCenterY()],
-          leftTop: [n.getLeft(), n.getTop()],
-          size: [n.getWidth(), n.getHeight()],
-          owner: n.getOwner && n.getOwner() && n.getOwner().getParent ? (n.getOwner().getParent() ? n.getOwner().getParent().id : 'root') : 'unknown',
+          childCount: n.getChild && n.getChild() ? n.getChild().getNodes().length : 0,
         })),
       };
     } catch (e) {
@@ -175,6 +230,18 @@ async function main() {
     return origInit.apply(this, arguments);
   };
 
+  const origUpdateDisplacements = CoSELayout.prototype.updateDisplacements;
+  CoSELayout.prototype.updateDisplacements = function () {
+    if (this.totalIterations === 1) {
+      globalThis.__archFcoseStages.push(dumpDisplacements('updateDisplacements.before', this));
+    }
+    const ret = origUpdateDisplacements.apply(this, arguments);
+    if (this.totalIterations === 1) {
+      globalThis.__archFcoseStages.push(dumpDisplacements('updateDisplacements.after', this));
+    }
+    return ret;
+  };
+
   const origTick = CoSELayout.prototype.tick;
   CoSELayout.prototype.tick = function () {
     const ended = origTick.apply(this, arguments);
@@ -202,7 +269,8 @@ async function main() {
 `,
   });
 
-  await page.addScriptTag({ path: fcoseUmd });
+  await page.addScriptTag({ content: instrumentFcoseUmd(fs.readFileSync(fcoseUmd, "utf8")) });
+  await page.addScriptTag({ path: mermaidIifePath });
 
   const out = await page.evaluate(async (code, initConfig) => {
     const mermaid = globalThis.mermaid;
@@ -214,13 +282,13 @@ async function main() {
     if (!coseBase) throw new Error("missing global coseBase");
     if (!cytoscapeFcose) throw new Error("missing global cytoscapeFcose");
 
-    cytoscape.use(cytoscapeFcose);
     mermaid.initialize({ startOnLoad: false, ...initConfig });
 
     const parsed = await mermaid.mermaidAPI.getDiagramFromText(code);
     const diag = parsed && (parsed.diagram ?? parsed);
     const db = diag && diag.db;
     if (!db) throw new Error("missing ArchitectureDB from getDiagramFromText");
+    cytoscape.use(cytoscapeFcose);
 
     const services = db.getServices();
     const junctions = db.getJunctions();

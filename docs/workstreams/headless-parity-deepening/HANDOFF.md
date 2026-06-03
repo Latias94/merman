@@ -369,6 +369,17 @@ Current repository reality to preserve:
     padding, exporting layout-base compound rects directly, or driving root height from
     `ArchitectureDiagramLayout.bounds`; the next production fix needs phase-specific final
     compound bbox and `{group}` endpoint propagation evidence.
+  - A follow-up relocation/repulsion audit narrowed the same row again. Full Architecture
+    `MANATEE_FCOSE_DISABLE_RELOCATE=1` made `group_port_edges_017` root-exact, but raised
+    `parity-root` mismatches from `25` to `27`, so do not disable relocation globally. Enhanced
+    browser probe evidence shows first-run relocation is identical to local, and second-run
+    `originalCenter` also matches at `(1.500,17.750)`. The actual divergence starts in the second
+    run's first CoSE tick: upstream gives the `inner` compound `repulsion=(0,250)` and displacement
+    `(0,30)`, while local gives `repulsion=(40,40)` and displacement `(6,6)`. Treat the next
+    candidate as a `layout-base` clipping / near-touching rectangle boundary after
+    `ConstraintHandler.handleConstraints(...)`; do not change `rects_intersect(...)`, add a global
+    epsilon, or tune group padding without a focused clipping parity test plus full Architecture
+    verification.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

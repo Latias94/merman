@@ -3,6 +3,77 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Group Port Relocation And Repulsion Seam
+
+Outcome:
+
+- Extended the Architecture FCoSE browser probe so it can record `relocateComponent(...)`,
+  first-iteration `updateDisplacements(...)`, and CoSE layout compound-node stages. The probe still
+  reconstructs Architecture inputs manually; this is source-evidence tooling only, not renderer or
+  layout production behavior.
+- Ran a full Architecture `parity-root` diagnostic with `MANATEE_FCOSE_DISABLE_RELOCATE=1`.
+  It was not a global fix: `stress_architecture_group_port_edges_017` became root-exact, but the
+  mismatch count increased from `25` to `27` by adding
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`,
+  `stress_architecture_bidirectional_boundary_traversal_020`, and
+  `upstream_architecture_docs_groups_within_groups`.
+- Focused `group_port_edges_017` evidence now shows the first run relocation is identical between
+  upstream and local:
+  `orig=(0.000,8.500)`, current rect center `(26.799,22.441)`, delta
+  `(-26.799,-13.941)`.
+- The second run original center is also identical between upstream and local:
+  `orig=(1.500,17.750)`. Therefore the next root cause is not a wrong second-run
+  `eles.boundingBox()` original-center input.
+- The divergence starts inside the second run's first CoSE tick, before constraint relaxation:
+  upstream's `inner` compound receives `repulsion=(0,250)` and displacement `(0,30)`, while local
+  receives `repulsion=(40,40)` and displacement `(6,6)`. That propagated compound displacement is
+  the source of the local vertical compression.
+- Source comparison points to a `layout-base` clipping / near-touching-rectangle boundary:
+  upstream second-run `inner` and `out1` are separated by a tiny floating gap after
+  `ConstraintHandler.handleConstraints(...)`, so `IGeometry.getIntersection(...)` takes the
+  non-overlap path and produces a near-vertical minimum-distance repulsion. Local currently snaps
+  the same phase into the touching/overlap path.
+- No production renderer, layout, measurement, SVG output, or root override behavior changed.
+
+Implementation boundary:
+
+- Do not "fix" this row by globally disabling relocation. That removes this residual but creates
+  new root mismatches.
+- Do not globally change group padding, final group bbox padding, or `GroupRectComputer`.
+- Do not globally loosen/tighten `rects_intersect(...)` or add an epsilon without family-level
+  Architecture verification; the same branch can affect many compound-heavy rows.
+- A production path would need a focused `layout-base` clipping/repulsion parity test first, then a
+  narrowly justified `manatee` correction that survives full Architecture structural and root
+  diagnostics.
+
+Focused verification:
+
+- `MANATEE_FCOSE_DISABLE_RELOCATE=1 cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_disable_relocate.md` -
+  expected failure; `group_port_edges_017` became exact, total root mismatches became `27`.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-fcose-probe-group-port-relocate-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed and wrote relocation/displacement/compound-stage browser probe artifacts.
+- `MANATEE_FCOSE_DEBUG_RELOCATE=1 MANATEE_FCOSE_DEBUG_ELES_BBOX=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-debug-group-port-relocate` -
+  passed and printed local relocation centers.
+- `MANATEE_FCOSE_DISABLE_RELOCATE=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-debug-group-port-disable-relocate` -
+  passed; local group/service sizes matched upstream and remaining deltas were a uniform
+  translation.
+- `MANATEE_FCOSE_DEBUG_POSITIONS=1 MANATEE_FCOSE_DEBUG_POSITIONS_ALL=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-debug-group-port-positions-all` -
+  passed and exposed local second-run compound/leaf stages.
+- `MANATEE_FCOSE_DEBUG_FORCES=1 MANATEE_FCOSE_DEBUG_EDGE_FORCES=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-debug-group-port-forces` -
+  passed and confirmed local second-run `inner` compound repulsion remains `(40,40)`.
+- `cargo nextest run -p xtask fcose_probe_markdown_summarizes_stage_and_node_bounds` - passed.
+- `cargo nextest run -p xtask` - passed, `94` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `git diff --check` - passed.
+- Line-by-line JSON parse for `docs\workstreams\headless-parity-deepening\CONTEXT.jsonl` -
+  passed, `529` JSONL records parsed.
+
+Residual note:
+
+- This is a source-backed narrowing step, not a production residual closure. It moves
+  `group_port_edges_017` from "relocation maybe wrong" to "second-run compound repulsion / clipping
+  boundary differs after otherwise matching original-center and pre-constraint inputs."
+
 ## HPD-050 - Architecture Group Port Source Seam
 
 Outcome:

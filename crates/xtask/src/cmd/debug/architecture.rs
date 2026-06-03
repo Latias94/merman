@@ -250,6 +250,41 @@ fn render_architecture_fcose_probe_markdown(
     }
     let _ = writeln!(&mut md);
 
+    let relocation_stages: Vec<&serde_json::Value> = probe
+        .get("stages")
+        .and_then(|v| v.as_array())
+        .map(|stages| {
+            stages
+                .iter()
+                .filter(|stage| json_string(stage, "tag") == Some("relocateComponent"))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !relocation_stages.is_empty() {
+        let _ = writeln!(&mut md, "## Relocation Stages\n");
+        let _ = writeln!(
+            &mut md,
+            "| run | original center | rect bbox | rect center | delta |"
+        );
+        let _ = writeln!(&mut md, "|---:|---|---|---|---|");
+        for stage in relocation_stages {
+            let run = stage
+                .get("runIndex")
+                .and_then(|v| v.as_u64())
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "<none>".to_string());
+            let original_center = format_probe_point(stage.get("originalCenter"));
+            let rect_bbox = format_probe_rect(stage.get("rectBbox"));
+            let rect_center = format_probe_point(stage.get("rectCenter"));
+            let delta = format_probe_point(stage.get("delta"));
+            let _ = writeln!(
+                &mut md,
+                "| {run} | `{original_center}` | `{rect_bbox}` | `{rect_center}` | `{delta}` |"
+            );
+        }
+        let _ = writeln!(&mut md);
+    }
+
     let _ = writeln!(&mut md, "## Final Node Bounds\n");
     let _ = writeln!(
         &mut md,
@@ -1619,7 +1654,15 @@ mod tests {
             "config": { "iconSize": 80, "fontSize": 16 },
             "stages": [
                 { "tag": "probe-installed" },
-                { "tag": "bbBeforeRun2", "bb": { "x1": 1.0, "y1": 2.0, "w": 30.0, "h": 40.0 } }
+                { "tag": "bbBeforeRun2", "bb": { "x1": 1.0, "y1": 2.0, "w": 30.0, "h": 40.0 } },
+                {
+                    "tag": "relocateComponent",
+                    "runIndex": 1,
+                    "originalCenter": { "x": 15.0, "y": 25.0 },
+                    "rectBbox": { "x1": 4.0, "y1": 5.0, "w": 6.0, "h": 7.0 },
+                    "rectCenter": { "x": 7.0, "y": 8.5 },
+                    "delta": { "x": 8.0, "y": 16.5 }
+                }
             ],
             "finalElements": {
                 "nodes": [{
@@ -1659,6 +1702,8 @@ mod tests {
 
         assert!(md.contains("# Architecture FCoSE Browser Probe"));
         assert!(md.contains("| `bbBeforeRun2` | `x1=1.000 y1=2.000 w=30.000 h=40.000` |"));
+        assert!(md.contains("## Relocation Stages"));
+        assert!(md.contains("| 1 | `x=15.000 y=25.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `x=7.000 y=8.500` | `x=8.000 y=16.500` |"));
         assert!(md.contains("| `svc` | `service` | `node-service` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=3.000 h=4.000` | `x1=2.000 y1=3.000 w=4.000 h=5.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `<none>` | `Service Label` |"));
         assert!(md.contains("## Final Edge Bounds"));
         assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
