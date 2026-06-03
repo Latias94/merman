@@ -327,6 +327,12 @@ Current repository reality to preserve:
     `childrenBoundingBoxIncludeLabels` as left/right/top/bottom plus `dw` / `dh`; for the focused
     `batch5_long_titles` `pipeline` group this directly reports `41.5px` per side and
     `83px` total width/height expansion.
+  - A follow-up active-residual expansion batch regenerated the seven representative Architecture
+    probe summaries under
+    `target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050\`. All summaries now
+    carry `bb over children labels`: standard-padding groups report `41.5px` per side / `83px`
+    total expansion, while the custom-init `batch6` groups report `31.5px` per side / `63px`
+    total. Use this batch before any next group-bbox formula experiment.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

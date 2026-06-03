@@ -3,6 +3,53 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Probe Expansion Active-Residual Batch
+
+Outcome:
+
+- Regenerated the representative Architecture active-residual browser probe batch after the
+  `bb over children labels` Markdown column was added.
+- The new batch index is
+  `target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050\architecture-fcose-probe-batch.md`.
+- The batch covers the seven current source-backed residual samples:
+  `junction_fork_join_026`, `batch5_long_titles_and_punct_076`,
+  `html_titles_and_escapes_041`, `unicode_and_xml_escapes_019`, `nested_groups_002`,
+  `batch6_init_fontsize_icon_size_wrap_093`, and `group_port_edges_017`.
+- All seven per-fixture Markdown summaries contain the new `bb over children labels` column.
+- The focused standard-padding group rows (`pipeline`, `ui`, `i`, `platform`, `data`, `inner`,
+  `outer`, and the large junction groups) directly report
+  `l=41.500 r=41.500 t=41.500 b=41.500 dw=83.000 dh=83.000`.
+- The custom-init `batch6_init_fontsize_icon_size_wrap_093` `left` / `right` groups report
+  `l=31.500 r=31.500 t=31.500 b=31.500 dw=63.000 dh=63.000`, matching their smaller configured
+  group expansion phase.
+- No code, layout, renderer, root-bounds, SVG, fixture, or baseline behavior changed in this
+  evidence-collection slice.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-probe-expansion-active-batch.md`
+- `target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050`
+
+Focused verification:
+
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_nested_groups_002 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_group_port_edges_017 --out-dir target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed and wrote `7` per-fixture summaries plus the batch index.
+- `Select-String -Path target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050\*.fcose-browser-probe.md -Pattern 'bb over children labels'` -
+  found the new column in all `7` summaries.
+- Focused row extraction confirmed the expected group expansion rows for `pipeline`, `ui`, `i`,
+  `platform`, `data`, `left`, `right`, `inner`, `outer`, and the junction groups.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `567` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This batch makes the browser final-group expansion phase directly citable for the active
+  Architecture residual set. It is evidence only; do not treat the uniform-looking `41.5px` rows as
+  permission to tune local group padding without reconciling child contribution, final group bbox,
+  and local delta reports.
+
 ## HPD-050 - Architecture Probe Group Expansion Summary
 
 Outcome:

@@ -179,7 +179,10 @@ Last updated: 2026-06-04
   continue using these artifacts before attempting another source-formula change. A follow-up
   expansion-summary slice adds `bb over children labels` to that final-node table, making final
   group bbox expansion over `childrenBoundingBoxIncludeLabels` explicit as left/right/top/bottom
-  plus `dw` / `dh`.
+  plus `dw` / `dh`. A follow-up active-residual batch regenerated the seven representative
+  Architecture probe summaries with that column under
+  `target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050\`; use that batch
+  before any next group-bbox formula experiment.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
