@@ -382,6 +382,14 @@ Current repository reality to preserve:
     contribution-label `dw=+2`, and `metrics` raw metric `dw=+1.055` / contribution-label
     `dw=+4`. This rejects a single global label-scale or body-border tweak; continue from a
     phase-specific service final-bbox contribution model.
+  - A follow-up service child-union attribution slice now normalizes local service contribution into
+    the same final-frame coordinates as browser `bodyBounds` union `labelBounds.all`, then names the
+    service that owns each group-content edge. The active direct width tails are boundary-service
+    asymmetries, not aggregate width facts: `batch5/pipeline` is `storage left dx=-2.5` and
+    `registry right dx=+0.5`, `html_titles/ui` is `web left dx=-0.5` and `origin right dx=+2.5`,
+    and `unicode/i` is `metrics left dx=-3.5` and `store right dx=-2.5`. All three have top/bottom
+    `+1/-1`, producing child `dh=-2` before final group expansion cancels it. Do not turn this into
+    a global scale/body/padding tweak.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

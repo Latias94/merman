@@ -66,6 +66,15 @@ impl DebugRect {
     fn y2(self) -> f64 {
         self.y + self.h
     }
+
+    fn translated(self, dx: f64, dy: f64) -> Self {
+        Self {
+            x: self.x + dx,
+            y: self.y + dy,
+            w: self.w,
+            h: self.h,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +85,32 @@ struct DebugRectExpansion {
     bottom: f64,
     dw: f64,
     dh: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DebugEdge {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl DebugEdge {
+    fn value(self, rect: DebugRect) -> f64 {
+        match self {
+            Self::Left => rect.x,
+            Self::Right => rect.x2(),
+            Self::Top => rect.y,
+            Self::Bottom => rect.y2(),
+        }
+    }
+
+    fn is_better(self, candidate: f64, current: f64) -> bool {
+        match self {
+            Self::Left | Self::Top => candidate < current,
+            Self::Right | Self::Bottom => candidate > current,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +388,26 @@ fn debug_rect_expansion(outer: DebugRect, inner: DebugRect) -> DebugRectExpansio
     }
 }
 
+fn debug_edge_owner<'a>(
+    rects: impl IntoIterator<Item = (&'a str, DebugRect)>,
+    edge: DebugEdge,
+) -> Option<(&'a str, f64)> {
+    let mut best: Option<(&'a str, f64)> = None;
+    for (id, rect) in rects {
+        let value = edge.value(rect);
+        if !value.is_finite() {
+            continue;
+        }
+        if best
+            .map(|(_, current)| edge.is_better(value, current))
+            .unwrap_or(true)
+        {
+            best = Some((id, value));
+        }
+    }
+    best
+}
+
 fn format_debug_f64(v: f64) -> String {
     format!("{v:.6}")
 }
@@ -380,6 +435,11 @@ fn format_debug_rect_expansion(v: Option<DebugRectExpansion>) -> String {
         )
     })
     .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn format_debug_edge_owner(v: Option<(&str, f64)>) -> String {
+    v.map(|(id, value)| format!("{id}@{value:.6}"))
+        .unwrap_or_else(|| "<none>".to_string())
 }
 
 fn service_local_pos_key(service_id: &str) -> String {
@@ -697,6 +757,24 @@ fn render_architecture_probe_join_markdown(
     local_groups: &BTreeMap<String, DebugRect>,
 ) {
     let probe_nodes = architecture_probe_nodes_by_id(probe);
+    let mut local_service_child_frame: BTreeMap<String, DebugRect> = BTreeMap::new();
+    for service in &layout.cytoscape_service_bounds {
+        let local_body = DebugRect::from_model_bounds(&service.body_bounds);
+        let local_union = DebugRect::from_model_bounds(&service.union_bounds);
+        local_service_child_frame.insert(
+            service.id.clone(),
+            local_union.translated(-local_body.w / 2.0, -local_body.h / 2.0),
+        );
+    }
+    let mut browser_service_child_union: BTreeMap<String, DebugRect> = BTreeMap::new();
+    for node in probe_nodes
+        .values()
+        .filter(|node| node.node_type == "service")
+    {
+        if let Some(union) = debug_rect_union(node.body.into_iter().chain(node.label)) {
+            browser_service_child_union.insert(node.id.clone(), union);
+        }
+    }
 
     let mut group_ids: Vec<String> = probe_nodes
         .values()
@@ -792,19 +870,112 @@ fn render_architecture_probe_join_markdown(
     }
     let _ = writeln!(report);
 
-    let _ = writeln!(report, "### Service bbox join\n");
+    let _ = writeln!(report, "### Group content edge attribution\n");
     let _ = writeln!(
         report,
-        "This table joins local service contribution phases with browser final service nodes. `label metric dw` compares local measured label text width with browser `labelWidth`; `label dw` compares local contribution-label width with browser label bounds width; `union dw/dh` compares local group-content contribution with browser final `node.boundingBox()`.\n"
+        "This table attributes direct-service group content deltas to the browser child-union phase (`bodyBounds` union `labelBounds.all`) and the local service contribution shifted into the same final-frame coordinates. It only covers direct service children; nested groups and junctions still need their own phase audit.\n"
     );
     let _ = writeln!(
         report,
-        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label metrics | local label metrics | label metric dw | browser label | local contribution label | label dw | browser bb | local union | union dw | union dh |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---|---|---:|---:|"
+        "| group | direct services | browser left | local left | left dx | browser right | local right | right dx | edge dw | browser top | local top | top dy | browser bottom | local bottom | bottom dy | edge dh |\n|---|---:|---|---|---:|---|---|---:|---:|---|---|---:|---|---|---:|---:|"
+    );
+    if group_ids.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | 0 | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for group_id in &group_ids {
+            let direct_service_ids: Vec<&str> = layout
+                .cytoscape_service_bounds
+                .iter()
+                .filter(|service| service.in_group.as_deref() == Some(group_id.as_str()))
+                .map(|service| service.id.as_str())
+                .collect();
+
+            let browser_owner = |edge| {
+                debug_edge_owner(
+                    direct_service_ids.iter().filter_map(|id| {
+                        browser_service_child_union
+                            .get(*id)
+                            .copied()
+                            .map(|rect| (*id, rect))
+                    }),
+                    edge,
+                )
+            };
+            let local_owner = |edge| {
+                debug_edge_owner(
+                    direct_service_ids.iter().filter_map(|id| {
+                        local_service_child_frame
+                            .get(*id)
+                            .copied()
+                            .map(|rect| (*id, rect))
+                    }),
+                    edge,
+                )
+            };
+
+            let browser_left = browser_owner(DebugEdge::Left);
+            let local_left = local_owner(DebugEdge::Left);
+            let browser_right = browser_owner(DebugEdge::Right);
+            let local_right = local_owner(DebugEdge::Right);
+            let browser_top = browser_owner(DebugEdge::Top);
+            let local_top = local_owner(DebugEdge::Top);
+            let browser_bottom = browser_owner(DebugEdge::Bottom);
+            let local_bottom = local_owner(DebugEdge::Bottom);
+            let left_dx = local_left
+                .zip(browser_left)
+                .map(|(local, browser)| local.1 - browser.1);
+            let right_dx = local_right
+                .zip(browser_right)
+                .map(|(local, browser)| local.1 - browser.1);
+            let top_dy = local_top
+                .zip(browser_top)
+                .map(|(local, browser)| local.1 - browser.1);
+            let bottom_dy = local_bottom
+                .zip(browser_bottom)
+                .map(|(local, browser)| local.1 - browser.1);
+            let edge_dw = right_dx.zip(left_dx).map(|(right, left)| right - left);
+            let edge_dh = bottom_dy.zip(top_dy).map(|(bottom, top)| bottom - top);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+                group_id,
+                direct_service_ids.len(),
+                format_debug_edge_owner(browser_left),
+                format_debug_edge_owner(local_left),
+                format_debug_optional_f64(left_dx),
+                format_debug_edge_owner(browser_right),
+                format_debug_edge_owner(local_right),
+                format_debug_optional_f64(right_dx),
+                format_debug_optional_f64(edge_dw),
+                format_debug_edge_owner(browser_top),
+                format_debug_edge_owner(local_top),
+                format_debug_optional_f64(top_dy),
+                format_debug_edge_owner(browser_bottom),
+                format_debug_edge_owner(local_bottom),
+                format_debug_optional_f64(bottom_dy),
+                format_debug_optional_f64(edge_dh),
+            );
+        }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(report, "### Service bbox join\n");
+    let _ = writeln!(
+        report,
+        "This table joins local service contribution phases with browser final service nodes. `label metric dw` compares local measured label text width with browser `labelWidth`; `label dw` compares local contribution-label width with browser label bounds width. `browser child union` is `bodyBounds` union `labelBounds.all`, which matches the service contribution phase feeding browser `childrenBoundingBoxIncludeLabels`. `local union final-frame` shifts the local top-left contribution by half the local body size so its x/y coordinates are comparable to browser final element bounds. `union dw/dh` still compares local group-content contribution dimensions with final `node.boundingBox()` for the 1px final-bbox expansion check.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label metrics | local label metrics | label metric dw | browser label | local contribution label | label dw | browser child union | local union final-frame | child dx | child dy | child dw | child dh | browser bb | local union | union dw | union dh | bb frame dx | bb frame dy |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|"
     );
     if layout.cytoscape_service_bounds.is_empty() {
         let _ = writeln!(
             report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
         );
     } else {
         for service in &layout.cytoscape_service_bounds {
@@ -845,10 +1016,20 @@ fn render_architecture_probe_join_markdown(
             let local_union = DebugRect::from_model_bounds(&service.union_bounds);
             let union_dw = browser_bb.map(|bb| local_union.w - bb.w);
             let union_dh = browser_bb.map(|bb| local_union.h - bb.h);
+            let local_union_final_frame =
+                local_union.translated(-local_body.w / 2.0, -local_body.h / 2.0);
+            let browser_child_union =
+                debug_rect_union(browser_body.into_iter().chain(browser_label));
+            let child_dx = browser_child_union.map(|bb| local_union_final_frame.x - bb.x);
+            let child_dy = browser_child_union.map(|bb| local_union_final_frame.y - bb.y);
+            let child_dw = browser_child_union.map(|bb| local_union_final_frame.w - bb.w);
+            let child_dh = browser_child_union.map(|bb| local_union_final_frame.h - bb.h);
+            let bb_frame_dx = browser_bb.map(|bb| local_union_final_frame.x - bb.x);
+            let bb_frame_dy = browser_bb.map(|bb| local_union_final_frame.y - bb.y);
 
             let _ = writeln!(
                 report,
-                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} | {} | {} |",
                 service.id,
                 service.in_group.as_deref().unwrap_or("<none>"),
                 format_debug_point(browser_pos),
@@ -865,10 +1046,18 @@ fn render_architecture_probe_join_markdown(
                 format_debug_rect(browser_label),
                 format_debug_rect(local_label),
                 format_debug_optional_f64(label_dw),
+                format_debug_rect(browser_child_union),
+                format_debug_rect(Some(local_union_final_frame)),
+                format_debug_optional_f64(child_dx),
+                format_debug_optional_f64(child_dy),
+                format_debug_optional_f64(child_dw),
+                format_debug_optional_f64(child_dh),
                 format_debug_rect(browser_bb),
                 format_debug_rect(Some(local_union)),
                 format_debug_optional_f64(union_dw),
-                format_debug_optional_f64(union_dh)
+                format_debug_optional_f64(union_dh),
+                format_debug_optional_f64(bb_frame_dx),
+                format_debug_optional_f64(bb_frame_dy)
             );
         }
     }
@@ -2445,5 +2634,10 @@ mod tests {
         assert!(md.contains("| -2.000000 | -2.000000 | `w=99.000000 h=16.000000` | `text_w=103.000000 half=51.500000 scale=1.055000` | 4.000000 |"));
         assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 |"));
         assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 | -2.000000 |"));
+        assert!(md.contains(
+            "| `x=-20.000000 y=10.000000 w=103.000000 h=48.000000` | -40.000000 | -20.000000 |"
+        ));
+        assert!(md.contains("### Group content edge attribution"));
+        assert!(md.contains("| `pipeline` | 1 | `storage@20.000000` | `storage@-20.000000` | -40.000000 | `storage@121.000000` | `storage@83.000000` | -38.000000 | 2.000000 | `storage@30.000000` | `storage@10.000000` | -20.000000 | `storage@72.000000` | `storage@58.000000` | -14.000000 | 6.000000 |"));
     }
 }

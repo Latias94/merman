@@ -3,6 +3,56 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Child Union Attribution
+
+Outcome:
+
+- Extended `debug-architecture-delta --probe-dir` so the service join reports browser child union
+  (`bodyBounds` union `labelBounds.all`), local service union shifted into the same final-frame
+  coordinates, child `dx/dy/dw/dh`, and final-bbox frame `dx/dy`.
+- Added a `Group content edge attribution` table that identifies which direct service owns each
+  browser/local group-content edge and reports the resulting edge deltas.
+- Regenerated focused reports under
+  `target\compare\architecture-delta-service-child-union-hpd050`.
+- Representative edge attribution:
+  - `batch5` / `pipeline`: left edge from `storage` is `dx=-2.5`, right edge from `registry` is
+    `dx=+0.5`, producing `edge dw=+3`; top/bottom are `+1/-1`, producing `edge dh=-2`.
+  - `html_titles` / `ui`: left edge from `web` is `dx=-0.5`, right edge from `origin` is
+    `dx=+2.5`, producing `edge dw=+3`; top/bottom are `+1/-1`, producing `edge dh=-2`.
+  - `unicode` / `i`: left edge from `metrics` is `dx=-3.5`, right edge from `store` is `dx=-2.5`,
+    producing `edge dw=+1`; top/bottom are `+1/-1`, producing `edge dh=-2`.
+- This explains the direct group-content residuals by boundary service edge ownership rather than
+  aggregate group width alone. It also confirms the height side is a stable child-union `-2px`
+  phase that is later canceled by the final group expansion `+2px`.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-child-union-attribution.md`
+- `target\compare\architecture-delta-service-child-union-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p xtask architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-child-union-hpd050` -
+  passed and wrote the `pipeline` child-union edge attribution.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-child-union-hpd050` -
+  passed and wrote the `ui` child-union edge attribution.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-child-union-hpd050` -
+  passed and wrote the `i` child-union edge attribution.
+- `cargo nextest run -p xtask` - passed, `97` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- Continue from a source-backed service child-contribution model only if it can explain boundary
+  service edge deltas across the full Architecture queue. The current evidence still rejects global
+  label-scale, body-border, group-padding, and final-rect tweaks.
+
 ## HPD-050 - Architecture Service Label Metrics
 
 Outcome:
