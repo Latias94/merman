@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Merman 演练场",
-    "description": "基于 Rust + WebAssembly 的在线 Mermaid 图表编辑器"
+    "description": "基于 Rust + WebAssembly 的在线 Mermaid 图表编辑器",
+    "playground": "演练场"
   },
   "toolbar": {
     "examples": "示例",
@@ -24,8 +25,13 @@
     "asciiNotSupported": "该图表类型不支持 ASCII 导出",
     "copyCode": "复制代码",
     "copyCodeDesc": "复制 Mermaid 源代码",
+    "copySvg": "复制 SVG",
     "copyMarkdown": "复制 Markdown",
-    "copyMarkdownDesc": "Mermaid.ink 图片链接"
+    "copyMarkdownDesc": "Mermaid.ink 图片链接",
+    "svgSuccess": "SVG 已导出",
+    "pngSuccess": "PNG 已导出",
+    "asciiSuccess": "ASCII 已导出",
+    "failed": "导出失败"
   },
   "share": {
     "title": "分享",
@@ -87,9 +93,38 @@
       "radar": "雷达图",
       "treemap": "矩形树图",
       "requirement": "需求图"
+    },
+    "items": {
+      "flowchart-basic": "基础流程图",
+      "flowchart-complex": "复杂流程图",
+      "flowchart-datastore": "流程图数据存储",
+      "sequence-basic": "基础时序图",
+      "sequence-async": "异步时序图",
+      "sequence-decimal-autonumber": "小数自动编号",
+      "class-basic": "基础类图",
+      "class-nested-namespace": "嵌套命名空间",
+      "state-basic": "状态图",
+      "er-basic": "ER 图",
+      "gantt-basic": "甘特图",
+      "pie-basic": "饼图",
+      "mindmap-basic": "思维导图",
+      "gitgraph-basic": "Git 图",
+      "timeline-basic": "时间线",
+      "xychart-render-timing": "渲染耗时",
+      "architecture-binding-stack": "绑定栈",
+      "block-render-pipeline": "渲染流水线",
+      "packet-ipv4-header": "IPv4 头",
+      "kanban-release-work": "发布工作",
+      "quadrant-integration-priority": "集成优先级",
+      "sankey-render-flow": "渲染流",
+      "radar-binding-coverage": "绑定覆盖率",
+      "treemap-package-surface": "包结构",
+      "requirement-ffi-api": "FFI API 需求"
     }
   },
   "editor": {
+    "codeMode": "代码",
+    "configMode": "配置",
     "placeholder": "在此输入 Mermaid 代码...",
     "loading": "正在加载编辑器...",
     "hover": {
@@ -122,6 +157,8 @@
     "reset": "重置配置"
   },
   "preview": {
+    "title": "预览",
+    "wheelZoom": "滚轮缩放",
     "loading": "正在加载渲染引擎...",
     "error": "渲染错误",
     "empty": "在左侧输入 Mermaid 代码",
@@ -146,6 +183,8 @@
     "diagnosticsUnavailable": "诊断不可用",
     "mermanEngine": "Merman",
     "mermaidEngine": "Mermaid JS",
+    "mermaidVersionCdn": "{{version}} CDN",
+    "mermaidCdnLoadFailed": "无法从 CDN 加载 Mermaid JS",
     "loadingMermaid": "正在加载 Mermaid JS...",
     "preparingMermaid": "正在预热 Mermaid JS...",
     "renderingMermaid": "正在渲染 Mermaid JS...",
@@ -177,6 +216,15 @@
     "neutral": "中性",
     "base": "基础",
     "system": "跟随系统"
+  },
+  "uiThemes": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "wasm": {
+    "loading": "WASM 模块加载中...",
+    "notLoaded": "WASM 模块未加载"
   },
   "diagramTypes": {
     "flowchart": "流程图",

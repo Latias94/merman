@@ -43,6 +43,10 @@ export interface MermanWasm {
 
 let wasmModule: MermanWasm | null = null;
 let loadingPromise: Promise<MermanWasm> | null = null;
+let warmupConfigSignature: string | null = null;
+let warmupPromise: Promise<void> | null = null;
+
+const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
 
 export async function loadWasm(): Promise<MermanWasm> {
   if (wasmModule) {
@@ -56,9 +60,43 @@ export async function loadWasm(): Promise<MermanWasm> {
     await initMerman();
     wasmModule = createWasmAdapter();
     return wasmModule;
-  })();
+  })().catch((error) => {
+    loadingPromise = null;
+    wasmModule = null;
+    warmupConfigSignature = null;
+    warmupPromise = null;
+    throw error;
+  });
 
   return loadingPromise;
+}
+
+export async function prewarmWasmRenderer(
+  theme = "default",
+  configJson = DEFAULT_MERMAID_CONFIG,
+  pipeline?: SvgPipeline
+): Promise<void> {
+  const wasm = await loadWasm();
+  const configSignature = [theme, configJson, pipeline ?? "parity"].join("\0");
+
+  if (warmupConfigSignature === configSignature) return;
+  if (warmupPromise) {
+    await warmupPromise.catch(() => undefined);
+    if (warmupConfigSignature === configSignature) return;
+  }
+
+  warmupPromise = Promise.resolve()
+    .then(() => {
+      wasm.render_svg(WARMUP_SOURCE, theme, configJson, pipeline);
+      if (wasmModule === wasm) {
+        warmupConfigSignature = configSignature;
+      }
+    })
+    .finally(() => {
+      warmupPromise = null;
+    });
+
+  await warmupPromise;
 }
 
 export function isWasmLoaded(): boolean {

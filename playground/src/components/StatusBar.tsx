@@ -35,7 +35,7 @@ export function StatusBar() {
           <span>{t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms</span>
         )}
         <span className="capitalize">{t("status.theme")}: {t(`themes.${diagramTheme}`)}</span>
-        <span>Merman Playground</span>
+        <span>{t("app.title")}</span>
       </div>
     </footer>
   );

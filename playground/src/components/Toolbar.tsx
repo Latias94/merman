@@ -95,9 +95,9 @@ export function Toolbar() {
   }, [getThemes, t]);
 
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
-    { value: "light", label: t("themes.default") },
-    { value: "dark", label: t("themes.dark") },
-    { value: "system", label: t("themes.system") },
+    { value: "light", label: t("uiThemes.light") },
+    { value: "dark", label: t("uiThemes.dark") },
+    { value: "system", label: t("uiThemes.system") },
   ];
 
   // 获取当前 SVG
@@ -109,17 +109,17 @@ export function Toolbar() {
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
     if (!currentSvg) {
-      toast.error(t("export.title") + " failed");
+      toast.error(t("export.failed"));
       return;
     }
     exportSVG(currentSvg, "merman-diagram");
-    toast.success(t("export.svg") + " - OK");
+    toast.success(t("export.svgSuccess"));
   }, [currentSvg, t]);
 
   // 导出 PNG
   const handleExportPNG = useCallback(async () => {
     if (!currentSvg) {
-      toast.error(t("export.title") + " failed");
+      toast.error(t("export.failed"));
       return;
     }
     setIsExporting(true);
@@ -132,9 +132,9 @@ export function Toolbar() {
       }
 
       await exportPNG(pngResult.svg, "merman-diagram", 2);
-      toast.success(t("export.png") + " - OK");
+      toast.success(t("export.pngSuccess"));
     } catch {
-      toast.error(t("export.title") + " failed");
+      toast.error(t("export.failed"));
     } finally {
       setIsExporting(false);
     }
@@ -152,7 +152,7 @@ export function Toolbar() {
       return;
     }
     exportASCII(ascii, "merman-diagram");
-    toast.success(t("export.ascii") + " - OK");
+    toast.success(t("export.asciiSuccess"));
   }, [code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
 
   // 复制代码
@@ -264,7 +264,7 @@ export function Toolbar() {
             </div>
             <div>
               <h1 className="text-sm font-semibold leading-none">Merman</h1>
-              <p className="text-xs text-muted-foreground">Playground</p>
+              <p className="text-xs text-muted-foreground">{t("app.playground")}</p>
             </div>
           </div>
 
@@ -375,7 +375,7 @@ export function Toolbar() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleCopySVG}>
                 <Copy className="size-4" />
-                Copy SVG
+                {t("export.copySvg")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleOpenMermaidLive}>

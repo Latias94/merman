@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 import {
+  getWasm,
+  isWasmLoaded,
   loadWasm,
   SUPPORTED_THEMES,
   type MermanWasm,
@@ -14,18 +16,36 @@ export interface RenderResult {
   renderTime: number;
 }
 
+export const MERMAN_WASM_LOADING_ERROR = "__merman_wasm_loading__";
+export const MERMAN_WASM_NOT_LOADED_ERROR = "__merman_wasm_not_loaded__";
+
 interface RenderOptions {
   pipeline?: SvgPipeline;
 }
 
+export function mermanRuntimeErrorI18nKey(message: string | null | undefined) {
+  if (message === MERMAN_WASM_LOADING_ERROR) return "wasm.loading";
+  if (message === MERMAN_WASM_NOT_LOADED_ERROR) return "wasm.notLoaded";
+  return null;
+}
+
 export function useMerman() {
-  const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const initialWasm = isWasmLoaded() ? getWasm() : null;
+  const [ready, setReady] = useState(initialWasm !== null);
+  const [loading, setLoading] = useState(initialWasm === null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const wasmRef = useRef<MermanWasm | null>(null);
+  const wasmRef = useRef<MermanWasm | null>(initialWasm);
 
   useEffect(() => {
     let mounted = true;
+
+    if (wasmRef.current) {
+      setReady(true);
+      setLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
 
     loadWasm()
       .then((wasm) => {
@@ -57,7 +77,9 @@ export function useMerman() {
       if (!ready || !wasmRef.current) {
         return {
           svg: null,
-          error: loading ? "WASM 模块加载中..." : "WASM 模块未加载",
+          error: loading
+            ? MERMAN_WASM_LOADING_ERROR
+            : MERMAN_WASM_NOT_LOADED_ERROR,
           renderTime: 0,
         };
       }
@@ -87,7 +109,7 @@ export function useMerman() {
   const validate = useCallback(
     (code: string): ValidationResult => {
       if (!ready || !wasmRef.current) {
-        return { valid: false, error: "WASM 模块未加载" };
+        return { valid: false, error: MERMAN_WASM_NOT_LOADED_ERROR };
       }
       return wasmRef.current.validate(code);
     },
@@ -129,7 +151,9 @@ export function useMerman() {
       configJson = DEFAULT_MERMAID_CONFIG
     ): string => {
       if (!ready || !wasmRef.current) {
-        throw new Error(loading ? "WASM 模块加载中..." : "WASM 模块未加载");
+        throw new Error(
+          loading ? MERMAN_WASM_LOADING_ERROR : MERMAN_WASM_NOT_LOADED_ERROR
+        );
       }
       return wasmRef.current.parse_json(code, theme, configJson);
     },
@@ -143,7 +167,9 @@ export function useMerman() {
       configJson = DEFAULT_MERMAID_CONFIG
     ): string => {
       if (!ready || !wasmRef.current) {
-        throw new Error(loading ? "WASM 模块加载中..." : "WASM 模块未加载");
+        throw new Error(
+          loading ? MERMAN_WASM_LOADING_ERROR : MERMAN_WASM_NOT_LOADED_ERROR
+        );
       }
       return wasmRef.current.layout_json(code, theme, configJson);
     },

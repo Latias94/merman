@@ -6,10 +6,18 @@ import {
 import { normalizeThemeName } from "@merman/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
+export const MERMAID_CDN_URL =
+  import.meta.env.VITE_MERMAID_CDN_URL?.trim() ||
+  `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;
+export const MERMAID_CDN_LOAD_ERROR = "__mermaid_cdn_load_failed__";
+const MERMAID_FALLBACK_CDN_URL =
+  import.meta.env.VITE_MERMAID_FALLBACK_CDN_URL?.trim() ||
+  `https://unpkg.com/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;
 
 export interface MermaidRenderResult {
   svg: string | null;
   error: string | null;
+  prepareTime: number;
   renderTime: number;
 }
 
@@ -27,20 +35,25 @@ interface MermaidConfig {
 
 let mermaidPromise: Promise<MermaidApi> | null = null;
 let mermaidLoaded = false;
+let mermaidLoadSource: "cdn" | null = null;
 let renderSerial = 0;
 let initializedConfigSignature: string | null = null;
 let warmupConfigSignature: string | null = null;
 let warmupPromise: Promise<void> | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
+const CDN_ENABLED = import.meta.env.VITE_MERMAID_CDN !== "false";
 
 export async function renderMermaidSvg(
   source: string,
   theme: string,
   configJson = DEFAULT_MERMAID_CONFIG
 ): Promise<MermaidRenderResult> {
+  const prepareStartTime = performance.now();
+
   try {
     const prepared = await prepareMermaid(theme, configJson, { warmup: true });
+    const prepareTime = performance.now() - prepareStartTime;
     const preparedSource = sourceWithConfig(
       source,
       prepared.normalizedTheme,
@@ -53,12 +66,14 @@ export async function renderMermaidSvg(
     return {
       svg: result.svg,
       error: null,
+      prepareTime,
       renderTime: performance.now() - startTime,
     };
   } catch (error) {
     return {
       svg: null,
       error: error instanceof Error ? error.message : String(error),
+      prepareTime: performance.now() - prepareStartTime,
       renderTime: 0,
     };
   }
@@ -79,22 +94,59 @@ export function isMermaidLoaded(): boolean {
   return mermaidLoaded;
 }
 
+export function getMermaidLoadSource(): "cdn" | null {
+  return mermaidLoadSource;
+}
+
+export function mermaidRuntimeErrorI18nKey(message: string | null | undefined) {
+  if (message?.startsWith(MERMAID_CDN_LOAD_ERROR)) {
+    return "preview.mermaidCdnLoadFailed";
+  }
+  return null;
+}
+
 async function loadMermaid(): Promise<MermaidApi> {
   if (mermaidPromise) {
     return mermaidPromise;
   }
 
-  mermaidPromise = import("mermaid")
-    .then((module) => {
+  mermaidPromise = loadMermaidModule()
+    .then((mermaid) => {
       mermaidLoaded = true;
-      return module.default as MermaidApi;
+      return mermaid;
     })
     .catch((error) => {
       mermaidPromise = null;
       mermaidLoaded = false;
+      mermaidLoadSource = null;
       throw error;
     });
   return mermaidPromise;
+}
+
+async function loadMermaidModule(): Promise<MermaidApi> {
+  if (!CDN_ENABLED) {
+    throw new Error("Mermaid CDN loading is disabled.");
+  }
+
+  const urls = Array.from(new Set([MERMAID_CDN_URL, MERMAID_FALLBACK_CDN_URL]));
+  let lastError: unknown = null;
+
+  for (const url of urls) {
+    try {
+      const module = await import(/* @vite-ignore */ url);
+      mermaidLoadSource = "cdn";
+      return module.default as MermaidApi;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(
+    `${MERMAID_CDN_LOAD_ERROR}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
 }
 
 async function prepareMermaid(

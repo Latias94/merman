@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -13,19 +14,33 @@ import { StatusBar } from "./components/StatusBar";
 import { ExampleGallery } from "./components/ExampleGallery";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
+import { prewarmWasmRenderer } from "./lib/wasm-loader";
+import { prewarmMermaidRenderer } from "./lib/mermaid-renderer";
 import { normalizeThemeName } from "@merman/web";
 import { cn } from "@/lib/utils";
 
 export default function App() {
+  const { t, i18n } = useTranslation();
   const {
     setCode,
     setDiagramTheme,
+    diagramTheme,
     setMermaidConfig,
+    mermaidConfig,
     editorMode,
     setEditorMode,
     uiTheme,
   } = useAppStore();
   const { initialData } = useShare();
+
+  useEffect(() => {
+    const lang = i18n.language.startsWith("zh") ? "zh-CN" : "en";
+    document.documentElement.lang = lang;
+    document.title = t("app.title");
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute("content", t("app.description"));
+  }, [i18n.language, t]);
 
   // 从 URL 加载分享的数据
   useEffect(() => {
@@ -63,6 +78,16 @@ export default function App() {
     }
   }, [uiTheme]);
 
+  // 页面级后台预热，避免首次切到对比/预览时把资源准备算进渲染耗时。
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void prewarmWasmRenderer(diagramTheme, mermaidConfig).catch(() => undefined);
+      void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
+    }, 120);
+
+    return () => window.clearTimeout(timeout);
+  }, [diagramTheme, mermaidConfig]);
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="h-screen flex flex-col bg-background">
@@ -93,13 +118,13 @@ export default function App() {
                       active={editorMode === "code"}
                       onClick={() => setEditorMode("code")}
                     >
-                      Code
+                      {t("editor.codeMode")}
                     </EditorModeButton>
                     <EditorModeButton
                       active={editorMode === "config"}
                       onClick={() => setEditorMode("config")}
                     >
-                      Config
+                      {t("editor.configMode")}
                     </EditorModeButton>
                   </div>
                   <span className="text-xs text-muted-foreground">
@@ -122,10 +147,10 @@ export default function App() {
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    预览
+                    {t("preview.title")}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    滚轮缩放
+                    {t("preview.wheelZoom")}
                   </span>
                 </div>
                 <Preview className="flex-1 bg-[repeating-conic-gradient(#80808010_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]" />

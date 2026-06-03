@@ -129,14 +129,13 @@ function validateConfig(
     parseMermaidConfigJson(configJson);
     return { valid: true };
   } catch (error) {
+    const isSyntaxError = error instanceof SyntaxError;
     const detail = error instanceof Error ? error.message : String(error);
     return {
       valid: false,
-      error: `${t(
-        error instanceof SyntaxError
-          ? "config.invalidJson"
-          : "config.invalidObject"
-      )}: ${detail}`,
+      error: isSyntaxError
+        ? `${t("config.invalidJson")}: ${detail}`
+        : t("config.invalidObject"),
     };
   }
 }

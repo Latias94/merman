@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Merman Playground",
-    "description": "Online Mermaid diagram editor powered by Rust + WebAssembly"
+    "description": "Online Mermaid diagram editor powered by Rust + WebAssembly",
+    "playground": "Playground"
   },
   "toolbar": {
     "examples": "Examples",
@@ -24,8 +25,13 @@
     "asciiNotSupported": "ASCII export not supported for this diagram type",
     "copyCode": "Copy Code",
     "copyCodeDesc": "Copy Mermaid source code",
+    "copySvg": "Copy SVG",
     "copyMarkdown": "Copy Markdown",
-    "copyMarkdownDesc": "Mermaid.ink image link"
+    "copyMarkdownDesc": "Mermaid.ink image link",
+    "svgSuccess": "SVG exported",
+    "pngSuccess": "PNG exported",
+    "asciiSuccess": "ASCII exported",
+    "failed": "Export failed"
   },
   "share": {
     "title": "Share",
@@ -87,9 +93,38 @@
       "radar": "Radar",
       "treemap": "Treemap",
       "requirement": "Requirement"
+    },
+    "items": {
+      "flowchart-basic": "Basic Flowchart",
+      "flowchart-complex": "Complex Flowchart",
+      "flowchart-datastore": "Flowchart Data Store",
+      "sequence-basic": "Basic Sequence",
+      "sequence-async": "Async Sequence",
+      "sequence-decimal-autonumber": "Decimal Autonumber",
+      "class-basic": "Basic Class Diagram",
+      "class-nested-namespace": "Nested Namespace",
+      "state-basic": "State Diagram",
+      "er-basic": "ER Diagram",
+      "gantt-basic": "Gantt Chart",
+      "pie-basic": "Pie Chart",
+      "mindmap-basic": "Mindmap",
+      "gitgraph-basic": "Git Graph",
+      "timeline-basic": "Timeline",
+      "xychart-render-timing": "Render Timing",
+      "architecture-binding-stack": "Binding Stack",
+      "block-render-pipeline": "Render Pipeline",
+      "packet-ipv4-header": "IPv4 Header",
+      "kanban-release-work": "Release Work",
+      "quadrant-integration-priority": "Integration Priority",
+      "sankey-render-flow": "Render Flow",
+      "radar-binding-coverage": "Binding Coverage",
+      "treemap-package-surface": "Package Surface",
+      "requirement-ffi-api": "FFI API Requirement"
     }
   },
   "editor": {
+    "codeMode": "Code",
+    "configMode": "Config",
     "placeholder": "Enter your Mermaid code here...",
     "loading": "Loading editor...",
     "hover": {
@@ -122,6 +157,8 @@
     "reset": "Reset config"
   },
   "preview": {
+    "title": "Preview",
+    "wheelZoom": "Wheel to zoom",
     "loading": "Loading render engine...",
     "error": "Render Error",
     "empty": "Enter Mermaid code on the left",
@@ -146,6 +183,8 @@
     "diagnosticsUnavailable": "Diagnostics unavailable",
     "mermanEngine": "Merman",
     "mermaidEngine": "Mermaid JS",
+    "mermaidVersionCdn": "{{version}} CDN",
+    "mermaidCdnLoadFailed": "Unable to load Mermaid JS from CDN",
     "loadingMermaid": "Loading Mermaid JS...",
     "preparingMermaid": "Warming Mermaid JS...",
     "renderingMermaid": "Rendering Mermaid JS...",
@@ -177,6 +216,15 @@
     "neutral": "Neutral",
     "base": "Base",
     "system": "System"
+  },
+  "uiThemes": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "wasm": {
+    "loading": "WASM module loading...",
+    "notLoaded": "WASM module not loaded"
   },
   "diagramTypes": {
     "flowchart": "Flowchart",

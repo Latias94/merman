@@ -6,10 +6,16 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useMerman } from "@/src/hooks/useMerman";
+import {
+  mermanRuntimeErrorI18nKey,
+  useMerman,
+} from "@/src/hooks/useMerman";
+import { prewarmWasmRenderer } from "@/src/lib/wasm-loader";
 import { useAppStore } from "@/src/store";
 import {
+  getMermaidLoadSource,
   isMermaidLoaded,
+  mermaidRuntimeErrorI18nKey,
   prewarmMermaidRenderer,
   renderMermaidSvg,
   MERMAID_JS_VERSION,
@@ -153,11 +159,29 @@ export function Preview({ className }: PreviewProps) {
   }, []);
 
   const isAsciiSupported = ASCII_SUPPORTED_TYPES.includes(currentDiagramType);
+  const localizeMermanError = useCallback(
+    (message: string | null): string | null => {
+      if (!message) return null;
+      const key = mermanRuntimeErrorI18nKey(message);
+      return key ? t(key) : message;
+    },
+    [t]
+  );
+  const localizeMermaidError = useCallback(
+    (message: string | null): string | null => {
+      if (!message) return null;
+      const key = mermaidRuntimeErrorI18nKey(message);
+      return key ? t(key) : message;
+    },
+    [t]
+  );
   const warmMermaidRenderer = useCallback(() => {
     void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
   }, [diagramTheme, mermaidConfig]);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -175,17 +199,26 @@ export function Preview({ className }: PreviewProps) {
         setCurrentDiagramType(diagramType);
         setDiagramType(diagramType);
 
-        const result = render(code, diagramTheme, mermaidConfig);
-        setSvg(result.svg);
-        setError(result.error);
-        setMermanRenderTime(result.error ? null : result.renderTime);
-        setLastRenderTime(result.renderTime);
+        void (async () => {
+          await prewarmWasmRenderer(diagramTheme, mermaidConfig).catch(
+            () => undefined
+          );
+          if (cancelled) return;
 
-        if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
-          setAscii(renderAscii(code, diagramTheme, mermaidConfig));
-        } else {
-          setAscii(null);
-        }
+          const result = render(code, diagramTheme, mermaidConfig);
+          if (cancelled) return;
+
+          setSvg(result.svg);
+          setError(localizeMermanError(result.error));
+          setMermanRenderTime(result.error ? null : result.renderTime);
+          setLastRenderTime(result.renderTime);
+
+          if (ASCII_SUPPORTED_TYPES.includes(diagramType)) {
+            setAscii(renderAscii(code, diagramTheme, mermaidConfig));
+          } else {
+            setAscii(null);
+          }
+        })();
       } else if (!code.trim()) {
         setSvg(null);
         setAscii(null);
@@ -195,6 +228,7 @@ export function Preview({ className }: PreviewProps) {
     }, 300);
 
     return () => {
+      cancelled = true;
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
@@ -203,6 +237,7 @@ export function Preview({ className }: PreviewProps) {
     code,
     detectDiagramType,
     diagramTheme,
+    localizeMermanError,
     mermaidConfig,
     ready,
     refreshNonce,
@@ -245,7 +280,7 @@ export function Preview({ className }: PreviewProps) {
         const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig);
         if (cancelled) return;
         setMermaidSvg(result.svg);
-        setMermaidError(result.error);
+        setMermaidError(localizeMermaidError(result.error));
         setMermaidRenderTime(result.renderTime);
         setMermaidStatus("idle");
       })();
@@ -255,7 +290,14 @@ export function Preview({ className }: PreviewProps) {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [code, diagramTheme, mermaidConfig, previewMode, refreshNonce]);
+  }, [
+    code,
+    diagramTheme,
+    localizeMermaidError,
+    mermaidConfig,
+    previewMode,
+    refreshNonce,
+  ]);
 
   useEffect(() => {
     if (diagnosticsDebounceRef.current) {
@@ -288,8 +330,14 @@ export function Preview({ className }: PreviewProps) {
     setDiagnosticsLoading(true);
     diagnosticsDebounceRef.current = setTimeout(() => {
       setDiagnostics({
-        parse: collectDiagnostic(() => parseJson(code, diagramTheme, mermaidConfig)),
-        layout: collectDiagnostic(() => layoutJson(code, diagramTheme, mermaidConfig)),
+        parse: collectDiagnostic(
+          () => parseJson(code, diagramTheme, mermaidConfig),
+          localizeMermanError
+        ),
+        layout: collectDiagnostic(
+          () => layoutJson(code, diagramTheme, mermaidConfig),
+          localizeMermanError
+        ),
       });
       setDiagnosticsLoading(false);
     }, 300);
@@ -304,6 +352,7 @@ export function Preview({ className }: PreviewProps) {
     diagramTheme,
     layoutJson,
     loading,
+    localizeMermanError,
     mermaidConfig,
     parseJson,
     previewMode,
@@ -456,10 +505,14 @@ export function Preview({ className }: PreviewProps) {
     loading: false,
     loadingLabel: null,
   };
+  const mermaidLoadSource = getMermaidLoadSource();
   const mermaidArtifact: CompareArtifact = {
     key: "mermaid",
     title: t("preview.mermaidEngine"),
-    version: MERMAID_JS_VERSION,
+    version:
+      mermaidLoadSource === "cdn"
+        ? t("preview.mermaidVersionCdn", { version: MERMAID_JS_VERSION })
+        : MERMAID_JS_VERSION,
     svg: mermaidSvg,
     error: mermaidError,
     renderTime: mermaidRenderTime,
@@ -1124,7 +1177,10 @@ function RenderError({
   );
 }
 
-function collectDiagnostic(createJson: () => string): DiagnosticArtifact {
+function collectDiagnostic(
+  createJson: () => string,
+  localizeError: (message: string | null) => string | null
+): DiagnosticArtifact {
   const start = performance.now();
 
   try {
@@ -1137,7 +1193,7 @@ function collectDiagnostic(createJson: () => string): DiagnosticArtifact {
   } catch (err) {
     return {
       json: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: localizeError(err instanceof Error ? err.message : String(err)),
       elapsedMs: null,
     };
   }

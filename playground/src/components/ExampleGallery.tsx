@@ -103,7 +103,9 @@ export function ExampleGallery() {
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <h3 className="font-medium text-sm group-hover:text-primary transition-colors">
-                      {example.name}
+                      {t(`examples.items.${example.id}`, {
+                        defaultValue: example.name,
+                      })}
                     </h3>
                     <span className="text-xs text-muted-foreground">
                       {getCategoryLabel(example.category)}
