@@ -883,6 +883,47 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
 }
 
 #[test]
+fn flowchart_empty_subgraph_node_applies_inline_style() {
+    let text = "flowchart TD\nsubgraph Empty\nend\nclassDef hot fill:#0f0,color:#111\nclass Empty hot\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<g class="node hot" id="merman-Empty""#),
+        "expected empty subgraph to render as a scoped node with its assigned class: {svg}"
+    );
+    assert!(
+        svg.contains(r#"style="fill:#f00 !important;stroke:#00f !important""#),
+        "expected empty subgraph inline shape style to be applied: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="nodeLabel" style="color:#fff !important">"#),
+        "expected empty subgraph inline label style to be applied: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
     let text = r#"flowchart
  n0@{ shape: cross-circ, label: "cross-circ" }

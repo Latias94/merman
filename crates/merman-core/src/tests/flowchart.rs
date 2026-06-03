@@ -1766,6 +1766,36 @@ fn parse_diagram_flowchart_subgraph_markdown_title_sets_label_type_markdown() {
 }
 
 #[test]
+fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuniq() {
+    let engine = Engine::new();
+    let text = "graph TD\nsubgraph A\nB\nend\nsubgraph X\nB\nend\nB-->C\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.model["subgraphs"],
+        json!([{
+            "id": "A",
+            "nodes": ["B"],
+            "title": "A",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }, {
+            "id": "X",
+            "nodes": [],
+            "title": "X",
+            "classes": [],
+            "styles": [],
+            "dir": null,
+            "labelType": "text"
+        }])
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_subgraph_supports_amp_group_syntax_minimally() {
     let engine = Engine::new();
     let text = "graph TD\nsubgraph myTitle\na & b --> c & e\nend";

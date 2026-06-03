@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::Error;
 use merman_render::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
@@ -1815,4 +1816,116 @@ classDef italic font-style:italic;
         italic.height,
         normal.height
     );
+}
+
+#[test]
+fn cyclic_subgraph_membership_reports_recoverable_error() {
+    let cases = [
+        (
+            "self-contained",
+            "flowchart TD\n  subgraph A\n    A\n  end",
+            "Setting A as parent of A would create a cycle",
+        ),
+        (
+            "two-node cycle",
+            "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    A\n  end",
+            "Setting B as parent of A would create a cycle",
+        ),
+        (
+            "three-node cycle",
+            "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    C\n  end\n  subgraph C\n    A\n  end",
+            "Setting C as parent of A would create a cycle",
+        ),
+        (
+            "four-node cycle",
+            "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    C\n  end\n  subgraph C\n    D\n  end\n  subgraph D\n    A\n  end",
+            "Setting D as parent of A would create a cycle",
+        ),
+        (
+            "reverse-order override cycle",
+            "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    A\n  end\n  subgraph B\n    X\n  end",
+            "Setting X as parent of A would create a cycle",
+        ),
+        (
+            "explicit-id title cycle",
+            "flowchart TD\n  subgraph sgA[Outer A]\n    sgB\n  end\n  subgraph sgB[Inner B]\n    sgA\n  end",
+            "Setting sgB as parent of sgA would create a cycle",
+        ),
+        (
+            "cluster-edge cycle",
+            "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    A\n  end\n  A --> C",
+            "Setting B as parent of A would create a cycle",
+        ),
+    ];
+
+    let engine = Engine::new();
+    for (name, text, expected_message) in cases {
+        let parsed =
+            futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+                .unwrap_or_else(|err| panic!("parse {name}: {err}"))
+                .unwrap_or_else(|| panic!("diagram detected for {name}"));
+
+        let err = match layout_parsed(&parsed, &LayoutOptions::default()) {
+            Ok(_) => panic!("{name} should be a recoverable error"),
+            Err(err) => err,
+        };
+        let Error::InvalidModel { message } = err else {
+            panic!("expected InvalidModel for {name}");
+        };
+        assert_eq!(
+            message, expected_message,
+            "expected Mermaid-compatible subgraph-cycle error for {name}"
+        );
+    }
+}
+
+#[test]
+fn non_cyclic_subgraph_membership_chain_still_lays_out() {
+    let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    C\n  end\n  C --> D\n";
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let cluster_ids = layout
+        .clusters
+        .iter()
+        .map(|c| c.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(cluster_ids.contains("A"));
+    assert!(cluster_ids.contains("B"));
+}
+
+#[test]
+fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
+    let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let cluster_ids = layout
+        .clusters
+        .iter()
+        .map(|c| c.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let node_ids = layout
+        .nodes
+        .iter()
+        .map(|n| n.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+
+    assert!(cluster_ids.contains("A"));
+    assert!(!cluster_ids.contains("X"));
+    assert!(node_ids.contains("X"));
 }
