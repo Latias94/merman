@@ -7,7 +7,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::{MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig};
+use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -544,101 +544,132 @@ fn extract_clusters_recursively(
     subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
     external_connections_by_id: &std::collections::HashMap<String, bool>,
     extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-    depth: usize,
+    _depth: usize,
 ) {
-    if depth > 10 {
-        return;
+    struct ExtractFrame {
+        id: String,
+        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        expanded: bool,
     }
 
-    let node_ids = graph.node_ids();
-    let mut descendants: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    for id in &node_ids {
-        if graph.children(id).is_empty() {
-            continue;
-        }
-        descendants.insert(id.clone(), extract_descendants(id, graph));
-    }
-
-    let mut extracted_here: Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> = Vec::new();
-
-    let candidates: Vec<String> = node_ids
-        .into_iter()
-        .filter(|id| graph.has_node(id))
-        .filter(|id| !graph.children(id).is_empty())
-        // Mermaid's extractor does not recompute external connections after
-        // `adjustClustersAndEdges` rewrites cluster endpoints to anchor children. It uses the
-        // global `clusterDb.externalConnections` flag computed before those rewrites, then recurses
-        // into extracted graphs with the same `clusterDb`.
-        //
-        // Reference:
-        // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
-        .filter(|id| {
-            external_connections_by_id
-                .get(id.as_str())
-                .is_some_and(|external| !external)
-        })
-        .collect();
-
-    for id in candidates {
-        if !graph.has_node(&id) {
-            continue;
-        }
-        if graph.children(&id).is_empty() {
-            continue;
+    fn extract_one_level(
+        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+        external_connections_by_id: &std::collections::HashMap<String, bool>,
+    ) -> Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> {
+        let node_ids = graph.node_ids();
+        let mut descendants: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for id in &node_ids {
+            if graph.children(id).is_empty() {
+                continue;
+            }
+            descendants.insert(id.clone(), extract_descendants(id, graph));
         }
 
-        let mut cluster_graph: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
-            multigraph: true,
-            compound: true,
-            directed: true,
-        });
+        let mut extracted_here: Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> = Vec::new();
 
-        // Mermaid's `extractor(...)` uses:
-        // - `clusterData.dir` when explicitly set for the subgraph
-        // - otherwise: toggle relative to the current graph's rankdir (TB<->LR)
-        let dir = subgraphs_by_id
-            .get(&id)
-            .and_then(|sg| sg.dir.as_deref())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(normalize_dir)
-            .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
-
-        cluster_graph.set_graph(GraphLabel {
-            rankdir: dir_to_rankdir(&dir),
-            // Mermaid's cluster extractor initializes subgraphs with a fixed dagre config
-            // (nodesep/ranksep=50, marginx/marginy=8). Before each recursive render Mermaid then
-            // overrides `nodesep` to the parent graph value and `ranksep` to `parent.ranksep + 25`.
-            //
-            // We model that in headless mode by keeping the extractor defaults here, then applying
-            // the per-depth override inside `layout_graph_with_recursive_clusters(...)` right
-            // before laying out each extracted graph.
+        let candidates: Vec<String> = node_ids
+            .into_iter()
+            .filter(|id| graph.has_node(id))
+            .filter(|id| !graph.children(id).is_empty())
+            // Mermaid's extractor does not recompute external connections after
+            // `adjustClustersAndEdges` rewrites cluster endpoints to anchor children. It uses the
+            // global `clusterDb.externalConnections` flag computed before those rewrites, then
+            // recurses into extracted graphs with the same `clusterDb`.
             //
             // Reference:
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
-            // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
-            nodesep: 50.0,
-            ranksep: 50.0,
-            marginx: 8.0,
-            marginy: 8.0,
-            acyclicer: None,
-            ..Default::default()
-        });
+            .filter(|id| {
+                external_connections_by_id
+                    .get(id.as_str())
+                    .is_some_and(|external| !external)
+            })
+            .collect();
 
-        copy_cluster(&id, graph, &mut cluster_graph, &id, &descendants);
-        extracted_here.push((id, cluster_graph));
+        for id in candidates {
+            if !graph.has_node(&id) {
+                continue;
+            }
+            if graph.children(&id).is_empty() {
+                continue;
+            }
+
+            let mut cluster_graph: Graph<NodeLabel, EdgeLabel, GraphLabel> =
+                Graph::new(GraphOptions {
+                    multigraph: true,
+                    compound: true,
+                    directed: true,
+                });
+
+            // Mermaid's `extractor(...)` uses:
+            // - `clusterData.dir` when explicitly set for the subgraph
+            // - otherwise: toggle relative to the current graph's rankdir (TB<->LR)
+            let dir = subgraphs_by_id
+                .get(&id)
+                .and_then(|sg| sg.dir.as_deref())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(normalize_dir)
+                .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
+
+            cluster_graph.set_graph(GraphLabel {
+                rankdir: dir_to_rankdir(&dir),
+                // Mermaid's cluster extractor initializes subgraphs with a fixed dagre config
+                // (nodesep/ranksep=50, marginx/marginy=8). Before each recursive render Mermaid then
+                // overrides `nodesep` to the parent graph value and `ranksep` to `parent.ranksep + 25`.
+                //
+                // We model that in headless mode by keeping the extractor defaults here, then applying
+                // the per-depth override inside `layout_graph_with_recursive_clusters(...)` right
+                // before laying out each extracted graph.
+                //
+                // Reference:
+                // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
+                // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
+                nodesep: 50.0,
+                ranksep: 50.0,
+                marginx: 8.0,
+                marginy: 8.0,
+                acyclicer: None,
+                ..Default::default()
+            });
+
+            copy_cluster(&id, graph, &mut cluster_graph, &id, &descendants);
+            extracted_here.push((id, cluster_graph));
+        }
+
+        extracted_here
     }
 
-    for (id, mut g) in extracted_here {
-        extract_clusters_recursively(
-            &mut g,
+    let extracted_here = extract_one_level(graph, subgraphs_by_id, external_connections_by_id);
+    let mut stack: Vec<ExtractFrame> = extracted_here
+        .into_iter()
+        .rev()
+        .map(|(id, graph)| ExtractFrame {
+            id,
+            graph,
+            expanded: false,
+        })
+        .collect();
+
+    while let Some(mut frame) = stack.pop() {
+        if frame.expanded {
+            extracted.insert(frame.id, frame.graph);
+            continue;
+        }
+
+        let children = extract_one_level(
+            &mut frame.graph,
             subgraphs_by_id,
             external_connections_by_id,
-            extracted,
-            depth + 1,
         );
-        extracted.insert(id, g);
+        frame.expanded = true;
+        stack.push(frame);
+        stack.extend(children.into_iter().rev().map(|(id, graph)| ExtractFrame {
+            id,
+            graph,
+            expanded: false,
+        }));
     }
 }
 
@@ -699,7 +730,6 @@ fn layout_flowchart_v2_with_model(
     total_start: Option<web_time::Instant>,
     deserialize: web_time::Duration,
 ) -> Result<FlowchartV2Layout> {
-    validate_flowchart_model_depth(model)?;
     #[derive(Debug, Default, Clone)]
     struct FlowchartLayoutTimings {
         total: web_time::Duration,
@@ -1571,85 +1601,34 @@ fn layout_flowchart_v2_with_model(
     fn layout_graph_with_recursive_clusters(
         graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         graph_cluster_id: Option<&str>,
-        depth: usize,
+        _depth: usize,
         ctx: &mut RecursiveLayoutContext<'_>,
     ) {
-        if depth > 10 {
-            if ctx.timing_enabled {
-                ctx.timings.dagre_calls += 1;
-                let start = web_time::Instant::now();
-                dugong::layout_dagreish(graph);
-                ctx.timings.dagre_total += start.elapsed();
-            } else {
-                dugong::layout_dagreish(graph);
-            }
-            apply_mermaid_subgraph_title_shifts(
-                graph,
-                ctx.extracted,
-                ctx.subgraph_id_set,
-                ctx.y_shift,
-            );
-            return;
+        #[derive(Clone)]
+        struct LayoutFrame {
+            cluster_id: Option<String>,
+            expanded: bool,
         }
 
-        // Layout child graphs first, then update the corresponding node sizes before laying out
-        // the parent graph. This mirrors Mermaid: `recursiveRender` computes clusterNode sizes
-        // before `dagreLayout(graph)`.
-        let ids = graph.node_ids();
-        for id in ids {
-            if !ctx.extracted.contains_key(&id) {
-                continue;
-            }
-            // Only treat leaf cluster nodes as "clusterNode" placeholders. RecursiveRender adds
-            // the parent cluster node (with children) into the child graph before layout, so the
-            // cluster id will exist there but should not recurse back into itself.
-            if !graph.children(&id).is_empty() {
-                continue;
-            }
-            let mut child = match ctx.extracted.remove(&id) {
-                Some(g) => g,
-                None => continue,
-            };
-
-            // Match Mermaid `recursiveRender` behavior: before laying out a recursively rendered
-            // cluster graph, override `nodesep` to the parent graph spacing and `ranksep` to
-            // `parent.ranksep + 25`. This compounds for nested recursive clusters (each recursion
-            // level adds another +25).
-            let parent_nodesep = graph.graph().nodesep;
-            let parent_ranksep = graph.graph().ranksep;
-            child.graph_mut().nodesep = parent_nodesep;
-            child.graph_mut().ranksep = parent_ranksep + 25.0;
-
-            layout_graph_with_recursive_clusters(&mut child, Some(id.as_str()), depth + 1, ctx);
-
-            // In Mermaid, `updateNodeBounds(...)` measures the recursively rendered `<g class="root">`
-            // group. In that render path, the child graph contains a node matching the cluster id
-            // (inserted via `graph.setNode(parentCluster.id, ...)`), whose computed compound bounds
-            // correspond to the cluster box measured in the DOM.
-            if let Some(r) = extracted_graph_bbox_rect(
-                &child,
-                ctx.title_total_margin,
-                ctx.extracted,
-                ctx.subgraph_id_set,
-                ctx.title_metrics_ctx,
-                ctx.cluster_padding,
-            ) {
-                if let Some(n) = graph.node_mut(&id) {
-                    n.width = r.width().max(1.0);
-                    n.height = r.height().max(1.0);
-                }
-            } else if let Some(n_child) = child.node(&id) {
-                if let Some(n) = graph.node_mut(&id) {
-                    n.width = n_child.width.max(1.0);
-                    n.height = n_child.height.max(1.0);
-                }
-            }
-            ctx.extracted.insert(id, child);
+        fn recursive_child_ids(
+            graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
+        ) -> Vec<String> {
+            graph
+                .node_ids()
+                .into_iter()
+                // Only recurse into extracted graphs for leaf cluster nodes ("clusterNode" in
+                // Mermaid). Child graphs also get their parent cluster node injected, with
+                // children, and must not recurse back into themselves.
+                .filter(|id| graph.children(id).is_empty() && extracted.contains_key(id))
+                .collect()
         }
 
-        // Mermaid `recursiveRender` injects the parent cluster node into the child graph and
-        // assigns it as the parent of nodes without an existing parent.
-        if let Some(cluster_id) = graph_cluster_id {
+        fn inject_parent_cluster(
+            graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            cluster_id: &str,
+            ctx: &RecursiveLayoutContext<'_>,
+        ) {
             if !graph.has_node(cluster_id) {
                 let lbl = ctx
                     .cluster_node_labels
@@ -1669,15 +1648,120 @@ fn layout_flowchart_v2_with_model(
             }
         }
 
-        if ctx.timing_enabled {
-            ctx.timings.dagre_calls += 1;
-            let start = web_time::Instant::now();
-            dugong::layout_dagreish(graph);
-            ctx.timings.dagre_total += start.elapsed();
-        } else {
-            dugong::layout_dagreish(graph);
+        fn update_child_cluster_bounds(
+            graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            ctx: &RecursiveLayoutContext<'_>,
+        ) {
+            let ids = recursive_child_ids(graph, ctx.extracted);
+            for id in ids {
+                let Some(child) = ctx.extracted.get(&id) else {
+                    continue;
+                };
+
+                // In Mermaid, `updateNodeBounds(...)` measures the recursively rendered `<g
+                // class="root">` group. In that render path, the child graph contains a node
+                // matching the cluster id (inserted via `graph.setNode(parentCluster.id, ...)`),
+                // whose computed compound bounds correspond to the cluster box measured in the DOM.
+                if let Some(r) = extracted_graph_bbox_rect(
+                    child,
+                    ctx.title_total_margin,
+                    ctx.extracted,
+                    ctx.subgraph_id_set,
+                    ctx.title_metrics_ctx,
+                    ctx.cluster_padding,
+                ) {
+                    if let Some(n) = graph.node_mut(&id) {
+                        n.width = r.width().max(1.0);
+                        n.height = r.height().max(1.0);
+                    }
+                } else if let Some(n_child) = child.node(&id) {
+                    if let Some(n) = graph.node_mut(&id) {
+                        n.width = n_child.width.max(1.0);
+                        n.height = n_child.height.max(1.0);
+                    }
+                }
+            }
         }
-        apply_mermaid_subgraph_title_shifts(graph, ctx.extracted, ctx.subgraph_id_set, ctx.y_shift);
+
+        fn layout_one_graph(
+            graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            ctx: &mut RecursiveLayoutContext<'_>,
+        ) {
+            if ctx.timing_enabled {
+                ctx.timings.dagre_calls += 1;
+                let start = web_time::Instant::now();
+                dugong::layout_dagreish(graph);
+                ctx.timings.dagre_total += start.elapsed();
+            } else {
+                dugong::layout_dagreish(graph);
+            }
+            apply_mermaid_subgraph_title_shifts(
+                graph,
+                ctx.extracted,
+                ctx.subgraph_id_set,
+                ctx.y_shift,
+            );
+        }
+
+        let mut stack = vec![LayoutFrame {
+            cluster_id: graph_cluster_id.map(str::to_string),
+            expanded: false,
+        }];
+
+        while let Some(frame) = stack.pop() {
+            if !frame.expanded {
+                let Some((child_ids, parent_nodesep, parent_ranksep)) = (match &frame.cluster_id {
+                    Some(id) => ctx.extracted.get(id).map(|g| {
+                        (
+                            recursive_child_ids(g, ctx.extracted),
+                            g.graph().nodesep,
+                            g.graph().ranksep,
+                        )
+                    }),
+                    None => Some((
+                        recursive_child_ids(graph, ctx.extracted),
+                        graph.graph().nodesep,
+                        graph.graph().ranksep,
+                    )),
+                }) else {
+                    continue;
+                };
+
+                stack.push(LayoutFrame {
+                    cluster_id: frame.cluster_id,
+                    expanded: true,
+                });
+
+                for child_id in child_ids.iter().rev() {
+                    // Match Mermaid `recursiveRender` behavior: before laying out a recursively
+                    // rendered cluster graph, override `nodesep` to the parent graph spacing and
+                    // `ranksep` to `parent.ranksep + 25`. This compounds for nested recursive
+                    // clusters.
+                    if let Some(child) = ctx.extracted.get_mut(child_id) {
+                        child.graph_mut().nodesep = parent_nodesep;
+                        child.graph_mut().ranksep = parent_ranksep + 25.0;
+                    }
+                    stack.push(LayoutFrame {
+                        cluster_id: Some(child_id.clone()),
+                        expanded: false,
+                    });
+                }
+                continue;
+            }
+
+            if let Some(cluster_id) = frame.cluster_id {
+                let Some(mut current) = ctx.extracted.remove(&cluster_id) else {
+                    continue;
+                };
+                update_child_cluster_bounds(&mut current, ctx);
+                inject_parent_cluster(&mut current, &cluster_id, ctx);
+                layout_one_graph(&mut current, ctx);
+                ctx.extracted.insert(cluster_id, current);
+            } else {
+                update_child_cluster_bounds(graph, ctx);
+                layout_one_graph(graph, ctx);
+            }
+        }
     }
 
     let layout_start = timing_enabled.then(web_time::Instant::now);
@@ -2718,54 +2802,6 @@ fn layout_flowchart_v2_with_model(
         bounds,
         dom_node_order_by_root,
     })
-}
-
-fn validate_flowchart_model_depth(model: &FlowchartV2Model) -> Result<()> {
-    let subgraph_ids: std::collections::HashSet<&str> =
-        model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
-    let mut child_map: HashMap<&str, Vec<&str>> = HashMap::new();
-    let mut parented: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for sg in &model.subgraphs {
-        for member in &sg.nodes {
-            if subgraph_ids.contains(member.as_str()) {
-                child_map
-                    .entry(sg.id.as_str())
-                    .or_default()
-                    .push(member.as_str());
-                parented.insert(member.as_str());
-            }
-        }
-    }
-
-    let mut roots: Vec<&str> = subgraph_ids
-        .iter()
-        .copied()
-        .filter(|id| !parented.contains(id))
-        .collect();
-    if roots.is_empty() {
-        roots.extend(subgraph_ids.iter().copied());
-    }
-
-    let mut stack: Vec<(&str, usize)> = roots.into_iter().map(|id| (id, 1)).collect();
-    let mut visiting: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    while let Some((id, depth)) = stack.pop() {
-        if depth > MAX_DIAGRAM_NESTING_DEPTH {
-            return Err(Error::InvalidModel {
-                message: format!(
-                    "flowchart subgraph nesting depth exceeds maximum of {MAX_DIAGRAM_NESTING_DEPTH}"
-                ),
-            });
-        }
-        if !visiting.insert(id) {
-            continue;
-        }
-        if let Some(children) = child_map.get(id) {
-            for &child in children {
-                stack.push((child, depth + 1));
-            }
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

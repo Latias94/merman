@@ -1,6 +1,12 @@
 use futures::executor::block_on;
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
 
+fn parse_ok(input: &str) {
+    let engine = Engine::new();
+    block_on(engine.parse_diagram(input, ParseOptions::strict()))
+        .expect("deeply nested flowchart should parse like Mermaid.js");
+}
+
 fn parse_err(input: &str) -> String {
     let engine = Engine::new();
     block_on(engine.parse_diagram(input, ParseOptions::strict()))
@@ -82,9 +88,9 @@ fn c4(depth: usize) -> String {
 }
 
 #[test]
-fn deeply_nested_flowchart_returns_parse_error() {
+fn deeply_nested_flowchart_parses_without_custom_depth_error() {
     let depth = MAX_DIAGRAM_NESTING_DEPTH + 2;
-    assert_nesting_error("flowchart", flowchart(depth));
+    parse_ok(&flowchart(depth));
 }
 
 #[test]
