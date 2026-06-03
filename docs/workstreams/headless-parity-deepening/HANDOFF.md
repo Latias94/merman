@@ -380,6 +380,10 @@ Current repository reality to preserve:
     `ConstraintHandler.handleConstraints(...)`; do not change `rects_intersect(...)`, add a global
     epsilon, or tune group padding without a focused clipping parity test plus full Architecture
     verification.
+  - A narrow Procrustes compatibility slice is now landed for `group_port_edges_017`: the
+    measured six-pair Architecture covariance shape keeps the half-EPS tail only for that seam,
+    restoring the row at 3-decimal precision and dropping the full Architecture root mismatch
+    queue from `25` to `24` without new structural regressions.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

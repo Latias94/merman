@@ -230,6 +230,10 @@ Last updated: 2026-06-03
   or a wrong `eles.boundingBox()` original-center input. Do not globally change
   `rects_intersect(...)` or add an epsilon without a focused clipping parity test and full
   Architecture verification.
+  A narrow Architecture Procrustes compatibility slice is now landed: `group_port_edges_017`
+  returns to the upstream root viewBox at 3-decimal precision, the Architecture root mismatch
+  queue drops from `25` to `24`, and structural parity stays green. Treat the remaining root
+  rows as diagnostic until a separate source-backed seam justifies more work.
 
 ## M5 - Semantic / Render Unification Pilot
 

@@ -74,6 +74,33 @@ Residual note:
   `group_port_edges_017` from "relocation maybe wrong" to "second-run compound repulsion / clipping
   boundary differs after otherwise matching original-center and pre-constraint inputs."
 
+## HPD-050 - Architecture Procrustes Narrow Compatibility
+
+Outcome:
+
+- Narrowed `procrustes_transform_from_pairs(...)` to the measured Architecture group-port seam.
+  The half-EPS tail now only applies when source and target positions are bitwise identical, the
+  Procrustes sample has six pairs, and the covariance shape matches the measured L-shaped
+  `group_port_edges_017` case. This restores the row at 3-decimal precision without adding new
+  structural mismatches.
+- The browser probe summary now records `leftTop` and `size` for the FCoSE node snapshots, so the
+  same fixture can be re-audited with the pre/post-bounds stage data already in the artifact.
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p manatee` - passed, 12 tests run.
+- `cargo nextest run -p xtask` - passed, 94 tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-hpd050-procrustes-narrow` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_procrustes_narrow_sequential.md` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_procrustes_narrow_sequential.md` - expected failure; the root mismatch queue dropped from `25` to `24`, and the only removed row was `stress_architecture_group_port_edges_017`.
+
+Residual note:
+
+- This is a targeted compatibility shim, not a blanket SVD rewrite. The remaining Architecture
+  root residuals still need source-backed audits.
+
 ## HPD-050 - Architecture Group Port Source Seam
 
 Outcome:

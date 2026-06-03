@@ -193,6 +193,8 @@ async function main() {
           repulsion: [n.repulsionForceX, n.repulsionForceY],
           gravity: [n.gravitationForceX, n.gravitationForceY],
           center: [n.getCenterX(), n.getCenterY()],
+          leftTop: [n.getLeft(), n.getTop()],
+          size: [n.getWidth(), n.getHeight()],
           childCount: n.getChild && n.getChild() ? n.getChild().getNodes().length : 0,
         })),
       };
