@@ -13,7 +13,7 @@ use super::super::svg_compare_layout_opts;
 
 #[derive(Debug, Clone)]
 struct ArchitectureFcoseProbeCli {
-    fixture_filter: String,
+    fixture_filters: Vec<String>,
     out_dir: PathBuf,
     browser_exe: Option<PathBuf>,
 }
@@ -21,7 +21,7 @@ struct ArchitectureFcoseProbeCli {
 fn parse_architecture_fcose_probe_args(
     args: &[String],
 ) -> Result<ArchitectureFcoseProbeCli, XtaskError> {
-    let mut fixture_filter: Option<String> = None;
+    let mut fixture_filters: Vec<String> = Vec::new();
     let mut out_dir: Option<PathBuf> = None;
     let mut browser_exe: Option<PathBuf> = None;
 
@@ -30,7 +30,10 @@ fn parse_architecture_fcose_probe_args(
         match args[i].as_str() {
             "--fixture" => {
                 i += 1;
-                fixture_filter = args.get(i).map(|s| s.trim().to_string());
+                let Some(filter) = args.get(i).map(|s| s.trim().to_string()) else {
+                    return Err(XtaskError::Usage);
+                };
+                fixture_filters.push(filter);
             }
             "--out" | "--out-dir" => {
                 i += 1;
@@ -46,13 +49,16 @@ fn parse_architecture_fcose_probe_args(
         i += 1;
     }
 
-    let fixture_filter = fixture_filter.ok_or(XtaskError::Usage)?;
-    if fixture_filter.trim().is_empty() {
+    if fixture_filters.is_empty()
+        || fixture_filters
+            .iter()
+            .any(|filter| filter.trim().is_empty())
+    {
         return Err(XtaskError::Usage);
     }
 
     Ok(ArchitectureFcoseProbeCli {
-        fixture_filter,
+        fixture_filters,
         out_dir: out_dir.unwrap_or_else(|| {
             crate::cmd::target_root()
                 .join("debug")
@@ -277,7 +283,11 @@ fn render_architecture_fcose_probe_markdown(
 
 pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), XtaskError> {
     let cli = parse_architecture_fcose_probe_args(&args)?;
-    let (mmd_path, stem) = resolve_architecture_probe_fixture(&cli.fixture_filter)?;
+    let fixtures: Vec<(PathBuf, String)> = cli
+        .fixture_filters
+        .iter()
+        .map(|filter| resolve_architecture_probe_fixture(filter))
+        .collect::<Result<_, _>>()?;
     let workspace_root = crate::cmd::workspace_root();
     let script_path = workspace_root
         .join("tools")
@@ -295,73 +305,78 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
         source,
     })?;
 
-    let mut command = Command::new("node");
-    command
-        .arg(&script_path)
-        .arg(&stem)
-        .current_dir(&workspace_root);
-    if let Some(browser_exe) = &cli.browser_exe {
-        command.env("PUPPETEER_EXECUTABLE_PATH", browser_exe);
-    }
-    let output = command
-        .output()
-        .map_err(|e| XtaskError::DebugSvgFailed(format!("failed to spawn node: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "Architecture FCoSE browser probe failed (exit={}):\n{}",
-            output.status.code().unwrap_or(-1),
-            stderr.trim()
-        )));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let probe: serde_json::Value = serde_json::from_str(&stdout)?;
-    let out_json = architecture_fcose_probe_json_path(&cli.out_dir, &stem);
-    fs::write(&out_json, serde_json::to_string_pretty(&probe)?).map_err(|source| {
-        XtaskError::WriteFile {
-            path: out_json.display().to_string(),
-            source,
+    for (idx, (mmd_path, stem)) in fixtures.iter().enumerate() {
+        let mut command = Command::new("node");
+        command
+            .arg(&script_path)
+            .arg(stem)
+            .current_dir(&workspace_root);
+        if let Some(browser_exe) = &cli.browser_exe {
+            command.env("PUPPETEER_EXECUTABLE_PATH", browser_exe);
         }
-    })?;
-    let out_markdown = architecture_fcose_probe_markdown_path(&cli.out_dir, &stem);
-    fs::write(
-        &out_markdown,
-        render_architecture_fcose_probe_markdown(&stem, &mmd_path, &out_json, &probe),
-    )
-    .map_err(|source| XtaskError::WriteFile {
-        path: out_markdown.display().to_string(),
-        source,
-    })?;
+        let output = command
+            .output()
+            .map_err(|e| XtaskError::DebugSvgFailed(format!("failed to spawn node: {e}")))?;
 
-    let stage_count = probe
-        .get("stages")
-        .and_then(|v| v.as_array())
-        .map_or(0, Vec::len);
-    let node_count = probe
-        .pointer("/finalElements/nodes")
-        .and_then(|v| v.as_array())
-        .map_or(0, Vec::len);
-    let edge_count = probe
-        .pointer("/finalElements/edges")
-        .and_then(|v| v.as_array())
-        .map_or(0, Vec::len);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(XtaskError::DebugSvgFailed(format!(
+                "Architecture FCoSE browser probe failed for {stem} (exit={}):\n{}",
+                output.status.code().unwrap_or(-1),
+                stderr.trim()
+            )));
+        }
 
-    println!("fixture: {stem}");
-    println!("source:  {}", mmd_path.display());
-    println!("script:  {}", script_path.display());
-    if let Some(browser_exe) = &cli.browser_exe {
-        println!("browser: {}", browser_exe.display());
-    }
-    println!("json:    {}", out_json.display());
-    println!("summary: {}", out_markdown.display());
-    println!("stages:  {stage_count}");
-    println!("final elements: nodes={node_count} edges={edge_count}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let probe: serde_json::Value = serde_json::from_str(&stdout)?;
+        let out_json = architecture_fcose_probe_json_path(&cli.out_dir, stem);
+        fs::write(&out_json, serde_json::to_string_pretty(&probe)?).map_err(|source| {
+            XtaskError::WriteFile {
+                path: out_json.display().to_string(),
+                source,
+            }
+        })?;
+        let out_markdown = architecture_fcose_probe_markdown_path(&cli.out_dir, stem);
+        fs::write(
+            &out_markdown,
+            render_architecture_fcose_probe_markdown(stem, mmd_path, &out_json, &probe),
+        )
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_markdown.display().to_string(),
+            source,
+        })?;
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.trim().is_empty() {
-        println!("probe stderr: {}", stderr.trim());
+        let stage_count = probe
+            .get("stages")
+            .and_then(|v| v.as_array())
+            .map_or(0, Vec::len);
+        let node_count = probe
+            .pointer("/finalElements/nodes")
+            .and_then(|v| v.as_array())
+            .map_or(0, Vec::len);
+        let edge_count = probe
+            .pointer("/finalElements/edges")
+            .and_then(|v| v.as_array())
+            .map_or(0, Vec::len);
+
+        if idx > 0 {
+            println!();
+        }
+        println!("fixture: {stem}");
+        println!("source:  {}", mmd_path.display());
+        println!("script:  {}", script_path.display());
+        if let Some(browser_exe) = &cli.browser_exe {
+            println!("browser: {}", browser_exe.display());
+        }
+        println!("json:    {}", out_json.display());
+        println!("summary: {}", out_markdown.display());
+        println!("stages:  {stage_count}");
+        println!("final elements: nodes={node_count} edges={edge_count}");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            println!("probe stderr: {}", stderr.trim());
+        }
     }
 
     Ok(())
@@ -1270,7 +1285,7 @@ mod tests {
             "C:/Browser/chrome.exe",
         ]))
         .unwrap();
-        assert_eq!(parsed.fixture_filter, "batch5_long_titles");
+        assert_eq!(parsed.fixture_filters, vec!["batch5_long_titles"]);
         assert_eq!(parsed.out_dir, PathBuf::from("target/custom-probe"));
         assert_eq!(
             parsed.browser_exe,
@@ -1284,8 +1299,24 @@ mod tests {
             "target/alt",
         ]))
         .unwrap();
-        assert_eq!(parsed.fixture_filter, "html_titles");
+        assert_eq!(parsed.fixture_filters, vec!["html_titles"]);
         assert_eq!(parsed.out_dir, PathBuf::from("target/alt"));
+    }
+
+    #[test]
+    fn fcose_probe_args_accept_repeated_fixture_filters() {
+        let parsed = parse_architecture_fcose_probe_args(&args(&[
+            "--fixture",
+            "batch5_long_titles",
+            "--fixture",
+            "group_port_edges",
+        ]))
+        .unwrap();
+
+        assert_eq!(
+            parsed.fixture_filters,
+            vec!["batch5_long_titles", "group_port_edges"]
+        );
     }
 
     #[test]

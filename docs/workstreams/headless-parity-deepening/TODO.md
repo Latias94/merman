@@ -175,6 +175,10 @@ Last updated: 2026-06-03
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
   edge/endpoint residual triage instead of reopening renderer routing from SVG shape alone.
+  A follow-up batch-probe slice allows repeated `--fixture` flags, so the active Architecture
+  residual samples can be captured in one command while still writing per-fixture JSON/Markdown
+  artifacts. Use this batch mode for future small residual classes before changing production
+  layout formulas.
 
 ## M5 - Semantic / Render Unification Pilot
 

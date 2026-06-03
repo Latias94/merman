@@ -285,6 +285,9 @@ Current repository reality to preserve:
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
     any renderer routing claim for edge/endpoint residuals.
+  - A follow-up batch-probe slice lets `xtask debug-architecture-fcose-probe` accept repeated
+    `--fixture` flags. Use batch mode when collecting the small active Architecture residual set;
+    it still writes per-fixture JSON/Markdown artifacts, so review remains fixture-local.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
