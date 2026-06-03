@@ -163,7 +163,7 @@ Current execution priority:
   enough to declare output usable.
 - Current honest `parity-root` buckets are led by:
   - Flowchart: `61`
-  - Architecture: `25`
+  - Architecture: `24`
   - Sequence: `27`
   - Class: `12`
   - Timeline: `3`

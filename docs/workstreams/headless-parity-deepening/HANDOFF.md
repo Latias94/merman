@@ -28,7 +28,7 @@ Current repository reality to preserve:
 - Structural `parity` is green for the implemented matrix.
 - `parity-root` remains the active numeric residual front, but visible rendering defects are higher
   priority than small root viewport tails.
-- Honest top residual buckets are currently Flowchart `61`, Architecture `25`, Sequence `27`,
+- Honest top residual buckets are currently Flowchart `61`, Architecture `24`, Sequence `27`,
   Class `12`, Timeline `3`, Journey `2`.
 - Sequence left-of wrapped note width semantics were improved in commit `cd9f02ff`, but a small
   root-width residual remains and should not be overfit without stronger evidence.
