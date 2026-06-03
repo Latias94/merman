@@ -224,6 +224,11 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
         relative_name,
         // Mermaid 11.15 parser tests classify this trailing-comma Radar example as invalid.
         "fixtures/radar/upstream_docs_radar_examples_005.mmd"
+            // These Treemap classDef bare-token fixtures have `diagramType: "error"` goldens.
+            // Strict public rendering should reject them; the all-supported renderability audit
+            // skips them so it can keep testing contentful Treemap fixtures.
+            | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd"
+            | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd"
     )
 }
 
@@ -788,6 +793,18 @@ fn all_supported_fixtures_render_headless_resvg_safe_audit() {
         rendered > 100 || (filtered_audit && rendered > 0),
         "expected the manual audit to render a broad corpus; rendered={rendered}, skipped_unrenderable={skipped_unrenderable}"
     );
+}
+
+#[test]
+fn known_error_golden_fixtures_are_skipped_by_manual_audit() {
+    assert!(is_known_unrenderable_fixture(
+        "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd",
+        "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
+    ));
+    assert!(is_known_unrenderable_fixture(
+        "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd",
+        "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
+    ));
 }
 
 #[test]

@@ -658,6 +658,12 @@ Current repository reality to preserve:
     uses a generated, C4-scoped headless-shell text lookup table before falling back to deterministic
     SVG bbox measurement. The key `SystemAA` description now lands at `532.484375px`, producing the
     expected `552px` C4 box width and keeping C4 structural/root compare green.
-  - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
-    unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
-    chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
+  - A sixty-third HPD-080 raster audit slice calibrated the manual all-supported renderability gate:
+    the Treemap bare-token classDef fixtures are error-golden parser-parity cases, so strict public
+    rendering should skip them during contentful raster audit. After that gate fix, filtered
+    raster-enabled all-supported audits passed for every implemented family, including full
+    Flowchart. No new production visible rendering defect was found in that pass.
+  - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
+    concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
+    return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
+    or raster work.

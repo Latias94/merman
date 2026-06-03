@@ -3,6 +3,57 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - All-Supported Raster Audit Gate Calibration
+
+Outcome:
+
+- Continued HPD-080 visible renderability scanning with raster-enabled
+  `all_supported_fixtures_render_headless_resvg_safe_audit` batches.
+- The first batch exposed a test-gate issue, not a production renderer defect:
+  `fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd` has an error golden
+  because pinned Mermaid 11.15 rejects the bare `classDef ... color;` token, but the manual audit
+  still tried to render it through strict public rendering as a normal contentful Treemap fixture.
+- Added the two Treemap classDef bare-token error-golden fixtures to the audit skip list while
+  preserving strict Treemap parser behavior.
+- After that calibration, supported-family filtered raster audits passed for Architecture, Block,
+  C4, Class, ER, Flowchart, Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Pie, QuadrantChart,
+  Radar, Requirement, Sankey, Sequence, State, Timeline, Treemap, and XYChart.
+- No new production visible rendering defect was found in this pass.
+
+Touched surfaces:
+
+- [crates/merman/tests/resvg_safe_fixture_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/resvg_safe_fixture_smoke.rs)
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render,raster known_error_golden_fixtures_are_skipped_by_manual_audit source_content_gate_distinguishes_accessibility_only_from_visible_content` -
+  passed, `2` tests run.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='timeline,journey,requirement,gantt,treemap'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='c4,packet,pie,quadrantchart,radar,sankey,xychart'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='block,er,kanban,mindmap'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='architecture'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='class'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='sequence'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='state'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='gitgraph'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+- `$env:MERMAN_RESVG_SAFE_AUDIT_FAMILY='flowchart'; cargo nextest run -p merman --features render,raster --run-ignored ignored-only all_supported_fixtures_render_headless_resvg_safe_audit` -
+  passed.
+
+Residual note:
+
+- HPD-080 remains active, but after this pass further visible-rendering changes should be driven by
+  a failing gate, a source-backed emitted-surface gap, or concrete consumer evidence rather than by
+  broad speculative CSS/raster work.
+
 ## HPD-080 - C4 Headless-Shell Text Measurement
 
 Outcome:

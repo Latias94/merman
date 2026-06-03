@@ -375,5 +375,9 @@ Last updated: 2026-06-03
   C4-scoped headless-shell text lookup table keyed by font family, size, weight, and exact text
   before falling back to deterministic SVG bbox measurement. The key long C4 description now
   produces the expected `552px` box and C4 structural/root compare stays green.
-  Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
-  colors, and other functional renderability failures before returning to fine root residual work.
+  A follow-up all-supported raster audit slice then fixed the manual gate boundary for Treemap
+  error-golden classDef bare-token fixtures and ran raster-enabled filtered audits across every
+  implemented family, including full Flowchart. No new production visible-rendering defect was found
+  in that scan. Continue HPD-080 only from a fresh failing gate, source-backed emitted-surface gap,
+  or concrete consumer report; otherwise return to HPD-050 source-backed Architecture/Dagre/Graphlib
+  audits before fine root residual work.
