@@ -34,6 +34,17 @@ fn render_pie_from_text(text: &str) -> String {
     .expect("svg render ok")
 }
 
+fn root_viewbox_width(svg: &str) -> f64 {
+    let start = svg.find(r#"viewBox=""#).expect("viewBox start") + r#"viewBox=""#.len();
+    let end = svg[start..].find('"').expect("viewBox end") + start;
+    svg[start..end]
+        .split_whitespace()
+        .nth(2)
+        .expect("viewBox width")
+        .parse::<f64>()
+        .expect("viewBox width parses")
+}
+
 #[test]
 fn pie_slices_follow_input_order_in_mermaid_11_15() {
     let layout = layout_pie_from_text(
@@ -236,8 +247,8 @@ fn empty_pie_root_viewport_is_finite_for_headless_rendering() {
     let svg = render_pie_from_text("pie");
 
     assert!(
-        svg.contains(r#"viewBox="0 0 450 450""#),
-        "empty pie should keep a finite, visible root viewport: {svg}"
+        svg.contains(r#"viewBox="0 0 225 450""#),
+        "empty pie should keep the finite Mermaid 11.15 empty-root viewport: {svg}"
     );
     assert!(
         !svg.contains("Infinity") && !svg.contains("NaN"),
@@ -246,7 +257,22 @@ fn empty_pie_root_viewport_is_finite_for_headless_rendering() {
 }
 
 #[test]
-fn pie_highlight_slice_config_emits_highlight_classes_and_css() {
+fn empty_pie_with_title_keeps_title_widened_root_viewport() {
+    let svg = render_pie_from_text("pie title sample title");
+    let viewbox_width = root_viewbox_width(&svg);
+
+    assert!(
+        viewbox_width > 250.0,
+        "empty pie title should widen the root viewport instead of falling back to 225px: {svg}"
+    );
+    assert!(
+        !svg.contains("Infinity") && !svg.contains("NaN"),
+        "titled empty pie should not leak non-finite SVG values: {svg}"
+    );
+}
+
+#[test]
+fn pie_highlight_slice_config_does_not_emit_unsupported_classes_or_css() {
     let svg = render_pie_from_text(
         r#"%%{init: {"pie": {"highlightSlice": "A"}}}%%
 pie
@@ -256,17 +282,17 @@ pie
     );
 
     assert!(
-        svg.contains(r#".pieCircle.highlighted{scale:1.05;opacity:1;}"#),
-        "highlighted pie CSS rule should be present: {svg}"
+        !svg.contains(r#".pieCircle.highlighted"#),
+        "Mermaid 11.15 npm output does not emit highlighted pie CSS rules: {svg}"
     );
     assert!(
-        svg.contains(r#"class="pieCircle highlighted""#),
-        "matching slice should receive the highlighted class: {svg}"
+        !svg.contains(r#"class="pieCircle highlighted""#),
+        "Mermaid 11.15 npm output does not mark highlighted slices: {svg}"
     );
 }
 
 #[test]
-fn pie_hover_highlight_slice_config_emits_hover_class_and_css() {
+fn pie_hover_highlight_slice_config_does_not_emit_unsupported_classes_or_css() {
     let svg = render_pie_from_text(
         r#"%%{init: {"pie": {"highlightSlice": "hover"}}}%%
 pie
@@ -276,11 +302,11 @@ pie
     );
 
     assert!(
-        svg.contains(r#".pieCircle.highlightedOnHover:hover{transition-duration:250ms;scale:1.05;opacity:1;}"#),
-        "hover highlight CSS rule should be present: {svg}"
+        !svg.contains(r#".pieCircle.highlightedOnHover"#),
+        "Mermaid 11.15 npm output does not emit hover-highlight pie CSS rules: {svg}"
     );
     assert!(
-        svg.contains(r#"class="pieCircle highlightedOnHover""#),
-        "hover highlight should mark every slice: {svg}"
+        !svg.contains(r#"class="pieCircle highlightedOnHover""#),
+        "Mermaid 11.15 npm output does not mark hover-highlight slices: {svg}"
     );
 }

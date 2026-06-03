@@ -424,6 +424,11 @@ pub fn layout_pie_diagram_typed(
         font_size: 17.0,
         font_weight: None,
     };
+    let title_style = TextStyle {
+        font_family: None,
+        font_size: 25.0,
+        font_weight: None,
+    };
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
         let label = if model.show_data {
@@ -432,56 +437,77 @@ pub fn layout_pie_diagram_typed(
             sec.label.clone()
         };
         let trimmed = label.trim_end();
-        // Mermaid pie legend labels render as a single SVG `<text>` run and compute
-        // `longestTextWidth` from each node's bounding client rect. The shared SVG bbox extents are
-        // closer to that browser width than the wrapped-text width path and remove the need for
-        // fixture-specific root viewport pins.
+        // Mermaid 11.15 measures pie legend text via a single SVG `<text>` node's
+        // `getBoundingClientRect().width`. In headless mode we cannot reproduce that browser value
+        // exactly, but the single-run/simple-text SVG width path is closer than the generic
+        // multi-run bbox approximation used by Mermaid's wrapped `<tspan>` labels.
         let w = if trimmed.is_empty() {
             0.0
         } else {
-            let (left, right) = measurer.measure_svg_text_bbox_x(trimmed, &legend_style);
-            crate::text::round_to_1_64_px((left + right).max(0.0))
+            crate::text::round_to_1_64_px(
+                measurer.measure_svg_simple_text_bbox_width_px(trimmed, &legend_style),
+            )
         };
         max_legend_width = max_legend_width.max(w);
     }
+
+    let title_width = model
+        .title
+        .as_deref()
+        .map(str::trim_end)
+        .filter(|title| !title.is_empty())
+        .map(|title| {
+            crate::text::round_to_1_64_px(
+                measurer.measure_svg_simple_text_bbox_width_px(title, &title_style),
+            )
+        })
+        .unwrap_or(0.0);
 
     let base_w: f64 = center * 2.0;
     let legend_extra_width = legend_rect_size + legend_spacing + max_legend_width;
     let centered_legend_x = -max_legend_width / 2.0 - (legend_rect_size + legend_spacing);
 
-    let (width, height, legend_x) = match legend_position {
-        PieLegendPosition::Top => (
-            (base_w + margin).max(1.0),
-            (base_w + total_legend_height).max(1.0),
-            centered_legend_x,
-        ),
-        PieLegendPosition::Bottom => (
-            (base_w + margin).max(1.0),
-            (base_w + total_legend_height).max(1.0),
-            centered_legend_x,
-        ),
-        PieLegendPosition::Left => (
-            (base_w + margin + legend_extra_width).max(1.0),
-            base_w.max(1.0),
-            -radius - (legend_rect_size + legend_spacing),
-        ),
-        PieLegendPosition::Center => (
-            (base_w + margin).max(1.0),
-            base_w.max(1.0),
-            centered_legend_x,
-        ),
-        PieLegendPosition::Right => (
-            (base_w + margin + legend_extra_width).max(1.0),
-            base_w.max(1.0),
-            12.0 * legend_rect_size,
-        ),
+    let chart_and_legend_width = match legend_position {
+        PieLegendPosition::Top => (base_w + margin).max(1.0),
+        PieLegendPosition::Bottom => (base_w + margin).max(1.0),
+        PieLegendPosition::Left => (base_w + margin + legend_extra_width).max(1.0),
+        PieLegendPosition::Center => (base_w + margin).max(1.0),
+        PieLegendPosition::Right => {
+            if model.sections.is_empty() {
+                f64::NEG_INFINITY
+            } else {
+                (base_w + margin + legend_extra_width).max(1.0)
+            }
+        }
     };
+
+    let height = match legend_position {
+        PieLegendPosition::Top | PieLegendPosition::Bottom => {
+            (base_w + total_legend_height).max(1.0)
+        }
+        PieLegendPosition::Left | PieLegendPosition::Center | PieLegendPosition::Right => {
+            base_w.max(1.0)
+        }
+    };
+
+    let legend_x = match legend_position {
+        PieLegendPosition::Top | PieLegendPosition::Bottom | PieLegendPosition::Center => {
+            centered_legend_x
+        }
+        PieLegendPosition::Left => -radius - (legend_rect_size + legend_spacing),
+        PieLegendPosition::Right => 12.0 * legend_rect_size,
+    };
+
+    let title_left = base_w / 2.0 - title_width / 2.0;
+    let title_right = base_w / 2.0 + title_width / 2.0;
+    let min_x = title_left.min(0.0);
+    let max_x = chart_and_legend_width.max(title_right);
 
     Ok(PieDiagramLayout {
         bounds: Some(Bounds {
-            min_x: 0.0,
+            min_x,
             min_y: 0.0,
-            max_x: width,
+            max_x,
             max_y: height,
         }),
         center_x: center,

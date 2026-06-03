@@ -1,22 +1,118 @@
-use super::{PieDiagramLayout, Result, SvgRenderOptions, config_string, root_svg};
+use super::{PieDiagramLayout, Result, SvgRenderOptions, apply_root_viewport_override, root_svg};
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
 use std::fmt::Write as _;
 
-const NO_MAX_WIDTH_SENTINEL: &str = "__NO_MAX_WIDTH__";
-const EMPTY_PIE_VIEWBOX: &str = "0 0 450 450";
+const EMPTY_PIE_VIEWBOX: &str = "0 0 225 450";
+const EMPTY_PIE_MAX_WIDTH: &str = "225";
 
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
-    let rgb = match fill {
-        "#ECECFF" => "rgb(236, 236, 255)",
-        "#ffffde" => "rgb(255, 255, 222)",
-        "hsl(80, 100%, 56.2745098039%)" => "rgb(181, 255, 32)",
-        "hsl(240, 100%, 86.2745098039%)" => "rgb(185, 185, 255)",
-        other => other,
+    let color = css_color_to_rgb_string(fill).unwrap_or_else(|| fill.to_string());
+    format!("fill: {color}; stroke: {color};")
+}
+
+fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let t = s.trim().strip_prefix('#').unwrap_or(s.trim());
+    if t.len() != 6 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let r = u8::from_str_radix(&t[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&t[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&t[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
+fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
+    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let parse_channel = |part: &str| -> Option<u8> {
+        let value = part.parse::<f64>().ok()?;
+        if !value.is_finite() {
+            return None;
+        }
+        Some(value.round().clamp(0.0, 255.0) as u8)
     };
-    format!("fill: {rgb}; stroke: {rgb};")
+    let r = parse_channel(parts.next()?)?;
+    let g = parse_channel(parts.next()?)?;
+    let b = parse_channel(parts.next()?)?;
+    Some((r, g, b))
+}
+
+fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
+    let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let h = parts.next()?.parse::<f64>().ok()?;
+    let s = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    let l = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    Some((h, s, l))
+}
+
+fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
+    if !(h_deg.is_finite() && s_pct.is_finite() && l_pct.is_finite()) {
+        return None;
+    }
+
+    let h = (h_deg / 360.0).rem_euclid(1.0);
+    let s = (s_pct / 100.0).clamp(0.0, 1.0);
+    let l = (l_pct / 100.0).clamp(0.0, 1.0);
+
+    if s == 0.0 {
+        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
+        return Some((v, v, v));
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 1.0 / 2.0 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
+        p
+    }
+
+    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+    let g = hue_to_rgb(p, q, h);
+    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+
+    let to_u8 = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some((to_u8(r), to_u8(g), to_u8(b)))
+}
+
+fn css_color_to_rgb_string(s: &str) -> Option<String> {
+    let t = s.trim();
+    let (r, g, b) = parse_rgb_css(t)
+        .or_else(|| parse_hex_rgb(t))
+        .or_else(|| parse_hsl_css(t).and_then(|(h, s, l)| hsl_to_rgb_u8(h, s, l)))?;
+    Some(format!("rgb({r}, {g}, {b})"))
 }
 
 fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
@@ -26,11 +122,8 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
 }
 
 fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
-    match config_string(effective_config, &["pie", "highlightSlice"]).as_deref() {
-        Some("hover") => "pieCircle highlightedOnHover".to_string(),
-        Some(target) if target == label => "pieCircle highlighted".to_string(),
-        _ => "pieCircle".to_string(),
-    }
+    let _ = (effective_config, label);
+    "pieCircle".to_string()
 }
 
 fn apply_empty_pie_root_viewport(
@@ -42,11 +135,19 @@ fn apply_empty_pie_root_viewport(
         return false;
     }
 
-    // Mermaid 11.15 serializes `-Infinity` for section-less Pie roots through its browser/D3
-    // viewport path. That is not a meaningful rendering contract for a headless/raster-safe clone,
-    // so keep the visible empty pie shell finite instead of preserving the upstream invalid token.
+    let computed_root_is_finite = !viewbox_attr.contains("Infinity")
+        && !viewbox_attr.contains("NaN")
+        && !max_width_attr.contains("Infinity")
+        && !max_width_attr.contains("NaN");
+    if computed_root_is_finite {
+        return false;
+    }
+
+    // Empty pie roots used to inherit upstream's invalid `-Infinity` viewport when no sections
+    // were drawn. Keep a finite fallback for that legacy path, but do not clobber valid title-
+    // widened roots that now come from layout bounds directly.
     *viewbox_attr = EMPTY_PIE_VIEWBOX.to_string();
-    *max_width_attr = NO_MAX_WIDTH_SENTINEL.to_string();
+    *max_width_attr = EMPTY_PIE_MAX_WIDTH.to_string();
     true
 }
 
@@ -89,12 +190,20 @@ pub(super) fn render_pie_diagram_svg_model(
         super::fmt(vb_h)
     );
     apply_empty_pie_root_viewport(model, &mut viewbox_attr, &mut max_w_attr);
+    let mut w_attr = super::fmt_string(vb_w);
+    let mut h_attr = super::fmt_string(vb_h);
+    if options.apply_root_overrides {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
+        );
+    }
 
-    let style_attr = if max_w_attr == NO_MAX_WIDTH_SENTINEL {
-        "background-color: white;".to_string()
-    } else {
-        format!("max-width: {max_w_attr}px; background-color: white;")
-    };
+    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
 
     let mut out = String::new();
     let aria_labelledby = model
@@ -317,10 +426,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_pie_root_viewport_is_model_derived() {
+    fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {
+        assert_eq!(
+            pie_legend_rect_style("hsl(60, 100%, 57.0588235294%)"),
+            "fill: rgb(255, 255, 36); stroke: rgb(255, 255, 36);"
+        );
+        assert_eq!(
+            pie_legend_rect_style("#ECECFF"),
+            "fill: rgb(236, 236, 255); stroke: rgb(236, 236, 255);"
+        );
+    }
+
+    #[test]
+    fn empty_pie_root_viewport_fallback_only_repairs_non_finite_roots() {
         let model = PieDiagramRenderModel::default();
-        let mut viewbox = "0 0 512 450".to_string();
-        let mut max_width = "512".to_string();
+        let mut viewbox = "0 0 -Infinity 450".to_string();
+        let mut max_width = "NaN".to_string();
 
         assert!(apply_empty_pie_root_viewport(
             &model,
@@ -328,6 +449,21 @@ mod tests {
             &mut max_width,
         ));
         assert_eq!(viewbox, EMPTY_PIE_VIEWBOX);
-        assert_eq!(max_width, NO_MAX_WIDTH_SENTINEL);
+        assert_eq!(max_width, EMPTY_PIE_MAX_WIDTH);
+    }
+
+    #[test]
+    fn empty_pie_root_viewport_fallback_preserves_finite_title_bounds() {
+        let model = PieDiagramRenderModel::default();
+        let mut viewbox = "0 0 292.400390625 450".to_string();
+        let mut max_width = "292.4".to_string();
+
+        assert!(!apply_empty_pie_root_viewport(
+            &model,
+            &mut viewbox,
+            &mut max_width,
+        ));
+        assert_eq!(viewbox, "0 0 292.400390625 450");
+        assert_eq!(max_width, "292.4");
     }
 }

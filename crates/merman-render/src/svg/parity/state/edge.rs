@@ -190,10 +190,80 @@ fn state_edge_boundary_for_cluster(
     })
 }
 
+fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
+    match arrow_type_end {
+        Some("arrow_barb_neo") => Some(5.5),
+        _ => None,
+    }
+}
+
+fn state_line_with_end_marker_offset_points(
+    input: &[crate::model::LayoutPoint],
+    arrow_type_end: Option<&str>,
+) -> Vec<crate::model::LayoutPoint> {
+    fn calculate_delta_and_angle(
+        a: &crate::model::LayoutPoint,
+        b: &crate::model::LayoutPoint,
+    ) -> (f64, f64, f64) {
+        let delta_x = b.x - a.x;
+        let delta_y = b.y - a.y;
+        let angle = (delta_y / delta_x).atan();
+        (angle, delta_x, delta_y)
+    }
+
+    let Some(end_marker_height) = state_marker_offset_for(arrow_type_end) else {
+        return input.to_vec();
+    };
+    if input.len() < 2 {
+        return input.to_vec();
+    }
+
+    let start = &input[0];
+    let end = &input[input.len() - 1];
+    let x_direction_is_left = start.x < end.x;
+    let y_direction_is_down = start.y < end.y;
+    let extra_room = 1.0;
+
+    let mut out = Vec::with_capacity(input.len());
+    for (idx, point) in input.iter().enumerate() {
+        let mut offset_x = 0.0;
+        let mut offset_y = 0.0;
+
+        if idx == input.len() - 1 {
+            let (angle, delta_x, delta_y) =
+                calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
+            offset_x = end_marker_height * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+            offset_y =
+                end_marker_height * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
+        }
+
+        let diff_x = (point.x - end.x).abs();
+        let diff_y = (point.y - end.y).abs();
+        if diff_x < end_marker_height && diff_x > 0.0 && diff_y < end_marker_height {
+            let mut adjustment = end_marker_height + extra_room - diff_x;
+            adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
+            offset_x -= adjustment;
+        }
+        if diff_y < end_marker_height && diff_y > 0.0 && diff_x < end_marker_height {
+            let mut adjustment = end_marker_height + extra_room - diff_y;
+            adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
+            offset_y -= adjustment;
+        }
+
+        out.push(crate::model::LayoutPoint {
+            x: point.x + offset_x,
+            y: point.y + offset_y,
+        });
+    }
+
+    out
+}
+
 fn state_edge_prepare_points(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     edge_id: &str,
+    arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
 ) -> (
@@ -251,6 +321,7 @@ fn state_edge_prepare_points(
             points_for_curve.remove(1);
         }
     }
+    points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
 
     (local_points, points_for_curve)
 }
@@ -259,11 +330,12 @@ fn state_edge_encode_path(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     edge_id: &str,
+    arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
 ) -> (String, String) {
     let (local_points, points_for_curve) =
-        state_edge_prepare_points(ctx, le, edge_id, origin_x, origin_y);
+        state_edge_prepare_points(ctx, le, edge_id, arrow_type_end, origin_x, origin_y);
 
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&local_points).unwrap_or_default());
@@ -287,10 +359,11 @@ pub(super) fn render_state_edge_path(
         classes.push_str(c.trim());
     }
 
-    let marker_end = if edge.arrow_type_end.trim() == "arrow_barb" {
-        Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))
-    } else {
-        None
+    let marker_end = match edge.arrow_type_end.trim() {
+        "arrow_barb" | "arrow_barb_neo" => {
+            Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))
+        }
+        _ => None,
     };
 
     if edge.start == edge.end {
@@ -307,7 +380,14 @@ pub(super) fn render_state_edge_path(
             if le.points.len() < 2 {
                 continue;
             }
-            let (d, data_points) = state_edge_encode_path(ctx, le, sid, origin_x, origin_y);
+            let (d, data_points) = state_edge_encode_path(
+                ctx,
+                le,
+                sid,
+                marker.map(|_| edge.arrow_type_end.as_str()),
+                origin_x,
+                origin_y,
+            );
             let _ = write!(
                 out,
                 r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
@@ -332,7 +412,14 @@ pub(super) fn render_state_edge_path(
         return;
     }
 
-    let (d, data_points) = state_edge_encode_path(ctx, le, edge.id.as_str(), origin_x, origin_y);
+    let (d, data_points) = state_edge_encode_path(
+        ctx,
+        le,
+        edge.id.as_str(),
+        Some(edge.arrow_type_end.as_str()),
+        origin_x,
+        origin_y,
+    );
 
     let _ = write!(
         out,
@@ -536,8 +623,14 @@ pub(super) fn render_state_edge_label(
     //
     // `positionEdgeLabel` then recomputes the label center from `utils.calcLabelPosition(...)`
     // *only when* `updatedPath` exists. Otherwise it keeps Dagre's `edge.x/y` unchanged.
-    let (_local_points, points_for_curve) =
-        state_edge_prepare_points(ctx, le, edge.id.as_str(), origin_x, origin_y);
+    let (_local_points, points_for_curve) = state_edge_prepare_points(
+        ctx,
+        le,
+        edge.id.as_str(),
+        Some(edge.arrow_type_end.as_str()),
+        origin_x,
+        origin_y,
+    );
 
     fn mermaid_is_label_coordinate_in_path(
         point: &crate::model::LayoutPoint,
@@ -610,4 +703,25 @@ pub(super) fn render_state_edge_label(
         edge_label_div_style(w),
         state_edge_label_html(label_text)
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_line_with_end_marker_offset_shortens_neo_barb_terminal_point() {
+        let input = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 10.0, y: 0.0 },
+        ];
+
+        let output = state_line_with_end_marker_offset_points(&input, Some("arrow_barb_neo"));
+
+        assert_eq!(output.len(), 2);
+        assert!((output[0].x - 0.0).abs() <= 1e-9);
+        assert!((output[0].y - 0.0).abs() <= 1e-9);
+        assert!((output[1].x - 4.5).abs() <= 1e-9);
+        assert!((output[1].y - 0.0).abs() <= 1e-9);
+    }
 }

@@ -584,13 +584,11 @@ pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) ->
     let pie_legend_text_color = theme.color("pieLegendTextColor", task_text_dark_color.as_str());
     let _ = write!(
         &mut out,
-        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
         id,
         pie_stroke_color,
         pie_stroke_width,
         pie_opacity,
-        id,
-        id,
         id,
         pie_outer_stroke_color,
         pie_outer_stroke_width,
