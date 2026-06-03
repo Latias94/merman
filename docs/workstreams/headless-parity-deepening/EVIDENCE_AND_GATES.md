@@ -3,6 +3,47 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - ER Visible Signal Boundary
+
+Outcome:
+
+- Re-audited ER public theme smoke coverage against pinned Mermaid 11.15 source and current local
+  SVG DOM.
+- Confirmed current ER labels in the compact sample are XHTML `span` labels inside
+  `foreignObject`, not native `<text>` labels.
+- Confirmed `tertiaryColor` still emits `.relationshipLabelBox` provider CSS, but current compact
+  output has no `relationshipLabelBox` DOM. The visible tertiary path is the `.labelBkg` rgba fade.
+- Confirmed `textColor` still emits native edge-label text CSS, but current edge labels are XHTML
+  spans. The visible label color path in this sample is `nodeTextColor` through `.label`.
+- Tightened the public smoke so ER visible colors are counted through current DOM-consumed
+  surfaces: relationship lines/markers, current node shapes, XHTML node labels, `.labelBkg`, and
+  XHTML edge labels.
+- No production renderer change was needed. This is a smoke-honesty calibration for an already
+  covered style-provider family.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erRenderer.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erDb.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `10`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `364` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- ER remains covered for current node, relationship, marker, XHTML label, and edge-label DOM. Future
+  public-smoke additions should count `.relationshipLabelBox`, native `.edgeLabel .label text`, or
+  `data-color-id` rules as visible only when the fixture emits matching current DOM.
+
 ## HPD-080 - Mindmap Visible Signal Boundary
 
 Outcome:

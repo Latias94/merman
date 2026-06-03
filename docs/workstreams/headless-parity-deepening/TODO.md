@@ -336,5 +336,8 @@ Last updated: 2026-06-03
   A follow-up Mindmap visible-signal audit found no production defect, but stopped the public smoke
   from counting root-section CSS that is overwritten by `.section-root` rules or native-text CSS
   that current XHTML label DOM does not consume.
+  A follow-up ER visible-signal audit found no production defect, but stopped the public smoke from
+  counting direct `.relationshipLabelBox` and native edge-label text CSS when current ER labels are
+  XHTML spans.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

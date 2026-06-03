@@ -593,6 +593,11 @@ Current repository reality to preserve:
     by `.section-root` rules or root native-text CSS when current labels are XHTML spans. The
     visible smoke now counts root `git0`, redux root `nodeBorder` via `span`, and child
     `.section-0` colors with matching DOM.
+  - A fifty-sixth HPD-080 ER visible-signal audit found no production defect, but tightened public
+    smoke coverage so ER no longer counts direct `.relationshipLabelBox` fills or native
+    `.edgeLabel .label text` CSS without matching current DOM. The visible smoke now counts
+    line/node colors, XHTML node labels, `.labelBkg` rgba background, and XHTML edge-label
+    background.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

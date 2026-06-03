@@ -108,7 +108,12 @@ erDiagram
 "##,
             &["CUSTOMER", "ORDER", "places", "name"],
             &[
-                "#f8fafc", "#22c55e", "#111827", "#38bdf8", "#fde68a", "#172554", "#334155",
+                "#22c55e",
+                "#111827",
+                "#38bdf8",
+                "#fde68a",
+                "rgba(23, 37, 84, 0.5)",
+                "#334155",
             ],
         ),
         (
@@ -581,6 +586,79 @@ mindmap
     assert!(
         !svg.contains("<text"),
         "Mindmap should not count section-root text CSS as visible while current labels are XHTML spans: {svg}"
+    );
+}
+
+#[test]
+fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
+    let svg = render_svg(
+        "er-visible-audit",
+        r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "nodeTextColor": "#fde68a", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  CUSTOMER {
+    string name
+  }
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="edge-thickness-normal edge-pattern-solid relationshipLine""#),
+        "ER line colors should only count with current relationshipLine DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="labelBkg""#),
+        "ER tertiary fade should only count with current labelBkg DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p>places</p></span>"#),
+        "ER edgeLabelBackground should only count with current XHTML edge label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="nodeLabel"><p>CUSTOMER</p></span>"#),
+        "ER nodeTextColor should only count with current XHTML node label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"#er-visible-audit .relationshipLine{stroke:#22c55e;stroke-width:3;fill:none;}"##
+        ),
+        "ER lineColor should reach the visible relationshipLine selector: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .node rect,#er-visible-audit .node circle,#er-visible-audit .node ellipse,#er-visible-audit .node polygon{fill:#111827;stroke:#38bdf8;stroke-width:3;}"##),
+        "ER mainBkg/nodeBorder should reach current simple node shape selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#111827""##) && svg.contains(r##"stroke="#38bdf8""##),
+        "ER rough entity shapes should also carry mainBkg/nodeBorder inline colors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#fde68a;}"##),
+        "ER nodeTextColor should reach current XHTML label containers: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .labelBkg{background-color:rgba(23, 37, 84, 0.5);}"##),
+        "ER tertiaryColor should be counted through the current labelBkg fade, not as a direct fill: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .edgeLabel{background-color:#334155;}"##),
+        "ER edgeLabelBackground should reach the current XHTML edge label class: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .relationshipLabelBox{fill:#172554;opacity:0.7;background-color:#172554;}"##),
+        "Mermaid 11.15 still emits relationshipLabelBox provider CSS: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="relationshipLabelBox""#),
+        "ER should not count direct tertiaryColor relationshipLabelBox CSS as visible without matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .edgeLabel .label text{fill:#f8fafc;}"##),
+        "Mermaid 11.15 still emits edge-label native text CSS: {svg}"
+    );
+    assert!(
+        !svg.contains("<text"),
+        "ER should not count textColor native text CSS as visible while current labels are XHTML spans: {svg}"
     );
 }
 
