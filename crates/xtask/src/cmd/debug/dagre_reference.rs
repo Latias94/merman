@@ -240,7 +240,7 @@ fn snapshot_dagre_graph_json(
 ) -> Result<graphlib_json::GraphJson, serde_json::Error> {
     let mut snapshot: Graph<Option<JsonValue>, Option<JsonValue>, Option<JsonValue>> =
         Graph::new(graph.options());
-    snapshot.set_graph(Some(graph_label_to_json(graph.graph())));
+    snapshot.set_graph(Some(graph_label_to_json(graph.graph(), phase)));
 
     for id in graph.node_ids() {
         let Some(label) = graph.node(&id) else {
@@ -267,7 +267,7 @@ fn snapshot_dagre_graph_json(
     graphlib_json::write(&snapshot)
 }
 
-fn graph_label_to_json(graph_label: &GraphLabel) -> JsonValue {
+fn graph_label_to_json(graph_label: &GraphLabel, phase: DagreSnapshotPhase) -> JsonValue {
     let mut graph_obj = serde_json::Map::new();
     graph_obj.insert(
         "rankdir".to_string(),
@@ -278,6 +278,10 @@ fn graph_label_to_json(graph_label: &GraphLabel) -> JsonValue {
     graph_obj.insert("edgesep".to_string(), JsonValue::from(graph_label.edgesep));
     graph_obj.insert("marginx".to_string(), JsonValue::from(graph_label.marginx));
     graph_obj.insert("marginy".to_string(), JsonValue::from(graph_label.marginy));
+    if matches!(phase, DagreSnapshotPhase::Output) {
+        graph_obj.insert("width".to_string(), JsonValue::from(graph_label.width));
+        graph_obj.insert("height".to_string(), JsonValue::from(graph_label.height));
+    }
     graph_obj.insert(
         "align".to_string(),
         graph_label
@@ -650,6 +654,8 @@ mod tests {
             .expect("serialize graph json");
 
         assert_eq!(input["value"]["rankdir"], JsonValue::from("LR"));
+        assert!(input["value"].get("width").is_none());
+        assert!(input["value"].get("height").is_none());
         assert!(input.get("graph").is_none());
 
         let child = input["nodes"]
@@ -679,6 +685,8 @@ mod tests {
             compound: true,
         });
         graph.graph_mut().rankdir = RankDir::BT;
+        graph.graph_mut().width = 123.0;
+        graph.graph_mut().height = 456.0;
         graph.set_node(
             "a",
             NodeLabel {
@@ -709,6 +717,8 @@ mod tests {
                 .expect("serialize graph json");
 
         assert_eq!(output["value"]["rankdir"], JsonValue::from("BT"));
+        assert_eq!(output["value"]["width"], JsonValue::from(123.0));
+        assert_eq!(output["value"]["height"], JsonValue::from(456.0));
         assert!(output.get("graph").is_none());
 
         let node = output["nodes"]

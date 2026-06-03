@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Handoff
 
 Status: Active
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 
 This workstream opens the post-11.15 structural-parity phase.
 
@@ -170,6 +170,37 @@ Current repository reality to preserve:
   - A follow-up Graphlib `setEdge` optional-label / EdgeKey coverage slice is now landed.
     It maps explicit JS `undefined` edge-label clearing to `Option<T>` edge labels and maps
     Graphlib edge-object parameters to the existing Rust `EdgeKey` API.
+  - A follow-up Graphlib node optional-label slice is now landed. It maps explicit JS
+    `setNode(v, undefined)` clearing to the same Rust `Option<T>` seam used by JSON: missing nodes
+    remain `None`, while present nodes with cleared labels are `Some(None)` and still satisfy
+    `has_node(...)`.
+  - A follow-up Dagreish layout source-coverage slice is now landed. Four upstream
+    `repo-ref/dagre/test/layout-test.js` cases now exercise the full `layout_dagreish(...)`
+    consumer path directly: long-edge label coordinates, short-cycle acyclic undo point direction,
+    non-adjacent compound-subgraph separation, and compound geometry across all rankdirs. This is a
+    coverage/audit slice only; it does not claim default minimal `dugong::layout(...)` equivalence
+    for the remaining upstream layout cases.
+  - A follow-up Dagreish graph-dimension output seam is now landed. `GraphLabel` carries
+    `width` / `height`, and `layout_dagreish(...)` writes them from the source-backed
+    `translateGraph(...)` bbox phase: positioned node boxes plus explicit edge-label boxes,
+    including graph margins and excluding intermediate edge points. The Dagre reference adapter now
+    emits those fields only for output snapshots, keeping JS harness inputs unchanged. Fresh
+    closeout verification passed `dugong` (`273` tests), `dugong-graphlib` (`96` tests), `xtask`
+    Dagre reference tests (`5` tests), and State `basic` / composite / cluster
+    `compare-dagre-layout` runs with zero node/edge delta and zero identity drift; the `basic`
+    artifacts also confirmed input graph dimensions are omitted while JS and Rust output graph
+    dimensions both report `100.109375 x 298`.
+  - A follow-up Dagreish bounding-box source-coverage slice is now landed. Two upstream
+    `repo-ref/dagre/test/layout-test.js` cases now exercise the full `layout_dagreish(...)`
+    consumer path for node coordinates and `labelpos = l` edge-label coordinates staying inside
+    graph bounds across `TB`, `BT`, `LR`, and `RL`. This was coverage only; no production code
+    changed, and `dugong` passed `275` tests.
+  - A follow-up Dagre attribute case-insensitivity audit is now recorded as a Rust API-shape
+    non-target. Upstream Dagre accepts `nodeSep` because `buildLayoutGraph(...)` canonicalizes raw
+    JS object keys before selecting whitelisted attributes. Local Dugong exposes typed
+    `GraphLabel` fields and renderer graph builders set those fields directly, so there is no raw
+    graph-label object seam to make case-insensitive unless a future JSON/FFI Dagre input bridge is
+    added.
   - A follow-up Graphlib JSON seam slice is now landed. `dugong_graphlib::json::{write, read}`
     now mirrors upstream `graphlib.json.write/read` closely enough for source-backed round-trips,
     and all six `repo-ref/graphlib/test/json-test.js` cases are ported. The primary seam uses
@@ -384,6 +415,18 @@ Current repository reality to preserve:
     measured six-pair Architecture covariance shape keeps the half-EPS tail only for that seam,
     restoring the row at 3-decimal precision and dropping the full Architecture root mismatch
     queue from `25` to `24` without new structural regressions.
+  - A follow-up Cytoscape canvas-width audit ruled out the latest tempting `+5px` production paths.
+    Stored SVG service titles still inherit the Mermaid root SVG font, while Cytoscape compound
+    child labels use Cytoscape's default canvas font
+    `Helvetica Neue, Helvetica, sans-serif`, `Math.ceil(measureText(...))`, and
+    `labelBounds.w = labelWidth + 4`. Edge canvas probes matched the browser/Cytoscape label widths exactly, but
+    changing local compound measurement to the Cytoscape font worsened focused rows, and an exact
+    169-title labelWidth lookup only improved `batch5` / `html_titles` / `unicode` to `+2px` while
+    raising the full root queue back to `25`. Combining that lookup with smaller final group extra
+    padding made widths exact but heights `2px` short. All experiments were reverted. Do not try a
+    font-family switch, global font-table rebuild, or labelWidth lookup alone; the next candidate
+    needs child body, child label, final group `node.boundingBox()`, and root SVG consumption phases
+    modeled together.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

@@ -1,6 +1,9 @@
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, layout};
 
+#[cfg(feature = "dagreish")]
+use dugong::layout_dagreish;
+
 fn coords(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> std::collections::BTreeMap<String, (f64, f64)> {
@@ -170,6 +173,113 @@ fn layout_can_layout_an_edge_with_a_label() {
     let e = g.edge("a", "b", None).unwrap();
     assert_eq!(e.x, Some(75.0 / 2.0));
     assert_eq!(e.y, Some(100.0 + 150.0 + 70.0 / 2.0));
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_can_layout_a_long_edge_with_a_label() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel {
+        ranksep: 300.0,
+        ..Default::default()
+    });
+    g.set_default_edge_label(EdgeLabel::default);
+
+    g.set_node(
+        "a",
+        NodeLabel {
+            width: 50.0,
+            height: 100.0,
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "b",
+        NodeLabel {
+            width: 75.0,
+            height: 200.0,
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            width: 60.0,
+            height: 70.0,
+            minlen: 2,
+            labelpos: LabelPos::C,
+            ..Default::default()
+        },
+    );
+
+    layout_dagreish(&mut g);
+
+    let edge = g.edge("a", "b", None).unwrap();
+    assert_eq!(edge.x, Some(75.0 / 2.0));
+    assert!(edge.y.unwrap() > g.node("a").unwrap().y.unwrap());
+    assert!(edge.y.unwrap() < g.node("b").unwrap().y.unwrap());
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_can_layout_a_short_cycle() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel {
+        ranksep: 200.0,
+        ..Default::default()
+    });
+    g.set_default_edge_label(EdgeLabel::default);
+
+    g.set_node(
+        "a",
+        NodeLabel {
+            width: 100.0,
+            height: 100.0,
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "b",
+        NodeLabel {
+            width: 100.0,
+            height: 100.0,
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label(
+        "a",
+        "b",
+        EdgeLabel {
+            weight: 2.0,
+            ..Default::default()
+        },
+    );
+    g.set_edge("b", "a");
+
+    layout_dagreish(&mut g);
+
+    assert_eq!(
+        coords(&g),
+        [
+            ("a".to_string(), (100.0 / 2.0, 100.0 / 2.0)),
+            ("b".to_string(), (100.0 / 2.0, 100.0 + 200.0 + 100.0 / 2.0)),
+        ]
+        .into()
+    );
+
+    let ab = g.edge("a", "b", None).unwrap();
+    let ba = g.edge("b", "a", None).unwrap();
+    assert!(ab.points[1].y > ab.points[0].y);
+    assert!(ba.points[0].y > ba.points[1].y);
 }
 
 #[test]
@@ -531,4 +641,223 @@ fn layout_minimizes_the_height_of_subgraphs() {
 
     layout(&mut g);
     assert_eq!(g.node("x").unwrap().y, g.node("y").unwrap().y);
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_minimizes_separation_between_nodes_not_adjacent_to_subgraphs() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel::default());
+    g.set_default_edge_label(EdgeLabel::default);
+
+    for v in ["a", "b", "c"] {
+        g.set_node(
+            v,
+            NodeLabel {
+                width: 50.0,
+                height: 50.0,
+                ..Default::default()
+            },
+        );
+    }
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+    g.ensure_node("sg");
+    g.set_parent("c", "sg");
+
+    layout_dagreish(&mut g);
+
+    assert_eq!(
+        g.node("b").unwrap().y.unwrap() - g.node("a").unwrap().y.unwrap(),
+        100.0
+    );
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_can_layout_subgraphs_with_different_rankdirs() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        g.set_graph(GraphLabel {
+            rankdir,
+            ..Default::default()
+        });
+        g.set_default_edge_label(EdgeLabel::default);
+
+        g.set_node(
+            "a",
+            NodeLabel {
+                width: 50.0,
+                height: 50.0,
+                ..Default::default()
+            },
+        );
+        g.ensure_node("sg");
+        g.set_parent("a", "sg");
+
+        layout_dagreish(&mut g);
+
+        let sg = g.node("sg").unwrap();
+        assert!(sg.width > 50.0);
+        assert!(sg.height > 50.0);
+        assert!(sg.x.unwrap() > 50.0 / 2.0);
+        assert!(sg.y.unwrap() > 50.0 / 2.0);
+    }
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_adds_dimensions_to_graph() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel::default());
+    g.set_default_edge_label(EdgeLabel::default);
+
+    g.set_node(
+        "a",
+        NodeLabel {
+            width: 100.0,
+            height: 50.0,
+            ..Default::default()
+        },
+    );
+
+    layout_dagreish(&mut g);
+
+    assert_eq!(g.graph().width, 100.0);
+    assert_eq!(g.graph().height, 50.0);
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_graph_dimensions_include_margins() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_graph(GraphLabel {
+        marginx: 8.0,
+        marginy: 10.0,
+        ..Default::default()
+    });
+    g.set_default_edge_label(EdgeLabel::default);
+
+    g.set_node(
+        "a",
+        NodeLabel {
+            width: 100.0,
+            height: 50.0,
+            ..Default::default()
+        },
+    );
+
+    layout_dagreish(&mut g);
+
+    let a = g.node("a").unwrap();
+    assert_eq!(a.x, Some(50.0 + 8.0));
+    assert_eq!(a.y, Some(25.0 + 10.0));
+    assert_eq!(g.graph().width, 100.0 + 8.0 * 2.0);
+    assert_eq!(g.graph().height, 50.0 + 10.0 * 2.0);
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_keeps_node_coordinates_in_graph_bounding_box_for_rankdirs() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        g.set_graph(GraphLabel {
+            rankdir,
+            ..Default::default()
+        });
+        g.set_default_edge_label(EdgeLabel::default);
+
+        g.set_node(
+            "a",
+            NodeLabel {
+                width: 100.0,
+                height: 200.0,
+                ..Default::default()
+            },
+        );
+
+        layout_dagreish(&mut g);
+
+        let a = g.node("a").unwrap();
+        assert_eq!(a.x, Some(100.0 / 2.0));
+        assert_eq!(a.y, Some(200.0 / 2.0));
+        assert_eq!(g.graph().width, 100.0);
+        assert_eq!(g.graph().height, 200.0);
+        assert!(a.x.unwrap() - a.width / 2.0 >= 0.0);
+        assert!(a.x.unwrap() + a.width / 2.0 <= g.graph().width);
+        assert!(a.y.unwrap() - a.height / 2.0 >= 0.0);
+        assert!(a.y.unwrap() + a.height / 2.0 <= g.graph().height);
+    }
+}
+
+#[cfg(feature = "dagreish")]
+#[test]
+fn layout_dagreish_keeps_left_edge_label_coordinates_in_graph_bounding_box_for_rankdirs() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            ..Default::default()
+        });
+        g.set_graph(GraphLabel {
+            rankdir,
+            ..Default::default()
+        });
+        g.set_default_edge_label(EdgeLabel::default);
+
+        for v in ["a", "b"] {
+            g.set_node(
+                v,
+                NodeLabel {
+                    width: 100.0,
+                    height: 100.0,
+                    ..Default::default()
+                },
+            );
+        }
+        g.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                width: 1000.0,
+                height: 2000.0,
+                labelpos: LabelPos::L,
+                labeloffset: 0.0,
+                ..Default::default()
+            },
+        );
+
+        layout_dagreish(&mut g);
+
+        let edge = g.edge("a", "b", None).unwrap();
+        if matches!(rankdir, RankDir::TB | RankDir::BT) {
+            assert_eq!(edge.x, Some(1000.0 / 2.0));
+        } else {
+            assert_eq!(edge.y, Some(2000.0 / 2.0));
+        }
+        assert!(edge.x.unwrap() - edge.width / 2.0 >= 0.0);
+        assert!(edge.x.unwrap() + edge.width / 2.0 <= g.graph().width);
+        assert!(edge.y.unwrap() - edge.height / 2.0 >= 0.0);
+        assert!(edge.y.unwrap() + edge.height / 2.0 <= g.graph().height);
+    }
 }

@@ -1,7 +1,261 @@
 # Headless Parity Deepening - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-03
+Last updated: 2026-06-04
+
+## HPD-050 - Dagre Attribute Case-Insensitivity API-Shape Audit
+
+Outcome:
+
+- Audited the remaining upstream `repo-ref/dagre/test/layout-test.js` case
+  `treats attributes with case-insensitivity`.
+- Confirmed the source seam lives in JS `buildLayoutGraph(...)`: Dagre calls `canonicalize(attrs)`
+  before selecting whitelisted graph, node, and edge layout attributes, so input object keys such as
+  `nodeSep` normalize to `nodesep`.
+- Confirmed local Dugong does not expose an equivalent raw JS object input surface. `GraphLabel` is
+  a typed Rust struct with lowercase semantic fields (`nodesep`, `ranksep`, `edgesep`, `marginx`,
+  `marginy`), and Mermaid-facing renderer builders set those typed fields directly from typed
+  configuration extraction.
+- Recorded the upstream case as an explicit Rust API-shape non-target in
+  `docs/dugong/DAGRE_UPSTREAM_TEST_COVERAGE.md`.
+- No production layout, renderer, Graphlib, xtask, or SVG behavior changed.
+
+Touched surfaces:
+
+- `docs/dugong/DAGRE_UPSTREAM_TEST_COVERAGE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-dagre-attribute-case-insensitivity.md`
+
+Focused verification:
+
+- `rg -n "nodeSep|nodesep|canonicalize|graphNumAttrs" repo-ref\dagre\lib repo-ref\dagre\test\layout-test.js` -
+  confirmed the source test and `canonicalize(attrs)` lowering seam.
+- `rg -n "GraphLabel|nodesep|ranksep|edgesep|marginx|marginy|nodeSep|rankSep|edgeSep|layout_dagreish" crates\dugong crates\merman-render crates\xtask -g "*.rs"` -
+  confirmed the local typed `GraphLabel` / renderer construction path and found no raw `nodeSep`
+  Dagre input bridge.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `555` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This closes the source audit for the upstream JS key-casing case under current Rust API shape. It
+  should not be implemented as an ad hoc alias table unless a public JSON/FFI Dugong input surface
+  starts accepting raw graph-label objects.
+
+## HPD-050 - Dagreish Bounding-Box Source Coverage
+
+Outcome:
+
+- Continued the source-backed Dagreish layout audit from the graph-dimension output seam into
+  upstream `repo-ref/dagre/test/layout-test.js` bounding-box assertions.
+- Added direct `layout_dagreish(...)` coverage for the upstream node coordinate bounding-box case
+  across `TB`, `BT`, `LR`, and `RL`.
+- Added direct `layout_dagreish(...)` coverage for the upstream `labelpos = l` edge-label
+  bounding-box case across `TB`, `BT`, `LR`, and `RL`.
+- These tests exercise the full consumer path after coordinate-system undo and `translateGraph(...)`
+  dimension writeback, so they are closer to root-bounds output than isolated helper tests.
+- No production layout, renderer, reference adapter, or SVG behavior changed.
+
+Touched surfaces:
+
+- `crates/dugong/tests/layout_test.rs`
+- `docs/dugong/DAGRE_UPSTREAM_TEST_COVERAGE.md`
+
+Focused verification:
+
+- `cargo nextest run -p dugong --test layout_test` - passed, `19` tests run.
+- `cargo nextest run -p dugong` - passed, `275` tests run.
+- `cargo fmt --check -p dugong` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `555` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This is a coverage slice for already-correct Dagreish bounding-box behavior. It does not claim
+  default minimal `dugong::layout(...)` equivalence, JS object-key case-insensitivity, or
+  Architecture root residual closure.
+
+## HPD-050 - Dagreish Graph Dimension Output Seam
+
+Outcome:
+
+- Implemented the upstream Dagre `translateGraph(...)` graph-dimension output seam on the full
+  `layout_dagreish(...)` path.
+- `dugong::GraphLabel` now carries `width` and `height` output fields. `layout_dagreish(...)`
+  computes them from the same source-backed bbox phase as Dagre: positioned node boxes plus edge
+  label boxes with explicit `x/y`, excluding intermediate edge points, and including
+  `marginx/marginy`.
+- Added source-backed coverage for upstream `repo-ref/dagre/test/layout-test.js` case
+  `adds dimensions to the graph`.
+- Added a focused Rust regression for the margin half of Dagre's formula so a single-node graph
+  with `marginx=8` / `marginy=10` reports `width=116` and `height=70`.
+- Updated the Dagre reference adapter so output snapshots include graph `width` / `height`, while
+  input snapshots continue omitting them. This keeps JS harness inputs clean and lets future
+  Rust/JS reference artifacts expose graph-dimension drift.
+
+Touched production surfaces:
+
+- `crates/dugong/src/model.rs`
+- `crates/dugong/src/pipeline/dagreish.rs`
+- `crates/xtask/src/cmd/debug/dagre_reference.rs`
+- `crates/dugong/tests/layout_test.rs`
+- `docs/dugong/DAGRE_UPSTREAM_TEST_COVERAGE.md`
+
+Focused verification:
+
+- `cargo nextest run -p dugong --test layout_test` - passed, `17` tests run.
+- `cargo nextest run -p dugong` - passed, `273` tests run.
+- `cargo nextest run -p dugong-graphlib` - passed, `96` tests run.
+- `cargo nextest run -p xtask dagre_reference` - passed, `5` tests run.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture basic --out-dir target\compare\dagre-layout-hpd050-graph-dimensions` -
+  passed with max node delta `0.000000`, max edge delta `0.000000`, node identity drift
+  `rust-only=0 js-only=0`, and edge identity drift `rust-only=0 js-only=0`. Generated input
+  JSON omitted graph `width` / `height`; JS and Rust output graph dimensions both reported
+  `100.109375 x 298`.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture stress_state_composite_with_external_edges_028 --out-dir target\compare\dagre-layout-hpd050-graph-dimensions-composite` -
+  passed with max node delta `0.000000`, max edge delta `0.000000`, and zero node/edge identity
+  drift.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture stress_state_composite_with_external_edges_028 --cluster state-Big-7 --out-dir target\compare\dagre-layout-hpd050-graph-dimensions-cluster` -
+  passed with max node delta `0.000000`, max edge delta `0.000000`, and zero node/edge identity
+  drift.
+- `cargo fmt --check -p dugong -p dugong-graphlib -p xtask` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `555` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/TASKS.jsonl` - passed,
+  `8` JSONL records parsed.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CAMPAIGNS.jsonl` -
+  passed, `4` JSONL records parsed.
+
+Residual note:
+
+- This closes a Dagreish layout-output/root-bounds seam, not an Architecture FCoSE root residual.
+  It does not make any claim about default minimal `dugong::layout(...)` graph-dimension parity or
+  Mermaid SVG viewport closure.
+
+## HPD-050 - Dagreish Layout Source Coverage
+
+Outcome:
+
+- Continued HPD-050 through the Dugong/Dagre source-audit lane after the Graphlib public API seam
+  coverage showed no production change was needed.
+- Added direct `layout_dagreish(...)` coverage for four upstream `repo-ref/dagre/test/layout-test.js`
+  cases that map to the full Dagre pipeline consumed by Mermaid-facing renderers:
+  `can layout a long edge with a label`, `can layout out a short cycle`,
+  `minimizes separation between nodes not adjacent to subgraphs`, and
+  `can layout subgraphs with different rankdirs`.
+- The new tests lock three layout phases that are more relevant to State/Class/Flowchart consumers
+  than ordinary Graphlib queries: edge-label coordinates on long edges, acyclic undo point
+  direction after full layout, and compound subgraph geometry/rankdir behavior.
+- Updated `docs/dugong/DAGRE_UPSTREAM_TEST_COVERAGE.md` so those source cases point at the direct
+  Rust coverage.
+- No production Dagre, Graphlib, renderer, or SVG behavior changed.
+
+Focused verification:
+
+- `cargo nextest run -p dugong layout_dagreish_can_layout_a_long_edge_with_a_label`
+- `cargo nextest run -p dugong layout_dagreish_can_layout_a_short_cycle`
+- `cargo nextest run -p dugong layout_dagreish_minimizes_separation_between_nodes_not_adjacent_to_subgraphs`
+- `cargo nextest run -p dugong layout_dagreish_can_layout_subgraphs_with_different_rankdirs`
+- `cargo nextest run -p dugong --test layout_test` - passed, `15` tests run.
+- `cargo nextest run -p dugong` - passed, `271` tests run.
+- `cargo fmt --check -p dugong -p dugong-graphlib` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `542` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This is a source-backed coverage slice for the full Dagreish consumer path. It does not claim
+  default `dugong::layout(...)` minimal-pipeline equivalence, GraphLabel `width` / `height`
+  writeback parity, or Architecture root residual closure.
+
+## HPD-050 - Graphlib Node Optional Label Seam
+
+Outcome:
+
+- Continued HPD-050 through the Dugong/Graphlib source-audit lane after the Architecture
+  canvas-width audit rejected standalone root-width production fixes.
+- Ported the upstream Graphlib `setNode("a", undefined)` / `node("a")` optional-label seam to a
+  direct Rust regression:
+  `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_with_optional_label_can_clear_label_without_removing_node`.
+- The test locks the Rust `Option<T>` mapping used by Graphlib JSON and public graph APIs: missing
+  node lookup returns `None`, while a present node with an explicitly cleared upstream
+  `undefined` value is represented as `Some(&None)` and keeps `has_node("a") == true`.
+- Updated `docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md` so the relevant `graph-test.js`
+  `setNode` and `node` cases now point at the direct Rust coverage.
+- No production graph implementation change was needed.
+
+Focused verification:
+
+- `cargo nextest run -p dugong-graphlib set_node_with_optional_label_can_clear_label_without_removing_node`
+- `cargo nextest run -p dugong-graphlib` - passed, `96` tests run.
+
+Residual note:
+
+- This is a source-backed API seam slice, not a root residual closure. It strengthens the Graphlib
+  compatibility layer that Dagre-facing audits depend on while leaving Architecture numeric
+  diagnostics unchanged.
+
+## HPD-050 - Architecture Cytoscape Canvas Width Audit
+
+Outcome:
+
+- Confirmed the remaining `+5px`-class Architecture rows are not caused by using the wrong
+  rendered SVG service-title style. Stored upstream/local SVG service titles inherit the Mermaid
+  root SVG font, while Cytoscape compound child labels are a separate layout-measurement phase.
+- Confirmed pinned Cytoscape's source rule for child service labels:
+  `font-family: Helvetica Neue, Helvetica, sans-serif`, canvas
+  `Math.ceil(ctx.measureText(...).width)`, and centered label bounds
+  `labelBounds.w = labelWidth + 4`.
+- An Edge/Puppeteer canvas probe exactly matched the browser/Cytoscape probe label widths for the
+  two `+5px` rows:
+  `149`, `133`, `217`, `77`, `123`, `86`, and `101` for the sampled labels.
+- Rejected a direct local font-family switch. Local vendored Arial/Helvetica metrics do not match
+  Edge canvas Arial metrics, so switching Architecture compound measurement to Cytoscape's default
+  font made focused rows wider.
+- Rejected an exact 169-title Cytoscape `labelWidth` lookup as a standalone production seam. It
+  improved `batch5`, `html_titles`, and `unicode` to `+2px`, but left a half-source final group
+  phase, raised the full Architecture root queue back to `25`, and shifted
+  `batch6_init_fontsize_icon_size_wrap_093` to `-8px`.
+- Rejected combining that lookup with final group extra padding `2.5px -> 1.5px`. It made focused
+  widths exact but made heights `2px` short, matching the already-rejected split-axis group-padding
+  path.
+- No production renderer, layout, measurement, generated table, SVG output, or root override
+  behavior changed; all temporary patches were reverted.
+
+Implementation boundary:
+
+- Do not try a font-family switch, shared font-table rebuild, exact service-label lookup table, or
+  group-padding tweak by itself for the remaining Architecture width tails.
+- A future candidate must model the child body, child label, final group `node.boundingBox()`, and
+  root SVG consumption phases together, then survive full Architecture structural and root
+  diagnostics.
+
+Focused verification:
+
+- Edge/Puppeteer canvas measurement for seven focused service labels - passed and matched existing
+  browser/Cytoscape probe label widths.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch5_long_titles_and_punct_076 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_batch5_hpd050_cytoscape_font_experiment.md` -
+  expected failure; font switch worsened width delta to `+9.5px`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_html_titles_and_escapes_041 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_html_hpd050_cytoscape_font_experiment.md` -
+  expected failure; font switch worsened width delta to `+9px`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_unicode_and_xml_escapes_019 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_unicode_hpd050_cytoscape_font_experiment.md` -
+  expected failure; font switch worsened width delta to `+6.5px`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_cytoscape_lookup_experiment.md` -
+  expected failure; exact labelWidth lookup plus old final group phase had `25` mismatches.
+- Focused exact labelWidth plus `1.5px` group-extra experiments - expected failures; widths became
+  exact but heights became `2px` short.
+
+Residual note:
+
+- This is evidence and boundary sharpening, not residual closure. The current accepted production
+  baseline remains the Procrustes slice with Architecture root queue at `24`.
 
 ## HPD-050 - Architecture Group Port Relocation And Repulsion Seam
 

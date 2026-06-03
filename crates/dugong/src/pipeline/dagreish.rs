@@ -400,12 +400,16 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     let translate_start = timing_enabled.then(web_time::Instant::now);
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
+    let mut max_x: f64 = f64::NEG_INFINITY;
+    let mut max_y: f64 = f64::NEG_INFINITY;
     g.for_each_node(|_id, n| {
         let (Some(x), Some(y)) = (n.x, n.y) else {
             return;
         };
         min_x = min_x.min(x - n.width / 2.0);
         min_y = min_y.min(y - n.height / 2.0);
+        max_x = max_x.max(x + n.width / 2.0);
+        max_y = max_y.max(y + n.height / 2.0);
     });
     g.for_each_edge(|_ek, lbl| {
         // Match Dagre's `translateGraph(...)`: it computes min/max based on nodes and edge-label
@@ -416,15 +420,21 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
             min_x = min_x.min(x - lbl.width / 2.0);
             min_y = min_y.min(y - lbl.height / 2.0);
+            max_x = max_x.max(x + lbl.width / 2.0);
+            max_y = max_y.max(y + lbl.height / 2.0);
         }
     });
 
-    if min_x.is_finite() && min_y.is_finite() {
+    if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
         // Dagre shifts the graph by `-(min - margin)` so the smallest x/y becomes `margin`.
         // This is observable in Mermaid flowchart-v2 SVG output where `diagramPadding: 0`
         // still yields a `viewBox` starting at x=8 (the Dagre margin).
-        min_x -= g.graph().marginx;
-        min_y -= g.graph().marginy;
+        let margin_x = g.graph().marginx;
+        let margin_y = g.graph().marginy;
+        min_x -= margin_x;
+        min_y -= margin_y;
+        let graph_width = max_x - min_x + margin_x;
+        let graph_height = max_y - min_y + margin_y;
         let dx = -min_x;
         let dy = -min_y;
         g.for_each_node_mut(|_id, n| {
@@ -447,6 +457,8 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
                 lbl.y = Some(y + dy);
             }
         });
+        g.graph_mut().width = graph_width;
+        g.graph_mut().height = graph_height;
     }
     if let Some(s) = translate_start {
         timings.translate = s.elapsed();

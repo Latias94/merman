@@ -95,7 +95,10 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `filterNodes / promotes a node to a higher subgraph if its parent is not included` -> `crates/dugong-graphlib/tests/graph_core_test.rs::filter_nodes_preserves_compound_subgraphs_and_promotes_missing_parent`
 - `setNode / creates the node if it isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNode / can set a value for the node` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
+- `setNode / can remove the node's value by passing undefined` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_with_optional_label_can_clear_label_without_removing_node`
 - `setNode / is idempotent` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_is_idempotent_for_existing_node`
+- `node / returns undefined if the node isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_with_optional_label_can_clear_label_without_removing_node`
+- `node / returns the value of the node if it is part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_node_with_optional_label_can_clear_label_without_removing_node`
 - `setNodeDefaults / sets a default label for new nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_uses_default_label_for_new_nodes`
 - `setNodeDefaults / does not change existing nodes` -> `crates/dugong-graphlib/tests/graph_core_test.rs::ensure_node_does_not_change_existing_node_label`
 - `setNodeDefaults / is not used if an explicit value is set` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_node_label_is_not_used_if_explicit_label_is_set`

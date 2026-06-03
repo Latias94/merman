@@ -233,6 +233,23 @@ fn set_node_is_idempotent_for_existing_node() {
 }
 
 #[test]
+fn set_node_with_optional_label_can_clear_label_without_removing_node() {
+    let mut g: Graph<Option<&str>, (), ()> = Graph::new(GraphOptions::default());
+
+    assert_eq!(g.node("a"), None);
+
+    g.set_node("a", Some("foo"));
+    assert!(g.has_node("a"));
+    assert_eq!(g.node("a"), Some(&Some("foo")));
+    assert_eq!(g.node_count(), 1);
+
+    g.set_node("a", None);
+    assert!(g.has_node("a"));
+    assert_eq!(g.node("a"), Some(&None));
+    assert_eq!(g.node_count(), 1);
+}
+
+#[test]
 fn remove_node_is_idempotent_and_removes_incident_edges() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");
