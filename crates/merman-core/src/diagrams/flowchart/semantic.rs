@@ -24,24 +24,17 @@ pub(super) fn apply_semantic_statements(
     diagram_type: &str,
     config: &MermaidConfig,
 ) -> Result<()> {
-    for stmt in statements {
+    // Preserve recursive preorder semantics without growing the Rust call stack for deeply nested
+    // subgraphs.
+    let mut stack = vec![statements.iter()];
+    while let Some(iter) = stack.last_mut() {
+        let Some(stmt) = iter.next() else {
+            stack.pop();
+            continue;
+        };
+
         match stmt {
-            Stmt::Subgraph(sg) => {
-                apply_semantic_statements(
-                    &sg.statements,
-                    nodes,
-                    node_index,
-                    edges,
-                    subgraphs,
-                    subgraph_index,
-                    class_defs,
-                    tooltips,
-                    edge_defaults,
-                    security_level_loose,
-                    diagram_type,
-                    config,
-                )?;
-            }
+            Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
             Stmt::Style(s) => {
                 if let Some(&idx) = subgraph_index.get(&s.target) {
                     subgraphs[idx].styles.extend(s.styles.iter().cloned());
