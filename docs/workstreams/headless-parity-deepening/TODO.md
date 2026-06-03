@@ -316,5 +316,10 @@ Last updated: 2026-06-03
   `info` fixture without pretending `info` is metadata-only. PNG/JPEG raster options now provide
   browser-like fallback when a configured family such as `courier` is unavailable and use
   `max-width` as the default viewport width for no-`viewBox` Mermaid SVGs.
+  A follow-up Sequence autonumber slice fixed the user-visible activation-bound anchor bug in the
+  reported `autonumber` sample. Sequence number markers now follow Mermaid 11.15's
+  `activationBounds(...)` / `fromBounds` / `toBounds` formula instead of using the message line's
+  first point, so messages sent from an active participant anchor on the same side of the activation
+  rectangle as upstream.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

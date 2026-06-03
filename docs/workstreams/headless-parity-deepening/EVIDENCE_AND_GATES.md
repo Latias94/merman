@@ -3,6 +3,42 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Sequence Autonumber Activation Bounds
+
+Outcome:
+
+- Reproduced the user-visible Sequence autonumber defect with an activation sample: local numbers
+  `2` and `4` anchored at the right edge of the Server activation rect, while `5` anchored at the
+  left edge; Mermaid 11.15 anchors those three numbers in the opposite left/right positions.
+- Confirmed the source rule in pinned Mermaid 11.15: `autonumberX` is computed from current
+  `activationBounds(...)`, `fromBounds` / `toBounds`, arrow direction, and reverse-arrow type.
+  It is not the message line's first point.
+- Updated the Sequence SVG renderer to keep a render-pass activation-bounds stack while iterating
+  messages. `ACTIVE_START` / `ACTIVE_END` directives update the stack, and ordinary message
+  autonumber markers now use the Mermaid 11.15 bounds formula.
+- Centralized SVG `activationWidth` parsing in `SequenceRenderSettings` so activation rectangles
+  and autonumber marker placement share one config value.
+- Added a focused regression proving numbers `2` and `4` sit at `activationLeft + 1`, while `5`
+  sits at `activationRight - 1`, for the reported sample.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo nextest run -p merman-render`
+- `cargo fmt -p merman-render --check`
+- `git diff --check`
+
+Residual note:
+
+- This is a visible marker-position fix, not a Sequence root-width or font-metric parity claim.
+  Sequence measurement/root residuals remain governed by the residual taxonomy instead of being
+  forced through marker-coordinate changes.
+
 ## HPD-080 - Info Raster Font Fallback
 
 Outcome:

@@ -30,14 +30,8 @@ pub(super) fn build_sequence_activation_plan<'a>(
     model: &'a SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    seq_cfg: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    activation_width: f64,
 ) -> SequenceActivationPlan<'a> {
-    let activation_width = seq_cfg
-        .get("activationWidth")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(10.0)
-        .max(1.0);
     // Mermaid 11.15 draws activation rectangles through `svgDraw.getNoteRect()`, whose SVG
     // attributes are hard-coded; theme `activationBkgColor` is emitted in CSS but does not change
     // the rect `fill` attribute in the baseline SVGs.

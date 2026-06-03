@@ -562,6 +562,13 @@ Current repository reality to preserve:
     use a browser-like fallback resolver when a requested family such as `courier` is unavailable,
     and parse no-`viewBox` `max-width` SVGs with a matching default viewport width. Parity SVG
     output is unchanged.
+  - A fiftieth HPD-080 Sequence autonumber slice fixed the user-reported activation-bound marker
+    position defect. Pinned Mermaid 11.15 computes autonumber marker X from current
+    `activationBounds(...)`, `fromBounds` / `toBounds`, arrow direction, and reverse-arrow type.
+    Local Sequence SVG output now maintains the same render-pass activation-bounds stack, so the
+    reported sample places numbers `2` and `4` inside the left edge of the Server activation rect
+    and `5` inside the right edge, matching upstream behavior without changing Sequence
+    root-width/font-metric residuals.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
