@@ -41,7 +41,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
-  "current_task": "HPD-080",
+  "current_task": "HPD-050",
   "gates": [
     "cargo fmt --check",
     "git diff --check",

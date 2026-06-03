@@ -162,6 +162,40 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
         comparison.max_edge_delta,
         comparison.max_edge_id.as_deref().unwrap_or("<none>")
     );
+    println!(
+        "node identity drift: rust-only={} js-only={}",
+        comparison.rust_only_node_ids.len(),
+        comparison.js_only_node_ids.len()
+    );
+    if !comparison.rust_only_node_ids.is_empty() {
+        println!(
+            "  rust-only nodes: {}",
+            comparison.rust_only_node_ids.join(", ")
+        );
+    }
+    if !comparison.js_only_node_ids.is_empty() {
+        println!(
+            "  js-only nodes: {}",
+            comparison.js_only_node_ids.join(", ")
+        );
+    }
+    println!(
+        "edge identity drift: rust-only={} js-only={}",
+        comparison.rust_only_edge_ids.len(),
+        comparison.js_only_edge_ids.len()
+    );
+    if !comparison.rust_only_edge_ids.is_empty() {
+        println!(
+            "  rust-only edges: {}",
+            comparison.rust_only_edge_ids.join(", ")
+        );
+    }
+    if !comparison.js_only_edge_ids.is_empty() {
+        println!(
+            "  js-only edges: {}",
+            comparison.js_only_edge_ids.join(", ")
+        );
+    }
 
     Ok(())
 }

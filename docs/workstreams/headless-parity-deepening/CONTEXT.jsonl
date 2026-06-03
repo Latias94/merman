@@ -438,3 +438,11 @@
 {"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: child-label bounds seam recorded as phase-boundary cleanup, not root residual closure."}
 {"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: current Architecture label seam renamed to ArchitectureCytoscapeChildLabelBounds and root diagnostics remain unchanged."}
 {"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture child-label bounds seam cleanup recorded and HPD-050 remains source-backed residual audit work."}
+{"file":"crates/xtask/src/cmd/debug/dagre_reference.rs","reason":"HPD-050 Dagre reference identity drift seam: JS/Rust comparison now reports Rust-only/JS-only nodes and edges instead of comparing only intersection geometry."}
+{"file":"crates/xtask/src/cmd/debug/dagre.rs","reason":"HPD-050 Dagre reference identity drift seam: compare-dagre-layout now prints node/edge identity drift counts and ids for future source-backed audits."}
+{"file":"target/compare/dagre-layout-hpd050-reference-identity/basic.js.json","reason":"HPD-050 evidence: State basic JS Dagre reference output remained zero geometry delta and zero identity drift after comparison hardening."}
+{"file":"target/compare/dagre-layout-hpd050-reference-identity/basic.rust.json","reason":"HPD-050 evidence: State basic Rust Dagre output remained zero geometry delta and zero identity drift after comparison hardening."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-050-dagre-reference-identity-drift.md","reason":"HPD-050 journal: Dagre reference identity drift detection, verification, and residual boundary."}
+{"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Dagre reference identity drift detection recorded as a reference-harness truth seam, not layout/root closure."}
+{"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: Dagre reference adapter now compares full graph identity sets before future producer broadening."}
+{"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Dagre reference hardening slice recorded under the active source-backed layout audit."}

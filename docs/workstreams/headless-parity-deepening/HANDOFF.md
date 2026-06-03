@@ -188,6 +188,10 @@ Current repository reality to preserve:
     acts as a graph producer/command wrapper. Basic, composite, and internal-cluster State Dagre
     comparisons all reported zero node and edge delta after the extraction. Do not broaden this to
     other diagrams until a real Dagre-backed residual audit needs that producer.
+  - A follow-up Dagre reference hardening slice now compares full node/edge identity sets, not just
+    the coordinate/point intersection. `compare-dagre-layout` reports Rust-only and JS-only node/edge
+    drift, and existing JS entries without coordinates or points become infinite diagnostic deltas.
+    The State `basic` reference run still reports zero geometry delta and zero identity drift.
   - Architecture Cytoscape service-label measurement now has a shared
     `ArchitectureCytoscapeChildLabelBounds` seam used by both FCoSE node `BoundsExtras` and
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while

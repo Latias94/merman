@@ -122,7 +122,11 @@ Last updated: 2026-06-03
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
-  composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
+  composite, and internal-cluster State comparisons all stayed zero-delta.
+  A follow-up hardening slice now reports Rust-only and JS-only node/edge identity drift separately
+  from geometry deltas, and treats JS entries that exist without coordinates/points as infinite
+  diagnostic deltas. The State `basic` reference check still reports zero geometry delta and zero
+  identity drift. Architecture Cytoscape
   service-label measurement now has a shared `ArchitectureCytoscapeChildLabelBounds` seam used by
   both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. That seam keeps SVG
   root `createText(...)` measurement separate from Cytoscape compound-child label measurement and

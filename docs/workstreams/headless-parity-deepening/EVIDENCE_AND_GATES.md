@@ -3,6 +3,39 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Dagre Reference Identity Drift Detection
+
+Outcome:
+
+- Hardened the HPD-050 Dagre JS/Rust reference adapter after the Graphlib JSON consumer slice.
+- `compare_graph_to_js_reference(...)` now tracks node and edge identity sets separately from
+  coordinate/point comparison, so Rust-only and JS-only graph entries can no longer be hidden by a
+  zero-delta intersection.
+- JS nodes/edges that exist but lack layout coordinates or edge points now produce an infinite
+  diagnostic delta instead of being skipped.
+- `compare-dagre-layout` prints node and edge identity drift counts, plus concrete ids when drift
+  exists.
+- No renderer, solver, or layout behavior changed. The existing State `basic` Dagre JS/Rust
+  comparison still reports zero geometry delta and zero identity drift.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/dagre_reference.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/dagre_reference.rs)
+- [crates/xtask/src/cmd/debug/dagre.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/dagre.rs)
+
+Focused verification:
+
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask dagre_reference` - passed, `5` tests run.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture basic --out-dir target\compare\dagre-layout-hpd050-reference-identity` -
+  passed with max node delta `0.000000`, max edge delta `0.000000`, node identity drift
+  `rust-only=0 js-only=0`, and edge identity drift `rust-only=0 js-only=0`.
+
+Residual note:
+
+- This is a reference-harness truth seam, not an Architecture root residual closure. It makes future
+  Dagre/Graphlib audits harder to fool before broadening the adapter beyond State producers.
+
 ## HPD-050 - Architecture Child Label Bounds Seam
 
 Outcome:

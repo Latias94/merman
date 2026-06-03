@@ -8,7 +8,7 @@ use dugong::graphlib::Graph;
 use dugong::graphlib::json as graphlib_json;
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use serde_json::Value as JsonValue;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -36,6 +36,10 @@ pub(crate) struct DagreReferenceComparison {
     pub(crate) max_node_id: Option<String>,
     pub(crate) max_edge_delta: f64,
     pub(crate) max_edge_id: Option<String>,
+    pub(crate) rust_only_node_ids: Vec<String>,
+    pub(crate) js_only_node_ids: Vec<String>,
+    pub(crate) rust_only_edge_ids: Vec<String>,
+    pub(crate) js_only_edge_ids: Vec<String>,
 }
 
 pub(crate) fn write_dagre_reference_input(
@@ -102,12 +106,14 @@ pub(crate) fn compare_graph_to_js_reference(
     })?;
     let js_out: JsonValue = serde_json::from_str(&js_raw)?;
 
-    let mut js_nodes: BTreeMap<String, (f64, f64)> = BTreeMap::new();
+    let mut js_node_ids: BTreeSet<String> = BTreeSet::new();
+    let mut js_node_positions: BTreeMap<String, (f64, f64)> = BTreeMap::new();
     if let Some(arr) = js_out.get("nodes").and_then(|v| v.as_array()) {
         for n in arr {
             let Some(id) = node_json_id(n) else {
                 continue;
             };
+            js_node_ids.insert(id.to_string());
             let Some(label) = graph_json_label(n) else {
                 continue;
             };
@@ -117,11 +123,12 @@ pub(crate) fn compare_graph_to_js_reference(
             let Some(y) = label.get("y").and_then(read_f64) else {
                 continue;
             };
-            js_nodes.insert(id.to_string(), (x, y));
+            js_node_positions.insert(id.to_string(), (x, y));
         }
     }
 
-    let mut js_edges: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
+    let mut js_edge_ids: BTreeSet<String> = BTreeSet::new();
+    let mut js_edge_points: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
     if let Some(arr) = js_out.get("edges").and_then(|v| v.as_array()) {
         for e in arr {
             let Some(v) = e.get("v").and_then(|v| v.as_str()) else {
@@ -132,6 +139,7 @@ pub(crate) fn compare_graph_to_js_reference(
             };
             let name = e.get("name").and_then(|v| v.as_str());
             let key = edge_key_string(v, w, name);
+            js_edge_ids.insert(key.clone());
             let Some(label) = graph_json_label(e) else {
                 continue;
             };
@@ -149,12 +157,16 @@ pub(crate) fn compare_graph_to_js_reference(
                 };
                 pts.push((px, py));
             }
-            js_edges.insert(key, pts);
+            js_edge_points.insert(key, pts);
         }
     }
 
     Ok(compare_graph_points_to_reference(
-        graph, &js_nodes, &js_edges,
+        graph,
+        &js_node_ids,
+        &js_node_positions,
+        &js_edge_ids,
+        &js_edge_points,
     ))
 }
 
@@ -373,20 +385,38 @@ fn edge_label_to_json(label: &EdgeLabel, phase: DagreSnapshotPhase) -> JsonValue
 
 fn compare_graph_points_to_reference(
     graph: &DagreLayoutGraph,
-    js_nodes: &BTreeMap<String, (f64, f64)>,
-    js_edges: &BTreeMap<String, Vec<(f64, f64)>>,
+    js_node_ids: &BTreeSet<String>,
+    js_node_positions: &BTreeMap<String, (f64, f64)>,
+    js_edge_ids: &BTreeSet<String>,
+    js_edge_points: &BTreeMap<String, Vec<(f64, f64)>>,
 ) -> DagreReferenceComparison {
+    let rust_node_ids: BTreeSet<String> = graph.node_ids().into_iter().collect();
+    let rust_only_node_ids: Vec<String> = rust_node_ids.difference(js_node_ids).cloned().collect();
+    let js_only_node_ids: Vec<String> = js_node_ids.difference(&rust_node_ids).cloned().collect();
+
+    let rust_edge_ids: BTreeSet<String> = graph
+        .edge_keys()
+        .into_iter()
+        .map(|ek| edge_key_string(&ek.v, &ek.w, ek.name.as_deref()))
+        .collect();
+    let rust_only_edge_ids: Vec<String> = rust_edge_ids.difference(js_edge_ids).cloned().collect();
+    let js_only_edge_ids: Vec<String> = js_edge_ids.difference(&rust_edge_ids).cloned().collect();
+
     let mut max_node_delta = 0.0f64;
     let mut max_node_id: Option<String> = None;
 
-    for id in graph.node_ids() {
-        let Some(n) = graph.node(&id) else {
+    for id in &rust_node_ids {
+        let Some(n) = graph.node(id) else {
             continue;
         };
         let (Some(rx), Some(ry)) = (n.x, n.y) else {
             continue;
         };
-        let Some((jx, jy)) = js_nodes.get(&id) else {
+        let Some((jx, jy)) = js_node_positions.get(id) else {
+            if js_node_ids.contains(id) {
+                max_node_delta = f64::INFINITY;
+                max_node_id.get_or_insert_with(|| id.clone());
+            }
             continue;
         };
         let dx = jx - rx;
@@ -394,7 +424,7 @@ fn compare_graph_points_to_reference(
         let d = dx.abs().max(dy.abs());
         if d > max_node_delta {
             max_node_delta = d;
-            max_node_id = Some(id);
+            max_node_id = Some(id.clone());
         }
     }
 
@@ -406,7 +436,12 @@ fn compare_graph_points_to_reference(
             continue;
         };
         let key = edge_key_string(&ek.v, &ek.w, ek.name.as_deref());
-        let Some(jpts) = js_edges.get(&key) else {
+        if !js_edge_ids.contains(&key) {
+            continue;
+        }
+        let Some(jpts) = js_edge_points.get(&key) else {
+            max_edge_delta = f64::INFINITY;
+            max_edge_id.get_or_insert(key);
             continue;
         };
         if e.points.len() != jpts.len() {
@@ -430,6 +465,10 @@ fn compare_graph_points_to_reference(
         max_node_id,
         max_edge_delta,
         max_edge_id,
+        rust_only_node_ids,
+        js_only_node_ids,
+        rust_only_edge_ids,
+        js_only_edge_ids,
     }
 }
 
@@ -687,5 +726,102 @@ mod tests {
         assert_eq!(edge["value"]["x"], JsonValue::from(5.0));
         assert_eq!(edge["value"]["points"][0]["x"], JsonValue::from(7.0));
         assert!(edge.get("label").is_none());
+    }
+
+    #[test]
+    fn dagre_reference_comparison_reports_graph_identity_mismatches() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        graph.set_node(
+            "a",
+            NodeLabel {
+                x: Some(1.0),
+                y: Some(2.0),
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "b",
+            NodeLabel {
+                x: Some(3.0),
+                y: Some(4.0),
+                ..Default::default()
+            },
+        );
+        graph.set_edge_named(
+            "a",
+            "b",
+            Some("ab"),
+            Some(EdgeLabel {
+                points: vec![dugong::Point { x: 5.0, y: 6.0 }],
+                ..Default::default()
+            }),
+        );
+
+        let js_node_ids = BTreeSet::from(["a".to_string(), "extra".to_string()]);
+        let js_node_positions = BTreeMap::from([("a".to_string(), (1.0, 2.0))]);
+        let js_edge_ids = BTreeSet::from(["extra\u{1f}a\u{1f}".to_string()]);
+        let js_edge_points = BTreeMap::new();
+
+        let comparison = compare_graph_points_to_reference(
+            &graph,
+            &js_node_ids,
+            &js_node_positions,
+            &js_edge_ids,
+            &js_edge_points,
+        );
+
+        assert_eq!(comparison.rust_only_node_ids, vec!["b"]);
+        assert_eq!(comparison.js_only_node_ids, vec!["extra"]);
+        assert_eq!(comparison.rust_only_edge_ids, vec!["a\u{1f}b\u{1f}ab"]);
+        assert_eq!(comparison.js_only_edge_ids, vec!["extra\u{1f}a\u{1f}"]);
+        assert_eq!(comparison.max_node_delta, 0.0);
+        assert_eq!(comparison.max_edge_delta, 0.0);
+    }
+
+    #[test]
+    fn dagre_reference_comparison_marks_missing_coordinates_as_infinite_delta() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        graph.set_node(
+            "a",
+            NodeLabel {
+                x: Some(1.0),
+                y: Some(2.0),
+                ..Default::default()
+            },
+        );
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                points: vec![dugong::Point { x: 5.0, y: 6.0 }],
+                ..Default::default()
+            },
+        );
+
+        let js_node_ids = BTreeSet::from(["a".to_string(), "b".to_string()]);
+        let js_node_positions = BTreeMap::new();
+        let js_edge_ids = BTreeSet::from(["a\u{1f}b\u{1f}".to_string()]);
+        let js_edge_points = BTreeMap::new();
+
+        let comparison = compare_graph_points_to_reference(
+            &graph,
+            &js_node_ids,
+            &js_node_positions,
+            &js_edge_ids,
+            &js_edge_points,
+        );
+
+        assert_eq!(comparison.max_node_delta, f64::INFINITY);
+        assert_eq!(comparison.max_node_id.as_deref(), Some("a"));
+        assert_eq!(comparison.max_edge_delta, f64::INFINITY);
+        assert_eq!(comparison.max_edge_id.as_deref(), Some("a\u{1f}b\u{1f}"));
     }
 }
