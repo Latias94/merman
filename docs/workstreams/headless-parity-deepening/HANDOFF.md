@@ -588,6 +588,11 @@ Current repository reality to preserve:
     tightened public smoke coverage so Packet colors are counted only with current
     `.packetBlock`/`.packetLabel`/`.packetByte`/`.packetTitle` DOM and Sankey colors are counted
     only with outlined label DOM, node rect fills, and link groups.
+  - A fifty-fifth HPD-080 Mindmap visible-signal audit found no production defect, but tightened
+    public smoke coverage so Mindmap no longer counts compact root-section CSS that is overwritten
+    by `.section-root` rules or root native-text CSS when current labels are XHTML spans. The
+    visible smoke now counts root `git0`, redux root `nodeBorder` via `span`, and child
+    `.section-0` colors with matching DOM.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

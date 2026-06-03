@@ -123,15 +123,13 @@ kanban
         ),
         (
             "theme-mindmap",
-            r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "gitBranchLabel0": "#020617", "nodeBorder": "#facc15", "cScale0": "#172554", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#334155"}}}%%
+            r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "nodeBorder": "#facc15", "cScale1": "#172554", "cScaleLabel1": "#f8fafc", "cScaleInv1": "#334155"}}}%%
 mindmap
   Root
     Child
 "##,
             &["Root", "Child"],
-            &[
-                "#22c55e", "#020617", "#facc15", "#172554", "#f8fafc", "#334155",
-            ],
+            &["#22c55e", "#facc15", "#172554", "#f8fafc", "#334155"],
         ),
         (
             "theme-gitgraph",
@@ -521,6 +519,68 @@ Target,Done,2
     assert!(
         sankey.contains(r##"fill="#38bdf8""##) && sankey.contains(r##"fill="#facc15""##),
         "Sankey nodeColors should reach all configured node rect fills: {sankey}"
+    );
+}
+
+#[test]
+fn mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible() {
+    let svg = render_svg(
+        "mindmap-visible-audit",
+        r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "gitBranchLabel0": "#020617", "nodeBorder": "#facc15", "cScale0": "#ef4444", "cScaleLabel0": "#e879f9", "cScale1": "#172554", "cScaleLabel1": "#f8fafc", "cScaleInv1": "#334155"}}}%%
+mindmap
+  Root
+    Child
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="node mindmap-node section-root section--1""#),
+        "Mindmap root colors should only count with the current root node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="node mindmap-node section-0""#),
+        "Mindmap child section colors should only count with current section node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root rect,#mindmap-visible-audit .section-root path,#mindmap-visible-audit .section-root circle,#mindmap-visible-audit .section-root polygon{fill:#22c55e;}"##),
+        "Mindmap git0 should reach the current root shape selector: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root span{color:#facc15;}"##),
+        "Mindmap redux nodeBorder should reach current XHTML root label spans: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 rect,#mindmap-visible-audit .section-0 path,#mindmap-visible-audit .section-0 circle,#mindmap-visible-audit .section-0 polygon,#mindmap-visible-audit .section-0 path{fill:#172554;}"##),
+        "Mindmap cScale1 should reach current child section shape selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 span{color:#f8fafc;}"##),
+        "Mindmap cScaleLabel1 should reach current child XHTML label spans: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 line{stroke:#334155;stroke-width:3;}"##),
+        "Mindmap cScaleInv1 should reach current child divider line DOM: {svg}"
+    );
+
+    let root_section_rule = r##"#mindmap-visible-audit .section--1 rect,#mindmap-visible-audit .section--1 path,#mindmap-visible-audit .section--1 circle,#mindmap-visible-audit .section--1 polygon,#mindmap-visible-audit .section--1 path{fill:#ef4444;}"##;
+    let root_override_rule = r##"#mindmap-visible-audit .section-root rect,#mindmap-visible-audit .section-root path,#mindmap-visible-audit .section-root circle,#mindmap-visible-audit .section-root polygon{fill:#22c55e;}"##;
+    let root_section_pos = svg
+        .find(root_section_rule)
+        .unwrap_or_else(|| panic!("Mindmap should still emit section--1 provider CSS: {svg}"));
+    let root_override_pos = svg
+        .find(root_override_rule)
+        .unwrap_or_else(|| panic!("Mindmap should still emit section-root override CSS: {svg}"));
+    assert!(
+        root_section_pos < root_override_pos,
+        "Mindmap cScale0 root-section fill is followed by the section-root override, so it should not be counted as the compact sample's visible root fill: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root text{fill:#020617;}"##),
+        "Mermaid 11.15 still emits root text CSS for gitBranchLabel0: {svg}"
+    );
+    assert!(
+        !svg.contains("<text"),
+        "Mindmap should not count section-root text CSS as visible while current labels are XHTML spans: {svg}"
     );
 }
 

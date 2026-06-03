@@ -3,6 +3,48 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Mindmap Visible Signal Boundary
+
+Outcome:
+
+- Re-audited Mindmap public theme smoke coverage against pinned Mermaid 11.15 source and current
+  local SVG DOM.
+- Confirmed the compact sample's current labels are XHTML `span` nodes, not native `<text>` nodes,
+  so `gitBranchLabel0` root native-text CSS is provider coverage rather than a current visible
+  signal.
+- Confirmed `cScale0` / `cScaleLabel0` root-section CSS is emitted for `.section--1`, but the
+  compact root node also has `section-root`, and the later `.section-root` rules override the root
+  fill/span path for the current sample.
+- Tightened the public smoke so Mindmap visible colors are counted through current DOM-consumed
+  surfaces: root `git0` fill, redux root `nodeBorder` via `.section-root span`, and child
+  `cScale1` / `cScaleLabel1` / `cScaleInv1` through `.section-0` shape/span/line DOM.
+- No production renderer change was needed. This is a smoke-honesty calibration for an already
+  covered style-provider family.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapDb.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapRenderer.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `9`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `361` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- Mindmap remains covered for current root/span/section DOM. Future public-smoke additions should
+  count `cScale0` / `cScaleLabel0`, `gitBranchLabel0`, or `data-look` rules as visible only when
+  the fixture emits a matching current DOM surface and the rule is not overwritten by a later
+  same-specificity rule.
+
 ## HPD-080 - Packet And Sankey Visible Signal Boundary
 
 Outcome:

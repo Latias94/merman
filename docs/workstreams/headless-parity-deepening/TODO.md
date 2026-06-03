@@ -333,5 +333,8 @@ Last updated: 2026-06-03
   A follow-up Packet/Sankey visible-signal audit found no production defect, but now proves their
   public theme colors only when matching Packet DOM classes, Sankey outlined-label DOM, node rect
   fills, and link groups exist.
+  A follow-up Mindmap visible-signal audit found no production defect, but stopped the public smoke
+  from counting root-section CSS that is overwritten by `.section-root` rules or native-text CSS
+  that current XHTML label DOM does not consume.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
