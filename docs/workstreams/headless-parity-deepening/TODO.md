@@ -157,6 +157,10 @@ Last updated: 2026-06-03
   SVG/group service-bounds estimation and isolated top-level service root-bounds logic now consume
   the explicit `union_bounds`; Architecture structural parity stayed green and `parity-root`
   remained the existing `25` mismatch diagnostic queue.
+  A follow-up FCoSE contribution seam then routed
+  `architecture_measure_cytoscape_node_bbox_extras(...)` through the same expanded-body,
+  optional-label, and union contribution vocabulary before deriving `BoundsExtras`. This preserved
+  Architecture structural parity and left the root queue at the existing `25` diagnostics.
 
 ## M5 - Semantic / Render Unification Pilot
 

@@ -266,6 +266,12 @@ Current repository reality to preserve:
     SVG/group service-bounds estimation and isolated top-level service root-bounds logic now consume
     the explicit `union_bounds`; behavior stayed unchanged, Architecture structural parity stayed
     green, and `parity-root` remained the existing `25` mismatch diagnostic queue.
+  - A follow-up FCoSE node BoundsExtras contribution seam now routes
+    `architecture_measure_cytoscape_node_bbox_extras(...)` through an explicit expanded-body,
+    optional-label, and union contribution helper before deriving left/right/top/bottom extras. This
+    is behavior-preserving and keeps FCoSE node bounds and SVG/root service bounds on the same phase
+    vocabulary; Architecture structural parity stayed green and `parity-root` remained the existing
+    `25` mismatch diagnostic queue.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

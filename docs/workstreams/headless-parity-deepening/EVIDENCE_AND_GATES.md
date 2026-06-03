@@ -3,6 +3,37 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture FCoSE Node BoundsExtras Contribution
+
+Outcome:
+
+- Continued the Architecture child contribution seam into the FCoSE `BoundsExtras` adapter.
+- `architecture_measure_cytoscape_node_bbox_extras(...)` now derives `left` / `right` / `top` /
+  `bottom` extras from an explicit expanded body, optional label, and union contribution instead of
+  keeping a separate implicit `half_w` / `bottom` formula.
+- The debug path behind `MERMAN_ARCH_DEBUG_CY_BBOX=1` now prints body, label, and union phases for
+  the FCoSE node-bounds contribution.
+- No measurement constants or output behavior changed. Architecture structural parity stayed green,
+  and Architecture `parity-root` remained the existing `25` mismatch diagnostic queue.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+
+Focused verification:
+
+- `cargo nextest run -p merman-render architecture` - passed, `29` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_fcose_contribution.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_fcose_contribution.md` -
+  expected failure with the existing `25` Architecture root-only mismatches.
+
+Residual note:
+
+- This is a behavior-preserving phase-modeling seam. It lets FCoSE node `BoundsExtras` and SVG/root
+  group service bounds speak the same body/label/union vocabulary before any future source-backed
+  Cytoscape bbox formula change is attempted.
+
 ## HPD-050 - Architecture Cytoscape Child Contribution Bounds
 
 Outcome:

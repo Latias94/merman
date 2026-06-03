@@ -143,6 +143,36 @@ pub(crate) fn architecture_cytoscape_child_contribution_bounds(
     }
 }
 
+fn architecture_cytoscape_node_bbox_extra_contribution_bounds(
+    icon_size: f64,
+    border_px: f64,
+    label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
+) -> ArchitectureCytoscapeChildContributionBounds {
+    let half_icon = icon_size / 2.0;
+    let body_bounds = Bounds {
+        min_x: -half_icon - border_px,
+        min_y: -half_icon - border_px,
+        max_x: half_icon + border_px,
+        max_y: half_icon + border_px,
+    };
+    let label_bounds = label_bounds.map(|label| Bounds {
+        min_x: -label.half_width - border_px,
+        min_y: -half_icon - border_px,
+        max_x: label.half_width + border_px,
+        max_y: half_icon + label.bottom_extension_px + border_px,
+    });
+    let union_bounds = label_bounds
+        .as_ref()
+        .map(|label| union_bounds(&body_bounds, label))
+        .unwrap_or_else(|| body_bounds.clone());
+
+    ArchitectureCytoscapeChildContributionBounds {
+        body_bounds,
+        label_bounds,
+        union_bounds,
+    }
+}
+
 pub(crate) fn architecture_cytoscape_child_label_bounds(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -167,25 +197,44 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
 ) -> ArchitectureNodeBBoxExtras {
     let border = 1.0;
     let half_icon = icon_size / 2.0;
+    let label_bounds =
+        architecture_cytoscape_child_label_bounds(title, measurer, style, font_size_px);
+    let contribution = architecture_cytoscape_node_bbox_extra_contribution_bounds(
+        icon_size,
+        border,
+        label_bounds.as_ref(),
+    );
+    let half_w = contribution
+        .union_bounds
+        .max_x
+        .abs()
+        .max(contribution.union_bounds.min_x.abs());
+    let half_w = (half_w * 2.0).round() / 2.0;
+    let top = (-contribution.union_bounds.min_y - half_icon).max(0.0);
+    let bottom = (contribution.union_bounds.max_y - half_icon).max(0.0);
 
-    let mut half_w = half_icon + border;
-    let mut bottom = border;
-
-    if let Some(label_bounds) =
-        architecture_cytoscape_child_label_bounds(title, measurer, style, font_size_px)
-    {
+    if let Some(label_bounds) = &label_bounds {
         let label_half = label_bounds.half_width;
-        half_w = half_w.max(label_half + border);
-        half_w = (half_w * 2.0).round() / 2.0;
-        bottom = border + label_bounds.bottom_extension_px;
 
         if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
             eprintln!(
-                "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
+                "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} body_bounds=({}, {})-({}, {}) label_bounds={:?} union_bounds=({}, {})-({}, {}) half_w={:.6} extras_lr={:.6} bottom={:.6}",
                 title.map(str::trim).unwrap_or(""),
                 label_bounds.metrics.width,
                 label_half,
                 label_bounds.metrics.applied_scale,
+                contribution.body_bounds.min_x,
+                contribution.body_bounds.min_y,
+                contribution.body_bounds.max_x,
+                contribution.body_bounds.max_y,
+                contribution
+                    .label_bounds
+                    .as_ref()
+                    .map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
+                contribution.union_bounds.min_x,
+                contribution.union_bounds.min_y,
+                contribution.union_bounds.max_x,
+                contribution.union_bounds.max_y,
                 half_w,
                 (half_w - half_icon).max(0.0),
                 bottom,
@@ -197,7 +246,7 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     ArchitectureNodeBBoxExtras {
         left: extra_lr,
         right: extra_lr,
-        top: border,
+        top,
         bottom,
     }
 }
@@ -385,6 +434,47 @@ mod tests {
         assert_eq!(mapped.right, 2.5);
         assert_eq!(mapped.top, 3.5);
         assert_eq!(mapped.bottom, 4.5);
+    }
+
+    #[test]
+    fn architecture_node_bbox_extra_contribution_preserves_body_label_union_phases() {
+        let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
+            metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
+                width: 96.0,
+                half_width: 50.0,
+                applied_scale: 1.0,
+            },
+            half_width: 50.0,
+            bottom_extension_px: 17.0,
+        };
+
+        let contribution = super::architecture_cytoscape_node_bbox_extra_contribution_bounds(
+            80.0,
+            1.0,
+            Some(&label_bounds),
+        );
+
+        assert_eq!(contribution.body_bounds.min_x, -41.0);
+        assert_eq!(contribution.body_bounds.max_x, 41.0);
+        assert_eq!(contribution.body_bounds.min_y, -41.0);
+        assert_eq!(contribution.body_bounds.max_y, 41.0);
+        let label = contribution
+            .label_bounds
+            .as_ref()
+            .expect("label phase is preserved");
+        assert_eq!(label.min_x, -51.0);
+        assert_eq!(label.max_x, 51.0);
+        assert_eq!(label.min_y, -41.0);
+        assert_eq!(label.max_y, 58.0);
+        assert_eq!(contribution.union_bounds.min_x, -51.0);
+        assert_eq!(contribution.union_bounds.max_x, 51.0);
+        assert_eq!(contribution.union_bounds.min_y, -41.0);
+        assert_eq!(contribution.union_bounds.max_y, 58.0);
+
+        let extra_lr = contribution.union_bounds.max_x - 40.0;
+        let extra_bottom = contribution.union_bounds.max_y - 40.0;
+        assert_eq!(extra_lr, 11.0);
+        assert_eq!(extra_bottom, 18.0);
     }
 
     #[test]
