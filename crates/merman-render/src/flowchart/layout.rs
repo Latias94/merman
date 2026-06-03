@@ -165,6 +165,34 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .unwrap_or(false)
 }
 
+fn first_parent_cycle_assignment<'a, I>(
+    order: I,
+    parent_by_id: &HashMap<String, String>,
+) -> Option<(String, String)>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut assigned_parent: HashMap<String, String> = HashMap::new();
+
+    for child in order {
+        let Some(parent) = parent_by_id.get(child) else {
+            continue;
+        };
+
+        let mut current = Some(parent.as_str());
+        while let Some(id) = current {
+            if id == child {
+                return Some((child.to_string(), parent.clone()));
+            }
+            current = assigned_parent.get(id).map(String::as_str);
+        }
+
+        assigned_parent.insert(child.to_string(), parent.clone());
+    }
+
+    None
+}
+
 fn lowest_common_parent(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     a: &str,
@@ -1177,6 +1205,18 @@ fn layout_flowchart_v2_with_model(
             for child in &sg.nodes {
                 parent_by_id.insert(child.clone(), sg.id.clone());
             }
+        }
+
+        // Cyclic subgraph membership such as `A contains B` and `B contains A` is valid syntax but
+        // cannot be represented in Graphlib's compound parent tree. Detect it before calling
+        // `set_parent`, but keep Mermaid-compatible error wording for the offending assignment.
+        if let Some((child, parent)) = first_parent_cycle_assignment(
+            model.subgraphs.iter().rev().map(|sg| sg.id.as_str()),
+            &parent_by_id,
+        ) {
+            return Err(Error::InvalidModel {
+                message: format!("Setting {parent} as parent of {child} would create a cycle"),
+            });
         }
 
         let insert_with_parent =
