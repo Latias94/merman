@@ -766,10 +766,25 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         lo: String,
         dx: f64,
         dy: f64,
+        dw: Option<f64>,
+        dh: Option<f64>,
         score: f64,
     }
 
     let mut deltas: Vec<DeltaRow> = Vec::new();
+
+    fn delta_score(dx: f64, dy: f64, dw: Option<f64>, dh: Option<f64>) -> f64 {
+        dx.abs()
+            .max(dy.abs())
+            .max(dw.unwrap_or(0.0).abs())
+            .max(dh.unwrap_or(0.0).abs())
+    }
+
+    fn fmt_optional_delta(delta: Option<f64>) -> String {
+        delta
+            .map(|v| format!("{v:.6}"))
+            .unwrap_or_else(|| "<n/a>".to_string())
+    }
 
     fn split_missing<T>(
         upstream: &BTreeMap<String, T>,
@@ -810,7 +825,9 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
             dx,
             dy,
-            score: dx.abs().max(dy.abs()),
+            dw: None,
+            dh: None,
+            score: delta_score(dx, dy, None, None),
         });
     }
 
@@ -827,7 +844,9 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
             dx,
             dy,
-            score: dx.abs().max(dy.abs()),
+            dw: None,
+            dh: None,
+            score: delta_score(dx, dy, None, None),
         });
     }
 
@@ -837,6 +856,8 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         };
         let dx = lo.x - up.x;
         let dy = lo.y - up.y;
+        let dw = lo.w - up.w;
+        let dh = lo.h - up.h;
         deltas.push(DeltaRow {
             id: id.to_string(),
             kind: "group-rect",
@@ -844,7 +865,9 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             lo: format!("x={:.6} y={:.6} w={:.6} h={:.6}", lo.x, lo.y, lo.w, lo.h),
             dx,
             dy,
-            score: dx.abs().max(dy.abs()),
+            dw: Some(dw),
+            dh: Some(dh),
+            score: delta_score(dx, dy, Some(dw), Some(dh)),
         });
     }
 
@@ -952,17 +975,25 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
 
     let _ = writeln!(
         &mut report,
-        "## Element deltas (top 50 by max(abs(dx), abs(dy)))\n"
+        "## Element deltas (top 50 by max(abs(dx), abs(dy), abs(dw), abs(dh)))\n"
     );
     let _ = writeln!(
         &mut report,
-        "| kind | id | upstream | local | dx | dy | score |\n|---|---|---|---|---:|---:|---:|"
+        "| kind | id | upstream | local | dx | dy | dw | dh | score |\n|---|---|---|---|---:|---:|---:|---:|---:|"
     );
     for row in deltas.iter().take(50) {
         let _ = writeln!(
             &mut report,
-            "| {} | `{}` | `{}` | `{}` | {:.6} | {:.6} | {:.6} |",
-            row.kind, row.id, row.up, row.lo, row.dx, row.dy, row.score
+            "| {} | `{}` | `{}` | `{}` | {:.6} | {:.6} | {} | {} | {:.6} |",
+            row.kind,
+            row.id,
+            row.up,
+            row.lo,
+            row.dx,
+            row.dy,
+            fmt_optional_delta(row.dw),
+            fmt_optional_delta(row.dh),
+            row.score
         );
     }
 
@@ -1066,11 +1097,20 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         y: f64,
     }
 
+    #[derive(Debug, Clone, Copy)]
+    struct Rect {
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    }
+
     type ArchSummary = (
         Option<(f64, f64, f64, f64)>,
         Option<f64>,
         BTreeMap<String, Pt>,
         BTreeMap<String, Pt>,
+        BTreeMap<String, Rect>,
     );
 
     fn extract_arch_summary(svg: &str) -> Result<ArchSummary, XtaskError> {
@@ -1082,6 +1122,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         let mut services: BTreeMap<String, Pt> = BTreeMap::new();
         let mut junctions: BTreeMap<String, Pt> = BTreeMap::new();
+        let mut groups: BTreeMap<String, Rect> = BTreeMap::new();
 
         for n in doc.descendants().filter(|n| n.is_element()) {
             let tag = n.tag_name().name();
@@ -1119,9 +1160,33 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
                     junctions.insert(id, Pt { x, y });
                 }
             }
+
+            if tag == "rect" {
+                let Some(id) = id.and_then(|id| normalize_arch_svg_id_with_marker(id, "group-"))
+                else {
+                    continue;
+                };
+                let x = n
+                    .attribute("x")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let y = n
+                    .attribute("y")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let w = n
+                    .attribute("width")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let h = n
+                    .attribute("height")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                groups.insert(id, Rect { x, y, w, h });
+            }
         }
 
-        Ok((viewbox, max_width, services, junctions))
+        Ok((viewbox, max_width, services, junctions, groups))
     }
 
     fn bbox_center_from_top_left_pts(pts: impl Iterator<Item = Pt>, size: f64) -> Option<Pt> {
@@ -1168,6 +1233,27 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         })
     }
 
+    fn max_group_rect_delta_by_id(
+        up: &BTreeMap<String, Rect>,
+        lo: &BTreeMap<String, Rect>,
+    ) -> Option<(f64, f64, f64, f64)> {
+        let mut best: Option<(f64, f64, f64, f64, f64)> = None;
+        for (id, up_rect) in up {
+            let Some(lo_rect) = lo.get(id) else {
+                continue;
+            };
+            let dx = lo_rect.x - up_rect.x;
+            let dy = lo_rect.y - up_rect.y;
+            let dw = lo_rect.w - up_rect.w;
+            let dh = lo_rect.h - up_rect.h;
+            let score = dx.abs().max(dy.abs()).max(dw.abs()).max(dh.abs());
+            if best.map_or(true, |(_, _, _, _, best_score)| score > best_score) {
+                best = Some((dx, dy, dw, dh, score));
+            }
+        }
+        best.map(|(dx, dy, dw, dh, _)| (dx, dy, dw, dh))
+    }
+
     let fixtures_dir = crate::cmd::fixtures_root().join("architecture");
     let upstream_dir = crate::cmd::fixtures_root()
         .join("upstream-svgs")
@@ -1201,6 +1287,10 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         service_mean_dy: Option<f64>,
         junction_mean_dx: Option<f64>,
         junction_mean_dy: Option<f64>,
+        group_max_dx: Option<f64>,
+        group_max_dy: Option<f64>,
+        group_max_dw: Option<f64>,
+        group_max_dh: Option<f64>,
     }
 
     let mut rows: Vec<Row> = Vec::new();
@@ -1263,8 +1353,10 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
         })?;
 
-        let (up_vb, up_mw, up_services, up_junctions) = extract_arch_summary(&upstream_svg)?;
-        let (lo_vb, lo_mw, lo_services, lo_junctions) = extract_arch_summary(&local_svg)?;
+        let (up_vb, up_mw, up_services, up_junctions, up_groups) =
+            extract_arch_summary(&upstream_svg)?;
+        let (lo_vb, lo_mw, lo_services, lo_junctions, lo_groups) =
+            extract_arch_summary(&local_svg)?;
 
         let icon_size = 80.0;
         let up_center = bbox_center_from_top_left_pts(up_services.values().copied(), icon_size);
@@ -1276,6 +1368,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         let svc_mean = mean_delta_by_id(&up_services, &lo_services);
         let junc_mean = mean_delta_by_id(&up_junctions, &lo_junctions);
+        let group_max = max_group_rect_delta_by_id(&up_groups, &lo_groups);
 
         rows.push(Row {
             stem,
@@ -1289,6 +1382,10 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             service_mean_dy: svc_mean.map(|p| p.y),
             junction_mean_dx: junc_mean.map(|p| p.x),
             junction_mean_dy: junc_mean.map(|p| p.y),
+            group_max_dx: group_max.map(|(dx, _, _, _)| dx),
+            group_max_dy: group_max.map(|(_, dy, _, _)| dy),
+            group_max_dw: group_max.map(|(_, _, dw, _)| dw),
+            group_max_dh: group_max.map(|(_, _, _, dh)| dh),
         });
     }
 
@@ -1303,11 +1400,11 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
     );
     let _ = writeln!(
         &mut md,
-        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy |"
+        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy | group max dx | group max dy | group max dw | group max dh |"
     );
     let _ = writeln!(
         &mut md,
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     );
 
     for r in rows {
@@ -1322,7 +1419,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         let _ = writeln!(
             &mut md,
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
             r.stem,
             vb_up,
             vb_lo,
@@ -1348,6 +1445,18 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
                 .map(|v| format!("{:.3}", v))
                 .unwrap_or_else(|| "<n/a>".to_string()),
             r.junction_mean_dy
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.group_max_dx
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.group_max_dy
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.group_max_dw
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.group_max_dh
                 .map(|v| format!("{:.3}", v))
                 .unwrap_or_else(|| "<n/a>".to_string()),
         );

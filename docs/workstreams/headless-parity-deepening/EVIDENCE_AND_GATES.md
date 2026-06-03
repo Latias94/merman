@@ -3,6 +3,58 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Delta Group Size Columns
+
+Outcome:
+
+- Extended `debug-architecture-delta` so group-rect rows report `dw` and `dh` explicitly and rank
+  by `max(abs(dx), abs(dy), abs(dw), abs(dh))`.
+- Extended `summarize-architecture-deltas` with `group max dx`, `group max dy`, `group max dw`,
+  and `group max dh` columns.
+- Regenerated the seven active-residual local delta reports in a new artifact directory:
+  `target\compare\architecture-delta-active-residuals-hpd050-group-size`.
+- Regenerated the all-fixture Architecture delta summary:
+  `target\compare\architecture-delta-summary-hpd050-group-size\architecture-delta-summary.md`.
+- No renderer, layout, measurement constant, SVG output behavior, browser probe behavior, or root
+  residual status changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+
+Restored phase signal:
+
+| fixture | local group phase signal now explicit |
+|---|---|
+| `stress_architecture_batch5_long_titles_and_punct_076` | `group-pipeline` `dw=+5.000px`, matching the root-width tail directly |
+| `stress_architecture_html_titles_and_escapes_041` | `group-ui` `dw=+5.000px`, with services only `+0.500px` on X |
+| `stress_architecture_unicode_and_xml_escapes_019` | `group-i` `dw=+3.000px`, with services `-1.500px` on X |
+| `stress_architecture_nested_groups_002` | `group-data` / `group-platform` `dx=+4.250px`, `dw=-0.500px`, preserving the nested compound-bounds classification |
+| `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` | `group-left` `dx=+24.464px`, `dw=-3.000px`; services shift `+22.964px` on X |
+| `stress_architecture_group_port_edges_017` | `group-outer` `dh=-17.845px`, making the vertical compression explicit |
+| `stress_architecture_junction_fork_join_026` | group max `dw=+17.331px`, `dh=-18.609px`, beside service/junction placement drift |
+
+Focused verification:
+
+- `cargo fmt -p xtask` - applied.
+- `cargo nextest run -p xtask architecture_svg_id_normalizer` - passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture <each of the seven active Architecture residual fixtures> --out target\compare\architecture-delta-active-residuals-hpd050-group-size` -
+  passed and wrote reports with explicit `dw` / `dh` columns.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-hpd050-group-size` -
+  passed and wrote the all-fixture summary with group max delta columns.
+- `cargo nextest run -p xtask` - passed, `94` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_delta_group_size.md` -
+  passed.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- Line-by-line JSON parse for `docs\workstreams\headless-parity-deepening\CONTEXT.jsonl` - passed,
+  `515` JSONL records parsed.
+
+Residual note:
+
+- This makes the Rust-side local delta artifact comparable to the browser/Cytoscape probe summaries
+  for group width/height phase analysis. It does not imply a production group-bbox formula change.
+
 ## HPD-050 - Architecture Delta Extractor Current ID Normalizer
 
 Outcome:

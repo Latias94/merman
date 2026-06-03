@@ -341,6 +341,12 @@ Current repository reality to preserve:
     now have non-zero service/junction/group-rect counts and no missing elements. Use those reports
     with the browser probe batch to separate solver placement drift from final group/service bbox
     phase drift; do not infer element-level deltas from the old root-only delta reports.
+  - A follow-up local-delta report slice now makes group rect size drift explicit. Focused reports
+    under `target\compare\architecture-delta-active-residuals-hpd050-group-size\` include `dw` and
+    `dh` columns, and `summarize-architecture-deltas` includes group max delta columns. This makes
+    the active `+5px` rows, `unicode`, `nested_groups`, `batch6_init`, `group_port_edges`, and
+    `junction_fork_join` phase differences directly reviewable without reading width/height out of
+    formatted SVG strings.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

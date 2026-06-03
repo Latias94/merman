@@ -197,6 +197,12 @@ Last updated: 2026-06-03
   root-only data; use
   `target\compare\architecture-delta-active-residuals-hpd050\*.md` beside the browser probe batch
   before making any production phase/formula change.
+  A follow-up local-delta report slice then added explicit group `dw` / `dh` columns plus group max
+  delta columns in `summarize-architecture-deltas`. The regenerated reports under
+  `target\compare\architecture-delta-active-residuals-hpd050-group-size\` now show, for example,
+  the two `+5px` rows as direct group `dw=+5.000px` tails and `group_port_edges_017` as
+  `group-outer dh=-17.845px`. This keeps the next comparison source-backed instead of relying on
+  manual parsing of `x/y/w/h` strings.
 
 ## M5 - Semantic / Render Unification Pilot
 
