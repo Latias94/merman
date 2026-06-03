@@ -327,5 +327,8 @@ Last updated: 2026-06-03
   A follow-up Sequence activation seam slice then centralized the Mermaid 11.15 activation start
   and full-stack bounds formulas so layout, activation-rect SVG planning, and autonumber marker
   placement cannot silently diverge again.
+  A follow-up C4 visible-signal audit found no production defect, but tightened public smoke
+  coverage so inert `.person` provider CSS is not counted as visible C4 coverage. C4 visible colors
+  are now proven through inline `c4` config plus `UpdateElementStyle` / `UpdateRelStyle` output.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

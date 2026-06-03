@@ -376,6 +376,55 @@ xychart
 }
 
 #[test]
+fn c4_theme_smoke_counts_inline_config_and_style_macros_as_visible() {
+    let svg = render_svg(
+        "c4-visible-audit",
+        r##"%%{init: {"themeVariables": {"personBkg": "#0ea5e9", "personBorder": "#ec4899"}, "c4": {"person_bg_color": "#172554", "person_border_color": "#38bdf8", "system_bg_color": "#111827", "system_border_color": "#facc15"}}}%%
+C4Context
+title C4 Visible Audit
+Person(customer, "Customer", "Uses the system")
+System(system, "System", "Core system")
+Rel(customer, system, "Uses", "HTTPS")
+UpdateElementStyle(customer, $bgColor="#334155", $fontColor="#fde68a", $borderColor="#f97316")
+UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#c4-visible-audit .person{stroke:#ec4899;fill:#0ea5e9;}"#),
+        "Mermaid 11.15 still emits C4 .person provider CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="person-man""#),
+        "C4 current output should expose the current shape group DOM: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="person""#),
+        "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#334155" stroke="#f97316""##),
+        "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
+    );
+    assert!(
+        svg.contains(r##"dominant-baseline="middle" fill="#fde68a""##),
+        "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#111827" stroke="#facc15""##),
+        "C4 config colors should reach the visible system shape: {svg}"
+    );
+    assert!(
+        svg.contains(r##"stroke-width="1" stroke="#facc15""##),
+        "UpdateRelStyle lineColor should reach the visible C4 relationship line: {svg}"
+    );
+    assert!(
+        svg.contains(r##"dominant-baseline="middle" fill="#a7f3d0""##),
+        "UpdateRelStyle textColor should reach visible C4 relationship labels: {svg}"
+    );
+}
+
+#[test]
 fn gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible() {
     let svg = render_svg(
         "gantt-visible-audit",

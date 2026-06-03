@@ -3,6 +3,45 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - C4 Visible Signal Boundary
+
+Outcome:
+
+- Re-audited C4 theme/renderability after the hardcoded-color scan found current-output C4 shapes
+  using inline colors rather than provider CSS.
+- Confirmed pinned Mermaid 11.15 `c4/styles.js` emits only `.person`, while
+  `svgDraw.js` renders current C4 shapes under `class="person-man"` and visible shape colors are
+  inline `c4.*_bg_color` / `c4.*_border_color` values or per-shape `UpdateElementStyle(...)`
+  values.
+- Added a public `HeadlessRenderer` smoke test that proves:
+  - `themeVariables.personBkg` / `personBorder` still appear in the source-backed `.person`
+    provider CSS,
+  - current C4 output does not emit `class="person"`, so that provider rule is not counted as a
+    visible renderability signal,
+  - `c4` inline config colors reach visible system shapes,
+  - `UpdateElementStyle(...)` and `UpdateRelStyle(...)` colors reach visible shape, label, line,
+    and relationship-label output.
+- No production renderer change was needed. This is a visible-signal calibration that prevents
+  future C4 smoke tests from pretending inert provider CSS proves user-visible theme coverage.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/svgDraw.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/common/svgDrawCommon.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke c4_theme_smoke_counts_inline_config_and_style_macros_as_visible`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo fmt`
+
+Residual note:
+
+- C4 remains covered through its current inline config/style-macro render path. Do not promote
+  generic Mermaid `themeVariables.personBkg` / `personBorder` into C4 shapes unless upstream C4
+  source or emitted DOM changes to make `.person` a current visible selector.
+
 ## HPD-080 - Sequence Activation Geometry Seam
 
 Outcome:

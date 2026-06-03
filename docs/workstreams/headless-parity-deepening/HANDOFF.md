@@ -579,6 +579,11 @@ Current repository reality to preserve:
     activation formulas behind shared helpers. Layout activation state, SVG activation-rectangle
     planning, and SVG autonumber marker placement now share the same stacked start-x and full-stack
     min-left/max-right bounds calculations, with helper unit tests to prevent future drift.
+  - A fifty-third HPD-080 C4 visible-signal audit found no production defect, but tightened the
+    public smoke boundary: Mermaid 11.15 still emits `.person` provider CSS for C4, while current
+    C4 DOM uses `person-man` groups and inline `c4` config / `Update*Style` colors. The new smoke
+    proves `c4` config, `UpdateElementStyle`, and `UpdateRelStyle` colors reach visible output, and
+    prevents `.person` provider CSS from being counted as visible coverage without matching DOM.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
