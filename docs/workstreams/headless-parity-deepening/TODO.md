@@ -176,7 +176,10 @@ Last updated: 2026-06-04
   `bbBeforeRun2` / `bbAfterSegments`, final `node.boundingBox()`, `bodyBounds`,
   `labelBounds.all`, and children bbox phases. The two active `+5px` group/service bbox rows
   (`batch5_long_titles_and_punct_076` and `html_titles_and_escapes_041`) both generated summaries;
-  continue using these artifacts before attempting another source-formula change.
+  continue using these artifacts before attempting another source-formula change. A follow-up
+  expansion-summary slice adds `bb over children labels` to that final-node table, making final
+  group bbox expansion over `childrenBoundingBoxIncludeLabels` explicit as left/right/top/bottom
+  plus `dw` / `dh`.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

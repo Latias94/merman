@@ -3,6 +3,45 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Probe Group Expansion Summary
+
+Outcome:
+
+- Strengthened the `debug-architecture-fcose-probe` Markdown summary for Architecture group-bbox
+  residual audits.
+- The `Final Node Bounds` table now includes `bb over children labels`, computed from final
+  browser/Cytoscape `node.boundingBox()` minus `childrenBoundingBoxIncludeLabels`.
+- The new cell reports left/right/top/bottom expansion plus aggregate `dw` / `dh`, so group rows no
+  longer require manual subtraction between the `bb` and `children labels` columns.
+- A focused real probe for `stress_architecture_batch5_long_titles_and_punct_076` now shows
+  `pipeline` expansion as `l=41.500 r=41.500 t=41.500 b=41.500 dw=83.000 dh=83.000`, making the
+  final-group expansion phase explicit in the artifact.
+- No Architecture layout, renderer, root-bounds, SVG, probe JSON, or fixture behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-probe-group-expansion.md`
+
+Focused verification:
+
+- `cargo nextest run -p xtask fcose_probe_markdown_summarizes_stage_and_node_bounds` - passed,
+  `1` test run.
+- `cargo nextest run -p xtask` - passed, `95` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-fcose-probe-expansion-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed and wrote a Markdown summary containing the new `bb over children labels` column.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `565` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This is source-evidence tooling only. It makes final group bbox expansion easier to cite for the
+  active `+5px` Architecture rows, but it does not alter the group formula or close any root
+  residual.
+
 ## HPD-050 - Graphlib Stringified-ID Boundary
 
 Outcome:

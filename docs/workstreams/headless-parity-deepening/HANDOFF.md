@@ -322,6 +322,11 @@ Current repository reality to preserve:
     summary tables expose config, bbox stages, final `node.boundingBox()`, `bodyBounds`,
     `labelBounds.all`, and children bbox phases. Use the Markdown first for residual triage, then
     drill into JSON only when a row needs full raw data.
+  - A follow-up probe-summary expansion slice now adds a `bb over children labels` column to the
+    final node table. It computes final `node.boundingBox()` expansion over
+    `childrenBoundingBoxIncludeLabels` as left/right/top/bottom plus `dw` / `dh`; for the focused
+    `batch5_long_titles` `pipeline` group this directly reports `41.5px` per side and
+    `83px` total width/height expansion.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

@@ -177,6 +177,49 @@ fn format_probe_rect(v: Option<&serde_json::Value>) -> String {
     }
 }
 
+fn format_probe_rect_expansion(
+    outer: Option<&serde_json::Value>,
+    inner: Option<&serde_json::Value>,
+) -> String {
+    let Some(outer) = outer.filter(|v| !v.is_null()) else {
+        return "<none>".to_string();
+    };
+    let Some(inner) = inner.filter(|v| !v.is_null()) else {
+        return "<none>".to_string();
+    };
+    let (Some(outer_x1), Some(outer_y1), Some(outer_w), Some(outer_h)) = (
+        json_f64(outer, "x1"),
+        json_f64(outer, "y1"),
+        json_f64(outer, "w"),
+        json_f64(outer, "h"),
+    ) else {
+        return "<none>".to_string();
+    };
+    let (Some(inner_x1), Some(inner_y1), Some(inner_w), Some(inner_h)) = (
+        json_f64(inner, "x1"),
+        json_f64(inner, "y1"),
+        json_f64(inner, "w"),
+        json_f64(inner, "h"),
+    ) else {
+        return "<none>".to_string();
+    };
+
+    let outer_x2 = outer_x1 + outer_w;
+    let outer_y2 = outer_y1 + outer_h;
+    let inner_x2 = inner_x1 + inner_w;
+    let inner_y2 = inner_y1 + inner_h;
+
+    format!(
+        "l={} r={} t={} b={} dw={} dh={}",
+        format_probe_f64(inner_x1 - outer_x1),
+        format_probe_f64(outer_x2 - inner_x2),
+        format_probe_f64(inner_y1 - outer_y1),
+        format_probe_f64(outer_y2 - inner_y2),
+        format_probe_f64(outer_w - inner_w),
+        format_probe_f64(outer_h - inner_h)
+    )
+}
+
 fn format_probe_point(v: Option<&serde_json::Value>) -> String {
     let Some(v) = v.filter(|v| !v.is_null()) else {
         return "<none>".to_string();
@@ -288,9 +331,9 @@ fn render_architecture_fcose_probe_markdown(
     let _ = writeln!(&mut md, "## Final Node Bounds\n");
     let _ = writeln!(
         &mut md,
-        "| id | type | classes | pos | bb | body | label | children labels | children body | label text |"
+        "| id | type | classes | pos | bb | body | label | children labels | children body | bb over children labels | label text |"
     );
-    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|");
+    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|---|");
     if let Some(nodes) = probe
         .pointer("/finalElements/nodes")
         .and_then(|v| v.as_array())
@@ -307,9 +350,13 @@ fn render_architecture_fcose_probe_markdown(
             let label_bounds = format_probe_rect(node.pointer("/labelBounds/all"));
             let children_labels = format_probe_rect(node.get("childrenBoundingBoxIncludeLabels"));
             let children_body = format_probe_rect(node.get("childrenBoundingBoxBodyOnly"));
+            let bb_children_label_expansion = format_probe_rect_expansion(
+                node.get("bb"),
+                node.get("childrenBoundingBoxIncludeLabels"),
+            );
             let _ = writeln!(
                 &mut md,
-                "| `{id}` | `{node_type}` | `{classes}` | `{pos}` | `{bb}` | `{body}` | `{label_bounds}` | `{children_labels}` | `{children_body}` | `{label}` |"
+                "| `{id}` | `{node_type}` | `{classes}` | `{pos}` | `{bb}` | `{body}` | `{label_bounds}` | `{children_labels}` | `{children_body}` | `{bb_children_label_expansion}` | `{label}` |"
             );
         }
     }
@@ -1666,15 +1713,15 @@ mod tests {
             ],
             "finalElements": {
                 "nodes": [{
-                    "id": "svc",
+                    "id": "group",
                     "pos": { "x": 10.0, "y": 20.0 },
-                    "bb": { "x1": 1.0, "y1": 2.0, "w": 3.0, "h": 4.0 },
-                    "bodyBounds": { "x1": 2.0, "y1": 3.0, "w": 4.0, "h": 5.0 },
+                    "bb": { "x1": 1.0, "y1": 2.0, "w": 20.0, "h": 30.0 },
+                    "bodyBounds": { "x1": 1.0, "y1": 2.0, "w": 20.0, "h": 30.0 },
                     "labelBounds": { "all": { "x1": 3.0, "y1": 4.0, "w": 5.0, "h": 6.0 } },
-                    "childrenBoundingBoxIncludeLabels": { "x1": 4.0, "y1": 5.0, "w": 6.0, "h": 7.0 },
+                    "childrenBoundingBoxIncludeLabels": { "x1": 4.0, "y1": 5.0, "w": 10.0, "h": 12.0 },
                     "childrenBoundingBoxBodyOnly": null,
-                    "classes": ["node-service"],
-                    "data": { "type": "service", "label": "Service Label" }
+                    "classes": ["node-group"],
+                    "data": { "type": "group", "label": "Group Label" }
                 }],
                 "edges": [{
                     "id": "svc-other",
@@ -1704,7 +1751,7 @@ mod tests {
         assert!(md.contains("| `bbBeforeRun2` | `x1=1.000 y1=2.000 w=30.000 h=40.000` |"));
         assert!(md.contains("## Relocation Stages"));
         assert!(md.contains("| 1 | `x=15.000 y=25.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `x=7.000 y=8.500` | `x=8.000 y=16.500` |"));
-        assert!(md.contains("| `svc` | `service` | `node-service` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=3.000 h=4.000` | `x1=2.000 y1=3.000 w=4.000 h=5.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `<none>` | `Service Label` |"));
+        assert!(md.contains("| `group` | `group` | `node-group` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=10.000 h=12.000` | `<none>` | `l=3.000 r=7.000 t=3.000 b=15.000 dw=10.000 dh=18.000` | `Group Label` |"));
         assert!(md.contains("## Final Edge Bounds"));
         assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
     }
