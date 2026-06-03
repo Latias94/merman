@@ -3,6 +3,52 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Probe Label Contribution Summary
+
+Outcome:
+
+- Strengthened the `debug-architecture-fcose-probe` Markdown summary so group rows expose the
+  complete child-body, child-label, and final-group expansion chain in one table.
+- The `Final Node Bounds` table now includes `children labels over body`, computed from
+  `childrenBoundingBoxIncludeLabels` minus `childrenBoundingBoxBodyOnly`.
+- The existing `bb over children labels` column is unchanged, so each group row now directly shows
+  `children body -> children labels -> final node.boundingBox()`.
+- Regenerated the seven-fixture active Architecture residual probe batch under
+  `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050`.
+- Representative rows now make the label phase explicit:
+  `batch5_long_titles` `pipeline` reports
+  `l=69.500 r=27.500 t=0.000 b=17.000 dw=97.000 dh=17.000`;
+  `html_titles` `ui` reports
+  `l=22.500 r=11.500 t=0.000 b=17.000 dw=34.000 dh=17.000`;
+  `group_port_edges` `outer` reports zero label expansion over body while `inner` reports
+  `b=17.000 dh=17.000`;
+  `batch6` custom-init groups show asymmetric horizontal label contribution while retaining the
+  final `31.5px` per-side group expansion.
+- No Architecture layout, renderer, SVG, probe JSON, fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-probe-label-contribution.md`
+- `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p xtask fcose_probe_markdown_summarizes_stage_and_node_bounds` - passed,
+  `1` test run.
+- `cargo nextest run -p xtask` - passed, `95` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_nested_groups_002 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_group_port_edges_017 --out-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed and wrote `7` per-fixture summaries plus the batch index.
+- `rg -n "children labels over body" target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 -g "*.md"` -
+  found the new column in all `7` summaries.
+
+Residual note:
+
+- This is source-evidence tooling only. The new label-contribution phase should be joined with
+  local delta reports before any production formula change; it does not close any Architecture
+  root residual by itself.
+
 ## HPD-050 - Architecture Probe Expansion Active-Residual Batch
 
 Outcome:

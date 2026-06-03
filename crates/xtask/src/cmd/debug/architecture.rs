@@ -331,9 +331,9 @@ fn render_architecture_fcose_probe_markdown(
     let _ = writeln!(&mut md, "## Final Node Bounds\n");
     let _ = writeln!(
         &mut md,
-        "| id | type | classes | pos | bb | body | label | children labels | children body | bb over children labels | label text |"
+        "| id | type | classes | pos | bb | body | label | children labels | children body | children labels over body | bb over children labels | label text |"
     );
-    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|---|");
+    let _ = writeln!(&mut md, "|---|---|---|---|---|---|---|---|---|---|---|---|");
     if let Some(nodes) = probe
         .pointer("/finalElements/nodes")
         .and_then(|v| v.as_array())
@@ -350,13 +350,17 @@ fn render_architecture_fcose_probe_markdown(
             let label_bounds = format_probe_rect(node.pointer("/labelBounds/all"));
             let children_labels = format_probe_rect(node.get("childrenBoundingBoxIncludeLabels"));
             let children_body = format_probe_rect(node.get("childrenBoundingBoxBodyOnly"));
+            let children_label_over_body = format_probe_rect_expansion(
+                node.get("childrenBoundingBoxIncludeLabels"),
+                node.get("childrenBoundingBoxBodyOnly"),
+            );
             let bb_children_label_expansion = format_probe_rect_expansion(
                 node.get("bb"),
                 node.get("childrenBoundingBoxIncludeLabels"),
             );
             let _ = writeln!(
                 &mut md,
-                "| `{id}` | `{node_type}` | `{classes}` | `{pos}` | `{bb}` | `{body}` | `{label_bounds}` | `{children_labels}` | `{children_body}` | `{bb_children_label_expansion}` | `{label}` |"
+                "| `{id}` | `{node_type}` | `{classes}` | `{pos}` | `{bb}` | `{body}` | `{label_bounds}` | `{children_labels}` | `{children_body}` | `{children_label_over_body}` | `{bb_children_label_expansion}` | `{label}` |"
             );
         }
     }
@@ -1719,7 +1723,7 @@ mod tests {
                     "bodyBounds": { "x1": 1.0, "y1": 2.0, "w": 20.0, "h": 30.0 },
                     "labelBounds": { "all": { "x1": 3.0, "y1": 4.0, "w": 5.0, "h": 6.0 } },
                     "childrenBoundingBoxIncludeLabels": { "x1": 4.0, "y1": 5.0, "w": 10.0, "h": 12.0 },
-                    "childrenBoundingBoxBodyOnly": null,
+                    "childrenBoundingBoxBodyOnly": { "x1": 5.0, "y1": 7.0, "w": 6.0, "h": 4.0 },
                     "classes": ["node-group"],
                     "data": { "type": "group", "label": "Group Label" }
                 }],
@@ -1751,7 +1755,7 @@ mod tests {
         assert!(md.contains("| `bbBeforeRun2` | `x1=1.000 y1=2.000 w=30.000 h=40.000` |"));
         assert!(md.contains("## Relocation Stages"));
         assert!(md.contains("| 1 | `x=15.000 y=25.000` | `x1=4.000 y1=5.000 w=6.000 h=7.000` | `x=7.000 y=8.500` | `x=8.000 y=16.500` |"));
-        assert!(md.contains("| `group` | `group` | `node-group` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=10.000 h=12.000` | `<none>` | `l=3.000 r=7.000 t=3.000 b=15.000 dw=10.000 dh=18.000` | `Group Label` |"));
+        assert!(md.contains("| `group` | `group` | `node-group` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=10.000 h=12.000` | `x1=5.000 y1=7.000 w=6.000 h=4.000` | `l=1.000 r=3.000 t=2.000 b=6.000 dw=4.000 dh=8.000` | `l=3.000 r=7.000 t=3.000 b=15.000 dw=10.000 dh=18.000` | `Group Label` |"));
         assert!(md.contains("## Final Edge Bounds"));
         assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
     }

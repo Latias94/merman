@@ -183,6 +183,12 @@ Last updated: 2026-06-04
   Architecture probe summaries with that column under
   `target\compare\architecture-fcose-probe-expansion-active-residuals-hpd050\`; use that batch
   before any next group-bbox formula experiment.
+  A follow-up label-contribution summary slice adds `children labels over body` to the same final
+  node table and regenerated the seven active-residual probes under
+  `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050\`. The table
+  now exposes `children body -> children labels -> final node.boundingBox()` in one row, so future
+  group-bbox formula work can separate child label contribution from final compound expansion
+  without manual subtraction. This remains evidence tooling only.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

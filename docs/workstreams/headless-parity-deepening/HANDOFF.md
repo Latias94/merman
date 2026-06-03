@@ -333,6 +333,12 @@ Current repository reality to preserve:
     carry `bb over children labels`: standard-padding groups report `41.5px` per side / `83px`
     total expansion, while the custom-init `batch6` groups report `31.5px` per side / `63px`
     total. Use this batch before any next group-bbox formula experiment.
+  - A follow-up label-contribution summary slice now adds `children labels over body` to the same
+    final node table. The regenerated batch under
+    `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050\` lets each
+    group row be read as `children body -> children labels -> final node.boundingBox()` without
+    manual subtraction; for example, `batch5_long_titles` `pipeline` reports label contribution
+    `dw=97px dh=17px`, then final group expansion `dw=83px dh=83px`. This is still evidence only.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
