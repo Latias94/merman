@@ -3,6 +3,58 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Group Content Union Audit
+
+Outcome:
+
+- Audited the source path behind the remaining direct Architecture group-width tails after the
+  label-phase join.
+- Confirmed pinned Mermaid `svgDraw.ts::drawGroups(...)` draws group rectangles from final
+  Cytoscape `node.boundingBox()`, then shifts `x` / `y` by `halfIconSize`; group title SVG text is
+  emitted after the rect and does not drive the compound bbox.
+- Confirmed local group rects are rebuilt by `GroupRectComputer` from child service/junction/group
+  bounds. In-group services feed that union through
+  `ArchitectureServiceBoundsEstimate.cytoscape_group_child_contribution.union_bounds`.
+- Confirmed default local group inflation is `architecture.padding + 2.5px`, i.e. `42.5px` per side
+  for the active default-padding rows.
+- Focused `MERMAN_ARCH_DEBUG_GROUP_RECT` runs show the active direct width tails are already present
+  in the child content union phase:
+  - `batch5_long_titles` `pipeline`: content `(-194.463,-83.463)-(188.463,214.463)`, pad `42.5`,
+    final local width `467.926` versus upstream `462.926`.
+  - `html_titles` `ui`: content `(-129.963,-83.463)-(189.963,214.463)`, pad `42.5`, final local
+    width `404.926` versus upstream `399.926`.
+  - `unicode` `i`: content `(-131.911,-83.797)-(175.911,214.797)`, pad `42.5`, final local width
+    `392.822` versus upstream `389.822`.
+- No production code, layout formula, renderer output, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-group-content-union-audit.md`
+- `target\compare\architecture-delta-debug-label-phase-grouprect-current`
+
+Focused verification:
+
+- Source reads:
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts`,
+  `crates/merman-render/src/architecture_metrics.rs`,
+  `crates/merman-render/src/svg/parity/architecture.rs`,
+  `crates/merman-render/src/svg/parity/architecture/geometry.rs`,
+  `crates/merman-render/src/svg/parity/architecture/nodes.rs`, and
+  `crates/merman-render/src/svg/parity/architecture/viewport.rs`.
+- `MERMAN_ARCH_DEBUG_GROUP_RECT=pipeline cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-delta-debug-label-phase-grouprect-current` -
+  passed.
+- `MERMAN_ARCH_DEBUG_GROUP_RECT=ui cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --out target\compare\architecture-delta-debug-label-phase-grouprect-current` -
+  passed.
+- `MERMAN_ARCH_DEBUG_GROUP_RECT=i cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --out target\compare\architecture-delta-debug-label-phase-grouprect-current` -
+  passed.
+
+Residual note:
+
+- Do not change group padding, root padding, group title bounds, or final group rect emission for
+  the active direct width tails. The remaining seam is now narrowed to child service-label/content
+  bounds feeding `GroupRectComputer`; any production candidate must be scoped there and verified
+  against the full Architecture root queue.
+
 ## HPD-050 - Architecture Label Phase Join
 
 Outcome:

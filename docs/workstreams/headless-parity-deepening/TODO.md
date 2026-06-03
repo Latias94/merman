@@ -195,6 +195,12 @@ Last updated: 2026-06-04
   stale pre-Procrustes artifacts. The remaining direct group-width tails are `batch5` `+5px`,
   `html_titles` `+5px`, and `unicode` `+3px`, but the joined child-label and final-group phases
   reject another standalone group-padding, font-family switch, or exact labelWidth lookup attempt.
+  A follow-up group-content-union source audit narrowed those direct width tails to local child
+  service-label/content bounds feeding `GroupRectComputer`. Pinned Mermaid draws group rects from
+  final Cytoscape `node.boundingBox()`, while local rebuilds rects from service/junction/child
+  group bounds and then applies `padding + 2.5px`; focused debug runs show `batch5`, `html_titles`,
+  and `unicode` are already too wide in that child content union phase. Do not change group
+  padding, root padding, group title bounds, or final rect emission for these rows.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

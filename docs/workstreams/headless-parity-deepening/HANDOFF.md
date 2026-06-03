@@ -346,6 +346,12 @@ Current repository reality to preserve:
     artifacts for that row. The remaining direct group-width rows are still `batch5` `+5px`,
     `html_titles` `+5px`, and `unicode` `+3px`, but their source child-label and final-group
     phases do not support a standalone group-padding, font-family, or exact labelWidth fix.
+  - A follow-up group-content-union audit read the local source path and pinned Mermaid
+    `svgDraw.ts`. The active direct width tails are now narrowed to child service-label/content
+    bounds feeding `GroupRectComputer`: local default group inflation is already the expected
+    `padding + 2.5 = 42.5px`, and debug runs show `pipeline`, `ui`, and `i` are too wide before any
+    final padding/root consumption change. Do not change group padding, root padding, group title
+    bounds, or final rect emission for these rows.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
