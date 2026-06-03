@@ -496,6 +496,25 @@ fn edge_lookup_accepts_either_direction_for_undirected_graphs() {
 }
 
 #[test]
+fn undirected_edges_follow_graphlib_string_order_for_stringified_ids() {
+    let mut g: Graph<(), String, ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    g.set_edge_with_label("9", "10", "foo".to_string());
+
+    assert_eq!(g.edge("9", "10", None).map(String::as_str), Some("foo"));
+    assert_eq!(g.edge("10", "9", None).map(String::as_str), Some("foo"));
+    assert!(g.has_edge("9", "10", None));
+    assert!(g.has_edge("10", "9", None));
+
+    let keys = g.edge_keys();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].v, "10");
+    assert_eq!(keys[0].w, "9");
+}
+
+#[test]
 fn predecessors_returns_node_predecessors() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
     g.set_edge("a", "b");

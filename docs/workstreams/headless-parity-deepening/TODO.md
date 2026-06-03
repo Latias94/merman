@@ -1,7 +1,7 @@
 # Headless Parity Deepening - TODO
 
 Status: Active
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 
 ## M0 - Lane Freeze And Prioritization
 
@@ -112,6 +112,9 @@ Last updated: 2026-06-03
   existing Rust APIs without adding JS optional-argument overloading. A follow-up `setEdge`
   coverage slice maps explicit JS `undefined` edge-label clearing to Rust `Option<T>` labels and
   edge-object parameters to `EdgeKey`, without adding JS argument overloading. A follow-up
+  stringified-id boundary slice records JS numeric/object id coercion as a Rust API-shape
+  non-target while covering the post-coercion undirected string-order rule for `"9"` / `"10"`
+  endpoints. A follow-up
   Graphlib JSON seam slice now exposes `dugong_graphlib::json::{write, read}` with direct coverage
   for all six upstream `json-test.js` cases; the primary seam uses `Option<T>` labels to preserve
   upstream `undefined` versus explicit `null`, while default-collapsing helpers remain an explicit

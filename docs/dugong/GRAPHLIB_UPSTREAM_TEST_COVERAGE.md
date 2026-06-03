@@ -152,6 +152,8 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setEdge / can take an multi-edge object as the first parameter` -> `crates/dugong-graphlib/tests/graph_core_test.rs::set_edge_key_sets_simple_and_named_edge_labels`
 - `setEdge / treats edges in opposite directions as distinct in a digraph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_respects_direction_for_directed_graphs`
 - `setEdge / handles undirected graph edges` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_accepts_either_direction_for_undirected_graphs`
+- `setEdge / handles undirected edges where id has different order than Stringified id` ->
+  `crates/dugong-graphlib/tests/graph_core_test.rs::undirected_edges_follow_graphlib_string_order_for_stringified_ids`
 - `edge / returns undefined if the edge isn't part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_returns_none_for_missing_edges`
 - `edge / returns the value of the edge if it is part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::edge_lookup_respects_direction_for_directed_graphs`
 - `edge / returns the value of a multi-edge if it is part of the graph` -> `crates/dugong-graphlib/tests/graph_core_test.rs::multigraph_preserves_named_edges`
@@ -209,8 +211,10 @@ Additional Rust regression:
 - Non-compound `setParent(...)`: upstream throws; current Rust parent methods no-op on
   non-compound graphs. This remains an explicit API-shape decision.
 - ID stringification: upstream JS coerces node ids, edge endpoints, and edge names through string
-  conversion. Rust accepts typed string inputs, so this coercion behavior is not a parity target
-  unless a public FFI seam needs it.
+  conversion. Rust accepts typed string inputs, so numeric/object coercion is not a parity target
+  unless a public FFI seam needs it. The consumer-relevant post-coercion rule for undirected edge
+  endpoint ordering is covered by
+  `undirected_edges_follow_graphlib_string_order_for_stringified_ids`.
 - Graphlib JSON omitted-value semantics: `dugong_graphlib::json::{write, read}` maps upstream
   `undefined` to Rust `Option<T>` labels and preserves explicit JSON `null` as `Some(null)`.
   `write_with_defaults` / `read_with_defaults` are a separate fallback seam for Rust callers that

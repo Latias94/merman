@@ -174,6 +174,11 @@ Current repository reality to preserve:
     `setNode(v, undefined)` clearing to the same Rust `Option<T>` seam used by JSON: missing nodes
     remain `None`, while present nodes with cleared labels are `Some(None)` and still satisfy
     `has_node(...)`.
+  - A follow-up Graphlib stringified-id boundary slice is now landed. Upstream JS numeric/object id
+    coercion remains a Rust API-shape non-target because local setters already accept typed string
+    inputs, but the consumer-relevant post-coercion undirected edge ordering rule is covered:
+    string endpoints `"9"` / `"10"` canonicalize to the same Graphlib string order and are
+    lookupable in both directions.
   - A follow-up Dagreish layout source-coverage slice is now landed. Four upstream
     `repo-ref/dagre/test/layout-test.js` cases now exercise the full `layout_dagreish(...)`
     consumer path directly: long-edge label coordinates, short-cycle acyclic undo point direction,

@@ -3,6 +3,48 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Graphlib Stringified-ID Boundary
+
+Outcome:
+
+- Audited the remaining upstream Graphlib `graph-test.js` id-stringification cases around
+  `setNode`, `setParent`, `setEdge`, and undirected edge endpoint ordering.
+- Confirmed the source seam is JS dynamic-argument coercion: `repo-ref/graphlib/lib/graph.js`
+  converts edge endpoints with `"" + v_` / `"" + w_`, then undirected graphs canonicalize by
+  string comparison.
+- Confirmed local `dugong-graphlib::Graph` already exposes a typed Rust string API
+  (`impl Into<String>` for setters and `&str` for lookups), so accepting arbitrary numeric/object
+  ids is an explicit Rust/JS API-shape non-target unless a future FFI/raw Graphlib bridge needs it.
+- Added a consumer-relevant post-coercion regression:
+  `undirected_edges_follow_graphlib_string_order_for_stringified_ids` covers `"9"` / `"10"`
+  endpoint ordering, verifying both lookup directions and the canonical stored edge key.
+- Updated `docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md` to map the covered undirected
+  string-order subset and document the remaining numeric/object coercion boundary.
+- No production Graphlib, Dagre, renderer, SVG, or fixture behavior changed.
+
+Touched surfaces:
+
+- `crates/dugong-graphlib/tests/graph_core_test.rs`
+- `docs/dugong/GRAPHLIB_UPSTREAM_TEST_COVERAGE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-graphlib-stringified-id-boundary.md`
+
+Focused verification:
+
+- `cargo nextest run -p dugong-graphlib undirected_edges_follow_graphlib_string_order_for_stringified_ids` -
+  passed, `1` test run.
+- `cargo nextest run -p dugong-graphlib` - passed, `97` tests run.
+- `cargo fmt --check -p dugong-graphlib` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `562` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This closes the useful post-coercion undirected edge ordering slice under the current Rust API
+  shape. It does not add JS-style numeric/object id coercion to Rust Graphlib APIs; that should
+  only be reopened for a concrete FFI/raw input bridge.
+
 ## HPD-050 - Dagre Reference Graph-Dimension Delta
 
 Outcome:
