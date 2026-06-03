@@ -526,6 +526,15 @@ Current repository reality to preserve:
     supplied, matching `theme-default.js`. Treemap now rejects bare `classDef` style tokens such as
     `color` and renders the fixture through the suppressed error diagram, matching the pinned
     upstream SVG baseline instead of treating DB-layer `addClass` tolerance as parser parity.
+  - A forty-fifth HPD-080 visible-signal audit tightened Journey and Timeline coverage after a
+    hardcoded-color/source scan found inert CSS tokens being counted as visible public-smoke
+    signals. Mermaid 11.15's Journey stylesheet emits inherited Flowchart-like rules for
+    `.edgePath .path`, `.flowchart-link`, `.edgeLabel`, `.cluster text`, `.node ...`, and
+    `.arrowheadPath`, but current Journey DOM does not emit those classes/elements. The public
+    dark-theme smoke now counts only current visible Journey surfaces: generic line/label/legend
+    text color, face fill, task/section fill types, and actor colors. Timeline smoke now counts
+    visible section `cScale0` / `cScaleLabel0` / `cScaleInv0` colors instead of `.disabled` CSS from
+    a source that emits no disabled DOM. Focused public render tests document both boundaries.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

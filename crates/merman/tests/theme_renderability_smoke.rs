@@ -200,7 +200,7 @@ block
         ),
         (
             "theme-journey",
-            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "faceColor": "#111827", "mainBkg": "#1f2937", "nodeBorder": "#38bdf8", "edgeLabelBackground": "#0f172a", "titleColor": "#fde68a", "fillType0": "#172554", "actor0": "#f97316"}}}%%
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "faceColor": "#111827", "fillType0": "#172554", "actor0": "#f97316"}}}%%
 journey
   title Theme Journey
   section Checkout
@@ -208,10 +208,7 @@ journey
     Pay: 3: Alice
 "##,
             &["Theme Journey", "Checkout", "Sign Up", "Pay", "Alice"],
-            &[
-                "#f8fafc", "#22c55e", "#111827", "#1f2937", "#38bdf8", "#fde68a", "#172554",
-                "#f97316",
-            ],
+            &["#f8fafc", "#111827", "#172554", "#f97316"],
         ),
         (
             "theme-quadrantchart",
@@ -303,14 +300,14 @@ requirementDiagram
         ),
         (
             "theme-timeline",
-            r##"%%{init: {"themeVariables": {"tertiaryColor": "#172554", "clusterBorder": "#f8fafc"}}}%%
+            r##"%%{init: {"themeVariables": {"cScale0": "#172554", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#38bdf8"}}}%%
 timeline
   title Theme Timeline
   section Release
     2026 : Ship
 "##,
             &["Theme Timeline", "Release", "2026", "Ship"],
-            &["#172554", "#f8fafc"],
+            &["#172554", "#f8fafc", "#38bdf8"],
         ),
         (
             "theme-gantt",
@@ -371,4 +368,90 @@ xychart
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
     }
+}
+
+#[test]
+fn journey_theme_smoke_does_not_count_inert_flowchart_rules_as_visible() {
+    let svg = render_svg(
+        "journey-line-audit",
+        r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "edgeLabelBackground": "#0f172a", "mainBkg": "#1f2937", "nodeBorder": "#38bdf8", "titleColor": "#fde68a", "arrowheadColor": "#facc15"}}}%%
+journey
+  title Inert Rule Audit
+  section Checkout
+    Sign Up: 5: Alice
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#journey-line-audit line{stroke:#f8fafc;}"#),
+        "Journey's current plain line DOM is visibly driven by themeVariables.textColor: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"stroke-width="4" stroke="black" marker-end="url(#journey-line-audit-arrowhead)""#
+        ),
+        "Mermaid 11.15 still emits a black presentation attribute on the activity line: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#journey-line-audit .flowchart-link{stroke:#22c55e;fill:none;}"#),
+        "Mermaid 11.15 emits this inherited provider rule even though Journey does not render matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"#journey-line-audit .edgeLabel{background-color:#0f172a;text-align:center;}"#
+        ),
+        "Mermaid 11.15 emits this inherited provider rule even though Journey does not render matching DOM: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="flowchart-link""#),
+        "Journey should not count .flowchart-link styling as a visible theme signal: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="edgeLabel""#),
+        "Journey should not count .edgeLabel styling as a visible theme signal: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="arrowheadPath""#),
+        "Journey's marker path still does not consume Mermaid's .arrowheadPath rule: {svg}"
+    );
+}
+
+#[test]
+fn timeline_theme_smoke_counts_section_dom_not_disabled_css_as_visible() {
+    let svg = render_svg(
+        "timeline-visible-audit",
+        r##"%%{init: {"themeVariables": {"cScale0": "#172554", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#38bdf8", "tertiaryColor": "#334155", "clusterBorder": "#f97316"}}}%%
+timeline
+  title Visible Rule Audit
+  section Release
+    2026 : Ship
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#timeline-visible-audit .section--1 rect,#timeline-visible-audit .section--1 path,#timeline-visible-audit .section--1 circle,#timeline-visible-audit .section--1 path{fill:#172554;}"#
+        ),
+        "Timeline's first visible section should consume cScale0: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#timeline-visible-audit .section--1 text{fill:#f8fafc;}"#),
+        "Timeline's first visible section text should consume cScaleLabel0: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#timeline-visible-audit .section--1 line{stroke:#38bdf8;stroke-width:3;}"#),
+        "Timeline's first visible section line should consume cScaleInv0: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#timeline-visible-audit .disabled,#timeline-visible-audit .disabled circle,#timeline-visible-audit .disabled text{fill:#334155;}"#),
+        "Mermaid 11.15 emits disabled CSS even when this source has no disabled DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#timeline-visible-audit .disabled text{fill:#f97316;}"#),
+        "Mermaid 11.15 emits disabled text CSS even when this source has no disabled DOM: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="disabled""#),
+        "Timeline should not count disabled styling as a visible theme signal without disabled DOM: {svg}"
+    );
 }

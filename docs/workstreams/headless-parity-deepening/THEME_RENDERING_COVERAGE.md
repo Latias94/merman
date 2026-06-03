@@ -46,7 +46,7 @@ Status terms:
 | Gantt | `gantt/styles.js` | Covered | Section, grid, today marker, task state, outside label contrast, marker, and title theme variables are emitted. |
 | GitGraph | `git/styles.js` | Covered | Branch label, commit, arrow, merge, reverse, highlight, and label color rules are emitted for classic/default branch theme variables. |
 | Info | none | Inline/shared base | No diagram-specific Mermaid provider in 11.15. Shared base CSS is sufficient unless a visible fixture proves otherwise. |
-| Journey | `user-journey/styles.js` | Covered with inert-arrowhead caveat | Task, section, actor, edge-label, and fillType theme variables are emitted and covered as visible signals. Mermaid 11.15 also emits `.arrowheadPath` for `arrowheadColor`, but current Journey marker DOM has no matching class, so `arrowheadColor` is tracked as an upstream-inert provider rule rather than a renderability signal. |
+| Journey | `user-journey/styles.js` | Covered for current visible DOM, with inert provider-rule caveats | Current visible Journey DOM consumes text/line color through the generic `line` / label / legend rules, face color through `.face`, task/section colors through `task-type-*` / `section-type-*`, and actor colors through `actor-*`. Mermaid 11.15 also emits inherited Flowchart-like rules for `.edgePath .path`, `.flowchart-link`, `.edgeLabel`, `.cluster text`, `.node ...`, and `.arrowheadPath`, but current Journey output does not emit matching DOM, so `lineColor`, `edgeLabelBackground`, `mainBkg`, `nodeBorder`, `titleColor` via `.cluster text`, and `arrowheadColor` are tracked as upstream-inert provider rules rather than public renderability signals. |
 | Kanban | `kanban/styles.ts` | Covered | Section, ticket, icon, and label theme CSS fixes the dark-card/hidden-label defect class. |
 | Mindmap | `mindmap/styles.ts` | Covered with deferred rules | Section/root/icon/span colors are covered. `data-look` gradient/drop-shadow rules are deferred until local output emits matching attributes/defs. |
 | Packet | `packet/styles.ts` | Covered | `packet.*` style options drive byte, label, title, and block CSS. |
@@ -57,7 +57,7 @@ Status terms:
 | Sankey | `sankey/styles.js` | Covered | Label, outlined-label background, node, and link style options are emitted. |
 | Sequence | `sequence/styles.js` | Covered with deferred rules | Actor, lifeline, signal, label, loop/section, note, activation, marker/error, and rect-node theme variables are covered. Neo-only selectors remain deferred without matching local DOM. |
 | State | `state/styles.js` | Covered with deferred rules | State node, cluster, transition, label, note, marker, start/end, special-state, and title rules are covered. Neo gradient/drop-shadow and dependency-marker rules remain deferred without emitted support. |
-| Timeline | `timeline/styles.js` | Covered | Disabled node/text colors now honor `tertiaryColor` and `clusterBorder`. Redux/neo-only rules stay deferred when support attributes/defs are absent. |
+| Timeline | `timeline/styles.js` | Covered for current visible DOM, with disabled-rule caveat | Section fill/text/line colors, root colors, line wrappers, and event brightness rules are emitted for current Timeline DOM. Disabled node/text colors honor `tertiaryColor` and `clusterBorder`, but ordinary compact smoke sources emit no `class="disabled"` DOM, so disabled colors are provider coverage rather than public visible-signal coverage unless a fixture actually emits disabled nodes. Redux/neo-only rules stay deferred when support attributes/defs are absent. |
 | Treemap | `treemap/styles.ts` | Covered | `treemap.*` options and title/text theme fallbacks drive section, leaf, label, value, and title CSS. |
 | XYChart | none | Inline, render-path covered | Mermaid 11.15 has no dedicated provider. Visible theme behavior comes from `xyChart` theme config and inline renderer attributes; the custom-theme render-path smoke now covers background, title, axes, ticks, labels, and plot palette. |
 | Error | none | Shared/error renderer | Not maintained as a full upstream SVG baseline family. No diagram-specific style provider exists in 11.15. |
@@ -82,7 +82,8 @@ implemented-family style-provider matrix.
 The gate is intentionally semantic. It checks that output is SVG, geometry does not leak `NaN`,
 unexpected `undefined` tokens are absent, representative labels remain visible in the output, and
 diagram-owned theme colors or inline theme settings survive through the public API. It does not
-attempt screenshot parity, font fallback parity, or exact color-compositing parity.
+attempt screenshot parity, font fallback parity, exact color-compositing parity, or counting CSS
+rules as visible when the current renderer emits no matching elements.
 
 C4 is covered through visible C4 config colors rather than broad generic `themeVariables`. This
 matches the current Mermaid 11.15 boundary: the C4 stylesheet provider is narrow, while most visible

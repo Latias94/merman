@@ -3,6 +3,52 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Journey And Timeline Visible Signal Audit Tightening
+
+Outcome:
+
+- Re-audited Journey theme renderability after a source-backed hardcoded-color scan found that
+  `user-journey/styles.js` emits several inherited Flowchart-like rules that current Journey DOM
+  does not consume.
+- Tightened the public dark-theme smoke so Journey no longer counts `lineColor`,
+  `edgeLabelBackground`, `mainBkg`, `nodeBorder`, or `titleColor` CSS tokens as visible signals
+  merely because they appear in the stylesheet.
+- Kept visible Journey coverage focused on the emitted surfaces that current SVG actually consumes:
+  generic line/label/legend text color, face fill, task/section fill types, and actor colors.
+- Added a focused public render test documenting the boundary: Mermaid 11.15 still emits a black
+  presentation attribute on the Journey activity line, but the visible plain-line stroke is driven
+  by the scoped `line { stroke: textColor }` rule; `.flowchart-link`, `.edgeLabel`, and
+  `.arrowheadPath` remain inert without matching Journey DOM.
+- Re-audited the Timeline case in the same public smoke and found the same measurement-quality
+  issue: it counted `.disabled` CSS colors even though the compact Timeline source emitted no
+  disabled DOM. The public Timeline smoke now counts visible section colors (`cScale0`,
+  `cScaleLabel0`, `cScaleInv0`) instead, while a focused test keeps disabled CSS emission covered
+  as provider coverage rather than visible renderability coverage.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/styles.js` emits generic Journey
+  rules plus inherited `.edgePath .path`, `.flowchart-link`, `.edgeLabel`, `.cluster text`, `.node`
+  and `.arrowheadPath` rules.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/journeyRenderer.ts` emits the final
+  activity line with `stroke="black"` and no `flowchart-link` / `edgePath` / `edgeLabel` class.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/svgDraw.js` emits task lines,
+  actor circles, faces, task/section classes, and marker paths without an `.arrowheadPath` class.
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/styles.js` emits `.disabled` rules, but
+  compact ordinary Timeline output emits `timeline-node section-*`, `node-bkg`, `node-line-*`, and
+  `lineWrapper` elements rather than `class="disabled"`.
+
+Focused verification:
+
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke journey_theme_smoke_does_not_count_inert_flowchart_rules_as_visible timeline_theme_smoke_counts_section_dom_not_disabled_css_as_visible representative_dark_theme_diagrams_keep_visible_theme_signals`
+
+Residual note:
+
+- This is a measurement-quality fix rather than a renderer DOM change. If merman later chooses to
+  make any currently inert Journey provider rule visible as a deliberate headless improvement, that
+  should be tracked as an explicit DOM/support change instead of being hidden inside the public
+  smoke.
+
 ## HPD-080 - Pie Theme Merge and Treemap Error Semantics
 
 Outcome:

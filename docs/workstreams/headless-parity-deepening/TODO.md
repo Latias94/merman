@@ -292,5 +292,11 @@ Last updated: 2026-06-03
   rendering regressions: default-theme Pie `themeVariables` merging now preserves source-backed
   `pie1/#ECECFF` and `pie2/#ffffde` base colors under unrelated overrides, and Treemap invalid
   bare classDef style tokens now render through the suppressed error diagram like pinned upstream.
+  A follow-up Journey/Timeline visible-signal audit then tightened the public dark-theme smoke so
+  CSS rules without matching current DOM are no longer counted as visible renderability coverage.
+  Journey no longer counts inherited Flowchart-like provider rules (`.flowchart-link`, `.edgeLabel`,
+  `.edgePath .path`, `.node ...`, `.cluster text`, `.arrowheadPath`); Timeline no longer counts
+  `.disabled` CSS from a compact source that emits no disabled DOM. Focused tests document both
+  source-backed boundaries.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.
