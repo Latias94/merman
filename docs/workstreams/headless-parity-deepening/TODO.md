@@ -209,6 +209,15 @@ Last updated: 2026-06-03
   it can drive a formula change. `group_port_edges_017` is the clearest next phase seam: local
   outer group height equals browser `bbAfterSegments.h=444.603px`, but upstream final outer group
   height is `462.448px`, producing the `-17.845px` root-height tail.
+  A follow-up source audit then confirmed why that row should not be fixed with a group-padding
+  tweak. Local SVG group rectangles are rebuilt by `GroupRectComputer` from leaf/child bounds,
+  while pinned Mermaid draws group rectangles from Cytoscape final `node.boundingBox()`. A focused
+  `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` run showed the local `run=1` element bbox height is
+  `444.603px`, matching browser `bbAfterSegments` and the local outer group height; the stored
+  upstream SVG outer group remains the later final compound bbox phase at `462.448px`. The local
+  service/inner-group positions are also vertically compressed by `8.922571px` on each side, so the
+  next production path must separate layout relocation bboxes, final compound group bboxes, and
+  `{group}` endpoint propagation rather than exporting layout-base compound rects directly.
 
 ## M5 - Semantic / Render Unification Pilot
 

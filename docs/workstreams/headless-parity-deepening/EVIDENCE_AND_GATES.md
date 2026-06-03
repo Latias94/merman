@@ -3,6 +3,52 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Group Port Source Seam
+
+Outcome:
+
+- Audited the local source path for `stress_architecture_group_port_edges_017` before changing any
+  renderer formula.
+- Confirmed local Architecture SVG group rectangles are rebuilt in
+  `crates/merman-render/src/svg/parity/architecture.rs` from `GroupRectComputer`, which consumes
+  service bounds, junction bounds, and recursively computed child group bounds. They do not consume
+  final compound group rectangles from `manatee`.
+- Confirmed Architecture root viewport finalization is driven by emitted SVG bounds plus
+  renderer-owned `content_bounds` in `svg/parity/architecture/viewport.rs`; the layout-level
+  `ArchitectureDiagramLayout.bounds` is not the active SVG root source.
+- Confirmed pinned Mermaid 11.15 draws group rectangles from Cytoscape final
+  `node.boundingBox()` in `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.ts`.
+- A focused `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` run reported local `run=1` `eles.boundingBox()` as
+  `(-313.618759,-204.551469)-(316.618759,240.051469)`, height `444.602938px`. That matches both
+  the browser probe `bbAfterSegments.h=444.603px` and the local outer group/root height phase.
+- The stored upstream SVG outer group is still the final compound bbox phase:
+  `x=-90.610885 y=-164.224041 w=447.995496 h=462.448081`.
+- The row is therefore not a pure group padding miss. Local service/inner-group positions are
+  vertically compressed relative to upstream by `8.922571px` on each side, which produces the full
+  `-17.845142px` outer group/root height tail.
+- No production renderer, layout, measurement, xtask, or SVG output behavior changed.
+
+Source-backed boundary:
+
+- Upstream SVG group phase: final Cytoscape compound `node.boundingBox()` from `drawGroups(...)`.
+- Local group/root phase: renderer-side group reconstruction plus root `getBBox()` approximation.
+- Local layout evidence phase: `manatee` / browser `bbAfterSegments` `eles.boundingBox()` around
+  the FCoSE rerun and segment-stage bbox, not final compound group emission.
+- Do not globally change group padding, export layout-base compound rectangles directly, or tune
+  root height from `ArchitectureDiagramLayout.bounds` for this row. The next implementation path
+  needs a phase-specific model that separates layout relocation bboxes, final compound group
+  bboxes, and `{group}` edge endpoint position propagation.
+
+Focused verification:
+
+- `MANATEE_FCOSE_DEBUG_ELES_BBOX=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_group_port_edges_017 --out target\compare\architecture-delta-debug-group-port-eles` -
+  passed and printed the local `run=1` total bbox above.
+
+Residual note:
+
+- This is a source audit and implementation boundary, not a root residual closure. It prevents the
+  next pass from conflating `bbAfterSegments` with final group `node.boundingBox()`.
+
 ## HPD-050 - Architecture Active Residual Phase Join
 
 Outcome:

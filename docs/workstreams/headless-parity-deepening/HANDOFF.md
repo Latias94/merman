@@ -359,6 +359,16 @@ Current repository reality to preserve:
     `462.448px`. `junction_fork_join_026` remains a harness/baseline divergence first: an Edge
     rerun reproduced the probe geometry, but the stored upstream SVG group/service positions differ
     from that probe.
+  - A follow-up source audit confirmed the `group_port_edges_017` seam in code. Local group rects
+    are rebuilt from renderer-side leaf/child bounds via `GroupRectComputer`; Architecture root
+    viewport uses emitted SVG bounds plus renderer `content_bounds`; pinned Mermaid group rects
+    come from Cytoscape final `node.boundingBox()` in `svgDraw.ts`. A focused
+    `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` run printed local `run=1` element bbox
+    `(-313.619,-204.551)-(316.619,240.051)`, height `444.603px`, matching browser
+    `bbAfterSegments` and the local outer group height. Do not fix this by globally changing group
+    padding, exporting layout-base compound rects directly, or driving root height from
+    `ArchitectureDiagramLayout.bounds`; the next production fix needs phase-specific final
+    compound bbox and `{group}` endpoint propagation evidence.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
