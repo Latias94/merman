@@ -33,6 +33,8 @@ change.
   expected-failed with the existing `25` Architecture root-only mismatches. The leading rows remain
   `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076` (`+5.000px`), and
   `html_titles_and_escapes_041` (`+5.000px`).
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; implemented-matrix structural parity stayed green after this seam.
 
 ## Residual Boundary
 
