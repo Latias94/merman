@@ -602,6 +602,56 @@ mindmap
 }
 
 #[test]
+fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
+    let svg = render_svg(
+        "mindmap-neo-visible-audit",
+        r##"%%{init: {"theme": "redux", "look": "neo", "themeVariables": {"THEME_COLOR_LIMIT": 2, "mainBkg": "#111827", "nodeBorder": "#38bdf8", "strokeWidth": 3, "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
+mindmap
+  Root
+    Child
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="node mindmap-node section-root section--1" id="node_0""#)
+            && svg.contains(r#"data-look="neo""#),
+        "Mindmap neo node CSS should only count when current node DOM exposes data-look: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"class="edge-thickness-normal edge-pattern-solid edge section-edge-0 edge-depth-1""#
+        ) && svg.contains(r#"data-look="neo""#),
+        "Mindmap neo edge CSS should only count when current edge DOM exposes data-look: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 rect,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 path,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 circle,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 polygon{fill:#111827;stroke:#38bdf8;stroke-width:3px;}"##),
+        "Mindmap neo child node shape CSS should reach current data-look node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"#mindmap-neo-visible-audit [data-look="neo"].section-edge-0{stroke:#38bdf8;}"##
+        ),
+        "Mindmap neo edge CSS should reach current data-look edge DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"#mindmap-neo-visible-audit [data-look="neo"].mindmap-node{filter:drop-shadow(1px 2px 2px rgba(0,0,0,.4));}"##
+        ),
+        "Mindmap neo drop-shadow CSS should be emitted for current data-look node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<defs><linearGradient id="mindmap-neo-visible-audit-gradient""#)
+            && svg.contains(r##"stop-color="#112233""##)
+            && svg.contains(r##"stop-color="#445566""##),
+        "Mindmap neo gradient defs should exist when gradient CSS references them: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 rect,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 path,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 circle,#mindmap-neo-visible-audit [data-look="neo"].mindmap-node.section-0 polygon{stroke:url(#mindmap-neo-visible-audit-gradient);fill:#111827;}"##),
+        "Mindmap neo gradient CSS should target current data-look node DOM: {svg}"
+    );
+}
+
+#[test]
 fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
     let svg = render_svg(
         "er-visible-audit",

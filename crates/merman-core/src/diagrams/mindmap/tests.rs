@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Engine, ParseOptions};
+use crate::{Engine, ParseOptions, RenderSemanticModel};
 use futures::executor::block_on;
 use serde_json::Value;
 
@@ -301,6 +301,71 @@ fn mindmap_get_data_basic_nodes_edges_and_layout_defaults() {
         .find(|e| e["start"].as_str() == Some("0") && e["end"].as_str() == Some("1"))
         .unwrap();
     assert_eq!(edge_0_1["depth"].as_i64().unwrap(), 0);
+}
+
+#[test]
+fn mindmap_get_data_projects_look_and_theme_shape_like_mermaid_11_15() {
+    let model = parse(
+        r#"%%{init: {"theme": "redux", "look": "neo"}}%%
+mindmap
+root
+ child
+"#,
+    );
+
+    let nodes = model["nodes"].as_array().unwrap();
+    let root = nodes
+        .iter()
+        .find(|n| n["id"].as_str() == Some("0"))
+        .unwrap();
+    let child = nodes
+        .iter()
+        .find(|n| n["id"].as_str() == Some("1"))
+        .unwrap();
+    assert_eq!(root["look"].as_str().unwrap(), "neo");
+    assert_eq!(child["look"].as_str().unwrap(), "neo");
+    assert_eq!(root["shape"].as_str().unwrap(), "rounded");
+    assert_eq!(child["shape"].as_str().unwrap(), "rounded");
+    assert_eq!(model["shapes"]["0"]["shape"].as_str().unwrap(), "rounded");
+
+    let edge = model["edges"].as_array().unwrap()[0].as_object().unwrap();
+    assert_eq!(edge["look"].as_str().unwrap(), "neo");
+
+    let default_model = parse("mindmap\nroot\n child\n");
+    assert_eq!(
+        default_model["nodes"][0]["look"].as_str().unwrap(),
+        "classic"
+    );
+    assert_eq!(
+        default_model["nodes"][0]["shape"].as_str().unwrap(),
+        "defaultMindmapNode"
+    );
+}
+
+#[test]
+fn mindmap_render_model_projects_same_look_and_theme_shape_as_json_model() {
+    let engine = Engine::new();
+    let input = r#"%%{init: {"theme": "redux", "look": "neo"}}%%
+mindmap
+root
+ child
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Mindmap(model) => {
+            assert_eq!(model.nodes[0].look, "neo");
+            assert_eq!(model.nodes[1].look, "neo");
+            assert_eq!(model.nodes[0].shape, "rounded");
+            assert_eq!(model.nodes[1].shape, "rounded");
+            assert_eq!(model.edges[0].look, "neo");
+        }
+        other => panic!("mindmap render parse should return typed model, got {other:?}"),
+    }
 }
 
 #[test]

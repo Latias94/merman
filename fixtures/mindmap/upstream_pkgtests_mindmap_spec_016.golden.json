@@ -14,7 +14,7 @@
         "padding": 20,
         "cssClasses": "mindmap-node section-root section--1 m-4 p-8",
         "cssStyles": [],
-        "look": "default",
+        "look": "classic",
         "icon": "bomb",
         "level": 0,
         "nodeId": "root",

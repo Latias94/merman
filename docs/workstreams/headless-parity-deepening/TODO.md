@@ -364,5 +364,11 @@ Last updated: 2026-06-03
   redux node geometry also uses the source-backed sharp-corner path without the classic divider
   line. Structural Timeline `parity` stayed green, while the known `3` Timeline max-width
   `parity-root` rows remain diagnostic.
+  A follow-up Mindmap look/theme seam slice fixed a real production seam: Mindmap parser data and
+  typed render data now project Mermaid `look` into nodes and edges instead of hardcoding
+  `"default"`, default semantic snapshots use Mermaid's configured `"classic"`, and default nodes
+  use the source-backed redux shape branch. Current SVG output emits `data-look="neo"` only for
+  `neo` nodes/edges, then applies the matching Mermaid 11.15 neo node/root/edge/drop-shadow and
+  gradient CSS/defs while preserving default structural parity.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

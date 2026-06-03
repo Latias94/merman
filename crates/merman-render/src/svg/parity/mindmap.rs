@@ -316,6 +316,51 @@ fn mindmap_viewport_bounds_from_layout(
     bounds
 }
 
+fn mindmap_model_look(model_look: &str, config: &merman_core::MermaidConfig) -> String {
+    let model_look = model_look.trim();
+    if model_look.is_empty() || model_look == "default" {
+        config
+            .get_str("look")
+            .unwrap_or("classic")
+            .trim()
+            .to_string()
+    } else {
+        model_look.to_string()
+    }
+}
+
+fn mindmap_data_look_attr(model_look: &str, config: &merman_core::MermaidConfig) -> String {
+    let look = mindmap_model_look(model_look, config);
+    if look == "neo" {
+        format!(r#" data-look="{}""#, escape_attr(&look))
+    } else {
+        String::new()
+    }
+}
+
+fn mindmap_gradient_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return String::new();
+    }
+
+    let Some(gradient_start) =
+        config_string(effective_config, &["themeVariables", "gradientStart"])
+    else {
+        return String::new();
+    };
+    let Some(gradient_stop) = config_string(effective_config, &["themeVariables", "gradientStop"])
+    else {
+        return String::new();
+    };
+
+    format!(
+        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+        escape_xml(diagram_id),
+        escape_xml(&gradient_start),
+        escape_xml(&gradient_stop)
+    )
+}
+
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mirrors Mermaid@11.15.0 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
@@ -376,6 +421,24 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_FILLS.len() as i64)
         .clamp(1, 64) as usize;
+    let root_fill = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
+    let root_label = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
+    let node_border = theme_color(effective_config, "nodeBorder", root_label.as_str());
+    let main_bkg = theme_color(effective_config, "mainBkg", root_fill.as_str());
+    let stroke_width = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "strokeWidth"],
+    )
+    .unwrap_or_else(|| "2".to_string());
+    let drop_shadow = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "dropShadow"],
+    )
+    .unwrap_or_else(|| "none".to_string());
+    let scoped_drop_shadow =
+        drop_shadow.replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
+    let use_gradient =
+        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
 
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
@@ -398,6 +461,31 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
             (10_i64 - (section * 2)).max(2)
         } else {
             17_i64 - 3_i64 * (i as i64)
+        };
+        let neo_node_fill = if theme == "redux" || theme == "redux-dark" || theme == "neutral" {
+            main_bkg.as_str()
+        } else {
+            c_scale.as_str()
+        };
+        let neo_node_stroke = if theme == "redux" || theme == "redux-dark" {
+            node_border.as_str()
+        } else {
+            c_scale.as_str()
+        };
+        let neo_edge_stroke = if theme.contains("redux") || theme == "neo-dark" {
+            node_border.as_str()
+        } else {
+            c_scale.as_str()
+        };
+        let neo_text_label_index = if theme == "neutral" { 1 } else { i };
+        let neo_text_label = if theme == "redux" || theme == "redux-dark" {
+            node_border.clone()
+        } else {
+            theme_color(
+                effective_config,
+                &format!("cScaleLabel{}", neo_text_label_index),
+                default_mindmap_label(neo_text_label_index),
+            )
         };
         let _ = write!(
             &mut out,
@@ -439,12 +527,34 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
             r#"#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
             id, id, id, id
         );
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{fill:{};stroke:{};stroke-width:{}px;}}"#,
+            id,
+            section,
+            id,
+            section,
+            id,
+            section,
+            id,
+            section,
+            neo_node_fill,
+            neo_node_stroke,
+            stroke_width
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="neo"].section-edge-{}{{stroke:{};}}"#,
+            id, section, neo_edge_stroke
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} [data-look="neo"].mindmap-node.section-{} text{{fill:{};}}"#,
+            id, section, neo_text_label
+        );
     }
 
     // Root section overrides.
-    let root_fill = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let root_label = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
-    let node_border = theme_color(effective_config, "nodeBorder", root_label.as_str());
     let root_span = if theme.contains("redux") {
         node_border.as_str()
     } else {
@@ -476,6 +586,51 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         r#"#{} .mindmap-node-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}"#,
         id
     );
+    let _ = write!(
+        &mut out,
+        r#"#{} [data-look="neo"].mindmap-node{{filter:{scoped_drop_shadow};}}"#,
+        id
+    );
+    let neo_root_fill = if theme.contains("redux") {
+        main_bkg.as_str()
+    } else {
+        root_fill.as_str()
+    };
+    let neo_root_text_label_index = if theme == "neutral" { 1 } else { 0 };
+    let neo_root_text = if theme.contains("redux") {
+        node_border
+    } else {
+        theme_color(
+            effective_config,
+            &format!("cScaleLabel{}", neo_root_text_label_index),
+            default_mindmap_label(neo_root_text_label_index),
+        )
+    };
+    let _ = write!(
+        &mut out,
+        r#"#{} [data-look="neo"].mindmap-node.section-root rect,#{} [data-look="neo"].mindmap-node.section-root path,#{} [data-look="neo"].mindmap-node.section-root circle,#{} [data-look="neo"].mindmap-node.section-root polygon{{fill:{};}}"#,
+        id, id, id, id, neo_root_fill
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} [data-look="neo"].mindmap-node.section-root .text-inner-tspan{{fill:{};}}"#,
+        id, neo_root_text
+    );
+    if use_gradient {
+        for i in 0..theme_color_limit {
+            let section = i as i64 - 1;
+            let _ = write!(
+                &mut out,
+                r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{stroke:url(#{}-gradient);fill:{};}}"#,
+                id, section, id, section, id, section, id, section, id, main_bkg
+            );
+            let _ = write!(
+                &mut out,
+                r#"#{} .section-{} line{{stroke-width:0;}}"#,
+                id, section
+            );
+        }
+    }
 
     out.push_str(&parts.root_rule);
     out
@@ -930,6 +1085,7 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     );
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
+    out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
     out.push_str("<g>");
 
     let _ = write!(
@@ -994,12 +1150,14 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             e.thickness.trim(),
             e.classes.trim()
         );
+        let data_look_attr = mindmap_data_look_attr(&e.look, config);
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{id}" class="{class}" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            r#"<path d="{d}" id="{id}" class="{class}"{look_attr} data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
             d = escape_attr(&d),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
+            look_attr = data_look_attr,
             pts = escape_xml(&data_points),
         );
     }
@@ -1029,11 +1187,13 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         let padding = n.padding.max(0.0);
         let half_padding = padding / 2.0;
         let class = format!("node {}", n.css_classes.trim());
+        let data_look_attr = mindmap_data_look_attr(&n.look, config);
         let _ = write!(
             &mut out,
-            r#"<g class="{class}" id="{dom_id}" transform="translate({x}, {y})">"#,
+            r#"<g class="{class}" id="{dom_id}"{look_attr} transform="translate({x}, {y})">"#,
             class = escape_xml(&class),
             dom_id = escape_xml(&n.dom_id),
+            look_attr = data_look_attr,
             x = fmt(x),
             y = fmt(y),
         );

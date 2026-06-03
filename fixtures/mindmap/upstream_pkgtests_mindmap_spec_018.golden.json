@@ -14,7 +14,7 @@
         "padding": 20,
         "cssClasses": "mindmap-node section-root section--1",
         "cssStyles": [],
-        "look": "default",
+        "look": "classic",
         "level": 0,
         "nodeId": "root",
         "type": 2

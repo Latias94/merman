@@ -27,8 +27,8 @@ pub fn parse_mindmap_model_for_render(
     db.assign_sections(root_id, None);
 
     Ok(MindmapDiagramRenderModel {
-        nodes: db.to_layout_nodes_for_render(root_id),
-        edges: db.to_edges_for_render(root_id),
+        nodes: db.to_layout_nodes_for_render(root_id, &meta.effective_config),
+        edges: db.to_edges_for_render(root_id, &meta.effective_config),
     })
 }
 
@@ -204,8 +204,8 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     db.assign_sections(root_id, None);
 
-    let nodes = db.to_layout_node_values(root_id);
-    let edges = db.to_edge_values(root_id);
+    let nodes = db.to_layout_node_values(root_id, &meta.effective_config);
+    let edges = db.to_edge_values(root_id, &meta.effective_config);
 
     let mut final_config = meta.effective_config.as_value().clone();
     if meta.config.as_value().get("layout").is_none() {

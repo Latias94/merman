@@ -3,6 +3,75 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Mindmap Look/Theme Data Seam And Neo DOM
+
+Outcome:
+
+- Fixed the source-backed Mindmap `look` seam across parser data, typed render data, and SVG
+  output instead of only adding a renderer-side attribute.
+- Pinned Mermaid 11.15 `MindmapDb.getData()` copies `conf.look` into node and edge layout data.
+  Local Mindmap previously hardcoded `"default"` into both compatibility JSON and typed render
+  models, so official `look: "neo"` data never reached the final render seam.
+- Local Mindmap now projects `MermaidConfig.look` into nodes and edges. Default snapshots move from
+  `"default"` to Mermaid's configured default `"classic"`; `look: "neo"` reaches both JSON and
+  typed render models.
+- Restored the adjacent upstream default-shape rule: default Mindmap nodes use `rounded` under
+  `redux*` themes and `defaultMindmapNode` otherwise.
+- Local SVG now emits `data-look="neo"` on Mindmap nodes and edges only for the `neo` look. This
+  keeps default/classic structural DOM parity clean while letting Mermaid 11.15's
+  `[data-look="neo"]` selectors reach matching current DOM.
+- Mindmap CSS now emits the source-backed `neo` node, root, edge, drop-shadow, and gradient
+  branches from `mindmap/styles.ts`; scoped gradient defs are emitted only when
+  `useGradient`, `gradientStart`, and `gradientStop` are present, matching `mindmapRenderer.ts`.
+- Golden refresh was intentionally narrowed after rejecting broad order-only fixture churn: the
+  final fixture diff is limited to `fixtures/mindmap/*.golden.json`, where recursive JSON
+  comparison found only `model.nodes[].look` and `model.edges[].look` changing from `"default"` to
+  `"classic"`.
+- Public renderability smoke now proves real SVG output has matching `data-look="neo"` node/edge
+  DOM, source-backed `neo` CSS selectors, drop-shadow CSS, and gradient defs.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapDb.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapRenderer.ts`
+
+Touched production surfaces:
+
+- [crates/merman-core/src/diagrams/mindmap/db.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/mindmap/db.rs)
+- [crates/merman-core/src/diagrams/mindmap/parse.rs](/F:/SourceCodes/Rust/merman/crates/merman-core/src/diagrams/mindmap/parse.rs)
+- [crates/merman-render/src/svg/parity/mindmap.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/mindmap.rs)
+- [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+- `fixtures/mindmap/*.golden.json`
+
+Focused verification:
+
+- `cargo nextest run -p merman-core mindmap` - passed, `33` tests run.
+- `cargo nextest run -p merman-render mindmap` - passed, `9` tests run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `12`
+  tests run.
+- `cargo nextest run -p merman-core --test snapshots` - passed, `1` fixture-snapshot gate run.
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\mindmap_report_parity_after_hpd080_look_theme.md` -
+  passed, all Mindmap fixtures matched structurally.
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\mindmap_report_parity_root_after_hpd080_look_theme.md` -
+  expected-failed on the existing `4` Mindmap root residual rows:
+  `zed_pr_57644_mindmap`, `upstream_docs_example_icons_br`,
+  `upstream_examples_mindmap_basic_mindmap_001`, and
+  `upstream_docs_tidy_tree_example_usage_002`.
+- `cargo fmt -p merman-core -p merman-render -p merman --check` - passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is a Mindmap `look/theme -> render` source seam fix, not a root-bounds tune. The known
+  Mindmap `parity-root` residuals remain diagnostic and should not be forced through `look`,
+  gradient, or CSS logic.
+- `classic` is now the semantic model default because that is Mermaid's configured default. The
+  final SVG intentionally omits `data-look` for classic/default output to preserve current
+  structural parity and avoid adding inert attributes.
+
 ## HPD-080 - Timeline Redux Visible DOM Theme Consumption
 
 Outcome:

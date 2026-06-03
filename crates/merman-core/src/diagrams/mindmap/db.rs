@@ -9,6 +9,35 @@ use super::{
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
 
+fn mindmap_look(config: &MermaidConfig) -> String {
+    config.get_str("look").unwrap_or("classic").to_string()
+}
+
+fn mindmap_default_shape(config: &MermaidConfig) -> &'static str {
+    let theme = config
+        .get_str("theme")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if theme.contains("redux") {
+        "rounded"
+    } else {
+        "defaultMindmapNode"
+    }
+}
+
+fn shape_from_type(ty: i32, default_shape: &'static str) -> &'static str {
+    match ty {
+        NODE_TYPE_CIRCLE => "mindmapCircle",
+        NODE_TYPE_RECT => "rect",
+        NODE_TYPE_ROUNDED_RECT => "rounded",
+        NODE_TYPE_CLOUD => "cloud",
+        NODE_TYPE_BANG => "bang",
+        NODE_TYPE_HEXAGON => "hexagon",
+        NODE_TYPE_DEFAULT => default_shape,
+        _ => "rect",
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct MindmapNode {
     pub(super) id: i32,
@@ -223,21 +252,14 @@ impl MindmapDb {
         Value::Object(map)
     }
 
-    pub(super) fn to_layout_node_values(&self, root_id: i32) -> Vec<Value> {
-        fn shape_from_type(ty: i32) -> &'static str {
-            match ty {
-                NODE_TYPE_CIRCLE => "mindmapCircle",
-                NODE_TYPE_RECT => "rect",
-                NODE_TYPE_ROUNDED_RECT => "rounded",
-                NODE_TYPE_CLOUD => "cloud",
-                NODE_TYPE_BANG => "bang",
-                NODE_TYPE_HEXAGON => "hexagon",
-                NODE_TYPE_DEFAULT => "defaultMindmapNode",
-                _ => "rect",
-            }
-        }
-
-        fn visit(db: &MindmapDb, node_id: i32, out: &mut Vec<Value>) {
+    pub(super) fn to_layout_node_values(&self, root_id: i32, config: &MermaidConfig) -> Vec<Value> {
+        fn visit(
+            db: &MindmapDb,
+            node_id: i32,
+            look: &str,
+            default_shape: &'static str,
+            out: &mut Vec<Value>,
+        ) {
             let Ok(node_idx) = usize::try_from(node_id) else {
                 return;
             };
@@ -265,7 +287,10 @@ impl MindmapDb {
                 map.insert("labelType".to_string(), json!("markdown"));
             }
             map.insert("isGroup".to_string(), json!(false));
-            map.insert("shape".to_string(), json!(shape_from_type(node.ty)));
+            map.insert(
+                "shape".to_string(),
+                json!(shape_from_type(node.ty, default_shape)),
+            );
             map.insert("width".to_string(), json!(node.width));
             map.insert("height".to_string(), json!(node.height.unwrap_or(0)));
             // Keep the DB padding in the semantic model (matches Mermaid mindmapDb.getData()).
@@ -273,7 +298,7 @@ impl MindmapDb {
             map.insert("padding".to_string(), json!(node.padding));
             map.insert("cssClasses".to_string(), json!(css_classes));
             map.insert("cssStyles".to_string(), Value::Array(Vec::new()));
-            map.insert("look".to_string(), json!("default"));
+            map.insert("look".to_string(), json!(look));
 
             if let Some(icon) = &node.icon {
                 map.insert("icon".to_string(), json!(icon));
@@ -295,30 +320,29 @@ impl MindmapDb {
             out.push(Value::Object(map));
 
             for child in node.children.iter() {
-                visit(db, *child, out);
+                visit(db, *child, look, default_shape, out);
             }
         }
 
         let mut out = Vec::new();
-        visit(self, root_id, &mut out);
+        let look = mindmap_look(config);
+        let default_shape = mindmap_default_shape(config);
+        visit(self, root_id, &look, default_shape, &mut out);
         out
     }
 
-    pub(super) fn to_layout_nodes_for_render(&self, root_id: i32) -> Vec<MindmapDiagramRenderNode> {
-        fn shape_from_type(ty: i32) -> &'static str {
-            match ty {
-                NODE_TYPE_CIRCLE => "mindmapCircle",
-                NODE_TYPE_RECT => "rect",
-                NODE_TYPE_ROUNDED_RECT => "rounded",
-                NODE_TYPE_CLOUD => "cloud",
-                NODE_TYPE_BANG => "bang",
-                NODE_TYPE_HEXAGON => "hexagon",
-                NODE_TYPE_DEFAULT => "defaultMindmapNode",
-                _ => "rect",
-            }
-        }
-
-        fn visit(db: &MindmapDb, node_id: i32, out: &mut Vec<MindmapDiagramRenderNode>) {
+    pub(super) fn to_layout_nodes_for_render(
+        &self,
+        root_id: i32,
+        config: &MermaidConfig,
+    ) -> Vec<MindmapDiagramRenderNode> {
+        fn visit(
+            db: &MindmapDb,
+            node_id: i32,
+            look: &str,
+            default_shape: &'static str,
+            out: &mut Vec<MindmapDiagramRenderNode>,
+        ) {
             let Ok(node_idx) = usize::try_from(node_id) else {
                 return;
             };
@@ -354,13 +378,13 @@ impl MindmapDb {
                     String::new()
                 },
                 is_group: false,
-                shape: shape_from_type(node.ty).to_string(),
+                shape: shape_from_type(node.ty, default_shape).to_string(),
                 width: node.width as f64,
                 height: node.height.unwrap_or(0) as f64,
                 padding,
                 css_classes,
                 css_styles: Vec::new(),
-                look: "default".to_string(),
+                look: look.to_string(),
                 icon: node.icon.clone(),
                 x: node.x,
                 y: node.y,
@@ -371,17 +395,19 @@ impl MindmapDb {
             });
 
             for child in node.children.iter() {
-                visit(db, *child, out);
+                visit(db, *child, look, default_shape, out);
             }
         }
 
         let mut out = Vec::new();
-        visit(self, root_id, &mut out);
+        let look = mindmap_look(config);
+        let default_shape = mindmap_default_shape(config);
+        visit(self, root_id, &look, default_shape, &mut out);
         out
     }
 
-    pub(super) fn to_edge_values(&self, root_id: i32) -> Vec<Value> {
-        fn visit(db: &MindmapDb, node_id: i32, edges: &mut Vec<Value>) {
+    pub(super) fn to_edge_values(&self, root_id: i32, config: &MermaidConfig) -> Vec<Value> {
+        fn visit(db: &MindmapDb, node_id: i32, look: &str, edges: &mut Vec<Value>) {
             let Ok(node_idx) = usize::try_from(node_id) else {
                 return;
             };
@@ -413,7 +439,7 @@ impl MindmapDb {
                 map.insert("type".to_string(), json!("normal"));
                 map.insert("curve".to_string(), json!("basis"));
                 map.insert("thickness".to_string(), json!("normal"));
-                map.insert("look".to_string(), json!("default"));
+                map.insert("look".to_string(), json!(look));
                 map.insert("classes".to_string(), json!(classes));
                 map.insert("depth".to_string(), json!(node.level));
                 if let Some(section) = child.section {
@@ -421,17 +447,27 @@ impl MindmapDb {
                 }
                 edges.push(Value::Object(map));
 
-                visit(db, *child_id, edges);
+                visit(db, *child_id, look, edges);
             }
         }
 
         let mut edges = Vec::new();
-        visit(self, root_id, &mut edges);
+        let look = mindmap_look(config);
+        visit(self, root_id, &look, &mut edges);
         edges
     }
 
-    pub(super) fn to_edges_for_render(&self, root_id: i32) -> Vec<MindmapDiagramRenderEdge> {
-        fn visit(db: &MindmapDb, node_id: i32, edges: &mut Vec<MindmapDiagramRenderEdge>) {
+    pub(super) fn to_edges_for_render(
+        &self,
+        root_id: i32,
+        config: &MermaidConfig,
+    ) -> Vec<MindmapDiagramRenderEdge> {
+        fn visit(
+            db: &MindmapDb,
+            node_id: i32,
+            look: &str,
+            edges: &mut Vec<MindmapDiagramRenderEdge>,
+        ) {
             let Ok(node_idx) = usize::try_from(node_id) else {
                 return;
             };
@@ -460,18 +496,19 @@ impl MindmapDb {
                     edge_type: "normal".to_string(),
                     curve: "basis".to_string(),
                     thickness: "normal".to_string(),
-                    look: "default".to_string(),
+                    look: look.to_string(),
                     classes,
                     depth: node.level as i64,
                     section: child.section,
                 });
 
-                visit(db, *child_id, edges);
+                visit(db, *child_id, look, edges);
             }
         }
 
         let mut edges = Vec::new();
-        visit(self, root_id, &mut edges);
+        let look = mindmap_look(config);
+        visit(self, root_id, &look, &mut edges);
         edges
     }
 }

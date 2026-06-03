@@ -643,6 +643,14 @@ Current repository reality to preserve:
     branch, focused Timeline tests and public smoke cover the visible node/line surfaces, structural
     Timeline `parity` stayed green, and `parity-root` remains the known `3` max-width residual
     rows.
+  - A sixty-first HPD-080 Mindmap look/theme seam slice fixed the `look` source chain from
+    `MindmapDb.getData()` through typed render data into SVG. Mindmap nodes and edges now carry the
+    configured Mermaid `look` instead of hardcoded `"default"`; the default semantic value is
+    Mermaid's `"classic"`, and redux themes now select `rounded` as the default node shape like
+    upstream. Local SVG emits `data-look="neo"` only for `neo` nodes/edges, then applies the
+    matching Mermaid 11.15 `neo` node/root/edge/drop-shadow/gradient CSS and scoped gradient defs.
+    Mindmap structural `parity` stayed green; the known `4` Mindmap `parity-root` rows remain
+    diagnostic.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
