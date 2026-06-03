@@ -123,11 +123,11 @@ Last updated: 2026-06-03
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS
   delta extraction, while `compare-dagre-layout` remains a State-only graph producer. Basic,
   composite, and internal-cluster State comparisons all stayed zero-delta. Architecture Cytoscape
-  service-label measurement now has a shared `ArchitectureCytoscapeServiceLabelExtension` seam used
-  by both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. That seam kept SVG
+  service-label measurement now has a shared `ArchitectureCytoscapeChildLabelBounds` seam used by
+  both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. That seam keeps SVG
   root `createText(...)` measurement separate from Cytoscape compound-child label measurement and
-  preserved the then-known 26 Architecture root residuals. A disconnected-islands root-bounds audit
-  then
+  preserved root residual behavior through the later behavior-preserving child-label bounds cleanup.
+  A disconnected-islands root-bounds audit then
   rejected a tempting global top-level-service switch from `svg_root_bounds` to
   `cytoscape_group_child_bounds`: it made that one height-only row exact but expanded full
   Architecture root mismatches from `26` to `84`. The first narrow phase-specific follow-up is now
@@ -143,7 +143,10 @@ Last updated: 2026-06-03
   experiment confirmed the first-principles gate policy: raw Cytoscape label/body/final group
   formulas improved the two `+5px` rows locally but expanded full Architecture root mismatches
   from `25` to `100`, so production changes were reverted and `parity-root` remains diagnostic
-  unless a seam survives family-level verification.
+  unless a seam survives family-level verification. A follow-up child-label bounds cleanup made the
+  Cytoscape child-label bounds phase explicit in code without changing Architecture output:
+  structural parity stayed green and `parity-root` remained the existing `25` mismatch diagnostic
+  queue.
 
 ## M5 - Semantic / Render Unification Pilot
 

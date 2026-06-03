@@ -3,6 +3,42 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Child Label Bounds Seam
+
+Outcome:
+
+- Continued HPD-050 from the rejected Architecture child source-phase experiments. The safe move
+  was a phase-boundary cleanup, not another root-width tune.
+- Renamed the shared Architecture Cytoscape label seam from the generic service-label extension
+  shape to `ArchitectureCytoscapeChildLabelBounds`.
+- Added an explicit `bounds_for_icon(...)` helper so the Cytoscape compound child-label phase is
+  represented as bounds that can be unioned with service icon bounds.
+- FCoSE node `BoundsExtras` and SVG/group service-bounds estimation still use the same existing
+  half-width and bottom-extension values; no production layout constants changed.
+- Architecture structural parity stayed green, and Architecture `parity-root` remained the existing
+  `25` mismatch diagnostic queue.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p merman-render architecture` - passed, `27` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_child_bounds_seam.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_child_bounds_seam.md` -
+  expected failure with the existing `25` Architecture root-only mismatches. The leading rows remain
+  `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076` (`+5.000px`), and
+  `html_titles_and_escapes_041` (`+5.000px`).
+
+Residual note:
+
+- This is a behavior-preserving seam cleanup. It makes the source phase explicit but does not
+  replace the headless measurement model or claim root residual closure.
+
 ## HPD-080 - All-Supported Raster Audit Gate Calibration
 
 Outcome:
@@ -1379,6 +1415,7 @@ Fourteenth slice Architecture Cytoscape label-extension seam:
   [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
   so FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation share the same
   Cytoscape service-label half-width and compound-label bottom-extension calculation.
+- The current code has since narrowed this phase name to `ArchitectureCytoscapeChildLabelBounds`.
 - Kept SVG root `createText(...)` measurement separate from Cytoscape compound-child label
   measurement. This is a phase split, not a root-width tune.
 - Added focused unit coverage for the shared extension and empty-title behavior.

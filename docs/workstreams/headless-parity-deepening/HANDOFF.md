@@ -189,10 +189,10 @@ Current repository reality to preserve:
     comparisons all reported zero node and edge delta after the extraction. Do not broaden this to
     other diagrams until a real Dagre-backed residual audit needs that producer.
   - Architecture Cytoscape service-label measurement now has a shared
-    `ArchitectureCytoscapeServiceLabelExtension` seam used by both FCoSE node `BoundsExtras` and
+    `ArchitectureCytoscapeChildLabelBounds` seam used by both FCoSE node `BoundsExtras` and
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while
-    preserving the then-known 26 Architecture root residuals; SVG root `createText(...)`
-    measurement remains separate from Cytoscape compound-child label measurement.
+    preserving root residual behavior; SVG root `createText(...)` measurement remains separate from
+    Cytoscape compound-child label measurement.
   - A follow-up disconnected-islands root-bounds audit confirmed why that phase split matters.
     `stress_architecture_disconnected_islands_046` was width-aligned but height-off before the
     follow-up fix: local final root was `823.346x775.647` versus upstream `823.346x768.460`. The
@@ -251,6 +251,11 @@ Current repository reality to preserve:
     Both production experiments were reverted. Treat this as evidence that `parity-root` is a
     diagnostic sensor for Architecture browser tails, not a mandate to directly import raw
     Cytoscape source phases before the headless measurement model is strong enough.
+  - A follow-up child-label bounds seam cleanup renamed the old generic service-label extension into
+    `ArchitectureCytoscapeChildLabelBounds` and added an explicit `bounds_for_icon(...)` helper.
+    This is behavior-preserving: FCoSE `BoundsExtras` and SVG/group service-bounds estimation still
+    consume the same existing half-width and bottom-extension values. Architecture structural parity
+    stayed green, and `parity-root` remained the existing `25` mismatch diagnostic queue.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

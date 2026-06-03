@@ -26,10 +26,22 @@ pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ArchitectureCytoscapeServiceLabelExtension {
+pub(crate) struct ArchitectureCytoscapeChildLabelBounds {
     pub(crate) metrics: ArchitectureCytoscapeCanvasLabelMetrics,
     pub(crate) half_width: f64,
     pub(crate) bottom_extension_px: f64,
+}
+
+impl ArchitectureCytoscapeChildLabelBounds {
+    fn bounds_for_icon(&self, icon_bounds: &Bounds) -> Bounds {
+        let center_x = (icon_bounds.min_x + icon_bounds.max_x) / 2.0;
+        Bounds {
+            min_x: center_x - self.half_width,
+            min_y: icon_bounds.min_y,
+            max_x: center_x + self.half_width,
+            max_y: icon_bounds.max_y + self.bottom_extension_px,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -97,15 +109,24 @@ pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
     padding_px.max(0.0) + ARCHITECTURE_SVG_GROUP_BBOX_EXTRA_PADDING_PX
 }
 
-pub(crate) fn architecture_cytoscape_service_label_extension(
+fn union_bounds(a: &Bounds, b: &Bounds) -> Bounds {
+    Bounds {
+        min_x: a.min_x.min(b.min_x),
+        min_y: a.min_y.min(b.min_y),
+        max_x: a.max_x.max(b.max_x),
+        max_y: a.max_y.max(b.max_y),
+    }
+}
+
+pub(crate) fn architecture_cytoscape_child_label_bounds(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     font_size_px: f64,
-) -> Option<ArchitectureCytoscapeServiceLabelExtension> {
+) -> Option<ArchitectureCytoscapeChildLabelBounds> {
     let title = title.map(str::trim).filter(|t| !t.is_empty())?;
     let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
-    Some(ArchitectureCytoscapeServiceLabelExtension {
+    Some(ArchitectureCytoscapeChildLabelBounds {
         metrics,
         half_width: metrics.half_width,
         bottom_extension_px: architecture_create_text_compound_label_extra_bottom_px(font_size_px),
@@ -125,21 +146,21 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     let mut half_w = half_icon + border;
     let mut bottom = border;
 
-    if let Some(label_extension) =
-        architecture_cytoscape_service_label_extension(title, measurer, style, font_size_px)
+    if let Some(label_bounds) =
+        architecture_cytoscape_child_label_bounds(title, measurer, style, font_size_px)
     {
-        let label_half = label_extension.half_width;
+        let label_half = label_bounds.half_width;
         half_w = half_w.max(label_half + border);
         half_w = (half_w * 2.0).round() / 2.0;
-        bottom = border + label_extension.bottom_extension_px;
+        bottom = border + label_bounds.bottom_extension_px;
 
         if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
             eprintln!(
                 "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} half_w={:.6} extras_lr={:.6} bottom={:.6}",
                 title.map(str::trim).unwrap_or(""),
-                label_extension.metrics.width,
+                label_bounds.metrics.width,
                 label_half,
-                label_extension.metrics.applied_scale,
+                label_bounds.metrics.applied_scale,
                 half_w,
                 (half_w - half_icon).max(0.0),
                 bottom,
@@ -210,7 +231,7 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let Some(cytoscape_label_extension) = architecture_cytoscape_service_label_extension(
+        let Some(cytoscape_label_bounds) = architecture_cytoscape_child_label_bounds(
             Some(title),
             text_measurer,
             compound_text_style,
@@ -218,17 +239,12 @@ where
         ) else {
             unreachable!("trimmed non-empty title should produce a Cytoscape label extension");
         };
-        let compound_half_width = cytoscape_label_extension.half_width;
-        let label_extra_bottom_compound = cytoscape_label_extension.bottom_extension_px;
+        let label_extra_bottom_compound = cytoscape_label_bounds.bottom_extension_px;
 
         let cx = x + icon_size_px / 2.0;
         let text_left_root = cx - bbox_left_root;
         let text_right_root = cx + bbox_right_root;
         let text_bottom_root = y + icon_size_px + label_extra_bottom_root;
-
-        let text_left_compound = cx - compound_half_width;
-        let text_right_compound = cx + compound_half_width;
-        let text_bottom_compound = y + icon_size_px + label_extra_bottom_compound;
 
         svg_root_bounds = Bounds {
             min_x: svg_root_bounds.min_x.min(text_left_root),
@@ -236,12 +252,9 @@ where
             max_x: svg_root_bounds.max_x.max(text_right_root),
             max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        cytoscape_group_child_bounds = Bounds {
-            min_x: cytoscape_group_child_bounds.min_x.min(text_left_compound),
-            min_y: cytoscape_group_child_bounds.min_y,
-            max_x: cytoscape_group_child_bounds.max_x.max(text_right_compound),
-            max_y: cytoscape_group_child_bounds.max_y.max(text_bottom_compound),
-        };
+        let child_label_bounds = cytoscape_label_bounds.bounds_for_icon(&emitted_icon_bounds);
+        cytoscape_group_child_bounds =
+            union_bounds(&cytoscape_group_child_bounds, &child_label_bounds);
 
         if debug_service.as_deref() == Some(title) {
             eprintln!(
@@ -251,7 +264,7 @@ where
                 bbox_left_root,
                 bbox_right_root,
                 label_extra_bottom_root,
-                cytoscape_label_extension.half_width,
+                cytoscape_label_bounds.half_width,
                 label_extra_bottom_compound,
                 emitted_icon_bounds.min_x,
                 emitted_icon_bounds.min_y,
@@ -424,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_cytoscape_service_label_extension_centralizes_compound_label_phase() {
+    fn architecture_cytoscape_child_label_bounds_centralize_compound_child_label_phase() {
         let style = crate::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 12.0,
@@ -432,32 +445,52 @@ mod tests {
         };
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
-        let extension = super::architecture_cytoscape_service_label_extension(
+        let label_bounds = super::architecture_cytoscape_child_label_bounds(
             Some("API gateway"),
             &measurer,
             &style,
             12.0,
         )
-        .expect("non-empty title has a Cytoscape label extension");
+        .expect("non-empty title has Cytoscape child label bounds");
         let direct_metrics =
             super::architecture_cytoscape_canvas_label_metrics("API gateway", &measurer, &style);
 
-        assert_eq!(extension.metrics.width, direct_metrics.width);
-        assert_eq!(extension.half_width, direct_metrics.half_width);
+        assert_eq!(label_bounds.metrics.width, direct_metrics.width);
+        assert_eq!(label_bounds.half_width, direct_metrics.half_width);
         assert_eq!(
-            extension.metrics.applied_scale,
+            label_bounds.metrics.applied_scale,
             direct_metrics.applied_scale
         );
-        assert_eq!(extension.bottom_extension_px, 13.0);
+        assert_eq!(label_bounds.bottom_extension_px, 13.0);
         assert!(
-            super::architecture_cytoscape_service_label_extension(
-                Some("   "),
-                &measurer,
-                &style,
-                12.0
-            )
-            .is_none()
+            super::architecture_cytoscape_child_label_bounds(Some("   "), &measurer, &style, 12.0)
+                .is_none()
         );
+    }
+
+    #[test]
+    fn architecture_cytoscape_child_label_bounds_extend_icon_bounds_by_phase() {
+        let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
+            metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
+                width: 96.0,
+                half_width: 50.0,
+                applied_scale: 1.0,
+            },
+            half_width: 50.0,
+            bottom_extension_px: 17.0,
+        };
+        let icon_bounds = crate::model::Bounds {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 90.0,
+            max_y: 100.0,
+        };
+
+        let bounds = label_bounds.bounds_for_icon(&icon_bounds);
+        assert_eq!(bounds.min_x, 0.0);
+        assert_eq!(bounds.min_y, 20.0);
+        assert_eq!(bounds.max_x, 100.0);
+        assert_eq!(bounds.max_y, 117.0);
     }
 
     #[test]
