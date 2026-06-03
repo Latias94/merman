@@ -325,6 +325,15 @@ Current repository reality to preserve:
     stored upstream and local SVGs emit the same decoded label words. Browser group `i` final bbox
     is `389.822x383.593`, while local emits `392.822x383.593`; local service positions are about
     `-1.5px` on X with matching Y. Treat it as service label / group child bbox phase residual.
+  - A follow-up active-residual batch now captures the current representative Architecture root
+    queue in one source-backed probe run. The index is
+    `target\compare\architecture-fcose-probe-active-residuals-hpd050\architecture-fcose-probe-batch.md`
+    and covers `junction_fork_join_026`, the two `+5px` group/service rows,
+    `unicode_and_xml_escapes_019`, `nested_groups_002`,
+    `batch6_init_fontsize_icon_size_wrap_093`, and `group_port_edges_017`. All sampled summaries
+    record `bbBeforeRun2 == bbAfterSegments`, so the next useful cut is a Rust-vs-browser phase
+    comparison of final node/edge/child bboxes, not another command-shape extension or root
+    constant tune.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.

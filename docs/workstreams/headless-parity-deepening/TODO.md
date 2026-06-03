@@ -182,6 +182,14 @@ Last updated: 2026-06-03
   A follow-up batch-index slice writes `architecture-fcose-probe-batch.md` beside batch outputs,
   listing each fixture's JSON/Markdown artifact and captured stage/node/edge counts. Use the index
   as the first entrypoint when citing multi-fixture source-backed probe evidence.
+  A follow-up active-residual batch used that index flow against the current 25-row Architecture
+  root queue and captured seven representative samples in one run:
+  `junction_fork_join_026`, `batch5_long_titles_and_punct_076`,
+  `html_titles_and_escapes_041`, `unicode_and_xml_escapes_019`, `nested_groups_002`,
+  `batch6_init_fontsize_icon_size_wrap_093`, and `group_port_edges_017`. The batch index is
+  `target\compare\architecture-fcose-probe-active-residuals-hpd050\architecture-fcose-probe-batch.md`.
+  This is evidence collection only; use the per-fixture summaries for source-backed phase
+  comparison before changing root-bounds or layout formulas.
 
 ## M5 - Semantic / Render Unification Pilot
 

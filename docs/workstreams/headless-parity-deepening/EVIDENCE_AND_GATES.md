@@ -3,6 +3,59 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Active Residual Probe Batch
+
+Outcome:
+
+- Generated a fresh Architecture `parity-root` diagnostic report for current HEAD. It remains an
+  expected failure with the same active `25` root-only mismatch queue; the leading rows are still
+  `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076` (`+5.000px`),
+  `html_titles_and_escapes_041` (`+5.000px`), `unicode_and_xml_escapes_019` (`+3.000px`),
+  `batch6_init_fontsize_icon_size_wrap_093` (`-2.500px`), `nested_groups_002` (`+2.500px`), and
+  `group_port_edges_017` (`+1.468px`).
+- Used the existing batch `debug-architecture-fcose-probe` command to capture those seven
+  representative active residual samples in one source-backed artifact set.
+- The batch wrote per-fixture raw JSON, per-fixture Markdown summaries, and
+  `target\compare\architecture-fcose-probe-active-residuals-hpd050\architecture-fcose-probe-batch.md`
+  as the index.
+- The sampled summaries all capture the same four probe stages, and `bbBeforeRun2` equals
+  `bbAfterSegments` for the sampled rows. That keeps the next audit focused on final
+  Cytoscape/FCoSE node, child, and edge bounds rather than a later segment-pass bbox expansion.
+- No renderer, layout, measurement constant, probe command shape, or SVG output behavior changed.
+
+Probe index:
+
+- `target\compare\architecture-fcose-probe-active-residuals-hpd050\architecture-fcose-probe-batch.md`
+
+Fixture coverage:
+
+| fixture | root delta | stages | nodes | edges | residual role |
+|---|---:|---:|---:|---:|---|
+| `stress_architecture_junction_fork_join_026` | `+13.976px` | 4 | 9 | 7 | largest source-input-matched solver/phase candidate |
+| `stress_architecture_batch5_long_titles_and_punct_076` | `+5.000px` | 4 | 5 | 4 | group/service child-label bbox phase |
+| `stress_architecture_html_titles_and_escapes_041` | `+5.000px` | 4 | 4 | 3 | group/service child-label bbox phase |
+| `stress_architecture_unicode_and_xml_escapes_019` | `+3.000px` | 4 | 5 | 4 | service label / group child bbox phase |
+| `stress_architecture_nested_groups_002` | `+2.500px` | 4 | 8 | 5 | nested compound-bounds phase |
+| `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` | `-2.500px` | 4 | 5 | 2 | custom init font/icon child-bbox phase |
+| `stress_architecture_group_port_edges_017` | `+1.468px` | 4 | 6 | 4 | edge endpoint / compound-bound drift |
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_active_residual_probe_prep.md` -
+  expected failure with the current `25` Architecture root-only mismatch rows.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_nested_groups_002 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_group_port_edges_017 --out-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote `7` JSON artifacts, `7` Markdown summaries, and the batch index.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- Line-by-line JSON parse for `docs\workstreams\headless-parity-deepening\CONTEXT.jsonl` - passed,
+  `506` JSONL records parsed.
+
+Residual note:
+
+- This closes an evidence-collection gap, not a root residual. The next implementation decision
+  should compare these browser/Cytoscape final node/edge/child phases against the Rust
+  measurement/root-bounds seams before changing production formulas.
+
 ## HPD-050 - Architecture FCoSE Probe Batch Index
 
 Outcome:
