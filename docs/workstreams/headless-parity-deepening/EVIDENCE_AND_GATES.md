@@ -3,6 +3,66 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture FCoSE Compound Bounds Output
+
+Outcome:
+
+- Exposed final layout-base compound rectangles from `manatee::algo::fcose::IndexedLayoutResult`
+  as `compound_bounds`, then mapped them to Architecture group ids in
+  `ArchitectureDiagramLayout.fcose_compound_bounds`.
+- Kept SVG rendering behavior unchanged: Architecture group rect rendering still uses
+  `GroupRectComputer`, and the new field is an evidence/debug seam rather than a production group
+  rect source.
+- `debug-architecture-delta` reports now include `Local FCoSE compound bounds vs emitted group
+  rects`, comparing the local FCoSE compound rect phase with the local emitted SVG group rect phase.
+- Focused reports for the active direct group-width rows show the phases are materially different:
+  `pipeline` emitted width is `+107px` over the FCoSE rect, `ui` is `+44px`, and `i` is `+32px`.
+  The same rows still show upstream/local emitted group-width tails of `+5px`, `+5px`, and `+3px`.
+- This rejects direct substitution of local layout-base compound rects for emitted group rects. It
+  narrows the evidence chain by making the local final compound phase visible.
+
+Touched surfaces:
+
+- `crates/manatee/src/graph/mod.rs`
+- `crates/manatee/src/lib.rs`
+- `crates/manatee/src/algo/fcose/mod.rs`
+- `crates/merman-render/src/model.rs`
+- `crates/merman-render/src/architecture.rs`
+- `crates/merman-render/tests/architecture_layout_test.rs`
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-fcose-compound-bounds-output.md`
+- `target\compare\architecture-delta-fcose-compound-bounds-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p manatee indexed_layout_matches_string_graph_layout_for_compound_constraints` -
+  passed, `1` test run.
+- `cargo nextest run -p merman-render architecture_layout_exposes_fcose_compound_bounds_by_group_id` -
+  passed, `1` test run.
+- `cargo nextest run -p xtask fcose_probe_markdown_summarizes_stage_and_node_bounds` - passed,
+  `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-delta-fcose-compound-bounds-hpd050` -
+  passed; `pipeline` FCoSE-vs-emitted row reports `dw=+107px`, while emitted local-vs-upstream
+  group width remains `+5px`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --out target\compare\architecture-delta-fcose-compound-bounds-hpd050` -
+  passed; `ui` FCoSE-vs-emitted row reports `dw=+44px`, while emitted local-vs-upstream group
+  width remains `+5px`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --out target\compare\architecture-delta-fcose-compound-bounds-hpd050` -
+  passed; `i` FCoSE-vs-emitted row reports `dw=+32px`, while emitted local-vs-upstream group width
+  remains `+3px`.
+- `cargo nextest run -p manatee` - passed, `12` tests run.
+- `cargo nextest run -p merman-render --test architecture_layout_test` - passed, `6` tests run.
+- `cargo nextest run -p xtask` - passed, `95` tests run.
+- `cargo fmt --check -p manatee -p merman-render -p xtask` - passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- Do not consume `fcose_compound_bounds` as a renderer group-rect replacement without a new
+  source-backed phase model. The remaining direct group-width rows still point at child
+  service-label/content bounds feeding `GroupRectComputer`, not at final rect emission.
+
 ## HPD-050 - Architecture Group Content Union Audit
 
 Outcome:

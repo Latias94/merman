@@ -2,7 +2,7 @@
 
 use crate::algo::FcoseOptions;
 use crate::error::Result;
-use crate::graph::{Anchor, BoundsExtras, Graph, LayoutResult, Point};
+use crate::graph::{Anchor, BoundsExtras, Graph, LayoutRect, LayoutResult, Point};
 use indexmap::{IndexMap, IndexSet};
 use nalgebra as na;
 use rustc_hash::FxHashMap;
@@ -159,6 +159,11 @@ pub struct IndexedRelativePlacementConstraint {
 pub struct IndexedLayoutResult {
     pub node_positions: Vec<Point>,
     pub compound_positions: Vec<Point>,
+    /// Final layout-base compound rectangles after the last bounds update and relocation.
+    ///
+    /// These are the internal compound node rects used by the FCoSE port, not Cytoscape
+    /// `node.boundingBox()` values.
+    pub compound_bounds: Vec<LayoutRect>,
 }
 
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
@@ -323,6 +328,7 @@ pub fn layout_indexed(
 
     let mut node_positions: Vec<Point> = Vec::with_capacity(leaf_count);
     let mut compound_positions: Vec<Point> = Vec::with_capacity(compound_count);
+    let mut compound_bounds: Vec<LayoutRect> = Vec::with_capacity(compound_count);
     let nodes = std::mem::take(&mut sim.nodes);
     for (idx, n) in nodes.into_iter().enumerate() {
         let x = n.center_x();
@@ -331,6 +337,12 @@ pub fn layout_indexed(
             node_positions.push(Point { x, y });
         } else {
             compound_positions.push(Point { x, y });
+            compound_bounds.push(LayoutRect {
+                left: n.left,
+                top: n.top,
+                width: n.width,
+                height: n.height,
+            });
         }
     }
     if let Some(s) = output_start {
@@ -365,6 +377,7 @@ pub fn layout_indexed(
     Ok(IndexedLayoutResult {
         node_positions,
         compound_positions,
+        compound_bounds,
     })
 }
 
@@ -4207,10 +4220,23 @@ mod tests {
 
         assert_eq!(indexed.node_positions.len(), graph.nodes.len());
         assert_eq!(indexed.compound_positions.len(), graph.compounds.len());
+        assert_eq!(indexed.compound_bounds.len(), graph.compounds.len());
         assert_point_close(indexed.node_positions[0], compat.positions["a"]);
         assert_point_close(indexed.node_positions[1], compat.positions["b"]);
         assert_point_close(indexed.node_positions[2], compat.positions["c"]);
         assert_point_close(indexed.compound_positions[0], compat.positions["group"]);
+        let group_bounds = indexed.compound_bounds[0];
+        assert!(
+            group_bounds.width > 80.0 && group_bounds.height > 80.0,
+            "expected compound bounds to include child graph padding, got {group_bounds:?}"
+        );
+        assert_point_close(
+            indexed.compound_positions[0],
+            Point {
+                x: group_bounds.left + group_bounds.width / 2.0,
+                y: group_bounds.top + group_bounds.height / 2.0,
+            },
+        );
     }
 
     #[test]

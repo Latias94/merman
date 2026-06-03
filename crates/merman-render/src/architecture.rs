@@ -3,7 +3,10 @@ use crate::architecture_metrics::{
 };
 use crate::config::config_f64;
 use crate::json::from_value_ref;
-use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
+use crate::model::{
+    ArchitectureCompoundBounds, ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode,
+    LayoutPoint,
+};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
@@ -682,6 +685,8 @@ fn layout_architecture_diagram_model(
         timings.emit_nodes = s.elapsed();
     }
 
+    let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
+
     if use_manatee_layout && !nodes.is_empty() {
         let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
 
@@ -1189,6 +1194,20 @@ fn layout_architecture_diagram_model(
                 n.y = p.y;
             }
         }
+        fcose_compound_bounds.reserve(model.groups.len());
+        for (idx, group) in model.groups.iter().enumerate() {
+            if let Some(b) = result.compound_bounds.get(idx) {
+                fcose_compound_bounds.push(ArchitectureCompoundBounds {
+                    id: group.id.to_string(),
+                    bounds: Bounds {
+                        min_x: b.left,
+                        min_y: b.top,
+                        max_x: b.left + b.width,
+                        max_y: b.top + b.height,
+                    },
+                });
+            }
+        }
     }
 
     let build_edges_start = timing_enabled.then(web_time::Instant::now);
@@ -1399,9 +1418,10 @@ fn layout_architecture_diagram_model(
     }
 
     Ok(ArchitectureDiagramLayout {
-        bounds,
         nodes,
         edges,
+        fcose_compound_bounds,
+        bounds,
     })
 }
 

@@ -128,6 +128,16 @@ pub struct Point {
     pub y: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LayoutRect {
+    /// Top-left x coordinate in the layout engine coordinate space.
+    pub left: f64,
+    /// Top-left y coordinate in the layout engine coordinate space.
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct LayoutResult {
     pub positions: std::collections::BTreeMap<String, Point>,

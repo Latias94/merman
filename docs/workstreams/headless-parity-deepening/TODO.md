@@ -201,6 +201,14 @@ Last updated: 2026-06-04
   group bounds and then applies `padding + 2.5px`; focused debug runs show `batch5`, `html_titles`,
   and `unicode` are already too wide in that child content union phase. Do not change group
   padding, root padding, group title bounds, or final rect emission for these rows.
+  A follow-up local FCoSE compound-bounds output slice now exposes manatee's final layout-base
+  compound rectangles as `ArchitectureDiagramLayout.fcose_compound_bounds` and adds a
+  `debug-architecture-delta` table comparing those rects to the local emitted SVG group rects.
+  This confirms the local FCoSE rect phase is materially different from emitted group rects:
+  `pipeline`, `ui`, and `i` are `+107px`, `+44px`, and `+32px` wider in emitted space than in
+  FCoSE layout-base space, while their upstream/local emitted width tails remain only `+5px`,
+  `+5px`, and `+3px`. Keep the new field as evidence only; do not wire it into group rendering as
+  a shortcut.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

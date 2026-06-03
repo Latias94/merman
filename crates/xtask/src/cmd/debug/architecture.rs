@@ -957,6 +957,26 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         });
     }
 
+    let fcose_compound_rows: Vec<(String, Rect, Option<Rect>)> = layout
+        .fcose_compound_bounds
+        .iter()
+        .map(|compound| {
+            let b = &compound.bounds;
+            let fcose = Rect {
+                x: b.min_x,
+                y: b.min_y,
+                w: (b.max_x - b.min_x).max(0.0),
+                h: (b.max_y - b.min_y).max(0.0),
+            };
+            let local_key = format!("group-{}", compound.id);
+            (
+                compound.id.clone(),
+                fcose,
+                lo_groups.get(&local_key).copied(),
+            )
+        })
+        .collect();
+
     deltas.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -1058,6 +1078,54 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             missing_groups_in_upstream.join(", ")
         }
     );
+
+    let _ = writeln!(
+        &mut report,
+        "## Local FCoSE compound bounds vs emitted group rects\n"
+    );
+    let _ = writeln!(
+        &mut report,
+        "These FCoSE bounds are local layout-base compound rectangles, not browser `node.boundingBox()` values.\n"
+    );
+    let _ = writeln!(
+        &mut report,
+        "| id | fcose compound bounds | local emitted group rect | dx | dy | dw | dh |\n|---|---|---|---:|---:|---:|---:|"
+    );
+    if fcose_compound_rows.is_empty() {
+        let _ = writeln!(
+            &mut report,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for (id, fcose, emitted) in &fcose_compound_rows {
+            if let Some(emitted) = emitted {
+                let _ = writeln!(
+                    &mut report,
+                    "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | {:.6} | {:.6} | {:.6} | {:.6} |",
+                    id,
+                    fcose.x,
+                    fcose.y,
+                    fcose.w,
+                    fcose.h,
+                    emitted.x,
+                    emitted.y,
+                    emitted.w,
+                    emitted.h,
+                    emitted.x - fcose.x,
+                    emitted.y - fcose.y,
+                    emitted.w - fcose.w,
+                    emitted.h - fcose.h,
+                );
+            } else {
+                let _ = writeln!(
+                    &mut report,
+                    "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `<missing>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |",
+                    id, fcose.x, fcose.y, fcose.w, fcose.h
+                );
+            }
+        }
+    }
+    let _ = writeln!(&mut report);
 
     let _ = writeln!(
         &mut report,

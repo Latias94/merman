@@ -153,7 +153,19 @@ pub struct RequirementDiagramLayout {
 pub struct ArchitectureDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    /// Final FCoSE compound rectangles exposed for source-backed Architecture audits.
+    ///
+    /// Renderers should not treat these as Mermaid SVG group rects without a phase-specific
+    /// source audit; they are layout-engine rects, not browser `node.boundingBox()` values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fcose_compound_bounds: Vec<ArchitectureCompoundBounds>,
     pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureCompoundBounds {
+    pub id: String,
+    pub bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

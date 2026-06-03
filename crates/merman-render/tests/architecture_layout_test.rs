@@ -47,6 +47,18 @@ fn position_signature(layout: &ArchitectureDiagramLayout) -> Vec<(String, i64, i
     sig
 }
 
+fn fcose_compound_size(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {
+    let bounds = layout
+        .fcose_compound_bounds
+        .iter()
+        .find(|b| b.id == id)
+        .unwrap_or_else(|| panic!("missing fcose compound bounds for {id}"));
+    (
+        bounds.bounds.max_x - bounds.bounds.min_x,
+        bounds.bounds.max_y - bounds.bounds.min_y,
+    )
+}
+
 fn with_architecture_config(diagram: &str, config: &str) -> String {
     format!("%%{{init: {{\"architecture\": {config}}}}}%%\n{diagram}")
 }
@@ -79,6 +91,18 @@ fn architecture_default_fcose_layout_is_deterministic() {
     let second = layout_architecture(chain_diagram());
 
     assert_eq!(position_signature(&first), position_signature(&second));
+}
+
+#[test]
+fn architecture_layout_exposes_fcose_compound_bounds_by_group_id() {
+    let layout = layout_architecture(chain_diagram());
+
+    assert_eq!(layout.fcose_compound_bounds.len(), 1);
+    let (width, height) = fcose_compound_size(&layout, "app");
+    assert!(
+        width > 80.0 && height > 80.0,
+        "expected FCoSE compound bounds to include child graph padding, got {width:.3}x{height:.3}"
+    );
 }
 
 #[test]

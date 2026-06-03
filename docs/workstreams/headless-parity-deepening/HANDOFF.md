@@ -352,6 +352,12 @@ Current repository reality to preserve:
     `padding + 2.5 = 42.5px`, and debug runs show `pipeline`, `ui`, and `i` are too wide before any
     final padding/root consumption change. Do not change group padding, root padding, group title
     bounds, or final rect emission for these rows.
+  - A follow-up local FCoSE compound-bounds output slice exposes manatee's final layout-base
+    compound rectangles as `ArchitectureDiagramLayout.fcose_compound_bounds` and reports them in
+    `debug-architecture-delta` beside the local emitted group rects. This is evidence only: the
+    focused `pipeline`, `ui`, and `i` rows show emitted group rects are `+107px`, `+44px`, and
+    `+32px` wider than the FCoSE layout-base rects, while their upstream/local emitted tails remain
+    `+5px`, `+5px`, and `+3px`. Do not wire this field into SVG group rendering as a shortcut.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
