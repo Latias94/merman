@@ -170,6 +170,18 @@ Current repository reality to preserve:
   - A follow-up Graphlib `setEdge` optional-label / EdgeKey coverage slice is now landed.
     It maps explicit JS `undefined` edge-label clearing to `Option<T>` edge labels and maps
     Graphlib edge-object parameters to the existing Rust `EdgeKey` API.
+  - A follow-up Graphlib JSON seam slice is now landed. `dugong_graphlib::json::{write, read}`
+    now mirrors upstream `graphlib.json.write/read` closely enough for source-backed round-trips,
+    and all six `repo-ref/graphlib/test/json-test.js` cases are ported. The primary seam uses
+    `Graph<Option<N>, Option<E>, Option<G>>`, so upstream `undefined` maps to `None` while explicit
+    JSON `null` remains a present value. Default-collapsing helpers exist only as an explicit Rust
+    bridge. Reuse this seam before adding another Graphlib-shaped serializer.
+    Implemented-matrix structural `parity` stayed green after this container-only slice.
+  - A consumer follow-up now routes the active Dagre reference adapter through that Graphlib JSON
+    shape. `dagre_reference.rs` serializes reference input and Rust output through
+    `dugong::graphlib::json`, while `tools/dagre-harness/run.mjs` accepts the new shape and writes
+    JS output through installed `dagre-d3-es` Graphlib `json.write(...)`. The State `basic`
+    `compare-dagre-layout` check still reports zero node and edge delta.
   - ARCH-022's first Dagre reference adapter slice is now landed. The Rust-side input schema,
     Rust/JS output comparison, JS harness invocation, and compound-edge normalization now live in
     `crates/xtask/src/cmd/debug/dagre_reference.rs`; `compare-dagre-layout` remains State-only and

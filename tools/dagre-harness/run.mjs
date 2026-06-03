@@ -3,6 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { Graph } from '../mermaid-cli/node_modules/dagre-d3-es/src/graphlib/index.js';
+import { write as writeGraphJson } from '../mermaid-cli/node_modules/dagre-d3-es/src/graphlib/json.js';
 import { layout as dagreLayout } from '../mermaid-cli/node_modules/dagre-d3-es/src/dagre/index.js';
 
 function usage() {
@@ -46,6 +47,18 @@ function normalizeRankDir(v) {
   // Mermaid passes 'TB'/'LR' etc. Dagre-d3-es internally lowercases in some places, but
   // keep the Mermaid-style uppercase to match its own `makeSpaceForEdgeLabels` checks.
   return t.toUpperCase();
+}
+
+function hasOwn(obj, key) {
+  return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function graphValue(input) {
+  return hasOwn(input, 'value') ? input.value : input.graph;
+}
+
+function entryValue(entry) {
+  return hasOwn(entry, 'value') ? entry.value : entry?.label;
 }
 
 function findCommonEdges(g, id1, id2) {
@@ -112,7 +125,7 @@ function buildGraph(input) {
   g.setDefaultNodeLabel(() => ({}));
   g.setDefaultEdgeLabel(() => ({}));
 
-  const graphLabel = { ...(input.graph ?? {}) };
+  const graphLabel = { ...(graphValue(input) ?? {}) };
   if (Object.prototype.hasOwnProperty.call(graphLabel, 'rankdir')) {
     graphLabel.rankdir = normalizeRankDir(graphLabel.rankdir);
   }
@@ -121,14 +134,14 @@ function buildGraph(input) {
   const nodes = Array.isArray(input.nodes) ? input.nodes : [];
   // Pass 1: create all nodes with labels first (avoid implicit undefined labels).
   for (const n of nodes) {
-    const id = n?.id;
+    const id = typeof n?.v === 'string' ? n.v : n?.id;
     if (typeof id !== 'string' || id.length === 0) continue;
-    const label = { ...(n.label ?? {}) };
+    const label = { ...(entryValue(n) ?? {}) };
     g.setNode(id, label);
   }
   // Pass 2: set parents after all nodes exist.
   for (const n of nodes) {
-    const id = n?.id;
+    const id = typeof n?.v === 'string' ? n.v : n?.id;
     if (typeof id !== 'string' || id.length === 0) continue;
     if (typeof n.parent === 'string' && n.parent.length > 0) {
       g.setParent(id, n.parent);
@@ -141,7 +154,7 @@ function buildGraph(input) {
     const w = e?.w;
     if (typeof v !== 'string' || typeof w !== 'string') continue;
     const name = typeof e.name === 'string' ? e.name : undefined;
-    const label = { ...(e.label ?? {}) };
+    const label = { ...(entryValue(e) ?? {}) };
     // Graphlib signature: setEdge(v, w, value, name)
     g.setEdge(v, w, label, name);
   }
@@ -150,21 +163,7 @@ function buildGraph(input) {
 }
 
 function snapshotGraph(g) {
-  const graph = g.graph();
-  const nodes = g.nodes().map((id) => {
-    const n = g.node(id) ?? {};
-    return { id, label: n, parent: g.parent(id) ?? null };
-  });
-  const edges = g.edges().map((e) => {
-    const lbl = g.edge(e) ?? {};
-    return {
-      v: e.v,
-      w: e.w,
-      name: e.name ?? null,
-      label: lbl,
-    };
-  });
-  return { graph, nodes, edges };
+  return writeGraphJson(g);
 }
 
 async function main() {

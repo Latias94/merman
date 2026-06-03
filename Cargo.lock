@@ -788,6 +788,8 @@ version = "0.7.0"
 dependencies = [
  "hashbrown 0.16.1",
  "rustc-hash",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

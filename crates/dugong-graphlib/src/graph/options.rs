@@ -1,6 +1,8 @@
 //! Graph configuration options.
 
-#[derive(Debug, Clone, Copy)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GraphOptions {
     pub multigraph: bool,
     pub compound: bool,

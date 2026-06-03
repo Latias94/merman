@@ -5,6 +5,7 @@
 
 use crate::XtaskError;
 use dugong::graphlib::Graph;
+use dugong::graphlib::json as graphlib_json;
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap};
@@ -41,7 +42,7 @@ pub(crate) fn write_dagre_reference_input(
     graph: &DagreLayoutGraph,
     input_path: &Path,
 ) -> Result<(), XtaskError> {
-    let input = snapshot_dagre_input(graph);
+    let input = snapshot_dagre_input(graph)?;
     fs::write(input_path, serde_json::to_string_pretty(&input)?).map_err(|source| {
         XtaskError::WriteFile {
             path: input_path.display().to_string(),
@@ -54,7 +55,7 @@ pub(crate) fn write_rust_dagre_output(
     graph: &DagreLayoutGraph,
     rust_path: &Path,
 ) -> Result<(), XtaskError> {
-    let output = snapshot_rust_dagre_output(graph);
+    let output = snapshot_rust_dagre_output(graph)?;
     fs::write(rust_path, serde_json::to_string_pretty(&output)?).map_err(|source| {
         XtaskError::WriteFile {
             path: rust_path.display().to_string(),
@@ -104,10 +105,10 @@ pub(crate) fn compare_graph_to_js_reference(
     let mut js_nodes: BTreeMap<String, (f64, f64)> = BTreeMap::new();
     if let Some(arr) = js_out.get("nodes").and_then(|v| v.as_array()) {
         for n in arr {
-            let Some(id) = n.get("id").and_then(|v| v.as_str()) else {
+            let Some(id) = node_json_id(n) else {
                 continue;
             };
-            let Some(label) = n.get("label").and_then(|v| v.as_object()) else {
+            let Some(label) = graph_json_label(n) else {
                 continue;
             };
             let Some(x) = label.get("x").and_then(read_f64) else {
@@ -131,7 +132,7 @@ pub(crate) fn compare_graph_to_js_reference(
             };
             let name = e.get("name").and_then(|v| v.as_str());
             let key = edge_key_string(v, w, name);
-            let Some(label) = e.get("label").and_then(|v| v.as_object()) else {
+            let Some(label) = graph_json_label(e) else {
                 continue;
             };
             let Some(points) = label.get("points").and_then(|v| v.as_array()) else {
@@ -203,9 +204,58 @@ pub(crate) fn normalize_cluster_edge_endpoints_like_harness(graph: &mut DagreLay
     }
 }
 
-fn snapshot_dagre_input(graph: &DagreLayoutGraph) -> JsonValue {
-    let opts = graph.options();
-    let graph_label = graph.graph();
+fn snapshot_dagre_input(
+    graph: &DagreLayoutGraph,
+) -> Result<graphlib_json::GraphJson, serde_json::Error> {
+    snapshot_dagre_graph_json(graph, DagreSnapshotPhase::Input)
+}
+
+fn snapshot_rust_dagre_output(
+    graph: &DagreLayoutGraph,
+) -> Result<graphlib_json::GraphJson, serde_json::Error> {
+    snapshot_dagre_graph_json(graph, DagreSnapshotPhase::Output)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DagreSnapshotPhase {
+    Input,
+    Output,
+}
+
+fn snapshot_dagre_graph_json(
+    graph: &DagreLayoutGraph,
+    phase: DagreSnapshotPhase,
+) -> Result<graphlib_json::GraphJson, serde_json::Error> {
+    let mut snapshot: Graph<Option<JsonValue>, Option<JsonValue>, Option<JsonValue>> =
+        Graph::new(graph.options());
+    snapshot.set_graph(Some(graph_label_to_json(graph.graph())));
+
+    for id in graph.node_ids() {
+        let Some(label) = graph.node(&id) else {
+            continue;
+        };
+        snapshot.set_node(id.clone(), Some(node_label_to_json(label, phase)));
+        if let Some(parent) = graph.parent(&id) {
+            snapshot.set_parent(id, parent.to_string());
+        }
+    }
+
+    for key in graph.edge_keys() {
+        let Some(label) = graph.edge_by_key(&key) else {
+            continue;
+        };
+        snapshot.set_edge_named(
+            key.v,
+            key.w,
+            key.name,
+            Some(Some(edge_label_to_json(label, phase))),
+        );
+    }
+
+    graphlib_json::write(&snapshot)
+}
+
+fn graph_label_to_json(graph_label: &GraphLabel) -> JsonValue {
     let mut graph_obj = serde_json::Map::new();
     graph_obj.insert(
         "rankdir".to_string(),
@@ -241,113 +291,84 @@ fn snapshot_dagre_input(graph: &DagreLayoutGraph) -> JsonValue {
             .unwrap_or(JsonValue::Null),
     );
 
-    let nodes = graph
-        .node_ids()
-        .into_iter()
-        .filter_map(|id| {
-            let n = graph.node(&id)?;
-            let mut label = serde_json::Map::new();
-            label.insert("width".to_string(), JsonValue::from(n.width));
-            label.insert("height".to_string(), JsonValue::from(n.height));
-            Some(JsonValue::Object({
-                let mut obj = serde_json::Map::new();
-                obj.insert("id".to_string(), JsonValue::from(id.clone()));
-                obj.insert(
-                    "parent".to_string(),
-                    graph
-                        .parent(&id)
-                        .map(|p| JsonValue::from(p.to_string()))
-                        .unwrap_or(JsonValue::Null),
-                );
-                obj.insert("label".to_string(), JsonValue::Object(label));
-                obj
-            }))
-        })
-        .collect::<Vec<_>>();
-
-    let edges = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|ek| {
-            let e = graph.edge_by_key(&ek)?;
-            let mut label = serde_json::Map::new();
-            label.insert("width".to_string(), JsonValue::from(e.width));
-            label.insert("height".to_string(), JsonValue::from(e.height));
-            label.insert("minlen".to_string(), JsonValue::from(e.minlen as u64));
-            label.insert("weight".to_string(), JsonValue::from(e.weight));
-            label.insert("labeloffset".to_string(), JsonValue::from(e.labeloffset));
-            label.insert(
-                "labelpos".to_string(),
-                JsonValue::from(labelpos_to_string(e.labelpos)),
-            );
-
-            Some(JsonValue::Object({
-                let mut obj = serde_json::Map::new();
-                obj.insert("v".to_string(), JsonValue::from(ek.v.clone()));
-                obj.insert("w".to_string(), JsonValue::from(ek.w.clone()));
-                obj.insert(
-                    "name".to_string(),
-                    ek.name
-                        .as_ref()
-                        .map(|s| JsonValue::from(s.clone()))
-                        .unwrap_or(JsonValue::Null),
-                );
-                obj.insert("label".to_string(), JsonValue::Object(label));
-                obj
-            }))
-        })
-        .collect::<Vec<_>>();
-
-    serde_json::json!({
-        "options": {
-            "directed": opts.directed,
-            "multigraph": opts.multigraph,
-            "compound": opts.compound,
-        },
-        "graph": JsonValue::Object(graph_obj),
-        "nodes": nodes,
-        "edges": edges,
-    })
+    JsonValue::Object(graph_obj)
 }
 
-fn snapshot_rust_dagre_output(graph: &DagreLayoutGraph) -> JsonValue {
-    let nodes = graph
-        .node_ids()
-        .into_iter()
-        .filter_map(|id| {
-            let n = graph.node(&id)?;
-            Some(serde_json::json!({
-                "id": id,
-                "x": n.x,
-                "y": n.y,
-                "width": n.width,
-                "height": n.height,
-                "rank": n.rank,
-                "order": n.order,
-            }))
-        })
-        .collect::<Vec<_>>();
+fn node_label_to_json(label: &NodeLabel, phase: DagreSnapshotPhase) -> JsonValue {
+    let mut obj = serde_json::Map::new();
+    obj.insert("width".to_string(), JsonValue::from(label.width));
+    obj.insert("height".to_string(), JsonValue::from(label.height));
 
-    let edges = graph
-        .edge_keys()
-        .into_iter()
-        .filter_map(|ek| {
-            let e = graph.edge_by_key(&ek)?;
-            Some(serde_json::json!({
-                "v": ek.v,
-                "w": ek.w,
-                "name": ek.name,
-                "x": e.x,
-                "y": e.y,
-                "points": e.points.iter().map(|p| serde_json::json!({"x": p.x, "y": p.y})).collect::<Vec<_>>(),
-            }))
-        })
-        .collect::<Vec<_>>();
+    if matches!(phase, DagreSnapshotPhase::Output) {
+        obj.insert(
+            "x".to_string(),
+            label.x.map(JsonValue::from).unwrap_or(JsonValue::Null),
+        );
+        obj.insert(
+            "y".to_string(),
+            label.y.map(JsonValue::from).unwrap_or(JsonValue::Null),
+        );
+        obj.insert(
+            "rank".to_string(),
+            label
+                .rank
+                .map(|rank| JsonValue::from(rank as i64))
+                .unwrap_or(JsonValue::Null),
+        );
+        obj.insert(
+            "order".to_string(),
+            label
+                .order
+                .map(|order| JsonValue::from(order as u64))
+                .unwrap_or(JsonValue::Null),
+        );
+    }
 
-    serde_json::json!({
-        "nodes": nodes,
-        "edges": edges,
-    })
+    JsonValue::Object(obj)
+}
+
+fn edge_label_to_json(label: &EdgeLabel, phase: DagreSnapshotPhase) -> JsonValue {
+    let mut obj = serde_json::Map::new();
+    obj.insert("width".to_string(), JsonValue::from(label.width));
+    obj.insert("height".to_string(), JsonValue::from(label.height));
+    obj.insert("minlen".to_string(), JsonValue::from(label.minlen as u64));
+    obj.insert("weight".to_string(), JsonValue::from(label.weight));
+    obj.insert(
+        "labeloffset".to_string(),
+        JsonValue::from(label.labeloffset),
+    );
+    obj.insert(
+        "labelpos".to_string(),
+        JsonValue::from(labelpos_to_string(label.labelpos)),
+    );
+
+    if matches!(phase, DagreSnapshotPhase::Output) {
+        obj.insert(
+            "x".to_string(),
+            label.x.map(JsonValue::from).unwrap_or(JsonValue::Null),
+        );
+        obj.insert(
+            "y".to_string(),
+            label.y.map(JsonValue::from).unwrap_or(JsonValue::Null),
+        );
+        obj.insert(
+            "points".to_string(),
+            JsonValue::Array(
+                label
+                    .points
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!({
+                            "x": p.x,
+                            "y": p.y,
+                        })
+                    })
+                    .collect(),
+            ),
+        );
+    }
+
+    JsonValue::Object(obj)
 }
 
 fn compare_graph_points_to_reference(
@@ -491,6 +512,20 @@ fn read_f64(v: &JsonValue) -> Option<f64> {
     }
 }
 
+fn node_json_id(value: &JsonValue) -> Option<&str> {
+    value
+        .get("v")
+        .and_then(|v| v.as_str())
+        .or_else(|| value.get("id").and_then(|v| v.as_str()))
+}
+
+fn graph_json_label(value: &JsonValue) -> Option<&serde_json::Map<String, JsonValue>> {
+    value
+        .get("value")
+        .or_else(|| value.get("label"))
+        .and_then(|v| v.as_object())
+}
+
 fn edge_key_string(v: &str, w: &str, name: Option<&str>) -> String {
     let name = name.unwrap_or("");
     format!("{v}\u{1f}{w}\u{1f}{name}")
@@ -532,5 +567,125 @@ mod tests {
                 .map(|label| label.width),
             Some(12.0)
         );
+    }
+
+    #[test]
+    fn dagre_reference_input_uses_graphlib_json_shape() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        });
+        graph.graph_mut().rankdir = RankDir::LR;
+        graph.set_node(
+            "cluster",
+            NodeLabel {
+                width: 1.0,
+                height: 2.0,
+                ..Default::default()
+            },
+        );
+        graph.set_node(
+            "child",
+            NodeLabel {
+                width: 10.0,
+                height: 20.0,
+                ..Default::default()
+            },
+        );
+        graph.set_parent("child", "cluster");
+        graph.set_edge_named(
+            "child",
+            "cluster",
+            Some("named"),
+            Some(EdgeLabel {
+                width: 3.0,
+                height: 4.0,
+                minlen: 2,
+                weight: 5.0,
+                ..Default::default()
+            }),
+        );
+
+        let input = serde_json::to_value(snapshot_dagre_input(&graph).expect("snapshot graph"))
+            .expect("serialize graph json");
+
+        assert_eq!(input["value"]["rankdir"], JsonValue::from("LR"));
+        assert!(input.get("graph").is_none());
+
+        let child = input["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["v"] == JsonValue::from("child"))
+            .expect("child node");
+        assert_eq!(child["parent"], JsonValue::from("cluster"));
+        assert_eq!(child["value"]["width"], JsonValue::from(10.0));
+        assert!(child.get("id").is_none());
+        assert!(child.get("label").is_none());
+
+        let edge = &input["edges"][0];
+        assert_eq!(edge["v"], JsonValue::from("child"));
+        assert_eq!(edge["w"], JsonValue::from("cluster"));
+        assert_eq!(edge["name"], JsonValue::from("named"));
+        assert_eq!(edge["value"]["minlen"], JsonValue::from(2));
+        assert!(edge.get("label").is_none());
+    }
+
+    #[test]
+    fn dagre_reference_output_uses_graphlib_json_shape() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: true,
+        });
+        graph.graph_mut().rankdir = RankDir::BT;
+        graph.set_node(
+            "a",
+            NodeLabel {
+                width: 10.0,
+                height: 20.0,
+                x: Some(30.0),
+                y: Some(40.0),
+                rank: Some(2),
+                order: Some(1),
+                ..Default::default()
+            },
+        );
+        graph.set_edge_with_label(
+            "a",
+            "b",
+            EdgeLabel {
+                width: 3.0,
+                height: 4.0,
+                x: Some(5.0),
+                y: Some(6.0),
+                points: vec![dugong::Point { x: 7.0, y: 8.0 }],
+                ..Default::default()
+            },
+        );
+
+        let output =
+            serde_json::to_value(snapshot_rust_dagre_output(&graph).expect("snapshot graph"))
+                .expect("serialize graph json");
+
+        assert_eq!(output["value"]["rankdir"], JsonValue::from("BT"));
+        assert!(output.get("graph").is_none());
+
+        let node = output["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["v"] == JsonValue::from("a"))
+            .expect("node a");
+        assert_eq!(node["value"]["x"], JsonValue::from(30.0));
+        assert_eq!(node["value"]["rank"], JsonValue::from(2));
+        assert!(node.get("id").is_none());
+        assert!(node.get("label").is_none());
+
+        let edge = &output["edges"][0];
+        assert_eq!(edge["value"]["x"], JsonValue::from(5.0));
+        assert_eq!(edge["value"]["points"][0]["x"], JsonValue::from(7.0));
+        assert!(edge.get("label").is_none());
     }
 }

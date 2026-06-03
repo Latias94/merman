@@ -111,7 +111,13 @@ Last updated: 2026-06-03
   parent/clear-parent coverage slice maps Graphlib `parent(v)` and clear-parent state behavior to
   existing Rust APIs without adding JS optional-argument overloading. A follow-up `setEdge`
   coverage slice maps explicit JS `undefined` edge-label clearing to Rust `Option<T>` labels and
-  edge-object parameters to `EdgeKey`, without adding JS argument overloading. ARCH-022's first
+  edge-object parameters to `EdgeKey`, without adding JS argument overloading. A follow-up
+  Graphlib JSON seam slice now exposes `dugong_graphlib::json::{write, read}` with direct coverage
+  for all six upstream `json-test.js` cases; the primary seam uses `Option<T>` labels to preserve
+  upstream `undefined` versus explicit `null`, while default-collapsing helpers remain an explicit
+  Rust bridge. The active Dagre reference adapter now reuses that Graphlib JSON shape for reference
+  input, JS output, and Rust output artifacts, with the State `basic` comparison still zero-delta.
+  Reuse it before adding another Graphlib-shaped serializer. ARCH-022's first
   Dagre reference adapter slice is also landed:
   `dagre_reference.rs` now owns the Rust-side
   reference input/output schema, JS harness invocation, compound-edge normalization, and Rust/JS

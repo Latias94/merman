@@ -1699,6 +1699,82 @@ Full verification:
 - JSONL validation passed for `CONTEXT.jsonl`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`.
 - `git diff --check` passed.
 
+Twenty-third slice Graphlib JSON seam coverage:
+
+- Added
+  [crates/dugong-graphlib/src/json.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/src/json.rs)
+  and exposed `dugong_graphlib::json::{write, read}` as a public Graphlib-shaped seam mirroring
+  upstream `repo-ref/graphlib/lib/json.js` options/value/nodes/edges structure. The primary seam
+  operates on `Graph<Option<N>, Option<E>, Option<G>>`, mapping upstream `undefined` to `None` and
+  preserving explicit JSON `null` as `Some(null)`.
+- Added direct regressions in
+  [crates/dugong-graphlib/tests/json_test.rs](/F:/SourceCodes/Rust/merman/crates/dugong-graphlib/tests/json_test.rs)
+  for all six upstream `repo-ref/graphlib/test/json-test.js` cases: graph options, graph value,
+  nodes, simple edges, multiedges, and compound parent/child relationships.
+- This resolves the old "Graphlib JSON remains undecided" warning from the earlier HPD-050 journal.
+  Future Graphlib-shaped serializers should reuse this seam instead of inventing another ad hoc
+  format.
+- Added a focused regression so explicit `null` graph/node/edge labels are written as present
+  `value: null` fields, while `None` labels are omitted like upstream `undefined`.
+- Kept Rust default-label collapsing behind explicit `write_with_defaults` / `read_with_defaults`
+  helpers so downstream callers can opt into the weaker bridge without weakening the main
+  source-backed seam.
+- No renderer or layout logic changed. Structural parity risk is limited to compile/test surface,
+  and Dugong plus Dugong-Graphlib suites remained green.
+
+Focused verification:
+
+- `cargo nextest run -p dugong-graphlib --test json_test`
+  passed with `8` tests.
+
+Full verification:
+
+- `cargo nextest run -p dugong-graphlib --tests`
+  passed with `95` tests.
+- `cargo nextest run -p dugong --tests`
+  passed with `267` tests.
+- `cargo fmt --check --package dugong-graphlib`
+  passed.
+- JSONL validation passed for `CONTEXT.jsonl` (`407` lines), `TASKS.jsonl` (`8` lines), and
+  `CAMPAIGNS.jsonl` (`4` lines).
+- `git diff --check`
+  passed with only the existing LF/CRLF working-copy warnings for `CONTEXT.jsonl` and
+  `TASKS.jsonl`.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  passed. Implemented-matrix structural parity stayed green after the container-only Graphlib JSON
+  seam landed.
+
+Twenty-fourth slice Dagre reference Graphlib JSON consumer seam:
+
+- Reused the new `dugong_graphlib::json` seam in the real Dagre reference adapter instead of
+  leaving xtask with another Graphlib-shaped serializer.
+- [crates/xtask/src/cmd/debug/dagre_reference.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/dagre_reference.rs)
+  now projects Dagre labels into `Graph<Option<JsonValue>, Option<JsonValue>, Option<JsonValue>>`
+  and serializes reference input / Rust output through Graphlib JSON `options`, top-level `value`,
+  node `v` / `value`, edge `v` / `w` / `name` / `value`, and optional `parent`.
+- [tools/dagre-harness/run.mjs](/F:/SourceCodes/Rust/merman/tools/dagre-harness/run.mjs)
+  accepts both the older `graph` / `id` / `label` debug input and the new Graphlib JSON shape, then
+  writes JS output through the installed `dagre-d3-es` Graphlib `json.write(...)` helper.
+- The comparison reader remains backward compatible with older debug artifacts while preferring
+  Graphlib JSON `value` labels when present.
+- This is a consumer-relevance cleanup for HPD-050: it removes an ad hoc debug JSON shape from the
+  active Dagre reference path without changing renderer or solver behavior.
+
+Focused verification:
+
+- `cargo nextest run -p xtask dagre_reference_input_uses_graphlib_json_shape`
+  first failed against the old `graph` / `id` / `label` shape, then passed after the adapter moved
+  to Graphlib JSON.
+- `cargo nextest run -p xtask dagre_reference`
+  passed with `3` tests, covering compound-edge normalization plus Graphlib JSON input and Rust
+  output artifact shapes.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture basic --out-dir target\compare\dagre-layout-hpd050-graphlib-json`
+  passed with max node delta `0.000000` and max edge delta `0.000000`.
+- `cargo nextest run -p dugong-graphlib --test json_test`
+  passed with `8` tests.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  passed on the post-merge worktree; implemented-matrix structural parity remains green.
+
 ## HPD-080 - Visible Rendering Defect Triage
 
 First slice outcome:

@@ -21,7 +21,7 @@ As of the pinned checkout, `repo-ref/graphlib/test` contains 212 `it(...)` cases
 | `test/alg/postorder-test.js` | 6 | Ported in `crates/dugong-graphlib/tests/alg_test.rs` |
 | `test/alg/preorder-test.js` | 5 | Ported in `crates/dugong-graphlib/tests/alg_test.rs` |
 | `test/graph-test.js` | 129 | Partially ported in `crates/dugong-graphlib/tests/graph_core_test.rs` |
-| `test/json-test.js` | 6 | Not yet implemented as a Graphlib JSON seam |
+| `test/json-test.js` | 6 | Ported in `crates/dugong-graphlib/tests/json_test.rs` |
 | `test/bundle-test.js` | 3 | Not applicable as a JS bundle test; Rust crate smoke tests may replace it |
 | `test/version-test.js` | 1 | Not yet ledger-ported independently |
 | `test/data/priority-queue-test.js` | 18 | Not implemented as a public Graphlib data structure |
@@ -175,6 +175,23 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - `setDefaultEdgeLabel / can take a function that takes the edge's endpoints and name` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_can_read_endpoints_and_name`
 - `setDefaultEdgeLabel / does not set a default value for a multi-edge that already exists` -> `crates/dugong-graphlib/tests/graph_core_test.rs::default_edge_label_does_not_replace_existing_named_edge`
 
+Source: `repo-ref/graphlib/test/json-test.js`
+
+- `preserves the graph options` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_graph_options`
+- `preserves the graph value, if any` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_graph_value_if_any`
+- `preserves nodes` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_nodes`
+- `preserves simple edges` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_simple_edges`
+- `preserves multi-edges` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_multi_edges`
+- `preserves parent / child relationships` -> `crates/dugong-graphlib/tests/json_test.rs::json_preserves_parent_child_relationships`
+
+Additional Rust regression:
+
+- `crates/dugong-graphlib/tests/json_test.rs::json_distinguishes_undefined_from_explicit_null_for_option_labels`
+  protects the primary `Option<T>` seam: omitted `value` fields map to `None`, while explicit JSON
+  `null` remains a present label value.
+- `crates/dugong-graphlib/tests/json_test.rs::json_with_defaults_can_collapse_missing_values_to_rust_defaults`
+  protects the explicit default-collapsing fallback helpers without weakening the primary seam.
+
 ## Open API Shape Differences
 
 - Missing-node query methods: upstream JS returns `undefined` for several collection queries.
@@ -191,13 +208,20 @@ Source: `repo-ref/graphlib/test/graph-test.js`
 - ID stringification: upstream JS coerces node ids, edge endpoints, and edge names through string
   conversion. Rust accepts typed string inputs, so this coercion behavior is not a parity target
   unless a public FFI seam needs it.
+- Graphlib JSON omitted-value semantics: `dugong_graphlib::json::{write, read}` maps upstream
+  `undefined` to Rust `Option<T>` labels and preserves explicit JSON `null` as `Some(null)`.
+  `write_with_defaults` / `read_with_defaults` are a separate fallback seam for Rust callers that
+  intentionally want missing labels collapsed onto `Default`.
 
 ## Next Priority
 
 1. Continue `test/graph-test.js` only where it maps to current Rust API shape and real consumers.
    Compound child/root API-shape coverage, `filterNodes`, and endpoint-aware default label
    callbacks now have direct Rust coverage.
-2. Decide whether Graphlib JSON should exist as a Rust seam. If yes, port `test/json-test.js`
-   before adding ad hoc snapshot serializers elsewhere.
+2. Reuse `dugong_graphlib::json` before introducing another ad hoc Graphlib-shaped serializer
+   elsewhere. Prefer the primary `Option<T>` seam when upstream `undefined` versus `null`
+   semantics matter; use the default-collapsing helpers only as an explicit Rust bridge. Existing
+   Rust-specific debug snapshots such as `xtask`'s Dagre reference input format remain separate
+   because they carry Dagre label payloads, not plain Graphlib graph labels.
 3. Keep non-used algorithms such as shortest paths, Prim, and Floyd-Warshall out of scope unless a
    Mermaid/Dagre path starts consuming them.

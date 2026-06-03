@@ -16,3 +16,5 @@ categories = ["data-structures"]
 [dependencies]
 hashbrown.workspace = true
 rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
