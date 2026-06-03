@@ -28,6 +28,27 @@ struct ArchitectureFcoseProbeRunSummary {
     edge_count: usize,
 }
 
+fn normalize_arch_svg_id_with_marker(id: &str, marker: &str) -> Option<String> {
+    if id.starts_with(marker) {
+        return Some(id.to_string());
+    }
+
+    let prefixed_marker = format!("-{marker}");
+    id.find(&prefixed_marker)
+        .map(|idx| id[idx + 1..].to_string())
+}
+
+fn normalize_arch_junction_svg_id(id: &str) -> Option<String> {
+    if let Some(id) = normalize_arch_svg_id_with_marker(id, "junction-") {
+        return Some(id);
+    }
+
+    normalize_arch_svg_id_with_marker(id, "node-").map(|id| {
+        let junction = id.strip_prefix("node-").unwrap_or(&id);
+        format!("junction-{junction}")
+    })
+}
+
 fn parse_architecture_fcose_probe_args(
     args: &[String],
 ) -> Result<ArchitectureFcoseProbeCli, XtaskError> {
@@ -556,31 +577,42 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
 
         for n in doc.descendants().filter(|n| n.is_element()) {
             let tag = n.tag_name().name();
-            let Some(id) = n.attribute("id") else {
-                continue;
-            };
+            let id = n.attribute("id");
 
             if tag == "g"
-                && id.starts_with("service-")
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
             {
-                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                    services.insert(id.to_string(), Pt { x, y });
+                if let (Some(id), Some((x, y))) = (
+                    id.and_then(|id| normalize_arch_svg_id_with_marker(id, "service-")),
+                    n.attribute("transform").and_then(parse_translate),
+                ) {
+                    services.insert(id, Pt { x, y });
                 }
             }
 
             if tag == "g"
-                && id.starts_with("junction-")
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-junction"))
             {
-                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                    junctions.insert(id.to_string(), Pt { x, y });
+                let junction_id = id.and_then(normalize_arch_junction_svg_id).or_else(|| {
+                    n.descendants()
+                        .filter(|child| child.is_element())
+                        .find_map(|child| {
+                            child
+                                .attribute("id")
+                                .and_then(normalize_arch_junction_svg_id)
+                        })
+                });
+                if let (Some(id), Some((x, y))) = (
+                    junction_id,
+                    n.attribute("transform").and_then(parse_translate),
+                ) {
+                    junctions.insert(id, Pt { x, y });
                 }
             }
 
-            if tag == "rect" && id.starts_with("group-") {
+            if tag == "rect" {
                 let x = n
                     .attribute("x")
                     .and_then(|v| v.parse::<f64>().ok())
@@ -597,7 +629,10 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                     .attribute("height")
                     .and_then(|v| v.parse::<f64>().ok())
                     .unwrap_or(0.0);
-                groups.insert(id.to_string(), Rect { x, y, w, h });
+                if let Some(id) = id.and_then(|id| normalize_arch_svg_id_with_marker(id, "group-"))
+                {
+                    groups.insert(id, Rect { x, y, w, h });
+                }
             }
         }
 
@@ -1050,27 +1085,38 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         for n in doc.descendants().filter(|n| n.is_element()) {
             let tag = n.tag_name().name();
-            let Some(id) = n.attribute("id") else {
-                continue;
-            };
+            let id = n.attribute("id");
 
             if tag == "g"
-                && id.starts_with("service-")
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
             {
-                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                    services.insert(id.to_string(), Pt { x, y });
+                if let (Some(id), Some((x, y))) = (
+                    id.and_then(|id| normalize_arch_svg_id_with_marker(id, "service-")),
+                    n.attribute("transform").and_then(parse_translate),
+                ) {
+                    services.insert(id, Pt { x, y });
                 }
             }
 
             if tag == "g"
-                && id.starts_with("junction-")
                 && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-junction"))
             {
-                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                    junctions.insert(id.to_string(), Pt { x, y });
+                let junction_id = id.and_then(normalize_arch_junction_svg_id).or_else(|| {
+                    n.descendants()
+                        .filter(|child| child.is_element())
+                        .find_map(|child| {
+                            child
+                                .attribute("id")
+                                .and_then(normalize_arch_junction_svg_id)
+                        })
+                });
+                if let (Some(id), Some((x, y))) = (
+                    junction_id,
+                    n.attribute("transform").and_then(parse_translate),
+                ) {
+                    junctions.insert(id, Pt { x, y });
                 }
             }
         }
@@ -1322,6 +1368,47 @@ mod tests {
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn architecture_svg_id_normalizer_accepts_prefixed_current_ids() {
+        assert_eq!(
+            normalize_arch_svg_id_with_marker(
+                "stress_architecture_batch5_long_titles_and_punct_076-service-runner",
+                "service-"
+            )
+            .as_deref(),
+            Some("service-runner")
+        );
+        assert_eq!(
+            normalize_arch_svg_id_with_marker(
+                "stress_architecture_batch5_long_titles_and_punct_076-group-pipeline",
+                "group-"
+            )
+            .as_deref(),
+            Some("group-pipeline")
+        );
+        assert_eq!(
+            normalize_arch_junction_svg_id("stress_architecture_junction_fork_join_026-node-fork")
+                .as_deref(),
+            Some("junction-fork")
+        );
+    }
+
+    #[test]
+    fn architecture_svg_id_normalizer_keeps_legacy_ids() {
+        assert_eq!(
+            normalize_arch_svg_id_with_marker("service-runner", "service-").as_deref(),
+            Some("service-runner")
+        );
+        assert_eq!(
+            normalize_arch_svg_id_with_marker("group-pipeline", "group-").as_deref(),
+            Some("group-pipeline")
+        );
+        assert_eq!(
+            normalize_arch_junction_svg_id("junction-fork").as_deref(),
+            Some("junction-fork")
+        );
     }
 
     #[test]

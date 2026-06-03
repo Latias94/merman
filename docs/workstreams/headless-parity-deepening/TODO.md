@@ -190,6 +190,13 @@ Last updated: 2026-06-03
   `target\compare\architecture-fcose-probe-active-residuals-hpd050\architecture-fcose-probe-batch.md`.
   This is evidence collection only; use the per-fixture summaries for source-backed phase
   comparison before changing root-bounds or layout formulas.
+  A follow-up local-delta evidence repair then fixed `debug-architecture-delta` /
+  `summarize-architecture-deltas` to recognize current diagram-scoped Architecture SVG ids
+  (`<diagram>-service-*`, `<diagram>-group-*`, and junction child `<diagram>-node-*`). The seven
+  active residual local reports now capture service, junction, and group-rect deltas instead of
+  root-only data; use
+  `target\compare\architecture-delta-active-residuals-hpd050\*.md` beside the browser probe batch
+  before making any production phase/formula change.
 
 ## M5 - Semantic / Render Unification Pilot
 

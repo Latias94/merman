@@ -3,6 +3,74 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Delta Extractor Current ID Normalizer
+
+Outcome:
+
+- Repaired the local Architecture delta evidence seam after the active residual batch exposed that
+  `debug-architecture-delta` still looked for legacy `service-*`, `junction-*`, and `group-*` root
+  ids.
+- Current Architecture SVG ids are diagram-scoped (`<diagram>-service-*`,
+  `<diagram>-group-*`), and current junction groups carry the transform on a classed `<g>` while
+  the stable id is on the child `<rect>` as `<diagram>-node-*`.
+- Added a small id normalizer shared by `debug-architecture-delta` and
+  `summarize-architecture-deltas`, preserving legacy id support while restoring current element
+  extraction.
+- Before the fix, the seven active-residual local delta reports only had root viewBox/max-width
+  evidence and printed `services=0 junctions=0 group_rects=0`. After the fix, the same batch
+  captures service, junction, and group-rect deltas for all representative rows.
+- No renderer, layout, measurement constant, SVG output behavior, or browser probe output changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+
+Local delta evidence:
+
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_junction_fork_join_026.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_batch5_long_titles_and_punct_076.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_html_titles_and_escapes_041.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_unicode_and_xml_escapes_019.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_nested_groups_002.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_batch6_init_fontsize_icon_size_wrap_093.md`
+- `target\compare\architecture-delta-active-residuals-hpd050\stress_architecture_group_port_edges_017.md`
+- `target\compare\architecture-delta-summary-hpd050-id-normalizer\architecture-delta-summary.md`
+
+Restored element counts for the focused reports:
+
+| fixture | services | junctions | group rects | leading local-vs-upstream delta |
+|---|---:|---:|---:|---|
+| `stress_architecture_junction_fork_join_026` | 5 | 2 | 2 | group/service/junction phase drift up to `12.358px`; no missing elements |
+| `stress_architecture_batch5_long_titles_and_punct_076` | 4 | 0 | 1 | `group-pipeline` `x=-3.5px`, `w=+5px`; services `x=-0.5px` |
+| `stress_architecture_html_titles_and_escapes_041` | 3 | 0 | 1 | `group-ui` `x=-1.5px`, `w=+5px`; services `x=+0.5px` |
+| `stress_architecture_unicode_and_xml_escapes_019` | 4 | 0 | 1 | `group-i` `x=-4.5px`, `w=+3px`; services `x=-1.5px` |
+| `stress_architecture_nested_groups_002` | 5 | 0 | 3 | `group-data` / `group-platform` `x=+4.25px`, `w=-0.5px`; services `x=+1.25px` |
+| `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` | 3 | 0 | 2 | services `x=+22.964px`; group widths `-3px` / `-1px` |
+| `stress_architecture_group_port_edges_017` | 4 | 0 | 2 | vertical spread compressed by `17.845px`; no missing elements |
+
+Focused verification:
+
+- `cargo fmt -p xtask` - applied.
+- `cargo nextest run -p xtask architecture_svg_id_normalizer` - passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture <each of the seven active Architecture residual fixtures> --out target\compare\architecture-delta-active-residuals-hpd050` -
+  passed and restored non-zero service/junction/group-rect counts in the generated reports.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-hpd050-id-normalizer` -
+  passed and wrote the all-fixture delta summary with populated service/junction delta columns.
+- `cargo nextest run -p xtask` - passed, `94` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_delta_id_normalizer.md` -
+  passed.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- Line-by-line JSON parse for `docs\workstreams\headless-parity-deepening\CONTEXT.jsonl` - passed,
+  `511` JSONL records parsed.
+
+Residual note:
+
+- This repairs local source-backed audit visibility. It does not close root residuals, but it makes
+  the next phase comparison concrete: browser/Cytoscape final node/edge/child bboxes can now be
+  reviewed beside local upstream-vs-rendered service, group, and junction deltas for the same
+  fixtures.
+
 ## HPD-050 - Architecture Active Residual Probe Batch
 
 Outcome:

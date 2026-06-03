@@ -334,6 +334,13 @@ Current repository reality to preserve:
     record `bbBeforeRun2 == bbAfterSegments`, so the next useful cut is a Rust-vs-browser phase
     comparison of final node/edge/child bboxes, not another command-shape extension or root
     constant tune.
+  - A follow-up local-delta evidence repair restored `debug-architecture-delta` and
+    `summarize-architecture-deltas` for current Architecture SVG ids. The extractor now recognizes
+    diagram-scoped services/groups and junction ids carried by child `node-*` rects. The seven
+    active residual reports under `target\compare\architecture-delta-active-residuals-hpd050\`
+    now have non-zero service/junction/group-rect counts and no missing elements. Use those reports
+    with the browser probe batch to separate solver placement drift from final group/service bbox
+    phase drift; do not infer element-level deltas from the old root-only delta reports.
 - HPD-060 outcome to preserve:
   - Sequence now uses the typed `SequenceDiagramRenderModel` as the semantic source for
     compatibility JSON projection.
