@@ -542,6 +542,13 @@ Current repository reality to preserve:
     without matching DOM. Local Requirement now emits the `neo` DOM surfaces needed for
     `nodeBorder` to affect visible node/divider strokes, and the public dark-theme smoke no longer
     counts provider-only colors as visible signals.
+  - A forty-seventh HPD-080 visible-signal audit calibrated Gantt public smoke coverage. The
+    renderer already emitted Mermaid 11.15 ordinary-task, outside-label, and done-task selectors;
+    the compact smoke source was too narrow and counted ordinary task colors while rendering only a
+    done task. The smoke now includes a wide ordinary task, a narrow long-label task that emits
+    `taskTextOutsideRight taskTextOutside0`, and a done task, so `taskBkgColor`,
+    `taskBorderColor`, `taskTextOutsideColor`, `doneTaskBkgColor`, and `doneTaskBorderColor` are
+    all backed by matching DOM.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

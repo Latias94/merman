@@ -3,6 +3,42 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Gantt Visible Signal Smoke Calibration
+
+Outcome:
+
+- Re-audited the public Gantt dark-theme smoke after the visible-signal tightening found that the
+  compact sample had only a `done` task while still counting ordinary task colors as visible.
+- Confirmed local Gantt output already emits source-backed Mermaid 11.15 selectors for ordinary
+  task state, done task state, and outside task labels. The issue was sample representativeness, not
+  a production renderer defect.
+- Tightened the public smoke source so one compact Gantt diagram now includes:
+  - a wide ordinary task consuming `taskBkgColor`, `taskBorderColor`, and `taskTextColor`;
+  - a narrow long-label ordinary task emitting `taskTextOutsideRight taskTextOutside0`, consuming
+    `taskTextOutsideColor`;
+  - a done task consuming `doneTaskBkgColor` and `doneTaskBorderColor`.
+- Added a focused public render test documenting that Gantt visible theme signals should be counted
+  only when matching state/label DOM exists.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/styles.js`
+- Local rendered evidence in `target/compare/gantt_visible_audit3.svg` showed
+  `class="task task0"`, `class="taskTextOutsideRight taskTextOutside0 ..."`, and
+  `class="task done0"` in the same compact sample.
+
+Focused verification:
+
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This is a measurement-quality fix. Gantt's provider CSS remains source-backed; future public
+  smoke additions should keep `taskTextOutsideColor` and state-specific task colors out of the
+  visible-signal list unless the sample actually emits matching outside/state DOM.
+
 ## HPD-080 - Requirement Visible Signal Audit And Neo Node Border
 
 Outcome:

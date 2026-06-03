@@ -319,12 +319,14 @@ gantt
   title Theme Plan
   dateFormat YYYY-MM-DD
   section Core
-  Ship :done, 2026-01-01, 1d
+  Build : 2026-01-01, 15d
+  Outside Label : 2026-01-16, 1d
+  Ship :done, 2026-01-17, 3d
 "##,
-            &["Theme Plan", "Core", "Ship"],
+            &["Theme Plan", "Core", "Build", "Outside Label", "Ship"],
             &[
                 "#f8fafc", "#172554", "#1e3a8a", "#fde68a", "#38bdf8", "#111827", "#facc15",
-                "#fb923c", "#22c55e",
+                "#fb923c", "#22c55e", "#16a34a",
             ],
         ),
         (
@@ -371,6 +373,47 @@ xychart
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
     }
+}
+
+#[test]
+fn gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible() {
+    let svg = render_svg(
+        "gantt-visible-audit",
+        r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "taskTextColor": "#f8fafc", "taskBkgColor": "#111827", "taskBorderColor": "#facc15", "taskTextOutsideColor": "#fb923c", "doneTaskBkgColor": "#22c55e", "doneTaskBorderColor": "#16a34a"}}}%%
+gantt
+  title Visible Task Audit
+  dateFormat YYYY-MM-DD
+  section Core
+  Build : 2026-01-01, 15d
+  Outside Label : 2026-01-16, 1d
+  Ship :done, 2026-01-17, 3d
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="task task0""#),
+        "Gantt taskBkgColor/taskBorderColor should only be counted with normal task DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="task done0""#),
+        "Gantt doneTask* colors should only be counted with done task DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="taskTextOutsideRight taskTextOutside0"#),
+        "Gantt taskTextOutsideColor should only be counted with outside-label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .task0,#gantt-visible-audit .task1,#gantt-visible-audit .task2,#gantt-visible-audit .task3{fill:#111827;stroke:#facc15;}"#),
+        "normal task colors should reach Gantt task state selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .done0,#gantt-visible-audit .done1,#gantt-visible-audit .done2,#gantt-visible-audit .done3{stroke:#16a34a;fill:#22c55e;stroke-width:2;}"#),
+        "done task colors should reach Gantt done state selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .taskTextOutside0,#gantt-visible-audit .taskTextOutside2{fill:#fb923c;}"#),
+        "outside task text color should still be emitted as a Gantt state selector: {svg}"
+    );
 }
 
 #[test]

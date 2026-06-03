@@ -303,5 +303,10 @@ Last updated: 2026-06-03
   slice fixed the actual visible gap by emitting `look: neo` Requirement node/edge DOM surfaces so
   `nodeBorder` can style current node and divider strokes while default structural parity stays
   green.
+  A follow-up Gantt visible-signal audit found no production CSS defect, but the compact smoke
+  source was still self-deceptive: it counted ordinary task colors while rendering only a `done`
+  task, and it counted outside-label color without proving outside-label DOM. The smoke now includes
+  a wide ordinary task, a narrow long-label task, and a done task so normal task, outside text, and
+  done task colors each have matching DOM before being counted as visible renderability signals.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -334,3 +334,5 @@
 {"file":"docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md","reason":"HPD-080 coverage ledger: Journey and Timeline status now distinguish actual visible theme surfaces from inert provider rules."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-080-requirement-visible-signal-audit.md","reason":"HPD-080 journal: Requirement audit documents current DOM-consumed theme surfaces versus legacy provider-only rules."}
 {"file":"crates/merman-render/src/svg/parity/requirement.rs","reason":"HPD-080 Requirement fix: look=neo output now exposes data-look/outer-path/divider DOM so nodeBorder can style visible node and divider strokes."}
+{"file":"crates/merman/tests/theme_renderability_smoke.rs","reason":"HPD-080 Gantt visible-signal audit: public dark-theme smoke now counts ordinary-task, outside-label, and done-task colors only with matching DOM."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-080-gantt-visible-signal-audit.md","reason":"HPD-080 journal: Gantt audit documents why this was a public-smoke representativeness fix rather than a renderer CSS defect."}
