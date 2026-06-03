@@ -272,6 +272,11 @@ Current repository reality to preserve:
     is behavior-preserving and keeps FCoSE node bounds and SVG/root service bounds on the same phase
     vocabulary; Architecture structural parity stayed green and `parity-root` remained the existing
     `25` mismatch diagnostic queue.
+  - A follow-up probe-harness slice promoted the manual Architecture FCoSE/Cytoscape browser probe
+    to `xtask debug-architecture-fcose-probe`. Use that command for future fixture probes so
+    fixture resolution, JSON validation, artifact naming, and optional Edge/Chrome executable
+    selection are recorded consistently instead of relying on raw `node ... > file` shell
+    redirection.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and

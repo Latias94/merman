@@ -7,7 +7,9 @@ mod flowchart;
 mod mindmap;
 mod svg;
 
-pub(crate) use architecture::{debug_architecture_delta, summarize_architecture_deltas};
+pub(crate) use architecture::{
+    debug_architecture_delta, debug_architecture_fcose_probe, summarize_architecture_deltas,
+};
 pub(crate) use dagre::compare_dagre_layout;
 pub(crate) use flowchart::{
     debug_flowchart_data_points, debug_flowchart_edge_trace, debug_flowchart_layout,

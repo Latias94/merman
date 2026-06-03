@@ -3,6 +3,46 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture FCoSE Browser Probe xtask Entry
+
+Outcome:
+
+- Promoted the manual Architecture FCoSE/Cytoscape browser probe into a reusable xtask entry:
+  `debug-architecture-fcose-probe`.
+- The command resolves a single Architecture fixture by filter, invokes
+  `tools/debug/arch_fcose_browser_probe_fixture_025.js`, validates JSON stdout, and writes a stable
+  `<fixture>.fcose-browser-probe.json` artifact under the requested output directory.
+- Added an optional `--browser-exe` flag that maps to Puppeteer's
+  `PUPPETEER_EXECUTABLE_PATH`, matching the existing manual Edge-backed probe workflow without
+  changing the JS probe logic.
+- This is reference-harness infrastructure only. No renderer, layout, measurement constant, or SVG
+  output behavior changed.
+
+Touched production surfaces:
+
+- [crates/xtask/src/cmd/debug/architecture.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/architecture.rs)
+- [crates/xtask/src/cmd/debug/mod.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/cmd/debug/mod.rs)
+- [crates/xtask/src/main.rs](/F:/SourceCodes/Rust/merman/crates/xtask/src/main.rs)
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p xtask fcose_probe` - passed, `3` tests run.
+- `cargo nextest run -p xtask` - passed, `89` tests run.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch5_long_titles_and_punct_076 --out-dir target\compare\architecture-fcose-probe-hpd050 --browser-exe 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'` -
+  passed and wrote
+  `target\compare\architecture-fcose-probe-hpd050\stress_architecture_batch5_long_titles_and_punct_076.fcose-browser-probe.json`
+  with `4` captured stages, `5` final nodes, and `4` final edges.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_fcose_probe_xtask.md` -
+  passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This closes a probe-harness repeatability gap, not an Architecture root residual. Future
+  Cytoscape bbox audits can now cite a checked xtask artifact path instead of relying on ad hoc
+  shell redirection from the raw Node script.
+
 ## HPD-050 - Architecture FCoSE Node BoundsExtras Contribution
 
 Outcome:

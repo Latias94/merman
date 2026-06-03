@@ -161,6 +161,11 @@ Last updated: 2026-06-03
   `architecture_measure_cytoscape_node_bbox_extras(...)` through the same expanded-body,
   optional-label, and union contribution vocabulary before deriving `BoundsExtras`. This preserved
   Architecture structural parity and left the root queue at the existing `25` diagnostics.
+  A follow-up probe-harness slice then promoted the manual Architecture FCoSE/Cytoscape browser
+  probe into `xtask debug-architecture-fcose-probe`, with fixture resolution, JSON validation,
+  stable artifact naming, and an optional `--browser-exe` bridge for the existing Edge-backed
+  Puppeteer workflow. This is source-evidence infrastructure only; it did not change layout or
+  root-bounds behavior.
 
 ## M5 - Semantic / Render Unification Pilot
 
