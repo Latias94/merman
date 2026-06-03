@@ -3,6 +3,35 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Sequence Activation Geometry Seam
+
+Outcome:
+
+- Refactored the source-backed Sequence activation geometry rules introduced by the autonumber and
+  nested-endpoint fixes into shared helpers.
+- `sequence_activation_start_x(...)` now owns Mermaid's stacked activation start offset formula.
+- `sequence_activation_stack_bounds(...)` now owns Mermaid's full-stack min-left / max-right bounds
+  fold with the actor-center fallback.
+- Layout activation state, SVG activation-rectangle planning, and SVG autonumber marker placement
+  now consume the same helpers instead of repeating the formulas.
+- Added helper unit tests for empty, single, and stacked activation bounds.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render activation_start_x_matches_mermaid_stack_offsets activation_stack_bounds_fold_full_active_stack sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15 sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run -p merman-render`
+
+Residual note:
+
+- This is a seam consolidation, not a new visual-diff claim. It exists to keep the already
+  source-backed Sequence activation rules from diverging across layout and SVG render phases.
+
 ## HPD-080 - Sequence Nested Activation Bounds
 
 Outcome:

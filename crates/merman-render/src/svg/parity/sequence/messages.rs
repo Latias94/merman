@@ -2,7 +2,8 @@ use super::super::*;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
-    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_text_line_step_px,
+    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_activation_stack_bounds,
+    sequence_activation_start_x, sequence_text_line_step_px,
 };
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
@@ -96,7 +97,7 @@ impl SequenceAutonumberActivationBounds {
                 };
                 let stack = self.stacks.entry(actor_id.to_string()).or_default();
                 let stacked_size = stack.len();
-                let startx = cx + (((stacked_size as f64) - 1.0) * self.width) / 2.0;
+                let startx = sequence_activation_start_x(cx, stacked_size, self.width);
                 stack.push(startx);
                 true
             }
@@ -114,17 +115,14 @@ impl SequenceAutonumberActivationBounds {
     }
 
     fn actor_bounds(&self, actor_id: &str, center_x: f64) -> (f64, f64) {
-        self.stacks
-            .get(actor_id)
-            .map(|stack| {
-                stack
-                    .iter()
-                    .copied()
-                    .fold((center_x - 1.0, center_x + 1.0), |(left, right), x| {
-                        (left.min(x), right.max(x + self.width))
-                    })
-            })
-            .unwrap_or((center_x - 1.0, center_x + 1.0))
+        sequence_activation_stack_bounds(
+            self.stacks
+                .get(actor_id)
+                .into_iter()
+                .flat_map(|stack| stack.iter().copied()),
+            center_x,
+            self.width,
+        )
     }
 }
 

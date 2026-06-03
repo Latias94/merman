@@ -324,5 +324,8 @@ Last updated: 2026-06-03
   A follow-up Sequence layout slice fixed the same full-stack activation-bounds rule for message
   endpoints. Nested activations now use the min-left / max-right across all active rectangles,
   matching Mermaid's `activationBounds(actor, actors)` instead of only the current stack top.
+  A follow-up Sequence activation seam slice then centralized the Mermaid 11.15 activation start
+  and full-stack bounds formulas so layout, activation-rect SVG planning, and autonumber marker
+  placement cannot silently diverge again.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -346,3 +346,7 @@
 {"file":"crates/merman-render/src/sequence/activation.rs","reason":"HPD-080 Sequence layout fix: actor_bounds now folds all active activation rectangles to match Mermaid 11.15 activationBounds min-left/max-right semantics."}
 {"file":"crates/merman-render/tests/sequence_svg_test.rs","reason":"HPD-080 regression: nested activation layout endpoint now targets the full active stack left bound instead of the innermost stack-top edge."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-080-sequence-nested-activation-bounds.md","reason":"HPD-080 journal: source-backed Sequence nested activation endpoint fix and verification."}
+{"file":"crates/merman-render/src/sequence/activation.rs","reason":"HPD-080 Sequence seam: stacked activation start-x and full-stack bounds formulas now live in shared helpers used by layout and SVG phases."}
+{"file":"crates/merman-render/src/svg/parity/sequence/activation.rs","reason":"HPD-080 Sequence seam: activation rectangle planning now reuses the shared Mermaid 11.15 stacked activation start-x helper."}
+{"file":"crates/merman-render/src/svg/parity/sequence/messages.rs","reason":"HPD-080 Sequence seam: autonumber marker placement now reuses the shared full-stack activation bounds helper instead of keeping its own fold formula."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-080-sequence-activation-geometry-seam.md","reason":"HPD-080 journal: shared Sequence activation geometry seam, source evidence, and verification."}

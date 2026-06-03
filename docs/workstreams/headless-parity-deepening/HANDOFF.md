@@ -575,6 +575,10 @@ Current repository reality to preserve:
     11.15 `activationBounds(actor, actors)`. A nested activation regression covers the old
     stack-top-only bug where messages from a left-side actor targeted the inner activation edge
     instead of the outer active stack boundary.
+  - A fifty-second HPD-080 Sequence activation-geometry seam slice centralized the Mermaid 11.15
+    activation formulas behind shared helpers. Layout activation state, SVG activation-rectangle
+    planning, and SVG autonumber marker placement now share the same stacked start-x and full-stack
+    min-left/max-right bounds calculations, with helper unit tests to prevent future drift.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.
