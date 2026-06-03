@@ -133,7 +133,7 @@ Last updated: 2026-06-03
   preserved root residual behavior through the later behavior-preserving child-label bounds cleanup.
   A disconnected-islands root-bounds audit then
   rejected a tempting global top-level-service switch from `svg_root_bounds` to
-  `cytoscape_group_child_bounds`: it made that one height-only row exact but expanded full
+  the Cytoscape child union: it made that one height-only row exact but expanded full
   Architecture root mismatches from `26` to `84`. The first narrow phase-specific follow-up is now
   landed: isolated top-level services in diagrams that also have groups use the Cytoscape
   group-child phase for root contribution, making the disconnected-islands row exact and reducing
@@ -151,6 +151,12 @@ Last updated: 2026-06-03
   Cytoscape child-label bounds phase explicit in code without changing Architecture output:
   structural parity stayed green and `parity-root` remained the existing `25` mismatch diagnostic
   queue.
+  A follow-up child-contribution bounds seam then replaced the remaining single
+  `cytoscape_group_child_bounds` code field with
+  `ArchitectureCytoscapeChildContributionBounds { body_bounds, label_bounds, union_bounds }`.
+  SVG/group service-bounds estimation and isolated top-level service root-bounds logic now consume
+  the explicit `union_bounds`; Architecture structural parity stayed green and `parity-root`
+  remained the existing `25` mismatch diagnostic queue.
 
 ## M5 - Semantic / Render Unification Pilot
 

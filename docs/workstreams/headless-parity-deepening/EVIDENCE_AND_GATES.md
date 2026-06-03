@@ -3,6 +3,46 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-050 - Architecture Cytoscape Child Contribution Bounds
+
+Outcome:
+
+- Continued HPD-050 from the child-label bounds phase cleanup without changing layout constants or
+  tuning root residuals.
+- Replaced the remaining single `cytoscape_group_child_bounds` service-estimate field with
+  `ArchitectureCytoscapeChildContributionBounds`, which exposes:
+  - `body_bounds`: emitted icon/body contribution,
+  - `label_bounds`: optional Cytoscape child label phase,
+  - `union_bounds`: the compound child contribution used by group sizing/root estimates.
+- SVG/group service-bounds estimation and isolated top-level service root-bounds logic now consume
+  `cytoscape_group_child_contribution.union_bounds`.
+- The existing `MERMAN_ARCH_DEBUG_SERVICE_BOUNDS` output now prints body, label, and union phases
+  separately.
+- Architecture structural parity stayed green, and Architecture `parity-root` remained the existing
+  `25` mismatch diagnostic queue.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/architecture_metrics.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/architecture_metrics.rs)
+- [crates/merman-render/src/svg/parity/architecture.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/architecture.rs)
+
+Focused verification:
+
+- `cargo fmt --check -p merman-render` - passed.
+- `cargo nextest run -p merman-render architecture` - passed, `28` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_hpd050_child_contribution.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_child_contribution.md` -
+  expected failure with the existing `25` Architecture root-only mismatches. The leading rows remain
+  `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076` (`+5.000px`), and
+  `html_titles_and_escapes_041` (`+5.000px`).
+
+Residual note:
+
+- This is a phase-modeling seam. It removes a duplicated single-field abstraction and makes the
+  source-backed Cytoscape child body/label union explicit, but it does not replace the headless
+  measurement model or claim root residual closure.
+
 ## HPD-050 - Dagre Reference Identity Drift Detection
 
 Outcome:

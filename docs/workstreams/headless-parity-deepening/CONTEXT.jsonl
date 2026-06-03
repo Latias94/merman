@@ -446,3 +446,11 @@
 {"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Dagre reference identity drift detection recorded as a reference-harness truth seam, not layout/root closure."}
 {"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: Dagre reference adapter now compares full graph identity sets before future producer broadening."}
 {"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Dagre reference hardening slice recorded under the active source-backed layout audit."}
+{"file":"crates/merman-render/src/architecture_metrics.rs","reason":"HPD-050 Architecture child contribution seam: service bounds now expose Cytoscape child body, label, and union phases instead of a single aggregate field."}
+{"file":"crates/merman-render/src/svg/parity/architecture.rs","reason":"HPD-050 Architecture child contribution seam: SVG/group service-bounds estimation now consumes explicit Cytoscape child union bounds."}
+{"file":"target/compare/architecture_report_parity_hpd050_child_contribution.md","reason":"HPD-050 evidence: Architecture structural parity passed after the child contribution bounds seam."}
+{"file":"target/compare/architecture_report_parity_root_hpd050_child_contribution.md","reason":"HPD-050 evidence: Architecture parity-root remained the existing 25-mismatch diagnostic queue after the child contribution bounds seam."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-050-architecture-child-contribution-bounds.md","reason":"HPD-050 journal: Architecture Cytoscape child body/label/union contribution seam, verification, and residual boundary."}
+{"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-050 evidence: Architecture child contribution bounds recorded as a phase-modeling seam, not root residual closure."}
+{"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-050 handoff: Architecture service child contribution now exposes body, label, and union phases for future source-backed audits."}
+{"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-050 ledger: Architecture child contribution bounds seam recorded under active source-backed layout audit work."}

@@ -14,8 +14,8 @@ pub(crate) struct ArchitectureServiceBoundsEstimate {
     pub(crate) emitted_icon_bounds: Bounds,
     // Approximation of Mermaid's final SVG getBBox() for top-level services.
     pub(crate) svg_root_bounds: Bounds,
-    // Approximation of the child bounds that Cytoscape compounds use for group sizing.
-    pub(crate) cytoscape_group_child_bounds: Bounds,
+    // Explicit Cytoscape child contribution phases for compound sizing.
+    pub(crate) cytoscape_group_child_contribution: ArchitectureCytoscapeChildContributionBounds,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -42,6 +42,13 @@ impl ArchitectureCytoscapeChildLabelBounds {
             max_y: icon_bounds.max_y + self.bottom_extension_px,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ArchitectureCytoscapeChildContributionBounds {
+    pub(crate) body_bounds: Bounds,
+    pub(crate) label_bounds: Option<Bounds>,
+    pub(crate) union_bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -115,6 +122,24 @@ fn union_bounds(a: &Bounds, b: &Bounds) -> Bounds {
         min_y: a.min_y.min(b.min_y),
         max_x: a.max_x.max(b.max_x),
         max_y: a.max_y.max(b.max_y),
+    }
+}
+
+pub(crate) fn architecture_cytoscape_child_contribution_bounds(
+    icon_bounds: &Bounds,
+    label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
+) -> ArchitectureCytoscapeChildContributionBounds {
+    let body_bounds = icon_bounds.clone();
+    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(&body_bounds));
+    let union_bounds = label_bounds
+        .as_ref()
+        .map(|label| union_bounds(&body_bounds, label))
+        .unwrap_or_else(|| body_bounds.clone());
+
+    ArchitectureCytoscapeChildContributionBounds {
+        body_bounds,
+        label_bounds,
+        union_bounds,
     }
 }
 
@@ -212,7 +237,8 @@ where
         max_y: y + icon_size_px,
     };
     let mut svg_root_bounds = emitted_icon_bounds.clone();
-    let mut cytoscape_group_child_bounds = emitted_icon_bounds.clone();
+    let mut cytoscape_group_child_contribution =
+        architecture_cytoscape_child_contribution_bounds(&emitted_icon_bounds, None);
     let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
         .ok()
         .filter(|value| !value.is_empty());
@@ -252,13 +278,15 @@ where
             max_x: svg_root_bounds.max_x.max(text_right_root),
             max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        let child_label_bounds = cytoscape_label_bounds.bounds_for_icon(&emitted_icon_bounds);
-        cytoscape_group_child_bounds =
-            union_bounds(&cytoscape_group_child_bounds, &child_label_bounds);
+        cytoscape_group_child_contribution = architecture_cytoscape_child_contribution_bounds(
+            &emitted_icon_bounds,
+            Some(&cytoscape_label_bounds),
+        );
 
         if debug_service.as_deref() == Some(title) {
+            let label_bounds = cytoscape_group_child_contribution.label_bounds.as_ref();
             eprintln!(
-                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} emitted_icon_bounds=({}, {})-({}, {}) group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
+                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} child_body_bounds=({}, {})-({}, {}) child_label_bounds={:?} group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
                 title,
                 lines,
                 bbox_left_root,
@@ -266,14 +294,15 @@ where
                 label_extra_bottom_root,
                 cytoscape_label_bounds.half_width,
                 label_extra_bottom_compound,
-                emitted_icon_bounds.min_x,
-                emitted_icon_bounds.min_y,
-                emitted_icon_bounds.max_x,
-                emitted_icon_bounds.max_y,
-                cytoscape_group_child_bounds.min_x,
-                cytoscape_group_child_bounds.min_y,
-                cytoscape_group_child_bounds.max_x,
-                cytoscape_group_child_bounds.max_y,
+                cytoscape_group_child_contribution.body_bounds.min_x,
+                cytoscape_group_child_contribution.body_bounds.min_y,
+                cytoscape_group_child_contribution.body_bounds.max_x,
+                cytoscape_group_child_contribution.body_bounds.max_y,
+                label_bounds.map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
+                cytoscape_group_child_contribution.union_bounds.min_x,
+                cytoscape_group_child_contribution.union_bounds.min_y,
+                cytoscape_group_child_contribution.union_bounds.max_x,
+                cytoscape_group_child_contribution.union_bounds.max_y,
                 svg_root_bounds.min_x,
                 svg_root_bounds.min_y,
                 svg_root_bounds.max_x,
@@ -285,7 +314,7 @@ where
     ArchitectureServiceBoundsEstimate {
         emitted_icon_bounds,
         svg_root_bounds,
-        cytoscape_group_child_bounds,
+        cytoscape_group_child_contribution,
     }
 }
 
@@ -295,7 +324,10 @@ pub(crate) fn architecture_top_level_service_root_bounds(
     has_groups: bool,
 ) -> Bounds {
     if has_groups && !has_incident_edge {
-        estimate.cytoscape_group_child_bounds.clone()
+        estimate
+            .cytoscape_group_child_contribution
+            .union_bounds
+            .clone()
     } else {
         estimate.svg_root_bounds.clone()
     }
@@ -377,17 +409,32 @@ mod tests {
                 max_x: 90.0,
                 max_y: 104.1875,
             },
-            cytoscape_group_child_bounds: crate::model::Bounds {
-                min_x: -8.0,
-                min_y: 0.0,
-                max_x: 88.0,
-                max_y: 97.0,
-            },
+            cytoscape_group_child_contribution:
+                super::ArchitectureCytoscapeChildContributionBounds {
+                    body_bounds: crate::model::Bounds {
+                        min_x: 0.0,
+                        min_y: 0.0,
+                        max_x: 80.0,
+                        max_y: 80.0,
+                    },
+                    label_bounds: Some(crate::model::Bounds {
+                        min_x: -8.0,
+                        min_y: 0.0,
+                        max_x: 88.0,
+                        max_y: 97.0,
+                    }),
+                    union_bounds: crate::model::Bounds {
+                        min_x: -8.0,
+                        min_y: 0.0,
+                        max_x: 88.0,
+                        max_y: 97.0,
+                    },
+                },
         };
 
         assert_bounds_eq(
             super::architecture_top_level_service_root_bounds(&estimate, false, true),
-            &estimate.cytoscape_group_child_bounds,
+            &estimate.cytoscape_group_child_contribution.union_bounds,
         );
         assert_bounds_eq(
             super::architecture_top_level_service_root_bounds(&estimate, true, true),
@@ -491,6 +538,48 @@ mod tests {
         assert_eq!(bounds.min_y, 20.0);
         assert_eq!(bounds.max_x, 100.0);
         assert_eq!(bounds.max_y, 117.0);
+    }
+
+    #[test]
+    fn architecture_cytoscape_child_contribution_bounds_preserve_body_label_union_phases() {
+        let icon_bounds = crate::model::Bounds {
+            min_x: 10.0,
+            min_y: 20.0,
+            max_x: 90.0,
+            max_y: 100.0,
+        };
+
+        let without_label =
+            super::architecture_cytoscape_child_contribution_bounds(&icon_bounds, None);
+        assert_eq!(without_label.body_bounds.min_x, icon_bounds.min_x);
+        assert_eq!(without_label.body_bounds.max_y, icon_bounds.max_y);
+        assert!(without_label.label_bounds.is_none());
+        assert_eq!(without_label.union_bounds.min_x, icon_bounds.min_x);
+        assert_eq!(without_label.union_bounds.max_y, icon_bounds.max_y);
+
+        let label_bounds = super::ArchitectureCytoscapeChildLabelBounds {
+            metrics: super::ArchitectureCytoscapeCanvasLabelMetrics {
+                width: 96.0,
+                half_width: 50.0,
+                applied_scale: 1.0,
+            },
+            half_width: 50.0,
+            bottom_extension_px: 17.0,
+        };
+        let with_label = super::architecture_cytoscape_child_contribution_bounds(
+            &icon_bounds,
+            Some(&label_bounds),
+        );
+
+        let child_label = with_label
+            .label_bounds
+            .as_ref()
+            .expect("label phase is preserved");
+        assert_eq!(child_label.min_x, 0.0);
+        assert_eq!(child_label.max_y, 117.0);
+        assert_eq!(with_label.body_bounds.min_x, icon_bounds.min_x);
+        assert_eq!(with_label.union_bounds.min_x, 0.0);
+        assert_eq!(with_label.union_bounds.max_y, 117.0);
     }
 
     #[test]

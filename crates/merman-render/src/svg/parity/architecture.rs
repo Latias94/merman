@@ -276,7 +276,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             |line, style| text_measurer.measure_svg_text_bbox_x(line, style),
         );
         let b_full = if svc.in_group.is_some() {
-            estimate.cytoscape_group_child_bounds.clone()
+            estimate
+                .cytoscape_group_child_contribution
+                .union_bounds
+                .clone()
         } else {
             estimate.svg_root_bounds.clone()
         };

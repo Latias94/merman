@@ -115,10 +115,10 @@ Current repository reality to preserve:
     reverted. The next real fix needs a phase-specific bbox model rather than a single global group
     padding/label-width rule.
   - The first safe follow-up to that finding is now landed: Architecture service bounds estimate
-    fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`,
-    `cytoscape_group_child_bounds`). This did not change behavior: structural Architecture parity
-    was green, and `parity-root` remained the expected 26 mismatches before the later isolated
-    service follow-up.
+    fields are named by phase (`emitted_icon_bounds`, `svg_root_bounds`, and now the explicit
+    Cytoscape child contribution body/label/union phases). This did not change behavior:
+    structural Architecture parity was green, and `parity-root` remained the expected 26 mismatches
+    before the later isolated service follow-up.
   - `repo-ref/dagre` and `repo-ref/graphlib` are now present and checked out to the pinned
     lockfile commits, so dugong/graphlib source-backed audits no longer have to proceed from stale
     assumptions.
@@ -203,10 +203,10 @@ Current repository reality to preserve:
     emitted SVG scanner alone was too short (`823.346x751.460`), while the final root became too
     tall after unioning synthetic label `content_bounds`. A temporary top-level-service switch from
     `svg_root_bounds` to
-    `cytoscape_group_child_bounds` fixed this one row but expanded full Architecture root mismatches
-    from `26` to `84`, so it was rejected.
+    the Cytoscape child union fixed this one row but expanded full Architecture root mismatches from
+    `26` to `84`, so it was rejected.
   - The first narrow phase-specific follow-up is now landed:
-    `architecture_top_level_service_root_bounds(...)` uses `cytoscape_group_child_bounds` only for
+    `architecture_top_level_service_root_bounds(...)` uses the Cytoscape child union only for
     isolated top-level services in diagrams that also have groups. The disconnected-islands row is
     now exact at `823.346x768.460`, full Architecture structural parity is still green, and the
     Architecture root mismatch count is down to `25`. Do not broaden this into a global
@@ -260,6 +260,12 @@ Current repository reality to preserve:
     This is behavior-preserving: FCoSE `BoundsExtras` and SVG/group service-bounds estimation still
     consume the same existing half-width and bottom-extension values. Architecture structural parity
     stayed green, and `parity-root` remained the existing `25` mismatch diagnostic queue.
+  - A follow-up child-contribution bounds seam removed the remaining single
+    `cytoscape_group_child_bounds` code field and replaced it with
+    `ArchitectureCytoscapeChildContributionBounds { body_bounds, label_bounds, union_bounds }`.
+    SVG/group service-bounds estimation and isolated top-level service root-bounds logic now consume
+    the explicit `union_bounds`; behavior stayed unchanged, Architecture structural parity stayed
+    green, and `parity-root` remained the existing `25` mismatch diagnostic queue.
   - The Architecture browser probe now emits `finalElements` after the second FCoSE run. Use it to
     read final `node.boundingBox()`, `labelBounds`, and `bodyBounds` directly instead of inferring
     final group bboxes from SVG rects. It has been checked on the `unicode_and_xml_escapes_019` and
