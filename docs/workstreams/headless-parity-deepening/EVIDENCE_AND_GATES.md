@@ -3,6 +3,44 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Dagre Reference Graph-Dimension Delta
+
+Outcome:
+
+- Strengthened the Dagre JS/Rust reference comparison surface after the graph-dimension output seam.
+- `DagreReferenceComparison` now reports absolute top-level graph `width` / `height` deltas in
+  addition to node geometry, edge geometry, and identity drift.
+- `compare_graph_to_js_reference(...)` reads JS reference dimensions from the Graphlib JSON
+  top-level `value.width` / `value.height` fields; missing JS dimensions become infinite
+  diagnostic deltas instead of silently disappearing.
+- `compare-dagre-layout` now prints `graph dimension delta: width=... height=...` beside the
+  existing geometry and identity summary.
+- No layout, renderer, Graphlib, SVG, or fixture behavior changed in this slice.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/dagre_reference.rs`
+- `crates/xtask/src/cmd/debug/dagre.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-dagre-reference-graph-dimension-delta.md`
+
+Focused verification:
+
+- `cargo nextest run -p xtask dagre_reference` - passed, `6` tests run.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo run -p xtask -- compare-dagre-layout --diagram state --fixture basic --out-dir target\compare\dagre-layout-hpd050-graph-dimension-delta` -
+  passed with graph dimension delta `width=0.000000 height=0.000000`, max node delta
+  `0.000000`, max edge delta `0.000000`, and zero node/edge identity drift.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF warning only.
+- Line-by-line JSON parse for `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` - passed,
+  `559` JSONL records parsed.
+- `docs/workstreams/headless-parity-deepening/WORKSTREAM.json` parse - passed.
+
+Residual note:
+
+- This is reference truth-surface hardening, not a Dagre layout implementation change. It makes
+  graph-level root-size drift visible in the comparison result before any future Dagre-backed
+  residual audit tries to explain or tune it.
+
 ## HPD-050 - Dagre Attribute Case-Insensitivity API-Shape Audit
 
 Outcome:

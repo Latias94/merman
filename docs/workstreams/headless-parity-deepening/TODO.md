@@ -126,7 +126,10 @@ Last updated: 2026-06-03
   A follow-up hardening slice now reports Rust-only and JS-only node/edge identity drift separately
   from geometry deltas, and treats JS entries that exist without coordinates/points as infinite
   diagnostic deltas. The State `basic` reference check still reports zero geometry delta and zero
-  identity drift. Architecture Cytoscape
+  identity drift. A follow-up graph-dimension comparison slice now also reports absolute JS/Rust
+  top-level graph `width` / `height` deltas from Graphlib JSON `value.width` / `value.height`; the
+  State `basic` reference check reports zero graph-dimension, geometry, and identity drift.
+  Architecture Cytoscape
   service-label measurement now has a shared `ArchitectureCytoscapeChildLabelBounds` seam used by
   both FCoSE node `BoundsExtras` and SVG root/group service-bounds estimation. That seam keeps SVG
   root `createText(...)` measurement separate from Cytoscape compound-child label measurement and

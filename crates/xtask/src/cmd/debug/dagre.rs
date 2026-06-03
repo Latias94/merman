@@ -153,6 +153,10 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     println!("js:      {}", artifacts.js_path.display());
     println!("rust:    {}", artifacts.rust_path.display());
     println!(
+        "graph dimension delta: width={:.6} height={:.6}",
+        comparison.graph_width_delta, comparison.graph_height_delta
+    );
+    println!(
         "max node delta: {:.6} (node={})",
         comparison.max_node_delta,
         comparison.max_node_id.as_deref().unwrap_or("<none>")

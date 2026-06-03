@@ -223,6 +223,11 @@ Current repository reality to preserve:
     the coordinate/point intersection. `compare-dagre-layout` reports Rust-only and JS-only node/edge
     drift, and existing JS entries without coordinates or points become infinite diagnostic deltas.
     The State `basic` reference run still reports zero geometry delta and zero identity drift.
+  - A follow-up Dagre graph-dimension comparison slice now reads top-level JS Graphlib JSON
+    `value.width` / `value.height` and reports absolute Rust/JS graph `width` / `height` deltas in
+    `DagreReferenceComparison` and `compare-dagre-layout`. The State `basic` reference run reports
+    graph dimension delta `width=0.000000 height=0.000000` with zero node/edge geometry and
+    identity drift.
   - Architecture Cytoscape service-label measurement now has a shared
     `ArchitectureCytoscapeChildLabelBounds` seam used by both FCoSE node `BoundsExtras` and
     SVG root/group service-bounds estimation. This reduces hidden duplicate measurement logic while

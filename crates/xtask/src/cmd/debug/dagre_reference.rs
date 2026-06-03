@@ -32,6 +32,8 @@ impl DagreReferenceArtifacts {
 }
 
 pub(crate) struct DagreReferenceComparison {
+    pub(crate) graph_width_delta: f64,
+    pub(crate) graph_height_delta: f64,
     pub(crate) max_node_delta: f64,
     pub(crate) max_node_id: Option<String>,
     pub(crate) max_edge_delta: f64,
@@ -105,6 +107,13 @@ pub(crate) fn compare_graph_to_js_reference(
         source,
     })?;
     let js_out: JsonValue = serde_json::from_str(&js_raw)?;
+    let js_graph_label = js_out.get("value").and_then(|v| v.as_object());
+    let js_graph_width = js_graph_label
+        .and_then(|label| label.get("width"))
+        .and_then(read_f64);
+    let js_graph_height = js_graph_label
+        .and_then(|label| label.get("height"))
+        .and_then(read_f64);
 
     let mut js_node_ids: BTreeSet<String> = BTreeSet::new();
     let mut js_node_positions: BTreeMap<String, (f64, f64)> = BTreeMap::new();
@@ -163,6 +172,8 @@ pub(crate) fn compare_graph_to_js_reference(
 
     Ok(compare_graph_points_to_reference(
         graph,
+        js_graph_width,
+        js_graph_height,
         &js_node_ids,
         &js_node_positions,
         &js_edge_ids,
@@ -389,6 +400,8 @@ fn edge_label_to_json(label: &EdgeLabel, phase: DagreSnapshotPhase) -> JsonValue
 
 fn compare_graph_points_to_reference(
     graph: &DagreLayoutGraph,
+    js_graph_width: Option<f64>,
+    js_graph_height: Option<f64>,
     js_node_ids: &BTreeSet<String>,
     js_node_positions: &BTreeMap<String, (f64, f64)>,
     js_edge_ids: &BTreeSet<String>,
@@ -465,6 +478,8 @@ fn compare_graph_points_to_reference(
     }
 
     DagreReferenceComparison {
+        graph_width_delta: dimension_delta(js_graph_width, graph.graph().width),
+        graph_height_delta: dimension_delta(js_graph_height, graph.graph().height),
         max_node_delta,
         max_node_id,
         max_edge_delta,
@@ -474,6 +489,12 @@ fn compare_graph_points_to_reference(
         rust_only_edge_ids,
         js_only_edge_ids,
     }
+}
+
+fn dimension_delta(reference: Option<f64>, actual: f64) -> f64 {
+    reference
+        .map(|reference| (reference - actual).abs())
+        .unwrap_or(f64::INFINITY)
 }
 
 fn find_common_edges(graph: &DagreLayoutGraph, id1: &str, id2: &str) -> Vec<(String, String)> {
@@ -778,6 +799,8 @@ mod tests {
 
         let comparison = compare_graph_points_to_reference(
             &graph,
+            Some(0.0),
+            Some(0.0),
             &js_node_ids,
             &js_node_positions,
             &js_edge_ids,
@@ -788,6 +811,34 @@ mod tests {
         assert_eq!(comparison.js_only_node_ids, vec!["extra"]);
         assert_eq!(comparison.rust_only_edge_ids, vec!["a\u{1f}b\u{1f}ab"]);
         assert_eq!(comparison.js_only_edge_ids, vec!["extra\u{1f}a\u{1f}"]);
+        assert_eq!(comparison.graph_width_delta, 0.0);
+        assert_eq!(comparison.graph_height_delta, 0.0);
+        assert_eq!(comparison.max_node_delta, 0.0);
+        assert_eq!(comparison.max_edge_delta, 0.0);
+    }
+
+    #[test]
+    fn dagre_reference_comparison_reports_graph_dimension_deltas() {
+        let mut graph = DagreLayoutGraph::new(GraphOptions {
+            directed: true,
+            multigraph: true,
+            compound: false,
+        });
+        graph.graph_mut().width = 100.0;
+        graph.graph_mut().height = 50.0;
+
+        let comparison = compare_graph_points_to_reference(
+            &graph,
+            Some(103.5),
+            Some(45.0),
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(comparison.graph_width_delta, 3.5);
+        assert_eq!(comparison.graph_height_delta, 5.0);
         assert_eq!(comparison.max_node_delta, 0.0);
         assert_eq!(comparison.max_edge_delta, 0.0);
     }
@@ -823,12 +874,16 @@ mod tests {
 
         let comparison = compare_graph_points_to_reference(
             &graph,
+            None,
+            None,
             &js_node_ids,
             &js_node_positions,
             &js_edge_ids,
             &js_edge_points,
         );
 
+        assert_eq!(comparison.graph_width_delta, f64::INFINITY);
+        assert_eq!(comparison.graph_height_delta, f64::INFINITY);
         assert_eq!(comparison.max_node_delta, f64::INFINITY);
         assert_eq!(comparison.max_node_id.as_deref(), Some("a"));
         assert_eq!(comparison.max_edge_delta, f64::INFINITY);
