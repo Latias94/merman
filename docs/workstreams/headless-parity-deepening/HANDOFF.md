@@ -623,6 +623,14 @@ Current repository reality to preserve:
     rules with `strokeWidth`, focused Block SVG tests assert the visible edge class, public
     dark-theme smoke includes a cluster-plus-edge sample, and Block structural `parity` stayed
     green.
+  - A sixtieth HPD-080 Timeline redux visible-DOM slice fixed the official `redux*` theme branch.
+    Pinned Mermaid 11.15 Timeline `genReduxSections(...)` styles current node paths with
+    `mainBkg` / `nodeBorder` / `strokeWidth`, labels with `nodeBorder` / `fontWeight`, and
+    `.lineWrapper line` with `nodeBorder` / `strokeWidth`, while redux node geometry uses
+    sharp-corner paths without the classic divider line. Local Timeline now emits that current DOM
+    branch, focused Timeline tests and public smoke cover the visible node/line surfaces, structural
+    Timeline `parity` stayed green, and `parity-root` remains the known `3` max-width residual
+    rows.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

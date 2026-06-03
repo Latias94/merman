@@ -3,6 +3,60 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - Timeline Redux Visible DOM Theme Consumption
+
+Outcome:
+
+- Fixed a real Timeline visible-DOM seam for official `redux*` themes.
+- Pinned Mermaid 11.15 `timeline/styles.js` switches `redux*` themes into
+  `genReduxSections(...)`, where current node paths consume `mainBkg`, `nodeBorder`, and
+  `strokeWidth`, labels consume `nodeBorder` and `fontWeight`, and `.lineWrapper line` consumes
+  `nodeBorder` plus `strokeWidth`.
+- Pinned `timeline/svgDraw.js` also changes redux node geometry to sharp-corner paths and skips the
+  classic node divider line. Local output previously kept the classic CSS/DOM branch, so
+  `theme: "redux"` could parse the right theme values while visible Timeline nodes and lines still
+  behaved like classic sections.
+- Local Timeline now switches its CSS and node DOM rendering on the active `redux*` theme branch,
+  while keeping Mermaid's presentational `stroke="black"` / `stroke-width="2"` line attributes that
+  the stylesheet overrides.
+- Public dark-theme smoke now counts Timeline redux node and line colors only when matching current
+  `.timeline-node section-*`, `.node-bkg`, and `.lineWrapper line` DOM exists.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/svgDraw.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/timelineRenderer.ts`
+- Fresh Mermaid CLI output in `target/compare/timeline_redux_hpd080_upstream.svg` showed the
+  source-backed redux CSS branch and matching current DOM.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/timeline.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/timeline.rs)
+- [crates/merman-render/tests/timeline_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/timeline_svg_test.rs)
+- [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+
+Focused verification:
+
+- `cargo nextest run -p merman-render --test timeline_svg_test` - passed, `2` tests run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `11`
+  tests run.
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\timeline_report_parity_after_hpd080_redux_theme.md` -
+  passed, all Timeline fixtures matched structurally.
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target\compare\timeline_report_parity_root_after_hpd080_redux_theme.md` -
+  expected-failed on the existing `3` Timeline max-width/root residual rows:
+  `timeline_stress_accdescr_block_multiline`, `timeline_stress_width_large_and_long_labels`, and
+  `upstream_long_word_wrap`.
+- `cargo fmt -p merman-render -p merman --check` - passed.
+
+Residual note:
+
+- Timeline arrowhead marker paths remain unthemed because pinned Mermaid 11.15 emits the same bare
+  marker path in this branch; this slice fixes visible node/line branch selection, not marker-color
+  policy.
+- The Timeline `parity-root` rows remain browser/root-width diagnostic tails and should not be
+  tuned through redux CSS.
+
 ## HPD-080 - State Visible Rough-Path Theme Consumption
 
 Outcome:

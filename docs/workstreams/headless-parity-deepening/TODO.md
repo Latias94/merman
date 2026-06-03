@@ -352,5 +352,11 @@ Last updated: 2026-06-03
   paths emit `edge-thickness-normal edge-pattern-solid flowchart-link`, while local Block CSS had
   only the diagram-owned `.edgePath .path` width. Block now emits Mermaid 11.15 shared edge
   thickness/pattern classes so `themeVariables.strokeWidth` reaches visible Block edges.
+  A follow-up Timeline redux visible-DOM slice fixed the official `redux*` theme branch. Current
+  Timeline redux node paths now consume `mainBkg` / `nodeBorder` / `strokeWidth`, labels consume
+  `nodeBorder` / `fontWeight`, and `.lineWrapper line` consumes `nodeBorder` / `strokeWidth`;
+  redux node geometry also uses the source-backed sharp-corner path without the classic divider
+  line. Structural Timeline `parity` stayed green, while the known `3` Timeline max-width
+  `parity-root` rows remain diagnostic.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -930,3 +930,47 @@ timeline
         "Timeline should not count disabled styling as a visible theme signal without disabled DOM: {svg}"
     );
 }
+
+#[test]
+fn timeline_redux_theme_smoke_counts_current_node_and_line_dom_as_visible() {
+    let svg = render_svg(
+        "timeline-redux-visible-audit",
+        r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "mainBkg": "#111827", "nodeBorder": "#38bdf8", "strokeWidth": 5, "cScale0": "#ef4444", "cScaleLabel0": "#e879f9", "cScaleInv0": "#334155", "cScale1": "#172554", "cScaleLabel1": "#f8fafc", "cScaleInv1": "#334155"}}}%%
+timeline
+    section Release
+        Plan : Build
+        Ship : Done
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#timeline-redux-visible-audit .section--1 rect,#timeline-redux-visible-audit .section--1 path,#timeline-redux-visible-audit .section--1 circle{fill:#111827;stroke:#38bdf8;stroke-width:5;filter:url(#timeline-redux-visible-audit-drop-shadow);}"#
+        ),
+        "Timeline redux node path CSS should consume mainBkg/nodeBorder/strokeWidth with matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"#timeline-redux-visible-audit .section--1 text{fill:#38bdf8;font-weight:600;}"#
+        ),
+        "Timeline redux text CSS should consume nodeBorder/fontWeight with matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"#timeline-redux-visible-audit .lineWrapper line{stroke:#38bdf8;stroke-width:5;}"#
+        ),
+        "Timeline redux lineWrapper CSS should consume nodeBorder/strokeWidth with matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="lineWrapper"><line"#),
+        "Timeline redux lineWrapper CSS should only be counted when line DOM exists: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="timeline-node section--1""#),
+        "Timeline redux node CSS should only be counted when current node DOM exists: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="node-line--1""#),
+        "Timeline redux smoke should not rely on classic node divider DOM: {svg}"
+    );
+}

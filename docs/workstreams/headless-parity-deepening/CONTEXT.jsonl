@@ -391,3 +391,13 @@
 {"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-080 evidence: Block visible edge stroke-width fix verified with focused Block tests, Block structural parity, public dark-theme smoke, fmt, and diff check."}
 {"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-080 handoff: added the Block visible edge stroke-width slice and continuation guidance."}
 {"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-080 task ledger: recorded the Block visible edge stroke-width follow-up under visible rendering defect triage."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/styles.js","reason":"HPD-080 Timeline source evidence: redux themes use genReduxSections so visible node paths and lineWrapper lines consume nodeBorder/strokeWidth and mainBkg."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/svgDraw.js","reason":"HPD-080 Timeline source evidence: redux node geometry uses sharp-corner paths and omits the classic divider line."}
+{"file":"crates/merman-render/src/svg/parity/timeline.rs","reason":"HPD-080 production fix: Timeline redux CSS and node DOM now consume source-backed mainBkg/nodeBorder/strokeWidth/fontWeight on current visible surfaces."}
+{"file":"crates/merman-render/tests/timeline_svg_test.rs","reason":"HPD-080 focused regression: Timeline tests now assert redux visible node path CSS, lineWrapper CSS, sharp-corner geometry, and classic divider omission."}
+{"file":"crates/merman/tests/theme_renderability_smoke.rs","reason":"HPD-080 public smoke: Timeline redux theme coverage now counts current node and line DOM as visible signals."}
+{"file":"docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md","reason":"HPD-080 coverage ledger: Timeline redux current DOM branch is now covered while disabled and neo-only boundaries remain explicit."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-03-hpd-080-timeline-redux-visible-dom-theme.md","reason":"HPD-080 journal: source-backed Timeline redux visible DOM theme-consumption seam and verification evidence."}
+{"file":"docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md","reason":"HPD-080 evidence: Timeline redux visible DOM fix verified with focused Timeline tests, public smoke, structural Timeline parity, and root-residual diagnosis."}
+{"file":"docs/workstreams/headless-parity-deepening/HANDOFF.md","reason":"HPD-080 handoff: added Timeline redux visible DOM slice and preserved the known three-row Timeline root residual caveat."}
+{"file":"docs/workstreams/headless-parity-deepening/TODO.md","reason":"HPD-080 task ledger: recorded the Timeline redux visible DOM follow-up under visible rendering defect triage."}

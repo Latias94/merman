@@ -1,6 +1,20 @@
 use super::*;
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
+fn timeline_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<String> {
+    effective_config
+        .get("themeVariables")
+        .and_then(|value| value.get(key))
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
 
@@ -96,6 +110,24 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let root_rule = parts.root_rule;
     let mut out = parts.css_prefix;
+    let theme = SvgTheme::new(effective_config);
+    let theme_name = theme.theme_name();
+    let is_redux_theme = theme_name.contains("redux");
+    let is_dark_theme = theme_name.contains("dark");
+    let is_color_theme = theme_name.contains("color");
+    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
+        .map(|value| value.max(1.0).min(64.0) as usize)
+        .unwrap_or(12);
+    let stroke_width = theme.css_value("strokeWidth", "1");
+    let font_weight = theme.css_value("fontWeight", "normal");
+    let main_bkg = theme.color("mainBkg", "#ECECFF");
+    let node_border = theme.color("nodeBorder", "#9370DB");
+    let border_color_array = timeline_theme_array(effective_config, "borderColorArray");
+    let scoped_drop_shadow = if diagram_id.is_empty() {
+        theme.css_value("dropShadow", "none")
+    } else {
+        format!("url(#{id}-drop-shadow)")
+    };
 
     let label_text_color = theme_color(effective_config, "labelTextColor", "black");
     let label_text_is_calculated = label_text_color.trim() == "calculated";
@@ -105,7 +137,7 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
     let mut buf = ryu_js::Buffer::new();
 
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
-    for i in 0..12usize {
+    for i in 0..theme_color_limit {
         let section = i as i64 - 1;
         let c_scale = theme_color(effective_config, &format!("cScale{i}"), default_c_scale(i));
         let c_scale_label = config_string(
@@ -130,42 +162,98 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
         .unwrap_or_else(|| c_scale.clone());
         let sw = 17 - 3 * (i as i64);
 
-        let _ = write!(
-            &mut out,
-            r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
-            id,
-            section,
-            id,
-            section,
-            id,
-            section,
-            id,
-            section,
-            c_scale,
-            id,
-            section,
-            c_scale_label,
-            id,
-            section,
-            c_scale_label,
-            id,
-            section,
-            c_scale,
-            id,
-            section,
-            sw,
-            id,
-            section,
-            c_scale_inv,
-            id,
-            c_scale_label,
-            id,
-            id,
-            id,
-            disabled_fill,
-            id,
-            disabled_text_fill,
-        );
+        if is_redux_theme {
+            let border_color = border_color_array
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| node_border.clone());
+            let redux_fill = if is_color_theme && !is_dark_theme {
+                border_color.clone()
+            } else {
+                main_bkg.clone()
+            };
+            let redux_stroke = if is_color_theme {
+                border_color
+            } else {
+                node_border.clone()
+            };
+            let _ = write!(
+                &mut out,
+                r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle{{fill:{};stroke:{};stroke-width:{};filter:{};}}#{} .section-{} text{{fill:{};font-weight:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};stroke-width:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
+                id,
+                section,
+                id,
+                section,
+                id,
+                section,
+                redux_fill,
+                redux_stroke,
+                stroke_width,
+                scoped_drop_shadow,
+                id,
+                section,
+                node_border,
+                font_weight,
+                id,
+                section,
+                c_scale_label,
+                id,
+                section,
+                c_scale,
+                id,
+                section,
+                sw,
+                id,
+                section,
+                c_scale_inv,
+                id,
+                node_border,
+                stroke_width,
+                id,
+                id,
+                id,
+                disabled_fill,
+                id,
+                disabled_text_fill,
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:{};}}#{} .disabled text{{fill:{};}}"#,
+                id,
+                section,
+                id,
+                section,
+                id,
+                section,
+                id,
+                section,
+                c_scale,
+                id,
+                section,
+                c_scale_label,
+                id,
+                section,
+                c_scale_label,
+                id,
+                section,
+                c_scale,
+                id,
+                section,
+                sw,
+                id,
+                section,
+                c_scale_inv,
+                id,
+                c_scale_label,
+                id,
+                id,
+                id,
+                disabled_fill,
+                id,
+                disabled_text_fill,
+            );
+        }
     }
 
     let git0 = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
@@ -211,6 +299,9 @@ fn render_timeline_diagram_svg_inner(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let is_redux_theme = config_string(effective_config, &["theme"])
+        .map(|theme| theme.contains("redux"))
+        .unwrap_or(false);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -243,19 +334,31 @@ fn render_timeline_diagram_svg_inner(
         diagram_id: &str,
         node_count: &mut usize,
         n: &crate::model::TimelineNodeLayout,
+        is_redux_theme: bool,
+        is_event: bool,
     ) {
         let node_id = scoped_svg_id(diagram_id, &format!("node-{node_count}"));
         *node_count += 1;
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
         let rd = 5.0;
-        let d = format!(
-            "M0 {y0} v{v1} q0,-5 5,-5 h{hw} q5,0 5,5 v{v2} H0 Z",
-            y0 = fmt(h - rd),
-            v1 = fmt(-h + 2.0 * rd),
-            hw = fmt(w - 2.0 * rd),
-            v2 = fmt(h - rd),
-        );
+        let d = if is_redux_theme {
+            format!(
+                "M0 {y0} v{v1} h{w} v{h} H0 Z",
+                y0 = fmt(h - rd),
+                v1 = fmt(-(h - rd)),
+                w = fmt(w),
+                h = fmt(h),
+            )
+        } else {
+            format!(
+                "M0 {y0} v{v1} q0,-5 5,-5 h{hw} q5,0 5,5 v{v2} H0 Z",
+                y0 = fmt(h - rd),
+                v1 = fmt(-h + 2.0 * rd),
+                hw = fmt(w - 2.0 * rd),
+                v2 = fmt(h - rd),
+            )
+        };
 
         let _ = write!(
             out,
@@ -269,17 +372,27 @@ fn render_timeline_diagram_svg_inner(
             node_id = escape_attr(&node_id),
             d = escape_attr(&d)
         );
-        let _ = write!(
-            out,
-            r#"<line class="{line_class}" x1="0" y1="{y}" x2="{x2}" y2="{y}"/>"#,
-            line_class = escape_attr(&node_line_class(&n.section_class)),
-            y = fmt(h),
-            x2 = fmt(w)
-        );
+        if !is_redux_theme {
+            let _ = write!(
+                out,
+                r#"<line class="{line_class}" x1="0" y1="{y}" x2="{x2}" y2="{y}"/>"#,
+                line_class = escape_attr(&node_line_class(&n.section_class)),
+                y = fmt(h),
+                x2 = fmt(w)
+            );
+        }
         out.push_str("</g>");
 
         let tx = w / 2.0;
-        let ty = n.padding / 2.0;
+        let ty = if is_redux_theme {
+            if is_event {
+                n.padding / 2.0 + 3.0
+            } else {
+                n.padding
+            }
+        } else {
+            n.padding / 2.0
+        };
         let _ = write!(
             out,
             r#"<g transform="translate({x}, {y})">"#,
@@ -351,7 +464,14 @@ fn render_timeline_diagram_svg_inner(
             x = fmt(node.x),
             y = fmt(node.y)
         );
-        render_node(&mut out, diagram_id, &mut node_count, node);
+        render_node(
+            &mut out,
+            diagram_id,
+            &mut node_count,
+            node,
+            is_redux_theme,
+            false,
+        );
         out.push_str("</g>");
 
         for task in &section.tasks {
@@ -362,7 +482,14 @@ fn render_timeline_diagram_svg_inner(
                 x = fmt(task_node.x),
                 y = fmt(task_node.y)
             );
-            render_node(&mut out, diagram_id, &mut node_count, task_node);
+            render_node(
+                &mut out,
+                diagram_id,
+                &mut node_count,
+                task_node,
+                is_redux_theme,
+                false,
+            );
             out.push_str("</g>");
 
             let _ = write!(
@@ -382,7 +509,14 @@ fn render_timeline_diagram_svg_inner(
                     x = fmt(ev.x),
                     y = fmt(ev.y)
                 );
-                render_node(&mut out, diagram_id, &mut node_count, ev);
+                render_node(
+                    &mut out,
+                    diagram_id,
+                    &mut node_count,
+                    ev,
+                    is_redux_theme,
+                    true,
+                );
                 out.push_str("</g>");
             }
         }
@@ -396,7 +530,14 @@ fn render_timeline_diagram_svg_inner(
             x = fmt(task_node.x),
             y = fmt(task_node.y)
         );
-        render_node(&mut out, diagram_id, &mut node_count, task_node);
+        render_node(
+            &mut out,
+            diagram_id,
+            &mut node_count,
+            task_node,
+            is_redux_theme,
+            false,
+        );
         out.push_str("</g>");
 
         let _ = write!(
@@ -416,7 +557,14 @@ fn render_timeline_diagram_svg_inner(
                 x = fmt(ev.x),
                 y = fmt(ev.y)
             );
-            render_node(&mut out, diagram_id, &mut node_count, ev);
+            render_node(
+                &mut out,
+                diagram_id,
+                &mut node_count,
+                ev,
+                is_redux_theme,
+                true,
+            );
             out.push_str("</g>");
         }
     }
