@@ -46,6 +46,27 @@ fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
 }
 
 #[test]
+fn block_svg_honors_visible_edge_stroke_width_theme() {
+    let svg = render_block_svg_from_text(
+        r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233"}}}%%
+block
+  A --> B
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#merman .edge-thickness-normal{stroke-width:4px;}"#),
+        "expected shared Mermaid edge thickness CSS to reach visible Block edges: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#"class="edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#
+        ),
+        "expected Block edge path to carry the themed edge-thickness-normal class: {svg}"
+    );
+}
+
+#[test]
 fn block_svg_honors_configured_node_text_color() {
     let svg = render_block_svg_from_text(
         r##"%%{init: {"themeVariables": {"nodeTextColor": "#123456"}}}%%

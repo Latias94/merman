@@ -616,6 +616,13 @@ Current repository reality to preserve:
     `.edge-thickness-normal`, focused tests assert the visible path class and `linkStyle`
     override precedence, public dark-theme smoke counts the matching DOM, structural Flowchart
     `parity` stayed green, and `parity-root` remains the known max-width/root diagnostic surface.
+  - A fifty-ninth HPD-080 Block visible-edge slice fixed the same shared edge-class seam for Block.
+    Pinned Mermaid 11.15 emits the shared `.edge-thickness-normal` rule and Block edge paths carry
+    `edge-thickness-normal edge-pattern-solid flowchart-link`, but local Block CSS only emitted the
+    diagram-owned `.edgePath .path` width rule. Block now emits the shared thickness and pattern
+    rules with `strokeWidth`, focused Block SVG tests assert the visible edge class, public
+    dark-theme smoke includes a cluster-plus-edge sample, and Block structural `parity` stayed
+    green.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

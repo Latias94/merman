@@ -348,5 +348,9 @@ Last updated: 2026-06-03
   `themeVariables.strokeWidth`, and current Flowchart paths emit that class; local output had only
   updated `.edgePath .path`, which current paths do not carry. Flowchart now themes the visible
   edge class while preserving explicit `linkStyle` stroke-width overrides.
+  A follow-up Block visible-edge slice fixed the same shared-rule gap for Block. Current Block edge
+  paths emit `edge-thickness-normal edge-pattern-solid flowchart-link`, while local Block CSS had
+  only the diagram-owned `.edgePath .path` width. Block now emits Mermaid 11.15 shared edge
+  thickness/pattern classes so `themeVariables.strokeWidth` reaches visible Block edges.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

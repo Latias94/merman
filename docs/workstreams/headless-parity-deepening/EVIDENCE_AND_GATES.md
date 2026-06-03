@@ -3175,6 +3175,44 @@ Residual note:
   Flowchart root-bounds closure or broad Flowchart CSS parity beyond current source-backed DOM
   consumers.
 
+## HPD-080 - Block Visible Edge Stroke Width
+
+Outcome:
+
+- Fixed the same visible edge-class seam for Block diagrams.
+- Pinned Mermaid 11.15 shared `styles.ts` sets `.edge-thickness-normal` from
+  `themeVariables.strokeWidth`, and Block `renderHelpers.ts` assigns visible edge paths
+  `edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1`.
+- Local Block CSS previously emitted only the diagram-owned `.edgePath .path` `2.0px` rule, but
+  current visible Block edge paths do not carry `.path`. A focused Mermaid CLI render with
+  `themeVariables.strokeWidth = 4` confirmed upstream final SVG has
+  `.edge-thickness-normal{stroke-width:4px;}` on the matching visible edge class.
+- Local Block CSS now emits the shared edge thickness and pattern rules, with normal edge
+  thickness driven by `SvgTheme::css_value("strokeWidth", "1")`.
+- Public dark-theme smoke now uses a Block sample with both composite cluster DOM and a visible
+  edge, so it counts `strokeWidth` only through matching current edge DOM.
+
+Touched production surfaces:
+
+- [crates/merman-render/src/svg/parity/block.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/src/svg/parity/block.rs)
+- [crates/merman-render/tests/block_svg_test.rs](/F:/SourceCodes/Rust/merman/crates/merman-render/tests/block_svg_test.rs)
+- [crates/merman/tests/theme_renderability_smoke.rs](/F:/SourceCodes/Rust/merman/crates/merman/tests/theme_renderability_smoke.rs)
+
+Focused verification:
+
+- `cargo nextest run -p merman-render --test block_svg_test` - passed, `4` tests run.
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed, structural Block DOM parity stayed green.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `10`
+  tests run.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This slice fixes visible ordinary Block edge stroke-width theming and shared edge pattern CSS. It
+  does not change Block layout, node sizing, or cluster fade behavior.
+
 ## HPD-060 - Semantic / Render Unification Pilot
 
 Outcome:

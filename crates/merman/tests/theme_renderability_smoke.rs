@@ -195,17 +195,22 @@ architecture-beta
         ),
         (
             "theme-block",
-            r##"%%{init: {"themeVariables": {"nodeTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8"}}}%%
+            r##"%%{init: {"themeVariables": {"nodeTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8", "lineColor": "#f59e0b", "strokeWidth": 4}}}%%
 block
   block:Core
     A["Alpha"]
+    B["Beta"]
   end
+  A --> B
 "##,
-            &["Alpha"],
+            &["Alpha", "Beta"],
             &[
                 "#f8fafc",
                 "rgba(23, 37, 84, 0.5)",
                 "rgba(56, 189, 248, 0.2)",
+                "#f59e0b",
+                r#"#theme-block .edge-thickness-normal{stroke-width:4px;}"#,
+                r#"class="edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#,
             ],
         ),
         (

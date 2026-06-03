@@ -237,6 +237,7 @@ pub(super) fn render_block_diagram_svg_model(
         let node_border = theme.color("nodeBorder", "#9370DB");
         let line_color = theme.color("lineColor", "#333333");
         let arrowhead_color = theme.color("arrowheadColor", line_color.as_str());
+        let stroke_width = theme.css_value("strokeWidth", "1");
         let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
         let cluster_bkg = theme.color("clusterBkg", "#ffffde");
         let cluster_border = theme.color("clusterBorder", "#aaaa33");
@@ -251,6 +252,17 @@ pub(super) fn render_block_diagram_svg_model(
             font_family,
             fmt(font_size),
             node_text_color
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+            id.as_str(),
+            stroke_width,
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            id.as_str(),
+            id.as_str()
         );
         let _ = write!(
             &mut out,
