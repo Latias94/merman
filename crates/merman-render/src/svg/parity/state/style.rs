@@ -1,11 +1,75 @@
 use super::*;
 
-pub(super) fn state_markers(out: &mut String, diagram_id: &str) {
+fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
+    let flood_color = SvgTheme::new(effective_config)
+        .theme_name()
+        .contains("dark")
+        .then_some("#FFFFFF")
+        .unwrap_or("#000000");
     let diagram_id = escape_xml(diagram_id);
     let _ = write!(
         out,
-        r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        diagram_id.as_str(),
+        flood_color,
+        diagram_id.as_str(),
+        flood_color
     );
+}
+
+fn state_gradient_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
+    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return;
+    }
+
+    let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
+        .unwrap_or_else(|| "#9370DB".to_string());
+    let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
+        .or_else(|| {
+            config_string(
+                effective_config,
+                &["themeVariables", "secondaryBorderColor"],
+            )
+        })
+        .unwrap_or_else(|| gradient_start.clone());
+
+    let diagram_id = escape_xml(diagram_id);
+    let gradient_start = escape_xml(&gradient_start);
+    let gradient_stop = escape_xml(&gradient_stop);
+    let _ = write!(
+        out,
+        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+        diagram_id.as_str(),
+        gradient_start.as_str(),
+        gradient_stop.as_str()
+    );
+}
+
+pub(super) fn state_markers(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) {
+    let theme = SvgTheme::new(effective_config);
+    let diagram_id = escape_xml(diagram_id);
+    let line_color = theme.color("lineColor", "#333333");
+    let transition_color = theme.color("transitionColor", line_color.as_str());
+
+    if theme.look() == "neo" {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,
+            escape_xml(&transition_color)
+        );
+        state_shadow_defs(out, diagram_id.as_str(), effective_config);
+        state_gradient_defs(out, diagram_id.as_str(), effective_config);
+    } else {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
+        );
+    }
 }
 
 pub(super) fn state_css(
@@ -91,6 +155,24 @@ pub(super) fn state_css(
         .optional_color("stateBorder")
         .unwrap_or_else(|| node_border.clone());
     let composite_title_background = theme.color("compositeTitleBackground", main_bkg.as_str());
+    let use_gradient =
+        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
+    let neo_cluster_stroke = if use_gradient {
+        format!("url(#{diagram_id}-gradient)")
+    } else {
+        state_border.clone()
+    };
+    let neo_radius =
+        crate::config::config_f64_css_px(effective_config, &["themeVariables", "radius"])
+            .unwrap_or(5.0)
+            .max(0.0);
+    let neo_drop_shadow = theme
+        .optional_value("dropShadow")
+        .unwrap_or_else(|| "none".to_string())
+        .replace(
+            "url(#drop-shadow)",
+            &format!("url(#{diagram_id}-drop-shadow)"),
+        );
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
     let mut css = String::new();
@@ -377,6 +459,19 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
+        r#"#{} [data-look="neo"].statediagram-cluster rect{{fill:{};stroke:{};stroke-width:{};}}"#,
+        id, main_bkg, neo_cluster_stroke, stroke_width
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].statediagram-cluster rect.outer{{rx:{}px;ry:{}px;filter:{};}}"#,
+        id,
+        fmt(neo_radius),
+        fmt(neo_radius),
+        neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
         id, ff
     );
@@ -617,6 +712,32 @@ mod tests {
             !css.contains("dependencyStart"),
             "local State SVG does not emit dependency markers, so CSS should not advertise them"
         );
+    }
+
+    #[test]
+    fn state_css_emits_neo_cluster_theme_rules() {
+        let cfg = json!({
+            "look": "neo",
+            "themeVariables": {
+                "mainBkg": "#606060",
+                "stateBorder": "#040404",
+                "strokeWidth": 4,
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566",
+                "dropShadow": "url(#drop-shadow)",
+                "radius": 3
+            }
+        });
+
+        let css = state_css("st", &StateSvgModel::default(), &cfg);
+
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#st-gradient);stroke-width:4;}"##
+        ));
+        assert!(css.contains(
+            r##"#st [data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#st-drop-shadow);}"##
+        ));
     }
 }
 

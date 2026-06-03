@@ -704,6 +704,18 @@ fn value_as_f64(v: &Value) -> Option<f64> {
         .or_else(|| v.as_u64().map(|n| n as f64))
 }
 
+fn arrow_type_end_for_look_name(look: Option<&str>) -> &'static str {
+    if look == Some("neo") {
+        "arrow_barb_neo"
+    } else {
+        "arrow_barb"
+    }
+}
+
+fn arrow_type_end_for_look(look: &Value) -> &'static str {
+    arrow_type_end_for_look_name(look.as_str())
+}
+
 fn build_layout_data_typed(
     root_doc: &[Stmt],
     states: &HashMap<String, StateRecord>,
@@ -780,7 +792,8 @@ fn build_layout_data_typed(
                         id: format!("edge{}", *ctx.graph_item_count),
                         start: relation.state1.id.clone(),
                         end: relation.state2.id.clone(),
-                        arrow_type_end: "arrow_barb".to_string(),
+                        arrow_type_end: arrow_type_end_for_look_name(ctx.config.get_str("look"))
+                            .to_string(),
                         classes: CSS_EDGE.to_string(),
                         label: edge_label,
                     });
@@ -1149,7 +1162,7 @@ fn build_layout_data(
                         "start": relation.state1.id,
                         "end": relation.state2.id,
                         "arrowhead": "normal",
-                        "arrowTypeEnd": "arrow_barb",
+                        "arrowTypeEnd": arrow_type_end_for_look(ctx.look),
                         "style": G_EDGE_STYLE,
                         "labelStyle": "",
                         "label": edge_label,

@@ -431,7 +431,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
         // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
         out.push_str("<g>");
-        state_markers(&mut out, diagram_id);
+        state_markers(&mut out, diagram_id, effective_config);
 
         let mut detail = StateRenderDetails::default();
         render_state_root(
@@ -540,7 +540,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    state_markers(&mut out, diagram_id);
+    state_markers(&mut out, diagram_id, effective_config);
 
     // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
     // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead

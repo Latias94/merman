@@ -316,6 +316,25 @@ note left of A : note text"#,
 }
 
 #[test]
+fn parse_diagram_state_v2_uses_neo_arrow_type_when_look_is_neo() {
+    let engine = Engine::new();
+
+    let res = block_on(engine.parse_diagram(
+        r#"%%{init: {"look": "neo"}}%%
+stateDiagram-v2
+A --> B: hello"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(
+        res.model["edges"][0]["arrowTypeEnd"],
+        json!("arrow_barb_neo")
+    );
+}
+
+#[test]
 fn parse_diagram_state_v2_sanitizes_edge_labels_like_mermaid_common() {
     let engine = Engine::new();
     let res = block_on(engine.parse_diagram(

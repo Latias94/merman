@@ -82,4 +82,54 @@ Active --> [*]: done"##,
         svg.contains(r#".node rect{fill:#030303;stroke:#040404;stroke-width:4px;}"#),
         "expected State node CSS to follow stateBkg/stateBorder/strokeWidth: {svg}"
     );
+    assert!(
+        !svg.contains(r#"id="merman-gradient""#) && !svg.contains(r#"id="merman-drop-shadow""#),
+        "classic state SVG should not emit neo-only theme resources: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"markerUnits="strokeWidth""#),
+        "classic state SVG should keep Mermaid's classic barb marker units: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
+    let svg = render_state_svg_from_text(
+        r##"%%{init: {"look": "neo", "themeVariables": {"transitionColor": "#202020", "mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4, "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566", "dropShadow": "url(#drop-shadow)", "radius": 3}}}%%
+stateDiagram-v2
+[*] --> Active: start
+state Active {
+  Idle --> Busy
+}"##,
+    );
+
+    assert!(
+        svg.contains(r#"<defs><linearGradient id="merman-gradient""#),
+        "expected neo state SVG to emit the shared gradient resource: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<filter id="merman-drop-shadow""#),
+        "expected neo state SVG to emit the shared drop-shadow resource: {svg}"
+    );
+    assert!(
+        svg.contains(r#"markerUnits="strokeWidth""#)
+            && svg.contains(r#"d="M 19,7 L11,14 L13,7 L11,0 Z""#),
+        "expected neo state SVG to use Mermaid's neo barb marker geometry: {svg}"
+    );
+    assert!(
+        svg.contains(r#"marker-end="url(#merman_stateDiagram-barbEnd)""#),
+        "expected neo state transitions to keep an arrowhead marker: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"[data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:url(#merman-gradient);stroke-width:4;}"##
+        ),
+        "expected neo state cluster CSS to reference the scoped gradient: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"[data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#merman-drop-shadow);}"##
+        ),
+        "expected neo state cluster outer rect CSS to reference the scoped drop-shadow and radius: {svg}"
+    );
 }
