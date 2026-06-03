@@ -542,6 +542,62 @@ Current repository reality to preserve:
     without matching DOM. Local Requirement now emits the `neo` DOM surfaces needed for
     `nodeBorder` to affect visible node/divider strokes, and the public dark-theme smoke no longer
     counts provider-only colors as visible signals.
+  - A forty-seventh HPD-080 visible-signal audit calibrated Gantt public smoke coverage. The
+    renderer already emitted Mermaid 11.15 ordinary-task, outside-label, and done-task selectors;
+    the compact smoke source was too narrow and counted ordinary task colors while rendering only a
+    done task. The smoke now includes a wide ordinary task, a narrow long-label task that emits
+    `taskTextOutsideRight taskTextOutside0`, and a done task, so `taskBkgColor`,
+    `taskBorderColor`, `taskTextOutsideColor`, `doneTaskBkgColor`, and `doneTaskBorderColor` are
+    all backed by matching DOM.
+  - A forty-eighth HPD-080 GitGraph official-theme slice confirmed the user-provided merge sample
+    renders finite/readable default output, then fixed the source-backed theme gap it exposed:
+    Mermaid 11.15 `git/styles.js` switches `neo` / `redux*` themes away from classic `git0`
+    rules into `genColor(...)`. Local GitGraph now emits redux geometry rules, redux color-theme
+    `borderColorArray` rules, neo first-branch/subsequent-branch rules, scoped neo gradient label
+    backgrounds with matching `<defs>`, and `mainBkg` merge/reverse/highlight-inner fills without
+    changing layout or root bounds.
+  - A forty-ninth HPD-080 raster integration slice fixed the Ubuntu CI blank-PNG failure for the
+    boundary `info` fixture. `info` is visible version-text output, so the fix stayed in the
+    PNG/JPEG `usvg` path: raster options now bind missing generic font aliases to loaded faces,
+    use a browser-like fallback resolver when a requested family such as `courier` is unavailable,
+    and parse no-`viewBox` `max-width` SVGs with a matching default viewport width. Parity SVG
+    output is unchanged.
+  - A fiftieth HPD-080 Sequence autonumber slice fixed the user-reported activation-bound marker
+    position defect. Pinned Mermaid 11.15 computes autonumber marker X from current
+    `activationBounds(...)`, `fromBounds` / `toBounds`, arrow direction, and reverse-arrow type.
+    Local Sequence SVG output now maintains the same render-pass activation-bounds stack, so the
+    reported sample places numbers `2` and `4` inside the left edge of the Server activation rect
+    and `5` inside the right edge, matching upstream behavior without changing Sequence
+    root-width/font-metric residuals.
+  - A fifty-first HPD-080 Sequence layout slice fixed the same source-backed activation-bounds
+    rule for message endpoints. `SequenceActivationState::actor_bounds(...)` now folds all active
+    activation rectangles for an actor and returns the min-left / max-right pair, matching Mermaid
+    11.15 `activationBounds(actor, actors)`. A nested activation regression covers the old
+    stack-top-only bug where messages from a left-side actor targeted the inner activation edge
+    instead of the outer active stack boundary.
+  - A fifty-second HPD-080 Sequence activation-geometry seam slice centralized the Mermaid 11.15
+    activation formulas behind shared helpers. Layout activation state, SVG activation-rectangle
+    planning, and SVG autonumber marker placement now share the same stacked start-x and full-stack
+    min-left/max-right bounds calculations, with helper unit tests to prevent future drift.
+  - A fifty-third HPD-080 C4 visible-signal audit found no production defect, but tightened the
+    public smoke boundary: Mermaid 11.15 still emits `.person` provider CSS for C4, while current
+    C4 DOM uses `person-man` groups and inline `c4` config / `Update*Style` colors. The new smoke
+    proves `c4` config, `UpdateElementStyle`, and `UpdateRelStyle` colors reach visible output, and
+    prevents `.person` provider CSS from being counted as visible coverage without matching DOM.
+  - A fifty-fourth HPD-080 Packet/Sankey visible-signal audit found no production defect, but
+    tightened public smoke coverage so Packet colors are counted only with current
+    `.packetBlock`/`.packetLabel`/`.packetByte`/`.packetTitle` DOM and Sankey colors are counted
+    only with outlined label DOM, node rect fills, and link groups.
+  - A fifty-fifth HPD-080 Mindmap visible-signal audit found no production defect, but tightened
+    public smoke coverage so Mindmap no longer counts compact root-section CSS that is overwritten
+    by `.section-root` rules or root native-text CSS when current labels are XHTML spans. The
+    visible smoke now counts root `git0`, redux root `nodeBorder` via `span`, and child
+    `.section-0` colors with matching DOM.
+  - A fifty-sixth HPD-080 ER visible-signal audit found no production defect, but tightened public
+    smoke coverage so ER no longer counts direct `.relationshipLabelBox` fills or native
+    `.edgeLabel .label text` CSS without matching current DOM. The visible smoke now counts
+    line/node colors, XHTML node labels, `.labelBkg` rgba background, and XHTML edge-label
+    background.
   - Continue HPD-080 by auditing remaining supported diagrams for missing style providers,
     unreadable text, blank/black output, and theme config that is parsed but not emitted. Do not
     chase visual parity beyond source-backed Mermaid rules or headless-style suitability.

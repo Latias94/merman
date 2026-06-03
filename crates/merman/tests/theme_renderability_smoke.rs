@@ -108,7 +108,12 @@ erDiagram
 "##,
             &["CUSTOMER", "ORDER", "places", "name"],
             &[
-                "#f8fafc", "#22c55e", "#111827", "#38bdf8", "#fde68a", "#172554", "#334155",
+                "#22c55e",
+                "#111827",
+                "#38bdf8",
+                "#fde68a",
+                "rgba(23, 37, 84, 0.5)",
+                "#334155",
             ],
         ),
         (
@@ -123,15 +128,13 @@ kanban
         ),
         (
             "theme-mindmap",
-            r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "gitBranchLabel0": "#020617", "nodeBorder": "#facc15", "cScale0": "#172554", "cScaleLabel0": "#f8fafc", "cScaleInv0": "#334155"}}}%%
+            r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "nodeBorder": "#facc15", "cScale1": "#172554", "cScaleLabel1": "#f8fafc", "cScaleInv1": "#334155"}}}%%
 mindmap
   Root
     Child
 "##,
             &["Root", "Child"],
-            &[
-                "#22c55e", "#020617", "#facc15", "#172554", "#f8fafc", "#334155",
-            ],
+            &["#22c55e", "#facc15", "#172554", "#f8fafc", "#334155"],
         ),
         (
             "theme-gitgraph",
@@ -319,12 +322,14 @@ gantt
   title Theme Plan
   dateFormat YYYY-MM-DD
   section Core
-  Ship :done, 2026-01-01, 1d
+  Build : 2026-01-01, 15d
+  Outside Label : 2026-01-16, 1d
+  Ship :done, 2026-01-17, 3d
 "##,
-            &["Theme Plan", "Core", "Ship"],
+            &["Theme Plan", "Core", "Build", "Outside Label", "Ship"],
             &[
                 "#f8fafc", "#172554", "#1e3a8a", "#fde68a", "#38bdf8", "#111827", "#facc15",
-                "#fb923c", "#22c55e",
+                "#fb923c", "#22c55e", "#16a34a",
             ],
         ),
         (
@@ -371,6 +376,402 @@ xychart
         let svg = render_svg(name, source);
         assert_renderable_theme_signals(name, &svg, expected_labels, expected_colors);
     }
+}
+
+#[test]
+fn c4_theme_smoke_counts_inline_config_and_style_macros_as_visible() {
+    let svg = render_svg(
+        "c4-visible-audit",
+        r##"%%{init: {"themeVariables": {"personBkg": "#0ea5e9", "personBorder": "#ec4899"}, "c4": {"person_bg_color": "#172554", "person_border_color": "#38bdf8", "system_bg_color": "#111827", "system_border_color": "#facc15"}}}%%
+C4Context
+title C4 Visible Audit
+Person(customer, "Customer", "Uses the system")
+System(system, "System", "Core system")
+Rel(customer, system, "Uses", "HTTPS")
+UpdateElementStyle(customer, $bgColor="#334155", $fontColor="#fde68a", $borderColor="#f97316")
+UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"#c4-visible-audit .person{stroke:#ec4899;fill:#0ea5e9;}"#),
+        "Mermaid 11.15 still emits C4 .person provider CSS: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="person-man""#),
+        "C4 current output should expose the current shape group DOM: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="person""#),
+        "C4 should not count .person provider CSS as visible while current DOM has no .person element: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#334155" stroke="#f97316""##),
+        "UpdateElementStyle colors should reach the visible C4 person shape: {svg}"
+    );
+    assert!(
+        svg.contains(r##"dominant-baseline="middle" fill="#fde68a""##),
+        "UpdateElementStyle fontColor should reach visible C4 person labels: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#111827" stroke="#facc15""##),
+        "C4 config colors should reach the visible system shape: {svg}"
+    );
+    assert!(
+        svg.contains(r##"stroke-width="1" stroke="#facc15""##),
+        "UpdateRelStyle lineColor should reach the visible C4 relationship line: {svg}"
+    );
+    assert!(
+        svg.contains(r##"dominant-baseline="middle" fill="#a7f3d0""##),
+        "UpdateRelStyle textColor should reach visible C4 relationship labels: {svg}"
+    );
+}
+
+#[test]
+fn packet_and_sankey_theme_smoke_count_dom_consumed_selectors_as_visible() {
+    let packet = render_svg(
+        "packet-visible-audit",
+        r##"%%{init: {"packet": {"startByteColor": "#22c55e", "endByteColor": "#f97316", "labelColor": "#f8fafc", "titleColor": "#fde68a", "blockStrokeColor": "#38bdf8", "blockStrokeWidth": 3, "blockFillColor": "#111827"}}}%%
+packet
+title Packet Visible Audit
++8: "Byte"
++16: "Word"
+"##,
+    );
+
+    assert!(
+        packet.contains(r#"class="packetBlock""#),
+        "Packet block colors should only count with packetBlock DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetLabel""#),
+        "Packet label colors should only count with packetLabel DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetByte start""#),
+        "Packet start byte colors should only count with packetByte start DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetByte end""#),
+        "Packet end byte colors should only count with packetByte end DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r#"class="packetTitle""#),
+        "Packet title colors should only count with packetTitle DOM: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetByte.start{fill:#22c55e;}"##),
+        "Packet startByteColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetByte.end{fill:#f97316;}"##),
+        "Packet endByteColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetLabel{fill:#f8fafc;font-size:12px;}"##),
+        "Packet labelColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(r##"#packet-visible-audit .packetTitle{fill:#fde68a;font-size:14px;}"##),
+        "Packet titleColor should reach a current DOM selector: {packet}"
+    );
+    assert!(
+        packet.contains(
+            r##"#packet-visible-audit .packetBlock{stroke:#38bdf8;stroke-width:3;fill:#111827;}"##
+        ),
+        "Packet block colors should reach a current DOM selector: {packet}"
+    );
+
+    let sankey = render_svg(
+        "sankey-visible-audit",
+        r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "mainBkg": "#111827"}, "sankey": {"labelStyle": "outlined", "nodeColors": {"Source": "#22c55e", "Target": "#38bdf8", "Done": "#facc15"}, "showValues": true, "prefix": "$", "suffix": " units"}}}%%
+sankey
+Source,Target,10
+Target,Done,2
+"##,
+    );
+
+    assert!(
+        sankey.contains(r#"class="sankey-label-bg""#),
+        "Sankey outlined label background should only count with sankey-label-bg DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="sankey-label-fg""#),
+        "Sankey label foreground should only count with sankey-label-fg DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="node""#),
+        "Sankey node colors should only count with node DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(r#"class="link""#),
+        "Sankey link styling should only count with link DOM: {sankey}"
+    );
+    assert!(
+        sankey.contains(
+            r##"#sankey-visible-audit .sankey-label-bg{stroke:#111827;stroke-width:4px;"##
+        ),
+        "Sankey mainBkg should reach the outlined label background selector: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"#sankey-visible-audit .sankey-label-fg{fill:#f8fafc;}"##),
+        "Sankey textColor should reach the outlined label foreground selector: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"<rect height=""##) && sankey.contains(r##"fill="#22c55e""##),
+        "Sankey nodeColors should reach visible node rect fills: {sankey}"
+    );
+    assert!(
+        sankey.contains(r##"fill="#38bdf8""##) && sankey.contains(r##"fill="#facc15""##),
+        "Sankey nodeColors should reach all configured node rect fills: {sankey}"
+    );
+}
+
+#[test]
+fn mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible() {
+    let svg = render_svg(
+        "mindmap-visible-audit",
+        r##"%%{init: {"theme": "redux", "themeVariables": {"THEME_COLOR_LIMIT": 2, "git0": "#22c55e", "gitBranchLabel0": "#020617", "nodeBorder": "#facc15", "cScale0": "#ef4444", "cScaleLabel0": "#e879f9", "cScale1": "#172554", "cScaleLabel1": "#f8fafc", "cScaleInv1": "#334155"}}}%%
+mindmap
+  Root
+    Child
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="node mindmap-node section-root section--1""#),
+        "Mindmap root colors should only count with the current root node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="node mindmap-node section-0""#),
+        "Mindmap child section colors should only count with current section node DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root rect,#mindmap-visible-audit .section-root path,#mindmap-visible-audit .section-root circle,#mindmap-visible-audit .section-root polygon{fill:#22c55e;}"##),
+        "Mindmap git0 should reach the current root shape selector: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root span{color:#facc15;}"##),
+        "Mindmap redux nodeBorder should reach current XHTML root label spans: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 rect,#mindmap-visible-audit .section-0 path,#mindmap-visible-audit .section-0 circle,#mindmap-visible-audit .section-0 polygon,#mindmap-visible-audit .section-0 path{fill:#172554;}"##),
+        "Mindmap cScale1 should reach current child section shape selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 span{color:#f8fafc;}"##),
+        "Mindmap cScaleLabel1 should reach current child XHTML label spans: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-0 line{stroke:#334155;stroke-width:3;}"##),
+        "Mindmap cScaleInv1 should reach current child divider line DOM: {svg}"
+    );
+
+    let root_section_rule = r##"#mindmap-visible-audit .section--1 rect,#mindmap-visible-audit .section--1 path,#mindmap-visible-audit .section--1 circle,#mindmap-visible-audit .section--1 polygon,#mindmap-visible-audit .section--1 path{fill:#ef4444;}"##;
+    let root_override_rule = r##"#mindmap-visible-audit .section-root rect,#mindmap-visible-audit .section-root path,#mindmap-visible-audit .section-root circle,#mindmap-visible-audit .section-root polygon{fill:#22c55e;}"##;
+    let root_section_pos = svg
+        .find(root_section_rule)
+        .unwrap_or_else(|| panic!("Mindmap should still emit section--1 provider CSS: {svg}"));
+    let root_override_pos = svg
+        .find(root_override_rule)
+        .unwrap_or_else(|| panic!("Mindmap should still emit section-root override CSS: {svg}"));
+    assert!(
+        root_section_pos < root_override_pos,
+        "Mindmap cScale0 root-section fill is followed by the section-root override, so it should not be counted as the compact sample's visible root fill: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#mindmap-visible-audit .section-root text{fill:#020617;}"##),
+        "Mermaid 11.15 still emits root text CSS for gitBranchLabel0: {svg}"
+    );
+    assert!(
+        !svg.contains("<text"),
+        "Mindmap should not count section-root text CSS as visible while current labels are XHTML spans: {svg}"
+    );
+}
+
+#[test]
+fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
+    let svg = render_svg(
+        "er-visible-audit",
+        r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "nodeTextColor": "#fde68a", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  CUSTOMER {
+    string name
+  }
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="edge-thickness-normal edge-pattern-solid relationshipLine""#),
+        "ER line colors should only count with current relationshipLine DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="labelBkg""#),
+        "ER tertiary fade should only count with current labelBkg DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p>places</p></span>"#),
+        "ER edgeLabelBackground should only count with current XHTML edge label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"<span class="nodeLabel"><p>CUSTOMER</p></span>"#),
+        "ER nodeTextColor should only count with current XHTML node label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"#er-visible-audit .relationshipLine{stroke:#22c55e;stroke-width:3;fill:none;}"##
+        ),
+        "ER lineColor should reach the visible relationshipLine selector: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .node rect,#er-visible-audit .node circle,#er-visible-audit .node ellipse,#er-visible-audit .node polygon{fill:#111827;stroke:#38bdf8;stroke-width:3;}"##),
+        "ER mainBkg/nodeBorder should reach current simple node shape selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"fill="#111827""##) && svg.contains(r##"stroke="#38bdf8""##),
+        "ER rough entity shapes should also carry mainBkg/nodeBorder inline colors: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#fde68a;}"##),
+        "ER nodeTextColor should reach current XHTML label containers: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .labelBkg{background-color:rgba(23, 37, 84, 0.5);}"##),
+        "ER tertiaryColor should be counted through the current labelBkg fade, not as a direct fill: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .edgeLabel{background-color:#334155;}"##),
+        "ER edgeLabelBackground should reach the current XHTML edge label class: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .relationshipLabelBox{fill:#172554;opacity:0.7;background-color:#172554;}"##),
+        "Mermaid 11.15 still emits relationshipLabelBox provider CSS: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"class="relationshipLabelBox""#),
+        "ER should not count direct tertiaryColor relationshipLabelBox CSS as visible without matching DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r##"#er-visible-audit .edgeLabel .label text{fill:#f8fafc;}"##),
+        "Mermaid 11.15 still emits edge-label native text CSS: {svg}"
+    );
+    assert!(
+        !svg.contains("<text"),
+        "ER should not count textColor native text CSS as visible while current labels are XHTML spans: {svg}"
+    );
+}
+
+#[test]
+fn gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible() {
+    let svg = render_svg(
+        "gantt-visible-audit",
+        r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "taskTextColor": "#f8fafc", "taskBkgColor": "#111827", "taskBorderColor": "#facc15", "taskTextOutsideColor": "#fb923c", "doneTaskBkgColor": "#22c55e", "doneTaskBorderColor": "#16a34a"}}}%%
+gantt
+  title Visible Task Audit
+  dateFormat YYYY-MM-DD
+  section Core
+  Build : 2026-01-01, 15d
+  Outside Label : 2026-01-16, 1d
+  Ship :done, 2026-01-17, 3d
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"class="task task0""#),
+        "Gantt taskBkgColor/taskBorderColor should only be counted with normal task DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="task done0""#),
+        "Gantt doneTask* colors should only be counted with done task DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"class="taskTextOutsideRight taskTextOutside0"#),
+        "Gantt taskTextOutsideColor should only be counted with outside-label DOM: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .task0,#gantt-visible-audit .task1,#gantt-visible-audit .task2,#gantt-visible-audit .task3{fill:#111827;stroke:#facc15;}"#),
+        "normal task colors should reach Gantt task state selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .done0,#gantt-visible-audit .done1,#gantt-visible-audit .done2,#gantt-visible-audit .done3{stroke:#16a34a;fill:#22c55e;stroke-width:2;}"#),
+        "done task colors should reach Gantt done state selectors: {svg}"
+    );
+    assert!(
+        svg.contains(r#"#gantt-visible-audit .taskTextOutside0,#gantt-visible-audit .taskTextOutside2{fill:#fb923c;}"#),
+        "outside task text color should still be emitted as a Gantt state selector: {svg}"
+    );
+}
+
+#[test]
+fn gitgraph_official_themes_use_mermaid_11_15_color_generation() {
+    let redux = render_svg(
+        "gitgraph-redux-visible",
+        r##"%%{init: {"theme": "redux"}}%%
+gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+  checkout main
+  merge dev
+"##,
+    );
+
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .branch-label0{fill:#28253D;font-weight:600;}"#),
+        "redux GitGraph should use Mermaid 11.15 nodeBorder branch label rules: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .label0{fill:#ffffff;stroke:#28253D;stroke-width:2;font-weight:600;}"#),
+        "redux GitGraph branch label backgrounds should use mainBkg/nodeBorder geometry rules: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .branch{stroke-width:2;stroke:#BDBCCC;stroke-dasharray:4 2;}"#),
+        "redux GitGraph branches should use Mermaid 11.15 redux stroke width and dash pattern: {redux}"
+    );
+    assert!(
+        redux.contains(
+            r#"#gitgraph-redux-visible .arrow{stroke-width:2;stroke-linecap:round;fill:none;}"#
+        ),
+        "redux GitGraph arrows should use redux geometry stroke width: {redux}"
+    );
+    assert!(
+        redux.contains(r#"#gitgraph-redux-visible .commit-merge{stroke:#ffffff;fill:#ffffff;}"#),
+        "redux GitGraph merge commits should use mainBkg for the inner merge mark: {redux}"
+    );
+
+    let neo = render_svg(
+        "gitgraph-neo-visible",
+        r##"%%{init: {"theme": "neo"}}%%
+gitGraph
+  commit id: "A"
+  branch dev
+  checkout dev
+  commit id: "B"
+"##,
+    );
+
+    assert!(
+        neo.contains(r#"<defs><linearGradient id="gitgraph-neo-visible-gradient""#),
+        "neo GitGraph should emit the gradient defs consumed by branch label backgrounds: {neo}"
+    );
+    assert!(
+        neo.contains(r#"#gitgraph-neo-visible .label0{fill:#ffffff;stroke:url(#gitgraph-neo-visible-gradient);stroke-width:2;}"#),
+        "neo GitGraph branch label backgrounds should consume the scoped gradient: {neo}"
+    );
+    assert!(
+        neo.contains(
+            r#"#gitgraph-neo-visible .branch{stroke-width:2;stroke:#000000;stroke-dasharray:4 2;}"#
+        ),
+        "neo GitGraph branches should use Mermaid 11.15 color-generation dash pattern: {neo}"
+    );
+    assert!(
+        neo.contains(
+            r#"#gitgraph-neo-visible .arrow{stroke-width:8;stroke-linecap:round;fill:none;}"#
+        ),
+        "neo GitGraph should keep Mermaid's bold classic arrow width: {neo}"
+    );
 }
 
 #[test]

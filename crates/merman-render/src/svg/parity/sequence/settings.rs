@@ -12,6 +12,7 @@ pub(super) struct SequenceRenderSettings {
     pub(super) right_angles: bool,
     pub(super) wrap_padding: f64,
     pub(super) sequence_width: f64,
+    pub(super) activation_width: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) actor_wrap_width: f64,
     pub(super) loop_text_style: TextStyle,
@@ -76,6 +77,11 @@ impl SequenceRenderSettings {
             .and_then(|v| v.as_f64())
             .unwrap_or(150.0)
             .max(1.0);
+        let activation_width = seq_cfg
+            .get("activationWidth")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(10.0)
+            .max(1.0);
 
         // Upstream Mermaid's Sequence renderer treats the global `fontSize` as authoritative.
         // Per-sequence overrides like `sequence.messageFontSize` apply only when the global value
@@ -113,6 +119,7 @@ impl SequenceRenderSettings {
             right_angles,
             wrap_padding,
             sequence_width,
+            activation_width,
             actor_label_font_size,
             actor_wrap_width,
             loop_text_style,

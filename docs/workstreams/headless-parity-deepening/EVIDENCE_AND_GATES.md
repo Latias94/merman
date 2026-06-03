@@ -3,6 +3,382 @@
 Status: Active
 Last updated: 2026-06-03
 
+## HPD-080 - ER Visible Signal Boundary
+
+Outcome:
+
+- Re-audited ER public theme smoke coverage against pinned Mermaid 11.15 source and current local
+  SVG DOM.
+- Confirmed current ER labels in the compact sample are XHTML `span` labels inside
+  `foreignObject`, not native `<text>` labels.
+- Confirmed `tertiaryColor` still emits `.relationshipLabelBox` provider CSS, but current compact
+  output has no `relationshipLabelBox` DOM. The visible tertiary path is the `.labelBkg` rgba fade.
+- Confirmed `textColor` still emits native edge-label text CSS, but current edge labels are XHTML
+  spans. The visible label color path in this sample is `nodeTextColor` through `.label`.
+- Tightened the public smoke so ER visible colors are counted through current DOM-consumed
+  surfaces: relationship lines/markers, current node shapes, XHTML node labels, `.labelBkg`, and
+  XHTML edge labels.
+- No production renderer change was needed. This is a smoke-honesty calibration for an already
+  covered style-provider family.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erRenderer.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erDb.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `10`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `364` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- ER remains covered for current node, relationship, marker, XHTML label, and edge-label DOM. Future
+  public-smoke additions should count `.relationshipLabelBox`, native `.edgeLabel .label text`, or
+  `data-color-id` rules as visible only when the fixture emits matching current DOM.
+
+## HPD-080 - Mindmap Visible Signal Boundary
+
+Outcome:
+
+- Re-audited Mindmap public theme smoke coverage against pinned Mermaid 11.15 source and current
+  local SVG DOM.
+- Confirmed the compact sample's current labels are XHTML `span` nodes, not native `<text>` nodes,
+  so `gitBranchLabel0` root native-text CSS is provider coverage rather than a current visible
+  signal.
+- Confirmed `cScale0` / `cScaleLabel0` root-section CSS is emitted for `.section--1`, but the
+  compact root node also has `section-root`, and the later `.section-root` rules override the root
+  fill/span path for the current sample.
+- Tightened the public smoke so Mindmap visible colors are counted through current DOM-consumed
+  surfaces: root `git0` fill, redux root `nodeBorder` via `.section-root span`, and child
+  `cScale1` / `cScaleLabel1` / `cScaleInv1` through `.section-0` shape/span/line DOM.
+- No production renderer change was needed. This is a smoke-honesty calibration for an already
+  covered style-provider family.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapDb.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmapRenderer.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `9`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `361` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- Mindmap remains covered for current root/span/section DOM. Future public-smoke additions should
+  count `cScale0` / `cScaleLabel0`, `gitBranchLabel0`, or `data-look` rules as visible only when
+  the fixture emits a matching current DOM surface and the rule is not overwritten by a later
+  same-specificity rule.
+
+## HPD-080 - Packet And Sankey Visible Signal Boundary
+
+Outcome:
+
+- Re-audited Packet and Sankey public theme smoke coverage against pinned Mermaid 11.15 source and
+  current local SVG DOM.
+- Confirmed Packet visible style signals are source-backed CSS selectors with matching current DOM:
+  `.packetBlock`, `.packetLabel`, `.packetByte.start`, `.packetByte.end`, and `.packetTitle`.
+- Confirmed Sankey visible style signals are source-backed CSS/inline paths with matching current
+  DOM: outlined `.sankey-label-bg` / `.sankey-label-fg`, node `<rect>` fills from
+  `sankey.nodeColors`, and `.link` groups.
+- Added a public `HeadlessRenderer` smoke test that fails if those colors are counted without the
+  matching current DOM classes/elements.
+- No production renderer change was needed. This is a smoke-honesty calibration for two already
+  covered style-provider families.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/styles.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/renderer.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyRenderer.ts`
+
+Focused verification:
+
+- `cargo fmt` - passed.
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke packet_and_sankey_theme_smoke_count_dom_consumed_selectors_as_visible` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke` - passed, `8`
+  tests run.
+- `Get-Content ... CONTEXT.jsonl | ConvertFrom-Json` - passed, `358` JSONL lines parsed.
+- `git diff --check` - passed with only the existing `CONTEXT.jsonl` LF/CRLF working-copy warning.
+
+Residual note:
+
+- Packet and Sankey remain covered for their current DOM shapes. Future public-smoke additions
+  should only count config/theme colors when the fixture renders the corresponding class or inline
+  node fill surface.
+
+## HPD-080 - C4 Visible Signal Boundary
+
+Outcome:
+
+- Re-audited C4 theme/renderability after the hardcoded-color scan found current-output C4 shapes
+  using inline colors rather than provider CSS.
+- Confirmed pinned Mermaid 11.15 `c4/styles.js` emits only `.person`, while
+  `svgDraw.js` renders current C4 shapes under `class="person-man"` and visible shape colors are
+  inline `c4.*_bg_color` / `c4.*_border_color` values or per-shape `UpdateElementStyle(...)`
+  values.
+- Added a public `HeadlessRenderer` smoke test that proves:
+  - `themeVariables.personBkg` / `personBorder` still appear in the source-backed `.person`
+    provider CSS,
+  - current C4 output does not emit `class="person"`, so that provider rule is not counted as a
+    visible renderability signal,
+  - `c4` inline config colors reach visible system shapes,
+  - `UpdateElementStyle(...)` and `UpdateRelStyle(...)` colors reach visible shape, label, line,
+    and relationship-label output.
+- No production renderer change was needed. This is a visible-signal calibration that prevents
+  future C4 smoke tests from pretending inert provider CSS proves user-visible theme coverage.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/styles.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/svgDraw.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/common/svgDrawCommon.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke c4_theme_smoke_counts_inline_config_and_style_macros_as_visible`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo fmt`
+
+Residual note:
+
+- C4 remains covered through its current inline config/style-macro render path. Do not promote
+  generic Mermaid `themeVariables.personBkg` / `personBorder` into C4 shapes unless upstream C4
+  source or emitted DOM changes to make `.person` a current visible selector.
+
+## HPD-080 - Sequence Activation Geometry Seam
+
+Outcome:
+
+- Refactored the source-backed Sequence activation geometry rules introduced by the autonumber and
+  nested-endpoint fixes into shared helpers.
+- `sequence_activation_start_x(...)` now owns Mermaid's stacked activation start offset formula.
+- `sequence_activation_stack_bounds(...)` now owns Mermaid's full-stack min-left / max-right bounds
+  fold with the actor-center fallback.
+- Layout activation state, SVG activation-rectangle planning, and SVG autonumber marker placement
+  now consume the same helpers instead of repeating the formulas.
+- Added helper unit tests for empty, single, and stacked activation bounds.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render activation_start_x_matches_mermaid_stack_offsets activation_stack_bounds_fold_full_active_stack sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15 sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run -p merman-render`
+
+Residual note:
+
+- This is a seam consolidation, not a new visual-diff claim. It exists to keep the already
+  source-backed Sequence activation rules from diverging across layout and SVG render phases.
+
+## HPD-080 - Sequence Nested Activation Bounds
+
+Outcome:
+
+- Continued the Sequence activation audit after the autonumber marker fix and found the same
+  Mermaid 11.15 bounds rule was missing from the layout pass.
+- Reproduced a visible endpoint defect with nested activations: when a left-side actor targets a
+  participant with two active activation rectangles, local layout used only the innermost left edge
+  while Mermaid uses the minimum left edge across the full active stack.
+- Updated `SequenceActivationState::actor_bounds(...)` to fold all active activation rectangles and
+  return the min-left / max-right pair used by Mermaid `activationBounds(...)`.
+- Added a focused layout regression that fails on the old `center - 3px` nested endpoint and passes
+  on the source-backed outer-left-bound endpoint.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- update-layout-snapshots --filter ...` for the five affected Sequence
+  activation fixtures
+- `cargo nextest run -p merman-render`
+- `cargo fmt -p merman-render --check`
+- `git diff --check`
+
+Residual note:
+
+- This is Sequence endpoint geometry parity, not a text measurement or root-bounds change.
+  Existing Sequence measurement residuals remain open and should not be tuned through activation
+  endpoint code.
+
+## HPD-080 - Sequence Autonumber Activation Bounds
+
+Outcome:
+
+- Reproduced the user-visible Sequence autonumber defect with an activation sample: local numbers
+  `2` and `4` anchored at the right edge of the Server activation rect, while `5` anchored at the
+  left edge; Mermaid 11.15 anchors those three numbers in the opposite left/right positions.
+- Confirmed the source rule in pinned Mermaid 11.15: `autonumberX` is computed from current
+  `activationBounds(...)`, `fromBounds` / `toBounds`, arrow direction, and reverse-arrow type.
+  It is not the message line's first point.
+- Updated the Sequence SVG renderer to keep a render-pass activation-bounds stack while iterating
+  messages. `ACTIVE_START` / `ACTIVE_END` directives update the stack, and ordinary message
+  autonumber markers now use the Mermaid 11.15 bounds formula.
+- Centralized SVG `activationWidth` parsing in `SequenceRenderSettings` so activation rectangles
+  and autonumber marker placement share one config value.
+- Added a focused regression proving numbers `2` and `4` sit at `activationLeft + 1`, while `5`
+  sits at `activationRight - 1`, for the reported sample.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15`
+- `cargo nextest run -p merman-render --test sequence_svg_test`
+- `cargo nextest run -p merman-render`
+- `cargo fmt -p merman-render --check`
+- `git diff --check`
+
+Residual note:
+
+- This is a visible marker-position fix, not a Sequence root-width or font-metric parity claim.
+  Sequence measurement/root residuals remain governed by the residual taxonomy instead of being
+  forced through marker-coordinate changes.
+
+## HPD-080 - Info Raster Font Fallback
+
+Outcome:
+
+- Diagnosed the Ubuntu-only `boundary_fixtures_render_headless_resvg_safe` failure for the bare
+  `info` fixture with `fontFamily: courier`.
+- Confirmed against pinned Mermaid source that `info` is a visible diagram, not metadata-only:
+  Mermaid's `infoRenderer.ts` appends version text and configures `width="100%"` plus
+  `max-width: 400px` without a root `viewBox`.
+- Fixed the raster integration path instead of weakening the source-content gate. PNG/JPEG `usvg`
+  options now install browser-like font fallback over loaded system fonts and bind missing generic
+  aliases to real faces when possible.
+- No-`viewBox` SVGs with `max-width: Npx` now parse with a matching default viewport width, reducing
+  platform-specific clipping/bounds behavior for Mermaid's `configureSvgSize(..., true)` output.
+- Added a regression test proving a missing requested font family still rasterizes visible text.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/info/infoRenderer.ts`
+- `repo-ref/mermaid/packages/mermaid/src/setupGraphViewbox.js`
+- `fontdb` documentation/source notes that it provides matching, not browser-style fallback.
+
+Focused verification:
+
+- `cargo test -p merman --features raster render::raster::tests -- --nocapture`
+- `cargo nextest run -p merman --features render,raster --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
+
+Residual note:
+
+- This keeps raster output host-font-backed. It does not claim exact browser font metrics or full
+  host-font independence. The deeper version would bundle an explicit fallback font; this slice
+  fixes the CI-visible blank output without changing parity SVG output.
+
+## HPD-080 - GitGraph Official Theme Color Generation
+
+Outcome:
+
+- Re-audited the user-provided multi-branch GitGraph merge sample and found the default render was
+  readable, finite, and covered by existing DOM/fixture smoke.
+- The source-backed gap was in official theme handling: Mermaid 11.15's `git/styles.js` does not
+  use the classic `git0` / `gitBranchLabel0` / `gitInv0` rules for `neo` and `redux*` themes. It
+  switches to `genColor(...)`, with separate rules for `redux`, `redux-color`, `neo`, and dark
+  variants.
+- Updated local GitGraph CSS generation so:
+  - classic/default themes keep the existing per-branch `git0..7` behavior;
+  - `redux` / `redux-dark` use `nodeBorder`, `mainBkg`, redux font weight, `strokeWidth`, and the
+    `4 2` branch dash pattern;
+  - `redux-color` / `redux-dark-color` use `borderColorArray` for colored branches and the
+    Mermaid dark-theme `mainBkg` label-fill rule;
+  - `neo` / `neo-dark` use the first-branch `nodeBorder` rule, subsequent `git*` colors, scoped
+    gradient-backed label backgrounds, `mainBkg` merge/reverse/highlight-inner fills, and the
+    color-generation dash pattern.
+- Added scoped GitGraph gradient defs when the active theme variables require them, matching the
+  current Mermaid CLI `neo` output and avoiding a broken `url(#...-gradient)` reference.
+- Added public `HeadlessRenderer` coverage for `redux` and `neo` GitGraph theme output.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/git/styles.js`
+- Fresh Mermaid CLI evidence in `target/compare/gitgraph_redux_audit_upstream.svg` showed
+  `redux` consumes `nodeBorder`, `mainBkg`, `noteFontWeight`, `strokeWidth`, and the `4 2` branch
+  dash pattern.
+- Fresh Mermaid CLI evidence in `target/compare/gitgraph_neo_audit_upstream.svg` showed `neo`
+  emits `<defs><linearGradient id="...-gradient" ...>` after `<g/>` and consumes that gradient
+  through `.label*` branch-label background rules.
+
+Focused verification:
+
+- `cargo nextest run -p merman-render gitgraph_css`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke gitgraph_official_themes_use_mermaid_11_15_color_generation`
+- `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This slice does not change GitGraph layout geometry, branch indexing, commit ids, root bounds, or
+  font measurement. Those remain separate parity surfaces. It only fixes source-backed CSS/defs
+  that current GitGraph DOM can consume.
+
+## HPD-080 - Gantt Visible Signal Smoke Calibration
+
+Outcome:
+
+- Re-audited the public Gantt dark-theme smoke after the visible-signal tightening found that the
+  compact sample had only a `done` task while still counting ordinary task colors as visible.
+- Confirmed local Gantt output already emits source-backed Mermaid 11.15 selectors for ordinary
+  task state, done task state, and outside task labels. The issue was sample representativeness, not
+  a production renderer defect.
+- Tightened the public smoke source so one compact Gantt diagram now includes:
+  - a wide ordinary task consuming `taskBkgColor`, `taskBorderColor`, and `taskTextColor`;
+  - a narrow long-label ordinary task emitting `taskTextOutsideRight taskTextOutside0`, consuming
+    `taskTextOutsideColor`;
+  - a done task consuming `doneTaskBkgColor` and `doneTaskBorderColor`.
+- Added a focused public render test documenting that Gantt visible theme signals should be counted
+  only when matching state/label DOM exists.
+
+Source evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/styles.js`
+- Local rendered evidence in `target/compare/gantt_visible_audit3.svg` showed
+  `class="task task0"`, `class="taskTextOutsideRight taskTextOutside0 ..."`, and
+  `class="task done0"` in the same compact sample.
+
+Focused verification:
+
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke`
+- `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+Residual note:
+
+- This is a measurement-quality fix. Gantt's provider CSS remains source-backed; future public
+  smoke additions should keep `taskTextOutsideColor` and state-specific task colors out of the
+  visible-signal list unless the sample actually emits matching outside/state DOM.
+
 ## HPD-080 - Requirement Visible Signal Audit And Neo Node Border
 
 Outcome:

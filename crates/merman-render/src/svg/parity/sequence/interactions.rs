@@ -15,8 +15,6 @@ pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) seq_cfg: &'a serde_json::Value,
-    pub(super) effective_config: &'a serde_json::Value,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) settings: &'a SequenceRenderSettings,
@@ -34,8 +32,7 @@ pub(super) fn render_sequence_interaction_overlays(
         ctx.model,
         ctx.nodes_by_id,
         ctx.edges_by_id,
-        ctx.seq_cfg,
-        ctx.effective_config,
+        ctx.settings.activation_width,
     );
 
     let (blocks_by_end_id, blocks) = collect_sequence_blocks(ctx.model);

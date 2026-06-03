@@ -2,10 +2,16 @@ use super::super::*;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
-    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_text_line_step_px,
+    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_activation_stack_bounds,
+    sequence_activation_start_x, sequence_text_line_step_px,
 };
 use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
 
+const LINETYPE_NOTE: i32 = 2;
+const LINETYPE_ACTIVE_START: i32 = 17;
+const LINETYPE_ACTIVE_END: i32 = 18;
+const LINETYPE_AUTONUMBER: i32 = 26;
 const LINETYPE_CENTRAL_CONNECTION: i32 = 59;
 const LINETYPE_CENTRAL_CONNECTION_REVERSE: i32 = 60;
 const LINETYPE_CENTRAL_CONNECTION_DUAL: i32 = 61;
@@ -23,6 +29,7 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) actor_height: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) sequence_width: f64,
+    pub(super) activation_width: f64,
     pub(super) wrap_padding: f64,
     pub(super) right_angles: bool,
     pub(super) loop_text_style: &'a TextStyle,
@@ -60,6 +67,96 @@ fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Opt
     ctx.nodes_by_id
         .get(format!("actor-top-{actor_id}").as_str())
         .map(|node| node.x)
+}
+
+struct SequenceAutonumberActivationBounds {
+    width: f64,
+    stacks: BTreeMap<String, Vec<f64>>,
+}
+
+impl SequenceAutonumberActivationBounds {
+    fn new(width: f64) -> Self {
+        Self {
+            width,
+            stacks: BTreeMap::new(),
+        }
+    }
+
+    fn handle_directive(
+        &mut self,
+        msg: &merman_core::diagrams::sequence::SequenceMessage,
+        ctx: &SequenceMessageRenderContext<'_>,
+    ) -> bool {
+        match msg.message_type {
+            LINETYPE_ACTIVE_START => {
+                let Some(actor_id) = msg.from.as_deref() else {
+                    return true;
+                };
+                let Some(cx) = actor_center_x(ctx, actor_id) else {
+                    return true;
+                };
+                let stack = self.stacks.entry(actor_id.to_string()).or_default();
+                let stacked_size = stack.len();
+                let startx = sequence_activation_start_x(cx, stacked_size, self.width);
+                stack.push(startx);
+                true
+            }
+            LINETYPE_ACTIVE_END => {
+                let Some(actor_id) = msg.from.as_deref() else {
+                    return true;
+                };
+                if let Some(stack) = self.stacks.get_mut(actor_id) {
+                    let _ = stack.pop();
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn actor_bounds(&self, actor_id: &str, center_x: f64) -> (f64, f64) {
+        sequence_activation_stack_bounds(
+            self.stacks
+                .get(actor_id)
+                .into_iter()
+                .flat_map(|stack| stack.iter().copied()),
+            center_x,
+            self.width,
+        )
+    }
+}
+
+fn sequence_number_marker_x(
+    activation_bounds: &SequenceAutonumberActivationBounds,
+    ctx: &SequenceMessageRenderContext<'_>,
+    msg: &merman_core::diagrams::sequence::SequenceMessage,
+    from: &str,
+    to: &str,
+    startx: f64,
+    stopx: f64,
+) -> Option<f64> {
+    let from_center = actor_center_x(ctx, from)?;
+    let to_center = actor_center_x(ctx, to)?;
+    let (from_left, from_right) = activation_bounds.actor_bounds(from, from_center);
+    let (to_left, to_right) = activation_bounds.actor_bounds(to, to_center);
+    let from_bounds = from_left.min(from_right).min(to_left).min(to_right);
+    let to_bounds = from_left.max(from_right).max(to_left).max(to_right);
+    let is_self_message = (startx - stopx).abs() <= f64::EPSILON;
+    let is_left_to_right = startx <= stopx;
+
+    Some(if is_self_message {
+        from_bounds + 1.0
+    } else if is_reverse_arrow_type(msg.message_type) {
+        if is_left_to_right {
+            to_bounds - 1.0
+        } else {
+            from_bounds + 1.0
+        }
+    } else if is_left_to_right {
+        from_bounds + 1.0
+    } else {
+        to_bounds - 1.0
+    })
 }
 
 fn write_central_connection_circles(
@@ -148,6 +245,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
     let mut sequence_number_step = 1.0;
+    let mut activation_bounds = SequenceAutonumberActivationBounds::new(ctx.activation_width);
 
     for _ in ctx.model.messages.iter().filter(|msg| {
         matches!(
@@ -160,8 +258,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
 
     for msg in &ctx.model.messages {
         match msg.message_type {
-            // AUTONUMBER
-            26 => {
+            LINETYPE_AUTONUMBER => {
                 if let SequenceSvgMessagePayload::Autonumber(autonumber) = &msg.message {
                     sequence_number_visible = autonumber.visible;
                     if let Some(start) = autonumber.start {
@@ -173,8 +270,11 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                 }
                 continue;
             }
-            // NOTE
-            2 => continue,
+            LINETYPE_ACTIVE_START | LINETYPE_ACTIVE_END => {
+                let _ = activation_bounds.handle_directive(msg, ctx);
+                continue;
+            }
+            LINETYPE_NOTE => continue,
             // CENTRAL_CONNECTION / CENTRAL_CONNECTION_REVERSE. Upstream routes these through
             // the activation drawing path, which leaves an empty group even without a visible
             // activation rectangle.
@@ -195,6 +295,12 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
 
         let p0 = &edge.points[0];
         let p1 = &edge.points[1];
+        let sequence_number_x = if sequence_number_visible {
+            sequence_number_marker_x(&activation_bounds, ctx, msg, from, to, p0.x, p1.x)
+                .unwrap_or(p0.x)
+        } else {
+            p0.x
+        };
 
         let text = msg.message_text();
         if let Some(lbl) = &edge.label {
@@ -372,7 +478,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             } else {
                 "12px"
             };
-            let x = p0.x;
+            let x = sequence_number_x;
             let y = p0.y;
             let _ = write!(
                 out,

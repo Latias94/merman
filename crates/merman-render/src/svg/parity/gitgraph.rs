@@ -2,15 +2,96 @@ use super::*;
 
 struct GitGraphCss {
     css: String,
+    defs: String,
     font_family: String,
     commit_label_font_size_px: f64,
     tag_label_font_size_px: f64,
+}
+
+const GITGRAPH_NAMED_COLOR_COUNT: usize = 8;
+
+fn gitgraph_theme_name(effective_config: &serde_json::Value) -> String {
+    config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
+}
+
+fn gitgraph_theme_is_redux_geometry(theme: &str) -> bool {
+    matches!(
+        theme,
+        "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+    )
+}
+
+fn gitgraph_theme_is_color(theme: &str) -> bool {
+    matches!(theme, "redux-color" | "redux-dark-color")
+}
+
+fn gitgraph_theme_is_neo(theme: &str) -> bool {
+    matches!(theme, "neo" | "neo-dark")
+}
+
+fn gitgraph_theme_is_dark(theme: &str) -> bool {
+    matches!(
+        theme,
+        "dark" | "redux-dark" | "redux-dark-color" | "neo-dark"
+    )
+}
+
+fn gitgraph_theme_uses_color_gen(theme: &str) -> bool {
+    matches!(
+        theme,
+        "redux" | "redux-dark" | "redux-color" | "redux-dark-color" | "neo" | "neo-dark"
+    )
+}
+
+fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<String> {
+    effective_config
+        .get("themeVariables")
+        .and_then(|v| v.get(key))
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn gitgraph_gradient_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        return String::new();
+    }
+
+    let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
+        .unwrap_or_else(|| "#9370DB".to_string());
+    let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
+        .or_else(|| {
+            config_string(
+                effective_config,
+                &["themeVariables", "secondaryBorderColor"],
+            )
+        })
+        .unwrap_or_else(|| gradient_start.clone());
+
+    format!(
+        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+        escape_xml(diagram_id),
+        escape_xml(&gradient_start),
+        escape_xml(&gradient_stop)
+    )
 }
 
 fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
+    let theme_name = gitgraph_theme_name(effective_config);
+    let use_redux_geometry = gitgraph_theme_is_redux_geometry(&theme_name);
+    let use_color_theme = gitgraph_theme_is_color(&theme_name);
+    let use_neo_theme = gitgraph_theme_is_neo(&theme_name);
+    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
+    let use_color_gen = gitgraph_theme_uses_color_gen(&theme_name);
 
     fn default_git_color(i: usize) -> &'static str {
         match i {
@@ -73,6 +154,31 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     let commit_line_color = config_string(effective_config, &["themeVariables", "commitLineColor"])
         .unwrap_or_else(|| parts.line_color.clone());
     let primary_color = theme_color(effective_config, "primaryColor", "#ECECFF");
+    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
+    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
+    let note_font_weight = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "noteFontWeight"],
+    )
+    .unwrap_or_else(|| "normal".to_string());
+    let note_font_weight_decl = if use_redux_geometry {
+        format!("font-weight:{};", note_font_weight)
+    } else {
+        String::new()
+    };
+    let drop_shadow = crate::config::config_css_number_or_string(
+        effective_config,
+        &["themeVariables", "dropShadow"],
+    )
+    .unwrap_or_else(|| "none".to_string());
+    let use_gradient =
+        config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
+    let border_color_array = gitgraph_theme_array(effective_config, "borderColorArray");
+    let defs = if use_neo_theme {
+        gitgraph_gradient_defs(diagram_id, effective_config)
+    } else {
+        String::new()
+    };
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
@@ -80,61 +186,278 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
         id, id, id
     );
     for i in 0..theme_color_limit {
-        let ci = i % 8;
-        let git = theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
-        let branch_label = theme_color(
-            effective_config,
-            &format!("gitBranchLabel{ci}"),
-            default_git_branch_label(ci),
-        );
-        let git_inv = theme_color(
-            effective_config,
-            &format!("gitInv{ci}"),
-            default_git_inv(ci),
-        );
-        let _ = write!(
-            &mut out,
-            r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
-            id, i, branch_label, id, i, git, git, id, i, git_inv, git_inv, id, i, git, id, i, git
-        );
+        let ci = i % GITGRAPH_NAMED_COLOR_COUNT;
+        if use_color_gen {
+            if use_neo_theme {
+                if i == 0 {
+                    let _ = write!(
+                        &mut out,
+                        r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}#{} .commit-bullets{{fill:{};}}#{} .commit-cherry-pick{}{{stroke:{};}}"#,
+                        id,
+                        i,
+                        node_border,
+                        id,
+                        i,
+                        node_border,
+                        id,
+                        i,
+                        node_border,
+                        node_border,
+                        id,
+                        i,
+                        node_border,
+                        id,
+                        node_border,
+                        id,
+                        i,
+                        node_border
+                    );
+                    if use_gradient {
+                        for label_i in 0..theme_color_limit {
+                            let _ = write!(
+                                &mut out,
+                                r#"#{} .label{}{{fill:{};stroke:url(#{}-gradient);stroke-width:{};}}"#,
+                                id, label_i, main_bkg, id, stroke_width
+                            );
+                        }
+                    }
+                } else {
+                    let git =
+                        theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
+                    let branch_label = theme_color(
+                        effective_config,
+                        &format!("gitBranchLabel{ci}"),
+                        default_git_branch_label(ci),
+                    );
+                    let git_inv = theme_color(
+                        effective_config,
+                        &format!("gitInv{ci}"),
+                        default_git_inv(ci),
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
+                        id, i, branch_label, id, i, git, git, id, i, git_inv, git_inv, id, i, git
+                    );
+                }
+            } else if !use_color_theme {
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .branch-label{}{{fill:{};{}}}#{} .commit{}{{stroke:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};stroke:{};stroke-width:{};{}}}#{} .arrow{}{{stroke:{};}}#{} .commit-bullets{{fill:{};}}#{} .commit-cherry-pick{}{{stroke:{};}}"#,
+                    id,
+                    i,
+                    node_border,
+                    note_font_weight_decl,
+                    id,
+                    i,
+                    node_border,
+                    id,
+                    i,
+                    node_border,
+                    node_border,
+                    id,
+                    i,
+                    main_bkg,
+                    node_border,
+                    stroke_width,
+                    note_font_weight_decl,
+                    id,
+                    i,
+                    node_border,
+                    id,
+                    node_border,
+                    id,
+                    i,
+                    node_border
+                );
+            } else if i == 0 {
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .branch-label{}{{fill:{};{}}}#{} .commit{}{{stroke:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};stroke:{};stroke-width:{};{}}}#{} .arrow{}{{stroke:{};}}#{} .commit-bullets{{fill:{};}}"#,
+                    id,
+                    i,
+                    node_border,
+                    note_font_weight_decl,
+                    id,
+                    i,
+                    node_border,
+                    id,
+                    i,
+                    node_border,
+                    main_bkg,
+                    id,
+                    i,
+                    main_bkg,
+                    node_border,
+                    stroke_width,
+                    note_font_weight_decl,
+                    id,
+                    i,
+                    node_border,
+                    id,
+                    node_border
+                );
+            } else {
+                let border_color = border_color_array
+                    .get(i % border_color_array.len().max(1))
+                    .cloned()
+                    .unwrap_or_else(|| node_border.clone());
+                let label_fill = if use_dark_theme {
+                    main_bkg.as_str()
+                } else {
+                    border_color.as_str()
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .branch-label{}{{fill:{};{}}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};stroke:{};stroke-width:{};}}#{} .arrow{}{{stroke:{};}}"#,
+                    id,
+                    i,
+                    node_border,
+                    note_font_weight_decl,
+                    id,
+                    i,
+                    border_color,
+                    border_color,
+                    id,
+                    i,
+                    border_color,
+                    border_color,
+                    id,
+                    i,
+                    label_fill,
+                    border_color,
+                    stroke_width,
+                    id,
+                    i,
+                    border_color
+                );
+            }
+        } else {
+            let git = theme_color(effective_config, &format!("git{ci}"), default_git_color(ci));
+            let branch_label = theme_color(
+                effective_config,
+                &format!("gitBranchLabel{ci}"),
+                default_git_branch_label(ci),
+            );
+            let git_inv = theme_color(
+                effective_config,
+                &format!("gitInv{ci}"),
+                default_git_inv(ci),
+            );
+            let _ = write!(
+                &mut out,
+                r#"#{} .branch-label{}{{fill:{};}}#{} .commit{}{{stroke:{};fill:{};}}#{} .commit-highlight{}{{stroke:{};fill:{};}}#{} .label{}{{fill:{};}}#{} .arrow{}{{stroke:{};}}"#,
+                id,
+                i,
+                branch_label,
+                id,
+                i,
+                git,
+                git,
+                id,
+                i,
+                git_inv,
+                git_inv,
+                id,
+                i,
+                git,
+                id,
+                i,
+                git
+            );
+        }
     }
+    let branch_dasharray = if use_color_gen { "4 2" } else { "2" };
+    let commit_label_fill = if use_color_gen {
+        node_border.as_str()
+    } else {
+        commit_label_color.as_str()
+    };
+    let commit_label_weight = if use_color_gen {
+        format!("font-weight:{};", note_font_weight)
+    } else {
+        String::new()
+    };
+    let commit_label_bkg_fill = if use_color_gen {
+        "transparent"
+    } else {
+        commit_label_background.as_str()
+    };
+    let commit_label_bkg_opacity = if use_color_gen { "" } else { "opacity:0.5;" };
+    let tag_label_bkg_fill = if use_color_gen {
+        main_bkg.as_str()
+    } else {
+        tag_label_background.as_str()
+    };
+    let tag_label_bkg_stroke = if use_color_gen {
+        node_border.as_str()
+    } else {
+        tag_label_border.as_str()
+    };
+    let tag_label_bkg_filter = if use_color_gen {
+        format!("filter:{};", drop_shadow)
+    } else {
+        String::new()
+    };
+    let state_fill = if use_color_gen {
+        main_bkg.as_str()
+    } else {
+        primary_color.as_str()
+    };
+    let reverse_stroke_width = if use_color_gen {
+        stroke_width.as_str()
+    } else {
+        "3"
+    };
+    let arrow_stroke_width = if use_redux_geometry {
+        stroke_width.as_str()
+    } else {
+        "8"
+    };
     let _ = write!(
         &mut out,
-        r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};}}#{} .commit-label-bkg{{font-size:{};fill:{};opacity:0.5;}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:3;}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
+        r#"#{} .branch{{stroke-width:{};stroke:{};stroke-dasharray:{};}}#{} .arrow{{stroke-width:{};stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:{};fill:{};{}}}#{} .commit-label-bkg{{font-size:{};fill:{};{}}}#{} .tag-label{{font-size:{};fill:{};}}#{} .tag-label-bkg{{fill:{};stroke:{};{}}}#{} .tag-hole{{fill:{};}}#{} .commit-merge{{stroke:{};fill:{};}}#{} .commit-reverse{{stroke:{};fill:{};stroke-width:{};}}#{} .commit-highlight-outer{{}}#{} .commit-highlight-inner{{stroke:{};fill:{};}}#{} .gitTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
         id,
         stroke_width,
         commit_line_color,
+        branch_dasharray,
         id,
+        arrow_stroke_width,
         id,
         commit_label_font_size,
-        commit_label_color,
+        commit_label_fill,
+        commit_label_weight,
         id,
         commit_label_font_size,
-        commit_label_background,
+        commit_label_bkg_fill,
+        commit_label_bkg_opacity,
         id,
         tag_label_font_size,
         tag_label_color,
         id,
-        tag_label_background,
-        tag_label_border,
+        tag_label_bkg_fill,
+        tag_label_bkg_stroke,
+        tag_label_bkg_filter,
         id,
         parts.text_color,
         id,
-        primary_color,
-        primary_color,
+        state_fill,
+        state_fill,
         id,
-        primary_color,
-        primary_color,
+        state_fill,
+        state_fill,
+        reverse_stroke_width,
         id,
         id,
-        primary_color,
-        primary_color,
+        state_fill,
+        state_fill,
         id,
         parts.text_color
     );
     out.push_str(&parts.root_rule);
     GitGraphCss {
         css: out,
+        defs,
         font_family,
         commit_label_font_size_px,
         tag_label_font_size_px,
@@ -349,6 +672,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
 
     out.push_str(r#"<g/>"#);
+    out.push_str(&css.defs);
     out.push_str(r#"<g class="commit-bullets"/>"#);
     out.push_str(r#"<g class="commit-labels"/>"#);
 
@@ -1016,5 +1340,135 @@ mod tests {
         assert!(css.contains("#git .arrow0{stroke:hsl(240, 100%, 46.2745098039%);}"));
         assert!(css.contains("#git .commit-merge{stroke:#ECECFF;fill:#ECECFF;}"));
         assert!(css.contains("#git .commit-highlight-inner{stroke:#ECECFF;fill:#ECECFF;}"));
+    }
+
+    #[test]
+    fn gitgraph_css_uses_redux_geometry_theme_rules() {
+        let css = gitgraph_css(
+            "git",
+            &json!({
+                "theme": "redux",
+                "themeVariables": {
+                    "nodeBorder": "#101010",
+                    "mainBkg": "#ffffff",
+                    "strokeWidth": 2,
+                    "noteFontWeight": 600,
+                    "commitLineColor": "#202020"
+                }
+            }),
+        );
+
+        assert!(css.defs.is_empty());
+        assert!(
+            css.css
+                .contains("#git .branch-label0{fill:#101010;font-weight:600;}")
+        );
+        assert!(css.css.contains("#git .commit0{stroke:#101010;}"));
+        assert!(
+            css.css.contains(
+                "#git .label0{fill:#ffffff;stroke:#101010;stroke-width:2;font-weight:600;}"
+            )
+        );
+        assert!(
+            css.css
+                .contains("#git .branch{stroke-width:2;stroke:#202020;stroke-dasharray:4 2;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .arrow{stroke-width:2;stroke-linecap:round;fill:none;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .commit-label{font-size:10px;fill:#101010;font-weight:600;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .commit-label-bkg{font-size:10px;fill:transparent;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .commit-merge{stroke:#ffffff;fill:#ffffff;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .commit-reverse{stroke:#ffffff;fill:#ffffff;stroke-width:2;}")
+        );
+    }
+
+    #[test]
+    fn gitgraph_css_uses_redux_color_theme_rules() {
+        let css = gitgraph_css(
+            "git",
+            &json!({
+                "theme": "redux-color",
+                "themeVariables": {
+                    "nodeBorder": "#101010",
+                    "mainBkg": "#ffffff",
+                    "strokeWidth": 2,
+                    "noteFontWeight": 600,
+                    "borderColorArray": ["#aa0000", "#00aa00"]
+                }
+            }),
+        )
+        .css;
+
+        assert!(css.contains("#git .commit0{stroke:#101010;}"));
+        assert!(css.contains("#git .commit-highlight0{stroke:#101010;fill:#ffffff;}"));
+        assert!(
+            css.contains(
+                "#git .label0{fill:#ffffff;stroke:#101010;stroke-width:2;font-weight:600;}"
+            )
+        );
+        assert!(css.contains("#git .commit1{stroke:#00aa00;fill:#00aa00;}"));
+        assert!(css.contains("#git .label1{fill:#00aa00;stroke:#00aa00;stroke-width:2;}"));
+        assert!(css.contains("#git .arrow1{stroke:#00aa00;}"));
+    }
+
+    #[test]
+    fn gitgraph_css_uses_neo_gradient_theme_rules() {
+        let css = gitgraph_css(
+            "git",
+            &json!({
+                "theme": "neo",
+                "themeVariables": {
+                    "nodeBorder": "#101010",
+                    "mainBkg": "#ffffff",
+                    "strokeWidth": 2,
+                    "useGradient": true,
+                    "gradientStart": "#112233",
+                    "gradientStop": "#445566",
+                    "git1": "#00aa00",
+                    "gitInv1": "#aa00aa",
+                    "gitBranchLabel1": "#202020"
+                }
+            }),
+        );
+
+        assert!(
+            css.defs
+                .contains(r#"<defs><linearGradient id="git-gradient""#)
+        );
+        assert!(css.defs.contains(r##"stop-color="#112233""##));
+        assert!(css.defs.contains(r##"stop-color="#445566""##));
+        assert!(css.css.contains("#git .branch-label0{fill:#101010;}"));
+        assert!(css.css.contains("#git .commit0{stroke:#101010;}"));
+        assert!(css.css.contains("#git .commit-bullets{fill:#101010;}"));
+        assert!(
+            css.css
+                .contains("#git .label0{fill:#ffffff;stroke:url(#git-gradient);stroke-width:2;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .label11{fill:#ffffff;stroke:url(#git-gradient);stroke-width:2;}")
+        );
+        assert!(css.css.contains("#git .branch-label1{fill:#202020;}"));
+        assert!(
+            css.css
+                .contains("#git .commit1{stroke:#00aa00;fill:#00aa00;}")
+        );
+        assert!(
+            css.css
+                .contains("#git .commit-highlight1{stroke:#aa00aa;fill:#aa00aa;}")
+        );
     }
 }

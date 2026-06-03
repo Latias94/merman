@@ -303,5 +303,41 @@ Last updated: 2026-06-03
   slice fixed the actual visible gap by emitting `look: neo` Requirement node/edge DOM surfaces so
   `nodeBorder` can style current node and divider strokes while default structural parity stays
   green.
+  A follow-up Gantt visible-signal audit found no production CSS defect, but the compact smoke
+  source was still self-deceptive: it counted ordinary task colors while rendering only a `done`
+  task, and it counted outside-label color without proving outside-label DOM. The smoke now includes
+  a wide ordinary task, a narrow long-label task, and a done task so normal task, outside text, and
+  done task colors each have matching DOM before being counted as visible renderability signals.
+  A follow-up GitGraph official-theme audit confirmed the user-provided merge sample itself was
+  readable, then found a source-backed CSS gap for Mermaid 11.15 `neo` / `redux*` themes. Local
+  GitGraph now mirrors the upstream color-generation branches for redux geometry, redux color
+  themes, and neo gradient label backgrounds, including scoped gradient defs for `neo` output.
+  A follow-up raster integration slice fixed the Ubuntu-only blank PNG failure for the boundary
+  `info` fixture without pretending `info` is metadata-only. PNG/JPEG raster options now provide
+  browser-like fallback when a configured family such as `courier` is unavailable and use
+  `max-width` as the default viewport width for no-`viewBox` Mermaid SVGs.
+  A follow-up Sequence autonumber slice fixed the user-visible activation-bound anchor bug in the
+  reported `autonumber` sample. Sequence number markers now follow Mermaid 11.15's
+  `activationBounds(...)` / `fromBounds` / `toBounds` formula instead of using the message line's
+  first point, so messages sent from an active participant anchor on the same side of the activation
+  rectangle as upstream.
+  A follow-up Sequence layout slice fixed the same full-stack activation-bounds rule for message
+  endpoints. Nested activations now use the min-left / max-right across all active rectangles,
+  matching Mermaid's `activationBounds(actor, actors)` instead of only the current stack top.
+  A follow-up Sequence activation seam slice then centralized the Mermaid 11.15 activation start
+  and full-stack bounds formulas so layout, activation-rect SVG planning, and autonumber marker
+  placement cannot silently diverge again.
+  A follow-up C4 visible-signal audit found no production defect, but tightened public smoke
+  coverage so inert `.person` provider CSS is not counted as visible C4 coverage. C4 visible colors
+  are now proven through inline `c4` config plus `UpdateElementStyle` / `UpdateRelStyle` output.
+  A follow-up Packet/Sankey visible-signal audit found no production defect, but now proves their
+  public theme colors only when matching Packet DOM classes, Sankey outlined-label DOM, node rect
+  fills, and link groups exist.
+  A follow-up Mindmap visible-signal audit found no production defect, but stopped the public smoke
+  from counting root-section CSS that is overwritten by `.section-root` rules or native-text CSS
+  that current XHTML label DOM does not consume.
+  A follow-up ER visible-signal audit found no production defect, but stopped the public smoke from
+  counting direct `.relationshipLabelBox` and native edge-label text CSS when current ER labels are
+  XHTML spans.
   Continue by scanning supported diagrams for blank output, hidden labels, black blocks, lost theme
   colors, and other functional renderability failures before returning to fine root residual work.

@@ -1,5 +1,6 @@
 use super::super::*;
 use super::model::SequenceSvgModel;
+use crate::sequence::sequence_activation_start_x;
 use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone)]
@@ -30,14 +31,8 @@ pub(super) fn build_sequence_activation_plan<'a>(
     model: &'a SequenceSvgModel,
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
-    seq_cfg: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    activation_width: f64,
 ) -> SequenceActivationPlan<'a> {
-    let activation_width = seq_cfg
-        .get("activationWidth")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(10.0)
-        .max(1.0);
     // Mermaid 11.15 draws activation rectangles through `svgDraw.getNoteRect()`, whose SVG
     // attributes are hard-coded; theme `activationBkgColor` is emitted in CSS but does not change
     // the rect `fill` attribute in the baseline SVGs.
@@ -68,7 +63,7 @@ pub(super) fn build_sequence_activation_plan<'a>(
                 let has_any_activation = !activation_stacks.is_empty();
                 let stack = activation_stacks.entry(actor_id).or_default();
                 let stacked_size = stack.len();
-                let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
+                let startx = sequence_activation_start_x(cx, stacked_size, activation_width);
 
                 let starty = last_line_y
                     .or_else(|| lifeline_y(edges_by_id, actor_id).map(|(y0, _y1)| y0))

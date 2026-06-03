@@ -30,12 +30,39 @@ fn extract_self_closing_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
     out
 }
 
+fn extract_paired_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
+    let needle = format!("<{tag_name}");
+    let closing = format!("</{tag_name}>");
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = s[i..].find(&needle) {
+        let start = i + pos;
+        let Some(end_rel) = s[start..].find(&closing) else {
+            break;
+        };
+        let end = start + end_rel + closing.len();
+        out.push(&s[start..end]);
+        i = end;
+    }
+    out
+}
+
 fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     let needle = format!(r#"{name}=""#);
     let i = tag.find(&needle)? + needle.len();
     let rest = &tag[i..];
     let end = rest.find('"')?;
     rest[..end].parse::<f64>().ok()
+}
+
+fn sequence_number_x(svg: &str, number: &str) -> f64 {
+    extract_paired_tags(svg, "text")
+        .into_iter()
+        .find(|tag| {
+            tag.contains(r#"class="sequenceNumber""#) && tag.ends_with(&format!(">{number}</text>"))
+        })
+        .and_then(|tag| attr_f64(tag, "x"))
+        .unwrap_or_else(|| panic!("missing sequence number {number}: {svg}"))
 }
 
 fn render_sequence_svg_from_fixture(fixture: &str) -> String {
@@ -99,6 +126,109 @@ fn render_sequence_svg_from_text(text: &str) -> String {
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+    *layout
+}
+
+#[test]
+fn sequence_autonumber_anchors_to_current_activation_bounds_like_mermaid_11_15() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    autonumber
+    participant C as Client
+    participant S as Server
+    participant D as Database
+    participant Q as Message Queue
+
+    C->>+S: Submit Order
+    S->>D: Save Order
+    D-->>S: Confirm
+    S->>Q: Send Notification
+    S-->>-C: Return Order ID
+
+    Note over Q: Async Processing
+    Q->>S: Consume Message
+    S->>C: Push Notification"#,
+    );
+
+    let activation = extract_self_closing_tags(&svg, "rect")
+        .into_iter()
+        .find(|tag| tag.contains(r#"class="activation0""#))
+        .unwrap_or_else(|| panic!("missing activation rect: {svg}"));
+    let activation_left = attr_f64(activation, "x").expect("activation x");
+    let activation_width = attr_f64(activation, "width").expect("activation width");
+    let activation_right = activation_left + activation_width;
+
+    let n2 = sequence_number_x(&svg, "2");
+    let n4 = sequence_number_x(&svg, "4");
+    let n5 = sequence_number_x(&svg, "5");
+
+    assert!(
+        (n2 - (activation_left + 1.0)).abs() <= 0.0001,
+        "expected message 2 number to sit inside the left activation bound, got {n2} for activation {activation}"
+    );
+    assert!(
+        (n4 - (activation_left + 1.0)).abs() <= 0.0001,
+        "expected message 4 number to sit inside the left activation bound, got {n4} for activation {activation}"
+    );
+    assert!(
+        (n5 - (activation_right - 1.0)).abs() <= 0.0001,
+        "expected message 5 number to sit inside the right activation bound, got {n5} for activation {activation}"
+    );
+}
+
+#[test]
+fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_15() {
+    let layout = layout_sequence_from_text(
+        r#"sequenceDiagram
+    participant C as Caller
+    participant A as Active
+
+    C->>+A: Open outer
+    A->>+A: Open inner
+    C->>A: Call nested
+    A-->>-A: Close inner
+    C->>A: Call outer"#,
+    );
+
+    let a_center = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "actor-top-A")
+        .map(|node| node.x)
+        .expect("actor A center");
+    let c_to_a_edges: Vec<&LayoutEdge> = layout
+        .edges
+        .iter()
+        .filter(|edge| edge.from == "C" && edge.to == "A")
+        .collect();
+    assert_eq!(c_to_a_edges.len(), 3, "expected three C->A messages");
+
+    let nested_call = c_to_a_edges[1];
+    let outer_call = c_to_a_edges[2];
+    let expected_left_target = a_center - 5.0 - 3.0;
+
+    assert!(
+        (nested_call.points[1].x - expected_left_target).abs() <= 0.0001,
+        "expected nested activation target to use the full activation stack left bound, got {} with A center {a_center}",
+        nested_call.points[1].x
+    );
+    assert!(
+        (outer_call.points[1].x - expected_left_target).abs() <= 0.0001,
+        "expected remaining outer activation target to keep the same left bound, got {} with A center {a_center}",
+        outer_call.points[1].x
+    );
 }
 
 #[test]
