@@ -12,6 +12,19 @@ struct MermanApi {
     package_version: extern "C" fn() -> *const c_char,
     buffer_struct_size: extern "C" fn() -> usize,
     result_struct_size: extern "C" fn() -> usize,
+    engine_result_struct_size: extern "C" fn() -> usize,
+    engine_new: unsafe extern "C" fn(*const u8, usize) -> merman_ffi::MermanEngineResult,
+    engine_free: unsafe extern "C" fn(*mut merman_ffi::MermanEngine),
+    engine_render_svg:
+        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
+    engine_render_ascii:
+        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
+    engine_parse_json:
+        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
+    engine_layout_json:
+        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
+    engine_validate_json:
+        unsafe extern "C" fn(*const merman_ffi::MermanEngine, *const u8, usize) -> MermanResult,
     render_svg: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     render_ascii: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
     parse_json: unsafe extern "C" fn(*const u8, usize, *const u8, usize) -> MermanResult,
@@ -45,6 +58,14 @@ fn c_consumer_smoke() {
             package_version: merman_ffi::merman_package_version,
             buffer_struct_size: merman_ffi::merman_buffer_struct_size,
             result_struct_size: merman_ffi::merman_result_struct_size,
+            engine_result_struct_size: merman_ffi::merman_engine_result_struct_size,
+            engine_new: merman_ffi::merman_engine_new,
+            engine_free: merman_ffi::merman_engine_free,
+            engine_render_svg: merman_ffi::merman_engine_render_svg,
+            engine_render_ascii: merman_ffi::merman_engine_render_ascii,
+            engine_parse_json: merman_ffi::merman_engine_parse_json,
+            engine_layout_json: merman_ffi::merman_engine_layout_json,
+            engine_validate_json: merman_ffi::merman_engine_validate_json,
             render_svg: merman_ffi::merman_render_svg,
             render_ascii: merman_ffi::merman_render_ascii,
             parse_json: merman_ffi::merman_parse_json,

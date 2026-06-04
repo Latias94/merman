@@ -48,7 +48,7 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 1
 print(engine.package_version())
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)

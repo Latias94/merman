@@ -39,10 +39,13 @@ public struct MermanValidationResult: Decodable {
 }
 
 public final class MermanEngine {
-    public static let abiVersion: UInt32 = 2
+    public static let abiVersion: UInt32 = 1
     private static let okCode: Int32 = 0
 
     public let packageVersion: String
+    private var supportedDiagramsCache: [String]?
+    private var asciiSupportedDiagramsCache: [String]?
+    private var themesCache: [String]?
 
     public init() throws {
         try Self.checkAbi()
@@ -75,15 +78,30 @@ public final class MermanEngine {
     }
 
     public func supportedDiagrams() throws -> [String] {
-        try metadata(merman_supported_diagrams_json)
+        if let supportedDiagramsCache {
+            return supportedDiagramsCache
+        }
+        let values = try metadata(merman_supported_diagrams_json)
+        supportedDiagramsCache = values
+        return values
     }
 
     public func asciiSupportedDiagrams() throws -> [String] {
-        try metadata(merman_ascii_supported_diagrams_json)
+        if let asciiSupportedDiagramsCache {
+            return asciiSupportedDiagramsCache
+        }
+        let values = try metadata(merman_ascii_supported_diagrams_json)
+        asciiSupportedDiagramsCache = values
+        return values
     }
 
     public func themes() throws -> [String] {
-        try metadata(merman_themes_json)
+        if let themesCache {
+            return themesCache
+        }
+        let values = try metadata(merman_themes_json)
+        themesCache = values
+        return values
     }
 
     private static func checkAbi() throws {

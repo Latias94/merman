@@ -1,5 +1,6 @@
 /*
  * merman.h - C ABI for merman headless Mermaid rendering.
+ * Project: https://github.com/Latias94/merman
  *
  * All strings are UTF-8 byte buffers. Every non-empty MermanResult.data buffer returned by Rust
  * must be released with merman_buffer_free.
@@ -15,7 +16,7 @@
 extern "C" {
 #endif
 
-#define MERMAN_ABI_VERSION 2
+#define MERMAN_ABI_VERSION 1
 
 enum {
     MERMAN_OK = 0,
@@ -40,6 +41,14 @@ typedef struct MermanResult {
     MermanBuffer data;
 } MermanResult;
 
+typedef struct MermanEngine MermanEngine;
+
+typedef struct MermanEngineResult {
+    int32_t code;
+    MermanEngine* engine;
+    MermanBuffer data;
+} MermanEngineResult;
+
 /*
  * Return the C ABI protocol version implemented by this library.
  *
@@ -59,6 +68,56 @@ const char* merman_package_version(void);
  */
 size_t merman_buffer_struct_size(void);
 size_t merman_result_struct_size(void);
+size_t merman_engine_result_struct_size(void);
+
+/*
+ * Create and free a reusable engine for repeated calls with the same options_json.
+ *
+ * code == MERMAN_OK:
+ *   engine contains an opaque handle for merman_engine_* calls and data is empty.
+ * code != MERMAN_OK:
+ *   engine is NULL and data contains UTF-8 JSON error bytes.
+ *
+ * The caller must release a non-null engine with merman_engine_free.
+ * The caller must not free an engine while another thread is using it.
+ */
+MermanEngineResult merman_engine_new(
+    const uint8_t* options_json,
+    size_t options_len
+);
+void merman_engine_free(MermanEngine* engine);
+
+/*
+ * Reusable-engine variants of the stateless entry points.
+ *
+ * These functions use the options captured by merman_engine_new. They are intended for hosts that
+ * render many diagrams with the same layout/SVG/parse settings.
+ */
+MermanResult merman_engine_render_svg(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_render_ascii(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_parse_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_layout_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_validate_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
 
 /*
  * Render Mermaid source to SVG.

@@ -7,9 +7,13 @@
 
 use merman_bindings_core::{BindingError, BindingStatus};
 use serde_json::Value;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
+pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 1;
+
+static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
+static ASCII_SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
+static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
@@ -123,15 +127,21 @@ impl MermanEngine {
     }
 
     pub fn supported_diagrams(&self) -> Vec<String> {
-        string_vec(merman_bindings_core::supported_diagrams())
+        cached_string_vec(
+            &SUPPORTED_DIAGRAMS,
+            merman_bindings_core::supported_diagrams,
+        )
     }
 
     pub fn ascii_supported_diagrams(&self) -> Vec<String> {
-        string_vec(merman_bindings_core::ascii_supported_diagrams())
+        cached_string_vec(
+            &ASCII_SUPPORTED_DIAGRAMS,
+            merman_bindings_core::ascii_supported_diagrams,
+        )
     }
 
     pub fn themes(&self) -> Vec<String> {
-        string_vec(merman_bindings_core::supported_themes())
+        cached_string_vec(&SUPPORTED_THEMES, merman_bindings_core::supported_themes)
     }
 }
 
@@ -181,6 +191,13 @@ fn validation_output(
 
 fn string_vec(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()
+}
+
+fn cached_string_vec(
+    cache: &OnceLock<Vec<String>>,
+    values: fn() -> &'static [&'static str],
+) -> Vec<String> {
+    cache.get_or_init(|| string_vec(values())).clone()
 }
 
 uniffi::setup_scaffolding!();

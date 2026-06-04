@@ -95,6 +95,14 @@ export const BINDING_STATUS_CODE_NAMES = [
 
 export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
 
+export interface BindingErrorPayload {
+  version: number;
+  ok: false;
+  code: number;
+  code_name: BindingStatusCodeName | string;
+  message: string;
+}
+
 export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
@@ -107,6 +115,20 @@ export function isBindingStatusCodeName(
   codeName: string
 ): codeName is BindingStatusCodeName {
   return (BINDING_STATUS_CODE_NAMES as readonly string[]).includes(codeName);
+}
+
+export function isBindingErrorPayload(error: unknown): error is BindingErrorPayload {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const payload = error as Record<string, unknown>;
+  return (
+    payload.ok === false &&
+    typeof payload.version === "number" &&
+    typeof payload.code === "number" &&
+    typeof payload.code_name === "string" &&
+    typeof payload.message === "string"
+  );
 }
 
 export function normalizeThemeName(theme: string | null | undefined): ThemeName {
@@ -145,6 +167,9 @@ export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
 
 let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
+let supportedDiagramsCache: DiagramType[] | null = null;
+let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let themesCache: ThemeName[] | null = null;
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
   if (wasmModule) {
@@ -245,15 +270,20 @@ export function validate(source: string, options?: SvgBindingOptions | string): 
 }
 
 export function supportedDiagrams(): DiagramType[] {
-  return getMerman().supportedDiagrams().map(assertDiagramType);
+  supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
+  return [...supportedDiagramsCache];
 }
 
 export function asciiSupportedDiagrams(): DiagramType[] {
-  return getMerman().asciiSupportedDiagrams().map(assertDiagramType);
+  asciiSupportedDiagramsCache ??= getMerman()
+    .asciiSupportedDiagrams()
+    .map(assertDiagramType);
+  return [...asciiSupportedDiagramsCache];
 }
 
 export function themes(): ThemeName[] {
-  return getMerman().themes().map(assertThemeName);
+  themesCache ??= getMerman().themes().map(assertThemeName);
+  return [...themesCache];
 }
 
 export function abiVersion(): number {
