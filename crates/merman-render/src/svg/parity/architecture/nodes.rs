@@ -201,6 +201,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                 // cannot "see" their extents. Union a conservative horizontal bbox so
                 // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
                 let mut title_bbox_w = 0.0f64;
+                let has_multiline_title = lines.len() > 1;
                 for line in &lines {
                     let s = svg_line_plain_text(line);
                     let m = text_measurer.measure_wrapped(
@@ -209,7 +210,16 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                         None,
                         WrapMode::SvgLike,
                     );
-                    title_bbox_w = title_bbox_w.max(m.width);
+                    // Chromium's SVG `getBBox()` reports multi-`tspan` title rows on an integer
+                    // pixel boundary in upstream Architecture roots; keep this limited to wrapped
+                    // group titles so ordinary service labels and one-line group titles retain the
+                    // existing fractional text metric model.
+                    let width = if has_multiline_title {
+                        m.width.ceil()
+                    } else {
+                        m.width
+                    };
+                    title_bbox_w = title_bbox_w.max(width);
                 }
                 if title_bbox_w.is_finite() && title_bbox_w > 0.0 {
                     let title_x = shifted_x1 + settings.half_icon + 4.0;
