@@ -29,6 +29,75 @@
         }
       ],
       "edges": [],
+      "cytoscape_service_bounds": [
+        {
+          "id": "plain",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          }
+        },
+        {
+          "id": "with_icon",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 8.0,
+            "min_y": 0.0,
+            "max_x": 72.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 60.96,
+            "half_width": 32.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "with_icon_text",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -21.5,
+            "min_y": 0.0,
+            "max_x": 101.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 116.64,
+            "half_width": 61.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -21.5,
+            "min_y": 0.0,
+            "max_x": 101.5,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

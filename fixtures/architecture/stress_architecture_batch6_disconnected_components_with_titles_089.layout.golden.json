@@ -96,6 +96,116 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "a",
+          "in_group": "island1",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 35.0,
+            "min_y": 0.0,
+            "max_x": 45.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 9.6,
+            "half_width": 5.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "b",
+          "in_group": "island1",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 35.0,
+            "min_y": 0.0,
+            "max_x": 45.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 9.6,
+            "half_width": 5.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "c",
+          "in_group": "island2",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 35.0,
+            "min_y": 0.0,
+            "max_x": 45.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 9.6,
+            "half_width": 5.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "d",
+          "in_group": "island2",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 35.0,
+            "min_y": 0.0,
+            "max_x": 45.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 9.6,
+            "half_width": 5.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

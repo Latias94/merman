@@ -88,6 +88,86 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "top",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 24.5,
+            "min_y": 0.0,
+            "max_x": 55.5,
+            "max_y": 101.0
+          },
+          "label_metrics": {
+            "text_width": 29.2,
+            "half_width": 15.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 101.0
+          }
+        },
+        {
+          "id": "mid",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 26.0,
+            "min_y": 0.0,
+            "max_x": 54.0,
+            "max_y": 101.0
+          },
+          "label_metrics": {
+            "text_width": 26.2,
+            "half_width": 14.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 101.0
+          }
+        },
+        {
+          "id": "bot",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 24.5,
+            "min_y": 0.0,
+            "max_x": 55.5,
+            "max_y": 101.0
+          },
+          "label_metrics": {
+            "text_width": 29.2,
+            "half_width": 15.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 101.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

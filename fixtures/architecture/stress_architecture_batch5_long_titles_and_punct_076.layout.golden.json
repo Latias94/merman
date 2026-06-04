@@ -154,6 +154,116 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "runner",
+          "in_group": "pipeline",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -30.5,
+            "min_y": 0.0,
+            "max_x": 110.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 133.44,
+            "half_width": 70.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -30.5,
+            "min_y": 0.0,
+            "max_x": 110.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "registry",
+          "in_group": "pipeline",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -26.0,
+            "min_y": 0.0,
+            "max_x": 106.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 124.8,
+            "half_width": 66.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -26.0,
+            "min_y": 0.0,
+            "max_x": 106.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "storage",
+          "in_group": "pipeline",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -67.5,
+            "min_y": 0.0,
+            "max_x": 147.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 213.28,
+            "half_width": 107.5,
+            "applied_scale": 1.01
+          },
+          "union_bounds": {
+            "min_x": -67.5,
+            "min_y": 0.0,
+            "max_x": 147.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "prod",
+          "in_group": "pipeline",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 3.5,
+            "min_y": 0.0,
+            "max_x": 76.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 69.12,
+            "half_width": 36.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

@@ -13,6 +13,34 @@
         }
       ],
       "edges": [],
+      "cytoscape_service_bounds": [
+        {
+          "id": "worker",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 13.5,
+            "min_y": 0.0,
+            "max_x": 66.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 49.92,
+            "half_width": 26.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

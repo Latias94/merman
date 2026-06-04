@@ -88,6 +88,89 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "api",
+          "in_group": "left",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 120.0
+          },
+          "label_bounds": {
+            "min_x": 46.0,
+            "min_y": 0.0,
+            "max_x": 74.0,
+            "max_y": 139.0
+          },
+          "label_metrics": {
+            "text_width": 27.0,
+            "half_width": 14.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 139.0
+          }
+        },
+        {
+          "id": "db",
+          "in_group": "right",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 120.0
+          },
+          "label_bounds": {
+            "min_x": 48.5,
+            "min_y": 0.0,
+            "max_x": 71.5,
+            "max_y": 139.0
+          },
+          "label_metrics": {
+            "text_width": 21.6,
+            "half_width": 11.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 139.0
+          }
+        },
+        {
+          "id": "disk",
+          "in_group": "right",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 120.0
+          },
+          "label_bounds": {
+            "min_x": 42.5,
+            "min_y": 0.0,
+            "max_x": 77.5,
+            "max_y": 139.0
+          },
+          "label_metrics": {
+            "text_width": 33.48,
+            "half_width": 17.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 120.0,
+            "max_y": 139.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
