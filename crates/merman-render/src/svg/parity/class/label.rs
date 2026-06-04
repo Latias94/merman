@@ -194,14 +194,17 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
         return text.to_string();
     };
 
-    // Vendored font metrics under-estimate Chromium's `getComputedTextLength()` slightly for the
-    // default Mermaid font stack, which can shift character-level wrapping boundaries. Inflate
-    // non-bold computed-length checks so deterministic wrapping matches upstream class SVG
-    // fixtures.
+    // Vendored font metrics do not line up with Chromium's SVG `getComputedTextLength()` exactly.
+    // Most default-font SVG labels need a small inflation, but Mermaid's Class path can also
+    // measure the wrap width with a smaller top-level `fontSize` while rendering the final SVG text
+    // with an explicit larger `themeVariables.fontSize` px value. That case needs slack so type
+    // suffixes stay on the same outer tspan row as upstream.
     let computed_len_fudge = if bold {
         1.0
+    } else if wrap_probe_font_size < style.font_size {
+        0.9
     } else if style.font_size >= 20.0 {
-        1.035
+        1.0
     } else {
         1.02
     };

@@ -67,6 +67,14 @@ Outcome:
   - the fixed root `height` attribute is no longer emitted;
   - root `style` now carries `max-width: <width>px; background-color: white;`;
   - the now-unused root-helper fixed-height `AfterViewBox` branch was removed.
+- Point-refreshed the Class narrow stale set and fixed the local Class native SVG-label wrapping to
+  match Mermaid 11.15 under the parity gate:
+  - the two stale stored Class upstream SVGs were regenerated;
+  - `htmlLabels=false` labels with a smaller top-level `fontSize` probe and a larger explicit
+    `themeVariables.fontSize` px value now keep the `: String` type suffix in the second outer
+    `tspan` instead of splitting `String` into a third row;
+  - the affected 026 layout golden was refreshed and the missing existing-fixture
+    `zed_pr_57644_class` layout golden was added.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -83,8 +91,11 @@ Touched surfaces:
 - `crates/merman-render/src/svg/parity/mindmap.rs`
 - `crates/merman-render/src/svg/parity/radar.rs`
 - `crates/merman-render/src/svg/parity/root_svg.rs`
+- `crates/merman-render/src/class.rs`
+- `crates/merman-render/src/svg/parity/class/label.rs`
 - `crates/merman-render/src/svg/parity/roughjs46.rs`
 - `crates/merman-render/tests/block_svg_test.rs`
+- `crates/merman-render/tests/class_svg_test.rs`
 - `crates/merman-render/tests/mindmap_svg_test.rs`
 - `crates/merman-render/tests/svg_internal_id_test.rs`
 - `crates/merman/tests/theme_renderability_smoke.rs`
@@ -92,10 +103,13 @@ Touched surfaces:
 - `crates/xtask/src/cmd/import/{cypress,docs,examples}.rs`
 - `fixtures/info/*.layout.golden.json`
 - `fixtures/block/*.layout.golden.json`
+- `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.layout.golden.json`
+- `fixtures/class/zed_pr_57644_class.layout.golden.json`
 - `fixtures/gantt/zed_pr_57644_gantt.layout.golden.json`
 - `fixtures/mindmap/zed_pr_57644_mindmap.layout.golden.json`
 - `fixtures/upstream-svgs/info/*.svg`
 - `fixtures/upstream-svgs/block/*.svg`
+- `fixtures/upstream-svgs/class/{stress_class_svg_font_size_px_string_precedence_026,upstream_parser_class_spec}.svg`
 - `fixtures/upstream-svgs/gantt/*.svg`
 - `fixtures/upstream-svgs/kanban/*.svg`
 - `fixtures/upstream-svgs/mindmap/*.svg`
@@ -149,6 +163,14 @@ Focused verification:
   layout snapshot changes.
 - `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3` -
   passed after the Radar root DOM update.
+- `cargo nextest run -p merman-render --test class_svg_test` - passed, `21` tests run.
+- `cargo run -p xtask -- update-layout-snapshots --diagram class` - passed and produced the Class
+  layout golden updates listed above.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run after the Class layout golden refresh.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\class_report_parity_hpd090_after_wrap_fix.md` -
+  passed after the Class wrapping update and stored SVG refresh.
+- `cargo fmt -p merman-render --check` - passed after the Class wrapping update.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -162,9 +184,10 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  The broad stale family set is now refreshed. Next HPD-090 work should point-refresh the narrow
-  stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability
-  gates before resuming parity fixes. No broad official fixture import is indicated yet.
+  The broad stale family set is now refreshed, and Class is now handled. Next HPD-090 work should
+  point-refresh the remaining narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
+  layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
+  import is indicated yet.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 

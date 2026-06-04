@@ -845,3 +845,30 @@ classDiagram
         "numeric themeVariables.fontSize must not be rewritten as a px string"
     );
 }
+
+#[test]
+fn class_svg_px_string_theme_font_size_uses_mermaid_svg_label_wrapping() {
+    let svg = render_class_svg_from_text(
+        r##"%%{init: {"theme": "base", "fontSize": 10, "themeVariables": {"fontSize": "24px"}, "htmlLabels": false} }%%
+classDiagram
+  class Foo {
+    +veryLongMemberNameToWrapTheLayoutProbe: String
+    +anotherVeryLongMemberNameToWrapTheLayoutProbe: String
+    +thirdVeryLongMemberNameToWrapTheLayoutProbe: String
+  }
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"Probe:</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> String</tspan>"#
+        ),
+        "expected Mermaid-like native SVG wrapping to keep the type suffix on the second row: {svg}"
+    );
+    assert!(
+        !svg.contains(
+            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">String</tspan></tspan>"#
+        ),
+        "type suffix should not be forced onto a standalone third row: {svg}"
+    );
+}

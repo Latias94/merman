@@ -664,12 +664,13 @@ Last updated: 2026-06-04
   Requirement renderer DOM output for Mermaid 11.15 current surfaces (`data-look`, diagram-prefixed
   ids, `outer-path`, `divider`, and root drop-shadow defs), making
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` green. Block, Gantt,
-  Kanban, Mindmap, and Radar are also now refreshed and locally DOM-green under their family compare
-  gates; Kanban required diagram-prefixed section/item DOM ids and current markdown title spans,
-  Mindmap required root shadow defs, explicit classic `data-look`, diagram-prefixed node/edge DOM
-  ids, margin markers, section class cycle wrapping, direct classic rounded/hexagon DOM, and removal
-  of the unused rough compatibility helper, while Radar required responsive root width,
+  Kanban, Mindmap, Radar, and Class are also now refreshed and locally DOM-green under their family
+  compare gates; Kanban required diagram-prefixed section/item DOM ids and current markdown title
+  spans, Mindmap required root shadow defs, explicit classic `data-look`, diagram-prefixed
+  node/edge DOM ids, margin markers, section class cycle wrapping, direct classic rounded/hexagon
+  DOM, and removal of the unused rough compatibility helper, Radar required responsive root width,
   `max-width` root style, no fixed root `height`, and cleanup of the unused root-height helper
-  branch. Do not refresh all SVG baselines: point-refresh `class`, `timeline`, and Flowchart HTML
-  demo KaTeX drifts; then rerun layout, compare, and renderability gates. No broad official fixture
-  import is indicated yet.
+  branch, while Class required native SVG-label wrapping parity for the
+  `themeVariables.fontSize: "24px"` / `htmlLabels=false` case. Do not refresh all SVG baselines:
+  point-refresh `timeline` and Flowchart HTML demo KaTeX drifts; then rerun layout, compare, and
+  renderability gates. No broad official fixture import is indicated yet.

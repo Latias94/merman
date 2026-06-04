@@ -59,9 +59,14 @@ Immediate next task:
   (`width="100%"`, root `max-width` style, and no fixed root `height`). The stale root-helper
   `AfterViewBox` fixed-height branch was removed after Radar stopped using it.
   `compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- The Class refresh is now handled: the two stale stored upstream SVGs were point-refreshed, and
+  local native SVG-label wrapping now matches Mermaid 11.15's `htmlLabels=false` px-string
+  `themeVariables.fontSize` case under the family DOM gate. The affected 026 layout golden was
+  refreshed and the missing existing-fixture `zed_pr_57644_class` layout golden was added.
+  `compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
 - No HPD-090 broad stale family remains. Remaining HPD-090 work is point-refreshing the narrow
-  stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and Flowchart HTML demo KaTeX
-  fixtures (`4` fixtures), then rerunning readiness gates.
+  stale sets: `timeline` (`1` fixture) and Flowchart HTML demo KaTeX fixtures (`4` fixtures), then
+  rerunning readiness gates.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

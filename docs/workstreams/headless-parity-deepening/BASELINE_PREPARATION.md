@@ -72,7 +72,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `architecture` | pass | `185 / 185` | Keep. |
 | `block` | refreshed + DOM parity fixed | `119 / 119` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `c4` | pass | `51 / 51` | Keep. |
-| `class` | stale, narrow | `246 / 246`, `2` diffs | Point refresh after inspecting the two fixtures. |
+| `class` | refreshed + DOM parity fixed | `246 / 246`, `2` diffs | Keep refreshed; local native SVG label wrapping now matches Mermaid 11.15 under the parity gate. |
 | `er` | pass | `101 / 101` | Keep. |
 | `flowchart` | stale, narrow | `1074 / 1074`, `4` diffs | Point refresh the four HTML demo KaTeX fixtures. |
 | `gantt` | refreshed + DOM parity fixed | `151 / 151`, `137` diffs | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
@@ -93,9 +93,9 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `treemap` | pass | `54 / 54` | Keep. |
 | `xychart` | pass | `71 / 71` | Keep. |
 
-Decision: do not refresh all stored upstream SVGs. The broad stale family set has been refreshed by
-family; point-refresh the three narrow stale sets, then run the readiness gates against the
-refreshed corpus.
+Decision: do not refresh all stored upstream SVGs. The broad stale family set and Class narrow set
+have been refreshed; point-refresh the remaining two narrow stale sets, then run the readiness gates
+against the refreshed corpus.
 
 ## First Slice Completed
 
@@ -283,6 +283,31 @@ Verification:
 - `cargo run -p xtask -- update-layout-snapshots --diagram radar`
 - `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+## Ninth Slice Completed
+
+Class baseline refresh plus native SVG label wrapping parity:
+
+- Point-refreshed the two stale `fixtures/upstream-svgs/class/*.svg` files:
+  `stress_class_svg_font_size_px_string_precedence_026` and `upstream_parser_class_spec`.
+- Class was not a pure stored-SVG refresh. In Mermaid 11.15, the native SVG-label path can wrap
+  `htmlLabels=false` labels by using a smaller top-level `fontSize` as the width probe while the
+  final SVG text inherits a larger explicit `themeVariables.fontSize` px value.
+- Local Class layout and SVG rendering now keep the `: String` type suffix in the same outer
+  `tspan` row for that source-backed case instead of splitting `String` into a third row.
+- Refreshed the affected `stress_class_svg_font_size_px_string_precedence_026.layout.golden.json`
+  snapshot and added the missing `zed_pr_57644_class.layout.golden.json` snapshot for an existing
+  Class fixture.
+- The Class family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo nextest run -p merman-render --test class_svg_test`
+- `cargo run -p xtask -- update-layout-snapshots --diagram class`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\class_report_parity_hpd090_after_wrap_fix.md`
+- `cargo fmt -p merman-render --check`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -348,8 +373,8 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
-   Flowchart HTML demo KaTeX fixtures (`4` fixtures).
+1. Point-refresh the remaining narrow stale sets: `timeline` (`1` fixture) and Flowchart HTML demo
+   KaTeX fixtures (`4` fixtures).
 2. Update affected layout snapshots and run family compare gates after each refresh batch.
 3. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
    inventory points to stored-baseline drift in existing fixtures, not missing fixture intake.
