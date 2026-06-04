@@ -380,6 +380,21 @@ mod tests {
         serde_json::from_str(&take_text(result.data)).expect("error payload should be JSON")
     }
 
+    fn expect_render_feature_error(result: MermanResult) {
+        assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
+        let error = take_error(result);
+        assert_eq!(
+            error["code_name"],
+            BindingStatus::UnsupportedFormat.code_name()
+        );
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("render feature")
+        );
+    }
+
     #[test]
     fn abi_introspection_reports_contract_values() {
         assert_eq!(merman_abi_version(), MERMAN_ABI_VERSION);
@@ -400,11 +415,15 @@ mod tests {
     fn render_svg_returns_svg_for_flowchart() {
         let result = call_render(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let svg = take_text(result.data);
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let svg = take_text(result.data);
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("Hello"));
+            assert!(svg.contains("World"));
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
@@ -415,10 +434,14 @@ mod tests {
         }"#;
         let result = call_render(b"flowchart TD\nA[Hello]", options);
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let svg = take_text(result.data);
-        assert!(svg.contains("id=\"ffi-diagram\""));
-        assert!(svg.contains("data-merman-foreignobject"));
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let svg = take_text(result.data);
+            assert!(svg.contains("id=\"ffi-diagram\""));
+            assert!(svg.contains("data-merman-foreignobject"));
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
@@ -444,25 +467,33 @@ mod tests {
     fn parse_json_returns_semantic_model() {
         let result = call_parse(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert!(json.is_object());
-        assert_eq!(
-            json.get("type").and_then(Value::as_str),
-            Some("flowchart-v2")
-        );
-        assert!(json.get("nodes").and_then(Value::as_array).is_some());
-        assert!(json.get("edges").and_then(Value::as_array).is_some());
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert!(json.is_object());
+            assert_eq!(
+                json.get("type").and_then(Value::as_str),
+                Some("flowchart-v2")
+            );
+            assert!(json.get("nodes").and_then(Value::as_array).is_some());
+            assert!(json.get("edges").and_then(Value::as_array).is_some());
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
     fn layout_json_returns_layouted_diagram() {
         let result = call_layout(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert!(json.get("meta").is_some());
-        assert!(json.get("layout").is_some());
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert!(json.get("meta").is_some());
+            assert!(json.get("layout").is_some());
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
@@ -470,14 +501,29 @@ mod tests {
         let valid = call_validate(b"flowchart TD\nA[Hello]", b"");
         assert_eq!(valid.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-        assert_eq!(json["valid"], true);
-        assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+        if cfg!(feature = "render") {
+            assert_eq!(json["valid"], true);
+            assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+        } else {
+            assert_eq!(json["valid"], false);
+            assert_eq!(
+                json["code_name"],
+                BindingStatus::UnsupportedFormat.code_name()
+            );
+        }
 
         let invalid = call_validate(b"", b"");
         assert_eq!(invalid.code, BindingStatus::Ok.code());
         let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
         assert_eq!(json["valid"], false);
-        assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+        if cfg!(feature = "render") {
+            assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+        } else {
+            assert_eq!(
+                json["code_name"],
+                BindingStatus::UnsupportedFormat.code_name()
+            );
+        }
     }
 
     #[test]
@@ -513,9 +559,13 @@ mod tests {
     fn parse_json_uses_same_error_payload() {
         let result = call_parse(&[0xff], b"");
 
-        assert_eq!(result.code, BindingStatus::Utf8Error.code());
-        let error = take_error(result);
-        assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Utf8Error.code());
+            let error = take_error(result);
+            assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
@@ -534,30 +584,42 @@ mod tests {
     fn invalid_source_utf8_returns_utf8_error() {
         let result = call_render(&[0xff], b"");
 
-        assert_eq!(result.code, BindingStatus::Utf8Error.code());
-        let error = take_error(result);
-        assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Utf8Error.code());
+            let error = take_error(result);
+            assert_eq!(error["code_name"], BindingStatus::Utf8Error.code_name());
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
     fn empty_source_returns_no_diagram() {
         let result = unsafe { merman_render_svg(ptr::null(), 0, ptr::null(), 0) };
 
-        assert_eq!(result.code, BindingStatus::NoDiagram.code());
-        let error = take_error(result);
-        assert_eq!(error["code_name"], BindingStatus::NoDiagram.code_name());
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::NoDiagram.code());
+            let error = take_error(result);
+            assert_eq!(error["code_name"], BindingStatus::NoDiagram.code_name());
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
     fn invalid_options_json_returns_options_json_error() {
         let result = call_render(b"flowchart TD\nA", b"{");
 
-        assert_eq!(result.code, BindingStatus::OptionsJsonError.code());
-        let error = take_error(result);
-        assert_eq!(
-            error["code_name"],
-            BindingStatus::OptionsJsonError.code_name()
-        );
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::OptionsJsonError.code());
+            let error = take_error(result);
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::OptionsJsonError.code_name()
+            );
+        } else {
+            expect_render_feature_error(result);
+        }
     }
 
     #[test]
