@@ -127,12 +127,13 @@ Backlog:
 | P2E-001 | P0 | Add upstream SVG baseline and compare command for the existing minimum fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2E-002 | P0 | Import the six Cypress rendering examples as fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
 | P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | Done: 3 parser-source fixtures now have semantic/layout goldens and upstream SVG baselines. |
-| P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | They are parsed upstream but explicitly outside Phase 1 render support. |
+| P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | Done: audited as upstream parser AST-only constructs for the current Mermaid baseline. Keep them out of the render semantic model; defer `note`/`gwt` rendering and standalone `entity` semantics until there is an upstream rendering contract or a separate full-AST export scope. |
 | P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Current local renderer emits upstream-shaped `foreignObject` HTML; strict sanitization and browser text metrics are still not claimed. |
 
 Deferred:
 
 - Full `note` and `gwt` rendering.
+- Standalone `entity` semantics outside timeframe entity identifiers.
 - Browser `foreignObject`, HTML sanitization, and text measurement parity.
 - Exact upstream namespace runtime-state behavior; local swimlane reuse is intentionally stable.
 

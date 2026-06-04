@@ -59,6 +59,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 ## Deferred Coverage
 
 - The complex upstream parser fixture that includes unrendered `entity`, `note`, and `gwt`
-  statements.
-- `entity`, `note`, and `gwt` statement rendering.
+  statements. P2E-004 audited this fixture as upstream parser AST coverage rather than render
+  coverage: Mermaid's current eventmodeling DB/renderer does not consume `modelEntities`,
+  `noteEntities`, or `gwtEntities`.
+- `entity`, `note`, and `gwt` statement rendering. Local support stays deferred until an upstream
+  rendering contract or a separate full-AST export scope exists.
 - Full strict DOM parity for the current Cypress image snapshot corpus.
