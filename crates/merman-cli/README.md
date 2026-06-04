@@ -8,7 +8,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-`merman-cli` is the command-line interface for [merman](https://crates.io/crates/merman). It can detect, parse, layout, and render Mermaid diagrams without a browser.
+`merman-cli` is a browserless Mermaid command-line renderer for SVG, PNG, JPG, PDF, and
+ASCII/Unicode text output. The top-level command follows common `mmdc` workflows, while developer
+subcommands expose merman's parse, layout, and render internals.
 
 ## Install
 
@@ -16,82 +18,207 @@
 cargo install merman-cli
 ```
 
+The default binary includes SVG/PNG/JPG/PDF export, ASCII/Unicode text output, and RaTeX math
+rendering.
+
 From a local checkout:
 
 ```sh
 cargo install --path crates/merman-cli
 ```
 
-## Commands
+## Quick Start
+
+Top-level usage renders like `mmdc`:
+
+```sh
+merman-cli -i diagram.mmd -o diagram.svg
+merman-cli -i diagram.mmd -o diagram.png -t dark -b transparent
+merman-cli -i diagram.mmd -o diagram.pdf --pdfFit
+merman-cli -i diagram.mmd -o -
+```
+
+`-` reads from stdin or writes to stdout:
+
+```sh
+printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli -i - -o -
+printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli -o out.svg
+```
+
+When `-o` is omitted, top-level mode writes `<input>.svg` for file input and `out.svg` for stdin.
+The output format is inferred from the output extension unless `-e, --outputFormat, --format` is
+provided.
+
+## Output Formats
+
+| Format | Top-level extension | Status |
+|---|---|---|
+| SVG | `.svg` | Default, browserless renderer |
+| PNG | `.png` | Rust raster output |
+| PDF | `.pdf` | Rust PDF output through SVG conversion |
+| JPG/JPEG | `.jpg`, `.jpeg` | Rust extension beyond upstream `mmdc` |
+| ASCII | `.txt`, `.ascii` | Rust extension, enabled by default |
+| Unicode | `.txt`, `.ascii` | Rust extension, enabled by default |
+
+Examples:
+
+```sh
+merman-cli -i diagram.mmd -o diagram.svg
+merman-cli -i diagram.mmd -o diagram.png
+merman-cli -i diagram.mmd -o diagram.jpg
+merman-cli -i diagram.mmd -o diagram.pdf
+merman-cli -i diagram.mmd -o diagram.txt -e unicode
+```
+
+## Markdown Input
+
+`.md` and `.markdown` input files activate Markdown mode. Mermaid code blocks are extracted,
+rendered as numbered artefacts, and optionally rewritten back into Markdown image links.
+
+```sh
+merman-cli -i README.md -o README.svg
+```
+
+The command above writes `README-1.svg`, `README-2.svg`, and so on. The template output file itself
+is not written unless the output path is Markdown.
+
+```sh
+merman-cli -i README.md -o README.rendered.md
+```
+
+The command above writes numbered SVG artefacts and rewrites Mermaid fences in
+`README.rendered.md` to Markdown image links.
+
+Use `--artefacts` or the Rust-friendly `--artifacts` alias to place images in a separate directory:
+
+```sh
+merman-cli -i docs/input.md -o docs/output.md --artifacts docs/assets
+```
+
+Use `--jobs` to bound parallel chart rendering. Results are still linked in source order:
+
+```sh
+merman-cli -i docs/input.md -o docs/output.md --jobs 4
+```
+
+Markdown mode does not support stdout output because it may need to write multiple artefact files.
+
+## Icon Packs
+
+Iconify packs are loaded into a Rust SVG icon registry, so flowchart and architecture icon nodes can
+embed real icon SVGs without a browser.
+
+Load an Iconify package name:
+
+```sh
+merman-cli -i diagram.mmd -o diagram.svg --iconPacks @iconify-json/logos
+```
+
+`merman-cli` first looks for `node_modules/@iconify-json/logos/icons.json` from the current working
+directory upward. If no local package is found, it fetches
+`https://unpkg.com/@iconify-json/logos/icons.json`.
+
+Load an explicit prefix and source:
+
+```sh
+merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#icons.json
+merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#file:///tmp/icons.json
+merman-cli -i diagram.mmd -o diagram.svg --iconPacksNamesAndUrls logos#https://example.com/icons.json
+```
+
+The prefix before `#` overrides the JSON prefix, matching the useful part of upstream loader
+registration while keeping rendering browserless.
+
+## Rust Extensions
+
+### ASCII/Unicode
+
+ASCII/Unicode output is enabled in the default CLI binary:
+
+```sh
+printf "flowchart LR\nA --> B\n" | merman-cli -i - -o out.txt -e ascii
+printf "classDiagram\nclass Animal\n" | merman-cli render --format unicode -
+printf "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n" | \
+  merman-cli render --format unicode --sequence-mirror-actors -
+```
+
+Terminal text rendering currently supports flowchart/graph, sequenceDiagram, classDiagram,
+erDiagram, and xychart. Other diagram families still render to SVG/raster formats but return an
+unsupported-diagram error for ASCII/Unicode until a typed text renderer is added.
+
+ClassDiagram and erDiagram text output include class/entity boxes, layered relationship layouts,
+same-endpoint lanes, simple spanning side lanes, and unrelated standalone components. Cyclic or
+denser relationship graphs return explicit diagnostics instead of silently dropping edges.
+
+### RaTeX Math
+
+RaTeX math rendering is enabled by default:
+
+```sh
+printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | merman-cli render --math-renderer ratex -
+```
+
+Use `--no-default-features` only when you intentionally want to exclude default binary capabilities
+such as RaTeX and ASCII/Unicode. In that build, `--math-renderer ratex` remains unavailable unless
+the `ratex-math` feature is enabled explicitly, and ASCII/Unicode output remains unavailable unless
+the `ascii` feature is enabled explicitly.
+
+### Developer Subcommands
+
+Top-level mode is for `mmdc`-style export workflows. Developer subcommands remain available for
+tooling, tests, and debugging:
 
 ```sh
 merman-cli detect path/to/diagram.mmd
 merman-cli parse --pretty --meta path/to/diagram.mmd
 merman-cli layout --pretty path/to/diagram.mmd
 merman-cli render path/to/diagram.mmd --out out.svg
-merman-cli render --format unicode path/to/diagram.mmd
-merman-cli render --format ascii path/to/diagram.mmd
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
 ```
 
-If no input path is provided, or the input path is `-`, `merman-cli` reads Mermaid source from stdin.
+`render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for
+terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 
-```sh
-printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli render --out out.svg
-```
+## Common Options
 
-## Rendering Options
-
-`render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for terminal text, and `--format png|jpg|pdf` for raster or PDF export.
-
-Useful flags:
-
-- `--text-measurer deterministic|vendored` controls text measurement. `vendored` is better for visual output; `deterministic` is useful for stable fixture-style output.
-- `--math-renderer none|ratex` enables `$$...$$` math rendering. Default CLI builds include the pure-Rust RaTeX backend; Flowchart and Sequence support math-only labels plus single-formula prose/math labels.
-- `--id <diagram-id>` sets the root SVG id and internal marker id prefix.
-- `--scale <n>` controls PNG/JPG raster scale.
-- `--background <css-color>` sets raster background.
-- `--sequence-mirror-actors` mirrors sequence participant boxes below lifelines for `--format ascii|unicode`.
-- `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
-- `--viewport-width <w>` and `--viewport-height <h>` configure viewport-sensitive layouts.
+- `-t, --theme <theme>` sets the Mermaid theme.
+- `-w, --width <width>` and `-H, --height <height>` configure viewport-sensitive layouts.
+- `-b, --backgroundColor <color>` sets SVG/raster background color.
+- `-c, --configFile <file>` loads Mermaid JSON configuration.
+- `-C, --cssFile <file>` injects CSS into SVG output before export.
+- `-I, --svgId <id>` sets the root SVG id and marker id prefix.
+- `-s, --scale <n>` controls PNG/JPG raster scale.
+- `-f, --pdfFit` uses a chart-sized PDF page instead of the top-level default Letter-sized page.
+- `-q, --quiet` suppresses non-error logs.
+- `--text-measurer deterministic|vendored` controls text measurement.
+- `--math-renderer none|ratex` controls math label rendering.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
-
-ASCII/Unicode output is feature-gated in the Rust package:
-
-```sh
-printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
-printf "classDiagram\nclass Animal\n" | cargo run -p merman-cli --features ascii -- render --format unicode -
-printf "sequenceDiagram\nparticipant A\nparticipant B\nA->>B: Hello\n" | cargo run -p merman-cli --features ascii -- render --format unicode --sequence-mirror-actors -
-```
-
-With `--features ascii`, terminal text rendering currently supports flowchart/graph,
-sequenceDiagram, classDiagram, erDiagram, and xychart. Other diagram families remain available for
-SVG/raster rendering but return an unsupported-diagram error for `--format ascii|unicode` until a
-typed text renderer is added.
-
-ClassDiagram and erDiagram text output include class/entity boxes, layered chain/star relationship
-layouts, adjacent-layer crossing layouts resolved by layer reordering, same-endpoint and simple
-mixed-parallel relationship lanes, simple spanning-level side lanes, and unrelated standalone
-class/entity components. Cyclic or denser relationship graphs return explicit diagnostics instead
-of silently dropping edges.
-
-RaTeX math rendering is available in the default CLI build:
-
-```sh
-printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | cargo run -p merman-cli -- render --math-renderer ratex -
-```
-
-Use `--no-default-features` only when you intentionally want to exclude RaTeX. In that build,
-`--math-renderer ratex` remains unavailable unless `ratex-math` is enabled explicitly.
+- `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 
 ## SVG Input Rasterization
 
-`merman-cli render --format png|jpg|pdf` can also rasterize existing SVG input when the input starts with `<svg`.
+`merman-cli render --format png|jpg|pdf` can rasterize existing SVG input when the input starts with
+`<svg`.
 
 ```sh
 merman-cli render --format png --out diagram.png diagram.svg
 ```
 
 The raster path applies merman's `resvg`-safe SVG cleanup before conversion.
+
+## Compatibility Notes
+
+`merman-cli` is browserless. It does not start Puppeteer, Chromium, or a Mermaid browser runtime.
+
+For script compatibility with `mmdc`, `--puppeteerConfigFile` is accepted, the referenced file must
+exist, and its contents must be valid JSON. The parsed values are intentionally ignored because this
+renderer has no Puppeteer runtime to configure.
+
+PDF output is generated through Rust SVG conversion rather than Chromium print-to-PDF, so it is not
+intended to be pixel-identical to browser PDF output. The top-level default approximates the
+upstream default page behavior; `--pdfFit` emits a chart-sized page.
+
+The repository tracks the detailed `mmdc` compatibility matrix in
+`docs/alignment/CLI_COMPATIBILITY.md`.

@@ -84,7 +84,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 | Core single-diagram behavior | `-i`, `-o`, `-o -`, format inference, config/css/theme covered | CLI integration tests |
 | Markdown behavior | `.md`/`.markdown` extraction, numbered artefacts, output Markdown rewrite covered | CLI integration tests |
 | Unsupported/divergent behavior | Every divergence documented in this file | Status matrix review |
-| Regression coverage | Default, `ascii`, and `--no-default-features` CLI test sets pass | nextest gates |
+| Regression coverage | Default and `--no-default-features` CLI test sets pass | nextest gates |
 
 ## Official Option Matrix
 
@@ -137,7 +137,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 | Area | Divergence | Rationale | Follow-up |
 |---|---|---|---|
 | JPG output | Local supports `jpg`/`jpeg`; upstream `11.15.0` only supports `svg`, `png`, `pdf`. | Existing Rust CLI shipped JPG support and tests. | Keep as Rust extension; document as non-official. |
-| ASCII/Unicode output | Local supports text output; upstream does not. | Valuable Rust-native capability. | Keep under `ascii` feature. |
+| ASCII/Unicode output | Local supports text output; upstream does not. | Valuable Rust-native CLI capability. | Keep enabled by default for `merman-cli`; `--no-default-features` can still exclude it. |
 | RaTeX math | Local CLI enables `ratex-math` by default; upstream uses browser Mermaid/KaTeX behavior. | Rust CLI should render math without extra feature friction. | Keep `--math-renderer none|ratex`; no-default build still rejects. |
 | Puppeteer config | No browser runtime in local CLI. | Browserless architecture. | Validate file for compatibility, treat runtime config as accepted no-op. |
 | PDF output | Local PDF is generated through Rust `svg2pdf`, not Chromium print-to-PDF. | Browser PDF pagination, margins, and CSS print behavior cannot be pixel-identical without Puppeteer. | Top-level default uses a Letter page approximation; `--pdfFit` uses chart-sized output. |
@@ -166,7 +166,7 @@ thread pool inside Markdown mode:
 
 - [x] Add clap-based top-level command surface.
 - [x] Modularize CLI entrypoint.
-- [x] Enable `ratex-math` by default for `merman-cli`.
+- [x] Enable `ratex-math` and ASCII/Unicode output by default for `merman-cli`.
 - [x] Add first CLI compatibility regression tests.
 - [x] Add this compatibility document to `docs/alignment/STATUS.md`.
 

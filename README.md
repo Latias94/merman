@@ -307,11 +307,14 @@ printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" |
 ```
 
 Build `merman-cli` with `--no-default-features` only when you intentionally want to exclude
-RaTeX; in that mode `ratex` remains unavailable unless `ratex-math` is enabled explicitly.
+default binary capabilities such as RaTeX and ASCII/Unicode. In that mode `ratex` remains
+unavailable unless `ratex-math` is enabled explicitly, and ASCII/Unicode CLI output remains
+unavailable unless `ascii` is enabled explicitly.
 
 ### ASCII/Unicode text output
 
-Enable the `ascii` feature when you want terminal-friendly text instead of SVG:
+Library users enable the `ascii` feature when they want terminal-friendly text instead of SVG.
+`merman-cli` enables ASCII/Unicode output by default:
 
 Current public text support covers flowchart/graph, sequenceDiagram, classDiagram, erDiagram, and
 xychart through `merman::ascii::render_ascii_sync`, typed `merman::ascii::render_model`, the direct
@@ -359,7 +362,7 @@ Runnable examples:
 ```bash
 cargo run -p merman --features ascii --example ascii_output
 cargo run -p merman --features ascii --example ascii_output -- --ascii
-printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
+printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli -- render --format ascii -
 ```
 
 ## Showcase
