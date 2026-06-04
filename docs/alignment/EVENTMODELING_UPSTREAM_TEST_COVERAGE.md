@@ -2,6 +2,8 @@
 
 This page records the current eventmodeling fixture coverage imported into merman.
 
+Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
+
 ## Local Coverage
 
 - `fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd`

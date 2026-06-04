@@ -2,6 +2,8 @@
 
 Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 
+Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
+
 ## Upstream Sources
 
 - Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa/ishikawa.spec.ts`

@@ -102,19 +102,21 @@ baseline bump path. The 11.15 baseline covers the diagram matrix above plus the 
 11.13-11.15 deltas for those diagrams; it does not imply support for every upstream diagram
 directory. M15C-080 final decision check was refreshed on 2026-06-01 against
 `repo-ref/mermaid/packages/mermaid/src/diagrams`; no new upstream family is promoted into the
-implemented matrix without a child workstream because the families below still have no local parser,
-semantic model, layout, renderer, fixtures, or upstream SVG baselines.
+implemented matrix without a child workstream. Some families below now have Phase 1 local support,
+but they still need upstream SVG baselines and compare evidence before main-matrix admission.
 
 Admission policy and priority order are now tracked in
 `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That rubric uses the locked Mermaid commit
 from `tools/upstreams/REPOS.lock.json` as source authority, not the current `repo-ref/mermaid`
 working tree if it has moved beyond the pinned baseline.
+Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracked in
+`docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 | Upstream header or id | Pinned 11.15 source status | Local 11.15 status | Admission decision |
 |---|---|---|---|
-| `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | Phase 1 local support exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixture. No upstream SVG baselines or compare command yet. | Keep outside the main matrix until upstream SVG baseline + compare tooling are added; see `TREEVIEW_MINIMUM.md`. |
-| `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | Phase 1 local support exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixture. No upstream SVG baselines or compare command yet. | Keep outside the main matrix until upstream SVG baseline + compare tooling are added; see `ISHIKAWA_MINIMUM.md`. |
-| `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 3 medium semantic/layout lane. |
+| `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | Phase 1 local support exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixture. No upstream SVG baselines or compare command yet. | Keep outside the main matrix until upstream SVG baseline + compare tooling are added; see `TREEVIEW_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
+| `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | Phase 1 local support exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixture. No upstream SVG baselines or compare command yet. | Keep outside the main matrix until upstream SVG baseline + compare tooling are added; see `ISHIKAWA_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
+| `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | Phase 1 local support exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixture. No upstream SVG baselines or compare command yet. | Keep outside the main matrix until upstream SVG baseline + compare tooling are added; see `EVENTMODELING_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `venn-beta` | Present at `packages/mermaid/src/diagrams/venn` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 4 only after a source-backed `@upsetjs/venn.js` layout plan exists. |
 | `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 5; large family lane, not a starter task. |
 | `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |

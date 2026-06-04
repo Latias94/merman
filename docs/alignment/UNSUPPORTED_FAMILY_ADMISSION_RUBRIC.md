@@ -2,7 +2,7 @@
 
 Status: Active
 Baseline: pinned Mermaid `11.15.0`
-Last updated: 2026-06-02
+Last updated: 2026-06-04
 
 This rubric governs when a Mermaid diagram family that exists upstream but is not yet in the
 implemented `merman` matrix can be promoted into a development workstream.
@@ -37,7 +37,7 @@ A new family can enter the implemented matrix only after a child workstream has 
 |---:|---|---|---|---|
 | 1 | `treeView-beta` header / `treeView` id | `packages/mermaid/src/diagrams/treeView` | Continue from Phase 1 local support to upstream SVG baselines and `compare-tree-view-svgs`. | Smallest renderer and DB surface. Parser delegates to `@mermaid-js/parser`, DB builds a simple indentation tree, renderer is recursive SVG lines/text with deterministic dimensions. Phase 1 now has local parser/layout/render fixtures; full admission still needs upstream SVG compare evidence. |
 | 2 | `ishikawa` / `ishikawa-beta` | `packages/mermaid/src/diagrams/ishikawa` | Continue from Phase 1 local support to upstream SVG baselines and `compare-ishikawa-svgs`. | Simple Jison grammar and tree DB. Renderer is larger and uses SVG `getBBox()` plus optional rough output, but it is still a pure headless geometry problem that fits existing text/root-bounds seams. Phase 1 now has local parser/layout/render fixtures; full admission still needs upstream SVG compare evidence and rough mode coverage. |
-| 3 | `eventmodeling` | `packages/mermaid/src/diagrams/eventmodeling` | Open only as a medium semantic/layout lane. | Renderer is modest, but DB/state construction is large and calculates swimlanes, relations, wrapped HTML/code labels, and text dimensions. Needs a semantic-model-first design rather than a quick SVG clone. |
+| 3 | `eventmodeling` | `packages/mermaid/src/diagrams/eventmodeling` | Continue from Phase 1 local support to upstream SVG baselines and `compare-eventmodeling-svgs`. | Renderer is modest, but DB/state construction is large and calculates swimlanes, relations, wrapped HTML/code labels, and text dimensions. Phase 1 now has local parser/layout/render fixtures for a conservative minimum slice; full admission still needs upstream SVG compare evidence plus explicit `entity`, `note`, and `gwt` policy. |
 | 4 | `venn-beta` | `packages/mermaid/src/diagrams/venn` | Defer until there is a source-backed plan for `@upsetjs/venn.js` layout parity. | Parser/DB are manageable, but upstream rendering delegates circle layout to `@upsetjs/venn.js`, then uses D3 DOM and optional rough output. Do not fake this with a local circle layout unless the algorithm is audited or ported. |
 | 5 | `wardley-beta` | `packages/mermaid/src/diagrams/wardley` | Defer behind smaller families unless Wardley maps become a direct requirement. | Parser and builder are feature-rich, renderer is roughly 1k lines, and the family carries many map-specific concepts: axes, stages, pipelines, links, trends, annotations, notes, accelerators, deaccelerators, and sourcing strategy overlays. Feasible headlessly, but large. |
 | N/A | `railroad-*` | absent from pinned Mermaid `11.15.0` source | Do not include in the 11.15 parity backlog. Reclassify only after a baseline bump includes it. | The current pinned commit has no `packages/mermaid/src/diagrams/railroad` directory. |
