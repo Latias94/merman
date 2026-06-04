@@ -35,7 +35,10 @@ struct ArchitectureDeltaRunSummary {
     local_svg_path: PathBuf,
     report_path: PathBuf,
     probe_json_path: Option<PathBuf>,
+    viewbox_width_delta: Option<f64>,
+    viewbox_height_delta: Option<f64>,
     max_width_delta: Option<f64>,
+    root_residual_score: Option<f64>,
     service_count: usize,
     junction_count: usize,
     group_rect_count: usize,
@@ -833,23 +836,45 @@ fn render_architecture_delta_batch_markdown(summaries: &[ArchitectureDeltaRunSum
             .unwrap_or_else(|| "<missing>".to_string())
     }
 
+    fn format_optional_score(score: Option<f64>) -> String {
+        score
+            .map(|score| format!("{score:.3}"))
+            .unwrap_or_else(|| "<missing>".to_string())
+    }
+
+    let mut summaries: Vec<&ArchitectureDeltaRunSummary> = summaries.iter().collect();
+    summaries.sort_by(|a, b| {
+        architecture_delta_summary_sort_order(
+            &a.stem,
+            a.root_residual_score,
+            &b.stem,
+            b.root_residual_score,
+        )
+    });
+
     let mut md = String::new();
     let _ = writeln!(&mut md, "# Architecture Delta Batch\n");
     let _ = writeln!(
         &mut md,
-        "| fixture | report | upstream svg | local svg | probe json | max-width delta | services | junctions | group rects | delta rows |"
+        "| fixture | report | upstream svg | local svg | probe json | viewBox width delta | viewBox height delta | max-width delta | root residual score | services | junctions | group rects | delta rows |"
     );
-    let _ = writeln!(&mut md, "|---|---|---|---|---|---:|---:|---:|---:|---:|");
+    let _ = writeln!(
+        &mut md,
+        "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+    );
     for summary in summaries {
         let _ = writeln!(
             &mut md,
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
             summary.stem,
             summary.report_path.display(),
             summary.upstream_svg_path.display(),
             summary.local_svg_path.display(),
             format_optional_path(summary.probe_json_path.as_ref()),
+            format_optional_delta(summary.viewbox_width_delta),
+            format_optional_delta(summary.viewbox_height_delta),
             format_optional_delta(summary.max_width_delta),
+            format_optional_score(summary.root_residual_score),
             summary.service_count,
             summary.junction_count,
             summary.group_rect_count,
@@ -1864,6 +1889,14 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        let viewbox_width_delta = up_vb.zip(lo_vb).map(|(up, lo)| lo.2 - up.2);
+        let viewbox_height_delta = up_vb.zip(lo_vb).map(|(up, lo)| lo.3 - up.3);
+        let max_width_delta = up_mw.zip(lo_mw).map(|(up, lo)| lo - up);
+        let root_residual_score = architecture_root_residual_score(
+            max_width_delta,
+            viewbox_width_delta,
+            viewbox_height_delta,
+        );
 
         let mut report = String::new();
         let _ = writeln!(&mut report, "# Architecture Delta Report\n");
@@ -1899,9 +1932,37 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         );
         let _ = writeln!(
             &mut report,
-            "- local max-width(px): `{}`\n",
+            "- local max-width(px): `{}`",
             lo_mw
                 .map(|v| format!("{:.6}", v))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- viewBox width delta: `{}`",
+            viewbox_width_delta
+                .map(|v| format!("{v:+.6}"))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- viewBox height delta: `{}`",
+            viewbox_height_delta
+                .map(|v| format!("{v:+.6}"))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- max-width delta: `{}`",
+            max_width_delta
+                .map(|v| format!("{v:+.6}"))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- root residual score: `{}`\n",
+            root_residual_score
+                .map(|v| format!("{v:.6}"))
                 .unwrap_or_else(|| "<missing>".to_string())
         );
 
@@ -2090,7 +2151,10 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             probe_json_path: probe_json
                 .as_ref()
                 .map(|(probe_path, _)| probe_path.clone()),
-            max_width_delta: up_mw.zip(lo_mw).map(|(up, lo)| lo - up),
+            viewbox_width_delta,
+            viewbox_height_delta,
+            max_width_delta,
+            root_residual_score,
             service_count: up_services.len().min(lo_services.len()),
             junction_count: up_junctions.len().min(lo_junctions.len()),
             group_rect_count: up_groups.len().min(lo_groups.len()),
@@ -2818,7 +2882,10 @@ mod tests {
                 probe_json_path: Some(PathBuf::from(
                     "target/probe/fixture_a.fcose-browser-probe.json",
                 )),
+                viewbox_width_delta: Some(5.0),
+                viewbox_height_delta: Some(0.0),
                 max_width_delta: Some(5.0),
+                root_residual_score: Some(5.0),
                 service_count: 2,
                 junction_count: 1,
                 group_rect_count: 1,
@@ -2830,7 +2897,10 @@ mod tests {
                 local_svg_path: PathBuf::from("target/delta/fixture_b.local.svg"),
                 report_path: PathBuf::from("target/delta/fixture_b.md"),
                 probe_json_path: None,
+                viewbox_width_delta: Some(0.0),
+                viewbox_height_delta: Some(-6.0),
                 max_width_delta: None,
+                root_residual_score: Some(6.0),
                 service_count: 3,
                 junction_count: 0,
                 group_rect_count: 2,
@@ -2841,8 +2911,11 @@ mod tests {
         let md = render_architecture_delta_batch_markdown(&summaries);
 
         assert!(md.contains("# Architecture Delta Batch"));
-        assert!(md.contains("| `fixture_a` | `target/delta/fixture_a.md` | `target/delta/fixture_a.upstream.svg` | `target/delta/fixture_a.local.svg` | `target/probe/fixture_a.fcose-browser-probe.json` | `+5.000` | 2 | 1 | 1 | 4 |"));
-        assert!(md.contains("| `fixture_b` | `target/delta/fixture_b.md` | `target/delta/fixture_b.upstream.svg` | `target/delta/fixture_b.local.svg` | `<none>` | `<missing>` | 3 | 0 | 2 | 5 |"));
+        let fixture_b = "| `fixture_b` | `target/delta/fixture_b.md` | `target/delta/fixture_b.upstream.svg` | `target/delta/fixture_b.local.svg` | `<none>` | `+0.000` | `-6.000` | `<missing>` | `6.000` | 3 | 0 | 2 | 5 |";
+        let fixture_a = "| `fixture_a` | `target/delta/fixture_a.md` | `target/delta/fixture_a.upstream.svg` | `target/delta/fixture_a.local.svg` | `target/probe/fixture_a.fcose-browser-probe.json` | `+5.000` | `+0.000` | `+5.000` | `5.000` | 2 | 1 | 1 | 4 |";
+        assert!(md.contains(fixture_a));
+        assert!(md.contains(fixture_b));
+        assert!(md.find(fixture_b).unwrap() < md.find(fixture_a).unwrap());
     }
 
     #[test]

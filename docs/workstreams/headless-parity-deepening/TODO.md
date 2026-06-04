@@ -288,6 +288,12 @@ Last updated: 2026-06-04
   example, `group_to_group_multi_034` now ranks by its `0.755px` height score above
   `long_group_titles_018` at `0.656px`. This is report governance only, not renderer or root-bounds
   tuning.
+  A follow-up delta-batch root-score slice projects the same vocabulary into
+  `debug-architecture-delta`: per-fixture reports now list viewBox width/height delta,
+  max-width delta, and root residual score, and multi-fixture
+  `architecture-delta-batch.md` sorts by that score. The regenerated current-top batch is
+  `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`;
+  use it as the first local-delta entrypoint for the active Architecture residual set.
   A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on

@@ -3,6 +3,53 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Delta Batch Root Residual Score Projection
+
+Outcome:
+
+- `xtask debug-architecture-delta` now projects the same root residual vocabulary used by
+  `summarize-architecture-deltas`.
+- Per-fixture delta reports now show:
+  - `viewBox width delta`
+  - `viewBox height delta`
+  - `max-width delta`
+  - `root residual score`
+- Multi-fixture `architecture-delta-batch.md` now includes those same columns and sorts rows by
+  root residual score descending, then fixture name.
+- Regenerated the current top-residual batch under
+  `target\compare\architecture-delta-current-top-root-score-hpd050`.
+- The batch index now makes the top row self-contained:
+  - `junction_fork_join_026`: viewBox width `+13.976`, viewBox height `-12.502`,
+    max-width `+13.976`, score `13.976`.
+- The focused test covers the height-only ordering case: a `-6.000` viewBox height row sorts ahead
+  of a `+5.000` max-width-only row.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-root-score.md`
+- `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_batch_markdown_links_per_fixture_artifacts architecture_delta_summary_order_sorts_by_root_residual_score_then_stem` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-root-score-hpd050` -
+  passed and wrote the root-score batch index plus per-fixture reports.
+- `cargo fmt --check -p xtask` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The current-top Architecture delta batch now uses the same
+  root-score ordering as the all-fixture summary, but it does not change residual classification or
+  justify a production layout tweak.
+
 ## HPD-050 - Architecture Delta Summary Root Residual Score
 
 Outcome:

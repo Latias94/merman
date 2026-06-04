@@ -431,6 +431,11 @@ Current repository reality to preserve:
     `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`;
     it keeps `junction_fork_join_026` first at `13.976`, keeps the active top queue unchanged, and
     still shows `group_port_edges_017` as zero-delta. Treat this as evidence governance only.
+  - A follow-up delta-batch root-score slice projects that same score into
+    `debug-architecture-delta`. Per-fixture reports now print viewBox width/height deltas,
+    max-width delta, and root residual score under `Root viewport`, while multi-fixture
+    `architecture-delta-batch.md` sorts by the score. The current entrypoint is
+    `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`.
   - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command
