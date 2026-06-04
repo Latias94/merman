@@ -16,6 +16,7 @@ mod config;
 mod entities;
 pub mod er;
 pub mod error;
+pub mod eventmodeling;
 pub mod flowchart;
 pub mod gantt;
 mod generated;
@@ -344,6 +345,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?,
         ))),
+        RenderSemanticModel::EventModeling(model) => Ok(LayoutDiagram::EventModelingDiagram(
+            Box::new(eventmodeling::layout_eventmodeling_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
+        )),
         RenderSemanticModel::Json(semantic) => layout_json_by_type(
             diagram_type,
             semantic,
@@ -545,6 +553,13 @@ fn layout_json_by_type(
         ))),
         "ishikawa" => Ok(LayoutDiagram::IshikawaDiagram(Box::new(
             ishikawa::layout_ishikawa_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "eventmodeling" => Ok(LayoutDiagram::EventModelingDiagram(Box::new(
+            eventmodeling::layout_eventmodeling_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),

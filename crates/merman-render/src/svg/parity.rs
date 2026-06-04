@@ -2,11 +2,11 @@ use super::icon_registry::IconRegistry;
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::model::{
     ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout,
-    ErrorDiagramLayout, FlowchartV2Layout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster,
-    LayoutNode, MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout,
-    QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout,
-    SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout,
-    XyChartDiagramLayout,
+    ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartV2Layout, InfoDiagramLayout,
+    IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
+    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
+    SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout,
+    TreeViewDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -23,6 +23,7 @@ mod curve;
 mod emitted_bounds;
 mod er;
 mod error;
+mod eventmodeling;
 mod flowchart;
 mod gantt;
 mod gitgraph;
@@ -272,6 +273,9 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::IshikawaDiagram(layout) => {
             render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
         }
+        LayoutDiagram::EventModelingDiagram(layout) => {
+            render_eventmodeling_diagram_svg(layout, semantic, effective_config, options)
+        }
         LayoutDiagram::C4Diagram(layout) => {
             render_c4_diagram_svg(layout, semantic, effective_config, title, measurer, options)
         }
@@ -434,6 +438,9 @@ fn render_layout_svg_parts_with_config_raw(
         }
         LayoutDiagram::IshikawaDiagram(layout) => {
             render_ishikawa_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::EventModelingDiagram(layout) => {
+            render_eventmodeling_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::C4Diagram(layout) => render_c4_diagram_svg(
             layout,
@@ -671,6 +678,14 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
         }
         (LayoutDiagram::IshikawaDiagram(layout), RenderSemanticModel::Ishikawa(_)) => {
             render_ishikawa_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::EventModelingDiagram(layout), RenderSemanticModel::EventModeling(_)) => {
+            render_eventmodeling_diagram_svg(
                 layout,
                 &serde_json::Value::Null,
                 effective_config.as_value(),
@@ -951,6 +966,15 @@ pub fn render_ishikawa_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     ishikawa::render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
+}
+
+pub fn render_eventmodeling_diagram_svg(
+    layout: &EventModelingDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    eventmodeling::render_eventmodeling_diagram_svg(layout, semantic, effective_config, options)
 }
 
 pub fn render_gantt_diagram_svg(

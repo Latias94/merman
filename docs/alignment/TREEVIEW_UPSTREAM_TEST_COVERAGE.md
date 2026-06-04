@@ -4,9 +4,9 @@ Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 
 ## Upstream Sources
 
-- Parser tests: `packages/parser/tests/treeView.test.ts`
-- Rendering tests: `cypress/integration/rendering/treeView/treeView.spec.ts`
-- Syntax docs: `docs/syntax/treeView.md`
+- Parser tests: `repo-ref/mermaid/packages/parser/tests/treeView.test.ts`
+- Rendering tests: `repo-ref/mermaid/cypress/integration/rendering/treeView/treeView.spec.ts`
+- Syntax docs: `repo-ref/mermaid/docs/syntax/treeView.md`
 
 ## Covered Locally
 
@@ -29,12 +29,12 @@ Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 ## Fixture Coverage
 
 - `fixtures/treeView/upstream_docs_treeview_basic.mmd`
-  - source: `docs/syntax/treeView.md`
+  - source: `repo-ref/mermaid/docs/syntax/treeView.md`
   - semantic snapshot: `fixtures/treeView/upstream_docs_treeview_basic.golden.json`
   - layout snapshot: `fixtures/treeView/upstream_docs_treeview_basic.layout.golden.json`
 
 ## Not Yet Covered
 
-- Upstream SVG baselines under `fixtures/upstream-svgs/treeView/`.
+- Upstream SVG baselines under fixtures/upstream-svgs/treeView.
 - Dedicated `xtask compare-tree-view-svgs`.
 - Full Cypress image snapshot corpus import.

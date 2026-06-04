@@ -138,6 +138,7 @@ impl DetectorRegistry {
         reg.add_fn("block", detector_block);
         reg.add_fn("treeView", detector_tree_view);
         reg.add_fn("ishikawa", detector_ishikawa);
+        reg.add_fn("eventmodeling", detector_eventmodeling);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -177,6 +178,7 @@ impl DetectorRegistry {
         reg.add_fn("block", detector_block);
         reg.add_fn("treeView", detector_tree_view);
         reg.add_fn("ishikawa", detector_ishikawa);
+        reg.add_fn("eventmodeling", detector_eventmodeling);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -269,6 +271,9 @@ fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
     }
     if let Some(rest) = t.strip_prefix("ishikawa") {
         return has_boundary(rest).then_some("ishikawa");
+    }
+    if let Some(rest) = t.strip_prefix("eventmodeling") {
+        return has_boundary(rest).then_some("eventmodeling");
     }
 
     None
@@ -458,6 +463,10 @@ fn detector_ishikawa(txt: &str, _config: &mut MermaidConfig) -> bool {
     let t = txt.trim_start();
     starts_with_header_case_insensitive(t, "ishikawa-beta")
         || starts_with_header_case_insensitive(t, "ishikawa")
+}
+
+fn detector_eventmodeling(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start().starts_with("eventmodeling")
 }
 
 fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {

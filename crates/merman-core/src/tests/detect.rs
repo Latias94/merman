@@ -83,3 +83,13 @@ fn detects_ishikawa_headers_as_ishikawa() {
         assert_eq!(res.diagram_type, "ishikawa");
     }
 }
+
+#[test]
+fn detects_eventmodeling_as_eventmodeling() {
+    let engine = Engine::new();
+    let res =
+        block_on(engine.parse_metadata("eventmodeling\ntf 01 evt Start", ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+    assert_eq!(res.diagram_type, "eventmodeling");
+}

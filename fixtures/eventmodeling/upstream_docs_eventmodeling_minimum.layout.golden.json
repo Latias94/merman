@@ -1,0 +1,172 @@
+{
+  "diagramType": "eventmodeling",
+  "layout": {
+    "EventModelingDiagram": {
+      "bounds": {
+        "min_x": -30.0,
+        "min_y": -30.0,
+        "max_x": 676.2,
+        "max_y": 760.0
+      },
+      "total_width": 706.2,
+      "total_height": 790.0,
+      "viewbox_x": -30.0,
+      "viewbox_y": -30.0,
+      "padding": 30.0,
+      "use_max_width": false,
+      "swimlanes": [
+        {
+          "index": 1.0,
+          "label": "UI/A: Shop",
+          "namespace": "Shop",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 646.2,
+          "height": 130.0
+        },
+        {
+          "index": 101.0,
+          "label": "C/RM: Ordering",
+          "namespace": "Ordering",
+          "x": 0.0,
+          "y": 140.0,
+          "width": 646.2,
+          "height": 130.0
+        },
+        {
+          "index": 102.0,
+          "label": "C/RM: Read",
+          "namespace": "Read",
+          "x": 0.0,
+          "y": 280.0,
+          "width": 646.2,
+          "height": 130.0
+        },
+        {
+          "index": 201.0,
+          "label": "Stream: Cart",
+          "namespace": "Cart",
+          "x": 0.0,
+          "y": 420.0,
+          "width": 646.2,
+          "height": 170.0
+        },
+        {
+          "index": 202.0,
+          "label": "Stream: Checkout",
+          "namespace": "Checkout",
+          "x": 0.0,
+          "y": 600.0,
+          "width": 646.2,
+          "height": 130.0
+        }
+      ],
+      "boxes": [
+        {
+          "index": 0.0,
+          "frame_name": "01",
+          "frame_kind": "timeframe",
+          "model_entity_type": "ui",
+          "entity_identifier": "Shop.Cart",
+          "text": "Cart",
+          "x": 250.0,
+          "y": 15.0,
+          "width": 100.0,
+          "height": 100.0,
+          "fill": "white",
+          "stroke": "#dbdada",
+          "swimlane_index": 1.0
+        },
+        {
+          "index": 1.0,
+          "frame_name": "02",
+          "frame_kind": "timeframe",
+          "model_entity_type": "cmd",
+          "entity_identifier": "Ordering.AddItem",
+          "text": "AddItem\n{ sku: \"SKU-1\" }",
+          "x": 280.0,
+          "y": 155.0,
+          "width": 155.68,
+          "height": 100.0,
+          "fill": "#bcd6fe",
+          "stroke": "#679ac3",
+          "swimlane_index": 101.0
+        },
+        {
+          "index": 2.0,
+          "frame_name": "03",
+          "frame_kind": "timeframe",
+          "model_entity_type": "evt",
+          "entity_identifier": "Cart.ItemAdded",
+          "text": "ItemAdded\n{\n  sku: \"SKU-1\"\n  quantity: 1\n}",
+          "x": 365.68,
+          "y": 435.0,
+          "width": 145.12,
+          "height": 140.0,
+          "fill": "#ffb778",
+          "stroke": "#c19a0f",
+          "swimlane_index": 201.0
+        },
+        {
+          "index": 3.0,
+          "frame_name": "04",
+          "frame_kind": "resetframe",
+          "model_entity_type": "rmo",
+          "entity_identifier": "Read.CartSummary",
+          "text": "CartSummary",
+          "x": 440.8,
+          "y": 295.0,
+          "width": 134.24,
+          "height": 100.0,
+          "fill": "#d3f1a2",
+          "stroke": "#a3b732",
+          "swimlane_index": 102.0
+        },
+        {
+          "index": 4.0,
+          "frame_name": "05",
+          "frame_kind": "timeframe",
+          "model_entity_type": "evt",
+          "entity_identifier": "Checkout.CheckedOut",
+          "text": "CheckedOut",
+          "x": 505.04,
+          "y": 615.0,
+          "width": 116.16,
+          "height": 100.0,
+          "fill": "#ffb778",
+          "stroke": "#c19a0f",
+          "swimlane_index": 202.0
+        }
+      ],
+      "relations": [
+        {
+          "source_frame": "01",
+          "target_frame": "02",
+          "x1": 316.667,
+          "y1": 115.0,
+          "x2": 331.893,
+          "y2": 155.0,
+          "stroke": "#333333"
+        },
+        {
+          "source_frame": "02",
+          "target_frame": "03",
+          "x1": 383.787,
+          "y1": 255.0,
+          "x2": 414.053,
+          "y2": 435.0,
+          "stroke": "#333333"
+        },
+        {
+          "source_frame": "04",
+          "target_frame": "05",
+          "x1": 530.293,
+          "y1": 395.0,
+          "x2": 543.76,
+          "y2": 615.0,
+          "stroke": "#333333"
+        }
+      ]
+    }
+  }
+}

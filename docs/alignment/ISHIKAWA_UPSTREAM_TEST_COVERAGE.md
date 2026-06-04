@@ -4,9 +4,9 @@ Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 
 ## Upstream Sources
 
-- Parser tests: `packages/mermaid/src/diagrams/ishikawa/ishikawa.spec.ts`
-- Rendering tests: `cypress/integration/rendering/ishikawa/ishikawa.spec.ts`
-- Syntax docs: `docs/syntax/ishikawa.md`
+- Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/ishikawa/ishikawa.spec.ts`
+- Rendering tests: `repo-ref/mermaid/cypress/integration/rendering/ishikawa/ishikawa.spec.ts`
+- Syntax docs: `repo-ref/mermaid/docs/syntax/ishikawa.md`
 
 ## Covered Locally
 
@@ -22,13 +22,13 @@ Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 ## Fixture Coverage
 
 - `fixtures/ishikawa/upstream_docs_ishikawa_basic.mmd`
-  - source: `docs/syntax/ishikawa.md`
+  - source: `repo-ref/mermaid/docs/syntax/ishikawa.md`
   - semantic snapshot: `fixtures/ishikawa/upstream_docs_ishikawa_basic.golden.json`
   - layout snapshot: `fixtures/ishikawa/upstream_docs_ishikawa_basic.layout.golden.json`
 
 ## Not Yet Covered
 
-- Upstream SVG baselines under `fixtures/upstream-svgs/ishikawa/`.
+- Upstream SVG baselines under fixtures/upstream-svgs/ishikawa.
 - Dedicated `xtask compare-ishikawa-svgs`.
 - Hand-drawn / rough.js renderer branch.
 - Full Cypress image snapshot corpus import.
