@@ -253,6 +253,14 @@ Last updated: 2026-06-04
   default final `node.boundingBox()` adds a separate whole-bbox `1px` expansion. This makes the next
   production-capable seam Architecture service `labelWidth` measurement, not body-border or
   group-padding tweaks.
+  A follow-up labelWidth measurement-seam audit confirmed that the reusable infrastructure is the
+  Architecture browser probe/report pipeline, not the C4 headless-shell SVG text lookup table. C4's
+  table measures SVG `<text>.getBBox().width`; Architecture needs Cytoscape renderer
+  `metrics.labelWidth` for compound child sizing. The active probe batch already contains service
+  labelWidth evidence for the current residual set, and `debug-architecture-delta --probe-dir`
+  joins it with local service label metrics. Do not add an Architecture lookup-only production patch
+  unless it is paired with the source child-union/final-bbox phase model and full Architecture root
+  verification.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

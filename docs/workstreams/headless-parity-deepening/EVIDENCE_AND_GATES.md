@@ -3,6 +3,60 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture LabelWidth Measurement Seam Audit
+
+Outcome:
+
+- Audited the existing text measurement and lookup infrastructure before adding any new
+  Architecture production formula.
+- Confirmed the shared `TextMeasurer` abstraction covers deterministic SVG text probes, while
+  generated lookup tables remain diagram/phase scoped.
+- Confirmed the C4 headless-shell text table is not directly reusable for Architecture: C4 captures
+  SVG `<text>.getBBox().width`, while Architecture needs Cytoscape renderer `labelWidth` for
+  compound child sizing.
+- Confirmed the reusable Architecture infrastructure is the existing browser probe/report pipeline:
+  `debug-architecture-fcose-probe` writes final service `metrics.labelWidth`,
+  `labelBounds.all`, `bodyBounds`, and final `node.boundingBox()`, and
+  `debug-architecture-delta --probe-dir` already joins those browser values with local service
+  label metrics.
+- Counted the active seven-probe residual batch and verified it already contains browser
+  service-label widths for the current residual set: `batch5` 4, `batch6` 3, `group_port_edges` 4,
+  `html_titles` 3, `junction_fork_join` 5, `nested_groups` 5, and `unicode` 4.
+- No renderer output, layout formula, SVG fixture, generated lookup table, or baseline behavior
+  changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-labelwidth-measurement-seam-audit.md`
+- `docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md`
+- `docs/workstreams/headless-parity-deepening/HANDOFF.md`
+- `docs/workstreams/headless-parity-deepening/TODO.md`
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl`
+
+Focused verification:
+
+- Source read: `crates/xtask/src/cmd/overrides/c4.rs`.
+- Source read: `crates/merman-render/src/c4.rs`.
+- Source read: `crates/merman-render/src/text/measure.rs`.
+- Source read: `crates/merman-render/src/text/overrides.rs`.
+- Source read: `crates/xtask/src/cmd/overrides/report.rs`.
+- Source read: `crates/merman-render/src/architecture.rs`.
+- Source read: `crates/merman-render/src/architecture_metrics.rs`.
+- Source read: `crates/xtask/src/cmd/debug/architecture.rs`.
+- Source read: `tools/debug/arch_fcose_browser_probe_fixture_025.js`.
+- Existing probe artifacts counted under
+  `target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050`.
+- `CONTEXT.jsonl` validation - passed, `612` JSON lines.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF-to-CRLF working-copy warning.
+- Rust tests were not run because this slice changed only workstream documentation.
+
+Residual note:
+
+- The next safe implementation candidate is not C4 lookup reuse and not an exact Architecture
+  `labelWidth` table by itself. Any production change must pair browser-faithful service
+  `labelWidth` with the source child-union and final `node.boundingBox()` expansion phases, then
+  survive full Architecture root verification.
+
 ## HPD-050 - Architecture Cytoscape Child Union Source Audit
 
 Outcome:
