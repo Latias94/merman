@@ -58,6 +58,15 @@ cargo add merman --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
 cargo add merman --features raster
+
+# Browser / TypeScript package
+npm install @merman/web
+
+# Flutter package
+flutter pub add merman
+
+# Python package (experimental UniFFI wheels)
+pip install merman
 ```
 
 From a local checkout:
@@ -75,6 +84,7 @@ MSRV is `rust-version = 1.87`.
 ## Contents
 
 - [Choose Your Entry Point](#choose-your-entry-point)
+- [What Merman Outputs](#what-merman-outputs)
 - [Install](#install)
 - [Quickstart (library)](#quickstart-library)
 - [Quickstart (CLI)](#quickstart-cli)
@@ -82,6 +92,7 @@ MSRV is `rust-version = 1.87`.
 - [Quickstart (FFI and native hosts)](#quickstart-ffi-and-native-hosts)
 - [Math Labels](#math-labels)
 - [ASCII/Unicode text output](#asciiunicode-text-output)
+- [Developing](#developing)
 - [Showcase](#showcase)
 - [Parity and coverage](#parity-and-coverage)
 - [Quality gates](#quality-gates)
@@ -89,6 +100,7 @@ MSRV is `rust-version = 1.87`.
 - [Architecture notes](#architecture-notes)
 - [Workspace crates](#workspace-crates)
 - [Links](#links)
+- [Star History](#star-history)
 - [Changelog](#changelog)
 - [License](#license)
 
@@ -295,7 +307,7 @@ Higher-level wrappers build on the same ABI:
 - Flutter/Dart FFI: [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
 - Python UniFFI package: [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
 
-### Math Labels
+## Math Labels
 
 Math rendering is optional. Enable `ratex-math` to render supported `$$...$$` labels through the
 pure-Rust RaTeX backend. Flowchart and Sequence support math-only labels and single-formula
@@ -306,7 +318,7 @@ printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" |
   cargo run -p merman-cli --features ratex-math -- render --math-renderer ratex -
 ```
 
-### ASCII/Unicode text output
+## ASCII/Unicode text output
 
 Enable the `ascii` feature when you want terminal-friendly text instead of SVG:
 
@@ -358,6 +370,20 @@ cargo run -p merman --features ascii --example ascii_output
 cargo run -p merman --features ascii --example ascii_output -- --ascii
 printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli --features ascii -- render --format ascii -
 ```
+
+## Developing
+
+For local Rust changes, start with the fast formatting and test loop:
+
+```sh
+cargo fmt --all --check
+cargo nextest run --workspace
+cargo run -p xtask -- verify
+```
+
+Use `cargo run -p xtask -- verify --strict` before release-level parser, layout, render, or
+platform binding changes. Platform-specific build and packaging notes live with the binding docs
+linked in [Quickstart (FFI and native hosts)](#quickstart-ffi-and-native-hosts).
 
 ## Showcase
 
@@ -511,6 +537,21 @@ gantt
 ## Parity and coverage
 
 - Baseline: Mermaid `@11.15.0`.
+- Merman treats Mermaid as the specification, not just inspiration: surprising upstream behavior is
+  matched and documented instead of being replaced with a Rust-specific interpretation.
+- Parsing and semantic output are locked with `fixtures/**/*.golden.json`; layout geometry is locked
+  separately with `fixtures/**/*.layout.golden.json` so regressions can be traced to parsing,
+  geometry, or final SVG emission.
+- Upstream SVG baselines under `fixtures/upstream-svgs/**` are generated from the pinned official
+  Mermaid CLI/browser rendering pipeline and used as the end-to-end source of truth.
+- Core layout dependencies are rewritten as headless Rust ports where parity requires matching
+  upstream algorithms: `dugong` / `dugong-graphlib` for Dagre + Graphlib behavior, and `manatee`
+  for Cytoscape/FCoSE/COSE-style compound layouts used by diagrams such as Architecture and
+  Mindmap.
+- Fixture imports are traceable to upstream docs, tests, Cypress rendering samples, and selected
+  stress cases. When an upstream browser sample is not directly renderable by the pinned Mermaid
+  CLI, the raw input is kept as parser-only and a documented normalized variant is used for layout
+  and SVG parity.
 - Alignment is enforced via upstream SVG DOM baselines plus semantic/layout golden snapshots.
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM, not byte-identical SVG text.
 - Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
@@ -598,6 +639,10 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
   (MIT; grid/routing/fixture reference for `merman-ascii`)
 - ASCII reference: [lukilabs/beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)
   (MIT; reference for future class, ER, xychart, color, and multiline terminal output)
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Latias94/merman&type=Date)](https://star-history.com/#Latias94/merman&Date)
 
 ## Changelog
 
