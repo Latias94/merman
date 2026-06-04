@@ -5,25 +5,50 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+/// C ABI version expected by this Dart binding.
 const int mermanAbiVersion = 2;
 
+/// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
+  /// The call completed successfully.
   ok(0, 'MERMAN_OK'),
+
+  /// A pointer, length, or option value was invalid.
   invalidArgument(1, 'MERMAN_INVALID_ARGUMENT'),
+
+  /// Source or options bytes were not valid UTF-8.
   utf8Error(2, 'MERMAN_UTF8_ERROR'),
+
+  /// The `optionsJson` payload could not be parsed.
   optionsJsonError(3, 'MERMAN_OPTIONS_JSON_ERROR'),
+
+  /// No Mermaid diagram was detected in the source.
   noDiagram(4, 'MERMAN_NO_DIAGRAM'),
+
+  /// Mermaid parsing failed.
   parseError(5, 'MERMAN_PARSE_ERROR'),
+
+  /// Layout, SVG rendering, or postprocessing failed.
   renderError(6, 'MERMAN_RENDER_ERROR'),
+
+  /// The requested output is not enabled or not implemented.
   unsupportedFormat(7, 'MERMAN_UNSUPPORTED_FORMAT'),
+
+  /// A Rust panic was caught at the ABI boundary.
   panic(8, 'MERMAN_PANIC'),
+
+  /// An unexpected internal error occurred.
   internalError(9, 'MERMAN_INTERNAL_ERROR');
 
   const MermanStatus(this.code, this.codeName);
 
+  /// Numeric status code used by the C ABI.
   final int code;
+
+  /// Stable symbolic status name used in JSON error payloads.
   final String codeName;
 
+  /// Returns the matching status for [code], or `null` if the code is unknown.
   static MermanStatus? fromCode(int code) {
     for (final status in values) {
       if (status.code == code) {
@@ -34,17 +59,27 @@ enum MermanStatus {
   }
 }
 
+/// Native layout of `MermanBuffer`.
+///
+/// This mirrors the C ABI struct and is exposed for ABI size checks.
 final class NativeMermanBuffer extends Struct {
+  /// Pointer to the native payload bytes, or null for an empty payload.
   external Pointer<Uint8> data;
 
+  /// Payload length in bytes.
   @UintPtr()
   external int len;
 }
 
+/// Native layout of `MermanResult`.
+///
+/// This mirrors the C ABI struct and is exposed for ABI size checks.
 final class NativeMermanResult extends Struct {
+  /// Numeric [MermanStatus] code returned by the native call.
   @Int32()
   external int code;
 
+  /// Native output or error payload.
   external NativeMermanBuffer data;
 }
 
@@ -72,6 +107,9 @@ typedef _MermanMetadataDart = NativeMermanResult Function();
 typedef _BufferFreeC = Void Function(NativeMermanBuffer);
 typedef _BufferFreeDart = void Function(NativeMermanBuffer);
 
+/// Opens the bundled native `merman-ffi` library for the current platform.
+///
+/// Flutter applications normally use [Merman.open], which calls this helper.
 DynamicLibrary openMermanLibrary() {
   if (Platform.isAndroid) {
     return DynamicLibrary.open('libmerman_ffi.so');
@@ -88,25 +126,37 @@ DynamicLibrary openMermanLibrary() {
   throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');
 }
 
+/// Opens a native `merman-ffi` library at [path].
+///
+/// This is useful for local Dart smoke tests outside Flutter packaging.
 DynamicLibrary openMermanLibraryFromPath(String path) =>
     DynamicLibrary.open(path);
 
+/// Exception thrown when a native merman call returns an error status.
 class MermanException implements Exception {
+  /// Creates a merman exception from a native or Dart-side error payload.
   const MermanException({
     required this.code,
     required this.codeName,
     required this.message,
   });
 
+  /// Numeric status code.
   final int code;
+
+  /// Stable symbolic status name.
   final String codeName;
+
+  /// Human-readable error message.
   final String message;
 
   @override
   String toString() => 'MermanException($codeName): $message';
 }
 
+/// Structured result returned by [Merman.validate].
 class MermanValidationResult {
+  /// Creates a validation result.
   const MermanValidationResult({
     required this.valid,
     required this.error,
@@ -114,11 +164,19 @@ class MermanValidationResult {
     required this.codeName,
   });
 
+  /// Whether the source is a valid Mermaid diagram for this renderer.
   final bool valid;
+
+  /// Validation error message, or `null` when [valid] is true.
   final String? error;
+
+  /// Numeric merman status code represented by this validation result.
   final int code;
+
+  /// Stable symbolic status name represented by this validation result.
   final String codeName;
 
+  /// Decodes a validation payload produced by the native ABI.
   factory MermanValidationResult.fromJson(Map<String, Object?> json) {
     final valid = json['valid'];
     final code = json['code'];
@@ -140,77 +198,99 @@ class MermanValidationResult {
   }
 }
 
+/// High-level Dart wrapper around the native `merman-ffi` ABI.
 class Merman {
+  /// Creates an engine wrapper from an already-opened [DynamicLibrary].
+  ///
+  /// The constructor verifies ABI version and native struct sizes immediately.
   Merman.fromDynamicLibrary(DynamicLibrary library)
       : _bindings = _MermanBindings(library) {
     _bindings.checkAbi();
   }
 
+  /// Opens the bundled native library for the current Flutter platform.
   factory Merman.open() => Merman.fromDynamicLibrary(openMermanLibrary());
 
+  /// Opens a native library from [path].
+  ///
+  /// Use this for local smoke tests or custom native artifact placement.
   factory Merman.openPath(String path) =>
       Merman.fromDynamicLibrary(openMermanLibraryFromPath(path));
 
   final _MermanBindings _bindings;
 
+  /// Native `merman-ffi` package version.
   String get packageVersion => _bindings.packageVersion();
 
+  /// Renders Mermaid [source] to SVG text.
+  ///
+  /// [optionsJson] follows the shared merman bindings options schema.
   String renderSvg(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.renderSvg, source, optionsJson),
     );
   }
 
+  /// Renders Mermaid [source] to Unicode ASCII-art text.
   String renderAscii(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.renderAscii, source, optionsJson),
     );
   }
 
+  /// Parses Mermaid [source] and returns raw semantic JSON text.
   String parseJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.parseJson, source, optionsJson),
     );
   }
 
+  /// Parses Mermaid [source] and returns the semantic JSON object.
   Map<String, Object?> parseJson(String source, {String? optionsJson}) {
     return _decodeJsonMap(parseJsonRaw(source, optionsJson: optionsJson));
   }
 
+  /// Lays out Mermaid [source] and returns raw layout JSON text.
   String layoutJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.layoutJson, source, optionsJson),
     );
   }
 
+  /// Lays out Mermaid [source] and returns the layout JSON object.
   Map<String, Object?> layoutJson(String source, {String? optionsJson}) {
     return _decodeJsonMap(layoutJsonRaw(source, optionsJson: optionsJson));
   }
 
+  /// Validates Mermaid [source] and returns raw validation JSON text.
   String validateJsonRaw(String source, {String? optionsJson}) {
     return _decodeText(
       _bindings.call(_bindings.validateJson, source, optionsJson),
     );
   }
 
+  /// Validates Mermaid [source] without throwing for ordinary parse errors.
   MermanValidationResult validate(String source, {String? optionsJson}) {
     return MermanValidationResult.fromJson(
       _decodeJsonMap(validateJsonRaw(source, optionsJson: optionsJson)),
     );
   }
 
+  /// Returns diagram types exposed by the binding surface.
   List<String> supportedDiagrams() {
     return _decodeJsonStringList(
       _decodeText(_bindings.metadata(_bindings.supportedDiagramsJson)),
     );
   }
 
+  /// Returns diagram types currently supported by ASCII rendering.
   List<String> asciiSupportedDiagrams() {
     return _decodeJsonStringList(
       _decodeText(_bindings.metadata(_bindings.asciiSupportedDiagramsJson)),
     );
   }
 
+  /// Returns built-in Mermaid theme names.
   List<String> themes() {
     return _decodeJsonStringList(
       _decodeText(_bindings.metadata(_bindings.themesJson)),

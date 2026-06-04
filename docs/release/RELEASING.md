@@ -28,8 +28,8 @@ All workflows can be run manually with `workflow_dispatch`, but they must be run
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 
-Android Maven Central publishing is intentionally not enabled yet. Android needs Maven
-namespace/signing/POM metadata.
+Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
+publication metadata, but Central Portal credentials and signing secrets still need to be configured.
 
 ## Version Checklist
 
@@ -37,6 +37,7 @@ Before tagging, verify these versions match the intended release:
 
 - `Cargo.toml` `[workspace.package].version`
 - `platforms/flutter/pubspec.yaml` `version`
+- `platforms/web/package.json` `version`
 - `platforms/android/build.gradle.kts` `version`
 - `platforms/python/merman/pyproject.toml` `project.version`
 
@@ -95,5 +96,6 @@ to upload to an existing release when another workflow creates it first.
 
 ## Follow-On Registry Work
 
-- Add Android Maven Central publishing after Maven coordinates and signing metadata are confirmed.
+- Add Android Maven Central publishing after Central Portal credentials and signing secrets are configured.
+- Add npm publishing for `@merman/web` after npm Trusted Publishing/provenance is configured.
 - Add device-level Flutter smoke coverage after a stable CI target is chosen for each platform.

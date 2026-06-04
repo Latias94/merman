@@ -79,3 +79,9 @@ python3 scripts/build-python-uniffi-wheel.py --run-smoke
 The wheel is platform-specific because it bundles `merman-uniffi` as a native `.so`, `.dylib`, or
 `.dll`. Tag releases run `release-python.yml`, attach platform wheels to the GitHub Release, and
 publish the `merman` distribution to PyPI when Trusted Publishing is configured.
+
+## License
+
+This package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full license
+texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).

@@ -70,6 +70,9 @@ jobs:
       - name: Build Android AAR
         run: gradle -p platforms/android assembleRelease --stacktrace
 
+      - name: Verify Maven publication metadata
+        run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+
       - name: Prepare release asset
         run: |
           mkdir -p target/release-assets

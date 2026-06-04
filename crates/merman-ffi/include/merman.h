@@ -76,6 +76,8 @@ size_t merman_result_struct_size(void);
  *     data contains UTF-8 JSON error bytes:
  *       {"version":1,"ok":false,"code":6,"code_name":"MERMAN_RENDER_ERROR","message":"..."}
  *
+ * If the library was built without render support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ *
  * The caller must free every non-empty data buffer with merman_buffer_free.
  */
 MermanResult merman_render_svg(
@@ -102,6 +104,7 @@ MermanResult merman_render_ascii(
  * Parse Mermaid source to semantic JSON.
  *
  * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without render support, this returns MERMAN_UNSUPPORTED_FORMAT.
  */
 MermanResult merman_parse_json(
     const uint8_t* source,
@@ -114,6 +117,7 @@ MermanResult merman_parse_json(
  * Layout Mermaid source to layout JSON.
  *
  * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without render support, this returns MERMAN_UNSUPPORTED_FORMAT.
  */
 MermanResult merman_layout_json(
     const uint8_t* source,
@@ -128,6 +132,9 @@ MermanResult merman_layout_json(
  * This function returns MERMAN_OK when the validation payload itself was produced. Invalid Mermaid
  * source is represented inside data:
  *   {"valid":false,"error":"...","code":5,"code_name":"MERMAN_PARSE_ERROR"}
+ *
+ * If the library was built without render support, this still returns MERMAN_OK with
+ * MERMAN_UNSUPPORTED_FORMAT represented inside the validation payload.
  */
 MermanResult merman_validate_json(
     const uint8_t* source,

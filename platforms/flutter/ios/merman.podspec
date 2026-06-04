@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.platform         = :ios, '13.0'
   s.swift_version    = '5.7'
 
-  s.source_files     = 'Classes/**/*.swift'
+  s.source_files     = 'merman/Sources/merman/**/*.swift'
   s.dependency       'Flutter'
   s.vendored_frameworks = 'MermanFFI.xcframework'
 

@@ -129,7 +129,8 @@ MermanResult merman_render_svg(
 );
 ```
 
-On success, `data` contains UTF-8 SVG bytes.
+On success, `data` contains UTF-8 SVG bytes. If the native library is built without the `render`
+feature, this function returns `MERMAN_UNSUPPORTED_FORMAT`.
 
 On error, `data` contains UTF-8 JSON:
 
@@ -174,7 +175,8 @@ MermanResult merman_parse_json(
 ```
 
 On success, `data` contains UTF-8 semantic model JSON. The current payload mirrors
-`merman-cli parse` without `--meta`.
+`merman-cli parse` without `--meta`. If the native library is built without the `render` feature,
+this function returns `MERMAN_UNSUPPORTED_FORMAT`.
 
 ## Layout JSON
 
@@ -188,7 +190,8 @@ MermanResult merman_layout_json(
 ```
 
 On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` shape as
-`merman-cli layout`.
+`merman-cli layout`. If the native library is built without the `render` feature, this function
+returns `MERMAN_UNSUPPORTED_FORMAT`.
 
 ## Validation JSON
 
@@ -212,6 +215,9 @@ reported in `data`:
   "code_name": "MERMAN_NO_DIAGRAM"
 }
 ```
+
+If the native library is built without the `render` feature, this function still returns
+`MERMAN_OK`, with `MERMAN_UNSUPPORTED_FORMAT` represented inside the validation payload.
 
 ## Metadata JSON
 

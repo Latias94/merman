@@ -20,13 +20,20 @@ export interface SvgOptions {
 
 export type MermaidSiteConfig = Record<string, unknown>;
 
-export interface BindingOptions {
+export interface CommonBindingOptions {
   version?: number;
   site_config?: MermaidSiteConfig;
   parse?: ParseOptions;
+}
+
+export type AsciiBindingOptions = CommonBindingOptions;
+
+export interface SvgBindingOptions extends CommonBindingOptions {
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
+
+export type BindingOptions = SvgBindingOptions;
 
 export const SUPPORTED_THEMES = [
   "default",
@@ -177,13 +184,13 @@ export function isMermanInitialized(): boolean {
   return wasmModule !== null;
 }
 
-export function renderSvg(source: string, options?: BindingOptions | string): string {
+export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().renderSvg(source, encodeOptions(options));
 }
 
 export function renderSvgElement(
   source: string,
-  options?: BindingOptions | string
+  options?: SvgBindingOptions | string
 ): SVGSVGElement {
   if (typeof DOMParser === "undefined" || typeof document === "undefined") {
     throw new Error("renderSvgElement() requires a browser DOM.");
@@ -206,34 +213,34 @@ export function renderSvgElement(
 export function renderSvgToElement(
   target: Element,
   source: string,
-  options?: BindingOptions | string
+  options?: SvgBindingOptions | string
 ): SVGSVGElement {
   const svg = renderSvgElement(source, options);
   target.replaceChildren(svg);
   return svg;
 }
 
-export function renderAscii(source: string, options?: BindingOptions | string): string {
+export function renderAscii(source: string, options?: AsciiBindingOptions | string): string {
   return getMerman().renderAscii(source, encodeOptions(options));
 }
 
-export function parseJson(source: string, options?: BindingOptions | string): string {
+export function parseJson(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().parseJson(source, encodeOptions(options));
 }
 
-export function parseObject<T = unknown>(source: string, options?: BindingOptions | string): T {
+export function parseObject<T = unknown>(source: string, options?: SvgBindingOptions | string): T {
   return JSON.parse(parseJson(source, options)) as T;
 }
 
-export function layoutJson(source: string, options?: BindingOptions | string): string {
+export function layoutJson(source: string, options?: SvgBindingOptions | string): string {
   return getMerman().layoutJson(source, encodeOptions(options));
 }
 
-export function layoutObject<T = unknown>(source: string, options?: BindingOptions | string): T {
+export function layoutObject<T = unknown>(source: string, options?: SvgBindingOptions | string): T {
   return JSON.parse(layoutJson(source, options)) as T;
 }
 
-export function validate(source: string, options?: BindingOptions | string): ValidationResult {
+export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {
   return getMerman().validate(source, encodeOptions(options));
 }
 
@@ -257,7 +264,9 @@ export function packageVersion(): string {
   return getMerman().packageVersion();
 }
 
-export function encodeOptions(options?: BindingOptions | string): string | undefined {
+export function encodeOptions(
+  options?: CommonBindingOptions | string
+): string | undefined {
   if (options === undefined) {
     return undefined;
   }

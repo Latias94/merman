@@ -101,4 +101,15 @@ project(":merman-android").projectDir = file("path/to/merman/platforms/android")
 Then depend on `implementation(project(":merman-android"))`.
 
 The release workflow currently uploads an AAR to GitHub Releases. Maven Central publishing still
-needs final coordinates, signing, and POM metadata.
+needs Central Portal credentials and signing secrets, but the Gradle module already declares the
+`merman-android` Maven publication metadata and can verify it locally:
+
+```bash
+gradle -p platforms/android publishReleasePublicationToLocalStagingRepository
+```
+
+## License
+
+This Android package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full
+license texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).

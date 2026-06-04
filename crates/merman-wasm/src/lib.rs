@@ -50,7 +50,6 @@ pub fn layout_json(source: &str, options_json: Option<String>) -> Result<String,
     ))
 }
 
-#[cfg(feature = "ascii")]
 #[wasm_bindgen(js_name = renderAscii)]
 pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String, JsValue> {
     string_result(merman_bindings_core::render_ascii(
@@ -79,7 +78,6 @@ pub fn themes() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[cfg(feature = "ascii")]
 #[wasm_bindgen(js_name = asciiSupportedDiagrams)]
 pub fn ascii_supported_diagrams() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::ascii_supported_diagrams())

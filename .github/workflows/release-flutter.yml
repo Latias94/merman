@@ -96,6 +96,7 @@ jobs:
       - name: Verify Flutter native artifacts
         run: |
           test -f platforms/flutter/macos/Libraries/libmerman_ffi.dylib
+          test -d platforms/flutter/macos/MermanFFI.xcframework
           test -f platforms/flutter/windows/merman_ffi.dll
           test -f platforms/flutter/linux/lib/x86_64/libmerman_ffi.so
           test -f platforms/flutter/linux/lib/aarch64/libmerman_ffi.so

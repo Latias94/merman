@@ -8,6 +8,8 @@ typedef MermanResult (*MermanCall)(const uint8_t*, size_t, const uint8_t*, size_
 typedef void (*MermanFree)(MermanBuffer);
 
 typedef struct MermanApi {
+    int render_enabled;
+    int ascii_enabled;
     uint32_t (*abi_version)(void);
     const char* (*package_version)(void);
     size_t (*buffer_struct_size)(void);
@@ -114,38 +116,66 @@ int merman_c_consumer_smoke(MermanApi api) {
         return 5;
     }
 
-    rc = expect_ok_with(
-        api.render_svg(source, sizeof(source) - 1, NULL, 0),
-        api.buffer_free,
-        "<svg"
-    );
+    rc = api.render_enabled
+        ? expect_ok_with(
+            api.render_svg(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            "<svg"
+        )
+        : expect_error_with(
+            api.render_svg(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
     if (rc != 0) {
         return rc;
     }
 
-    rc = expect_ok_with(
-        api.render_ascii(source, sizeof(source) - 1, NULL, 0),
-        api.buffer_free,
-        "Hello"
-    );
+    rc = api.ascii_enabled
+        ? expect_ok_with(
+            api.render_ascii(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            "Hello"
+        )
+        : expect_error_with(
+            api.render_ascii(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
     if (rc != 0) {
         return rc;
     }
 
-    rc = expect_ok_with(
-        api.parse_json(source, sizeof(source) - 1, NULL, 0),
-        api.buffer_free,
-        "flowchart-v2"
-    );
+    rc = api.render_enabled
+        ? expect_ok_with(
+            api.parse_json(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            "flowchart-v2"
+        )
+        : expect_error_with(
+            api.parse_json(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
     if (rc != 0) {
         return rc;
     }
 
-    rc = expect_ok_with(
-        api.layout_json(source, sizeof(source) - 1, NULL, 0),
-        api.buffer_free,
-        "layout"
-    );
+    rc = api.render_enabled
+        ? expect_ok_with(
+            api.layout_json(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            "layout"
+        )
+        : expect_error_with(
+            api.layout_json(source, sizeof(source) - 1, NULL, 0),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
     if (rc != 0) {
         return rc;
     }
@@ -153,7 +183,7 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.validate_json(source, sizeof(source) - 1, NULL, 0),
         api.buffer_free,
-        "\"valid\":true"
+        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
     );
     if (rc != 0) {
         return rc;
@@ -164,7 +194,11 @@ int merman_c_consumer_smoke(MermanApi api) {
         return rc;
     }
 
-    rc = expect_ok_with(api.ascii_supported_diagrams_json(), api.buffer_free, "sequence");
+    rc = expect_ok_with(
+        api.ascii_supported_diagrams_json(),
+        api.buffer_free,
+        api.ascii_enabled ? "sequence" : "[]"
+    );
     if (rc != 0) {
         return rc;
     }

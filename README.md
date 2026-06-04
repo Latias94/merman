@@ -16,6 +16,9 @@ Think of `merman` as Mermaid's headless twin: same language, same diagrams, no b
 `merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.15.0`).
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
 changes that affect semantics, layout, or rendering are caught and reviewed.
+Merman is independent from the upstream Mermaid project; see
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
+for Mermaid license and provenance notes.
 
 Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
@@ -589,7 +592,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - Merman Playground: [frankorz.com/merman](https://frankorz.com/merman/)
 - Parity policy: [docs/adr/0014-upstream-parity-policy.md](https://github.com/Latias94/merman/blob/main/docs/adr/0014-upstream-parity-policy.md)
 - Release quality gates: [docs/adr/0050-release-quality-gates.md](https://github.com/Latias94/merman/blob/main/docs/adr/0050-release-quality-gates.md)
-- Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid)
+- Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) (MIT)
 - Related: [1jehuang/mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer/)
 - ASCII reference: [AlexanderGrooff/mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii)
   (MIT; grid/routing/fixture reference for `merman-ascii`)
@@ -603,3 +606,4 @@ See [CHANGELOG.md](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
 ## License
 
 Dual-licensed under MIT or Apache-2.0. See `LICENSE`, `LICENSE-MIT`, `LICENSE-APACHE`.
+Mermaid compatibility and upstream attribution are documented in `THIRD_PARTY_NOTICES.md`.

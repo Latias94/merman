@@ -19,7 +19,8 @@ path.
 - Android: bundled `libmerman_ffi.so` slices under `android/src/main/jniLibs`.
 - iOS: bundled `MermanFFI.xcframework`, linked as a dynamic framework so Dart FFI can use
   `DynamicLibrary.process()` without shipping the much larger Rust static archive.
-- macOS: bundled `Libraries/libmerman_ffi.dylib`, linked by CocoaPods.
+- macOS: bundled `Libraries/libmerman_ffi.dylib` for CocoaPods and `MermanFFI.xcframework` for
+  Swift Package Manager.
 - Windows: bundled `merman_ffi.dll`, installed into the Flutter app bundle by CMake.
 - Linux: bundled `linux/lib/<arch>/libmerman_ffi.so`, installed into the Flutter app bundle by CMake.
 
@@ -133,7 +134,18 @@ bash platforms/flutter/build-desktop.sh --host
 ```
 
 For release packaging, use `--all` on macOS with `cargo-zigbuild` and `zig` installed. This creates
-the macOS universal dylib plus Linux x86_64/aarch64 and Windows x86_64 artifacts.
+the macOS universal dylib, the macOS SwiftPM XCFramework, plus Linux x86_64/aarch64 and Windows
+x86_64 artifacts.
+
+## Apple Swift Package Manager
+
+The Flutter plugin supports Swift Package Manager on iOS and macOS through:
+
+- `ios/merman/Package.swift`
+- `macos/merman/Package.swift`
+
+These manifests are used by Flutter's SwiftPM integration. CocoaPods remains supported through the
+existing `ios/merman.podspec` and `macos/merman.podspec` files.
 
 ## Packaging Smoke
 
@@ -142,3 +154,9 @@ To verify Android plugin packaging through a temporary Flutter app:
 ```bash
 python3 platforms/flutter/tool/android-smoke.py
 ```
+
+## License
+
+This Flutter package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full
+license texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
