@@ -736,6 +736,33 @@ fn format_probe_classes(v: Option<&serde_json::Value>) -> String {
     }
 }
 
+fn format_probe_run_index(v: &serde_json::Value) -> String {
+    v.get("runIndex")
+        .and_then(|v| {
+            v.as_i64()
+                .map(|v| v.to_string())
+                .or_else(|| v.as_u64().map(|v| v.to_string()))
+        })
+        .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn format_probe_optional_count(v: Option<usize>) -> String {
+    v.map(|v| v.to_string())
+        .unwrap_or_else(|| "<none>".to_string())
+}
+
+fn format_probe_string_array(v: Option<&serde_json::Value>) -> String {
+    let Some(values) = v.and_then(|v| v.as_array()) else {
+        return "<none>".to_string();
+    };
+    let out: Vec<&str> = values.iter().filter_map(|v| v.as_str()).collect();
+    if out.is_empty() {
+        "<none>".to_string()
+    } else {
+        out.join(",")
+    }
+}
+
 fn format_probe_config_value(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::String(s) => s.clone(),
@@ -1075,6 +1102,96 @@ fn render_architecture_render_path_probe_markdown(
                 "| `{tag}` | `{bbox}` | {node_count} | {edge_count} |"
             );
         }
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Bundled FCoSE/Cose Internal Stages\n");
+    let _ = writeln!(
+        &mut md,
+        "| run | tag | iterations | bbox / relocation rect | nodes | compounds | constraints |"
+    );
+    let _ = writeln!(&mut md, "|---:|---|---:|---|---:|---:|---|");
+    let mut wrote_fcose_stage = false;
+    if let Some(stages) = probe_result
+        .pointer("/probe/fcoseStages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let layout = stage.get("layout").unwrap_or(&serde_json::Value::Null);
+            let nodes = layout.get("nodes").and_then(|v| v.as_array());
+            let compound_count = nodes.map(|nodes| {
+                nodes
+                    .iter()
+                    .filter(|node| node.get("childCount").and_then(|v| v.as_u64()).unwrap_or(0) > 0)
+                    .count()
+            });
+            let bbox = json_debug_rect(layout.get("bbox"))
+                .or_else(|| json_debug_rect(stage.get("rectBbox")));
+            let iterations = layout
+                .get("totalIterations")
+                .and_then(|v| v.as_f64())
+                .map(format_probe_f64)
+                .unwrap_or_else(|| "<none>".to_string());
+            let _ = writeln!(
+                &mut md,
+                "| {} | `{tag}` | `{}` | `{}` | {} | {} | `{}` |",
+                format_probe_run_index(stage),
+                iterations,
+                format_debug_rect(bbox),
+                format_probe_optional_count(nodes.map(Vec::len)),
+                format_probe_optional_count(compound_count),
+                format_probe_string_array(layout.get("constraints")),
+            );
+            wrote_fcose_stage = true;
+        }
+    }
+    if !wrote_fcose_stage {
+        let _ = writeln!(
+            &mut md,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+        );
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Bundled FCoSE/Cose Compound Rects\n");
+    let _ = writeln!(
+        &mut md,
+        "| run | stage | group | parent | child count | layout rect |"
+    );
+    let _ = writeln!(&mut md, "|---:|---|---|---|---:|---|");
+    let mut wrote_fcose_compound = false;
+    if let Some(stages) = probe_result
+        .pointer("/probe/fcoseStages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let Some(nodes) = stage.pointer("/layout/nodes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for node in nodes {
+                let child_count = node.get("childCount").and_then(|v| v.as_u64()).unwrap_or(0);
+                if child_count == 0 {
+                    continue;
+                }
+                let id = json_string(node, "id").unwrap_or("<missing>");
+                let parent = json_string(node, "parent").unwrap_or("<none>");
+                let _ = writeln!(
+                    &mut md,
+                    "| {} | `{tag}` | `{id}` | `{parent}` | {child_count} | `{}` |",
+                    format_probe_run_index(stage),
+                    format_debug_rect(json_debug_rect(node.get("rect"))),
+                );
+                wrote_fcose_compound = true;
+            }
+        }
+    }
+    if !wrote_fcose_compound {
+        let _ = writeln!(
+            &mut md,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+        );
     }
     let _ = writeln!(&mut md);
 
@@ -2061,6 +2178,69 @@ fn render_architecture_render_path_join_markdown(
         let _ = writeln!(
             report,
             "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(
+        report,
+        "### Bundled FCoSE/Cose internal group rects vs local FCoSE compounds\n"
+    );
+    let _ = writeln!(
+        report,
+        "Bundled rects below are nested `cytoscape-fcose@2.2.0` / `cose-base@2.2.0` layout-base node rectangles captured inside the actual Mermaid render path.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| run | stage | group | bundled layout rect | local FCoSE compound | dx | dy | dw | dh |\n|---:|---|---|---|---|---:|---:|---:|---:|"
+    );
+    let mut wrote_internal_stage = false;
+    if let Some(stages) = render_probe
+        .pointer("/probe/fcoseStages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let Some(nodes) = stage.pointer("/layout/nodes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for node in nodes {
+                let Some(id) = json_string(node, "id") else {
+                    continue;
+                };
+                let Some(local_fcose) = local_fcose.get(id).copied() else {
+                    continue;
+                };
+                let bundled_rect = json_debug_rect(node.get("rect"));
+                let _ = writeln!(
+                    report,
+                    "| {} | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+                    format_probe_run_index(stage),
+                    tag,
+                    id,
+                    format_debug_rect(bundled_rect),
+                    format_debug_rect(Some(local_fcose)),
+                    format_debug_optional_f64(
+                        bundled_rect.map(|bundled| local_fcose.x - bundled.x)
+                    ),
+                    format_debug_optional_f64(
+                        bundled_rect.map(|bundled| local_fcose.y - bundled.y)
+                    ),
+                    format_debug_optional_f64(
+                        bundled_rect.map(|bundled| local_fcose.w - bundled.w)
+                    ),
+                    format_debug_optional_f64(
+                        bundled_rect.map(|bundled| local_fcose.h - bundled.h)
+                    ),
+                );
+                wrote_internal_stage = true;
+            }
+        }
+    }
+    if !wrote_internal_stage {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
         );
     }
     let _ = writeln!(report);
@@ -3993,6 +4173,28 @@ mod tests {
             },
             "probe": {
                 "kind": "architecture-render-path",
+                "fcoseStages": [
+                    {
+                        "tag": "coseLayout.after-process-children",
+                        "runIndex": 0,
+                        "layout": {
+                            "totalIterations": 0.0,
+                            "constraints": ["alignmentConstraint"],
+                            "bbox": { "x1": 0.0, "y1": 1.0, "w": 40.0, "h": 50.0 },
+                            "nodes": [{
+                                "id": "left",
+                                "parent": "root",
+                                "childCount": 2,
+                                "rect": { "x1": 1.0, "y1": 2.0, "w": 30.0, "h": 40.0 }
+                            }]
+                        }
+                    },
+                    {
+                        "tag": "relocateComponent.before-shift",
+                        "runIndex": 1,
+                        "rectBbox": { "x1": 2.0, "y1": 3.0, "w": 31.0, "h": 41.0 }
+                    }
+                ],
                 "stages": [{
                     "tag": "draw-after-layout-before-svg-emission",
                     "elements": {
@@ -4037,6 +4239,11 @@ mod tests {
             "| `svc` | `x=5.000000 y=6.000000` | `x=4.000000 y=6.000000` | `+1.000` | `+0.000` |"
         ));
         assert!(md.contains("| `draw-after-layout-before-svg-emission` | `x=0.000000 y=0.000000 w=100.000000 h=50.000000` | 1 | 1 |"));
+        assert!(md.contains("## Bundled FCoSE/Cose Internal Stages"));
+        assert!(md.contains("| 0 | `coseLayout.after-process-children` | `0.000` | `x=0.000000 y=1.000000 w=40.000000 h=50.000000` | 1 | 1 | `alignmentConstraint` |"));
+        assert!(md.contains("| 1 | `relocateComponent.before-shift` | `<none>` | `x=2.000000 y=3.000000 w=31.000000 h=41.000000` | <none> | <none> | `<none>` |"));
+        assert!(md.contains("## Bundled FCoSE/Cose Compound Rects"));
+        assert!(md.contains("| 0 | `coseLayout.after-process-children` | `left` | `root` | 2 | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` |"));
         assert!(md.contains("| `draw-after-layout-before-svg-emission` | `left` | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` | `x=2.000000 y=4.000000 w=20.000000 h=30.000000` | `x=3.000000 y=5.000000 w=10.000000 h=15.000000` |"));
         assert!(md.contains("| `stage-x` | `sample error` |"));
     }
@@ -4066,6 +4273,17 @@ mod tests {
             },
             "probe": {
                 "kind": "architecture-render-path",
+                "fcoseStages": [{
+                    "tag": "classicLayout.end",
+                    "runIndex": 1,
+                    "layout": {
+                        "nodes": [{
+                            "id": "left",
+                            "childCount": 2,
+                            "rect": { "x1": 7.0, "y1": 17.0, "w": 35.0, "h": 43.0 }
+                        }]
+                    }
+                }],
                 "stages": [{
                     "tag": "draw-after-layout-before-svg-emission",
                     "elements": {
@@ -4123,6 +4341,10 @@ mod tests {
             "| `svc` | `x=5.000000 y=6.000000` | `x=7.000000 y=3.000000` | 2.000000 | -3.000000 |"
         ));
         assert!(md.contains("| `draw-after-layout-before-svg-emission` | `left` | `x=8.000000 y=18.000000 w=34.000000 h=44.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -2.000000 | -2.000000 | 2.000000 | -2.000000 |"));
+        assert!(
+            md.contains("### Bundled FCoSE/Cose internal group rects vs local FCoSE compounds")
+        );
+        assert!(md.contains("| 1 | `classicLayout.end` | `left` | `x=7.000000 y=17.000000 w=35.000000 h=43.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -1.000000 | -1.000000 | 1.000000 | -1.000000 |"));
     }
 
     #[test]

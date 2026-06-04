@@ -296,6 +296,69 @@ Residual note:
   source-backed FCoSE/Cytoscape phase evidence; standalone group padding, root padding, font-family
   switching, exact label-width lookup, and one-off root pins remain rejected.
 
+## HPD-050 - Architecture Render-Path Internal FCoSE Phases
+
+Outcome:
+
+- Extended `tools/debug/arch_render_path_probe_fixture.js` so the actual Mermaid
+  `mermaid.render(...)` Architecture probe captures bundled nested `cytoscape-fcose@2.2.0` /
+  `cose-base@2.2.0` internal stages in `probe.fcoseStages`.
+- Captured phases include `coseLayout.start`, after process-children, after process-edges /
+  constraints, `classicLayout.start`, `initConstraintVariables.start`, first tick start / after
+  move, `classicLayout.end`, `coseLayout.after-runLayout`, and `relocateComponent.before-shift`.
+- The render-path probe Markdown now writes bundled FCoSE/Cose internal stage and compound-rect
+  tables.
+- `debug-architecture-delta --render-probe-dir` now compares those bundled layout-base group rects
+  with local FCoSE compound rectangles.
+- No production renderer, layout formula, SVG fixture, or baseline changed.
+
+Focused `junction_fork_join_026` findings:
+
+- Render-path `renderedFacts` still match `storedFacts`.
+- The focused probe captured `22` bundled internal FCoSE/Cose stages and `0` probe errors.
+- Local FCoSE compound widths/heights match bundled run `0` `classicLayout.end` /
+  `coseLayout.after-runLayout` exactly for both `left` and `right`.
+- Bundled run `1` `classicLayout.end` / `coseLayout.after-runLayout` diverges by the same group
+  width/height deltas seen in the residual:
+  - `left`: `dw=+17.331122`, `dh=-18.609285`
+  - `right`: `dw=-3.388269`, `dh=+6.107441`
+- The row is now narrowed to second FCoSE rerun / segment-adjusted phase behavior, not root bounds,
+  group padding, final group rect emission, or stale upstream SVG baselines.
+
+Touched surfaces:
+
+- `tools/debug/arch_render_path_probe_fixture.js`
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `target\compare\architecture-render-path-internal-probe-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json`
+- `target\compare\architecture-render-path-internal-probe-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.md`
+- `target\compare\architecture-delta-render-path-internal-join-hpd050\stress_architecture_junction_fork_join_026.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-render-path-internal-fcose.md`
+
+Focused verification:
+
+- `node --check tools\debug\arch_render_path_probe_fixture.js` - passed.
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask render_path_probe_markdown_summarizes_facts_and_stages architecture_render_path_join_reports_local_deltas` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-render-path-probe --fixture stress_architecture_junction_fork_join_026 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --out target\compare\architecture-render-path-internal-probe-hpd050` -
+  passed.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --render-probe-dir target\compare\architecture-render-path-internal-probe-hpd050 --out target\compare\architecture-delta-render-path-internal-join-hpd050` -
+  passed.
+- `cargo fmt --check -p xtask` - passed.
+- JSONL validation for `docs\workstreams\headless-parity-deepening\CONTEXT.jsonl` - passed.
+- `git diff --check` - passed; Git reported only the existing CRLF normalization warning for
+  `CONTEXT.jsonl`.
+- `cargo nextest run -p xtask` - passed, `106` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_internal_fcose_probe_hpd050.md` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The next production-capable junction slice should compare local
+  `manatee` run sequencing and segment-edge rerun behavior against bundled `cytoscape-fcose` run
+  `1`. Do not tune Architecture root width, group padding, or emitted group rectangles from this
+  evidence.
+
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 
 Outcome:

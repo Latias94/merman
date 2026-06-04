@@ -73,6 +73,7 @@ function probeInstallScript() {
   const probe = {
     kind: "architecture-render-path",
     stages: [],
+    fcoseStages: [],
     errors: [],
   };
   globalThis.__mermanArchRenderPathProbe = probe;
@@ -95,6 +96,109 @@ function probeInstallScript() {
       y2: Number(rect.y2),
       w: Number(rect.w),
       h: Number(rect.h),
+    };
+  }
+
+  function safeLayoutRect(node) {
+    if (!node) return null;
+    try {
+      return {
+        x1: Number(node.getLeft()),
+        y1: Number(node.getTop()),
+        x2: Number(node.getLeft() + node.getWidth()),
+        y2: Number(node.getTop() + node.getHeight()),
+        w: Number(node.getWidth()),
+        h: Number(node.getHeight()),
+      };
+    } catch (e) {
+      return { error: String(e && e.message ? e.message : e) };
+    }
+  }
+
+  function safeNumber(value) {
+    return Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function dumpLayout(layout) {
+    if (!layout || typeof layout.getAllNodes !== "function") {
+      return null;
+    }
+
+    const nodes = layout.getAllNodes().map((node) => {
+      let parent = "root";
+      try {
+        const ownerParent = node.getOwner?.()?.getParent?.();
+        if (ownerParent && ownerParent.id != null) {
+          parent = ownerParent.id;
+        }
+      } catch (e) {
+        parent = "<error>";
+      }
+
+      let childCount = 0;
+      try {
+        childCount = node.getChild?.()?.getNodes?.()?.length ?? 0;
+      } catch (e) {
+        childCount = 0;
+      }
+
+      return {
+        id: node.id,
+        parent,
+        childCount,
+        rect: safeLayoutRect(node),
+        center: {
+          x: safeNumber(node.getCenterX?.()),
+          y: safeNumber(node.getCenterY?.()),
+        },
+        forces: {
+          displacementX: safeNumber(node.displacementX),
+          displacementY: safeNumber(node.displacementY),
+          springForceX: safeNumber(node.springForceX),
+          springForceY: safeNumber(node.springForceY),
+          repulsionForceX: safeNumber(node.repulsionForceX),
+          repulsionForceY: safeNumber(node.repulsionForceY),
+          gravitationForceX: safeNumber(node.gravitationForceX),
+          gravitationForceY: safeNumber(node.gravitationForceY),
+        },
+        metrics: {
+          nodeRepulsion: safeNumber(node.nodeRepulsion),
+          noOfChildren: safeNumber(node.noOfChildren),
+          labelWidth: safeNumber(node.labelWidth),
+          labelHeight: safeNumber(node.labelHeight),
+          paddingLeft: safeNumber(node.paddingLeft),
+          paddingRight: safeNumber(node.paddingRight),
+          paddingTop: safeNumber(node.paddingTop),
+          paddingBottom: safeNumber(node.paddingBottom),
+          fixedNodeWeight: safeNumber(node.fixedNodeWeight),
+        },
+      };
+    });
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const node of nodes) {
+      const rect = node.rect;
+      if (!rect || rect.error) continue;
+      minX = Math.min(minX, rect.x1);
+      minY = Math.min(minY, rect.y1);
+      maxX = Math.max(maxX, rect.x2);
+      maxY = Math.max(maxY, rect.y2);
+    }
+
+    return {
+      totalIterations: safeNumber(layout.totalIterations),
+      coolingFactor: safeNumber(layout.coolingFactor),
+      totalDisplacement: safeNumber(layout.totalDisplacement),
+      maxIterations: safeNumber(layout.maxIterations),
+      constraints: layout.constraints ? Object.keys(layout.constraints).sort() : [],
+      bbox:
+        Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)
+          ? { x1: minX, y1: minY, x2: maxX, y2: maxY, w: maxX - minX, h: maxY - minY }
+          : null,
+      nodes,
     };
   }
 
@@ -196,6 +300,46 @@ function probeInstallScript() {
       });
     }
   };
+
+  globalThis.__mermanArchRenderPathProbeRegisterFcoseRun = (options, extra) => {
+    const runIndex = probe.fcoseStages.filter((stage) => stage && stage.tag === "coseLayout.start").length;
+    probe.fcoseStages.push({
+      tag: "coseLayout.start",
+      runIndex,
+      time: performance.now(),
+      extra: extra ? cloneMetricObject(extra) : null,
+      options: {
+        quality: options && options.quality,
+        randomize: options && options.randomize,
+        nodeSeparation: options && options.nodeSeparation,
+        numIter: options && options.numIter,
+        animate: options && options.animate,
+        nodeDimensionsIncludeLabels: options && options.nodeDimensionsIncludeLabels,
+        step: options && options.step,
+        hasAlignmentConstraint: !!(options && options.alignmentConstraint),
+        hasRelativePlacementConstraint: !!(options && options.relativePlacementConstraint),
+        hasFixedNodeConstraint: !!(options && options.fixedNodeConstraint),
+      },
+    });
+    return runIndex;
+  };
+
+  globalThis.__mermanArchRenderPathProbeDumpFcoseLayout = (tag, layout, extra) => {
+    try {
+      probe.fcoseStages.push({
+        tag,
+        runIndex: layout && layout.__mermanArchFcoseRunIndex,
+        time: performance.now(),
+        extra: extra ? cloneMetricObject(extra) : null,
+        layout: dumpLayout(layout),
+      });
+    } catch (e) {
+      probe.errors.push({
+        tag: "fcose:" + tag,
+        error: String(e && e.message ? e.message : e),
+      });
+    }
+  };
 })();
 `;
 }
@@ -209,6 +353,152 @@ function replaceOnce(source, marker, replacement, label) {
 
 function instrumentMermaidBundle(source) {
   let out = source;
+
+  out = replaceOnce(
+    out,
+    `                  CoSELayout.prototype.classicLayout = function() {\n                    this.nodesWithGravity = this.calculateNodesToApplyGravitationTo();`,
+    `                  CoSELayout.prototype.classicLayout = function() {
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("classicLayout.start", this, null);
+                    } catch (e) {}
+                    this.nodesWithGravity = this.calculateNodesToApplyGravitationTo();`,
+    "bundled FCoSE CoSELayout classicLayout start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    if (CoSEConstants.APPLY_LAYOUT) {\n                      this.runSpringEmbedder();\n                    }\n                    return true;`,
+    `                    if (CoSEConstants.APPLY_LAYOUT) {
+                      this.runSpringEmbedder();
+                    }
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("classicLayout.end", this, null);
+                    } catch (e) {}
+                    return true;`,
+    "bundled FCoSE CoSELayout classicLayout end"
+  );
+
+  out = replaceOnce(
+    out,
+    `                  CoSELayout.prototype.tick = function() {\n                    this.totalIterations++;`,
+    `                  CoSELayout.prototype.tick = function() {
+                    this.totalIterations++;
+                    if (this.totalIterations === 1) {
+                      try {
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("tick-1.start", this, null);
+                      } catch (e) {}
+                    }`,
+    "bundled FCoSE CoSELayout tick start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    this.calcGravitationalForces();\n                    this.moveNodes();\n                    this.animate();`,
+    `                    this.calcGravitationalForces();
+                    this.moveNodes();
+                    if (this.totalIterations === 1) {
+                      try {
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("tick-1.after-move", this, null);
+                      } catch (e) {}
+                    }
+                    this.animate();`,
+    "bundled FCoSE CoSELayout tick after move"
+  );
+
+  out = replaceOnce(
+    out,
+    `                  CoSELayout.prototype.initConstraintVariables = function() {\n                    var self2 = this;`,
+    `                  CoSELayout.prototype.initConstraintVariables = function() {
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("initConstraintVariables.start", this, null);
+                    } catch (e) {}
+                    var self2 = this;`,
+    "bundled FCoSE CoSELayout initConstraintVariables start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                  CoSELayout.prototype.updateDisplacements = function() {\n                    var self2 = this;`,
+    `                  CoSELayout.prototype.updateDisplacements = function() {
+                    if (this.totalIterations === 1) {
+                      try {
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("updateDisplacements.start", this, null);
+                      } catch (e) {}
+                    }
+                    var self2 = this;`,
+    "bundled FCoSE CoSELayout updateDisplacements start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    var coseLayout3 = new CoSELayout();\n                    var gm = coseLayout3.newGraphManager();`,
+    `                    var __mermanArchFcoseRunIndex = -1;
+                    try {
+                      __mermanArchFcoseRunIndex = globalThis.__mermanArchRenderPathProbeRegisterFcoseRun ? globalThis.__mermanArchRenderPathProbeRegisterFcoseRun(options2, {
+                        nodes: nodes5.length,
+                        edges: edges3.length,
+                        hasConstraints: !!(options2.fixedNodeConstraint || options2.alignmentConstraint || options2.relativePlacementConstraint)
+                      }) : -1;
+                      options2.__mermanArchFcoseRunIndex = __mermanArchFcoseRunIndex;
+                    } catch (e) {}
+                    var coseLayout3 = new CoSELayout();
+                    try { coseLayout3.__mermanArchFcoseRunIndex = __mermanArchFcoseRunIndex; } catch (e) {}
+                    var gm = coseLayout3.newGraphManager();`,
+    "bundled FCoSE coseLayout run registration"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    processChildrenList(gm.addRoot(), aux.getTopMostNodes(nodes5), coseLayout3, options2);\n                    processEdges(coseLayout3, gm, edges3);`,
+    `                    processChildrenList(gm.addRoot(), aux.getTopMostNodes(nodes5), coseLayout3, options2);
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("coseLayout.after-process-children", coseLayout3, null);
+                    } catch (e) {}
+                    processEdges(coseLayout3, gm, edges3);`,
+    "bundled FCoSE coseLayout after process children"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    processConstraints(coseLayout3, options2);\n                    coseLayout3.runLayout();`,
+    `                    processConstraints(coseLayout3, options2);
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("coseLayout.after-process-edges-constraints", coseLayout3, null);
+                    } catch (e) {}
+                    coseLayout3.runLayout();`,
+    "bundled FCoSE coseLayout after process edges and constraints"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    coseLayout3.runLayout();\n                    return idToLNode;`,
+    `                    coseLayout3.runLayout();
+                    try {
+                      globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("coseLayout.after-runLayout", coseLayout3, null);
+                    } catch (e) {}
+                    return idToLNode;`,
+    "bundled FCoSE coseLayout after runLayout"
+  );
+
+  out = replaceOnce(
+    out,
+    `                        var _diffOnX = originalCenter.x - (maxXCoord + minXCoord) / 2;\n                        var _diffOnY = originalCenter.y - (maxYCoord + minYCoord) / 2;\n                        Object.keys(componentResult).forEach(function(item) {`,
+    `                        var _diffOnX = originalCenter.x - (maxXCoord + minXCoord) / 2;
+                        var _diffOnY = originalCenter.y - (maxYCoord + minYCoord) / 2;
+                        try {
+                          globalThis.__mermanArchRenderPathProbe && globalThis.__mermanArchRenderPathProbe.fcoseStages.push({
+                            tag: "relocateComponent.before-shift",
+                            runIndex: options2 && options2.__mermanArchFcoseRunIndex,
+                            time: performance.now(),
+                            originalCenter: { x: originalCenter.x, y: originalCenter.y },
+                            rectBbox: { x1: minXCoord, y1: minYCoord, x2: maxXCoord, y2: maxYCoord, w: maxXCoord - minXCoord, h: maxYCoord - minYCoord },
+                            rectCenter: { x: (maxXCoord + minXCoord) / 2, y: (maxYCoord + minYCoord) / 2 },
+                            delta: { x: _diffOnX, y: _diffOnY }
+                          });
+                        } catch (e) {}
+                        Object.keys(componentResult).forEach(function(item) {`,
+    "bundled FCoSE relocateComponent"
+  );
 
   out = replaceOnce(
     out,
