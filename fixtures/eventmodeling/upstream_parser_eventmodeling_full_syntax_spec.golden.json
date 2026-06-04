@@ -1,0 +1,21 @@
+{
+  "diagramType": "eventmodeling",
+  "model": {
+    "type": "eventmodeling",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "frames": [
+      {
+        "name": "01",
+        "frameKind": "timeframe",
+        "modelEntityType": "event",
+        "entityIdentifier": "Start",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      }
+    ],
+    "dataEntities": []
+  }
+}

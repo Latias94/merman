@@ -145,6 +145,7 @@ export function Preview({ className }: PreviewProps) {
     if (firstLine.startsWith("mindmap")) return "mindmap";
     if (firstLine.startsWith("gitgraph")) return "gitgraph";
     if (firstLine.startsWith("timeline")) return "timeline";
+    if (firstLine.startsWith("eventmodeling")) return "eventmodeling";
     if (firstLine.startsWith("xychart")) return "xychart";
     if (firstLine.startsWith("architecture")) return "architecture";
     if (firstLine.startsWith("block")) return "block";

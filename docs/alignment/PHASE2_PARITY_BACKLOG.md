@@ -45,7 +45,7 @@ Do not move these families into the main coverage matrix until each family has:
 | P2C-001 | P0 | Add compare plumbing for the three Phase 1 families. | Done: `compare-tree-view-svgs`, `compare-ishikawa-svgs`, and `compare-eventmodeling-svgs` exist. |
 | P2C-002 | P0 | Generate the first upstream SVG baseline batch from the pinned Mermaid commit. | Done: committed baselines exist under `fixtures/upstream-svgs/treeView`, `fixtures/upstream-svgs/ishikawa`, and `fixtures/upstream-svgs/eventmodeling`. |
 | P2C-003 | P0 | Keep Phase 2 docs synchronized with the dashboard. | Done for Series 1-4; keep updating when DOM residuals change. |
-| P2C-004 | P1 | Decide whether these families enter `compare-all-svgs` immediately or stay family-local until a broader gate is green. | The chosen policy is documented before any main matrix admission. |
+| P2C-004 | P1 | Decide whether these families enter `compare-all-svgs` immediately or stay family-local until a broader gate is green. | Done: admitted to `compare-all-svgs` primary `parity` mode; global `parity-root` skips these root-viewport-deferred families unless explicitly selected with `--diagram`. |
 
 ## TreeView
 
@@ -68,8 +68,8 @@ Backlog:
 |---|---:|---|---|
 | P2T-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2T-002 | P0 | Import the Cypress simple, complex, multiple-root, and custom-config examples as fixtures. | Done: 4 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
-| P2T-003 | P1 | Audit title/accessibility DOM behavior against upstream renderer output. | Current parser supports these fields, but SVG DOM parity has not been audited. |
-| P2T-004 | P1 | Add root viewport notes after the first compare run. | Track `viewBox`, `width`, `height`, and `max-width` residuals separately from subtree DOM parity. |
+| P2T-003 | P1 | Audit title/accessibility DOM behavior against upstream renderer output. | Done: parser-source fixture covers `title` + `accTitle` + `accDescr`; root `<svg>` now emits upstream-shaped `aria-describedby` / `aria-labelledby` plus `<title>` / `<desc>` before `<style>`. |
+| P2T-004 | P1 | Add root viewport notes after the first compare run. | Done: documented the current `parity-root` residual bucket as browser `getBBox()` / text-metric-derived `viewBox` and `max-width` drift; root `width` is aligned and no root `height` attr is emitted in the current corpus. |
 
 Deferred:
 
@@ -126,13 +126,14 @@ Backlog:
 |---|---:|---|---|
 | P2E-001 | P0 | Add upstream SVG baseline and compare command for the existing minimum fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2E-002 | P0 | Import the six Cypress rendering examples as fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
-| P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | These are already near the Phase 1 parser scope and should be cheap to snapshot. |
-| P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | They are parsed upstream but explicitly outside Phase 1 render support. |
-| P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Current local renderer emits upstream-shaped `foreignObject` HTML; strict sanitization and browser text metrics are still not claimed. |
+| P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | Done: 3 parser-source fixtures now have semantic/layout goldens and upstream SVG baselines. |
+| P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | Done: audited as upstream parser AST-only constructs for the current Mermaid baseline. Keep them out of the render semantic model; defer `note`/`gwt` rendering and standalone `entity` semantics until there is an upstream rendering contract or a separate full-AST export scope. |
+| P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Done: documented upstream data HTML handling, local XML-escaped output, whitespace/`&nbsp;` normalization, and browser text-metric residuals in `EVENTMODELING_MINIMUM.md`. Strict HTML/DOMPurify serialization and browser `getBBox()` parity remain deferred. |
 
 Deferred:
 
 - Full `note` and `gwt` rendering.
+- Standalone `entity` semantics outside timeframe entity identifiers.
 - Browser `foreignObject`, HTML sanitization, and text measurement parity.
 - Exact upstream namespace runtime-state behavior; local swimlane reuse is intentionally stable.
 
@@ -143,7 +144,8 @@ Progress as of 2026-06-04:
 - Series 1-3 are complete at the admission-infrastructure level: family-local compare commands and
   upstream SVG baseline corpora exist for `treeView`, `ishikawa`, and `eventmodeling`.
 - Series 4 first Cypress batch is imported: `treeView` has 4 Cypress fixtures, `ishikawa` has 6
-  selected Cypress fixtures, and `eventmodeling` has 6 Cypress fixtures.
+  selected Cypress fixtures, and `eventmodeling` has 6 Cypress fixtures plus 3 parser-source
+  fixtures.
 - `check-upstream-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for all three
   families, so the upstream baseline corpora are reproducible.
 - `compare-*-svgs` without `--check-dom` passes for all three families, proving parse/layout/render
@@ -151,13 +153,18 @@ Progress as of 2026-06-04:
 - `compare-*-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for all three family-local
   corpora after closing the treeView wrapper, ishikawa root/wrapper, and eventmodeling root/DOM
   shape residuals.
+- `P2C-004` admits `treeView`, `ishikawa`, and `eventmodeling` to the primary
+  `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` matrix. The global
+  `parity-root` sweep skips these three families because current family-local `parity-root` audits
+  still report root viewport residuals; explicit `compare-all-svgs --diagram <family> --dom-mode
+  parity-root` or family-local commands remain the residual audit path.
 
 1. `P2T-001`: `treeView` baseline plus compare command for the existing fixture.
 2. `P2I-001`: `ishikawa` baseline plus compare command for the existing fixture.
 3. `P2E-001`: `eventmodeling` baseline plus compare command for the existing fixture.
 4. Add the first Cypress fixture batch per family after each compare path exists.
-5. Revisit matrix admission now that all three have passing family-local compare evidence; keep
-   theme/config/rough/unsupported-statement policy work outside the main matrix until documented.
+5. Continue theme/config/rough/unsupported-statement policy work outside the primary matrix until
+   documented and covered by source-backed fixtures.
 
 ## Validation Gates
 

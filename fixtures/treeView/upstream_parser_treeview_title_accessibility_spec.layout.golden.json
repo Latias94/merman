@@ -1,0 +1,107 @@
+{
+  "diagramType": "treeView",
+  "layout": {
+    "TreeViewDiagram": {
+      "bounds": {
+        "min_x": -0.5,
+        "min_y": 0.0,
+        "max_x": 72.32,
+        "max_y": 82.8
+      },
+      "total_width": 72.32,
+      "total_height": 82.8,
+      "row_indent": 10.0,
+      "padding_x": 5.0,
+      "padding_y": 5.0,
+      "line_thickness": 1.0,
+      "use_max_width": true,
+      "label_font_size": 16.0,
+      "nodes": [
+        {
+          "id": 0.0,
+          "level": -1.0,
+          "name": "/",
+          "depth": 0.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 15.28,
+          "height": 27.6,
+          "label_x": 5.0,
+          "label_y": 13.8,
+          "label_width": 5.28,
+          "label_height": 17.6
+        },
+        {
+          "id": 1.0,
+          "level": 0.0,
+          "name": "Root",
+          "depth": 1.0,
+          "x": 15.0,
+          "y": 27.6,
+          "width": 40.24,
+          "height": 27.6,
+          "label_x": 20.0,
+          "label_y": 41.4,
+          "label_width": 30.24,
+          "label_height": 17.6
+        },
+        {
+          "id": 2.0,
+          "level": 4.0,
+          "name": "Child",
+          "depth": 2.0,
+          "x": 30.0,
+          "y": 55.2,
+          "width": 42.32,
+          "height": 27.6,
+          "label_x": 35.0,
+          "label_y": 69.0,
+          "label_width": 32.32,
+          "label_height": 17.6
+        }
+      ],
+      "lines": [
+        {
+          "x1": -10.0,
+          "y1": 13.8,
+          "x2": 0.0,
+          "y2": 13.8,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 5.0,
+          "y1": 41.4,
+          "x2": 15.0,
+          "y2": 41.4,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 20.0,
+          "y1": 69.0,
+          "x2": 30.0,
+          "y2": 69.0,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 20.0,
+          "y1": 55.2,
+          "x2": 20.0,
+          "y2": 69.5,
+          "stroke_width": 1.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 5.0,
+          "y1": 27.6,
+          "x2": 5.0,
+          "y2": 41.9,
+          "stroke_width": 1.0,
+          "kind": "vertical"
+        }
+      ]
+    }
+  }
+}

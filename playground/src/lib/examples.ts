@@ -259,6 +259,33 @@ export const examples: Example[] = [
            : Community Feedback`,
   },
   {
+    id: "eventmodeling-full-syntax",
+    name: "Event Modeling Full Syntax",
+    category: "EventModeling",
+    code: `eventmodeling
+timeframe 01 event Start`,
+  },
+  {
+    id: "eventmodeling-qualified-names",
+    name: "Event Modeling Qualified Names",
+    category: "EventModeling",
+    code: `eventmodeling
+
+timeframe 02 ui UI
+tf 01 evt Product.PriceChanged
+tf 03 evt Cart.ItemAdded`,
+  },
+  {
+    id: "eventmodeling-resetframe",
+    name: "Event Modeling Reset Frame",
+    category: "EventModeling",
+    code: `eventmodeling
+
+tf 02 ui UI
+resetframe 01 evt Product.PriceChanged
+tf 03 evt Cart.ItemAdded`,
+  },
+  {
     id: "xychart-render-timing",
     name: "Render Timing",
     category: "XY Chart",

@@ -1,0 +1,46 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": "My TreeView Diagram",
+    "accTitle": "Accessible Title",
+    "accDescr": "This is an accessible description",
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "children": [
+        {
+          "id": 1,
+          "level": 0,
+          "name": "Root",
+          "children": [
+            {
+              "id": 2,
+              "level": 4,
+              "name": "Child",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/"
+      },
+      {
+        "id": 1,
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "id": 2,
+        "level": 4,
+        "name": "Child"
+      }
+    ]
+  }
+}

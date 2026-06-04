@@ -8,6 +8,8 @@ use std::path::Path;
 use super::diagrams::*;
 use super::{RootDeltaReportLimit, parse_root_delta_report_limit};
 
+const ROOT_VIEWPORT_DEFERRED_DIAGRAMS: &[&str] = &["treeView", "ishikawa", "eventmodeling"];
+
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -96,22 +98,25 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         "quadrantchart",
         "treemap",
         "xychart",
+        "treeView",
+        "ishikawa",
+        "eventmodeling",
     ];
 
     if !only_diagrams.is_empty() {
         let only: Vec<String> = only_diagrams
             .iter()
-            .map(|s| s.trim().to_ascii_lowercase())
+            .map(|s| diagram_filter_key(s))
             .collect();
-        diagrams.retain(|d| only.iter().any(|o| o == d));
+        diagrams.retain(|d| only.iter().any(|o| o == &diagram_filter_key(d)));
     }
 
     if !skip_diagrams.is_empty() {
         let skip: Vec<String> = skip_diagrams
             .iter()
-            .map(|s| s.trim().to_ascii_lowercase())
+            .map(|s| diagram_filter_key(s))
             .collect();
-        diagrams.retain(|d| !skip.iter().any(|s| s == d));
+        diagrams.retain(|d| !skip.iter().any(|s| s == &diagram_filter_key(d)));
     }
 
     if diagrams.is_empty() {
@@ -147,6 +152,23 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         && dom_mode
             .as_deref()
             .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"));
+    let global_root_parity_sweep = root_parity_policy_enabled && only_diagrams.is_empty();
+
+    if global_root_parity_sweep {
+        let skipped: Vec<&str> = diagrams
+            .iter()
+            .copied()
+            .filter(|d| ROOT_VIEWPORT_DEFERRED_DIAGRAMS.contains(d))
+            .collect();
+        diagrams.retain(|d| !ROOT_VIEWPORT_DEFERRED_DIAGRAMS.contains(d));
+        if !skipped.is_empty() {
+            println!(
+                "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",
+                skipped.join(", ")
+            );
+        }
+    }
+
     let mut root_parity_policy =
         root_parity_policy_enabled.then(|| RootParityResidualPolicy::new(&diagrams));
 
@@ -251,6 +273,9 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             "quadrantchart" => compare_quadrantchart_svgs(cmd_args),
             "treemap" => compare_treemap_svgs(cmd_args),
             "xychart" => compare_xychart_svgs(cmd_args),
+            "treeView" => compare_tree_view_svgs(cmd_args),
+            "ishikawa" => compare_ishikawa_svgs(cmd_args),
+            "eventmodeling" => compare_eventmodeling_svgs(cmd_args),
             other => Err(XtaskError::SvgCompareFailed(format!(
                 "unexpected diagram: {other}"
             ))),
@@ -297,6 +322,13 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         Ok(())
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
+}
+
+fn diagram_filter_key(diagram: &str) -> String {
+    match diagram.trim().to_ascii_lowercase().as_str() {
+        "tree-view" | "treeview" => "treeview".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -564,5 +596,12 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
                 .iter()
                 .any(|line| line.contains("upstream_docs_example_icons_br"))
         );
+    }
+
+    #[test]
+    fn diagram_filter_key_accepts_tree_view_aliases() {
+        assert_eq!(diagram_filter_key("treeView"), "treeview");
+        assert_eq!(diagram_filter_key("tree-view"), "treeview");
+        assert_eq!(diagram_filter_key("eventmodeling"), "eventmodeling");
     }
 }

@@ -1,12 +1,36 @@
 use super::*;
+use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 
 pub(super) fn render_tree_view_diagram_svg(
     layout: &TreeViewDiagramLayout,
-    _semantic: &serde_json::Value,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    render_tree_view_diagram_svg_model(layout, &model, effective_config, options)
+}
+
+pub(super) fn render_tree_view_diagram_svg_model(
+    layout: &TreeViewDiagramLayout,
+    model: &TreeViewDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
     let min_x = -layout.line_thickness / 2.0;
     let viewbox_width = layout.total_width.max(1.0);
     let viewbox_height = layout.total_height.max(1.0);
@@ -29,6 +53,8 @@ pub(super) fn render_tree_view_diagram_svg(
                 width: root_svg::SvgRootWidth::Percent100,
                 style_attr: Some(style_attr.as_str()),
                 viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
                 trailing_newline: false,
                 ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
             },
@@ -41,6 +67,8 @@ pub(super) fn render_tree_view_diagram_svg(
                 height_attr: Some(fixed_height.as_str()),
                 style_attr: Some("background-color: white;"),
                 viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
                 trailing_newline: false,
                 ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
             },
@@ -48,6 +76,22 @@ pub(super) fn render_tree_view_diagram_svg(
     }
 
     let css = tree_view_css(effective_config);
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{}">{}</title>"#,
+            diagram_id_esc,
+            escape_xml_display(title)
+        );
+    }
+    if let Some(descr) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{}">{}</desc>"#,
+            diagram_id_esc,
+            escape_xml_display(descr)
+        );
+    }
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);

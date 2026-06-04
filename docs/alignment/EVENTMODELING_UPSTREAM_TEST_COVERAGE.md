@@ -21,6 +21,10 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.mmd`
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.mmd`
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.mmd`
+- Parser-source fixtures from `repo-ref/mermaid/packages/parser/tests/eventmodeling.test.ts`:
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_full_syntax_spec.mmd`
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_qualified_names_spec.mmd`
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_resetframe_spec.mmd`
 
 ## Upstream SVG Baselines
 
@@ -31,6 +35,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.svg`
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.svg`
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_full_syntax_spec.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_qualified_names_spec.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_resetframe_spec.svg`
 
 ## Compare Coverage
 
@@ -38,6 +45,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram eventmodeling --check-dom --dom-mode parity --dom-decimals 3`
 - Current DOM gate: `compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3`
   passes for the committed baseline corpus.
+- Data `foreignObject` audit: P2E-005 confirms that the data-block fixture covers DOM shape and
+  render-model plumbing, not strict browser HTML serialization, DOMPurify output, non-breaking
+  space handling, or `getBBox()` text metrics.
 
 ## Upstream Sources Reviewed
 
@@ -51,6 +61,11 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 ## Deferred Coverage
 
-- Full upstream parser fixtures from `repo-ref/mermaid/packages/parser/tests/eventmodeling.test.ts`.
-- `entity`, `note`, and `gwt` statement rendering.
+- The complex upstream parser fixture that includes unrendered `entity`, `note`, and `gwt`
+  statements. P2E-004 audited this fixture as upstream parser AST coverage rather than render
+  coverage: Mermaid's current eventmodeling DB/renderer does not consume `modelEntities`,
+  `noteEntities`, or `gwtEntities`.
+- `entity`, `note`, and `gwt` statement rendering. Local support stays deferred until an upstream
+  rendering contract or a separate full-AST export scope exists.
+- Strict data-block HTML parity for `html` / `md` / rich content data types.
 - Full strict DOM parity for the current Cypress image snapshot corpus.

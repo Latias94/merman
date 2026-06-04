@@ -36,6 +36,7 @@ const mermaidTokensProvider: languages.IMonarchLanguage = {
     "pie",
     "mindmap",
     "timeline",
+    "eventmodeling",
     "gitGraph",
     "xychart",
     "architecture-beta",
@@ -127,6 +128,7 @@ const keywordCompletions: CompletionSpec[] = [
   keyword("classDiagram"),
   keyword("stateDiagram-v2"),
   keyword("erDiagram"),
+  keyword("eventmodeling"),
   keyword("xychart"),
   keyword("architecture-beta"),
   keyword("block-beta"),
@@ -161,6 +163,10 @@ const snippetCompletions: CompletionSpec[] = [
   snippet(
     "requirementDiagram",
     "requirementDiagram\n  requirement ${1:api} {\n    id: ${2:1}\n    text: ${3:Stable render API}\n    risk: medium\n    verifymethod: test\n  }\n  element ${4:wasm} {\n    type: library\n  }\n  ${4:wasm} - satisfies -> ${1:api}"
+  ),
+  snippet(
+    "eventmodeling",
+    "eventmodeling\n  tf ${1:01} ui ${2:CartScreen}\n  tf ${3:02} cmd ${4:AddItem} ->> ${1:01}\n  tf ${5:03} evt ${6:ItemAdded} ->> ${3:02}"
   ),
   snippet(
     "xychart",
@@ -284,6 +290,7 @@ export function getMermaidHoverDocs(
     "radar-beta": t("editor.hover.radar"),
     "treemap-beta": t("editor.hover.treemap"),
     requirementDiagram: t("editor.hover.requirement"),
+    eventmodeling: t("editor.hover.eventmodeling"),
     participant: t("editor.hover.participant"),
     subgraph: t("editor.hover.subgraph"),
     autonumber: t("editor.hover.autonumber"),

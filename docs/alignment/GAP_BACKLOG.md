@@ -24,6 +24,11 @@ Non-blocking CI signal (kept visible to drive incremental alignment work):
 
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
+The global `parity-root` sweep skips Phase 2 Stage B families whose current family-local audits
+still report root viewport residuals: `treeView`, `ishikawa`, and `eventmodeling`. Use
+`compare-all-svgs --diagram <family> --dom-mode parity-root` or the family-local compare command
+when auditing those root residuals explicitly.
+
 ## Automated audits
 
 This repo contains a lightweight “gap audit” command to keep parity work driven by repeatable data instead of ad-hoc
