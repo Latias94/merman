@@ -191,8 +191,9 @@ Last updated: 2026-06-04
   without manual subtraction. This remains evidence tooling only.
   A follow-up label-phase join regenerated current-HEAD local deltas under
   `target\compare\architecture-delta-label-phase-current-hpd050\` and joined them with that probe
-  batch. `group_port_edges_017` is now zero-delta on current HEAD and should not be reopened from
-  stale pre-Procrustes artifacts. The remaining direct group-width tails are `batch5` `+5px`,
+  batch. `group_port_edges_017` is now zero-delta on current HEAD after the Procrustes and
+  strict-intersects follow-ups, and should not be reopened from stale pre-fix artifacts. The
+  remaining direct group-width tails are `batch5` `+5px`,
   `html_titles` `+5px`, and `unicode` `+3px`, but the joined child-label and final-group phases
   reject another standalone group-padding, font-family switch, or exact labelWidth lookup attempt.
   A follow-up group-content-union source audit narrowed those direct width tails to local child
@@ -394,13 +395,17 @@ Last updated: 2026-06-04
   `repulsion=(0,250)` / displacement `(0,30)`, while local gives `repulsion=(40,40)` /
   displacement `(6,6)`. Current evidence points to a `layout-base` clipping / near-touching
   rectangle boundary after `ConstraintHandler.handleConstraints(...)`, not renderer group padding
-  or a wrong `eles.boundingBox()` original-center input. Do not globally change
-  `rects_intersect(...)` or add an epsilon without a focused clipping parity test and full
+  or a wrong `eles.boundingBox()` original-center input. Do not add
+  a global `rects_intersect(...)` epsilon without a focused clipping parity test and full
   Architecture verification.
   A narrow Architecture Procrustes compatibility slice is now landed: `group_port_edges_017`
   returns to the upstream root viewBox at 3-decimal precision, the Architecture root mismatch
   queue drops from `25` to `24`, and structural parity stays green. Treat the remaining root
-  rows as diagnostic until a separate source-backed seam justifies more work.
+  rows as diagnostic until a separate source-backed seam justifies more work. A later strict
+  `RectangleD.intersects(...)` follow-up restores source-positive-gap clipping after the broader
+  geometry epsilon work reactivated this row, keeps `batch6_junctions_087` passing, and reduces
+  the post-095 Architecture root queue from `23` to `20` mismatch rows without root pins or
+  baselines.
 
 ## M5 - Semantic / Render Unification Pilot
 

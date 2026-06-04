@@ -587,8 +587,8 @@ a future Mermaid baseline changes the source behavior.
 - Do not treat `stress_architecture_html_titles_and_escapes_041` as an HTML/entity or edge-label
   bug. Focused evidence shows the root tail is group-rect / Cytoscape service bbox dominated.
 - Do not tune group-edge shifts from `stress_architecture_group_port_edges_017`; its constraints,
-  service bboxes, and Mermaid source force policy already match, while the remaining height delta
-  comes from the FCoSE solution.
+  service bboxes, and Mermaid source force policy already match. This row is now root-exact after
+  the strict `RectangleD.intersects(...)` follow-up restored source-positive-gap clipping.
 - Do not treat `stress_architecture_unicode_and_xml_escapes_019` as an entity-escaping bug; its
   residual is group/service bbox width.
 - Do not alter Architecture edge-label wrapping from `stress_architecture_edge_label_corner_cases_012`
@@ -597,17 +597,19 @@ a future Mermaid baseline changes the source behavior.
   root-bounds fix, so further work should not tune their wrapping or text scale.
 - Do not tune nested-group padding from `stress_architecture_nested_groups_002`; current evidence
   points to small FCoSE/compound-bound drift after source inputs match.
-- Fresh 2026-06-03 Architecture reports supersede the older 29-row M15RV-089 queue: structural
-  parity is green and Architecture `parity-root` has `25` mismatches after the HPD-050
-  isolated-service seam. Do not continue from `stress_architecture_batch4_init_small_icons_061`,
+- Fresh 2026-06-05 Architecture reports supersede the older 29-row and 25-row M15RV-089 queues:
+  structural parity is green and Architecture `parity-root` has `20` mismatches after the HPD-050
+  multiline-title and strict-intersects fixes. Do not continue from
+  `stress_architecture_batch4_init_small_icons_061`,
   `stress_architecture_batch4_init_fontsize_wrap_063`, `stress_architecture_edge_label_corner_cases_012`,
   `stress_architecture_fan_in_out_021`, `stress_architecture_deep_nesting_013`,
-  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`, or
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`,
+  `stress_architecture_group_port_edges_017`, or
   `stress_architecture_disconnected_islands_046` unless a fresh report regresses. The live larger
-  Architecture audit queue is `junction_fork_join_026`, `batch5_long_titles_and_punct_076`,
+  Architecture audit queue is `batch5_long_titles_and_punct_076`,
   `html_titles_and_escapes_041`, `unicode_and_xml_escapes_019`,
-  `batch6_init_fontsize_icon_size_wrap_093`, `nested_groups_002`, and
-  `group_port_edges_017`.
+  `batch6_init_fontsize_icon_size_wrap_093`, and `nested_groups_002`, with smaller browser/Cytoscape
+  bbox lattice rows remaining diagnostic unless a reusable source rule appears.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

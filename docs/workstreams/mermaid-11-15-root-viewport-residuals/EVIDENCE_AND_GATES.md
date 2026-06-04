@@ -1504,10 +1504,9 @@ Outcome:
 
 Fresh focused evidence after the source-backed FCoSE compound-repulsion audit:
 
-- `cargo nextest run -p manatee -E 'test(rects_intersect_treats_tiny_touch_gap_as_intersection) or test(overlap_separation_treats_nearly_equal_centers_as_equal)'`:
-  passed. These regression tests failed before the geometry fix, proving the seam covered the
-  observed near-touch rectangle and near-equal-center direction split.
-- `cargo nextest run -p manatee fcose`: passed, `10` tests run.
+- `cargo nextest run -p manatee fcose`: passed, `10` tests run. Later strict-intersects evidence
+  below narrows the rectangle-boundary part of this fix: positive gaps stay non-intersecting, while
+  near-equal center/direction handling retains the epsilon guard.
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_junctions_hpd050_fcose_geometry_epsilon.md`:
   passed. The focused row now reports upstream/local `max-width: 653.184px` with `+0.000px`
   delta.
@@ -1524,9 +1523,10 @@ Outcome:
 - The prior `+46.001831px` batch6 root residual was caused by floating-point boundary drift in the
   FCoSE repulsion geometry path, not by RNG, relative constraints, root overrides, or stored SVG
   baselines.
-- `rects_intersect(...)` now treats `1e-12`-scale touch gaps as intersection, preserving the
-  layout-base "touching edges intersect" rule under Rust/JS floating-point drift.
-- Overlap separation now treats `1e-12`-scale center differences as equal for direction and
+- The current source boundary is source-strict rectangle intersection plus epsilon-guarded
+  near-equal center/direction handling; the strict-intersects follow-up below records that
+  refinement.
+- Overlap separation treats `1e-12`-scale center differences as equal for direction and
   exact-center slope fallback, preventing compound repulsion from flipping sign on the second
   FCoSE run.
 - No root pins or browser-specific metric constants were added.
@@ -1707,3 +1707,33 @@ Outcome:
 - Keep Architecture root overrides at `0`; the active Architecture follow-up remains the
   source-backed HPD-050 audit around the current batch6 FCoSE/root residual, not a root-pin or
   fixture-constant closure.
+
+## 2026-06-05 - Architecture FCoSE Strict Intersects Follow-Up
+
+Fresh focused evidence after revalidating `stress_architecture_group_port_edges_017` on the
+post-multiline-title-fix code:
+
+- `cargo nextest run -p manatee -E 'test(rects_intersect_keeps_positive_touch_gap_separate) or test(overlap_separation_treats_nearly_equal_centers_as_equal) or test(constraint_handler_preserves_group_port_second_run_tiny_gap)'`:
+  passed, `3` tests run.
+- `cargo nextest run -p manatee`: passed, `14` tests run.
+- `cargo nextest run -p merman-render architecture`: passed, `31` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_group_port_edges_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/arch-focused-017-strict-intersect-final`:
+  passed. `group_port_edges_017` is root-exact again.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/arch-focused-087-strict-intersect-final`:
+  passed. The previous `087` closure remains outside the mismatch list.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target/compare/architecture-report-parity-root-strict-intersect-final`:
+  expected failure with `20` Architecture root/style mismatch rows.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`:
+  passed across the implemented matrix.
+- `cargo run -p xtask -- report-overrides --check-no-growth`, `cargo fmt --check`, and
+  `git diff --check`: passed.
+
+Outcome:
+
+- `rects_intersect(...)` now mirrors layout-base `RectangleD.intersects(...)`: exact touching edges
+  intersect, but a positive gap stays non-intersecting. This restores the source-backed
+  `group_port_edges_017` second-run clipping branch.
+- The `GEOMETRY_EPSILON` guard remains for near-equal center/direction checks, preserving the
+  `batch6_junctions_multi_split_with_group_edges_087` fix.
+- The post-095 Architecture root queue improves from `23` to `20` mismatch rows without adding
+  root pins, fixture constants, baseline refreshes, or global padding changes.

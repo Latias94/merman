@@ -603,13 +603,20 @@ Current repository reality to preserve:
     run's first CoSE tick: upstream gives the `inner` compound `repulsion=(0,250)` and displacement
     `(0,30)`, while local gives `repulsion=(40,40)` and displacement `(6,6)`. Treat the next
     candidate as a `layout-base` clipping / near-touching rectangle boundary after
-    `ConstraintHandler.handleConstraints(...)`; do not change `rects_intersect(...)`, add a global
-    epsilon, or tune group padding without a focused clipping parity test plus full Architecture
+    `ConstraintHandler.handleConstraints(...)`; do not add a global `rects_intersect(...)`
+    epsilon or tune group padding without a focused clipping parity test plus full Architecture
     verification.
   - A narrow Procrustes compatibility slice is now landed for `group_port_edges_017`: the
     measured six-pair Architecture covariance shape keeps the half-EPS tail only for that seam,
     restoring the row at 3-decimal precision and dropping the full Architecture root mismatch
     queue from `25` to `24` without new structural regressions.
+  - A follow-up strict-intersects slice is now landed after fresh post-095 evidence showed
+    `group_port_edges_017` had reappeared. `rects_intersect(...)` again mirrors layout-base
+    `RectangleD.intersects(...)`: exact touching edges intersect, but positive gaps stay
+    non-intersecting. The near-equal center/direction epsilon remains, so
+    `batch6_junctions_multi_split_with_group_edges_087` stays root-green. Full Architecture
+    structural parity is green, and Architecture `parity-root` now expected-fails with `20`
+    mismatch rows without root pins or baselines.
   - A follow-up Cytoscape canvas-width audit ruled out the latest tempting `+5px` production paths.
     Stored SVG service titles still inherit the Mermaid root SVG font, while Cytoscape compound
     child labels use Cytoscape's default canvas font

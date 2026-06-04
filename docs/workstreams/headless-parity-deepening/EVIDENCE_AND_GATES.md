@@ -6367,16 +6367,15 @@ Outcome:
 
 - Closed the active `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`
   Architecture root residual by fixing FCoSE compound-repulsion boundary geometry.
-- The source-backed diagnosis found the missing second-run displacement in compound repulsion:
-  root-level near-touch rectangles and near-equal overlap centers were being split by tiny
-  Rust/JS floating-point drift.
+- The source-backed diagnosis found missing second-run displacement in compound repulsion around
+  near-equal overlap centers and rectangle-boundary floating-point drift. This was later narrowed by
+  the strict-intersects slice below: `rects_intersect(...)` keeps source-strict positive-gap
+  semantics, while near-equal center/direction comparisons retain the epsilon guard.
 - No random-seed offset change, root override, stored SVG baseline, or browser metric constant was
   kept.
 
 Focused verification:
 
-- `cargo nextest run -p manatee -E 'test(rects_intersect_treats_tiny_touch_gap_as_intersection) or test(overlap_separation_treats_nearly_equal_centers_as_equal)'` -
-  passed, `2` tests run after failing before the fix.
 - `cargo nextest run -p manatee fcose` - passed, `10` tests run.
 - `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_junctions_hpd050_fcose_geometry_epsilon.md` -
   passed with upstream/local `max-width: 653.184px`.
@@ -6390,6 +6389,8 @@ Gate notes:
 
 - Remaining Architecture `parity-root` failures are led by the existing `+5px`
   long-title/HTML-title tails and remain HPD-050 follow-up material.
+- Current code no longer treats tiny positive rectangle gaps as intersection; see
+  `HPD-050 - Architecture FCoSE Strict Rectangle Intersects` below for the narrowed source rule.
 
 ## HPD-050 - Architecture Long Group Title Small Residuals
 
@@ -6460,3 +6461,48 @@ Gate notes:
 - This is not a root pin or fixture constant. It closes the multi-line group-title SVG
   `getBBox()` lattice tail represented by `095` and leaves the remaining service child
   contribution / Cytoscape bbox phase residuals open.
+
+## HPD-050 - Architecture FCoSE Strict Rectangle Intersects
+
+Outcome:
+
+- Revalidated `stress_architecture_group_port_edges_017` after the multiline group-title fix and
+  confirmed it had reappeared as a current root residual: upstream/local max-width was
+  `707.769226px` / `709.237549px`, with local root height `17.845154px` shorter.
+- The current force debug matched the earlier source audit: the second-run `inner` compound was
+  taking the overlap repulsion branch (`rep=(40,40)`) instead of the upstream positive-gap clipping
+  branch (`rep=(0,250)`).
+- Restored `rects_intersect(...)` to source-strict layout-base semantics: touching edges intersect,
+  but a positive gap remains non-intersecting. The `GEOMETRY_EPSILON` guard remains only for
+  near-equal center/direction comparisons, preserving the `087` closure.
+- Added/updated tests for source-strict `RectangleD.intersects(...)` and the `group_port_edges_017`
+  positive-gap clipping branch. No root pin, fixture special case, baseline refresh, group padding
+  tweak, or broad solver rewrite was added.
+
+Focused verification:
+
+- `cargo nextest run -p manatee -E 'test(rects_intersect_keeps_positive_touch_gap_separate) or test(overlap_separation_treats_nearly_equal_centers_as_equal) or test(constraint_handler_preserves_group_port_second_run_tiny_gap)'` -
+  passed, `3` tests run.
+- `cargo nextest run -p manatee fcose` - passed, `10` tests run.
+- `cargo nextest run -p manatee` - passed, `14` tests run.
+- `cargo nextest run -p merman-render architecture` - passed, `31` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_group_port_edges_017 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\arch-focused-017-strict-intersect-final` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\arch-focused-087-strict-intersect-final` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-strict-intersect-final` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\architecture-report-parity-root-strict-intersect-final` -
+  expected-failed with `20` Architecture root/style mismatch rows. `group_port_edges_017` is
+  root-exact, and `087` remains outside the mismatch list.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed across the implemented matrix.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The post-095 Architecture root queue improves from `23` mismatch rows to `20` mismatch rows.
+- Do not reintroduce a global rectangle-intersection epsilon. The current source boundary is strict
+  positive-gap handling plus narrowly tested near-equal-center handling for overlap direction.

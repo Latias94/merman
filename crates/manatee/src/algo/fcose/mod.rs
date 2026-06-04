@@ -4599,12 +4599,14 @@ mod tests {
     }
 
     #[test]
-    fn rects_intersect_treats_tiny_touch_gap_as_intersection() {
+    fn rects_intersect_keeps_positive_touch_gap_separate() {
         let a = node_at(0.0, 0.0, 80.0, 80.0);
-        let near_touch = node_at(80.0 + 1e-12, 0.0, 80.0, 80.0);
+        let exact_touch = node_at(80.0, 0.0, 80.0, 80.0);
+        let positive_gap = node_at(80.0 + 1e-12, 0.0, 80.0, 80.0);
         let separated = node_at(80.0 + 1e-6, 0.0, 80.0, 80.0);
 
-        assert!(super::rects_intersect(&a, &near_touch));
+        assert!(super::rects_intersect(&a, &exact_touch));
+        assert!(!super::rects_intersect(&a, &positive_gap));
         assert!(!super::rects_intersect(&a, &separated));
     }
 
@@ -4630,8 +4632,8 @@ mod tests {
         // Browser evidence for `stress_architecture_group_port_edges_017`, run=1:
         // Cytoscape/cose-base constraint handling leaves a 7.1e-15 positive gap between the
         // computed `inner` compound top and `out1` bottom after the next `updateBounds()` pass.
-        // The FCoSE geometry layer treats this as a floating-point touch gap; this test preserves
-        // the upstream constraint-handler checkpoint that exposed the boundary case.
+        // That tiny positive gap is enough for layout-base `RectangleD.intersects(...)` to return
+        // false and for `inner/out1` repulsion to take the vertical clipping path.
         let mut nodes = vec![
             // in1
             node_at(-47.406_611_585_551_886, 59.051_469_403_565_15, 80.0, 80.0),
@@ -4693,6 +4695,29 @@ mod tests {
             inner_top_after_update_bounds > out1_bottom,
             "expected a positive JS layout-base gap, got inner_top={inner_top_after_update_bounds:?} out1_bottom={out1_bottom:?} gap={:?}",
             inner_top_after_update_bounds - out1_bottom
+        );
+
+        let inner_left = nodes[0].left.min(nodes[1].left) - 40.0;
+        let inner_right = nodes[0].right().max(nodes[1].right()) + 40.0;
+        let mut inner = node_at(
+            inner_left,
+            inner_top_after_update_bounds,
+            inner_right - inner_left,
+            160.0,
+        );
+        inner.is_compound = true;
+        inner.no_of_children = 2.0;
+
+        assert!(
+            !super::rects_intersect(&nodes[2], &inner),
+            "expected positive-gap out1/inner pair to use the non-overlap clipping branch"
+        );
+        let (_out1_x, out1_y, _inner_x, inner_y) = super::rect_clip_points(&nodes[2], &inner);
+        let eps = 1e-9;
+        assert!((out1_y - out1_bottom).abs() < eps, "out1_y: {out1_y}");
+        assert!(
+            (inner_y - inner_top_after_update_bounds).abs() < eps,
+            "inner_y: {inner_y}"
         );
     }
 
@@ -4832,10 +4857,7 @@ mod tests {
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
     // Mirror layout-base `RectangleD.intersects`: touching edges count as intersection.
-    !(definitely_less(a.right(), b.left)
-        || definitely_less(a.bottom(), b.top)
-        || definitely_less(b.right(), a.left)
-        || definitely_less(b.bottom(), a.top))
+    !(a.right() < b.left || a.bottom() < b.top || b.right() < a.left || b.bottom() < a.top)
 }
 
 #[inline]

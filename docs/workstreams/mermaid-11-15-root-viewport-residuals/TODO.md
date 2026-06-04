@@ -234,8 +234,7 @@ Last updated: 2026-06-04
   `stress_architecture_html_titles_and_escapes_041` (`+5px`),
   `stress_architecture_unicode_and_xml_escapes_019` (`+3px`),
   `stress_architecture_batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`),
-  `stress_architecture_nested_groups_002` (`+2.5px`), and
-  `stress_architecture_group_port_edges_017` (`+1.468px`), treating the smaller
+  and `stress_architecture_nested_groups_002` (`+2.5px`), treating the smaller
   browser/Cytoscape bbox lattice as diagnostic unless a reusable generated rule is found.
   Additional focused checks classified `stress_architecture_html_titles_and_escapes_041` as a
   group/service Cytoscape bbox tail (not an HTML/entity or edge-label source bug), and
@@ -247,18 +246,19 @@ Last updated: 2026-06-04
   `stress_architecture_batch4_init_fontsize_wrap_063` as edge-label browser `getBBox()` tails, but
   those two rows are now root-green after the later HPD-050 `createText()` root-bounds fix. Keep
   `stress_architecture_nested_groups_002` classified as a nested-compound/FCoSE residual after
-  source inputs match. Latest HPD-050 FCoSE geometry evidence closes
-  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` again by treating
-  near-touch rectangles and near-equal overlap centers with a `1e-9` geometry epsilon; full
-  Architecture structural parity stays green and Architecture `parity-root` now has `24` mismatch
+  source inputs match. HPD-050 FCoSE geometry evidence closes
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` by preserving
+  near-equal center/direction behavior, and the later strict-intersects follow-up restores
+  layout-base positive-gap clipping for `stress_architecture_group_port_edges_017`; full
+  Architecture structural parity stays green and Architecture `parity-root` now has `20` mismatch
   rows led by the existing `+5px` long-title/HTML-title tails. A follow-up small-residual
   classification shows `batch3_long_group_titles_wrapping_055` is not a group-title root-bbox row:
   it is a `-1px` Cytoscape service child label/bbox phase cancellation. The
   `batch6_long_group_titles_wrapping_extreme_095` row has exact services and group rects, leaving
   only a `-0.46875px` group-title SVG text `getBBox()` / root-union estimate tail. A later narrow
   production fix models that class by rounding only multi-line group-title SVG row widths for
-  synthetic root union; `095` is now root-exact, and the Architecture queue drops to 23 mismatch
-  rows without adding root pins or baselines.
+  synthetic root union; `095` is now root-exact. The current Architecture queue is `20` mismatch
+  rows after the strict-intersects follow-up, without adding root pins or baselines.
 
 ## M3 - Policy Closeout
 
