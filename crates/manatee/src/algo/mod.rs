@@ -19,6 +19,11 @@ pub struct CoseBilkentOptions {
 #[derive(Debug, Clone)]
 pub struct FcoseOptions {
     pub random_seed: u64,
+    /// Optional number of seeded random values to consume before the first FCoSE run.
+    ///
+    /// Use this to mirror upstream render paths that consume `Math.random()` before layout
+    /// construction. When unset, the Rust port preserves its historical default offset behavior.
+    pub random_seed_offset: Option<usize>,
     /// Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` inside `layoutstop`),
     /// which advances the seeded `Math.random()` stream and can change the final coordinates.
     ///
@@ -57,6 +62,7 @@ impl Default for FcoseOptions {
     fn default() -> Self {
         Self {
             random_seed: 0,
+            random_seed_offset: None,
             rerun: false,
             randomize: true,
             node_separation: None,

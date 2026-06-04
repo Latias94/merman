@@ -1219,6 +1219,9 @@ fn layout_architecture_diagram_model(
             // Mermaid@11.15 wraps FCoSE in a seeded `Math.random()` helper. Seed 0 opts out
             // upstream; the Rust port keeps a deterministic fallback for headless repeatability.
             random_seed: fcose_seed,
+            // The shipped Mermaid 11.15 Architecture render path consumes two seeded random
+            // values before the first FCoSE constraint shuffle even when `randomize=false`.
+            random_seed_offset: Some(2),
         };
 
         if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")

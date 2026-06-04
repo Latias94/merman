@@ -108,6 +108,7 @@ pub struct IndexedEdge {
 #[derive(Debug, Clone)]
 pub struct IndexedFcoseOptions {
     pub random_seed: u64,
+    pub random_seed_offset: Option<usize>,
     pub rerun: bool,
     pub randomize: bool,
     pub node_separation: Option<f64>,
@@ -125,6 +126,7 @@ impl Default for IndexedFcoseOptions {
     fn default() -> Self {
         Self {
             random_seed: 0,
+            random_seed_offset: None,
             rerun: false,
             randomize: true,
             node_separation: None,
@@ -235,10 +237,13 @@ pub fn layout_indexed(
     }
 
     let mut rng = XorShift64Star::new(opts.random_seed);
-    if opts.randomize {
-        // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start; a small
-        // amount of randomness can be consumed before the first spectral sampler draw. Model that
-        // as a single deterministic "seed offset" per layout invocation (not per rerun).
+    let random_seed_offset = opts
+        .random_seed_offset
+        .unwrap_or(usize::from(opts.randomize));
+    for _ in 0..random_seed_offset {
+        // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start. Some
+        // render paths consume deterministic random values before the first FCoSE draw. Model that
+        // as a per-layout invocation offset (not per rerun).
         let _ = rng.next_f64_unit();
     }
     let run_count = if opts.rerun { 2 } else { 1 };
@@ -513,6 +518,7 @@ fn graph_to_indexed(graph: &Graph, opts: &FcoseOptions) -> (IndexedGraph, Indexe
 
     let indexed_opts = IndexedFcoseOptions {
         random_seed: opts.random_seed,
+        random_seed_offset: opts.random_seed_offset,
         rerun: opts.rerun,
         randomize: opts.randomize,
         node_separation: opts.node_separation,
@@ -4348,6 +4354,7 @@ mod tests {
 
         let opts = FcoseOptions {
             random_seed: 1,
+            random_seed_offset: None,
             rerun: false,
             randomize: true,
             node_separation: None,
@@ -4423,6 +4430,7 @@ mod tests {
         };
         let indexed_opts = IndexedFcoseOptions {
             random_seed: 1,
+            random_seed_offset: None,
             rerun: false,
             randomize: true,
             node_separation: None,
