@@ -45,4 +45,6 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   current committed baseline corpus.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/treeView/`.
 - Parser diagnostics are Rust-native and not exact Langium error strings.
-- SVG DOM ordering and browser `getBBox()` float details have not been strict-parity audited.
+- Strict root viewport parity is not claimed: `parity-root` currently reports `viewBox` /
+  `max-width` drift caused by browser `getBBox()` text measurement differences. Root `width` is
+  aligned and no root `height` attr is emitted by the current corpus.
