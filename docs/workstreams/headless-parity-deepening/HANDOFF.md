@@ -409,6 +409,60 @@ Current repository reality to preserve:
     focused boundary services still show width drift after final expansion, while the height side
     narrows to a stable final `-1px`; continue from service child contribution and body/label phase
     modeling, not final rect or group padding.
+  - A follow-up service-label final-frame report slice now adds
+    `local contribution label final-frame` and label `dx/dy/dw/dh` to the service join. It shifts
+    the local contribution-label rectangle into browser final-frame coordinates before comparing it
+    with `labelBounds.all`. The focused rows all show `label dy=-78` / `label dh=+77`, which is the
+    expected concept gap between a local extended child contribution rectangle and browser text
+    label bounds. Keep using the horizontal `label dx` / `label dw` values to audit service
+    contribution width and placement drift; do not convert the vertical label comparison into a
+    group-padding, final-rect, or text-bbox production tweak.
+  - A follow-up current residual ordering slice now adds `max-width delta` to
+    `summarize-architecture-deltas` and sorts the summary by absolute max-width residual. A fresh
+    current Architecture `parity-root` report expected-fails with `24` root-only mismatches, and
+    the sorted summary aligns with that queue: `junction_fork_join` first, then `batch5`,
+    `html_titles`, `unicode`, `batch6_init`, and `nested_groups`. `group_port_edges_017` is
+    zero-delta on current HEAD; keep it out of the active Architecture root queue unless a fresh
+    report regresses.
+  - A follow-up root-score summary slice now adds viewBox width delta, viewBox height delta, and
+    `root residual score` to `summarize-architecture-deltas`. The score is the max absolute
+    residual across `max-width`, viewBox width, and viewBox height, so height/viewBox-dominant tails
+    no longer sort behind smaller width-only rows. The current root-score summary is
+    `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`;
+    it keeps `junction_fork_join_026` first at `13.976`, keeps the active top queue unchanged, and
+    still shows `group_port_edges_017` as zero-delta. Treat this as evidence governance only.
+  - A follow-up delta-batch root-score slice projects that same score into
+    `debug-architecture-delta`. Per-fixture reports now print viewBox width/height deltas,
+    max-width delta, and root residual score under `Root viewport`, while multi-fixture
+    `architecture-delta-batch.md` sorts by the score. The current entrypoint is
+    `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`.
+  - A follow-up nested aggregate-edge slice now adds `Group aggregate edge attribution` to
+    `debug-architecture-delta --probe-dir`. In
+    `target\compare\architecture-delta-current-top-aggregate-edge-hpd050\stress_architecture_nested_groups_002.md`,
+    `platform` attributes its aggregate `edge dw=-0.5` to child group `data` owning both horizontal
+    edges (`left dx=44.25`, `right dx=43.75`), while vertical aggregate height balances to
+    `edge dh=0` between `runtime` top and `data` bottom. This keeps the nested residual in
+    child-group aggregate boundary drift, not direct services or final expansion.
+  - A follow-up production-path experiment rejected global child-group inset retuning. Changing
+    `GroupRectComputer`'s `child_group_inset` from `1.0` to `0.75` expanded Architecture
+    `parity-root` from `24` to `44`, worsened `nested_groups_002` to `+2.75`, and reintroduced
+    `group_port_edges_017` at `+0.25`. The code is restored to `1.0`; do not use global child-group
+    inset tuning as the nested-groups fix.
+  - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
+    `--fixture` filters. The repeated form preserves one report per fixture and also works with
+    `--probe-dir`, so focused Architecture residual reports can be regenerated in one command
+    before a source-backed experiment. Use it to avoid stale manual per-fixture report drift.
+  - A follow-up local-delta batch-index slice now writes `architecture-delta-batch.md` for
+    multi-fixture `debug-architecture-delta` runs. The focused current index is
+    `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md` and links the
+    `batch5`, `html_titles`, and `unicode` reports to their copied upstream/local SVGs and browser
+    probe JSONs. Use it as the local-delta counterpart to the existing browser probe batch index.
+  - A follow-up nested-group aggregate slice now adds `Group aggregate child attribution` to
+    `debug-architecture-delta --probe-dir`. The current top-residual batch is
+    `target\compare\architecture-delta-current-top-residuals-hpd050\architecture-delta-batch.md`;
+    in `nested_groups_002`, `platform` now reports child groups `data, runtime`,
+    `content dw=-0.500000`, and matching local/browser expansion `dw=83.000000`. This keeps nested
+    parent residuals source-phase-auditable without changing renderer formulas.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

@@ -3,6 +3,407 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Child Group Inset Experiment Rejected
+
+Outcome:
+
+- Audited the renderer-side nested group production path in
+  `crates/merman-render/src/svg/parity/architecture/geometry.rs`.
+- `GroupRectComputer` does not union child group emitted rects raw for parent content; it first
+  applies the existing `child_group_inset = 1.0` on each edge, then applies group padding.
+- A focused experiment changed that inset to `0.75` to test whether `nested_groups_002/platform`
+  was a narrow child-group aggregate boundary fix.
+- The experiment was rejected:
+  - Architecture `parity-root` mismatches expanded from the current `24` to `44`.
+  - `nested_groups_002` worsened from `+2.500` to `+2.750`.
+  - Previously resolved `group_port_edges_017` reappeared at `+0.250`.
+  - Deep/nested group rows such as `deep_group_chain_027` and
+    `batch6_deep_group_chain_crosslinks_094` regressed.
+- The production code was restored to `child_group_inset = 1.0`; no renderer behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-child-group-inset-rejected.md`
+- `target\compare\architecture_report_parity_root_child_inset_075_hpd050.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_child_inset_075_hpd050.md` -
+  expected-failed with `44` root-only mismatches under the rejected experiment.
+- `git diff -- crates/merman-render/src/svg/parity/architecture/geometry.rs` - clean after
+  restoring `child_group_inset = 1.0`.
+
+Residual note:
+
+- Do not fix `nested_groups_002` by retuning `child_group_inset` globally. The residual remains a
+  child-group aggregate boundary diagnostic unless a narrower source-backed phase model survives
+  full Architecture verification.
+
+## HPD-050 - Architecture Nested Group Aggregate Edge Attribution
+
+Outcome:
+
+- `xtask debug-architecture-delta --probe-dir` now adds a `Group aggregate edge attribution` table.
+- The table extends edge attribution beyond direct services by comparing:
+  - browser direct service child unions plus child-group `node.boundingBox()` values
+  - local direct service contribution bounds plus child-group emitted rects
+- This makes nested parent group content deltas attributable to left/right/top/bottom child owners
+  instead of requiring manual reconstruction from the aggregate content table.
+- Regenerated the current top-residual batch under
+  `target\compare\architecture-delta-current-top-aggregate-edge-hpd050`.
+- In `nested_groups_002/platform`, the new row reports:
+  - child groups: `data, runtime`
+  - browser/local left owner: `data`, left dx `44.250000`
+  - browser/local right owner: `data`, right dx `43.750000`
+  - aggregate edge width delta: `-0.500000`
+  - browser/local top owner: `runtime`, top dy `40.000000`
+  - browser/local bottom owner: `data`, bottom dy `40.000000`
+  - aggregate edge height delta: `0.000000`
+- This directly attributes the parent `platform` aggregate width tail to child-group boundary
+  placement/width, not direct services or final group expansion.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-nested-group-aggregate-edge.md`
+- `target\compare\architecture-delta-current-top-aggregate-edge-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_probe_join_reports_nested_group_aggregate_content architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-aggregate-edge-hpd050` -
+  passed and wrote the aggregate-edge batch.
+- `cargo fmt --check -p xtask` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. It narrows `nested_groups_002/platform` to child-group aggregate
+  boundary drift, but it does not justify changing group padding, final group expansion, service
+  label measurement, or root-bounds formulas.
+
+## HPD-050 - Architecture Delta Batch Root Residual Score Projection
+
+Outcome:
+
+- `xtask debug-architecture-delta` now projects the same root residual vocabulary used by
+  `summarize-architecture-deltas`.
+- Per-fixture delta reports now show:
+  - `viewBox width delta`
+  - `viewBox height delta`
+  - `max-width delta`
+  - `root residual score`
+- Multi-fixture `architecture-delta-batch.md` now includes those same columns and sorts rows by
+  root residual score descending, then fixture name.
+- Regenerated the current top-residual batch under
+  `target\compare\architecture-delta-current-top-root-score-hpd050`.
+- The batch index now makes the top row self-contained:
+  - `junction_fork_join_026`: viewBox width `+13.976`, viewBox height `-12.502`,
+    max-width `+13.976`, score `13.976`.
+- The focused test covers the height-only ordering case: a `-6.000` viewBox height row sorts ahead
+  of a `+5.000` max-width-only row.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-root-score.md`
+- `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_batch_markdown_links_per_fixture_artifacts architecture_delta_summary_order_sorts_by_root_residual_score_then_stem` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-root-score-hpd050` -
+  passed and wrote the root-score batch index plus per-fixture reports.
+- `cargo fmt --check -p xtask` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The current-top Architecture delta batch now uses the same
+  root-score ordering as the all-fixture summary, but it does not change residual classification or
+  justify a production layout tweak.
+
+## HPD-050 - Architecture Delta Summary Root Residual Score
+
+Outcome:
+
+- `xtask summarize-architecture-deltas` now reports `viewBox width delta`,
+  `viewBox height delta`, and `root residual score`.
+- The score is the maximum absolute value across `max-width`, viewBox width, and viewBox height
+  deltas, then fixture name remains the deterministic tie-breaker.
+- This keeps height-only and viewBox-dominant root tails visible in the local Architecture delta
+  summary instead of letting the report be shaped only by `max-width`.
+- Regenerated the summary under
+  `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`.
+- The current top rows remain the active Architecture root queue:
+  - `junction_fork_join_026`: score `13.976`, with viewBox width `+13.976` and height `-12.502`.
+  - `batch5_long_titles_and_punct_076`: score `5.000`.
+  - `html_titles_and_escapes_041`: score `5.000`.
+  - `unicode_and_xml_escapes_019`: score `3.000`.
+  - `batch6_init_fontsize_icon_size_wrap_093`: score `2.500`.
+  - `nested_groups_002`: score `2.500`.
+- Smaller viewBox-height tails are now ordered correctly too: `group_to_group_multi_034`
+  scores `0.755` from height delta and ranks above `long_group_titles_018` at `0.656`.
+- `group_port_edges_017` remains zero-delta on current HEAD and should not be reopened from stale
+  pre-Procrustes artifacts.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-summary-root-score.md`
+- `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`
+- `target\compare\architecture_report_parity_root_hpd050_current.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_summary_order_sorts_by_root_residual_score_then_stem` -
+  passed, `1` test run.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-root-score-hpd050` -
+  passed and wrote the root-score sorted summary.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_current.md` -
+  expected-failed with `24` root-only mismatches.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is evidence tooling only. Root-score ordering makes the Architecture delta queue more honest
+  for width and height tails, but it does not justify a production layout, group-padding,
+  final-rect, or root-bounds formula change.
+
+## HPD-050 - Architecture Nested Group Aggregate Delta Report
+
+Outcome:
+
+- `xtask debug-architecture-delta --probe-dir` now adds a `Group aggregate child attribution` table
+  to the browser probe phase join.
+- The aggregate table combines local direct service contribution bounds with direct child-group
+  emitted rects, then compares that local aggregate against browser
+  `childrenBoundingBoxIncludeLabels`.
+- This closes a diagnostic blind spot in nested Architecture fixtures where parent groups have no
+  direct services. The old direct-service table correctly printed `<none>` for those parents, but
+  that made nested residuals depend on manual child-group reconstruction.
+- Regenerated the current top Architecture residual batch under
+  `target\compare\architecture-delta-current-top-residuals-hpd050`.
+- In `nested_groups_002`, the new `platform` row now reports child groups `data, runtime`, local
+  aggregate width `375.654085`, browser children width `376.154085`, `content dw=-0.500000`, and
+  matching local/browser expansion `dw=83.000000`. This isolates the parent-width tail to nested
+  child-group aggregate width, not a direct-service missing-data gap.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-nested-group-aggregate.md`
+- `target\compare\architecture-delta-current-top-residuals-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_probe_join` - passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-residuals-hpd050` -
+  passed and wrote the indexed current top-residual batch.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. It makes nested group residuals source-phase-auditable, but it does
+  not justify a global group padding, final rect, child label, or root-bounds formula change.
+
+## HPD-050 - Architecture Delta Batch Index
+
+Outcome:
+
+- `xtask debug-architecture-delta` now writes `architecture-delta-batch.md` when a run includes
+  more than one `--fixture`.
+- The batch index lists each fixture's Markdown report, copied upstream SVG, local SVG, optional
+  browser probe JSON, `max-width` delta, and matched service/junction/group-rect counts.
+- Single-fixture behavior is unchanged; the index is only emitted for batch runs.
+- Regenerated probe-backed reports for `batch5`, `html_titles`, and `unicode` under
+  `target\compare\architecture-delta-batch-index-hpd050`.
+- The new index records the focused residuals directly:
+  - `batch5_long_titles_and_punct_076`: `max-width delta=+5.000`, `4` services, `1` group rect.
+  - `html_titles_and_escapes_041`: `max-width delta=+5.000`, `3` services, `1` group rect.
+  - `unicode_and_xml_escapes_019`: `max-width delta=+3.000`, `4` services, `1` group rect.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-index.md`
+- `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta` - passed, `3` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-batch-index-hpd050` -
+  passed and wrote the batch index.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask` - passed, `99` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The index makes multi-fixture local delta reports citable and
+  reviewable, but it does not change Architecture residual classification or production layout.
+
+## HPD-050 - Architecture Delta Batch Fixture CLI
+
+Outcome:
+
+- `xtask debug-architecture-delta` now accepts repeated `--fixture` filters, matching the
+  batch-friendly shape already used by `debug-architecture-fcose-probe`.
+- A single command can regenerate multiple local delta reports in one output directory while
+  preserving the existing one-report-per-fixture Markdown and SVG artifacts.
+- Existing single-fixture behavior is preserved.
+- `--probe-dir` still works with repeated fixtures, so the current service/body/label/final-bbox
+  join can be regenerated for the focused Architecture residual set without manual command loops.
+- Regenerated probe-backed reports for `batch5`, `html_titles`, and `unicode` under
+  `target\compare\architecture-delta-batch-cli-hpd050`.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-cli.md`
+- `target\compare\architecture-delta-batch-cli-hpd050`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_args_accept_probe_dir` - passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, preserving single-fixture behavior.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, writing two reports from one command.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, writing three probe-joined reports.
+
+Residual note:
+
+- This is evidence tooling only. Batch delta regeneration reduces stale manual report drift, but it
+  does not change Architecture residual classification or production layout.
+
+## HPD-050 - Architecture Delta Summary Residual Ordering
+
+Outcome:
+
+- Enhanced `xtask summarize-architecture-deltas` with a `max-width delta` column.
+- The summary now sorts rows by absolute `max-width` delta descending, with fixture name as the
+  deterministic tie-breaker.
+- This makes the local Architecture delta summary align with the `parity-root` residual queue
+  instead of hiding active rows in alphabetical fixture order.
+- Refreshed the current Architecture root snapshot at
+  `target\compare\architecture_report_parity_root_hpd050_current.md`; it expected-fails with `24`
+  root-only mismatches.
+- Regenerated the ordered delta summary at
+  `target\compare\architecture-delta-summary-hpd050-current\architecture-delta-summary.md`.
+- The top rows now surface directly in one table:
+  - `junction_fork_join_026`: `max-width Δ=+13.976`, `group max dw=+17.331`,
+    `group max dh=-18.609`.
+  - `batch5_long_titles_and_punct_076`: `max-width Δ=+5.000`, `group max dw=+5.000`.
+  - `html_titles_and_escapes_041`: `max-width Δ=+5.000`, `group max dw=+5.000`.
+  - `unicode_and_xml_escapes_019`: `max-width Δ=+3.000`, `group max dw=+3.000`.
+  - `batch6_init_fontsize_icon_size_wrap_093`: `max-width Δ=-2.500`,
+    `group max dw=-3.000`.
+  - `nested_groups_002`: `max-width Δ=+2.500`, `group max dw=-0.500`.
+- `group_port_edges_017` is zero-delta in the current summary and should not be treated as part of
+  the active root mismatch queue unless a fresh report regresses.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-summary-order.md`
+- `target\compare\architecture_report_parity_root_hpd050_current.md`
+- `target\compare\architecture-delta-summary-hpd050-current`
+
+Focused verification:
+
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_summary_order_sorts_by_abs_max_width_delta_then_stem architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_current.md` -
+  expected-failed with `24` root-only mismatches.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-hpd050-current` -
+  passed and wrote the sorted summary.
+
+Residual note:
+
+- This is evidence tooling only. Sorting by current residual size prevents stale 25-row queue
+  assumptions from driving work, but it does not change the known Architecture residual
+  classification or justify a production layout tweak.
+
+## HPD-050 - Architecture Service Label Final-Frame Report
+
+Outcome:
+
+- Extended `debug-architecture-delta --probe-dir` service joins with
+  `local contribution label final-frame` plus label `dx` / `dy` / `dw` / `dh` columns.
+- The new final-frame label column shifts the local contribution-label rectangle by half the local
+  body size before comparing it with browser `labelBounds.all`.
+- This makes the concept boundary explicit: local contribution-label bounds are extended child
+  contribution rectangles from icon top to label bottom, not browser text-label bounds.
+- Regenerated focused reports under
+  `target\compare\architecture-delta-label-final-frame-hpd050`.
+- Representative boundary-service label readings:
+  - `batch5` / `registry`: `label dx=-1.5`, `label dw=+2`, `label dh=+77`.
+  - `batch5` / `storage`: `label dx=-2.5`, `label dw=+4`, `label dh=+77`.
+  - `html_titles` / `web`: `label dx=-0.5`, `label dw=+2`, `label dh=+77`.
+  - `html_titles` / `origin`: `label dx=-1.5`, `label dw=+4`, `label dh=+77`.
+  - `unicode` / `metrics`: `label dx=-3.5`, `label dw=+4`, `label dh=+77`.
+  - `unicode` / `store`: `label dx=-0.5`, `label dw=-2`, `label dh=+77`.
+- All focused rows show `label dy=-78` and `label dh=+77`, which is the expected phase mismatch
+  between the extended local contribution-label rectangle and browser text label bounds. The useful
+  residual signal is the service-specific horizontal `label dx` / `label dw`, not the vertical
+  label comparison.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-label-final-frame-report.md`
+- `target\compare\architecture-delta-label-final-frame-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p xtask architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `pipeline` label final-frame join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `ui` label final-frame join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `i` label final-frame join.
+
+Residual note:
+
+- Treat this as evidence tooling only. The new label columns narrow the next audit to
+  service-specific horizontal contribution width and placement drift. They do not justify changing
+  vertical label math, group padding, final rect emission, or a lookup-only `labelWidth` patch.
+
 ## HPD-050 - Architecture Service Final BBox Report
 
 Outcome:
