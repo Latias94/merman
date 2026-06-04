@@ -6578,3 +6578,39 @@ Gate notes:
 - The next experiment must include both positive-content rows (`076` / `041` / `019`) and
   negative-content or nested rows (`093` / `002`). A candidate that improves only the three
   direct-width rows is not a valid HPD-050 production fix.
+
+## HPD-050 - Architecture Child Group Parent-Input Diagnostics
+
+Outcome:
+
+- Added a `debug-architecture-delta` probe-join table for nested child-group parent input.
+- The table compares browser child group final `node.boundingBox()` values with local emitted
+  child group rects and the local renderer's `1px` inset parent-input rect.
+- Re-ran the top five post-strict Architecture rows. The direct-width rows (`076` / `041` / `019`)
+  and `093` have no child-group rows, while `002` now exposes its nested parent-input phase:
+  raw `platform -> data/runtime` child widths are `-0.5px` / `0px`, but the parent-input rects are
+  `-2.5px` / `-2px` wide and `-2px` tall after the current inset.
+
+Evidence:
+
+- `target/compare/architecture-delta-child-group-parent-input-hpd050`
+- `target/compare/architecture-report-parity-child-group-parent-input-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-child-group-parent-input-diagnostics.md`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p xtask -E 'test(architecture_probe_join_reports_nested_group_aggregate_content) or test(architecture_probe_join_decomposes_group_and_service_bounds)'` - passed, `2` tests run.
+- `cargo nextest run -p xtask` - passed, `112` tests run.
+- `git diff --check` - passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-child-group-parent-input-hpd050` - passed for the top five post-strict rows.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-child-group-parent-input-hpd050` - passed.
+
+Gate notes:
+
+- No production renderer behavior changed.
+- `002` should remain classified as nested child-group / parent-input phase evidence. Do not fold
+  it into the direct service label-width family or use it to justify a global child-group inset
+  retune without full Architecture root verification.

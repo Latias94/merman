@@ -11,6 +11,8 @@ use std::sync::OnceLock;
 
 use super::super::svg_compare_layout_opts;
 
+const ARCHITECTURE_CHILD_GROUP_PARENT_INPUT_INSET_PX: f64 = 1.0;
+
 #[derive(Debug, Clone)]
 struct ArchitectureFcoseProbeCli {
     fixture_filters: Vec<String>,
@@ -120,6 +122,20 @@ impl DebugRect {
             y: self.y - by,
             w: self.w + by * 2.0,
             h: self.h + by * 2.0,
+        }
+    }
+
+    fn inset(self, by: f64) -> Self {
+        let by = by.max(0.0);
+        if self.w <= by * 2.0 || self.h <= by * 2.0 {
+            return self;
+        }
+
+        Self {
+            x: self.x + by,
+            y: self.y + by,
+            w: self.w - by * 2.0,
+            h: self.h - by * 2.0,
         }
     }
 }
@@ -1607,6 +1623,65 @@ fn render_architecture_probe_join_markdown(
                 format_debug_optional_f64(emitted_dh),
             );
         }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(report, "### Child group parent-input phase\n");
+    let _ = writeln!(
+        report,
+        "This table isolates nested group consumption: browser child groups use final `node.boundingBox()` values, while local parent content uses the emitted child group rect after the renderer's `1px` child-group inset. It is diagnostic evidence only.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| parent | child group | browser child bb | local child emitted rect | local parent input rect | raw dx | raw dy | raw dw | raw dh | input dx | input dy | input dw | input dh |\n|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+    );
+    let mut wrote_child_group_phase = false;
+    for parent_id in &group_ids {
+        let child_groups = child_groups_by_parent
+            .get(parent_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        for (child_id, local_raw) in child_groups {
+            wrote_child_group_phase = true;
+            let local_raw = *local_raw;
+            let local_input = local_raw.inset(ARCHITECTURE_CHILD_GROUP_PARENT_INPUT_INSET_PX);
+            let browser_bb = probe_nodes
+                .get(child_id)
+                .filter(|node| node.node_type == "group")
+                .and_then(|node| node.bb);
+            let raw_dx = browser_bb.map(|browser| local_raw.x - browser.x);
+            let raw_dy = browser_bb.map(|browser| local_raw.y - browser.y);
+            let raw_dw = browser_bb.map(|browser| local_raw.w - browser.w);
+            let raw_dh = browser_bb.map(|browser| local_raw.h - browser.h);
+            let input_dx = browser_bb.map(|browser| local_input.x - browser.x);
+            let input_dy = browser_bb.map(|browser| local_input.y - browser.y);
+            let input_dw = browser_bb.map(|browser| local_input.w - browser.w);
+            let input_dh = browser_bb.map(|browser| local_input.h - browser.h);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} |",
+                parent_id,
+                child_id,
+                format_debug_rect(browser_bb),
+                format_debug_rect(Some(local_raw)),
+                format_debug_rect(Some(local_input)),
+                format_debug_optional_f64(raw_dx),
+                format_debug_optional_f64(raw_dy),
+                format_debug_optional_f64(raw_dw),
+                format_debug_optional_f64(raw_dh),
+                format_debug_optional_f64(input_dx),
+                format_debug_optional_f64(input_dy),
+                format_debug_optional_f64(input_dw),
+                format_debug_optional_f64(input_dh),
+            );
+        }
+    }
+    if !wrote_child_group_phase {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
     }
     let _ = writeln!(report);
 
@@ -4908,6 +4983,8 @@ mod tests {
 
         assert!(md.contains("### Group aggregate child attribution"));
         assert!(md.contains("| `platform` | 0 | `runtime` | `x=10.000000 y=10.000000 w=100.000000 h=100.000000` | `x=10.000000 y=10.000000 w=103.000000 h=100.000000` | 3.000000 | 0.000000 |"));
+        assert!(md.contains("### Child group parent-input phase"));
+        assert!(md.contains("| `platform` | `runtime` | `x=10.000000 y=10.000000 w=100.000000 h=100.000000` | `x=10.000000 y=10.000000 w=103.000000 h=100.000000` | `x=11.000000 y=11.000000 w=101.000000 h=98.000000` | 0.000000 | 0.000000 | 3.000000 | 0.000000 | 1.000000 | 1.000000 | 1.000000 | -2.000000 |"));
         assert!(md.contains("### Group aggregate edge attribution"));
         assert!(md.contains("| `platform` | 0 | `runtime` | `runtime@10.000000` | `runtime@10.000000` | 0.000000 | `runtime@110.000000` | `runtime@113.000000` | 3.000000 | 3.000000 | `runtime@10.000000` | `runtime@10.000000` | 0.000000 | `runtime@110.000000` | `runtime@110.000000` | 0.000000 | 0.000000 |"));
     }
