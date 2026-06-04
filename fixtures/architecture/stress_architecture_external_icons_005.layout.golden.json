@@ -199,6 +199,170 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "s3",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "ec2",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 25.0,
+            "min_y": 0.0,
+            "max_x": 55.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 28.16,
+            "half_width": 15.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "api",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -6.5,
+            "min_y": 0.0,
+            "max_x": 86.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 87.68,
+            "half_width": 46.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -6.5,
+            "min_y": 0.0,
+            "max_x": 86.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "lambda",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 14.0,
+            "min_y": 0.0,
+            "max_x": 66.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 49.6,
+            "half_width": 26.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "image",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -11.5,
+            "min_y": 0.0,
+            "max_x": 91.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 97.6,
+            "half_width": 51.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -11.5,
+            "min_y": 0.0,
+            "max_x": 91.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "unknown",
+          "in_group": "cloud",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -7.0,
+            "min_y": 0.0,
+            "max_x": 87.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 89.12,
+            "half_width": 47.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -7.0,
+            "min_y": 0.0,
+            "max_x": 87.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

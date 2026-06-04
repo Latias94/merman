@@ -125,6 +125,116 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "svc_001",
+          "in_group": "g_01",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 12.0,
+            "min_y": 0.0,
+            "max_x": 68.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 52.8,
+            "half_width": 28.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "svc_002",
+          "in_group": "g_01",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 12.0,
+            "min_y": 0.0,
+            "max_x": 68.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 52.8,
+            "half_width": 28.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "svc_101",
+          "in_group": "g_02",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 12.0,
+            "min_y": 0.0,
+            "max_x": 68.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 52.8,
+            "half_width": 28.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "svc_202",
+          "in_group": "g_02",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 12.0,
+            "min_y": 0.0,
+            "max_x": 68.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 52.8,
+            "half_width": 28.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

@@ -606,6 +606,278 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "server1",
+          "in_group": "federated",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 13.0,
+            "min_y": 0.0,
+            "max_x": 67.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 51.52,
+            "half_width": 27.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "edge",
+          "in_group": "federated",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -0.5,
+            "min_y": 0.0,
+            "max_x": 80.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 77.12,
+            "half_width": 40.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -0.5,
+            "min_y": 0.0,
+            "max_x": 80.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "firewall",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -14.5,
+            "min_y": 0.0,
+            "max_x": 94.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 103.04,
+            "half_width": 54.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -14.5,
+            "min_y": 0.0,
+            "max_x": 94.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "server",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 17.0,
+            "min_y": 0.0,
+            "max_x": 63.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 44.0,
+            "half_width": 23.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db1",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db2",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db3",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db4",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db5",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "db6",
+          "in_group": "on_prem",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 28.0,
+            "min_y": 0.0,
+            "max_x": 52.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 22.72,
+            "half_width": 12.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

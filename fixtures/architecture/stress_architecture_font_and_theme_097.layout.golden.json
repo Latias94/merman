@@ -51,6 +51,60 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 26.0,
+            "min_y": 0.0,
+            "max_x": 54.0,
+            "max_y": 99.0
+          },
+          "label_metrics": {
+            "text_width": 27.0,
+            "half_width": 14.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 99.0
+          }
+        },
+        {
+          "id": "queue",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 18.0,
+            "min_y": 0.0,
+            "max_x": 62.0,
+            "max_y": 99.0
+          },
+          "label_metrics": {
+            "text_width": 41.76,
+            "half_width": 22.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 99.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

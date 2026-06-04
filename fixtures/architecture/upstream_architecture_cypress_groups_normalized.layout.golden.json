@@ -162,6 +162,142 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "db",
+          "in_group": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 9.5,
+            "min_y": 0.0,
+            "max_x": 70.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 57.76,
+            "half_width": 30.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "disk1",
+          "in_group": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 13.0,
+            "min_y": 0.0,
+            "max_x": 67.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 50.88,
+            "half_width": 27.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "disk2",
+          "in_group": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 13.0,
+            "min_y": 0.0,
+            "max_x": 67.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 50.88,
+            "half_width": 27.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "server",
+          "in_group": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 17.0,
+            "min_y": 0.0,
+            "max_x": 63.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 44.0,
+            "half_width": 23.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "gateway",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 9.0,
+            "min_y": 0.0,
+            "max_x": 71.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 58.4,
+            "half_width": 31.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
