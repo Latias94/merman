@@ -280,6 +280,10 @@ Last updated: 2026-06-04
   the regenerated summary now puts `junction_fork_join`, `batch5`, `html_titles`, `unicode`,
   `batch6_init`, and `nested_groups` at the top. `group_port_edges_017` is zero-delta on current
   HEAD and should not be treated as active unless a fresh report regresses.
+  A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
+  filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
+  reports in one command before any next source-backed formula experiment, instead of relying on
+  stale per-fixture artifacts or hand-written shell loops.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

@@ -424,6 +424,10 @@ Current repository reality to preserve:
     `html_titles`, `unicode`, `batch6_init`, and `nested_groups`. `group_port_edges_017` is
     zero-delta on current HEAD; keep it out of the active Architecture root queue unless a fresh
     report regresses.
+  - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
+    `--fixture` filters. The repeated form preserves one report per fixture and also works with
+    `--probe-dir`, so focused Architecture residual reports can be regenerated in one command
+    before a source-backed experiment. Use it to avoid stale manual per-fixture report drift.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

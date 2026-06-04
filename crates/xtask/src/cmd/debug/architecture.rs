@@ -30,7 +30,7 @@ struct ArchitectureFcoseProbeRunSummary {
 
 #[derive(Debug, Clone)]
 struct ArchitectureDeltaCli {
-    fixture: String,
+    fixture_filters: Vec<String>,
     out_dir: Option<PathBuf>,
     probe_dir: Option<PathBuf>,
 }
@@ -172,7 +172,7 @@ fn architecture_delta_summary_sort_order(
 }
 
 fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli, XtaskError> {
-    let mut fixture: Option<String> = None;
+    let mut fixture_filters: Vec<String> = Vec::new();
     let mut out_dir: Option<PathBuf> = None;
     let mut probe_dir: Option<PathBuf> = None;
 
@@ -181,7 +181,10 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
         match args[i].as_str() {
             "--fixture" => {
                 i += 1;
-                fixture = args.get(i).map(|s| s.trim().to_string());
+                let Some(filter) = args.get(i).map(|s| s.trim().to_string()) else {
+                    return Err(XtaskError::Usage);
+                };
+                fixture_filters.push(filter);
             }
             "--out" | "--out-dir" => {
                 i += 1;
@@ -197,15 +200,16 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
         i += 1;
     }
 
-    let Some(fixture) = fixture else {
-        return Err(XtaskError::Usage);
-    };
-    if fixture.trim().is_empty() {
+    if fixture_filters.is_empty()
+        || fixture_filters
+            .iter()
+            .any(|filter| filter.trim().is_empty())
+    {
         return Err(XtaskError::Usage);
     }
 
     Ok(ArchitectureDeltaCli {
-        fixture,
+        fixture_filters,
         out_dir,
         probe_dir,
     })
@@ -1239,7 +1243,7 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
 
 pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
     let ArchitectureDeltaCli {
-        fixture,
+        fixture_filters,
         out_dir,
         probe_dir,
     } = parse_architecture_delta_args(&args)?;
@@ -1388,514 +1392,519 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             .join("architecture-delta")
     });
 
-    let candidates = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, Some(&fixture), true);
+    for (idx, fixture) in fixture_filters.iter().enumerate() {
+        let candidates = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, Some(fixture), true);
 
-    let mmd_path = match candidates.len() {
-        0 => {
-            return Err(XtaskError::SvgCompareFailed(format!(
-                "no Architecture fixture matched {fixture:?} under {}",
-                fixtures_dir.display()
-            )));
-        }
-        1 => candidates[0].clone(),
-        _ => {
-            let list = candidates
-                .iter()
-                .take(20)
-                .map(|p| format!("- {}", p.display()))
-                .collect::<Vec<_>>()
-                .join("\n");
-            return Err(XtaskError::SvgCompareFailed(format!(
-                "multiple Architecture fixtures matched {fixture:?}; please be more specific:\n{list}"
-            )));
-        }
-    };
+        let mmd_path = match candidates.len() {
+            0 => {
+                return Err(XtaskError::SvgCompareFailed(format!(
+                    "no Architecture fixture matched {fixture:?} under {}",
+                    fixtures_dir.display()
+                )));
+            }
+            1 => candidates[0].clone(),
+            _ => {
+                let list = candidates
+                    .iter()
+                    .take(20)
+                    .map(|p| format!("- {}", p.display()))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                return Err(XtaskError::SvgCompareFailed(format!(
+                    "multiple Architecture fixtures matched {fixture:?}; please be more specific:\n{list}"
+                )));
+            }
+        };
 
-    let stem = mmd_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| {
-            XtaskError::SvgCompareFailed(format!("invalid fixture filename {}", mmd_path.display()))
-        })?
-        .to_string();
-
-    let diagram_id = sanitize_svg_id(&stem);
-
-    let upstream_path = upstream_dir.join(format!("{stem}.svg"));
-    let upstream_svg =
-        fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
-            path: upstream_path.display().to_string(),
-            source,
-        })?;
-
-    let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {
-        path: mmd_path.display().to_string(),
-        source,
-    })?;
-
-    let engine = merman::Engine::new();
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| {
+        let stem = mmd_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| {
                 XtaskError::SvgCompareFailed(format!(
-                    "parse failed for {}: {e}",
+                    "invalid fixture filename {}",
                     mmd_path.display()
                 ))
             })?
-            .ok_or_else(|| {
-                XtaskError::SvgCompareFailed(format!(
-                    "no diagram detected in {}",
-                    mmd_path.display()
-                ))
-            })?;
+            .to_string();
 
-    let layout_opts = svg_compare_layout_opts();
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
-        XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
-    })?;
+        let diagram_id = sanitize_svg_id(&stem);
 
-    let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "unexpected layout type for {}: {}",
-            mmd_path.display(),
-            layouted.meta.diagram_type
-        )));
-    };
-
-    let svg_opts = merman_render::svg::SvgRenderOptions {
-        diagram_id: Some(diagram_id),
-        ..Default::default()
-    };
-    let local_svg = merman_render::svg::render_architecture_diagram_svg(
-        layout,
-        &layouted.semantic,
-        &layouted.meta.effective_config,
-        &svg_opts,
-    )
-    .map_err(|e| {
-        XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
-    })?;
-
-    fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_dir.display().to_string(),
-        source,
-    })?;
-
-    let out_upstream_svg = out_dir.join(format!("{stem}.upstream.svg"));
-    let out_local_svg = out_dir.join(format!("{stem}.local.svg"));
-    let out_report = out_dir.join(format!("{stem}.md"));
-    fs::write(&out_upstream_svg, &upstream_svg).map_err(|source| XtaskError::WriteFile {
-        path: out_upstream_svg.display().to_string(),
-        source,
-    })?;
-    fs::write(&out_local_svg, &local_svg).map_err(|source| XtaskError::WriteFile {
-        path: out_local_svg.display().to_string(),
-        source,
-    })?;
-
-    let (up_vb, up_mw, up_services, up_junctions, up_groups) =
-        extract_arch_positions(&upstream_svg)?;
-    let (lo_vb, lo_mw, lo_services, lo_junctions, lo_groups) = extract_arch_positions(&local_svg)?;
-    let probe_json: Option<(PathBuf, serde_json::Value)> = if let Some(probe_dir) = probe_dir {
-        let probe_path = architecture_fcose_probe_json_path(&probe_dir, &stem);
-        let probe_text =
-            fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
-                path: probe_path.display().to_string(),
+        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+        let upstream_svg =
+            fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+                path: upstream_path.display().to_string(),
                 source,
             })?;
-        let probe = serde_json::from_str(&probe_text)?;
-        Some((probe_path, probe))
-    } else {
-        None
-    };
 
-    #[derive(Debug, Clone)]
-    struct DeltaRow {
-        id: String,
-        kind: &'static str,
-        up: String,
-        lo: String,
-        dx: f64,
-        dy: f64,
-        dw: Option<f64>,
-        dh: Option<f64>,
-        score: f64,
-    }
+        let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {
+            path: mmd_path.display().to_string(),
+            source,
+        })?;
 
-    let mut deltas: Vec<DeltaRow> = Vec::new();
+        let engine = merman::Engine::new();
+        let parsed = futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        )
+        .map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("parse failed for {}: {e}", mmd_path.display()))
+        })?
+        .ok_or_else(|| {
+            XtaskError::SvgCompareFailed(format!("no diagram detected in {}", mmd_path.display()))
+        })?;
 
-    fn delta_score(dx: f64, dy: f64, dw: Option<f64>, dh: Option<f64>) -> f64 {
-        dx.abs()
-            .max(dy.abs())
-            .max(dw.unwrap_or(0.0).abs())
-            .max(dh.unwrap_or(0.0).abs())
-    }
+        let layout_opts = svg_compare_layout_opts();
+        let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
+        })?;
 
-    fn fmt_optional_delta(delta: Option<f64>) -> String {
-        delta
-            .map(|v| format!("{v:.6}"))
-            .unwrap_or_else(|| "<n/a>".to_string())
-    }
+        let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
+        else {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "unexpected layout type for {}: {}",
+                mmd_path.display(),
+                layouted.meta.diagram_type
+            )));
+        };
 
-    fn fmt_model_bounds(bounds: Option<&merman_render::model::Bounds>) -> String {
-        bounds
-            .map(|b| {
-                format!(
-                    "x={:.6} y={:.6} w={:.6} h={:.6}",
-                    b.min_x,
-                    b.min_y,
-                    b.max_x - b.min_x,
-                    b.max_y - b.min_y
+        let svg_opts = merman_render::svg::SvgRenderOptions {
+            diagram_id: Some(diagram_id),
+            ..Default::default()
+        };
+        let local_svg = merman_render::svg::render_architecture_diagram_svg(
+            layout,
+            &layouted.semantic,
+            &layouted.meta.effective_config,
+            &svg_opts,
+        )
+        .map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
+        })?;
+
+        fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+            path: out_dir.display().to_string(),
+            source,
+        })?;
+
+        let out_upstream_svg = out_dir.join(format!("{stem}.upstream.svg"));
+        let out_local_svg = out_dir.join(format!("{stem}.local.svg"));
+        let out_report = out_dir.join(format!("{stem}.md"));
+        fs::write(&out_upstream_svg, &upstream_svg).map_err(|source| XtaskError::WriteFile {
+            path: out_upstream_svg.display().to_string(),
+            source,
+        })?;
+        fs::write(&out_local_svg, &local_svg).map_err(|source| XtaskError::WriteFile {
+            path: out_local_svg.display().to_string(),
+            source,
+        })?;
+
+        let (up_vb, up_mw, up_services, up_junctions, up_groups) =
+            extract_arch_positions(&upstream_svg)?;
+        let (lo_vb, lo_mw, lo_services, lo_junctions, lo_groups) =
+            extract_arch_positions(&local_svg)?;
+        let probe_json: Option<(PathBuf, serde_json::Value)> = if let Some(probe_dir) = &probe_dir {
+            let probe_path = architecture_fcose_probe_json_path(&probe_dir, &stem);
+            let probe_text =
+                fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
+                    path: probe_path.display().to_string(),
+                    source,
+                })?;
+            let probe = serde_json::from_str(&probe_text)?;
+            Some((probe_path, probe))
+        } else {
+            None
+        };
+
+        #[derive(Debug, Clone)]
+        struct DeltaRow {
+            id: String,
+            kind: &'static str,
+            up: String,
+            lo: String,
+            dx: f64,
+            dy: f64,
+            dw: Option<f64>,
+            dh: Option<f64>,
+            score: f64,
+        }
+
+        let mut deltas: Vec<DeltaRow> = Vec::new();
+
+        fn delta_score(dx: f64, dy: f64, dw: Option<f64>, dh: Option<f64>) -> f64 {
+            dx.abs()
+                .max(dy.abs())
+                .max(dw.unwrap_or(0.0).abs())
+                .max(dh.unwrap_or(0.0).abs())
+        }
+
+        fn fmt_optional_delta(delta: Option<f64>) -> String {
+            delta
+                .map(|v| format!("{v:.6}"))
+                .unwrap_or_else(|| "<n/a>".to_string())
+        }
+
+        fn fmt_model_bounds(bounds: Option<&merman_render::model::Bounds>) -> String {
+            bounds
+                .map(|b| {
+                    format!(
+                        "x={:.6} y={:.6} w={:.6} h={:.6}",
+                        b.min_x,
+                        b.min_y,
+                        b.max_x - b.min_x,
+                        b.max_y - b.min_y
+                    )
+                })
+                .unwrap_or_else(|| "<none>".to_string())
+        }
+
+        fn split_missing<T>(
+            upstream: &BTreeMap<String, T>,
+            local: &BTreeMap<String, T>,
+        ) -> (Vec<String>, Vec<String>) {
+            let mut only_up: Vec<String> = upstream
+                .keys()
+                .filter(|id| !local.contains_key(*id))
+                .cloned()
+                .collect();
+            let mut only_lo: Vec<String> = local
+                .keys()
+                .filter(|id| !upstream.contains_key(*id))
+                .cloned()
+                .collect();
+            only_up.sort();
+            only_lo.sort();
+            (only_up, only_lo)
+        }
+
+        let (missing_services_in_local, missing_services_in_upstream) =
+            split_missing(&up_services, &lo_services);
+        let (missing_junctions_in_local, missing_junctions_in_upstream) =
+            split_missing(&up_junctions, &lo_junctions);
+        let (missing_groups_in_local, missing_groups_in_upstream) =
+            split_missing(&up_groups, &lo_groups);
+
+        for (id, up) in &up_services {
+            let Some(lo) = lo_services.get(id).copied() else {
+                continue;
+            };
+            let dx = lo.x - up.x;
+            let dy = lo.y - up.y;
+            deltas.push(DeltaRow {
+                id: id.to_string(),
+                kind: "service",
+                up: format!("translate({:.6},{:.6})", up.x, up.y),
+                lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
+                dx,
+                dy,
+                dw: None,
+                dh: None,
+                score: delta_score(dx, dy, None, None),
+            });
+        }
+
+        for (id, up) in &up_junctions {
+            let Some(lo) = lo_junctions.get(id).copied() else {
+                continue;
+            };
+            let dx = lo.x - up.x;
+            let dy = lo.y - up.y;
+            deltas.push(DeltaRow {
+                id: id.to_string(),
+                kind: "junction",
+                up: format!("translate({:.6},{:.6})", up.x, up.y),
+                lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
+                dx,
+                dy,
+                dw: None,
+                dh: None,
+                score: delta_score(dx, dy, None, None),
+            });
+        }
+
+        for (id, up) in &up_groups {
+            let Some(lo) = lo_groups.get(id).copied() else {
+                continue;
+            };
+            let dx = lo.x - up.x;
+            let dy = lo.y - up.y;
+            let dw = lo.w - up.w;
+            let dh = lo.h - up.h;
+            deltas.push(DeltaRow {
+                id: id.to_string(),
+                kind: "group-rect",
+                up: format!("x={:.6} y={:.6} w={:.6} h={:.6}", up.x, up.y, up.w, up.h),
+                lo: format!("x={:.6} y={:.6} w={:.6} h={:.6}", lo.x, lo.y, lo.w, lo.h),
+                dx,
+                dy,
+                dw: Some(dw),
+                dh: Some(dh),
+                score: delta_score(dx, dy, Some(dw), Some(dh)),
+            });
+        }
+
+        let fcose_compound_rows: Vec<(String, DebugRect, Option<DebugRect>)> = layout
+            .fcose_compound_bounds
+            .iter()
+            .map(|compound| {
+                let b = &compound.bounds;
+                let fcose = DebugRect {
+                    x: b.min_x,
+                    y: b.min_y,
+                    w: (b.max_x - b.min_x).max(0.0),
+                    h: (b.max_y - b.min_y).max(0.0),
+                };
+                let local_key = format!("group-{}", compound.id);
+                (
+                    compound.id.clone(),
+                    fcose,
+                    lo_groups.get(&local_key).copied(),
                 )
             })
-            .unwrap_or_else(|| "<none>".to_string())
-    }
-
-    fn split_missing<T>(
-        upstream: &BTreeMap<String, T>,
-        local: &BTreeMap<String, T>,
-    ) -> (Vec<String>, Vec<String>) {
-        let mut only_up: Vec<String> = upstream
-            .keys()
-            .filter(|id| !local.contains_key(*id))
-            .cloned()
             .collect();
-        let mut only_lo: Vec<String> = local
-            .keys()
-            .filter(|id| !upstream.contains_key(*id))
-            .cloned()
-            .collect();
-        only_up.sort();
-        only_lo.sort();
-        (only_up, only_lo)
-    }
 
-    let (missing_services_in_local, missing_services_in_upstream) =
-        split_missing(&up_services, &lo_services);
-    let (missing_junctions_in_local, missing_junctions_in_upstream) =
-        split_missing(&up_junctions, &lo_junctions);
-    let (missing_groups_in_local, missing_groups_in_upstream) =
-        split_missing(&up_groups, &lo_groups);
-
-    for (id, up) in &up_services {
-        let Some(lo) = lo_services.get(id).copied() else {
-            continue;
-        };
-        let dx = lo.x - up.x;
-        let dy = lo.y - up.y;
-        deltas.push(DeltaRow {
-            id: id.to_string(),
-            kind: "service",
-            up: format!("translate({:.6},{:.6})", up.x, up.y),
-            lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
-            dx,
-            dy,
-            dw: None,
-            dh: None,
-            score: delta_score(dx, dy, None, None),
+        deltas.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
-    }
 
-    for (id, up) in &up_junctions {
-        let Some(lo) = lo_junctions.get(id).copied() else {
-            continue;
-        };
-        let dx = lo.x - up.x;
-        let dy = lo.y - up.y;
-        deltas.push(DeltaRow {
-            id: id.to_string(),
-            kind: "junction",
-            up: format!("translate({:.6},{:.6})", up.x, up.y),
-            lo: format!("translate({:.6},{:.6})", lo.x, lo.y),
-            dx,
-            dy,
-            dw: None,
-            dh: None,
-            score: delta_score(dx, dy, None, None),
-        });
-    }
-
-    for (id, up) in &up_groups {
-        let Some(lo) = lo_groups.get(id).copied() else {
-            continue;
-        };
-        let dx = lo.x - up.x;
-        let dy = lo.y - up.y;
-        let dw = lo.w - up.w;
-        let dh = lo.h - up.h;
-        deltas.push(DeltaRow {
-            id: id.to_string(),
-            kind: "group-rect",
-            up: format!("x={:.6} y={:.6} w={:.6} h={:.6}", up.x, up.y, up.w, up.h),
-            lo: format!("x={:.6} y={:.6} w={:.6} h={:.6}", lo.x, lo.y, lo.w, lo.h),
-            dx,
-            dy,
-            dw: Some(dw),
-            dh: Some(dh),
-            score: delta_score(dx, dy, Some(dw), Some(dh)),
-        });
-    }
-
-    let fcose_compound_rows: Vec<(String, DebugRect, Option<DebugRect>)> = layout
-        .fcose_compound_bounds
-        .iter()
-        .map(|compound| {
-            let b = &compound.bounds;
-            let fcose = DebugRect {
-                x: b.min_x,
-                y: b.min_y,
-                w: (b.max_x - b.min_x).max(0.0),
-                h: (b.max_y - b.min_y).max(0.0),
-            };
-            let local_key = format!("group-{}", compound.id);
-            (
-                compound.id.clone(),
-                fcose,
-                lo_groups.get(&local_key).copied(),
-            )
-        })
-        .collect();
-
-    deltas.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let mut report = String::new();
-    let _ = writeln!(&mut report, "# Architecture Delta Report\n");
-    let _ = writeln!(
-        &mut report,
-        "- Fixture: `{}`\n- Upstream SVG: `{}`\n- Local SVG: `{}`\n",
-        stem,
-        out_upstream_svg.display(),
-        out_local_svg.display()
-    );
-
-    let _ = writeln!(&mut report, "## Root viewport\n");
-    let _ = writeln!(
-        &mut report,
-        "- upstream viewBox: `{}`",
-        up_vb
-            .map(|v| format!("{:.6} {:.6} {:.6} {:.6}", v.0, v.1, v.2, v.3))
-            .unwrap_or_else(|| "<missing>".to_string())
-    );
-    let _ = writeln!(
-        &mut report,
-        "- local viewBox: `{}`",
-        lo_vb
-            .map(|v| format!("{:.6} {:.6} {:.6} {:.6}", v.0, v.1, v.2, v.3))
-            .unwrap_or_else(|| "<missing>".to_string())
-    );
-    let _ = writeln!(
-        &mut report,
-        "- upstream max-width(px): `{}`",
-        up_mw
-            .map(|v| format!("{:.6}", v))
-            .unwrap_or_else(|| "<missing>".to_string())
-    );
-    let _ = writeln!(
-        &mut report,
-        "- local max-width(px): `{}`\n",
-        lo_mw
-            .map(|v| format!("{:.6}", v))
-            .unwrap_or_else(|| "<missing>".to_string())
-    );
-
-    let _ = writeln!(&mut report, "## Missing elements\n");
-    let _ = writeln!(
-        &mut report,
-        "- services missing in local: `{}`",
-        if missing_services_in_local.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_services_in_local.join(", ")
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- services missing in upstream: `{}`",
-        if missing_services_in_upstream.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_services_in_upstream.join(", ")
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- junctions missing in local: `{}`",
-        if missing_junctions_in_local.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_junctions_in_local.join(", ")
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- junctions missing in upstream: `{}`",
-        if missing_junctions_in_upstream.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_junctions_in_upstream.join(", ")
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- group rects missing in local: `{}`",
-        if missing_groups_in_local.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_groups_in_local.join(", ")
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- group rects missing in upstream: `{}`\n",
-        if missing_groups_in_upstream.is_empty() {
-            "<none>".to_string()
-        } else {
-            missing_groups_in_upstream.join(", ")
-        }
-    );
-
-    let _ = writeln!(
-        &mut report,
-        "## Local FCoSE compound bounds vs emitted group rects\n"
-    );
-    let _ = writeln!(
-        &mut report,
-        "These FCoSE bounds are local layout-base compound rectangles, not browser `node.boundingBox()` values.\n"
-    );
-    let _ = writeln!(
-        &mut report,
-        "| id | fcose compound bounds | local emitted group rect | dx | dy | dw | dh |\n|---|---|---|---:|---:|---:|---:|"
-    );
-    if fcose_compound_rows.is_empty() {
+        let mut report = String::new();
+        let _ = writeln!(&mut report, "# Architecture Delta Report\n");
         let _ = writeln!(
             &mut report,
-            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+            "- Fixture: `{}`\n- Upstream SVG: `{}`\n- Local SVG: `{}`\n",
+            stem,
+            out_upstream_svg.display(),
+            out_local_svg.display()
         );
-    } else {
-        for (id, fcose, emitted) in &fcose_compound_rows {
-            if let Some(emitted) = emitted {
-                let _ = writeln!(
-                    &mut report,
-                    "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | {:.6} | {:.6} | {:.6} | {:.6} |",
-                    id,
-                    fcose.x,
-                    fcose.y,
-                    fcose.w,
-                    fcose.h,
-                    emitted.x,
-                    emitted.y,
-                    emitted.w,
-                    emitted.h,
-                    emitted.x - fcose.x,
-                    emitted.y - fcose.y,
-                    emitted.w - fcose.w,
-                    emitted.h - fcose.h,
-                );
+
+        let _ = writeln!(&mut report, "## Root viewport\n");
+        let _ = writeln!(
+            &mut report,
+            "- upstream viewBox: `{}`",
+            up_vb
+                .map(|v| format!("{:.6} {:.6} {:.6} {:.6}", v.0, v.1, v.2, v.3))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- local viewBox: `{}`",
+            lo_vb
+                .map(|v| format!("{:.6} {:.6} {:.6} {:.6}", v.0, v.1, v.2, v.3))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- upstream max-width(px): `{}`",
+            up_mw
+                .map(|v| format!("{:.6}", v))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+        let _ = writeln!(
+            &mut report,
+            "- local max-width(px): `{}`\n",
+            lo_mw
+                .map(|v| format!("{:.6}", v))
+                .unwrap_or_else(|| "<missing>".to_string())
+        );
+
+        let _ = writeln!(&mut report, "## Missing elements\n");
+        let _ = writeln!(
+            &mut report,
+            "- services missing in local: `{}`",
+            if missing_services_in_local.is_empty() {
+                "<none>".to_string()
             } else {
+                missing_services_in_local.join(", ")
+            }
+        );
+        let _ = writeln!(
+            &mut report,
+            "- services missing in upstream: `{}`",
+            if missing_services_in_upstream.is_empty() {
+                "<none>".to_string()
+            } else {
+                missing_services_in_upstream.join(", ")
+            }
+        );
+        let _ = writeln!(
+            &mut report,
+            "- junctions missing in local: `{}`",
+            if missing_junctions_in_local.is_empty() {
+                "<none>".to_string()
+            } else {
+                missing_junctions_in_local.join(", ")
+            }
+        );
+        let _ = writeln!(
+            &mut report,
+            "- junctions missing in upstream: `{}`",
+            if missing_junctions_in_upstream.is_empty() {
+                "<none>".to_string()
+            } else {
+                missing_junctions_in_upstream.join(", ")
+            }
+        );
+        let _ = writeln!(
+            &mut report,
+            "- group rects missing in local: `{}`",
+            if missing_groups_in_local.is_empty() {
+                "<none>".to_string()
+            } else {
+                missing_groups_in_local.join(", ")
+            }
+        );
+        let _ = writeln!(
+            &mut report,
+            "- group rects missing in upstream: `{}`\n",
+            if missing_groups_in_upstream.is_empty() {
+                "<none>".to_string()
+            } else {
+                missing_groups_in_upstream.join(", ")
+            }
+        );
+
+        let _ = writeln!(
+            &mut report,
+            "## Local FCoSE compound bounds vs emitted group rects\n"
+        );
+        let _ = writeln!(
+            &mut report,
+            "These FCoSE bounds are local layout-base compound rectangles, not browser `node.boundingBox()` values.\n"
+        );
+        let _ = writeln!(
+            &mut report,
+            "| id | fcose compound bounds | local emitted group rect | dx | dy | dw | dh |\n|---|---|---|---:|---:|---:|---:|"
+        );
+        if fcose_compound_rows.is_empty() {
+            let _ = writeln!(
+                &mut report,
+                "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+            );
+        } else {
+            for (id, fcose, emitted) in &fcose_compound_rows {
+                if let Some(emitted) = emitted {
+                    let _ = writeln!(
+                        &mut report,
+                        "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | {:.6} | {:.6} | {:.6} | {:.6} |",
+                        id,
+                        fcose.x,
+                        fcose.y,
+                        fcose.w,
+                        fcose.h,
+                        emitted.x,
+                        emitted.y,
+                        emitted.w,
+                        emitted.h,
+                        emitted.x - fcose.x,
+                        emitted.y - fcose.y,
+                        emitted.w - fcose.w,
+                        emitted.h - fcose.h,
+                    );
+                } else {
+                    let _ = writeln!(
+                        &mut report,
+                        "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `<missing>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |",
+                        id, fcose.x, fcose.y, fcose.w, fcose.h
+                    );
+                }
+            }
+        }
+        let _ = writeln!(&mut report);
+
+        let _ = writeln!(&mut report, "## Local Cytoscape service child bounds\n");
+        let _ = writeln!(
+            &mut report,
+            "These rows are the local body/label/union phases that feed Architecture group content bounds.\n"
+        );
+        let _ = writeln!(
+            &mut report,
+            "| id | group | body bounds | label bounds | label metrics | union bounds |\n|---|---|---|---|---|---|"
+        );
+        if layout.cytoscape_service_bounds.is_empty() {
+            let _ = writeln!(
+                &mut report,
+                "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+            );
+        } else {
+            for service in &layout.cytoscape_service_bounds {
                 let _ = writeln!(
                     &mut report,
-                    "| `{}` | `x={:.6} y={:.6} w={:.6} h={:.6}` | `<missing>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |",
-                    id, fcose.x, fcose.y, fcose.w, fcose.h
+                    "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+                    service.id,
+                    service.in_group.as_deref().unwrap_or("<none>"),
+                    fmt_model_bounds(Some(&service.body_bounds)),
+                    fmt_model_bounds(service.label_bounds.as_ref()),
+                    format_local_label_metrics(service.label_metrics.as_ref()),
+                    fmt_model_bounds(Some(&service.union_bounds))
                 );
             }
         }
-    }
-    let _ = writeln!(&mut report);
+        let _ = writeln!(&mut report);
 
-    let _ = writeln!(&mut report, "## Local Cytoscape service child bounds\n");
-    let _ = writeln!(
-        &mut report,
-        "These rows are the local body/label/union phases that feed Architecture group content bounds.\n"
-    );
-    let _ = writeln!(
-        &mut report,
-        "| id | group | body bounds | label bounds | label metrics | union bounds |\n|---|---|---|---|---|---|"
-    );
-    if layout.cytoscape_service_bounds.is_empty() {
-        let _ = writeln!(
-            &mut report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
-        );
-    } else {
-        for service in &layout.cytoscape_service_bounds {
-            let _ = writeln!(
+        if let Some((probe_path, probe)) = &probe_json {
+            render_architecture_probe_join_markdown(
                 &mut report,
-                "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
-                service.id,
-                service.in_group.as_deref().unwrap_or("<none>"),
-                fmt_model_bounds(Some(&service.body_bounds)),
-                fmt_model_bounds(service.label_bounds.as_ref()),
-                format_local_label_metrics(service.label_metrics.as_ref()),
-                fmt_model_bounds(Some(&service.union_bounds))
+                probe_path,
+                probe,
+                layout,
+                &lo_services,
+                &up_groups,
+                &lo_groups,
             );
         }
-    }
-    let _ = writeln!(&mut report);
 
-    if let Some((probe_path, probe)) = &probe_json {
-        render_architecture_probe_join_markdown(
-            &mut report,
-            probe_path,
-            probe,
-            layout,
-            &lo_services,
-            &up_groups,
-            &lo_groups,
-        );
-    }
-
-    let _ = writeln!(
-        &mut report,
-        "## Element deltas (top 50 by max(abs(dx), abs(dy), abs(dw), abs(dh)))\n"
-    );
-    let _ = writeln!(
-        &mut report,
-        "| kind | id | upstream | local | dx | dy | dw | dh | score |\n|---|---|---|---|---:|---:|---:|---:|---:|"
-    );
-    for row in deltas.iter().take(50) {
         let _ = writeln!(
             &mut report,
-            "| {} | `{}` | `{}` | `{}` | {:.6} | {:.6} | {} | {} | {:.6} |",
-            row.kind,
-            row.id,
-            row.up,
-            row.lo,
-            row.dx,
-            row.dy,
-            fmt_optional_delta(row.dw),
-            fmt_optional_delta(row.dh),
-            row.score
+            "## Element deltas (top 50 by max(abs(dx), abs(dy), abs(dw), abs(dh)))\n"
         );
-    }
+        let _ = writeln!(
+            &mut report,
+            "| kind | id | upstream | local | dx | dy | dw | dh | score |\n|---|---|---|---|---:|---:|---:|---:|---:|"
+        );
+        for row in deltas.iter().take(50) {
+            let _ = writeln!(
+                &mut report,
+                "| {} | `{}` | `{}` | `{}` | {:.6} | {:.6} | {} | {} | {:.6} |",
+                row.kind,
+                row.id,
+                row.up,
+                row.lo,
+                row.dx,
+                row.dy,
+                fmt_optional_delta(row.dw),
+                fmt_optional_delta(row.dh),
+                row.score
+            );
+        }
 
-    fs::write(&out_report, &report).map_err(|source| XtaskError::WriteFile {
-        path: out_report.display().to_string(),
-        source,
-    })?;
+        fs::write(&out_report, &report).map_err(|source| XtaskError::WriteFile {
+            path: out_report.display().to_string(),
+            source,
+        })?;
 
-    println!("fixture: {stem}");
-    println!("upstream: {}", upstream_path.display());
-    println!("local:    {}", out_local_svg.display());
-    println!("report:   {}", out_report.display());
-    if let (Some(up), Some(lo)) = (up_vb, lo_vb) {
+        if idx > 0 {
+            println!();
+        }
+        println!("fixture: {stem}");
+        println!("upstream: {}", upstream_path.display());
+        println!("local:    {}", out_local_svg.display());
+        println!("report:   {}", out_report.display());
+        if let (Some(up), Some(lo)) = (up_vb, lo_vb) {
+            println!(
+                "root viewBox: upstream=({:.6},{:.6},{:.6},{:.6}) local=({:.6},{:.6},{:.6},{:.6})",
+                up.0, up.1, up.2, up.3, lo.0, lo.1, lo.2, lo.3
+            );
+        }
+        if let (Some(up), Some(lo)) = (up_mw, lo_mw) {
+            println!("max-width(px): upstream={:.6} local={:.6}", up, lo);
+        }
         println!(
-            "root viewBox: upstream=({:.6},{:.6},{:.6},{:.6}) local=({:.6},{:.6},{:.6},{:.6})",
-            up.0, up.1, up.2, up.3, lo.0, lo.1, lo.2, lo.3
+            "elements: services={} junctions={} group_rects={}",
+            up_services.len().min(lo_services.len()),
+            up_junctions.len().min(lo_junctions.len()),
+            up_groups.len().min(lo_groups.len())
         );
     }
-    if let (Some(up), Some(lo)) = (up_mw, lo_mw) {
-        println!("max-width(px): upstream={:.6} local={:.6}", up, lo);
-    }
-    println!(
-        "elements: services={} junctions={} group_rects={}",
-        up_services.len().min(lo_services.len()),
-        up_junctions.len().min(lo_junctions.len()),
-        up_groups.len().min(lo_groups.len())
-    );
 
     Ok(())
 }
@@ -2432,6 +2441,8 @@ mod tests {
         let parsed = parse_architecture_delta_args(&args(&[
             "--fixture",
             "batch5_long_titles",
+            "--fixture",
+            "html_titles",
             "--out-dir",
             "target/custom-delta",
             "--probe-dir",
@@ -2439,7 +2450,10 @@ mod tests {
         ]))
         .unwrap();
 
-        assert_eq!(parsed.fixture, "batch5_long_titles");
+        assert_eq!(
+            parsed.fixture_filters,
+            vec!["batch5_long_titles", "html_titles"]
+        );
         assert_eq!(parsed.out_dir, Some(PathBuf::from("target/custom-delta")));
         assert_eq!(parsed.probe_dir, Some(PathBuf::from("target/custom-probe")));
     }

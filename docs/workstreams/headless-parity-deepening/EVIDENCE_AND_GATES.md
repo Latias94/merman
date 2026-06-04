@@ -3,6 +3,43 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Delta Batch Fixture CLI
+
+Outcome:
+
+- `xtask debug-architecture-delta` now accepts repeated `--fixture` filters, matching the
+  batch-friendly shape already used by `debug-architecture-fcose-probe`.
+- A single command can regenerate multiple local delta reports in one output directory while
+  preserving the existing one-report-per-fixture Markdown and SVG artifacts.
+- Existing single-fixture behavior is preserved.
+- `--probe-dir` still works with repeated fixtures, so the current service/body/label/final-bbox
+  join can be regenerated for the focused Architecture residual set without manual command loops.
+- Regenerated probe-backed reports for `batch5`, `html_titles`, and `unicode` under
+  `target\compare\architecture-delta-batch-cli-hpd050`.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-cli.md`
+- `target\compare\architecture-delta-batch-cli-hpd050`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_args_accept_probe_dir` - passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, preserving single-fixture behavior.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, writing two reports from one command.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-batch-cli-hpd050` -
+  passed, writing three probe-joined reports.
+
+Residual note:
+
+- This is evidence tooling only. Batch delta regeneration reduces stale manual report drift, but it
+  does not change Architecture residual classification or production layout.
+
 ## HPD-050 - Architecture Delta Summary Residual Ordering
 
 Outcome:
