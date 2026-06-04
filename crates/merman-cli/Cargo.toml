@@ -14,11 +14,12 @@ keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
 
 [features]
-default = []
+default = ["ratex-math"]
 ascii = ["merman/ascii"]
 ratex-math = ["merman/ratex-math"]
 
 [dependencies]
+clap.workspace = true
 merman = { workspace = true, features = ["raster"] }
 serde.workspace = true
 serde_json.workspace = true

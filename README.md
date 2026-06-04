@@ -297,14 +297,17 @@ Higher-level wrappers build on the same ABI:
 
 ### Math Labels
 
-Math rendering is optional. Enable `ratex-math` to render supported `$$...$$` labels through the
-pure-Rust RaTeX backend. Flowchart and Sequence support math-only labels and single-formula
-prose/math labels such as `Solve: $$x^2$$`:
+`merman-cli` enables the pure-Rust RaTeX backend by default. Use `--math-renderer ratex`
+to render supported `$$...$$` labels. Flowchart and Sequence support math-only labels and
+single-formula prose/math labels such as `Solve: $$x^2$$`:
 
 ```bash
 printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" |
-  cargo run -p merman-cli --features ratex-math -- render --math-renderer ratex -
+  cargo run -p merman-cli -- render --math-renderer ratex -
 ```
+
+Build `merman-cli` with `--no-default-features` only when you intentionally want to exclude
+RaTeX; in that mode `ratex` remains unavailable unless `ratex-math` is enabled explicitly.
 
 ### ASCII/Unicode text output
 

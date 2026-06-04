@@ -49,7 +49,7 @@ printf "flowchart TD\nA[API] --> B[DB]\n" | merman-cli render --out out.svg
 Useful flags:
 
 - `--text-measurer deterministic|vendored` controls text measurement. `vendored` is better for visual output; `deterministic` is useful for stable fixture-style output.
-- `--math-renderer none|ratex` enables optional `$$...$$` math rendering. `ratex` requires the `ratex-math` Cargo feature; Flowchart and Sequence support math-only labels plus single-formula prose/math labels.
+- `--math-renderer none|ratex` enables `$$...$$` math rendering. Default CLI builds include the pure-Rust RaTeX backend; Flowchart and Sequence support math-only labels plus single-formula prose/math labels.
 - `--id <diagram-id>` sets the root SVG id and internal marker id prefix.
 - `--scale <n>` controls PNG/JPG raster scale.
 - `--background <css-color>` sets raster background.
@@ -77,11 +77,14 @@ mixed-parallel relationship lanes, simple spanning-level side lanes, and unrelat
 class/entity components. Cyclic or denser relationship graphs return explicit diagnostics instead
 of silently dropping edges.
 
-RaTeX math rendering is also feature-gated:
+RaTeX math rendering is available in the default CLI build:
 
 ```sh
-printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | cargo run -p merman-cli --features ratex-math -- render --math-renderer ratex -
+printf "flowchart LR\nA[\"$$x^2$$\"] --> B\n" | cargo run -p merman-cli -- render --math-renderer ratex -
 ```
+
+Use `--no-default-features` only when you intentionally want to exclude RaTeX. In that build,
+`--math-renderer ratex` remains unavailable unless `ratex-math` is enabled explicitly.
 
 ## SVG Input Rasterization
 

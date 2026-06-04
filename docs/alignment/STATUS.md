@@ -25,6 +25,21 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
   - How-to: `docs/rendering/RASTER_OUTPUT.md` and `tools/preview/export-fixtures-png.ps1`.
 
+## CLI Surface
+
+- `merman-cli` now uses a clap-based entrypoint with top-level `mmdc`-style render/export flags:
+  `-i/--input`, `-o/--output`, `-e/--outputFormat`, `-t/--theme`, `-c/--configFile`,
+  `-C/--cssFile`, `-b/--backgroundColor`, `-w/--width`, `-H/--height`, `-I/--svgId`,
+  `-s/--scale`, `-f/--pdfFit`, `-q/--quiet`, `-p/--puppeteerConfigFile`, `--iconPacks`,
+  and `--iconPacksNamesAndUrls`.
+- Top-level rendering defaults to SVG, infers PNG/JPG/PDF/text formats from output extensions,
+  supports `-o -` for stdout, and keeps `parse`, `layout`, `detect`, and `render` as developer
+  subcommands.
+- CLI default features include `ratex-math`; `--math-renderer ratex` works out of the box unless
+  the binary is built with `--no-default-features`.
+- Accepted-but-not-yet-complete compatibility lanes: Markdown batch extraction/rewriting,
+  `jobs` scheduling, browser-specific puppeteer behavior, and dynamic icon pack loading.
+
 ## Diagram Coverage Matrix
 
 Legend:
