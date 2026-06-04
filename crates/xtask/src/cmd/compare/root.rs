@@ -96,7 +96,6 @@ pub(crate) fn parse_root_delta_report_limit(
     Ok(RootDeltaReportLimit::Top(limit))
 }
 
-#[cfg(test)]
 pub(crate) fn collect_root_delta(
     stem: &str,
     upstream_svg: &str,

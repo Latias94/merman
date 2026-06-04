@@ -10,6 +10,21 @@ use super::{RootDeltaReportLimit, parse_root_delta_report_limit};
 
 const ROOT_VIEWPORT_DEFERRED_DIAGRAMS: &[&str] = &["treeView", "ishikawa", "eventmodeling"];
 
+fn diagram_supports_root_report(diagram: &str) -> bool {
+    matches!(
+        diagram,
+        "architecture"
+            | "class"
+            | "flowchart"
+            | "gitgraph"
+            | "journey"
+            | "mindmap"
+            | "sequence"
+            | "state"
+            | "timeline"
+    )
+}
+
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -230,12 +245,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
 
-        if report_root
-            && matches!(
-                diagram,
-                "architecture" | "flowchart" | "gitgraph" | "mindmap" | "sequence" | "state"
-            )
-        {
+        if report_root && diagram_supports_root_report(diagram) {
             cmd_args.push("--report-root".to_string());
             match root_report_limit {
                 Some(RootDeltaReportLimit::All) => {
@@ -603,5 +613,15 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
         assert_eq!(diagram_filter_key("treeView"), "treeview");
         assert_eq!(diagram_filter_key("tree-view"), "treeview");
         assert_eq!(diagram_filter_key("eventmodeling"), "eventmodeling");
+    }
+
+    #[test]
+    fn root_report_support_covers_active_residual_families() {
+        for diagram in ["class", "timeline", "journey"] {
+            assert!(
+                diagram_supports_root_report(diagram),
+                "{diagram} should emit root delta reports through compare-all"
+            );
+        }
     }
 }
