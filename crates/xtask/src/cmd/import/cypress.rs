@@ -48,6 +48,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     let workspace_root = crate::cmd::workspace_root();
+    let baseline_label = crate::cmd::pinned_mermaid_baseline_label(&workspace_root);
 
     let spec_root = spec_root
         .map(|p| {
@@ -65,7 +66,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         });
     if !spec_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream cypress spec root not found: {} (expected repo-ref checkout of mermaid@11.12.3)",
+            "upstream cypress spec root not found: {} (expected repo-ref checkout of mermaid{baseline_label})",
             spec_root.display()
         )));
     }
@@ -3184,7 +3185,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             let _ = fs::create_dir_all(parent);
         }
         let header = format!(
-            "# import-upstream-cypress report (Mermaid@11.12.3)\n# generated_at={}\n",
+            "# import-upstream-cypress report (Mermaid{baseline_label})\n# generated_at={}\n",
             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
         );
         let mut out = String::new();

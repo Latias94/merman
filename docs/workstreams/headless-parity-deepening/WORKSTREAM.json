@@ -36,12 +36,16 @@
       "path": "docs/workstreams/headless-parity-deepening/THEME_RENDERING_COVERAGE.md"
     },
     {
+      "role": "baseline_preparation",
+      "path": "docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md"
+    },
+    {
       "role": "handoff",
       "path": "docs/workstreams/headless-parity-deepening/HANDOFF.md"
     }
   ],
   "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
-  "current_task": "HPD-050",
+  "current_task": "HPD-090",
   "gates": [
     "cargo fmt --check",
     "git diff --check",

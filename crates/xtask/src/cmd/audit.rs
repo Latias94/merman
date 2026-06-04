@@ -341,6 +341,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = crate::cmd::workspace_root();
     let fixtures_root = crate::cmd::fixtures_root();
     let deferred_root = fixtures_root.join("_deferred");
+    let baseline_label = crate::cmd::pinned_mermaid_baseline_label(&workspace_root);
 
     let out_path =
         out_path.unwrap_or_else(|| crate::cmd::target_root().join("audit").join("gaps.md"));
@@ -448,7 +449,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     // Render report.
     let mut report = String::new();
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let _ = writeln!(&mut report, "# Gap Audit (Mermaid@11.12.3)\n");
+    let _ = writeln!(&mut report, "# Gap Audit (Mermaid{baseline_label})\n");
     let _ = writeln!(&mut report, "- Generated: `{ts}`");
     let out_rel = out_path.strip_prefix(&workspace_root).unwrap_or(&out_path);
     let _ = write!(

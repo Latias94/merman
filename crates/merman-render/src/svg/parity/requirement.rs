@@ -141,7 +141,7 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     fn is_prototype_pollution_id(id: &str) -> bool {
-        matches!(id, "__proto__" | "constructor" | "prototype")
+        id == "__proto__"
     }
 
     fn parse_node_style_overrides(
@@ -249,11 +249,13 @@ pub(super) fn render_requirement_diagram_svg_model(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
     let look = config_string(effective_config, &["look"]).unwrap_or_default();
-    let is_neo_look = look.trim() == "neo";
-    let look_attr = if is_neo_look {
-        r#" data-look="neo""#
+    let look = look.trim();
+    let look = if look.is_empty() { "classic" } else { look };
+    let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
+    let node_id_prefix = if diagram_id.is_empty() {
+        String::new()
     } else {
-        ""
+        format!("{}-", diagram_id)
     };
 
     let relationships = &model.relationships;
@@ -546,7 +548,7 @@ pub(super) fn render_requirement_diagram_svg_model(
         let rel_type = edge_rel_type_by_id.get(&e.id).copied().unwrap_or("");
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
-        let class = format!("edge-pattern-{pattern} edge-thickness-normal relationshipLine");
+        let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
         let style = if is_contains {
             "fill:none;;;;fill:none;"
         } else {
@@ -568,13 +570,14 @@ pub(super) fn render_requirement_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
+            r#"<path d="{d}" id="{dom_id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{look_attr}{marker_attr}/>"#,
             d = escape_xml(&d),
+            dom_id = escape_xml(&format!("{}{}", node_id_prefix, e.id)),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
             style = escape_xml(style),
             data_points = escape_xml(&data_points_b64),
-            look_attr = look_attr,
+            look_attr = look_attr.as_str(),
             marker_attr = marker_attr,
         );
     }
@@ -932,14 +935,18 @@ pub(super) fn render_requirement_diagram_svg_model(
             node_classes.insert(0, "default");
         }
         let classes_str = if node_classes.is_empty() {
-            "default node".to_string()
+            "node default".to_string()
         } else {
-            format!("{} node", node_classes.join(" "))
+            format!("node {}", node_classes.join(" "))
         };
         let id_attr = if is_prototype_pollution_id(&n.id) {
             String::new()
         } else {
-            format!(r#" id="{}""#, escape_xml(&n.id))
+            format!(
+                r#" id="{}{}""#,
+                escape_xml(&node_id_prefix),
+                escape_xml(&n.id)
+            )
         };
 
         let _ = write!(
@@ -947,7 +954,7 @@ pub(super) fn render_requirement_diagram_svg_model(
             r#"<g class="{class}"{id_attr}{look_attr} transform="translate({cx}, {cy})">"#,
             class = escape_xml(&classes_str),
             id_attr = id_attr,
-            look_attr = look_attr,
+            look_attr = look_attr.as_str(),
             cx = fmt(cx),
             cy = fmt(cy),
         );
@@ -993,11 +1000,7 @@ pub(super) fn render_requirement_diagram_svg_model(
         let _ = write!(
             &mut out,
             r#"<g class="{class}" style="{style}">"#,
-            class = if is_neo_look {
-                "basic label-container outer-path"
-            } else {
-                "basic label-container"
-            },
+            class = "basic label-container outer-path",
             style = escape_xml(&node_styles)
         );
         let _ = write!(
@@ -1110,15 +1113,9 @@ pub(super) fn render_requirement_diagram_svg_model(
             } else {
                 rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
             };
-            let divider_class_attr = if is_neo_look {
-                r#" class="divider""#
-            } else {
-                ""
-            };
             let _ = write!(
                 &mut out,
-                r##"<g{divider_class_attr} style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
-                divider_class_attr = divider_class_attr,
+                r##"<g class="divider" style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
                 style = escape_xml(&node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),
@@ -1149,6 +1146,30 @@ pub(super) fn render_requirement_diagram_svg_model(
         );
     }
 
+    push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
+
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+fn push_requirement_shadow_defs(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) {
+    let flood_color = effective_config
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .filter(|theme| theme.contains("dark"))
+        .map(|_| "#FFFFFF")
+        .unwrap_or("#000000");
+    let diagram_id = escape_xml(diagram_id);
+    let _ = write!(
+        out,
+        r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs><defs><filter id="{}-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+        diagram_id.as_str(),
+        flood_color,
+        diagram_id.as_str(),
+        flood_color
+    );
 }

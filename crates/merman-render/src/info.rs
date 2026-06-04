@@ -1,9 +1,8 @@
 use crate::Result;
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::text::TextMeasurer;
+use merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 use merman_core::diagrams::info::InfoDiagramRenderModel;
-
-const UPSTREAM_MERMAID_VERSION: &str = "11.12.2";
 
 pub fn layout_info_diagram(
     semantic: &serde_json::Value,
@@ -31,6 +30,6 @@ pub fn layout_info_diagram_typed(
             max_x: 400.0,
             max_y: 80.0,
         }),
-        version: format!("v{UPSTREAM_MERMAID_VERSION}"),
+        version: format!("v{PINNED_MERMAID_BASELINE_VERSION}"),
     })
 }

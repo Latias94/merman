@@ -3,6 +3,83 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
+
+Outcome:
+
+- Added `BASELINE_PREPARATION.md` as the pre-parity baseline readiness plan.
+- Decided to classify all-family upstream baseline diffs before doing a broad stored SVG refresh.
+- Fixed the first current-facing stale baseline surface:
+  - `layout_info_diagram_typed(...)` now formats visible Info output from
+    `PINNED_MERMAID_BASELINE_VERSION`.
+  - all `fixtures/info/*.layout.golden.json` now contain `v11.15.0`;
+  - all `fixtures/upstream-svgs/info/*.svg` now contain `v11.15.0`.
+- Fixed the next current-facing stale baseline surfaces:
+  - error diagram visible version text now reads `PINNED_MERMAID_BASELINE_VERSION`;
+  - `xtask` gap audit, upstream import report headers, and Cypress upstream-root diagnostics now
+    route through `pinned_mermaid_baseline_label(...)`.
+- Classified stored upstream SVG drift by family. Broad stale families are `block`, `gantt`,
+  `kanban`, `mindmap`, `radar`, and `requirement`. Narrow stale sets are `class` (`2` fixtures),
+  `timeline` (`1` fixture), and Flowchart HTML demo KaTeX fixtures (`4` fixtures). The rest passed
+  the structure gate or only had non-gating textual churn.
+- Refreshed the Requirement stored upstream SVG family and fixed the local Requirement SVG renderer
+  to match Mermaid 11.15 current DOM under the parity gate:
+  - default and themed output now emits `data-look`;
+  - node and edge DOM ids are diagram-prefixed while edge `data-id` remains the raw relationship id;
+  - node class ordering, `outer-path`, divider groups, and root drop-shadow defs match the generic
+    Mermaid 11.15 render path;
+  - the prototype-like `constructor` id remains renderable while `__proto__` stays suppressed.
+- The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
+  cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md`
+- `crates/merman-render/src/info.rs`
+- `crates/merman-render/src/error.rs`
+- `crates/merman-render/src/svg/parity/requirement.rs`
+- `crates/xtask/src/cmd/audit.rs`
+- `crates/xtask/src/cmd/import/{cypress,docs,examples}.rs`
+- `fixtures/info/*.layout.golden.json`
+- `fixtures/upstream-svgs/info/*.svg`
+- `fixtures/upstream-svgs/requirement/*.svg`
+- `target/hpd090-baseline-check/*.log`
+- `target/hpd090-baseline-check/flowchart-slices/*.log`
+
+Focused verification:
+
+- `cargo fmt -p merman-render` - passed.
+- `cargo run -p xtask -- update-layout-snapshots --diagram info` - passed.
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- gen-upstream-svgs --diagram info` -
+  passed.
+- `cargo run -p xtask -- compare-info-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\info_report_parity_after_baseline_hygiene.md` -
+  passed.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
+  passed, `1` test run.
+- `cargo fmt --all --check` - passed.
+- `cargo nextest run -p xtask pinned_mermaid_baseline_label_reads_lockfile_ref` - passed, `1`
+  test run.
+- `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed after the Requirement renderer DOM update.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
+  passed, `1` test run.
+- JSON/JSONL validation for `TASKS.jsonl`, `CONTEXT.jsonl`, `CAMPAIGNS.jsonl`, and
+  `WORKSTREAM.json` - passed.
+- `git diff --check` - passed; Git only reported the existing JSONL CRLF conversion warnings.
+- Per-family and Flowchart-prefix `check-upstream-svgs --check-dom --dom-mode structure` runs wrote
+  the inventory logs under `target/hpd090-baseline-check/`.
+
+Residual note:
+
+- This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
+  Next HPD-090 work should refresh the remaining broad stale families and narrow stale fixtures
+  listed in `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability gates before
+  resuming parity fixes. No broad official fixture import is indicated yet.
+
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 
 Outcome:

@@ -7,14 +7,33 @@ This workstream opens the post-11.15 structural-parity phase.
 
 Current priority order:
 
-1. HPD-080 visible rendering defect triage
-2. HPD-050 Architecture-first layout engine audit
-3. HPD-060 semantic/render unification pilot - done for Sequence
-4. HPD-070 unsupported-family rubric - done
+1. HPD-090 baseline preparation before further parity work
+2. HPD-080 visible rendering defect triage
+3. HPD-050 Architecture-first layout engine audit
+4. HPD-060 semantic/render unification pilot - done for Sequence
+5. HPD-070 unsupported-family rubric - done
 
 Immediate next task:
 
 - HPD-010, HPD-020, HPD-030, HPD-040, HPD-060, and HPD-070 are done.
+- HPD-090 is now the active preparation task before more parity/root residual work. Use
+  `BASELINE_PREPARATION.md` to decide whether stored upstream SVGs should be refreshed all at once
+  or by family, and whether official fixture/test coverage needs another import pass.
+- The first HPD-090 slice fixed Info baseline drift: local visible Info version output now comes
+  from `PINNED_MERMAID_BASELINE_VERSION`, Info layout goldens now say `v11.15.0`, and Info stored
+  upstream SVGs were regenerated to `v11.15.0`.
+- The second HPD-090 slice fixed Error visible version text and `xtask` import/audit live baseline
+  labels, then classified stored upstream SVG drift by family. Do not refresh all baselines:
+  refresh broad stale families by family, then point-refresh `class`, `timeline`, and Flowchart
+  HTML demo KaTeX drifts; then rerun layout, compare, and boundary renderability gates. No broad
+  official fixture import is indicated yet.
+- The Requirement refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15,
+  and the local Requirement renderer now emits the current Mermaid DOM surfaces needed for the
+  family parity gate (`data-look`, diagram-prefixed node/edge ids, node class ordering,
+  `outer-path`, `divider`, and root drop-shadow defs). `compare-requirement-svgs --check-dom
+  --dom-mode parity --dom-decimals 3` is green. Default exact SVG byte comparison still reports
+  textual mismatch from RoughJS/serialization churn and is not the current Requirement gate.
+- Remaining HPD-090 broad stale families are `block`, `gantt`, `kanban`, `mindmap`, and `radar`.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

@@ -40,6 +40,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     }
 
     let workspace_root = crate::cmd::workspace_root();
+    let baseline_label = crate::cmd::pinned_mermaid_baseline_label(&workspace_root);
 
     let examples_root = examples_root
         .map(|p| {
@@ -627,7 +628,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             let _ = fs::create_dir_all(parent);
         }
         let header = format!(
-            "# import-upstream-examples report (Mermaid@11.12.3)\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
+            "# import-upstream-examples report (Mermaid{baseline_label})\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
             chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z"),
             report_total_candidates,
             report_skip_duplicate_content,

@@ -638,3 +638,32 @@ Last updated: 2026-06-04
   in that scan. Continue HPD-080 only from a fresh failing gate, source-backed emitted-surface gap,
   or concrete consumer report; otherwise return to HPD-050 source-backed Architecture/Dagre/Graphlib
   audits before fine root residual work.
+
+## M8 - Baseline Preparation Before Parity
+
+- [ ] HPD-090 [owner=codex] [deps=HPD-020,HPD-030,HPD-070] [scope=docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md,crates/merman-core/src/baseline.rs,crates/merman-render/src/info.rs,crates/merman-render/src/error.rs,crates/merman-render/src/svg/parity/requirement.rs,crates/xtask/src/cmd/import,crates/xtask/src/cmd/audit.rs,fixtures,fixtures/upstream-svgs,docs/alignment]
+  Goal: Prepare the Mermaid 11.15 baseline corpus before further parity work by classifying stale
+  current-facing baseline surfaces, deciding whether to refresh all stored upstream SVGs, and
+  defining official fixture/test admission gates.
+  Validation: baseline preparation inventory; all-family upstream baseline check or documented
+  diagnostics; focused family refresh gates; layout snapshot and renderability smoke checks for
+  changed families.
+  Review: Do not use this task to silently broaden parity scope or admit unsupported families.
+  Refresh stored upstream SVGs only after the diff set is classified; add official fixtures only
+  when they are traceable to pinned Mermaid 11.15 docs/tests/examples/Cypress/HTML demos.
+  Evidence: docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md
+  Context: docs/workstreams/headless-parity-deepening/CONTEXT.jsonl
+  Handoff: IN_PROGRESS. `BASELINE_PREPARATION.md` now defines the pre-parity decision ladder:
+  current-facing stale surfaces first, stored upstream SVG baselines second, official fixture/test
+  intake third, readiness gates fourth, and parity/root residual fixes only after that. The first
+  slice fixed Info current-facing baseline drift by routing visible Info version output through
+  `PINNED_MERMAID_BASELINE_VERSION`, refreshing all Info layout goldens, and regenerating all Info
+  upstream SVGs to `v11.15.0` with Edge-backed Puppeteer. A second slice fixed Error visible
+  version text plus `xtask` import/audit live baseline labels, then classified stored upstream SVG
+  drift through per-family checks. A third slice refreshed Requirement upstream SVGs and repaired
+  Requirement renderer DOM output for Mermaid 11.15 current surfaces (`data-look`, diagram-prefixed
+  ids, `outer-path`, `divider`, and root drop-shadow defs), making
+  `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` green. Do not refresh
+  all SVG baselines: refresh remaining broad stale families `block`, `gantt`, `kanban`, `mindmap`,
+  and `radar`; point-refresh `class`, `timeline`, and Flowchart HTML demo KaTeX drifts; then rerun
+  layout, compare, and renderability gates. No broad official fixture import is indicated yet.
