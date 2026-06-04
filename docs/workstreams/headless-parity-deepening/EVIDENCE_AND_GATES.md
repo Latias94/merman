@@ -75,6 +75,16 @@ Outcome:
     `tspan` instead of splitting `String` into a third row;
   - the affected 026 layout golden was refreshed and the missing existing-fixture
     `zed_pr_57644_class` layout golden was added.
+- Point-refreshed the Timeline narrow stale set and fixed the local Timeline layout measurement to
+  match Mermaid 11.15's baseline browser fallback under the parity gate:
+  - the stale stored Timeline upstream SVG was regenerated;
+  - the fixture's bare `Fira Sans` / `17px` text resolves to browser sans-serif fallback metrics in
+    the Edge/Puppeteer baseline environment;
+  - local Timeline wrap probes now use the matching sans-serif metrics for that bare
+    `Fira Sans` case, and the first-line bbox height uses the observed `25px` browser lattice for
+    the same `17px` case;
+  - the affected Timeline layout golden was refreshed and the missing existing-fixture
+    `zed_pr_57644_timeline` layout golden was added.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -92,6 +102,7 @@ Touched surfaces:
 - `crates/merman-render/src/svg/parity/radar.rs`
 - `crates/merman-render/src/svg/parity/root_svg.rs`
 - `crates/merman-render/src/class.rs`
+- `crates/merman-render/src/timeline.rs`
 - `crates/merman-render/src/svg/parity/class/label.rs`
 - `crates/merman-render/src/svg/parity/roughjs46.rs`
 - `crates/merman-render/tests/block_svg_test.rs`
@@ -105,6 +116,8 @@ Touched surfaces:
 - `fixtures/block/*.layout.golden.json`
 - `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.layout.golden.json`
 - `fixtures/class/zed_pr_57644_class.layout.golden.json`
+- `fixtures/timeline/upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012.layout.golden.json`
+- `fixtures/timeline/zed_pr_57644_timeline.layout.golden.json`
 - `fixtures/gantt/zed_pr_57644_gantt.layout.golden.json`
 - `fixtures/mindmap/zed_pr_57644_mindmap.layout.golden.json`
 - `fixtures/upstream-svgs/info/*.svg`
@@ -115,6 +128,7 @@ Touched surfaces:
 - `fixtures/upstream-svgs/mindmap/*.svg`
 - `fixtures/upstream-svgs/radar/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
+- `fixtures/upstream-svgs/timeline/upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
 
@@ -171,6 +185,17 @@ Focused verification:
 - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\class_report_parity_hpd090_after_wrap_fix.md` -
   passed after the Class wrapping update and stored SVG refresh.
 - `cargo fmt -p merman-render --check` - passed after the Class wrapping update.
+- `cargo nextest run -p merman-render fira_sans_17_timeline_metrics_match_mermaid_browser_wrap` -
+  passed, `1` test run after the Timeline browser-fallback measurement update.
+- `cargo nextest run -p merman-render --test timeline_svg_test` - passed after the Timeline
+  measurement update.
+- `cargo run -p xtask -- update-layout-snapshots --diagram timeline` - passed and produced the
+  Timeline layout golden updates listed above.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run after the Timeline layout golden refresh.
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\timeline_report_parity_hpd090_after_fira_sans_measurement.md` -
+  passed after the Timeline measurement update and stored SVG refresh.
+- `cargo fmt -p merman-render --check` - passed after the Timeline measurement update.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -184,10 +209,10 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  The broad stale family set is now refreshed, and Class is now handled. Next HPD-090 work should
-  point-refresh the remaining narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
-  layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
-  import is indicated yet.
+  The broad stale family set, Class, and Timeline are now handled. Next HPD-090 work should
+  point-refresh the remaining Flowchart HTML demo KaTeX fixtures listed in
+  `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability gates before resuming
+  parity fixes. No broad official fixture import is indicated yet.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 

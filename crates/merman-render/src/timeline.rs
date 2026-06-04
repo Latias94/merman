@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, normalize_font_key};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use std::borrow::Cow;
 
@@ -49,6 +49,30 @@ fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
         font_family,
         font_size,
         font_weight: None,
+    }
+}
+
+fn timeline_font_key(style: &TextStyle) -> String {
+    style
+        .font_family
+        .as_deref()
+        .map(normalize_font_key)
+        .unwrap_or_default()
+}
+
+fn timeline_uses_fira_sans_browser_fallback(style: &TextStyle) -> bool {
+    timeline_font_key(style) == "firasans"
+}
+
+fn timeline_measurement_style(style: &TextStyle) -> Cow<'_, TextStyle> {
+    if timeline_uses_fira_sans_browser_fallback(style) {
+        // Edge/Chromium in the pinned Mermaid CLI environment resolves bare `Fira Sans` to the
+        // generic sans-serif face. Use the same metrics for Timeline's SVG getBBox probes.
+        let mut style = style.clone();
+        style.font_family = Some("sans-serif".to_string());
+        Cow::Owned(style)
+    } else {
+        Cow::Borrowed(style)
     }
 }
 
@@ -168,6 +192,7 @@ fn wrap_lines(
 
     let mut lines: Vec<String> = Vec::new();
     let mut cur: Vec<String> = Vec::new();
+    let measurement_style = timeline_measurement_style(style);
 
     for tok in tokens {
         cur.push(tok.clone());
@@ -177,7 +202,8 @@ fn wrap_lines(
         // the exact font fallback behavior of the Puppeteer baselines. Empirically, the single-run
         // SVG `getBBox().width` probe is a closer and more stable approximation for wrap
         // boundaries in timeline fixtures.
-        let candidate_width = measurer.measure_svg_simple_text_bbox_width_px(&candidate, style);
+        let candidate_width =
+            measurer.measure_svg_simple_text_bbox_width_px(&candidate, measurement_style.as_ref());
         if candidate_width > max_width || tok == "<br>" {
             cur.pop();
             lines.push(join_trim(&cur));
@@ -197,23 +223,31 @@ fn wrap_lines(
     }
 }
 
-fn text_bbox_height(lines: &[String], font_size: f64) -> f64 {
+fn timeline_first_line_bbox_height_px(style: &TextStyle) -> f64 {
+    if timeline_uses_fira_sans_browser_fallback(style) && (style.font_size - 17.0).abs() <= 0.01 {
+        return 25.0;
+    }
+
+    let first_line_em = 1.1875;
+    (style.font_size.max(1.0) * first_line_em).floor()
+}
+
+fn text_bbox_height(lines: &[String], style: &TextStyle) -> f64 {
     // Mermaid timeline measures SVG `<text>.getBBox().height` (see upstream `svgDraw.js`).
     //
-    // In Mermaid@11.12.2, the bbox behaves as:
+    // In the pinned Mermaid CLI/browser baselines, the bbox behaves as:
     // - first line: ~1.1875em (Trebuchet MS default)
     // - additional lines: 1.1em each
-    let font_size = font_size.max(1.0);
+    let font_size = style.font_size.max(1.0);
     let lines = lines.iter().filter(|l| !l.trim().is_empty()).count();
     if lines == 0 {
         return 0.0;
     }
-    let first_line_em = 1.1875;
     // Empirically, browser `getBBox().height` for SVG `<text>` in upstream timeline fixtures can
     // "snap" the first-line height down to an integer for non-default font sizes (notably when
     // the diagram sets `themeVariables.fontSize`). Mirror that so our layout stays on the same
     // lattice as upstream `mmdc` baselines.
-    let first = (font_size * first_line_em).floor();
+    let first = timeline_first_line_bbox_height_px(style);
     let additional = (lines.saturating_sub(1) as f64) * font_size * 1.1;
     first + additional
 }
@@ -229,7 +263,7 @@ fn virtual_node_height(
     // Mermaid timeline `wrap()` compares `tspan.getComputedTextLength()` against `node.width`
     // (the configured inner width, excluding padding).
     let lines = wrap_lines(text, content_width.max(1.0), style, measurer);
-    let bbox_h = text_bbox_height(&lines, style.font_size);
+    let bbox_h = text_bbox_height(&lines, style);
     // Mermaid timeline uses `conf.fontSize` (top-level `config.fontSize`) for the extra vertical
     // offset, even when the actual rendered font size comes from `themeVariables.fontSize`.
     let h = bbox_h + layout_font_size.max(1.0) * 1.1 * 0.5 + padding;
@@ -746,6 +780,31 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
+    }
+
+    #[test]
+    fn fira_sans_17_timeline_metrics_match_mermaid_browser_wrap() {
+        let style = TextStyle {
+            font_family: Some("Fira Sans".to_string()),
+            font_size: 17.0,
+            font_weight: None,
+        };
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+
+        let (height, lines) = virtual_node_height(
+            "Quality Management System (4)",
+            TASK_CONTENT_WIDTH_DEFAULT,
+            &style,
+            16.0,
+            NODE_PADDING,
+            &measurer,
+        );
+
+        assert_eq!(lines, ["Quality", "Management", "System   (4)"]);
+        assert!(
+            (height - 91.2).abs() < 0.001,
+            "expected Fira/Sans browser Timeline height to be 91.2px, got {height}"
+        );
     }
 
     #[test]

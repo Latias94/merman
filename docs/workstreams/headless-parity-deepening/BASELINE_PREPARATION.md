@@ -308,6 +308,33 @@ Verification:
 - `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\class_report_parity_hpd090_after_wrap_fix.md`
 - `cargo fmt -p merman-render --check`
 
+## Tenth Slice Completed
+
+Timeline narrow baseline refresh plus browser-fallback text measurement parity:
+
+- Point-refreshed
+  `fixtures/upstream-svgs/timeline/upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012.svg`
+  to the pinned Mermaid 11.15 baseline.
+- Timeline was not a pure stored-SVG refresh. The stale fixture uses `fontFamily: Fira Sans` and
+  `fontSize: 17px`; in the Edge/Puppeteer baseline environment, bare `Fira Sans` resolves to the
+  browser sans-serif fallback for the SVG `getBBox()` probes that drive wrapping and node heights.
+- Local Timeline layout now mirrors that baseline-environment measurement seam only for Timeline:
+  wrap probes use the same sans-serif metrics for bare `Fira Sans`, and the first-line bbox height
+  for the `Fira Sans` / `17px` browser-fallback case is pinned to the observed `25px` lattice.
+- Refreshed the affected Timeline layout golden and added the missing existing-fixture
+  `zed_pr_57644_timeline.layout.golden.json` snapshot.
+- The Timeline family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo nextest run -p merman-render fira_sans_17_timeline_metrics_match_mermaid_browser_wrap`
+- `cargo nextest run -p merman-render --test timeline_svg_test`
+- `cargo run -p xtask -- update-layout-snapshots --diagram timeline`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\timeline_report_parity_hpd090_after_fira_sans_measurement.md`
+- `cargo fmt -p merman-render --check`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -373,8 +400,8 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Point-refresh the remaining narrow stale sets: `timeline` (`1` fixture) and Flowchart HTML demo
-   KaTeX fixtures (`4` fixtures).
+1. Point-refresh the remaining narrow stale set: Flowchart HTML demo KaTeX fixtures (`4`
+   fixtures).
 2. Update affected layout snapshots and run family compare gates after each refresh batch.
 3. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
    inventory points to stored-baseline drift in existing fixtures, not missing fixture intake.

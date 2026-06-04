@@ -64,9 +64,15 @@ Immediate next task:
   `themeVariables.fontSize` case under the family DOM gate. The affected 026 layout golden was
   refreshed and the missing existing-fixture `zed_pr_57644_class` layout golden was added.
   `compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- No HPD-090 broad stale family remains. Remaining HPD-090 work is point-refreshing the narrow
-  stale sets: `timeline` (`1` fixture) and Flowchart HTML demo KaTeX fixtures (`4` fixtures), then
-  rerunning readiness gates.
+- The Timeline refresh is now handled: the one stale stored upstream SVG was point-refreshed, and
+  local Timeline measurement now matches Mermaid 11.15's Edge/Puppeteer browser fallback for the
+  fixture's bare `Fira Sans` / `17px` text. Timeline wrap probes use the matching sans-serif
+  metrics for that case, first-line bbox height uses the observed `25px` browser lattice, the
+  affected layout golden was refreshed, and the missing existing-fixture
+  `zed_pr_57644_timeline` layout golden was added. `compare-timeline-svgs --check-dom --dom-mode
+  parity --dom-decimals 3` is green.
+- No HPD-090 broad stale family remains. Remaining HPD-090 work is point-refreshing the Flowchart
+  HTML demo KaTeX fixtures (`4` fixtures), then rerunning readiness gates.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.
