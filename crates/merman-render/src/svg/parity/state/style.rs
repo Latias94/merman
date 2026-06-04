@@ -20,70 +20,31 @@ pub(super) struct StateThemeDefaults {
 
 impl StateThemeDefaults {
     pub(super) fn from_config(effective_config: &serde_json::Value) -> Self {
-        let theme = SvgTheme::new(effective_config);
-        let line_color = theme.color("lineColor", "#333333");
-        let node_border = theme.color("nodeBorder", "#9370DB");
-        let main_bkg = theme.color("mainBkg", "#ECECFF");
-        let background = theme.color("background", "white");
-        let stroke_width = theme.css_value("strokeWidth", "1");
-        let stroke_width_px = if stroke_width.trim_end().ends_with("px") {
-            stroke_width.clone()
-        } else {
-            format!("{stroke_width}px")
-        };
-        let stroke_width_value = stroke_width
-            .trim()
-            .trim_end_matches("px")
-            .trim()
-            .parse::<f64>()
-            .unwrap_or(1.0)
-            .max(0.0);
-        let rough_stroke_width_value = if (stroke_width_value - 1.0).abs() <= 1e-9 {
-            1.3
-        } else {
-            stroke_width_value
-        };
-        let special_state_color = theme.color("specialStateColor", line_color.as_str());
-        let inner_end_background = theme.color("innerEndBackground", node_border.as_str());
-        let end_outer_fill = if special_state_color.eq_ignore_ascii_case("#333333") {
-            "#ECECFF".to_string()
-        } else {
-            special_state_color.clone()
-        };
-        let end_outer_stroke = special_state_color.clone();
-        let end_inner_stroke = if background.eq_ignore_ascii_case("white") {
-            inner_end_background.clone()
-        } else {
-            background.clone()
-        };
+        let theme = PresentationTheme::new(effective_config).state_diagram();
 
         Self {
-            background: background.clone(),
-            main_bkg: main_bkg.clone(),
-            state_bkg: theme
-                .optional_color("stateBkg")
-                .unwrap_or_else(|| main_bkg.clone()),
-            state_border: theme
-                .optional_color("stateBorder")
-                .unwrap_or_else(|| node_border.clone()),
-            stroke_width,
-            stroke_width_px,
-            rough_stroke_width_value,
-            special_state_color,
-            inner_end_background,
-            end_outer_fill,
-            end_outer_stroke,
-            end_inner_stroke,
-            note_bkg: theme.color("noteBkgColor", "#fff5ad"),
-            note_border: theme.color("noteBorderColor", "#aaaa33"),
+            background: theme.background,
+            main_bkg: theme.main_bkg,
+            state_bkg: theme.state_bkg,
+            state_border: theme.state_border,
+            stroke_width: theme.stroke_width,
+            stroke_width_px: theme.stroke_width_px,
+            rough_stroke_width_value: theme.rough_stroke_width_value,
+            special_state_color: theme.special_state_color,
+            inner_end_background: theme.inner_end_background,
+            end_outer_fill: theme.end_outer_fill,
+            end_outer_stroke: theme.end_outer_stroke,
+            end_inner_stroke: theme.end_inner_stroke,
+            note_bkg: theme.note_bkg,
+            note_border: theme.note_border,
         }
     }
 }
 
 fn state_shadow_defs(out: &mut String, diagram_id: &str, effective_config: &serde_json::Value) {
-    let flood_color = SvgTheme::new(effective_config)
-        .theme_name()
-        .contains("dark")
+    let flood_color = PresentationTheme::new(effective_config)
+        .common()
+        .is_dark_theme()
         .then_some("#FFFFFF")
         .unwrap_or("#000000");
     let diagram_id = escape_xml(diagram_id);
@@ -131,12 +92,11 @@ pub(super) fn state_markers(
     diagram_id: &str,
     effective_config: &serde_json::Value,
 ) {
-    let theme = SvgTheme::new(effective_config);
+    let theme = PresentationTheme::new(effective_config).state_diagram();
     let diagram_id = escape_xml(diagram_id);
-    let line_color = theme.color("lineColor", "#333333");
-    let transition_color = theme.color("transitionColor", line_color.as_str());
+    let transition_color = theme.transition_color.as_str();
 
-    if theme.look() == "neo" {
+    if theme.common.look == "neo" {
         let _ = write!(
             out,
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,
@@ -194,40 +154,35 @@ pub(super) fn state_css(
         styles.iter().any(|s| has_fontish(s)) || text_styles.iter().any(|s| has_fontish(s))
     }
 
-    let theme = SvgTheme::new(effective_config);
-    let ff = theme.font_family_css();
-    let font_size = theme.font_size_px();
+    let theme = PresentationTheme::new(effective_config).state_diagram();
+    let ff = theme.common.font_family_css.as_str();
+    let font_size = theme.common.font_size_px;
     let id = escape_xml(diagram_id);
-    let text_color = theme.color("textColor", "#333");
-    let error_bkg = theme.color("errorBkgColor", "#552222");
-    let error_text = theme.color("errorTextColor", "#552222");
-    let line_color = theme.color("lineColor", "#333333");
-    let transition_color = theme.color("transitionColor", line_color.as_str());
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let state_label_color = theme.color("stateLabelColor", "#131300");
+    let text_color = theme.common.text_color.as_str();
+    let error_bkg = theme.common.error_bkg.as_str();
+    let error_text = theme.common.error_text.as_str();
+    let line_color = theme.common.line_color.as_str();
+    let transition_color = theme.transition_color.as_str();
+    let node_border = theme.node_border.as_str();
+    let state_label_color = theme.state_label_color.as_str();
     let defaults = StateThemeDefaults::from_config(effective_config);
     let main_bkg = &defaults.main_bkg;
     let background = &defaults.background;
-    let alt_background = theme.color("altBackground", "#efefef");
+    let alt_background = theme.alt_background.as_str();
     let stroke_width = &defaults.stroke_width;
     let stroke_width_px = &defaults.stroke_width_px;
     let note_border = &defaults.note_border;
     let note_bkg = &defaults.note_bkg;
-    let note_text = theme.color("noteTextColor", "black");
-    let label_background = theme.color("labelBackgroundColor", main_bkg.as_str());
-    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-    let transition_label_color = theme
-        .optional_color("transitionLabelColor")
-        .or_else(|| theme.optional_color("tertiaryTextColor"))
-        .unwrap_or_else(|| text_color.clone());
+    let note_text = theme.note_text.as_str();
+    let label_background = theme.label_background.as_str();
+    let edge_label_background = theme.edge_label_background.as_str();
+    let transition_label_color = theme.transition_label_color.as_str();
     let special_state_color = &defaults.special_state_color;
     let inner_end_background = &defaults.inner_end_background;
-    let composite_background = theme
-        .optional_color("compositeBackground")
-        .unwrap_or_else(|| background.to_string());
+    let composite_background = theme.composite_background.as_str();
     let state_bkg = &defaults.state_bkg;
     let state_border = &defaults.state_border;
-    let composite_title_background = theme.color("compositeTitleBackground", main_bkg.as_str());
+    let composite_title_background = theme.composite_title_background.as_str();
     let use_gradient =
         config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
     let neo_cluster_stroke = if use_gradient {
@@ -239,13 +194,10 @@ pub(super) fn state_css(
         crate::config::config_f64_css_px(effective_config, &["themeVariables", "radius"])
             .unwrap_or(5.0)
             .max(0.0);
-    let neo_drop_shadow = theme
-        .optional_value("dropShadow")
-        .unwrap_or_else(|| "none".to_string())
-        .replace(
-            "url(#drop-shadow)",
-            &format!("url(#{diagram_id}-drop-shadow)"),
-        );
+    let neo_drop_shadow = theme.drop_shadow.replace(
+        "url(#drop-shadow)",
+        &format!("url(#{diagram_id}-drop-shadow)"),
+    );
 
     // Mirrors Mermaid 11.15 `diagrams/state/styles.js` + shared base stylesheet ordering.
     let mut css = String::new();

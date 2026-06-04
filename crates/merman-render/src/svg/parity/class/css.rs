@@ -7,29 +7,24 @@ pub(super) fn class_css(
     font_size_css: &str,
 ) -> String {
     let id = escape_xml(diagram_id);
-    let theme = SvgTheme::new(effective_config);
+    let theme = PresentationTheme::new(effective_config).class_diagram();
     let font_family = normalize_css_font_family(font_family);
     let font_family = if font_family.is_empty() {
         "\"trebuchet ms\",verdana,arial,sans-serif"
     } else {
         font_family.as_str()
     };
-    let class_text = theme.color(
-        "classText",
-        &theme.color("primaryTextColor", &theme.color("textColor", "#333")),
-    );
-    let note_text = theme.color("noteTextColor", "#333");
-    let line_color = theme.color("lineColor", "#333333");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let class_group_text = theme
-        .optional_color("nodeBorder")
-        .unwrap_or_else(|| class_text.clone());
-    let cluster_bkg = theme.color("clusterBkg", "#ffffde");
-    let cluster_border = theme.color("clusterBorder", "#aaaa33");
-    let title_color = theme.color("titleColor", "#333");
-    let text_color = theme.color("textColor", class_text.as_str());
-    let stroke_width = theme.css_value("strokeWidth", "1");
+    let class_text = theme.class_text.as_str();
+    let note_text = theme.note_text.as_str();
+    let line_color = theme.common.line_color.as_str();
+    let main_bkg = theme.main_bkg.as_str();
+    let node_border = theme.node_border.as_str();
+    let class_group_text = theme.class_group_text.as_str();
+    let cluster_bkg = theme.cluster_bkg.as_str();
+    let cluster_border = theme.cluster_border.as_str();
+    let title_color = theme.title_color.as_str();
+    let text_color = theme.text_color.as_str();
+    let stroke_width = theme.stroke_width.as_str();
 
     let mut out = String::new();
     let _ = write!(

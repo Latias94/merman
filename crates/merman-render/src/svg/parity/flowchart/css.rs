@@ -10,21 +10,21 @@ pub(in crate::svg::parity) fn flowchart_css(
     class_defs: &IndexMap<String, Vec<String>>,
 ) -> String {
     let id = escape_xml(diagram_id);
-    let theme = SvgTheme::new(effective_config);
-    let stroke = theme.color("lineColor", "#333333");
-    let arrowhead_color = theme.color("arrowheadColor", stroke.as_str());
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let text_color = theme.color("textColor", "#333");
-    let node_text_color = theme.color("nodeTextColor", text_color.as_str());
-    let title_color = theme.color("titleColor", text_color.as_str());
-    let stroke_width = theme.css_value("strokeWidth", "1");
-    let error_bkg = theme.color("errorBkgColor", "#552222");
-    let error_text = theme.color("errorTextColor", "#552222");
-    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-    let tertiary = theme.color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)");
-    let cluster_bkg = theme.color("clusterBkg", "#ffffde");
-    let cluster_border = theme.color("clusterBorder", "#aaaa33");
+    let theme = PresentationTheme::new(effective_config).node_diagram();
+    let stroke = theme.common.line_color.as_str();
+    let arrowhead_color = theme.arrowhead_color.as_str();
+    let node_border = theme.node_border.as_str();
+    let main_bkg = theme.main_bkg.as_str();
+    let text_color = theme.common.text_color.as_str();
+    let node_text_color = theme.node_text_color.as_str();
+    let title_color = theme.title_color.as_str();
+    let stroke_width = theme.stroke_width.as_str();
+    let error_bkg = theme.common.error_bkg.as_str();
+    let error_text = theme.common.error_text.as_str();
+    let edge_label_background = theme.edge_label_background.as_str();
+    let tertiary = theme.tertiary.as_str();
+    let cluster_bkg = theme.cluster_bkg.as_str();
+    let cluster_border = theme.cluster_border.as_str();
 
     fn flowchart_label_bkg_from_edge_label_background(edge_label_background: &str) -> String {
         fn parse_hex_channel(hex: &str) -> Option<u8> {

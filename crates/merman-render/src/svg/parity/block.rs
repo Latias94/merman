@@ -226,23 +226,24 @@ pub(super) fn render_block_diagram_svg_model(
 
     fn block_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
         let id = escape_xml(diagram_id);
-        let theme = SvgTheme::new(effective_config);
-        let font_family = theme.font_family_css();
-        let font_family = font_family.as_str();
-        let font_size = theme.font_size_px();
-        let text_color = theme.color("textColor", "#333");
-        let node_text_color = theme.color("nodeTextColor", text_color.as_str());
-        let title_color = theme.color("titleColor", text_color.as_str());
-        let main_bkg = theme.color("mainBkg", "#ECECFF");
-        let node_border = theme.color("nodeBorder", "#9370DB");
-        let line_color = theme.color("lineColor", "#333333");
-        let arrowhead_color = theme.color("arrowheadColor", line_color.as_str());
-        let stroke_width = theme.css_value("strokeWidth", "1");
-        let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-        let cluster_bkg = theme.color("clusterBkg", "#ffffde");
-        let cluster_border = theme.color("clusterBorder", "#aaaa33");
-        let cluster_bkg = css_rgba_fade(&cluster_bkg, 0.5).unwrap_or(cluster_bkg);
-        let cluster_border = css_rgba_fade(&cluster_border, 0.2).unwrap_or(cluster_border);
+        let theme = PresentationTheme::new(effective_config).node_diagram();
+        let font_family = theme.common.font_family_css.as_str();
+        let font_size = theme.common.font_size_px;
+        let text_color = theme.common.text_color.as_str();
+        let node_text_color = theme.node_text_color.as_str();
+        let title_color = theme.title_color.as_str();
+        let main_bkg = theme.main_bkg.as_str();
+        let node_border = theme.node_border.as_str();
+        let line_color = theme.common.line_color.as_str();
+        let arrowhead_color = theme.arrowhead_color.as_str();
+        let stroke_width = theme.stroke_width.as_str();
+        let edge_label_background = theme.edge_label_background.as_str();
+        let cluster_bkg = theme.cluster_bkg.as_str();
+        let cluster_border = theme.cluster_border.as_str();
+        let cluster_bkg =
+            css_rgba_fade(&cluster_bkg, 0.5).unwrap_or_else(|| cluster_bkg.to_string());
+        let cluster_border =
+            css_rgba_fade(&cluster_border, 0.2).unwrap_or_else(|| cluster_border.to_string());
 
         let mut out = String::new();
         let _ = write!(

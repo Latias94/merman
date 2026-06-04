@@ -8,12 +8,12 @@ pub(super) fn sequence_css(
     // Mirrors Mermaid 11.15 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
-    let theme = SvgTheme::new(effective_config);
-    let font = theme.font_family_css();
-    let text_color = theme.color("textColor", "#333");
-    let error_bkg = theme.color("errorBkgColor", "#552222");
-    let error_text = theme.color("errorTextColor", "#552222");
-    let line_color = theme.color("lineColor", "#333333");
+    let theme = PresentationTheme::new(effective_config).sequence_diagram();
+    let font = theme.common.font_family_css.as_str();
+    let text_color = theme.common.text_color.as_str();
+    let error_bkg = theme.common.error_bkg.as_str();
+    let error_text = theme.common.error_text.as_str();
+    let line_color = theme.common.line_color.as_str();
     let mut out = String::new();
     let _ = write!(
         &mut out,
@@ -56,34 +56,27 @@ pub(super) fn sequence_css(
     );
 
     // Sequence styles.
-    let actor_border = theme.color("actorBorder", "#9370DB");
-    let actor_fill = theme.color("actorBkg", "#ECECFF");
-    let stroke_width = theme.css_value("strokeWidth", "1");
-    let drop_shadow = theme.css_value("dropShadow", "none");
-    let note_border = theme.color("noteBorderColor", "#aaaa33");
-    let note_fill = theme.color("noteBkgColor", "#fff5ad");
-    let actor_text = theme.color("actorTextColor", "black");
-    let actor_line = theme.color("actorLineColor", actor_border.as_str());
-    let signal_color = theme.color("signalColor", "#333");
-    let sequence_number = theme.color("sequenceNumberColor", "white");
-    let signal_text = theme.color("signalTextColor", "#333");
-    let label_box_border = theme.color("labelBoxBorderColor", actor_border.as_str());
-    let label_box_fill = theme.color("labelBoxBkgColor", actor_fill.as_str());
-    let label_text = theme.color("labelTextColor", actor_text.as_str());
-    let loop_text = theme.color("loopTextColor", actor_text.as_str());
-    let note_text = theme.color("noteTextColor", "black");
-    let activation_fill = theme.color("activationBkgColor", "#f4f4f4");
-    let activation_border = theme.color("activationBorderColor", "#666");
-    let node_border = theme.color("nodeBorder", actor_border.as_str());
-    let label_box_filter = if theme.look() == "neo" {
-        drop_shadow.as_str()
-    } else {
-        "none"
-    };
-    let note_font_weight = theme
-        .optional_value("noteFontWeight")
-        .map(|font_weight| format!("font-weight:{};", font_weight))
-        .unwrap_or_default();
+    let actor_border = theme.actor_border.as_str();
+    let actor_fill = theme.actor_fill.as_str();
+    let stroke_width = theme.stroke_width.as_str();
+    let drop_shadow = theme.drop_shadow.as_str();
+    let note_border = theme.note_border.as_str();
+    let note_fill = theme.note_fill.as_str();
+    let actor_text = theme.actor_text.as_str();
+    let actor_line = theme.actor_line.as_str();
+    let signal_color = theme.signal_color.as_str();
+    let sequence_number = theme.sequence_number.as_str();
+    let signal_text = theme.signal_text.as_str();
+    let label_box_border = theme.label_box_border.as_str();
+    let label_box_fill = theme.label_box_fill.as_str();
+    let label_text = theme.label_text.as_str();
+    let loop_text = theme.loop_text.as_str();
+    let note_text = theme.note_text.as_str();
+    let activation_fill = theme.activation_fill.as_str();
+    let activation_border = theme.activation_border.as_str();
+    let node_border = theme.node_border.as_str();
+    let label_box_filter = theme.label_box_filter.as_str();
+    let note_font_weight = theme.note_font_weight.as_str();
 
     let _ = write!(
         &mut out,
