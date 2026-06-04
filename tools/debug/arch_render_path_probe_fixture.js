@@ -74,6 +74,7 @@ function probeInstallScript() {
     kind: "architecture-render-path",
     stages: [],
     fcoseStages: [],
+    fcoseShuffles: [],
     errors: [],
   };
   globalThis.__mermanArchRenderPathProbe = probe;
@@ -117,6 +118,76 @@ function probeInstallScript() {
 
   function safeNumber(value) {
     return Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  function dumpMapEntries(map, valueMapper) {
+    if (!map || typeof map.entries !== "function") {
+      return null;
+    }
+    const out = [];
+    for (const [key, value] of map.entries()) {
+      out.push({
+        key: String(key),
+        value: valueMapper ? valueMapper(value) : value,
+      });
+    }
+    return out;
+  }
+
+  function dumpConstraintList(value) {
+    if (!Array.isArray(value)) {
+      return value;
+    }
+    return value.map((constraint) => {
+      if (!constraint || typeof constraint !== "object") {
+        return constraint;
+      }
+      return {
+        left: constraint.left == null ? null : String(constraint.left),
+        right: constraint.right == null ? null : String(constraint.right),
+        top: constraint.top == null ? null : String(constraint.top),
+        bottom: constraint.bottom == null ? null : String(constraint.bottom),
+        gap: safeNumber(constraint.gap),
+      };
+    });
+  }
+
+  function dumpRelativeState(layout) {
+    if (!layout) {
+      return null;
+    }
+    return {
+      nodesInRelativeHorizontal: Array.isArray(layout.nodesInRelativeHorizontal)
+        ? layout.nodesInRelativeHorizontal.map((v) => String(v))
+        : null,
+      nodesInRelativeVertical: Array.isArray(layout.nodesInRelativeVertical)
+        ? layout.nodesInRelativeVertical.map((v) => String(v))
+        : null,
+      nodeToTempPositionMapHorizontal: dumpMapEntries(layout.nodeToTempPositionMapHorizontal, safeNumber),
+      nodeToTempPositionMapVertical: dumpMapEntries(layout.nodeToTempPositionMapVertical, safeNumber),
+      nodeToRelativeConstraintMapHorizontal: dumpMapEntries(
+        layout.nodeToRelativeConstraintMapHorizontal,
+        dumpConstraintList
+      ),
+      nodeToRelativeConstraintMapVertical: dumpMapEntries(
+        layout.nodeToRelativeConstraintMapVertical,
+        dumpConstraintList
+      ),
+      dummyToNodeForVerticalAlignment: dumpMapEntries(layout.dummyToNodeForVerticalAlignment, (value) =>
+        Array.isArray(value) ? value.map((v) => String(v)) : value
+      ),
+      dummyToNodeForHorizontalAlignment: dumpMapEntries(layout.dummyToNodeForHorizontalAlignment, (value) =>
+        Array.isArray(value) ? value.map((v) => String(v)) : value
+      ),
+      fixedNodesOnHorizontal:
+        layout.fixedNodesOnHorizontal && typeof layout.fixedNodesOnHorizontal.values === "function"
+          ? Array.from(layout.fixedNodesOnHorizontal.values()).map((v) => String(v))
+          : null,
+      fixedNodesOnVertical:
+        layout.fixedNodesOnVertical && typeof layout.fixedNodesOnVertical.values === "function"
+          ? Array.from(layout.fixedNodesOnVertical.values()).map((v) => String(v))
+          : null,
+    };
   }
 
   function dumpLayout(layout) {
@@ -194,6 +265,7 @@ function probeInstallScript() {
       totalDisplacement: safeNumber(layout.totalDisplacement),
       maxIterations: safeNumber(layout.maxIterations),
       constraints: layout.constraints ? Object.keys(layout.constraints).sort() : [],
+      relative: dumpRelativeState(layout),
       bbox:
         Number.isFinite(minX) && Number.isFinite(minY) && Number.isFinite(maxX) && Number.isFinite(maxY)
           ? { x1: minX, y1: minY, x2: maxX, y2: maxY, w: maxX - minX, h: maxY - minY }
@@ -340,6 +412,26 @@ function probeInstallScript() {
       });
     }
   };
+
+  globalThis.__mermanArchRenderPathProbeRecordFcoseShuffle = (layout, axis, i, j, randomValue, before, after) => {
+    try {
+      probe.fcoseShuffles.push({
+        runIndex: layout && layout.__mermanArchFcoseRunIndex,
+        totalIterations: safeNumber(layout && layout.totalIterations),
+        axis,
+        i: safeNumber(i),
+        j: safeNumber(j),
+        randomValue: safeNumber(randomValue),
+        before: Array.isArray(before) ? before.map((v) => String(v)) : null,
+        after: Array.isArray(after) ? after.map((v) => String(v)) : null,
+      });
+    } catch (e) {
+      probe.errors.push({
+        tag: "fcose:shuffle",
+        error: String(e && e.message ? e.message : e),
+      });
+    }
+  };
 })();
 `;
 }
@@ -416,6 +508,28 @@ function instrumentMermaidBundle(source) {
                     } catch (e) {}
                     var self2 = this;`,
     "bundled FCoSE CoSELayout initConstraintVariables start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                        this.shuffle = function(array4) {\n                          var j3, x5, i3;\n                          for (i3 = array4.length - 1; i3 >= 2 * array4.length / 3; i3--) {\n                            j3 = Math.floor(Math.random() * (i3 + 1));\n                            x5 = array4[i3];\n                            array4[i3] = array4[j3];\n                            array4[j3] = x5;\n                          }\n                          return array4;\n                        };`,
+    `                        this.shuffle = function(array4) {
+                          var j3, x5, i3;
+                          for (i3 = array4.length - 1; i3 >= 2 * array4.length / 3; i3--) {
+                            var __axis = array4 === this.nodesInRelativeHorizontal ? "horizontal" : array4 === this.nodesInRelativeVertical ? "vertical" : "unknown";
+                            var __before = array4.slice();
+                            var __random = Math.random();
+                            j3 = Math.floor(__random * (i3 + 1));
+                            x5 = array4[i3];
+                            array4[i3] = array4[j3];
+                            array4[j3] = x5;
+                            try {
+                              globalThis.__mermanArchRenderPathProbeRecordFcoseShuffle && globalThis.__mermanArchRenderPathProbeRecordFcoseShuffle(this, __axis, i3, j3, __random, __before, array4.slice());
+                            } catch (e) {}
+                          }
+                          return array4;
+                        };`,
+    "bundled FCoSE CoSELayout constraint shuffle"
   );
 
   out = replaceOnce(
