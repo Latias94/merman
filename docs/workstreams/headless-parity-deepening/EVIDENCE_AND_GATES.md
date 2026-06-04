@@ -6541,3 +6541,40 @@ Gate notes:
 - Continue from service label/content contribution geometry and browser final service
   `node.boundingBox()` differences; any future production change must survive full Architecture
   `parity-root` instead of just improving these three rows.
+
+## HPD-050 - Architecture Post-Strict Root Queue Classification
+
+Outcome:
+
+- Regenerated local `debug-architecture-delta` reports for all `20` post-strict Architecture
+  `parity-root` mismatch rows.
+- Joined the current top five residuals (`076`, `041`, `019`, `093`, and `002`) with the existing
+  browser/Cytoscape label-contribution probe batch.
+- Classified the queue into separate residual families:
+  - direct group-width tails: `076` / `041` / `019`, still split as child content `+3/+3/+1` plus
+    final expansion `+2`;
+  - source-shaped service/body/final phase rows: `093`, where child content is negative-width
+    relative to browser and service/group X displacement is large;
+  - nested/group aggregate rows: `002`, controlled by child-group and service aggregate placement;
+  - small group-rect/root lattice tails around `1px`, `0.5px`, and `0.25px`;
+  - top-level service icon/text root-bounds tails with no group rects.
+
+Evidence:
+
+- `target/compare/architecture-delta-post-strict-20-hpd050`
+- `target/compare/architecture-delta-post-strict-probe-join-top5-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-post-strict-root-queue-classification.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-post-strict-20-hpd050` -
+  passed for all `20` post-strict mismatch rows.
+- `cargo run -p xtask -- debug-architecture-delta ... --probe-dir F:\SourceCodes\Rust\merman\target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-post-strict-probe-join-top5-hpd050` -
+  passed for the current top five residual rows.
+
+Gate notes:
+
+- No production code changed.
+- The next experiment must include both positive-content rows (`076` / `041` / `019`) and
+  negative-content or nested rows (`093` / `002`). A candidate that improves only the three
+  direct-width rows is not a valid HPD-050 production fix.
