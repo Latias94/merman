@@ -3,6 +3,96 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
+
+Outcome:
+
+- Added `xtask debug-architecture-render-path-probe` as the stable command wrapper for the
+  Architecture render-path browser probe.
+- The command reuses `tools/debug/arch_render_path_probe_fixture.js`, so evidence still comes from
+  the actual installed Mermaid `mermaid.render(...)` Architecture renderer path instead of the
+  manual ArchitectureDB/FCoSE reconstruction harness.
+- The wrapper supports repeated `--fixture` filters, `--out` / `--out-dir`, and `--browser-exe`.
+- Each fixture now writes:
+  - raw JSON as `<fixture>.render-path-probe.json`
+  - Markdown summary as `<fixture>.render-path-probe.md`
+  - `architecture-render-path-probe-batch.md` when multiple fixtures are run
+- The Markdown summary records Mermaid/Cytoscape/FCoSE versions, rendered-vs-stored root facts,
+  group rectangles, service positions, captured stage bboxes, and group bounds by stage.
+- A focused junction run through the new xtask wrapper reproduced the same authoritative result:
+  `facts match: true`, `6` captured stages, `2` SVG groups, and `5` SVG services.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `crates/xtask/src/cmd/debug/mod.rs`
+- `crates/xtask/src/main.rs`
+- `target\compare\architecture-render-path-probe-xtask-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json`
+- `target\compare\architecture-render-path-probe-xtask-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask render_path_probe fcose_probe_args_accept_out_dir_aliases fcose_probe_batch_markdown_links_per_fixture_artifacts` -
+  passed, `7` tests run.
+- `cargo run -p xtask -- debug-architecture-render-path-probe --fixture stress_architecture_junction_fork_join_026 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --out target\compare\architecture-render-path-probe-xtask-hpd050` -
+  passed and wrote JSON plus Markdown artifacts.
+
+Residual note:
+
+- This is evidence tooling only. Future `junction_fork_join_026` work should use the xtask wrapper
+  when it needs actual Mermaid render-path facts, then move to bundled FCoSE/Cose internal-phase
+  comparison if more source evidence is needed. It still does not justify tuning `manatee` against
+  the older manual probe when that probe disagrees with the real render path.
+
+## HPD-050 - Architecture Render-Path Probe
+
+Outcome:
+
+- Added `tools/debug/arch_render_path_probe_fixture.js` as a diagnostic-only probe for the actual
+  installed Mermaid Architecture render path.
+- Unlike the existing manual ArchitectureDB/FCoSE probe, this script runs `mermaid.render(...)` and
+  patches the installed Mermaid `11.15.0` IIFE in memory, so captured Cytoscape state comes from the
+  bundled renderer path used by upstream SVG generation.
+- For `stress_architecture_junction_fork_join_026`, the probe reproduced the stored upstream SVG
+  facts exactly:
+  - viewBox
+    `-1362.063232421875 -1213.2674560546875 2808.126708984375 2557.534912109375`
+  - max-width `2808.126708984375`
+  - `left` group `1788.5571178808743 x 1649.1539928009868`
+- The captured stage split shows the real SVG emission consumes the post-rerun state:
+  - `layoutstop-run1-before-segments`: graph bbox `2743.102 x 2465.033`, `left` group
+    `1805.888 x 1630.544`
+  - `cy-ready-before-resolve`: graph bbox `2729.127 x 2477.535`, `left` group
+    `1788.557 x 1649.154`
+  - `draw-after-layout-before-svg-emission`: graph bbox `2729.127 x 2477.535`, `left` group
+    `1788.557 x 1649.154`
+- The render-path toolchain is Mermaid `11.15.0`, Cytoscape `3.33.4`,
+  Cytoscape FCoSE `2.2.0`, nested `cose-base@2.2.0`, and nested `layout-base@2.0.1`.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `tools/debug/arch_render_path_probe_fixture.js`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-render-path-probe.md`
+- `target\compare\architecture-render-path-probe-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json`
+
+Focused verification:
+
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; node tools\debug\arch_render_path_probe_fixture.js stress_architecture_junction_fork_join_026 > target\compare\architecture-render-path-probe-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json` -
+  passed.
+- Read the generated JSON and confirmed `renderedFacts` matched `storedFacts` for root, group, and
+  service facts used by the current `junction_fork_join_026` diagnosis.
+
+Residual note:
+
+- `junction_fork_join_026` is no longer an unexplained stored-baseline/probe split. The stored SVG
+  is reproduced by the real render path, while the manual ArchitectureDB reconstruction probe
+  remains diagnostic-only. Future junction work should instrument the bundled render path or build a
+  reference harness against the same nested FCoSE/Cose stack; do not tune manatee to the manual
+  probe when it disagrees with this evidence.
+
 ## HPD-050 - Architecture Child Group Inset Experiment Rejected
 
 Outcome:

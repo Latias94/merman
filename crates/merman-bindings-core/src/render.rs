@@ -119,6 +119,61 @@ pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bind
     validation_payload_json(parse_json(source, options_json).map(|_| ()))
 }
 
+#[derive(Clone)]
+pub(crate) struct CachedRenderEngine {
+    renderer: HeadlessRenderer,
+    pipeline: merman::render::SvgPipeline,
+}
+
+impl CachedRenderEngine {
+    pub(crate) fn new(options: &BindingOptions) -> Result<Self, BindingError> {
+        let (renderer, pipeline) = build_renderer(options)?;
+        Ok(Self {
+            renderer,
+            pipeline: pipeline.to_pipeline(),
+        })
+    }
+
+    pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        let svg = self
+            .renderer
+            .render_svg_with_pipeline_sync(source, &self.pipeline)
+            .map_err(classify_render_error)?;
+
+        match svg {
+            Some(svg) => Ok(svg.into_bytes()),
+            None => Err(no_diagram_error()),
+        }
+    }
+
+    pub(crate) fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        let parsed = self
+            .renderer
+            .parse_diagram_sync(source)
+            .map_err(classify_render_error)?
+            .ok_or_else(no_diagram_error)?;
+
+        serde_json::to_vec(&parsed.model).map_err(internal_json_error)
+    }
+
+    pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        let layouted = self
+            .renderer
+            .layout_diagram_sync(source)
+            .map_err(classify_render_error)?
+            .ok_or_else(no_diagram_error)?;
+
+        serde_json::to_vec(&layouted).map_err(internal_json_error)
+    }
+
+    pub(crate) fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        validation_payload_json(self.parse_json(source).map(|_| ()))
+    }
+}
+
 fn build_renderer(
     options: &BindingOptions,
 ) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {

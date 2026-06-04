@@ -37,6 +37,112 @@
         }
       ],
       "edges": [],
+      "cytoscape_service_bounds": [
+        {
+          "id": "s3",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -0.5,
+            "min_y": 0.0,
+            "max_x": 80.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 77.12,
+            "half_width": 40.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -0.5,
+            "min_y": 0.0,
+            "max_x": 80.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "ec2",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 17.0,
+            "min_y": 0.0,
+            "max_x": 63.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 44.0,
+            "half_width": 23.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "api",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -4.5,
+            "min_y": 0.0,
+            "max_x": 84.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 84.64,
+            "half_width": 44.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -4.5,
+            "min_y": 0.0,
+            "max_x": 84.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "fa",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -27.5,
+            "min_y": 0.0,
+            "max_x": 107.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 128.32,
+            "half_width": 67.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -27.5,
+            "min_y": 0.0,
+            "max_x": 107.5,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

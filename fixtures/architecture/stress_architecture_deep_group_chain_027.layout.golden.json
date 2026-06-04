@@ -220,6 +220,143 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "s0",
+          "in_group": "g0",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "s1",
+          "in_group": "g1",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "s2",
+          "in_group": "g2",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "s3",
+          "in_group": "g3",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "s4",
+          "in_group": "g4",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 30.0,
+            "min_y": 0.0,
+            "max_x": 50.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 18.56,
+            "half_width": 10.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

@@ -2,7 +2,7 @@
 
 use crate::XtaskError;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +26,24 @@ struct ArchitectureFcoseProbeRunSummary {
     stage_count: usize,
     node_count: usize,
     edge_count: usize,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureRenderPathProbeCli {
+    fixture_filters: Vec<String>,
+    out_dir: PathBuf,
+    browser_exe: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureRenderPathProbeRunSummary {
+    stem: String,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    facts_match: bool,
+    stage_count: usize,
+    group_count: usize,
+    service_count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -244,9 +262,10 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
     })
 }
 
-fn parse_architecture_fcose_probe_args(
+fn parse_architecture_browser_probe_args(
     args: &[String],
-) -> Result<ArchitectureFcoseProbeCli, XtaskError> {
+    default_out_leaf: &str,
+) -> Result<(Vec<String>, PathBuf, Option<PathBuf>), XtaskError> {
     let mut fixture_filters: Vec<String> = Vec::new();
     let mut out_dir: Option<PathBuf> = None;
     let mut browser_exe: Option<PathBuf> = None;
@@ -283,13 +302,37 @@ fn parse_architecture_fcose_probe_args(
         return Err(XtaskError::Usage);
     }
 
-    Ok(ArchitectureFcoseProbeCli {
+    Ok((
         fixture_filters,
-        out_dir: out_dir.unwrap_or_else(|| {
+        out_dir.unwrap_or_else(|| {
             crate::cmd::target_root()
                 .join("debug")
-                .join("architecture-fcose-probe")
+                .join(default_out_leaf)
         }),
+        browser_exe,
+    ))
+}
+
+fn parse_architecture_fcose_probe_args(
+    args: &[String],
+) -> Result<ArchitectureFcoseProbeCli, XtaskError> {
+    let (fixture_filters, out_dir, browser_exe) =
+        parse_architecture_browser_probe_args(args, "architecture-fcose-probe")?;
+    Ok(ArchitectureFcoseProbeCli {
+        fixture_filters,
+        out_dir,
+        browser_exe,
+    })
+}
+
+fn parse_architecture_render_path_probe_args(
+    args: &[String],
+) -> Result<ArchitectureRenderPathProbeCli, XtaskError> {
+    let (fixture_filters, out_dir, browser_exe) =
+        parse_architecture_browser_probe_args(args, "architecture-render-path-probe")?;
+    Ok(ArchitectureRenderPathProbeCli {
+        fixture_filters,
+        out_dir,
         browser_exe,
     })
 }
@@ -342,6 +385,18 @@ fn architecture_fcose_probe_batch_markdown_path(out_dir: &Path) -> PathBuf {
     out_dir.join("architecture-fcose-probe-batch.md")
 }
 
+fn architecture_render_path_probe_json_path(out_dir: &Path, stem: &str) -> PathBuf {
+    out_dir.join(format!("{stem}.render-path-probe.json"))
+}
+
+fn architecture_render_path_probe_markdown_path(out_dir: &Path, stem: &str) -> PathBuf {
+    out_dir.join(format!("{stem}.render-path-probe.md"))
+}
+
+fn architecture_render_path_probe_batch_markdown_path(out_dir: &Path) -> PathBuf {
+    out_dir.join("architecture-render-path-probe-batch.md")
+}
+
 fn architecture_delta_batch_markdown_path(out_dir: &Path) -> PathBuf {
     out_dir.join("architecture-delta-batch.md")
 }
@@ -367,6 +422,16 @@ fn json_debug_rect(v: Option<&serde_json::Value>) -> Option<DebugRect> {
     Some(DebugRect {
         x: json_f64(v, "x1")?,
         y: json_f64(v, "y1")?,
+        w: json_f64(v, "w")?,
+        h: json_f64(v, "h")?,
+    })
+}
+
+fn json_svg_fact_rect(v: Option<&serde_json::Value>) -> Option<DebugRect> {
+    let v = v.filter(|v| !v.is_null())?;
+    Some(DebugRect {
+        x: json_f64(v, "x")?,
+        y: json_f64(v, "y")?,
         w: json_f64(v, "w")?,
         h: json_f64(v, "h")?,
     })
@@ -554,6 +619,11 @@ fn format_local_label_metrics(
 
 fn format_probe_f64(v: f64) -> String {
     format!("{v:.3}")
+}
+
+fn format_probe_optional_signed_f64(v: Option<f64>) -> String {
+    v.map(|v| format!("{v:+.3}"))
+        .unwrap_or_else(|| "<n/a>".to_string())
 }
 
 fn format_probe_rect(v: Option<&serde_json::Value>) -> String {
@@ -799,6 +869,250 @@ fn render_architecture_fcose_probe_markdown(
     md
 }
 
+fn render_architecture_render_path_probe_markdown(
+    stem: &str,
+    source_path: &Path,
+    json_path: &Path,
+    probe_result: &serde_json::Value,
+) -> String {
+    fn fact_delta(a: Option<f64>, b: Option<f64>) -> Option<f64> {
+        a.zip(b).map(|(a, b)| a - b)
+    }
+
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture Render-Path Probe\n");
+    let _ = writeln!(&mut md, "- Fixture: `{stem}`");
+    let _ = writeln!(&mut md, "- Source: `{}`", source_path.display());
+    let _ = writeln!(&mut md, "- JSON: `{}`", json_path.display());
+    let _ = writeln!(
+        &mut md,
+        "- Rendered/stored facts match: `{}`\n",
+        probe_result.get("renderedFacts") == probe_result.get("storedFacts")
+    );
+
+    let _ = writeln!(&mut md, "## Versions\n");
+    let _ = writeln!(&mut md, "| package | version |\n|---|---|");
+    if let Some(versions) = probe_result.get("versions").and_then(|v| v.as_object()) {
+        for (key, value) in versions {
+            let version = value.as_str().unwrap_or("<missing>");
+            let _ = writeln!(&mut md, "| `{key}` | `{version}` |");
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let rendered = probe_result
+        .get("renderedFacts")
+        .unwrap_or(&serde_json::Value::Null);
+    let stored = probe_result
+        .get("storedFacts")
+        .unwrap_or(&serde_json::Value::Null);
+    let rendered_max_width = json_f64(rendered, "maxWidth");
+    let stored_max_width = json_f64(stored, "maxWidth");
+
+    let _ = writeln!(&mut md, "## Root Facts\n");
+    let _ = writeln!(
+        &mut md,
+        "| fact | rendered | stored | delta |\n|---|---|---|---:|"
+    );
+    let _ = writeln!(
+        &mut md,
+        "| viewBox | `{}` | `{}` | `{}` |",
+        json_string(rendered, "viewBox").unwrap_or("<missing>"),
+        json_string(stored, "viewBox").unwrap_or("<missing>"),
+        if json_string(rendered, "viewBox") == json_string(stored, "viewBox") {
+            "same".to_string()
+        } else {
+            "different".to_string()
+        }
+    );
+    let _ = writeln!(
+        &mut md,
+        "| max-width | `{}` | `{}` | `{}` |",
+        rendered_max_width
+            .map(|v| format!("{v:.6}"))
+            .unwrap_or_else(|| "<missing>".to_string()),
+        stored_max_width
+            .map(|v| format!("{v:.6}"))
+            .unwrap_or_else(|| "<missing>".to_string()),
+        format_probe_optional_signed_f64(fact_delta(rendered_max_width, stored_max_width))
+    );
+    let _ = writeln!(&mut md);
+
+    let mut group_ids = BTreeSet::new();
+    if let Some(groups) = rendered.get("groups").and_then(|v| v.as_object()) {
+        group_ids.extend(groups.keys().cloned());
+    }
+    if let Some(groups) = stored.get("groups").and_then(|v| v.as_object()) {
+        group_ids.extend(groups.keys().cloned());
+    }
+    let _ = writeln!(&mut md, "## SVG Group Facts\n");
+    let _ = writeln!(
+        &mut md,
+        "| group | rendered rect | stored rect | dx | dy | dw | dh |\n|---|---|---|---:|---:|---:|---:|"
+    );
+    if group_ids.is_empty() {
+        let _ = writeln!(
+            &mut md,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for id in &group_ids {
+            let rendered_rect =
+                json_svg_fact_rect(rendered.get("groups").and_then(|groups| groups.get(id)));
+            let stored_rect =
+                json_svg_fact_rect(stored.get("groups").and_then(|groups| groups.get(id)));
+            let _ = writeln!(
+                &mut md,
+                "| `{id}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+                format_debug_rect(rendered_rect),
+                format_debug_rect(stored_rect),
+                format_probe_optional_signed_f64(
+                    rendered_rect.zip(stored_rect).map(|(a, b)| a.x - b.x)
+                ),
+                format_probe_optional_signed_f64(
+                    rendered_rect.zip(stored_rect).map(|(a, b)| a.y - b.y)
+                ),
+                format_probe_optional_signed_f64(
+                    rendered_rect.zip(stored_rect).map(|(a, b)| a.w - b.w)
+                ),
+                format_probe_optional_signed_f64(
+                    rendered_rect.zip(stored_rect).map(|(a, b)| a.h - b.h)
+                )
+            );
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let mut service_ids = BTreeSet::new();
+    if let Some(services) = rendered.get("services").and_then(|v| v.as_object()) {
+        service_ids.extend(services.keys().cloned());
+    }
+    if let Some(services) = stored.get("services").and_then(|v| v.as_object()) {
+        service_ids.extend(services.keys().cloned());
+    }
+    let _ = writeln!(&mut md, "## SVG Service Positions\n");
+    let _ = writeln!(
+        &mut md,
+        "| service | rendered | stored | dx | dy |\n|---|---|---|---:|---:|"
+    );
+    if service_ids.is_empty() {
+        let _ = writeln!(
+            &mut md,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for id in &service_ids {
+            let rendered_pt = json_debug_point(
+                rendered
+                    .get("services")
+                    .and_then(|services| services.get(id)),
+            );
+            let stored_pt =
+                json_debug_point(stored.get("services").and_then(|services| services.get(id)));
+            let _ = writeln!(
+                &mut md,
+                "| `{id}` | `{}` | `{}` | `{}` | `{}` |",
+                format_debug_point(rendered_pt),
+                format_debug_point(stored_pt),
+                format_probe_optional_signed_f64(
+                    rendered_pt.zip(stored_pt).map(|(a, b)| a.x - b.x)
+                ),
+                format_probe_optional_signed_f64(
+                    rendered_pt.zip(stored_pt).map(|(a, b)| a.y - b.y)
+                )
+            );
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Captured Render Stages\n");
+    let _ = writeln!(
+        &mut md,
+        "| tag | graph bbox | nodes | edges |\n|---|---|---:|---:|"
+    );
+    if let Some(stages) = probe_result
+        .pointer("/probe/stages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let bbox =
+                format_debug_rect(json_debug_rect(stage.pointer("/elements/graphBoundingBox")));
+            let node_count = stage
+                .pointer("/elements/nodes")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let edge_count = stage
+                .pointer("/elements/edges")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let _ = writeln!(
+                &mut md,
+                "| `{tag}` | `{bbox}` | {node_count} | {edge_count} |"
+            );
+        }
+    }
+    let _ = writeln!(&mut md);
+
+    let _ = writeln!(&mut md, "## Group Bounds By Stage\n");
+    let _ = writeln!(
+        &mut md,
+        "| stage | group | bb | children labels | children body |\n|---|---|---|---|---|"
+    );
+    let mut wrote_group = false;
+    if let Some(stages) = probe_result
+        .pointer("/probe/stages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let Some(nodes) = stage.pointer("/elements/nodes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for node in nodes {
+                if node.pointer("/data/type").and_then(|v| v.as_str()) != Some("group") {
+                    continue;
+                }
+                let id = json_string(node, "id").unwrap_or("<missing>");
+                let bb = format_debug_rect(json_debug_rect(node.get("bb")));
+                let children_labels = format_debug_rect(json_debug_rect(
+                    node.get("childrenBoundingBoxIncludeLabels"),
+                ));
+                let children_body =
+                    format_debug_rect(json_debug_rect(node.get("childrenBoundingBoxBodyOnly")));
+                let _ = writeln!(
+                    &mut md,
+                    "| `{tag}` | `{id}` | `{bb}` | `{children_labels}` | `{children_body}` |"
+                );
+                wrote_group = true;
+            }
+        }
+    }
+    if !wrote_group {
+        let _ = writeln!(
+            &mut md,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` |"
+        );
+    }
+    let _ = writeln!(&mut md);
+
+    if let Some(errors) = probe_result
+        .pointer("/probe/errors")
+        .and_then(|v| v.as_array())
+        .filter(|errors| !errors.is_empty())
+    {
+        let _ = writeln!(&mut md, "## Probe Errors\n");
+        let _ = writeln!(&mut md, "| tag | error |\n|---|---|");
+        for error in errors {
+            let tag = json_string(error, "tag").unwrap_or("<missing>");
+            let message = json_string(error, "error").unwrap_or("<missing>");
+            let _ = writeln!(&mut md, "| `{tag}` | `{message}` |");
+        }
+    }
+
+    md
+}
+
 fn render_architecture_fcose_probe_batch_markdown(
     summaries: &[ArchitectureFcoseProbeRunSummary],
 ) -> String {
@@ -819,6 +1133,32 @@ fn render_architecture_fcose_probe_batch_markdown(
             summary.stage_count,
             summary.node_count,
             summary.edge_count,
+        );
+    }
+    md
+}
+
+fn render_architecture_render_path_probe_batch_markdown(
+    summaries: &[ArchitectureRenderPathProbeRunSummary],
+) -> String {
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture Render-Path Probe Batch\n");
+    let _ = writeln!(
+        &mut md,
+        "| fixture | json | summary | facts match | stages | groups | services |"
+    );
+    let _ = writeln!(&mut md, "|---|---|---|---|---:|---:|---:|");
+    for summary in summaries {
+        let _ = writeln!(
+            &mut md,
+            "| `{}` | `{}` | `{}` | `{}` | {} | {} | {} |",
+            summary.stem,
+            summary.json_path.display(),
+            summary.markdown_path.display(),
+            summary.facts_match,
+            summary.stage_count,
+            summary.group_count,
+            summary.service_count,
         );
     }
     md
@@ -1569,6 +1909,146 @@ pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), Xt
         fs::write(
             &out_batch,
             render_architecture_fcose_probe_batch_markdown(&summaries),
+        )
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_batch.display().to_string(),
+            source,
+        })?;
+        println!();
+        println!("batch:   {}", out_batch.display());
+    }
+
+    Ok(())
+}
+
+pub(crate) fn debug_architecture_render_path_probe(args: Vec<String>) -> Result<(), XtaskError> {
+    let cli = parse_architecture_render_path_probe_args(&args)?;
+    let fixtures: Vec<(PathBuf, String)> = cli
+        .fixture_filters
+        .iter()
+        .map(|filter| resolve_architecture_probe_fixture(filter))
+        .collect::<Result<_, _>>()?;
+    let workspace_root = crate::cmd::workspace_root();
+    let script_path = workspace_root
+        .join("tools")
+        .join("debug")
+        .join("arch_render_path_probe_fixture.js");
+    if !script_path.is_file() {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "missing Architecture render-path probe script: {}",
+            script_path.display()
+        )));
+    }
+
+    fs::create_dir_all(&cli.out_dir).map_err(|source| XtaskError::WriteFile {
+        path: cli.out_dir.display().to_string(),
+        source,
+    })?;
+
+    let mut summaries = Vec::new();
+
+    for (idx, (mmd_path, stem)) in fixtures.iter().enumerate() {
+        let mut command = Command::new("node");
+        command
+            .arg(&script_path)
+            .arg(stem)
+            .current_dir(&workspace_root);
+        if let Some(browser_exe) = &cli.browser_exe {
+            command.env("PUPPETEER_EXECUTABLE_PATH", browser_exe);
+        }
+        let output = command
+            .output()
+            .map_err(|e| XtaskError::DebugSvgFailed(format!("failed to spawn node: {e}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(XtaskError::DebugSvgFailed(format!(
+                "Architecture render-path probe failed for {stem} (exit={}):\n{}",
+                output.status.code().unwrap_or(-1),
+                stderr.trim()
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let probe_result: serde_json::Value = serde_json::from_str(&stdout)?;
+        if probe_result.pointer("/probe/kind").and_then(|v| v.as_str())
+            != Some("architecture-render-path")
+        {
+            return Err(XtaskError::DebugSvgFailed(format!(
+                "Architecture render-path probe for {stem} did not emit the expected probe kind"
+            )));
+        }
+
+        let out_json = architecture_render_path_probe_json_path(&cli.out_dir, stem);
+        fs::write(&out_json, serde_json::to_string_pretty(&probe_result)?).map_err(|source| {
+            XtaskError::WriteFile {
+                path: out_json.display().to_string(),
+                source,
+            }
+        })?;
+        let out_markdown = architecture_render_path_probe_markdown_path(&cli.out_dir, stem);
+        fs::write(
+            &out_markdown,
+            render_architecture_render_path_probe_markdown(
+                stem,
+                mmd_path,
+                &out_json,
+                &probe_result,
+            ),
+        )
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_markdown.display().to_string(),
+            source,
+        })?;
+
+        let facts_match = probe_result.get("renderedFacts") == probe_result.get("storedFacts");
+        let stage_count = probe_result
+            .pointer("/probe/stages")
+            .and_then(|v| v.as_array())
+            .map_or(0, Vec::len);
+        let group_count = probe_result
+            .pointer("/renderedFacts/groups")
+            .and_then(|v| v.as_object())
+            .map_or(0, serde_json::Map::len);
+        let service_count = probe_result
+            .pointer("/renderedFacts/services")
+            .and_then(|v| v.as_object())
+            .map_or(0, serde_json::Map::len);
+        summaries.push(ArchitectureRenderPathProbeRunSummary {
+            stem: stem.clone(),
+            json_path: out_json.clone(),
+            markdown_path: out_markdown.clone(),
+            facts_match,
+            stage_count,
+            group_count,
+            service_count,
+        });
+
+        if idx > 0 {
+            println!();
+        }
+        println!("fixture: {stem}");
+        println!("source:  {}", mmd_path.display());
+        println!("script:  {}", script_path.display());
+        if let Some(browser_exe) = &cli.browser_exe {
+            println!("browser: {}", browser_exe.display());
+        }
+        println!("json:    {}", out_json.display());
+        println!("summary: {}", out_markdown.display());
+        println!("facts match: {facts_match}");
+        println!("stages:  {stage_count}");
+        println!("svg facts: groups={group_count} services={service_count}");
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            println!("probe stderr: {}", stderr.trim());
+        }
+    }
+    if summaries.len() > 1 {
+        let out_batch = architecture_render_path_probe_batch_markdown_path(&cli.out_dir);
+        fs::write(
+            &out_batch,
+            render_architecture_render_path_probe_batch_markdown(&summaries),
         )
         .map_err(|source| XtaskError::WriteFile {
             path: out_batch.display().to_string(),
@@ -2963,6 +3443,38 @@ mod tests {
     }
 
     #[test]
+    fn render_path_probe_args_accept_out_dir_and_browser() {
+        let parsed = parse_architecture_render_path_probe_args(&args(&[
+            "--fixture",
+            "junction_fork_join",
+            "--out",
+            "target/render-path",
+            "--browser-exe",
+            "C:/Browser/msedge.exe",
+        ]))
+        .unwrap();
+
+        assert_eq!(parsed.fixture_filters, vec!["junction_fork_join"]);
+        assert_eq!(parsed.out_dir, PathBuf::from("target/render-path"));
+        assert_eq!(
+            parsed.browser_exe,
+            Some(PathBuf::from("C:/Browser/msedge.exe"))
+        );
+    }
+
+    #[test]
+    fn render_path_probe_args_require_fixture() {
+        assert!(matches!(
+            parse_architecture_render_path_probe_args(&[]),
+            Err(XtaskError::Usage)
+        ));
+        assert!(matches!(
+            parse_architecture_render_path_probe_args(&args(&["--fixture", ""])),
+            Err(XtaskError::Usage)
+        ));
+    }
+
+    #[test]
     fn fcose_probe_batch_markdown_links_per_fixture_artifacts() {
         let summaries = vec![
             ArchitectureFcoseProbeRunSummary {
@@ -2988,6 +3500,36 @@ mod tests {
         assert!(md.contains("# Architecture FCoSE Browser Probe Batch"));
         assert!(md.contains("| `fixture_a` | `target/probe/fixture_a.fcose-browser-probe.json` | `target/probe/fixture_a.fcose-browser-probe.md` | 4 | 5 | 3 |"));
         assert!(md.contains("| `fixture_b` | `target/probe/fixture_b.fcose-browser-probe.json` | `target/probe/fixture_b.fcose-browser-probe.md` | 4 | 6 | 4 |"));
+    }
+
+    #[test]
+    fn render_path_probe_batch_markdown_links_per_fixture_artifacts() {
+        let summaries = vec![
+            ArchitectureRenderPathProbeRunSummary {
+                stem: "fixture_a".to_string(),
+                json_path: PathBuf::from("target/probe/fixture_a.render-path-probe.json"),
+                markdown_path: PathBuf::from("target/probe/fixture_a.render-path-probe.md"),
+                facts_match: true,
+                stage_count: 6,
+                group_count: 2,
+                service_count: 4,
+            },
+            ArchitectureRenderPathProbeRunSummary {
+                stem: "fixture_b".to_string(),
+                json_path: PathBuf::from("target/probe/fixture_b.render-path-probe.json"),
+                markdown_path: PathBuf::from("target/probe/fixture_b.render-path-probe.md"),
+                facts_match: false,
+                stage_count: 5,
+                group_count: 1,
+                service_count: 3,
+            },
+        ];
+
+        let md = render_architecture_render_path_probe_batch_markdown(&summaries);
+
+        assert!(md.contains("# Architecture Render-Path Probe Batch"));
+        assert!(md.contains("| `fixture_a` | `target/probe/fixture_a.render-path-probe.json` | `target/probe/fixture_a.render-path-probe.md` | `true` | 6 | 2 | 4 |"));
+        assert!(md.contains("| `fixture_b` | `target/probe/fixture_b.render-path-probe.json` | `target/probe/fixture_b.render-path-probe.md` | `false` | 5 | 1 | 3 |"));
     }
 
     #[test]
@@ -3042,6 +3584,14 @@ mod tests {
         assert_eq!(
             architecture_fcose_probe_json_path(Path::new("target/probe"), "fixture_001"),
             PathBuf::from("target/probe").join("fixture_001.fcose-browser-probe.json")
+        );
+    }
+
+    #[test]
+    fn render_path_probe_json_path_uses_fixture_stem() {
+        assert_eq!(
+            architecture_render_path_probe_json_path(Path::new("target/probe"), "fixture_001"),
+            PathBuf::from("target/probe").join("fixture_001.render-path-probe.json")
         );
     }
 
@@ -3104,6 +3654,83 @@ mod tests {
         assert!(md.contains("| `group` | `group` | `node-group` | `x=10.000 y=20.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=1.000 y1=2.000 w=20.000 h=30.000` | `x1=3.000 y1=4.000 w=5.000 h=6.000` | `x1=4.000 y1=5.000 w=10.000 h=12.000` | `x1=5.000 y1=7.000 w=6.000 h=4.000` | `l=1.000 r=3.000 t=2.000 b=6.000 dw=4.000 dh=8.000` | `l=3.000 r=7.000 t=3.000 b=15.000 dw=10.000 dh=18.000` | `Group Label` |"));
         assert!(md.contains("## Final Edge Bounds"));
         assert!(md.contains("| `svc-other` | `svc -> other` | `straight` | `R -> L` | `x1=7.000 y1=8.000 w=9.000 h=10.000` | `x=11.000 y=12.000` | `x=13.000 y=14.000` | `straight` | `0.5` | `20px` | `intersection` |"));
+    }
+
+    #[test]
+    fn render_path_probe_markdown_summarizes_facts_and_stages() {
+        let probe_result = serde_json::json!({
+            "versions": {
+                "mermaid": "11.15.0",
+                "cytoscapeFcose": "2.2.0"
+            },
+            "renderedFacts": {
+                "viewBox": "0 0 100 50",
+                "maxWidth": 100.0,
+                "groups": {
+                    "left": { "x": 1.0, "y": 2.0, "w": 30.0, "h": 40.0 }
+                },
+                "services": {
+                    "svc": { "x": 5.0, "y": 6.0 }
+                }
+            },
+            "storedFacts": {
+                "viewBox": "0 0 99 50",
+                "maxWidth": 99.0,
+                "groups": {
+                    "left": { "x": 1.0, "y": 3.0, "w": 29.0, "h": 40.0 }
+                },
+                "services": {
+                    "svc": { "x": 4.0, "y": 6.0 }
+                }
+            },
+            "probe": {
+                "kind": "architecture-render-path",
+                "stages": [{
+                    "tag": "draw-after-layout-before-svg-emission",
+                    "elements": {
+                        "graphBoundingBox": { "x1": 0.0, "y1": 0.0, "w": 100.0, "h": 50.0 },
+                        "nodes": [{
+                            "id": "left",
+                            "data": { "type": "group" },
+                            "bb": { "x1": 1.0, "y1": 2.0, "w": 30.0, "h": 40.0 },
+                            "childrenBoundingBoxIncludeLabels": {
+                                "x1": 2.0,
+                                "y1": 4.0,
+                                "w": 20.0,
+                                "h": 30.0
+                            },
+                            "childrenBoundingBoxBodyOnly": {
+                                "x1": 3.0,
+                                "y1": 5.0,
+                                "w": 10.0,
+                                "h": 15.0
+                            }
+                        }],
+                        "edges": [{ "id": "svc-other" }]
+                    }
+                }],
+                "errors": [{ "tag": "stage-x", "error": "sample error" }]
+            }
+        });
+
+        let md = render_architecture_render_path_probe_markdown(
+            "fixture_001",
+            Path::new("fixtures/architecture/fixture_001.mmd"),
+            Path::new("target/probe/fixture_001.render-path-probe.json"),
+            &probe_result,
+        );
+
+        assert!(md.contains("# Architecture Render-Path Probe"));
+        assert!(md.contains("| `mermaid` | `11.15.0` |"));
+        assert!(md.contains("| viewBox | `0 0 100 50` | `0 0 99 50` | `different` |"));
+        assert!(md.contains("| max-width | `100.000000` | `99.000000` | `+1.000` |"));
+        assert!(md.contains("| `left` | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` | `x=1.000000 y=3.000000 w=29.000000 h=40.000000` | `+0.000` | `-1.000` | `+1.000` | `+0.000` |"));
+        assert!(md.contains(
+            "| `svc` | `x=5.000000 y=6.000000` | `x=4.000000 y=6.000000` | `+1.000` | `+0.000` |"
+        ));
+        assert!(md.contains("| `draw-after-layout-before-svg-emission` | `x=0.000000 y=0.000000 w=100.000000 h=50.000000` | 1 | 1 |"));
+        assert!(md.contains("| `draw-after-layout-before-svg-emission` | `left` | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` | `x=2.000000 y=4.000000 w=20.000000 h=30.000000` | `x=3.000000 y=5.000000 w=10.000000 h=15.000000` |"));
+        assert!(md.contains("| `stage-x` | `sample error` |"));
     }
 
     #[test]

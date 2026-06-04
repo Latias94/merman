@@ -5,7 +5,32 @@ use crate::common::{
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
     let options = parse_options(options_json)?;
+    let renderer = build_ascii_renderer(&options)?;
 
+    render_ascii_with_renderer(&renderer, source)
+}
+
+#[derive(Clone)]
+pub(crate) struct CachedAsciiEngine {
+    renderer: merman::ascii::HeadlessAsciiRenderer,
+}
+
+impl CachedAsciiEngine {
+    pub(crate) fn new(options: &crate::common::BindingOptions) -> Result<Self, BindingError> {
+        Ok(Self {
+            renderer: build_ascii_renderer(options)?,
+        })
+    }
+
+    pub(crate) fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        render_ascii_with_renderer(&self.renderer, source)
+    }
+}
+
+fn build_ascii_renderer(
+    options: &crate::common::BindingOptions,
+) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
         .parse
         .as_ref()
@@ -20,10 +45,17 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
     let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
         .with_parse_options(parse)
         .with_ascii_options(merman::ascii::AsciiRenderOptions::unicode());
-    if let Some(site_config) = binding_site_config(&options)? {
+    if let Some(site_config) = binding_site_config(options)? {
         renderer = renderer.with_site_config(site_config);
     }
 
+    Ok(renderer)
+}
+
+fn render_ascii_with_renderer(
+    renderer: &merman::ascii::HeadlessAsciiRenderer,
+    source: &str,
+) -> Result<Vec<u8>, BindingError> {
     let rendered = renderer
         .render_ascii_sync(source)
         .map_err(classify_ascii_error)?

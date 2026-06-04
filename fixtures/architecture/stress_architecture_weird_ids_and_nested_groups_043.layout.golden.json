@@ -117,6 +117,89 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "api_gw",
+          "in_group": "private_net",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 12.5,
+            "min_y": 0.0,
+            "max_x": 67.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 52.48,
+            "half_width": 27.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "auth_svc",
+          "in_group": "private_net",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 24.0,
+            "min_y": 0.0,
+            "max_x": 56.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 30.24,
+            "half_width": 16.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "orders_db",
+          "in_group": "private_net",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": 4.0,
+            "min_y": 0.0,
+            "max_x": 76.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 68.48,
+            "half_width": 36.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

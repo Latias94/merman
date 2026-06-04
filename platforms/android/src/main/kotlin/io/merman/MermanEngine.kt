@@ -1,7 +1,7 @@
 package io.merman
 
 object MermanEngine {
-    const val ABI_VERSION: Int = 2
+    const val ABI_VERSION: Int = 1
 
     init {
         System.loadLibrary("merman_ffi")
@@ -10,6 +10,18 @@ object MermanEngine {
 
     val packageVersion: String
         get() = nativePackageVersion()
+
+    private val supportedDiagramsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeSupportedDiagramsJson()
+    }
+
+    private val asciiSupportedDiagramsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeAsciiSupportedDiagramsJson()
+    }
+
+    private val themesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeThemesJson()
+    }
 
     @JvmStatic
     fun renderSvg(source: String, optionsJson: String? = null): String =
@@ -33,15 +45,15 @@ object MermanEngine {
 
     @JvmStatic
     fun supportedDiagramsJson(): String =
-        nativeSupportedDiagramsJson()
+        supportedDiagramsJsonCache
 
     @JvmStatic
     fun asciiSupportedDiagramsJson(): String =
-        nativeAsciiSupportedDiagramsJson()
+        asciiSupportedDiagramsJsonCache
 
     @JvmStatic
     fun themesJson(): String =
-        nativeThemesJson()
+        themesJsonCache
 
     private fun checkNativeAbi() {
         val nativeAbi = nativeAbiVersion()

@@ -448,6 +448,23 @@ Current repository reality to preserve:
     `parity-root` from `24` to `44`, worsened `nested_groups_002` to `+2.75`, and reintroduced
     `group_port_edges_017` at `+0.25`. The code is restored to `1.0`; do not use global child-group
     inset tuning as the nested-groups fix.
+  - A follow-up render-path probe adds `tools/debug/arch_render_path_probe_fixture.js`. It patches
+    the installed Mermaid `11.15.0` IIFE in memory and runs `mermaid.render(...)`, so the captured
+    Cytoscape state comes from the actual bundled Architecture renderer rather than a manual
+    ArchitectureDB reconstruction. For `junction_fork_join_026`, the probe reproduces the stored
+    upstream SVG root facts exactly and shows `draw-after-layout-before-svg-emission` consumes the
+    post-rerun state (`left` group `1788.557x1649.154`), not the first layoutstop state
+    (`1805.888x1630.544`). Keep the manual FCoSE probe diagnostic-only when it disagrees with this
+    render-path evidence; future junction work should instrument bundled FCoSE/Cose phases, not
+    stored-baseline drift.
+  - A follow-up xtask wrapper now exposes that real render path as
+    `debug-architecture-render-path-probe`. It supports repeated `--fixture`, stable
+    `.render-path-probe.json` / `.render-path-probe.md` artifacts, optional `--browser-exe`, and a
+    batch index. The focused junction wrapper run wrote
+    `target\compare\architecture-render-path-probe-xtask-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.md`
+    with `facts match: true`, `6` stages, `2` SVG groups, and `5` SVG services. Use this wrapper
+    for future actual-renderer evidence before moving to a bundled FCoSE/Cose internal-phase
+    harness.
   - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command

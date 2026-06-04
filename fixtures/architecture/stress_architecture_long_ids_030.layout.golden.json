@@ -117,6 +117,88 @@
           "stroke_dasharray": null
         }
       ],
+      "cytoscape_service_bounds": [
+        {
+          "id": "extremely_long_service_identifier_name_alpha",
+          "in_group": "very_long_group_identifier_name_two",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -6.5,
+            "min_y": 0.0,
+            "max_x": 86.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 88.48,
+            "half_width": 46.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -6.5,
+            "min_y": 0.0,
+            "max_x": 86.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "extremely_long_service_identifier_name_beta",
+          "in_group": "very_long_group_identifier_name_two",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -4.5,
+            "min_y": 0.0,
+            "max_x": 84.5,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 84.0,
+            "half_width": 44.5,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -4.5,
+            "min_y": 0.0,
+            "max_x": 84.5,
+            "max_y": 97.0
+          }
+        },
+        {
+          "id": "extremely_long_service_identifier_name_gamma",
+          "body_bounds": {
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 80.0,
+            "max_y": 80.0
+          },
+          "label_bounds": {
+            "min_x": -14.0,
+            "min_y": 0.0,
+            "max_x": 94.0,
+            "max_y": 97.0
+          },
+          "label_metrics": {
+            "text_width": 102.08,
+            "half_width": 54.0,
+            "applied_scale": 1.055
+          },
+          "union_bounds": {
+            "min_x": -14.0,
+            "min_y": 0.0,
+            "max_x": 94.0,
+            "max_y": 97.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,

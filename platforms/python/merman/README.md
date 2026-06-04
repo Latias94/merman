@@ -15,7 +15,7 @@ for the main library contract.
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 1
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"

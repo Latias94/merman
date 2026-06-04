@@ -5,7 +5,7 @@
 //! This crate is the only place where the public FFI boundary owns unsafe code. The core
 //! parser/render crates and shared binding facade remain safe Rust APIs.
 
-use merman_bindings_core::{BindingError, BindingStatus, error_payload_json_bytes};
+use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
 use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
@@ -13,7 +13,7 @@ use std::ptr;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub const MERMAN_ABI_VERSION: u32 = 2;
+pub const MERMAN_ABI_VERSION: u32 = 1;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
@@ -40,6 +40,18 @@ pub struct MermanResult {
     pub data: MermanBuffer,
 }
 
+pub struct MermanEngine {
+    inner: BindingEngine,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct MermanEngineResult {
+    pub code: i32,
+    pub engine: *mut MermanEngine,
+    pub data: MermanBuffer,
+}
+
 /// Return the C ABI protocol version implemented by this library.
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_abi_version() -> u32 {
@@ -62,6 +74,138 @@ pub extern "C" fn merman_buffer_struct_size() -> usize {
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_result_struct_size() -> usize {
     std::mem::size_of::<MermanResult>()
+}
+
+/// Return the Rust-side size of `MermanEngineResult`.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_engine_result_struct_size() -> usize {
+    std::mem::size_of::<MermanEngineResult>()
+}
+
+/// Create a reusable engine for repeated calls with the same options.
+///
+/// # Safety
+///
+/// - `options_json` may be null only when `options_len == 0`.
+/// - Non-null pointers must be valid for reads of `options_len` bytes for the duration of the call.
+/// - A returned non-null engine must be released with `merman_engine_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_new(
+    options_json: *const u8,
+    options_len: usize,
+) -> MermanEngineResult {
+    ffi_engine_result(|| unsafe { engine_new_impl(options_json, options_len) })
+}
+
+/// Free an engine returned by `merman_engine_new`.
+///
+/// Passing null is a no-op.
+///
+/// # Safety
+///
+/// Non-null engines must have been returned by this crate and must not be freed more than once.
+/// Callers must not free an engine while another thread is using it.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_free(engine: *mut MermanEngine) {
+    if engine.is_null() {
+        return;
+    }
+    unsafe {
+        drop(Box::from_raw(engine));
+    }
+}
+
+/// Render Mermaid source to SVG bytes using a reusable engine.
+///
+/// # Safety
+///
+/// - `engine` must be a live pointer returned by `merman_engine_new`.
+/// - `source` may be null only when `source_len == 0`.
+/// - Non-null source pointers must be valid for reads of `source_len` bytes.
+/// - Returned non-empty buffers must be released with `merman_buffer_free`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_render_svg(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        let engine = engine_ref(engine)?;
+        let source_bytes = raw_bytes(source, source_len, "source")?;
+        engine.inner.render_svg(source_bytes)
+    })
+}
+
+/// Render Mermaid source to Unicode ASCII-art text using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_render_svg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_render_ascii(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        let engine = engine_ref(engine)?;
+        let source_bytes = raw_bytes(source, source_len, "source")?;
+        engine.inner.render_ascii(source_bytes)
+    })
+}
+
+/// Parse Mermaid source to semantic JSON bytes using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_render_svg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_parse_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        let engine = engine_ref(engine)?;
+        let source_bytes = raw_bytes(source, source_len, "source")?;
+        engine.inner.parse_json(source_bytes)
+    })
+}
+
+/// Layout Mermaid source to layout JSON bytes using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_render_svg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_layout_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        let engine = engine_ref(engine)?;
+        let source_bytes = raw_bytes(source, source_len, "source")?;
+        engine.inner.layout_json(source_bytes)
+    })
+}
+
+/// Validate Mermaid source using a reusable engine.
+///
+/// # Safety
+///
+/// Safety rules are identical to `merman_engine_render_svg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn merman_engine_validate_json(
+    engine: *const MermanEngine,
+    source: *const u8,
+    source_len: usize,
+) -> MermanResult {
+    ffi_result(|| unsafe {
+        let engine = engine_ref(engine)?;
+        let source_bytes = raw_bytes(source, source_len, "source")?;
+        engine.inner.validate_json(source_bytes)
+    })
 }
 
 /// Render Mermaid source to SVG bytes.
@@ -203,6 +347,50 @@ where
         Ok(Err(err)) => error_result(err.status(), err.message()),
         Err(_) => error_result(BindingStatus::Panic, "panic caught at merman FFI boundary"),
     }
+}
+
+fn ffi_engine_result<F>(f: F) -> MermanEngineResult
+where
+    F: FnOnce() -> Result<BindingEngine, BindingError>,
+{
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(Ok(inner)) => MermanEngineResult {
+            code: BindingStatus::Ok.code(),
+            engine: Box::into_raw(Box::new(MermanEngine { inner })),
+            data: MermanBuffer::empty(),
+        },
+        Ok(Err(err)) => MermanEngineResult {
+            code: err.status().code(),
+            engine: ptr::null_mut(),
+            data: buffer_from_vec(error_payload_json_bytes(err.status(), err.message())),
+        },
+        Err(_) => MermanEngineResult {
+            code: BindingStatus::Panic.code(),
+            engine: ptr::null_mut(),
+            data: buffer_from_vec(error_payload_json_bytes(
+                BindingStatus::Panic,
+                "panic caught at merman FFI boundary",
+            )),
+        },
+    }
+}
+
+unsafe fn engine_new_impl(
+    options_json: *const u8,
+    options_len: usize,
+) -> Result<BindingEngine, BindingError> {
+    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+    BindingEngine::new(options_bytes)
+}
+
+unsafe fn engine_ref<'a>(engine: *const MermanEngine) -> Result<&'a MermanEngine, BindingError> {
+    if engine.is_null() {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "engine pointer is null",
+        ));
+    }
+    Ok(unsafe { &*engine })
 }
 
 unsafe fn render_svg_impl(
@@ -361,6 +549,14 @@ mod tests {
                 options.len(),
             )
         }
+    }
+
+    fn call_engine(options: &[u8]) -> MermanEngineResult {
+        unsafe { merman_engine_new(options.as_ptr(), options.len()) }
+    }
+
+    fn call_engine_render(engine: *const MermanEngine, source: &[u8]) -> MermanResult {
+        unsafe { merman_engine_render_svg(engine, source.as_ptr(), source.len()) }
     }
 
     fn take_buffer(buffer: MermanBuffer) -> Vec<u8> {
@@ -654,5 +850,105 @@ mod tests {
         assert_eq!(result.code, BindingStatus::Panic.code());
         let error = take_error(result);
         assert_eq!(error["code_name"], BindingStatus::Panic.code_name());
+    }
+
+    #[test]
+    fn reusable_engine_renders_with_cached_options() {
+        let options = br#"{
+            "layout": { "text_measurer": "deterministic" },
+            "svg": { "diagram_id": "ffi engine", "pipeline": "readable" }
+        }"#;
+        let engine = call_engine(options);
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+        assert!(engine.data.data.is_null());
+
+        let result = call_engine_render(engine.engine, b"flowchart TD\nA[Hello]");
+        if cfg!(feature = "render") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let svg = take_text(result.data);
+            assert!(svg.contains("id=\"ffi-engine\""));
+            assert!(svg.contains("data-merman-foreignobject"));
+        } else {
+            expect_render_feature_error(result);
+        }
+
+        unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[test]
+    fn reusable_engine_reports_invalid_options_json() {
+        let engine = call_engine(b"{");
+
+        if cfg!(any(feature = "render", feature = "ascii")) {
+            assert_eq!(engine.code, BindingStatus::OptionsJsonError.code());
+            assert!(engine.engine.is_null());
+            let error: Value = serde_json::from_str(&take_text(engine.data)).unwrap();
+            assert_eq!(
+                error["code_name"],
+                BindingStatus::OptionsJsonError.code_name()
+            );
+        } else {
+            assert_eq!(engine.code, BindingStatus::Ok.code());
+            unsafe { merman_engine_free(engine.engine) };
+        }
+    }
+
+    #[test]
+    fn reusable_engine_rejects_null_engine() {
+        let result = unsafe {
+            merman_engine_render_svg(
+                ptr::null(),
+                b"flowchart TD\nA".as_ptr(),
+                b"flowchart TD\nA".len(),
+            )
+        };
+
+        assert_eq!(result.code, BindingStatus::InvalidArgument.code());
+        let error = take_error(result);
+        assert_eq!(
+            error["code_name"],
+            BindingStatus::InvalidArgument.code_name()
+        );
+        assert!(error["message"].as_str().unwrap().contains("engine"));
+    }
+
+    #[test]
+    fn engine_result_struct_size_is_reported() {
+        assert_eq!(
+            merman_engine_result_struct_size(),
+            std::mem::size_of::<MermanEngineResult>()
+        );
+    }
+
+    #[test]
+    fn reusable_engine_can_render_concurrently_through_c_abi() {
+        let engine = call_engine(b"");
+        assert_eq!(engine.code, BindingStatus::Ok.code());
+        assert!(!engine.engine.is_null());
+        let engine_addr = engine.engine as usize;
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            handles.push(std::thread::spawn(move || {
+                let engine = engine_addr as *const MermanEngine;
+                for _ in 0..8 {
+                    let result = call_engine_render(engine, b"flowchart TD\nA[Hello] --> B[World]");
+                    if cfg!(feature = "render") {
+                        assert_eq!(result.code, BindingStatus::Ok.code());
+                        let svg = take_text(result.data);
+                        assert!(svg.contains("<svg"));
+                    } else {
+                        expect_render_feature_error(result);
+                    }
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        unsafe { merman_engine_free(engine.engine) };
     }
 }

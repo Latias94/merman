@@ -14,17 +14,26 @@ fn header_smoke() {
         r#"
 #include "merman.h"
 
-#if MERMAN_ABI_VERSION != 2
+#if MERMAN_ABI_VERSION != 1
 #error "unexpected merman ABI version"
 #endif
 
 int merman_header_smoke(void) {
     MermanBuffer buffer = {0};
     MermanResult result = {MERMAN_OK, buffer};
+    MermanEngineResult engine_result = {MERMAN_OK, 0, buffer};
     uint32_t (*abi_version)(void) = &merman_abi_version;
     const char* (*package_version)(void) = &merman_package_version;
     size_t (*buffer_struct_size)(void) = &merman_buffer_struct_size;
     size_t (*result_struct_size)(void) = &merman_result_struct_size;
+    size_t (*engine_result_struct_size)(void) = &merman_engine_result_struct_size;
+    MermanEngineResult (*engine_new)(const uint8_t*, size_t) = &merman_engine_new;
+    void (*engine_free)(MermanEngine*) = &merman_engine_free;
+    MermanResult (*engine_render_svg)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_render_svg;
+    MermanResult (*engine_render_ascii)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_render_ascii;
+    MermanResult (*engine_parse_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_parse_json;
+    MermanResult (*engine_layout_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_layout_json;
+    MermanResult (*engine_validate_json)(const MermanEngine*, const uint8_t*, size_t) = &merman_engine_validate_json;
     MermanResult (*render_svg)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_svg;
     MermanResult (*render_ascii)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_render_ascii;
     MermanResult (*parse_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_parse_json;
@@ -38,6 +47,14 @@ int merman_header_smoke(void) {
     (void)package_version;
     (void)buffer_struct_size;
     (void)result_struct_size;
+    (void)engine_result_struct_size;
+    (void)engine_new;
+    (void)engine_free;
+    (void)engine_render_svg;
+    (void)engine_render_ascii;
+    (void)engine_parse_json;
+    (void)engine_layout_json;
+    (void)engine_validate_json;
     (void)render_svg;
     (void)render_ascii;
     (void)parse_json;
@@ -47,7 +64,7 @@ int merman_header_smoke(void) {
     (void)ascii_supported_diagrams_json;
     (void)themes_json;
     (void)free_buffer;
-    return result.code + (int)result.data.len;
+    return result.code + engine_result.code + (int)result.data.len;
 }
 "#,
     )

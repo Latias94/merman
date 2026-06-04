@@ -9,7 +9,16 @@ use merman_bindings_core::BindingError;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-const WASM_ABI_VERSION: u32 = 2;
+const WASM_ABI_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize)]
+struct WasmErrorPayload<'a> {
+    version: u32,
+    ok: bool,
+    code: i32,
+    code_name: &'a str,
+    message: &'a str,
+}
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -103,7 +112,22 @@ fn json_value_result(result: Result<Vec<u8>, BindingError>) -> Result<JsValue, J
 }
 
 fn binding_error_to_js(err: BindingError) -> JsValue {
-    JsValue::from_str(&format!("{}: {}", err.status().code_name(), err.message()))
+    let payload = wasm_error_payload(&err);
+    payload
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+        .unwrap_or_else(|_| {
+            JsValue::from_str(&format!("{}: {}", payload.code_name, payload.message))
+        })
+}
+
+fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
+    WasmErrorPayload {
+        version: 1,
+        ok: false,
+        code: err.status().code(),
+        code_name: err.status().code_name(),
+        message: err.message(),
+    }
 }
 
 #[cfg(test)]
@@ -142,6 +166,17 @@ mod tests {
                 .unwrap()
                 .contains("no Mermaid diagram")
         );
+    }
+
+    #[test]
+    fn wasm_error_payload_is_structured() {
+        let err = merman_bindings_core::render_svg(b"flowchart TD\nA", b"{").unwrap_err();
+        let json = serde_json::to_value(wasm_error_payload(&err)).unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
+        assert!(json["message"].as_str().unwrap().contains("options_json"));
     }
 
     #[cfg(feature = "ascii")]

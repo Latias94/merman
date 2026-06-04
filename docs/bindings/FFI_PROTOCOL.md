@@ -1,9 +1,11 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-06-02
+Last updated: 2026-06-04
 
 This document defines the first C ABI protocol for `merman-ffi`.
+
+Project repository: <https://github.com/Latias94/merman>
 
 Authoritative code:
 
@@ -52,7 +54,7 @@ first FFI release candidate:
 The current ABI protocol version is:
 
 ```c
-#define MERMAN_ABI_VERSION 2
+#define MERMAN_ABI_VERSION 1
 ```
 
 ```c
@@ -65,9 +67,18 @@ typedef struct MermanResult {
     int32_t code;
     MermanBuffer data;
 } MermanResult;
+
+typedef struct MermanEngine MermanEngine;
+
+typedef struct MermanEngineResult {
+    int32_t code;
+    MermanEngine* engine;
+    MermanBuffer data;
+} MermanEngineResult;
 ```
 
 `MermanBuffer.data == NULL` means there is no payload. `len == 0` means the payload is empty.
+`MermanEngine` is an opaque handle owned by Rust.
 
 ## ABI Introspection
 
@@ -78,12 +89,14 @@ uint32_t merman_abi_version(void);
 const char* merman_package_version(void);
 size_t merman_buffer_struct_size(void);
 size_t merman_result_struct_size(void);
+size_t merman_engine_result_struct_size(void);
 ```
 
 - `merman_abi_version()` returns `MERMAN_ABI_VERSION`.
 - `merman_package_version()` returns a static null-terminated string owned by Rust. Do not free it.
-- `merman_buffer_struct_size()` and `merman_result_struct_size()` return Rust-side struct sizes so
-  hosts can catch packing or header/library mismatches at startup.
+- `merman_buffer_struct_size()`, `merman_result_struct_size()`, and
+  `merman_engine_result_struct_size()` return Rust-side struct sizes so hosts can catch packing or
+  header/library mismatches at startup.
 
 ## Result Codes
 
@@ -117,6 +130,55 @@ Passing `{ NULL, 0 }` is a no-op. Double-free is caller misuse.
 - `options_json == NULL && options_len == 0` means defaults.
 - `options_json == NULL && options_len > 0` returns `MERMAN_INVALID_ARGUMENT`.
 - Non-empty source/options buffers must be UTF-8.
+
+## Reusable Engine
+
+Hosts that render many diagrams with the same `options_json` can create a reusable engine:
+
+```c
+MermanEngineResult merman_engine_new(
+    const uint8_t* options_json,
+    size_t options_len
+);
+void merman_engine_free(MermanEngine* engine);
+```
+
+When `code == MERMAN_OK`, `engine` is non-null and `data` is empty. The caller must release the
+engine with `merman_engine_free`. When `code != MERMAN_OK`, `engine == NULL` and `data` contains the
+same JSON error payload used by `MermanResult`.
+
+The reusable-engine entry points capture the options at creation time:
+
+```c
+MermanResult merman_engine_render_svg(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_render_ascii(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_parse_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_layout_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_validate_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+```
+
+Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render
+calls, but callers must not free an engine while another thread is using it.
 
 ## SVG Rendering
 
