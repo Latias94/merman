@@ -136,6 +136,7 @@ impl DetectorRegistry {
         reg.add_fn("packet", detector_packet);
         reg.add_fn("xychart", detector_xychart);
         reg.add_fn("block", detector_block);
+        reg.add_fn("treeView", detector_tree_view);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -173,6 +174,7 @@ impl DetectorRegistry {
         reg.add_fn("packet", detector_packet);
         reg.add_fn("xychart", detector_xychart);
         reg.add_fn("block", detector_block);
+        reg.add_fn("treeView", detector_tree_view);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -256,6 +258,9 @@ fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
     }
     if let Some(rest) = t.strip_prefix("xychart-beta") {
         return has_boundary(rest).then_some("xychart");
+    }
+    if let Some(rest) = t.strip_prefix("treeView-beta") {
+        return has_boundary(rest).then_some("treeView");
     }
 
     None
@@ -435,6 +440,10 @@ fn detector_xychart(txt: &str, _config: &mut MermaidConfig) -> bool {
 
 fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("block")
+}
+
+fn detector_tree_view(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start().starts_with("treeView-beta")
 }
 
 fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {

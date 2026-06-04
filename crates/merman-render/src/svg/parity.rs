@@ -5,7 +5,7 @@ use crate::model::{
     ErrorDiagramLayout, FlowchartV2Layout, InfoDiagramLayout, LayoutCluster, LayoutNode,
     MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
     RadarDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout,
-    StateDiagramV2Layout, TimelineDiagramLayout, XyChartDiagramLayout,
+    StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -46,6 +46,7 @@ mod style;
 mod theme;
 mod timeline;
 mod timing;
+mod tree_view;
 mod treemap;
 mod util;
 mod xychart;
@@ -263,6 +264,9 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config, options)
         }
+        LayoutDiagram::TreeViewDiagram(layout) => {
+            render_tree_view_diagram_svg(layout, semantic, effective_config, options)
+        }
         LayoutDiagram::C4Diagram(layout) => {
             render_c4_diagram_svg(layout, semantic, effective_config, title, measurer, options)
         }
@@ -419,6 +423,9 @@ fn render_layout_svg_parts_with_config_raw(
         ),
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::TreeViewDiagram(layout) => {
+            render_tree_view_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::C4Diagram(layout) => render_c4_diagram_svg(
             layout,
@@ -643,6 +650,14 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 effective_config.as_value(),
                 title,
                 measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::TreeViewDiagram(layout), RenderSemanticModel::TreeView(_)) => {
+            render_tree_view_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
                 options,
             )
         }
@@ -902,6 +917,15 @@ pub fn render_gitgraph_diagram_svg(
         measurer,
         options,
     )
+}
+
+pub fn render_tree_view_diagram_svg(
+    layout: &TreeViewDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    tree_view::render_tree_view_diagram_svg(layout, semantic, effective_config, options)
 }
 
 pub fn render_gantt_diagram_svg(

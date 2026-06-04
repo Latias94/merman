@@ -62,3 +62,12 @@ class Class1
         .unwrap();
     assert_eq!(res.diagram_type, "classDiagram");
 }
+
+#[test]
+fn detects_tree_view_beta_as_tree_view() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_metadata("treeView-beta\n\"Root\"", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "treeView");
+}
