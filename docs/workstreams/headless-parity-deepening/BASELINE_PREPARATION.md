@@ -335,6 +335,32 @@ Verification:
 - `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\timeline_report_parity_hpd090_after_fira_sans_measurement.md`
 - `cargo fmt -p merman-render --check`
 
+## Eleventh Slice Completed
+
+Flowchart HTML demo KaTeX baseline refresh:
+
+- Point-refreshed the four stale Flowchart HTML demo KaTeX upstream SVG baselines:
+  `upstream_html_demos_flowchart_flowchart_040_katex`,
+  `upstream_html_demos_flowchart_flowchart_042_katex`,
+  `upstream_html_demos_flowchart_flowchart_044_katex`, and
+  `upstream_html_demos_flowchart_graph_039_katex`.
+- This was a pure stored-SVG refresh. The generated Mermaid 11.15 output carries the current
+  `_katex` diagram id suffix, current Flowchart marker margin defs, `data-look="classic"` DOM,
+  `1px` shared edge-path width, neo/drop-shadow CSS rules, and current KaTeX MathML measurement
+  output. Local Flowchart SVG output already matched the refreshed baselines under DOM parity.
+- `cargo run -p xtask -- update-layout-snapshots --diagram flowchart` added the missing
+  `fixtures/flowchart/zed_pr_57644_flowchart.layout.golden.json` snapshot for an existing fixture.
+- The Flowchart family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram flowchart --filter upstream_html_demos_flowchart --check-dom --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\flowchart_report_parity_hpd090_html_katex.md`
+- `cargo run -p xtask -- update-layout-snapshots --diagram flowchart`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\flowchart_report_parity_hpd090_html_katex_full.md`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -400,8 +426,6 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Point-refresh the remaining narrow stale set: Flowchart HTML demo KaTeX fixtures (`4`
-   fixtures).
-2. Update affected layout snapshots and run family compare gates after each refresh batch.
-3. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
+1. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
    inventory points to stored-baseline drift in existing fixtures, not missing fixture intake.
+2. Resume parity/root residual work only after readiness gate diagnostics are current.

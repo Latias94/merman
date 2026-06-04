@@ -23,10 +23,10 @@ Immediate next task:
   from `PINNED_MERMAID_BASELINE_VERSION`, Info layout goldens now say `v11.15.0`, and Info stored
   upstream SVGs were regenerated to `v11.15.0`.
 - The second HPD-090 slice fixed Error visible version text and `xtask` import/audit live baseline
-  labels, then classified stored upstream SVG drift by family. Do not refresh all baselines:
-  refresh broad stale families by family, then point-refresh `class`, `timeline`, and Flowchart
-  HTML demo KaTeX drifts; then rerun layout, compare, and boundary renderability gates. No broad
-  official fixture import is indicated yet.
+  labels, then classified stored upstream SVG drift by family. That classification drove the
+  completed broad-family refreshes plus the narrow Class, Timeline, and Flowchart HTML demo KaTeX
+  point refreshes. Do not refresh all baselines, and do not run a broad official fixture import
+  unless a fresh inventory changes that conclusion.
 - The Requirement refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15,
   and the local Requirement renderer now emits the current Mermaid DOM surfaces needed for the
   family parity gate (`data-look`, diagram-prefixed node/edge ids, node class ordering,
@@ -71,8 +71,14 @@ Immediate next task:
   affected layout golden was refreshed, and the missing existing-fixture
   `zed_pr_57644_timeline` layout golden was added. `compare-timeline-svgs --check-dom --dom-mode
   parity --dom-decimals 3` is green.
-- No HPD-090 broad stale family remains. Remaining HPD-090 work is point-refreshing the Flowchart
-  HTML demo KaTeX fixtures (`4` fixtures), then rerunning readiness gates.
+- The Flowchart HTML demo KaTeX refresh is now handled: the four stale stored upstream SVGs were
+  point-refreshed to Mermaid 11.15 output, local Flowchart output already matched the refreshed
+  baselines under DOM parity, and `update-layout-snapshots --diagram flowchart` added the missing
+  existing-fixture `zed_pr_57644_flowchart` layout golden. Full
+  `compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- No HPD-090 broad or narrow stale stored-SVG set remains. Remaining HPD-090 work is rerunning the
+  readiness gates and documenting any expected diagnostics before returning to parity/root residual
+  fixes.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

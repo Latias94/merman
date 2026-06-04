@@ -85,6 +85,15 @@ Outcome:
     the same `17px` case;
   - the affected Timeline layout golden was refreshed and the missing existing-fixture
     `zed_pr_57644_timeline` layout golden was added.
+- Point-refreshed the Flowchart HTML demo KaTeX narrow stale set:
+  - the four stale stored Flowchart upstream SVGs were regenerated;
+  - the refreshed baselines now carry the current Mermaid 11.15 `_katex` diagram id suffix,
+    Flowchart marker margin defs, `data-look="classic"` DOM, `1px` shared edge width,
+    neo/drop-shadow CSS rules, and current KaTeX MathML measurement output;
+  - local Flowchart output already matched the refreshed baselines under full Flowchart DOM
+    parity;
+  - `update-layout-snapshots --diagram flowchart` added the missing existing-fixture
+    `zed_pr_57644_flowchart` layout golden.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -118,6 +127,7 @@ Touched surfaces:
 - `fixtures/class/zed_pr_57644_class.layout.golden.json`
 - `fixtures/timeline/upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012.layout.golden.json`
 - `fixtures/timeline/zed_pr_57644_timeline.layout.golden.json`
+- `fixtures/flowchart/zed_pr_57644_flowchart.layout.golden.json`
 - `fixtures/gantt/zed_pr_57644_gantt.layout.golden.json`
 - `fixtures/mindmap/zed_pr_57644_mindmap.layout.golden.json`
 - `fixtures/upstream-svgs/info/*.svg`
@@ -129,6 +139,8 @@ Touched surfaces:
 - `fixtures/upstream-svgs/radar/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
 - `fixtures/upstream-svgs/timeline/upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012.svg`
+- `fixtures/upstream-svgs/flowchart/upstream_html_demos_flowchart_flowchart_{040,042,044}_katex.svg`
+- `fixtures/upstream-svgs/flowchart/upstream_html_demos_flowchart_graph_039_katex.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
 
@@ -196,6 +208,17 @@ Focused verification:
 - `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\timeline_report_parity_hpd090_after_fira_sans_measurement.md` -
   passed after the Timeline measurement update and stored SVG refresh.
 - `cargo fmt -p merman-render --check` - passed after the Timeline measurement update.
+- `$env:PUPPETEER_EXECUTABLE_PATH='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'; cargo run -p xtask -- check-upstream-svgs --diagram flowchart --filter upstream_html_demos_flowchart --check-dom --dom-mode structure --dom-decimals 3` -
+  passed after point-refreshing the Flowchart HTML demo KaTeX stored SVGs.
+- `cargo run -p xtask -- compare-flowchart-svgs --filter upstream_html_demos_flowchart --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\flowchart_report_parity_hpd090_html_katex.md` -
+  passed for the refreshed Flowchart HTML demo slice; the known ELK fixture remains skipped as a
+  documented unsupported layout.
+- `cargo run -p xtask -- update-layout-snapshots --diagram flowchart` - passed and produced the
+  missing `zed_pr_57644_flowchart` layout golden.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\flowchart_report_parity_hpd090_html_katex_full.md` -
+  passed for the full Flowchart family under DOM parity.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run after the Flowchart layout golden addition.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -209,10 +232,9 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  The broad stale family set, Class, and Timeline are now handled. Next HPD-090 work should
-  point-refresh the remaining Flowchart HTML demo KaTeX fixtures listed in
-  `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability gates before resuming
-  parity fixes. No broad official fixture import is indicated yet.
+  The broad stale family set plus the Class, Timeline, and Flowchart narrow stale sets are now
+  handled. Next HPD-090 work should rerun readiness gates before resuming parity fixes. No broad
+  official fixture import is indicated yet.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 

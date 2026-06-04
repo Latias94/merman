@@ -641,7 +641,7 @@ Last updated: 2026-06-04
 
 ## M8 - Baseline Preparation Before Parity
 
-- [ ] HPD-090 [owner=codex] [deps=HPD-020,HPD-030,HPD-070] [scope=docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md,crates/merman-core/src/baseline.rs,crates/merman-render/src/info.rs,crates/merman-render/src/error.rs,crates/merman-render/src/timeline.rs,crates/merman-render/src/svg/parity/requirement.rs,crates/merman-render/src/svg/parity/block.rs,crates/merman-render/src/svg/parity/gantt.rs,crates/merman-render/src/svg/parity/kanban.rs,crates/merman-render/src/svg/parity/mindmap.rs,crates/xtask/src/cmd/import,crates/xtask/src/cmd/audit.rs,fixtures,fixtures/upstream-svgs,docs/alignment]
+- [ ] HPD-090 [owner=codex] [deps=HPD-020,HPD-030,HPD-070] [scope=docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md,crates/merman-core/src/baseline.rs,crates/merman-render/src/info.rs,crates/merman-render/src/error.rs,crates/merman-render/src/timeline.rs,crates/merman-render/src/svg/parity/requirement.rs,crates/merman-render/src/svg/parity/block.rs,crates/merman-render/src/svg/parity/gantt.rs,crates/merman-render/src/svg/parity/kanban.rs,crates/merman-render/src/svg/parity/mindmap.rs,fixtures/flowchart,fixtures/upstream-svgs/flowchart,crates/xtask/src/cmd/import,crates/xtask/src/cmd/audit.rs,fixtures,fixtures/upstream-svgs,docs/alignment]
   Goal: Prepare the Mermaid 11.15 baseline corpus before further parity work by classifying stale
   current-facing baseline surfaces, deciding whether to refresh all stored upstream SVGs, and
   defining official fixture/test admission gates.
@@ -673,5 +673,7 @@ Last updated: 2026-06-04
   root-height helper branch, Class required native SVG-label wrapping parity for the
   `themeVariables.fontSize: "24px"` / `htmlLabels=false` case, and Timeline required a local
   browser-fallback text measurement seam for the stale fixture's bare `Fira Sans` / `17px` text.
-  Do not refresh all SVG baselines: point-refresh Flowchart HTML demo KaTeX drifts; then rerun
-  layout, compare, and renderability gates. No broad official fixture import is indicated yet.
+  Flowchart HTML demo KaTeX stored SVGs are point-refreshed and full Flowchart DOM parity is green;
+  the missing existing-fixture `zed_pr_57644_flowchart` layout golden is added. Do not refresh all
+  SVG baselines. Rerun readiness gates and document expected diagnostics before resuming
+  parity/root residual fixes. No broad official fixture import is indicated yet.
