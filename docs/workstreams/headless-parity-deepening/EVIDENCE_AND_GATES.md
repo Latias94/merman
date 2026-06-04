@@ -6360,3 +6360,33 @@ Outcome:
 - No broad test regression was found after the integrated evidence/no-growth slices.
 - Continue from HPD-050 Architecture/FCoSE source-backed audit work when no fresh visible
   renderability defect is active.
+
+## HPD-050 - Architecture FCoSE Geometry Epsilon
+
+Outcome:
+
+- Closed the active `stress_architecture_batch6_junctions_multi_split_with_group_edges_087`
+  Architecture root residual by fixing FCoSE compound-repulsion boundary geometry.
+- The source-backed diagnosis found the missing second-run displacement in compound repulsion:
+  root-level near-touch rectangles and near-equal overlap centers were being split by tiny
+  Rust/JS floating-point drift.
+- No random-seed offset change, root override, stored SVG baseline, or browser metric constant was
+  kept.
+
+Focused verification:
+
+- `cargo nextest run -p manatee -E 'test(rects_intersect_treats_tiny_touch_gap_as_intersection) or test(overlap_separation_treats_nearly_equal_centers_as_equal)'` -
+  passed, `2` tests run after failing before the fix.
+- `cargo nextest run -p manatee fcose` - passed, `10` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_junctions_hpd050_fcose_geometry_epsilon.md` -
+  passed with upstream/local `max-width: 653.184px`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_fcose_geometry_epsilon.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_hpd050_fcose_geometry_epsilon.md` -
+  expected failure with `24` Architecture root mismatch rows; the fixed batch6 row is root-exact
+  at `+0.000px`.
+
+Gate notes:
+
+- Remaining Architecture `parity-root` failures are led by the existing `+5px`
+  long-title/HTML-title tails and remain HPD-050 follow-up material.

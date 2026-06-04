@@ -9,6 +9,8 @@ use rustc_hash::FxHashMap;
 
 mod spectral;
 
+const GEOMETRY_EPSILON: f64 = 1e-9;
+
 #[derive(Debug, Default, Clone)]
 struct FcoseLayoutTimings {
     total: web_time::Duration,
@@ -4597,12 +4599,39 @@ mod tests {
     }
 
     #[test]
+    fn rects_intersect_treats_tiny_touch_gap_as_intersection() {
+        let a = node_at(0.0, 0.0, 80.0, 80.0);
+        let near_touch = node_at(80.0 + 1e-12, 0.0, 80.0, 80.0);
+        let separated = node_at(80.0 + 1e-6, 0.0, 80.0, 80.0);
+
+        assert!(super::rects_intersect(&a, &near_touch));
+        assert!(!super::rects_intersect(&a, &separated));
+    }
+
+    #[test]
+    fn overlap_separation_treats_nearly_equal_centers_as_equal() {
+        let a = node_at(0.0, 0.0, 80.0, 80.0);
+        let y_aligned = node_at(20.0, 1e-12, 80.0, 80.0);
+        assert_eq!(
+            super::decide_directions_for_overlapping_nodes(&a, &y_aligned),
+            (-1.0, 1.0)
+        );
+
+        let near_same_center = node_at(1e-12, 1e-12, 80.0, 80.0);
+        let (dx, dy) = super::calc_separation_amount(&a, &near_same_center, 0.0);
+        assert!(
+            (dx + 40.0).abs() < 1e-9 && (dy + 40.0).abs() < 1e-9,
+            "expected exact-center separation direction, got ({dx}, {dy})"
+        );
+    }
+
+    #[test]
     fn constraint_handler_preserves_group_port_second_run_tiny_gap() {
         // Browser evidence for `stress_architecture_group_port_edges_017`, run=1:
         // Cytoscape/cose-base constraint handling leaves a 7.1e-15 positive gap between the
         // computed `inner` compound top and `out1` bottom after the next `updateBounds()` pass.
-        // That tiny gap is enough for `RectangleD.intersects(...)` to return false and for
-        // `inner/out1` repulsion to take the vertical clipping path.
+        // The FCoSE geometry layer treats this as a floating-point touch gap; this test preserves
+        // the upstream constraint-handler checkpoint that exposed the boundary case.
         let mut nodes = vec![
             // in1
             node_at(-47.406_611_585_551_886, 59.051_469_403_565_15, 80.0, 80.0),
@@ -4803,7 +4832,20 @@ mod tests {
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
     // Mirror layout-base `RectangleD.intersects`: touching edges count as intersection.
-    !(a.right() < b.left || a.bottom() < b.top || b.right() < a.left || b.bottom() < a.top)
+    !(definitely_less(a.right(), b.left)
+        || definitely_less(a.bottom(), b.top)
+        || definitely_less(b.right(), a.left)
+        || definitely_less(b.bottom(), a.top))
+}
+
+#[inline]
+fn definitely_less(a: f64, b: f64) -> bool {
+    a + GEOMETRY_EPSILON < b
+}
+
+#[inline]
+fn nearly_equal(a: f64, b: f64) -> bool {
+    (a - b).abs() <= GEOMETRY_EPSILON
 }
 
 fn get_cardinal_direction(slope: f64, slope_prime: f64, line: i32) -> i32 {
@@ -5202,8 +5244,10 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
         overlap_y += (a.top - b.top).min(b.bottom() - a.bottom());
     }
 
-    let mut slope = ((b.center_y() - a.center_y()) / (b.center_x() - a.center_x())).abs();
-    if (b.center_y() == a.center_y()) && (b.center_x() == a.center_x()) {
+    let center_dx = b.center_x() - a.center_x();
+    let center_dy = b.center_y() - a.center_y();
+    let mut slope = (center_dy / center_dx).abs();
+    if nearly_equal(center_dy, 0.0) && nearly_equal(center_dx, 0.0) {
         slope = 1.0;
     }
 
@@ -5221,12 +5265,12 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
 }
 
 fn decide_directions_for_overlapping_nodes(a: &SimNode, b: &SimNode) -> (f64, f64) {
-    let dir_x = if a.center_x() < b.center_x() {
+    let dir_x = if definitely_less(a.center_x(), b.center_x()) {
         -1.0
     } else {
         1.0
     };
-    let dir_y = if a.center_y() < b.center_y() {
+    let dir_y = if definitely_less(a.center_y(), b.center_y()) {
         -1.0
     } else {
         1.0

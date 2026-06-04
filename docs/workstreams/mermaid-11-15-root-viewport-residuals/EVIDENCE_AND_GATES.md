@@ -1500,6 +1500,37 @@ Outcome:
 - No root override, stored SVG baseline, generated pin table, renderer output, or `manatee` code
   changed in this reclassification.
 
+## 2026-06-04 - Architecture FCoSE Geometry Epsilon Closure
+
+Fresh focused evidence after the source-backed FCoSE compound-repulsion audit:
+
+- `cargo nextest run -p manatee -E 'test(rects_intersect_treats_tiny_touch_gap_as_intersection) or test(overlap_separation_treats_nearly_equal_centers_as_equal)'`:
+  passed. These regression tests failed before the geometry fix, proving the seam covered the
+  observed near-touch rectangle and near-equal-center direction split.
+- `cargo nextest run -p manatee fcose`: passed, `10` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_junctions_hpd050_fcose_geometry_epsilon.md`:
+  passed. The focused row now reports upstream/local `max-width: 653.184px` with `+0.000px`
+  delta.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_hpd050_fcose_geometry_epsilon.md`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_hpd050_fcose_geometry_epsilon.md`:
+  expected failure. The Architecture root mismatch list is now `24` rows, with
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` root-exact at
+  `653.184px` upstream/local. The largest remaining rows are the existing `+5px`
+  long-title/HTML-title tails.
+
+Outcome:
+
+- The prior `+46.001831px` batch6 root residual was caused by floating-point boundary drift in the
+  FCoSE repulsion geometry path, not by RNG, relative constraints, root overrides, or stored SVG
+  baselines.
+- `rects_intersect(...)` now treats `1e-12`-scale touch gaps as intersection, preserving the
+  layout-base "touching edges intersect" rule under Rust/JS floating-point drift.
+- Overlap separation now treats `1e-12`-scale center differences as equal for direction and
+  exact-center slope fallback, preventing compound repulsion from flipping sign on the second
+  FCoSE run.
+- No root pins or browser-specific metric constants were added.
+
 ## Gate Set
 
 Run after any code or generated-data change:

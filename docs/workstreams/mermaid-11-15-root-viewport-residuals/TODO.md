@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - TODO
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-04
 
 ## M0 - Baseline Split
 
@@ -247,7 +247,11 @@ Last updated: 2026-06-02
   `stress_architecture_batch4_init_fontsize_wrap_063` as edge-label browser `getBBox()` tails, but
   those two rows are now root-green after the later HPD-050 `createText()` root-bounds fix. Keep
   `stress_architecture_nested_groups_002` classified as a nested-compound/FCoSE residual after
-  source inputs match.
+  source inputs match. Latest HPD-050 FCoSE geometry evidence closes
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` again by treating
+  near-touch rectangles and near-equal overlap centers with a `1e-9` geometry epsilon; full
+  Architecture structural parity stays green and Architecture `parity-root` now has `24` mismatch
+  rows led by the existing `+5px` long-title/HTML-title tails.
 
 ## M3 - Policy Closeout
 
