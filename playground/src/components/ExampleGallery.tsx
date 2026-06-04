@@ -20,6 +20,7 @@ const categoryKeys: Record<string, string> = {
   Mindmap: "examples.categories.mindmap",
   Git: "examples.categories.git",
   Timeline: "examples.categories.timeline",
+  EventModeling: "examples.categories.eventmodeling",
   "XY Chart": "examples.categories.xychart",
   Architecture: "examples.categories.architecture",
   Block: "examples.categories.block",
