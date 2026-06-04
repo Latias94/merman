@@ -107,14 +107,6 @@ fn architecture_relative_placement_constraints<'a>(
     relative
 }
 
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
-
 fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     let mut cur = cfg;
     for k in path {
@@ -307,6 +299,15 @@ fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: font_size_px,
         font_weight: None,
+    }
+}
+
+fn architecture_cytoscape_edge_text_style() -> TextStyle {
+    TextStyle {
+        // Mermaid's Architecture Cytoscape stylesheet sets `font-size` only on `node[label]`;
+        // `edge[label]` keeps Cytoscape's default 16px sans-serif label style.
+        font_family: Some("sans-serif".to_string()),
+        ..TextStyle::default()
     }
 }
 
@@ -1041,15 +1042,7 @@ fn layout_architecture_diagram_model(
         let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
         let mut default_edge_length_sum = 0.0f64;
         let mut default_edge_length_cnt = 0.0f64;
-        let font_family = config_string(effective_config, &["fontFamily"])
-            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-            .map(|s| s.trim().trim_end_matches(';').trim().to_string());
-        let edge_text_style = crate::text::TextStyle {
-            font_family: font_family
-                .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
-            font_size: font_size_px,
-            font_weight: None,
-        };
+        let edge_text_style = architecture_cytoscape_edge_text_style();
 
         // Cytoscape FCoSE de-duplicates multiple edges between the same two nodes when building
         // its internal layout graph:
@@ -1115,6 +1108,13 @@ fn layout_architecture_diagram_model(
                 Dir::T => manatee::Anchor::Top,
                 Dir::B => manatee::Anchor::Bottom,
             });
+            let curve_style_segments = match (
+                e.lhs_dir.and_then(Dir::from_char),
+                e.rhs_dir.and_then(Dir::from_char),
+            ) {
+                (Some(a), Some(b)) => a.is_x() != b.is_x(),
+                _ => false,
+            };
 
             let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty())
             {
@@ -1135,6 +1135,7 @@ fn layout_architecture_diagram_model(
                 label_height,
                 source_anchor,
                 target_anchor,
+                curve_style_segments,
                 ideal_length,
                 elasticity,
             });
@@ -1605,6 +1606,16 @@ mod tests {
         assert_eq!(extras.bottom, 18.0);
         assert_eq!(extras.left, 1.0);
         assert_eq!(extras.right, 1.0);
+    }
+
+    #[test]
+    fn architecture_fcose_edge_label_style_keeps_cytoscape_defaults() {
+        let node_style = super::architecture_cytoscape_text_style(18.0);
+        let edge_style = super::architecture_cytoscape_edge_text_style();
+
+        assert_eq!(node_style.font_size, 18.0);
+        assert_eq!(edge_style.font_size, 16.0);
+        assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));
     }
 
     #[test]

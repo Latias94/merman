@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
 
@@ -6693,3 +6693,54 @@ Gate notes:
 - The table isolates post-FCoSE translation input drift. It does not by itself explain all residual
   width, so continue through group-bounds consumption and SVG/root emission before any production
   fix.
+
+## HPD-050 - Architecture Edge Curve Style Relocate Fix
+
+Outcome:
+
+- Added `IndexedEdge::curve_style_segments` so local FCoSE relocation bbox logic distinguishes
+  real Cytoscape `edge.segments` edges from ordinary diagonal `straight` edges.
+- Architecture now derives that flag from Mermaid's direction-pair rule: one horizontal direction
+  and one vertical direction means `edge.segments`; same-axis edges remain `straight`.
+- Local run > 0 `eles.boundingBox()` now places labels for straight diagonal edges at the straight
+  midpoint instead of the orthogonal bend.
+- Architecture FCoSE edge-label measurement now uses Cytoscape's default edge-label text style,
+  matching Mermaid's stylesheet where `font-size` is set on `node[label]`, not `edge[label]`.
+- Focused `093` evidence confirms the run 1 `api-db` label center moved from the local bend
+  approximation to the browser midpoint: `x=82.037349 y=-66.880297` became
+  `x=40.000000 y=12.407124`.
+- The bundled/local run 1 relocate `originalCenter.x` drift for `093` dropped from
+  `+22.963987px` to `+1.230469px`; `002` remains at `+1.250000px`.
+- The remaining `002` / `093` root-width residuals are still `2.5px`, so this is a source-backed
+  input-model fix, not full root closure.
+
+Evidence:
+
+- `target/compare/architecture-delta-segment-style-fix-hpd050`
+- `target/compare/architecture-report-parity-segment-style-fix-hpd050`
+- `target/compare/architecture-report-parity-root-segment-style-fix-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-edge-curve-style-relocate-fix.md`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p manatee` - passed, `15` tests run.
+- `cargo nextest run -p merman-render architecture` - passed, `32` tests run.
+- `cargo nextest run -p xtask` - passed, `112` tests run.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-segment-style-fix-hpd050` -
+  passed.
+- `cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-segment-style-fix-hpd050`
+  with `MANATEE_FCOSE_DEBUG_TRACE=1` and `MANATEE_FCOSE_DEBUG_ELES_BBOX=1` - passed for `002`
+  and `093`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\architecture-report-parity-root-segment-style-fix-hpd050` -
+  expected-failed with the active `20` Architecture root mismatch rows.
+
+Gate notes:
+
+- This fix removes the large `093` relocate-origin family error without adding root overrides,
+  root pins, group padding changes, or baseline refreshes.
+- Continue the remaining `2.5px` tails through final group/root bbox modeling. For `093`, the next
+  evidence is direct group-width deltas (`left=-3px`, `right=-1px`); for `002`, the row remains a
+  nested frame/root-width sensor.

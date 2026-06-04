@@ -103,6 +103,7 @@ pub struct IndexedEdge {
     pub label_height: Option<f64>,
     pub source_anchor: Option<Anchor>,
     pub target_anchor: Option<Anchor>,
+    pub curve_style_segments: bool,
     pub ideal_length: f64,
     pub elasticity: f64,
 }
@@ -501,6 +502,7 @@ fn graph_to_indexed(graph: &Graph, opts: &FcoseOptions) -> (IndexedGraph, Indexe
                     label_height: e.label_height,
                     source_anchor: e.source_anchor,
                     target_anchor: e.target_anchor,
+                    curve_style_segments: false,
                     ideal_length: e.ideal_length,
                     elasticity: e.elasticity,
                 })
@@ -749,6 +751,7 @@ struct SimEdge {
     b_in_lca: usize,
     a_anchor: Option<Anchor>,
     b_anchor: Option<Anchor>,
+    curve_style_segments: bool,
     base_ideal_length: f64,
     ideal_length: f64,
     elasticity: f64,
@@ -1292,6 +1295,7 @@ impl SimGraph {
                 b_in_lca: e.target,
                 a_anchor: e.source_anchor,
                 b_anchor: e.target_anchor,
+                curve_style_segments: e.curve_style_segments,
                 base_ideal_length: ideal.max(1.0),
                 ideal_length: ideal.max(1.0),
                 elasticity,
@@ -1862,10 +1866,11 @@ impl SimGraph {
                 ty + EDGE_BBOX_PAD,
             );
 
-            // Mermaid styles diagonal (XY) edges as Cytoscape `curve-style: segments` with
-            // `segment-weights: 0` and `segment-distances: 0.5px` in the pre-layout state. This
-            // creates a subtle asymmetric bbox (e.g. ±0.353553... for 45deg edges).
-            if run_idx == 0 && sx != tx && sy != ty {
+            // Mermaid styles XY edges as Cytoscape `curve-style: segments` with
+            // `segment-weights: 0` and `segment-distances: 0.5px` in the pre-layout state. Other
+            // diagonal edges remain `curve-style: straight`; their labels stay at the straight
+            // midpoint even after Mermaid writes segment weights/distances during run chaining.
+            if e.curve_style_segments && run_idx == 0 && sx != tx && sy != ty {
                 const SEG_DIST: f64 = 0.5;
                 let dx = tx - sx;
                 let dy = ty - sy;
@@ -1901,10 +1906,9 @@ impl SimGraph {
                 }
             }
 
-            // After the first run, Mermaid updates segment weights/distances so diagonal edges
-            // become orthogonal with a single bend at either `(sx, ty)` or `(tx, sy)` depending on
-            // the source direction.
-            if run_idx > 0 && sx != tx && sy != ty {
+            // After the first run, Mermaid updates segment weights/distances for `edge.segments`
+            // so XY edges become orthogonal with a single bend at either `(sx, ty)` or `(tx, sy)`.
+            if e.curve_style_segments && run_idx > 0 && sx != tx && sy != ty {
                 let (bx, by) = match e.a_anchor {
                     Some(Anchor::Top) | Some(Anchor::Bottom) => (sx, ty),
                     _ => (tx, sy),
@@ -4241,7 +4245,7 @@ mod tests {
     use super::{
         BoundsExtras, Constraints, IndexedAlignmentConstraint, IndexedCompound, IndexedEdge,
         IndexedFcoseOptions, IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint,
-        RelConstraint, RepulsionGrid, SimNode, XorShift64Star,
+        RelConstraint, RepulsionGrid, SimGraph, SimNode, XorShift64Star,
         apply_reflection_for_relative_placement, layout, layout_indexed,
         procrustes_transform_for_alignments,
     };
@@ -4414,6 +4418,7 @@ mod tests {
                     label_height: Some(16.0),
                     source_anchor: Some(Anchor::Right),
                     target_anchor: Some(Anchor::Left),
+                    curve_style_segments: false,
                     ideal_length: 80.0,
                     elasticity: 0.45,
                 },
@@ -4424,6 +4429,7 @@ mod tests {
                     label_height: None,
                     source_anchor: Some(Anchor::Bottom),
                     target_anchor: Some(Anchor::Top),
+                    curve_style_segments: true,
                     ideal_length: 80.0,
                     elasticity: 0.001,
                 },
@@ -4472,6 +4478,62 @@ mod tests {
                 x: group_bounds.left + group_bounds.width / 2.0,
                 y: group_bounds.top + group_bounds.height / 2.0,
             },
+        );
+    }
+
+    #[test]
+    fn eles_bbox_run_after_first_run_keeps_straight_diagonal_label_at_midpoint() {
+        let graph = IndexedGraph {
+            nodes: vec![
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+                IndexedNode {
+                    parent: None,
+                    width: 40.0,
+                    height: 40.0,
+                    x: 100.0,
+                    y: 100.0,
+                    bounds_extras: BoundsExtras::default(),
+                },
+            ],
+            edges: vec![IndexedEdge {
+                source: 0,
+                target: 1,
+                label_width: Some(200.0),
+                label_height: Some(20.0),
+                source_anchor: Some(Anchor::Right),
+                target_anchor: Some(Anchor::Left),
+                curve_style_segments: false,
+                ideal_length: 80.0,
+                elasticity: 0.45,
+            }],
+            compounds: Vec::new(),
+        };
+
+        let sim = SimGraph::from_indexed(&graph);
+        let (straight_center_x, _) = sim
+            .bounding_box_center_eles(1)
+            .expect("straight bbox center");
+        assert!(
+            (straight_center_x - 70.0).abs() < 1e-9,
+            "straight edge label should stay centered on the straight midpoint, got {straight_center_x}"
+        );
+
+        let mut segments_graph = graph;
+        segments_graph.edges[0].curve_style_segments = true;
+        let sim = SimGraph::from_indexed(&segments_graph);
+        let (segments_center_x, _) = sim
+            .bounding_box_center_eles(1)
+            .expect("segments bbox center");
+        assert!(
+            (segments_center_x - 91.25).abs() < 1e-9,
+            "segments edge label should use the post-run bend contribution, got {segments_center_x}"
         );
     }
 
