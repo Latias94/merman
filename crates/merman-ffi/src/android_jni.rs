@@ -60,7 +60,12 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeRenderAscii(
     source: JString<'_>,
     options_json: JObject<'_>,
 ) -> jstring {
-    call_binding(&mut env, source, options_json, render_ascii_binding)
+    call_binding(
+        &mut env,
+        source,
+        options_json,
+        merman_bindings_core::render_ascii,
+    )
 }
 
 #[unsafe(no_mangle)]
@@ -161,21 +166,6 @@ where
 {
     let result = super::ffi_result(f);
     result_to_java_string(env, result)
-}
-
-fn render_ascii_binding(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    #[cfg(feature = "ascii")]
-    {
-        merman_bindings_core::render_ascii(source, options_json)
-    }
-    #[cfg(not(feature = "ascii"))]
-    {
-        let _ = (source, options_json);
-        Err(BindingError::new(
-            BindingStatus::UnsupportedFormat,
-            "ASCII rendering requires the ascii feature",
-        ))
-    }
 }
 
 fn required_java_string(env: &mut JNIEnv<'_>, value: JString<'_>, name: &str) -> Option<String> {

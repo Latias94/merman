@@ -83,7 +83,7 @@ impl MermanEngine {
         source: String,
         options_json: Option<String>,
     ) -> Result<String, MermanError> {
-        string_output(render_ascii_binding(
+        string_output(merman_bindings_core::render_ascii(
             source.as_bytes(),
             options_bytes(options_json.as_deref()),
         ))
@@ -177,21 +177,6 @@ fn validation_output(
         code: code as i32,
         code_name: code_name.to_string(),
     })
-}
-
-fn render_ascii_binding(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    #[cfg(feature = "ascii")]
-    {
-        merman_bindings_core::render_ascii(source, options_json)
-    }
-    #[cfg(not(feature = "ascii"))]
-    {
-        let _ = (source, options_json);
-        Err(BindingError::new(
-            BindingStatus::UnsupportedFormat,
-            "ASCII rendering requires the ascii feature",
-        ))
-    }
 }
 
 fn string_vec(values: &[&str]) -> Vec<String> {

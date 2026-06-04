@@ -224,18 +224,7 @@ unsafe fn render_ascii_impl(
 ) -> Result<Vec<u8>, BindingError> {
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
     let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    #[cfg(feature = "ascii")]
-    {
-        merman_bindings_core::render_ascii(source_bytes, options_bytes)
-    }
-    #[cfg(not(feature = "ascii"))]
-    {
-        let _ = (source_bytes, options_bytes);
-        Err(BindingError::new(
-            BindingStatus::UnsupportedFormat,
-            "ASCII rendering requires the ascii feature",
-        ))
-    }
+    merman_bindings_core::render_ascii(source_bytes, options_bytes)
 }
 
 unsafe fn parse_json_impl(
