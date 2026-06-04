@@ -142,3 +142,8 @@ To verify Android plugin packaging through a temporary Flutter app:
 ```bash
 python3 platforms/flutter/tool/android-smoke.py
 ```
+
+## License
+
+This Flutter package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full
+license texts.

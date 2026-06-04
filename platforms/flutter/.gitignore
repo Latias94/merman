@@ -1,5 +1,6 @@
 /.dart_tool/
 /build/
+/doc/
 /pubspec.lock
 /android/src/main/jniLibs/
 /ios/Merman.xcframework/

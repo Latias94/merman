@@ -2,6 +2,7 @@
 
 # Dart / Pub
 .dart_tool/
+doc/
 .packages
 .pub-cache/
 .pub/
