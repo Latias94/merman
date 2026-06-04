@@ -1,6 +1,5 @@
 plugins {
     id("com.android.library") version "9.2.0"
-    id("org.jetbrains.kotlin.android") version "1.9.24"
     id("maven-publish")
     id("signing")
 }
@@ -24,10 +23,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     publishing {
