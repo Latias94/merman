@@ -75,6 +75,16 @@ impl DebugRect {
             h: self.h,
         }
     }
+
+    fn expanded(self, by: f64) -> Self {
+        let by = by.max(0.0);
+        Self {
+            x: self.x - by,
+            y: self.y - by,
+            w: self.w + by * 2.0,
+            h: self.h + by * 2.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -966,16 +976,16 @@ fn render_architecture_probe_join_markdown(
     let _ = writeln!(report, "### Service bbox join\n");
     let _ = writeln!(
         report,
-        "This table joins local service contribution phases with browser final service nodes. `label metric dw` compares local measured label text width with browser `labelWidth`; `label dw` compares local contribution-label width with browser label bounds width. `browser child union` is `bodyBounds` union `labelBounds.all`, which matches the service contribution phase feeding browser `childrenBoundingBoxIncludeLabels`. `local union final-frame` shifts the local top-left contribution by half the local body size so its x/y coordinates are comparable to browser final element bounds. `union dw/dh` still compares local group-content contribution dimensions with final `node.boundingBox()` for the 1px final-bbox expansion check.\n"
+        "This table joins local service contribution phases with browser final service nodes. `label metric dw` compares local measured label text width with browser `labelWidth`; `label dw` compares local contribution-label width with browser label bounds width. `browser child union` is `bodyBounds` union `labelBounds.all`, which matches the service contribution phase feeding browser `childrenBoundingBoxIncludeLabels`. `local union final-frame` shifts the local top-left contribution by half the local body size so its x/y coordinates are comparable to browser final element bounds. `local final bb final-frame` applies the source-shaped 1px final `node.boundingBox()` expansion to that local child union; it is diagnostic only and does not change renderer output.\n"
     );
     let _ = writeln!(
         report,
-        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label metrics | local label metrics | label metric dw | browser label | local contribution label | label dw | browser child union | local union final-frame | child dx | child dy | child dw | child dh | browser bb | local union | union dw | union dh | bb frame dx | bb frame dy |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|"
+        "| id | group | browser pos | local svg pos | pos dx | pos dy | browser body | local body | body dw | body dh | browser label metrics | local label metrics | label metric dw | browser label | local contribution label | label dw | browser child union | local union final-frame | child dx | child dy | child dw | child dh | browser bb | local final bb final-frame | final dx | final dy | final dw | final dh | local union | union dw | union dh | bb frame dx | bb frame dy |\n|---|---|---|---|---:|---:|---|---|---:|---:|---|---|---:|---|---|---:|---|---|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|"
     );
     if layout.cytoscape_service_bounds.is_empty() {
         let _ = writeln!(
             report,
-            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
         );
     } else {
         for service in &layout.cytoscape_service_bounds {
@@ -1026,10 +1036,15 @@ fn render_architecture_probe_join_markdown(
             let child_dh = browser_child_union.map(|bb| local_union_final_frame.h - bb.h);
             let bb_frame_dx = browser_bb.map(|bb| local_union_final_frame.x - bb.x);
             let bb_frame_dy = browser_bb.map(|bb| local_union_final_frame.y - bb.y);
+            let local_final_bb_final_frame = local_union_final_frame.expanded(1.0);
+            let final_dx = browser_bb.map(|bb| local_final_bb_final_frame.x - bb.x);
+            let final_dy = browser_bb.map(|bb| local_final_bb_final_frame.y - bb.y);
+            let final_dw = browser_bb.map(|bb| local_final_bb_final_frame.w - bb.w);
+            let final_dh = browser_bb.map(|bb| local_final_bb_final_frame.h - bb.h);
 
             let _ = writeln!(
                 report,
-                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} | {} | {} |",
+                "| `{}` | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | {} | {} | {} | {} |",
                 service.id,
                 service.in_group.as_deref().unwrap_or("<none>"),
                 format_debug_point(browser_pos),
@@ -1053,6 +1068,11 @@ fn render_architecture_probe_join_markdown(
                 format_debug_optional_f64(child_dw),
                 format_debug_optional_f64(child_dh),
                 format_debug_rect(browser_bb),
+                format_debug_rect(Some(local_final_bb_final_frame)),
+                format_debug_optional_f64(final_dx),
+                format_debug_optional_f64(final_dy),
+                format_debug_optional_f64(final_dw),
+                format_debug_optional_f64(final_dh),
                 format_debug_rect(Some(local_union)),
                 format_debug_optional_f64(union_dw),
                 format_debug_optional_f64(union_dh),
@@ -2633,9 +2653,14 @@ mod tests {
         assert!(md.contains("| `storage` | `pipeline` | `x=20.000000 y=30.000000` | `x=21.000000 y=31.000000` | 1.000000 | 1.000000 |"));
         assert!(md.contains("| -2.000000 | -2.000000 | `w=99.000000 h=16.000000` | `text_w=103.000000 half=51.500000 scale=1.055000` | 4.000000 |"));
         assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 |"));
-        assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 2.000000 | -2.000000 |"));
+        assert!(md.contains("browser child union"));
+        assert!(md.contains("`x=20.000000 y=30.000000 w=101.000000 h=50.000000`"));
         assert!(md.contains(
             "| `x=-20.000000 y=10.000000 w=103.000000 h=48.000000` | -40.000000 | -20.000000 |"
+        ));
+        assert!(md.contains("local final bb final-frame"));
+        assert!(md.contains(
+            "| `x=20.000000 y=30.000000 w=101.000000 h=50.000000` | `x=-21.000000 y=9.000000 w=105.000000 h=50.000000` | -41.000000 | -21.000000 | 4.000000 | 0.000000 |"
         ));
         assert!(md.contains("### Group content edge attribution"));
         assert!(md.contains("| `pipeline` | 1 | `storage@20.000000` | `storage@-20.000000` | -40.000000 | `storage@121.000000` | `storage@83.000000` | -38.000000 | 2.000000 | `storage@30.000000` | `storage@10.000000` | -20.000000 | `storage@72.000000` | `storage@58.000000` | -14.000000 | 6.000000 |"));

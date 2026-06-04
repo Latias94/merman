@@ -403,6 +403,12 @@ Current repository reality to preserve:
     Cytoscape renderer `metrics.labelWidth`. The existing active probe batch already contains those
     browser service label widths, but previous exact lookup experiments prove that a lookup-only
     production patch still leaves the final group phase half-modeled and can grow the root queue.
+  - A follow-up service-final-bbox report slice now adds `local final bb final-frame` and final
+    `dx/dy/dw/dh` to the service join. It applies the source-shaped final `1px`
+    `node.boundingBox()` expansion to the local child union without changing renderer output. The
+    focused boundary services still show width drift after final expansion, while the height side
+    narrows to a stable final `-1px`; continue from service child contribution and body/label phase
+    modeling, not final rect or group padding.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

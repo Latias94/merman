@@ -3,6 +3,59 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Final BBox Report
+
+Outcome:
+
+- Extended `debug-architecture-delta --probe-dir` service joins with a diagnostic
+  `local final bb final-frame` column.
+- The new column applies the source-shaped `1px` final `node.boundingBox()` expansion to the local
+  child union after shifting it into browser final-frame coordinates.
+- Added final `dx` / `dy` / `dw` / `dh` columns against browser final service `node.boundingBox()`.
+- Regenerated focused reports under
+  `target\compare\architecture-delta-service-final-bbox-hpd050`.
+- Representative boundary-service final-bbox readings:
+  - `batch5` / `registry`: `final dw=+2`, `final dh=-1`.
+  - `batch5` / `storage`: `final dw=+4`, `final dh=-1`.
+  - `html_titles` / `web`: `final dw=+2`, `final dh=-1`.
+  - `html_titles` / `origin`: `final dw=+4`, `final dh=-1`.
+  - `unicode` / `metrics`: `final dw=+4`, `final dh=-1`.
+  - `unicode` / `store`: `final dw=-2`, `final dh=-1`.
+- Width drift survives final expansion, while the previous local-union-vs-browser height comparison
+  narrows from `-3px` to final `-1px`. This keeps the residual in the child contribution and
+  service position phase, not group padding or final rect emission.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-final-bbox-report.md`
+- `target\compare\architecture-delta-service-final-bbox-hpd050`
+
+Focused verification:
+
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `1` test run.
+- `cargo nextest run -p xtask architecture_delta_args_accept_probe_dir architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-final-bbox-hpd050` -
+  passed and wrote the `pipeline` final-bbox join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-final-bbox-hpd050` -
+  passed and wrote the `ui` final-bbox join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-service-final-bbox-hpd050` -
+  passed and wrote the `i` final-bbox join.
+- `cargo nextest run -p xtask` - passed, `97` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+- `git diff --check` - passed.
+
+Residual note:
+
+- Treat this as evidence tooling only. The new final-bbox phase column rejects a standalone final
+  rect or group-padding tweak and points back to service child contribution width, body/label
+  bounds, and position drift.
+
 ## HPD-050 - Architecture LabelWidth Measurement Seam Audit
 
 Outcome:

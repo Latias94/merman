@@ -261,6 +261,12 @@ Last updated: 2026-06-04
   joins it with local service label metrics. Do not add an Architecture lookup-only production patch
   unless it is paired with the source child-union/final-bbox phase model and full Architecture root
   verification.
+  A follow-up service-final-bbox report slice adds `local final bb final-frame` and final
+  `dx/dy/dw/dh` columns to `debug-architecture-delta --probe-dir`. The source-shaped `1px` final
+  `node.boundingBox()` expansion leaves boundary-service width drift in the child contribution
+  phase (`registry +2`, `storage +4`, `web +2`, `origin +4`, `metrics +4`, `store -2`) and reduces
+  the height comparison to a stable service final-bbox `-1px`. Treat this as evidence tooling only,
+  not as a final rect or group-padding production fix.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
