@@ -149,6 +149,7 @@ Completed foundation:
 4. HPD-040 measurement / root-bounds platform
 5. HPD-060 semantic/render unification pilot
 6. HPD-070 new family rubric
+7. HPD-090 baseline preparation before parity
 
 Current execution priority:
 

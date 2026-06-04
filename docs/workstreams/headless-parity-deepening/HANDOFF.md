@@ -7,81 +7,29 @@ This workstream opens the post-11.15 structural-parity phase.
 
 Current priority order:
 
-1. HPD-090 baseline preparation before further parity work
-2. HPD-080 visible rendering defect triage
-3. HPD-050 Architecture-first layout engine audit
-4. HPD-060 semantic/render unification pilot - done for Sequence
-5. HPD-070 unsupported-family rubric - done
+1. HPD-080 visible rendering defect triage when there is a fresh visible/renderability signal
+2. HPD-050 Architecture-first layout engine audit when no higher-severity rendering defect is active
+3. HPD-060 semantic/render unification pilot - done for Sequence
+4. HPD-070 unsupported-family rubric - done
+5. HPD-090 baseline preparation before further parity work - done
 
 Immediate next task:
 
-- HPD-010, HPD-020, HPD-030, HPD-040, HPD-060, and HPD-070 are done.
-- HPD-090 is now the active preparation task before more parity/root residual work. Use
-  `BASELINE_PREPARATION.md` to decide whether stored upstream SVGs should be refreshed all at once
-  or by family, and whether official fixture/test coverage needs another import pass.
-- The first HPD-090 slice fixed Info baseline drift: local visible Info version output now comes
-  from `PINNED_MERMAID_BASELINE_VERSION`, Info layout goldens now say `v11.15.0`, and Info stored
-  upstream SVGs were regenerated to `v11.15.0`.
-- The second HPD-090 slice fixed Error visible version text and `xtask` import/audit live baseline
-  labels, then classified stored upstream SVG drift by family. That classification drove the
-  completed broad-family refreshes plus the narrow Class, Timeline, and Flowchart HTML demo KaTeX
-  point refreshes. Do not refresh all baselines, and do not run a broad official fixture import
-  unless a fresh inventory changes that conclusion.
-- The Requirement refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15,
-  and the local Requirement renderer now emits the current Mermaid DOM surfaces needed for the
-  family parity gate (`data-look`, diagram-prefixed node/edge ids, node class ordering,
-  `outer-path`, `divider`, and root drop-shadow defs). `compare-requirement-svgs --check-dom
-  --dom-mode parity --dom-decimals 3` is green. Default exact SVG byte comparison still reports
-  textual mismatch from RoughJS/serialization churn and is not the current Requirement gate.
-- The Block refresh is now handled: stored upstream SVGs and layout goldens were regenerated to
-  Mermaid 11.15, and the local Block renderer now emits current DOM surfaces needed for the family
-  parity gate (diagram-prefixed node/edge ids, XHTML paragraph label children including blank
-  placeholders, table-cell label containers with `line-height: 1.5`, and Mermaid 11.15 edge class
-  tokens). `compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- The Gantt refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, the
-  missing `zed_pr_57644_gantt` layout golden was added, and the local Gantt renderer now emits
-  diagram-prefixed DOM ids for exclude ranges, task bars, and task label text nodes. Prototype-like
-  task ids such as `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
-  `compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- The Kanban refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, and
-  the local Kanban renderer now emits diagram-prefixed section/item group DOM ids plus current item
-  title XHTML span classes (`nodeLabel markdown-node-label`). Prototype-like item ids such as
-  `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
-  `compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- The Mindmap refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, the
-  missing `zed_pr_57644_mindmap` layout golden was added, and the local Mindmap renderer now emits
-  Mermaid 11.15 DOM surfaces for root shadow defs, `data-look`, diagram-prefixed node/edge DOM ids,
-  margin markers, section class cycle wrapping, and direct classic rounded/hexagon shape DOM. The
-  unused local `roughjs46` helper was removed. `compare-mindmap-svgs --check-dom --dom-mode parity
-  --dom-decimals 3` is green.
-- The Radar refresh is now handled: all `41` stored upstream SVGs were regenerated to Mermaid
-  11.15, and local Radar root output now matches the current responsive root DOM shape
-  (`width="100%"`, root `max-width` style, and no fixed root `height`). The stale root-helper
-  `AfterViewBox` fixed-height branch was removed after Radar stopped using it.
-  `compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- The Class refresh is now handled: the two stale stored upstream SVGs were point-refreshed, and
-  local native SVG-label wrapping now matches Mermaid 11.15's `htmlLabels=false` px-string
-  `themeVariables.fontSize` case under the family DOM gate. The affected 026 layout golden was
-  refreshed and the missing existing-fixture `zed_pr_57644_class` layout golden was added.
-  `compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- The Timeline refresh is now handled: the one stale stored upstream SVG was point-refreshed, and
-  local Timeline measurement now matches Mermaid 11.15's Edge/Puppeteer browser fallback for the
-  fixture's bare `Fira Sans` / `17px` text. Timeline wrap probes use the matching sans-serif
-  metrics for that case, first-line bbox height uses the observed `25px` browser lattice, the
-  affected layout golden was refreshed, and the missing existing-fixture
-  `zed_pr_57644_timeline` layout golden was added. `compare-timeline-svgs --check-dom --dom-mode
-  parity --dom-decimals 3` is green.
-- The Flowchart HTML demo KaTeX refresh is now handled: the four stale stored upstream SVGs were
-  point-refreshed to Mermaid 11.15 output, local Flowchart output already matched the refreshed
-  baselines under DOM parity, and `update-layout-snapshots --diagram flowchart` added the missing
-  existing-fixture `zed_pr_57644_flowchart` layout golden. Full
-  `compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- No HPD-090 broad or narrow stale stored-SVG set remains. Remaining HPD-090 work is rerunning the
-  readiness gates and documenting any expected diagnostics before returning to parity/root residual
-  fixes.
-- HPD-080 is now the active priority override. Continue scanning for functional renderability
-  failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
-  colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.
+- HPD-010, HPD-020, HPD-030, HPD-040, HPD-060, HPD-070, and HPD-090 are done.
+- HPD-090 closed the baseline preparation queue. `BASELINE_PREPARATION.md` records the decision
+  ladder, inventory, family refresh outcomes, official fixture intake policy, and closeout
+  readiness evidence.
+- Do not refresh all stored SVG baselines. HPD-090 classified drift by family and refreshed only
+  the broad stale families plus the narrow Class, Timeline, and Flowchart HTML demo KaTeX sets.
+  No broad or narrow stale stored-SVG set remains, and no broad official fixture import is
+  indicated unless a fresh inventory changes that conclusion.
+- Closeout revalidation is green: `cargo fmt --check`, the layout snapshot gate, boundary
+  renderability smoke, and full implemented-matrix `compare-all-svgs --check-dom --dom-mode parity
+  --dom-decimals 3`.
+- HPD-080 is now the active priority override when there is a concrete visible rendering signal.
+  Continue scanning for functional renderability failures that DOM parity can miss: blank output,
+  hidden text, black labels/cards, missing semantic colors, and missing diagram-specific Mermaid
+  11.15 CSS/theme emission.
 - HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
   when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
   rewrite.

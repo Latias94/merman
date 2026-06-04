@@ -37,3 +37,10 @@
 - Structural DOM parity no longer hides unreadable output.
 - Missing diagram-specific theme CSS, invisible labels, blank renders, and lost semantic colors are
   fixed before small root viewport residuals.
+
+## M8 - Baseline Preparation Is Closed
+
+- Current-facing baseline version surfaces route through the pinned Mermaid 11.15 baseline truth.
+- Stored upstream SVG drift was classified and refreshed only for stale family or fixture sets.
+- Full implemented-matrix DOM parity, layout snapshots, and boundary renderability are green before
+  returning to HPD-080 or HPD-050 work.

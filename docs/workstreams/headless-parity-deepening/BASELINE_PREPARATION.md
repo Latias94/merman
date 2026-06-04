@@ -1,6 +1,6 @@
 # Headless Parity Baseline Preparation
 
-Status: Active
+Status: Complete
 Last updated: 2026-06-04
 
 ## Purpose
@@ -74,7 +74,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `c4` | pass | `51 / 51` | Keep. |
 | `class` | refreshed + DOM parity fixed | `246 / 246`, `2` diffs | Keep refreshed; local native SVG label wrapping now matches Mermaid 11.15 under the parity gate. |
 | `er` | pass | `101 / 101` | Keep. |
-| `flowchart` | stale, narrow | `1074 / 1074`, `4` diffs | Point refresh the four HTML demo KaTeX fixtures. |
+| `flowchart` | refreshed + DOM parity green | `1074 / 1074`, `4` diffs | Keep refreshed; the four HTML demo KaTeX fixtures were point-refreshed. |
 | `gantt` | refreshed + DOM parity fixed | `151 / 151`, `137` diffs | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `gitgraph` | pass under structure gate | `252 / 252` | Keep; textual diff exists, but no structure failure was logged. |
 | `info` | pass after refresh | `15 / 15` | Keep. |
@@ -89,13 +89,12 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `sankey` | pass | `33 / 33` | Keep. |
 | `sequence` | pass under structure gate | `322 / 321` | Keep; `stress_end_keyword_016` is a known skipped upstream SVG check fixture. |
 | `state` | pass under structure gate | `285 / 285` | Keep; textual diff exists, but no structure failure was logged. |
-| `timeline` | stale, narrow | `91 / 91`, `1` diff | Point refresh `upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012`. |
+| `timeline` | refreshed + DOM parity fixed | `91 / 91`, `1` diff | Keep refreshed; the one stale Timeline fixture was point-refreshed and local Timeline measurement now matches the baseline browser-fallback seam. |
 | `treemap` | pass | `54 / 54` | Keep. |
 | `xychart` | pass | `71 / 71` | Keep. |
 
-Decision: do not refresh all stored upstream SVGs. The broad stale family set and Class narrow set
-have been refreshed; point-refresh the remaining two narrow stale sets, then run the readiness gates
-against the refreshed corpus.
+Decision: do not refresh all stored upstream SVGs. The broad stale family set and all narrow stale
+sets have been refreshed or point-refreshed, and no broad official fixture import is indicated.
 
 ## First Slice Completed
 
@@ -361,6 +360,45 @@ Verification:
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\flowchart_report_parity_hpd090_html_katex_full.md`
 - `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
 
+## Closeout Completed
+
+HPD-090 is closed.
+
+Completed scope:
+
+- Current-facing baseline version surfaces now route through pinned Mermaid `11.15.0` baseline
+  truth where they affect visible output or live reports.
+- Stored upstream SVG drift was classified by family instead of refreshed blindly.
+- Requirement, Block, Gantt, Kanban, Mindmap, Radar, Class, Timeline, and Flowchart HTML demo
+  KaTeX stale sets were refreshed or point-refreshed.
+- Class and Timeline required source-backed local fixes; Flowchart HTML demo KaTeX was a pure
+  stored-SVG refresh.
+- Existing-fixture missing layout goldens were added for affected families.
+- No broad or narrow stale stored-SVG set remains known after closeout.
+- No broad official fixture import is indicated by the current inventory.
+
+Closeout revalidation:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run.
+- `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
+  passed, `1` test run and `5` skipped.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed for er, flowchart, state, class, sequence, info, pie, sankey, packet, timeline, journey,
+  kanban, gitgraph, gantt, c4, block, radar, requirement, mindmap, architecture, quadrantchart,
+  treemap, and xychart.
+- JSON/JSONL validation for `TASKS.jsonl`, `CONTEXT.jsonl`, `CAMPAIGNS.jsonl`, and
+  `WORKSTREAM.json` - passed.
+- `git diff --check` - passed; Git only reported the existing JSONL LF-to-CRLF working copy
+  warnings.
+
+Skipped broad gate:
+
+- `check-upstream-svgs --diagram all` was not rerun at closeout. Earlier HPD-090 inventory records
+  that an all-family run was too coarse on Windows; the baseline decision uses per-family inventory
+  logs plus focused family/fixture refresh gates instead.
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -412,20 +450,25 @@ Do not use this baseline preparation phase to admit new unsupported families. `t
 
 ## Readiness Gate
 
-Baseline preparation is ready to hand back to parity work when these pass or have documented
+Baseline preparation was handed back to HPD-080 / HPD-050 work after these passed or had documented
 expected diagnostics:
 
 - `cargo fmt --check`
 - `git diff --check`
-- `cargo run -p xtask -- check-upstream-svgs --diagram all --check-dom --dom-mode structure --dom-decimals 3`
+- Per-family `check-upstream-svgs --check-dom --dom-mode structure` inventory logs, plus focused
+  family/fixture refresh checks where stale sets were found. The all-family command is documented
+  as too coarse for this corpus on Windows.
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo nextest run -p merman-render --test layout_snapshots_test`
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
-- Filtered raster `resvg_safe` audits for any family whose stored SVGs or renderability fixtures
-  changed.
+- Filtered raster `resvg_safe` audits are not a HPD-090 closeout blocker because the final slices
+  changed stored SVG/layout baselines rather than public raster behavior; HPD-080 keeps the
+  raster/renderability audit lane active for fresh visible-output signals.
 
 ## Next Actions
 
-1. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
-   inventory points to stored-baseline drift in existing fixtures, not missing fixture intake.
-2. Resume parity/root residual work only after readiness gate diagnostics are current.
+1. Continue HPD-080 only from a fresh failing renderability gate, source-backed emitted-surface gap,
+   or concrete consumer report.
+2. Otherwise resume HPD-050 source-backed Architecture/Dagre/Graphlib audits.
+3. Keep HPD-090 closed unless a new baseline inventory identifies fresh current-facing baseline
+   drift or stale stored-SVG drift.

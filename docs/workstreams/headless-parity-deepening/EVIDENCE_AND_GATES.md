@@ -94,6 +94,13 @@ Outcome:
     parity;
   - `update-layout-snapshots --diagram flowchart` added the missing existing-fixture
     `zed_pr_57644_flowchart` layout golden.
+- Closed HPD-090 after readiness revalidation:
+  - no broad or narrow stale stored-SVG set remains known;
+  - no broad official fixture import is indicated by the current inventory;
+  - `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` is green for the implemented
+    matrix;
+  - future work should continue through HPD-080 for fresh visible renderability defects or HPD-050
+    for source-backed Architecture/Dagre/Graphlib audits.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -219,6 +226,19 @@ Focused verification:
   passed for the full Flowchart family under DOM parity.
 - `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
   passed, `1` test run after the Flowchart layout golden addition.
+- Closeout `cargo fmt --check` - passed.
+- Closeout `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run.
+- Closeout `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
+  passed, `1` test run and `5` skipped.
+- Closeout `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed for er, flowchart, state, class, sequence, info, pie, sankey, packet, timeline, journey,
+  kanban, gitgraph, gantt, c4, block, radar, requirement, mindmap, architecture, quadrantchart,
+  treemap, and xychart.
+- Closeout JSON/JSONL validation for `TASKS.jsonl`, `CONTEXT.jsonl`, `CAMPAIGNS.jsonl`, and
+  `WORKSTREAM.json` - passed.
+- Closeout `git diff --check` - passed; Git only reported the existing JSONL LF-to-CRLF working
+  copy warnings.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -231,10 +251,11 @@ Focused verification:
 
 Residual note:
 
-- This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  The broad stale family set plus the Class, Timeline, and Flowchart narrow stale sets are now
-  handled. Next HPD-090 work should rerun readiness gates before resuming parity fixes. No broad
-  official fixture import is indicated yet.
+- HPD-090 is closed. This slice prepared the baseline corpus; it does not claim broad
+  `parity-root` residual closure. The broad stale family set plus the Class, Timeline, and
+  Flowchart narrow stale sets are handled. Do not refresh all baselines or run a broad official
+  fixture import unless a fresh inventory changes the decision. Continue with HPD-080 only for
+  fresh visible renderability defects; otherwise return to HPD-050 source-backed audits.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 
