@@ -35,6 +35,21 @@ pub(crate) struct RootDelta {
     pub(crate) max_width_delta: Option<f64>,
 }
 
+pub(crate) fn diagram_supports_root_delta_report(diagram: &str) -> bool {
+    matches!(
+        diagram,
+        "architecture"
+            | "class"
+            | "flowchart"
+            | "gitgraph"
+            | "journey"
+            | "mindmap"
+            | "sequence"
+            | "state"
+            | "timeline"
+    )
+}
+
 pub(crate) fn parse_viewbox(v: &str) -> Option<(f64, f64, f64, f64)> {
     let parts = v
         .split_whitespace()
@@ -243,6 +258,17 @@ mod tests {
         assert!(parse_root_delta_report_limit(Some("0")).is_err());
         assert!(parse_root_delta_report_limit(Some("nope")).is_err());
         assert!(parse_root_delta_report_limit(None).is_err());
+    }
+
+    #[test]
+    fn root_delta_report_support_covers_active_residual_families() {
+        for diagram in ["class", "timeline", "journey"] {
+            assert!(
+                diagram_supports_root_delta_report(diagram),
+                "{diagram} should emit root delta reports"
+            );
+        }
+        assert!(!diagram_supports_root_delta_report("er"));
     }
 
     #[test]

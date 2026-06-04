@@ -1,5 +1,6 @@
 //! Global root viewport override governance audit.
 
+use crate::cmd::compare::diagram_supports_root_delta_report;
 use crate::{XtaskError, cmd};
 use merman_core::baseline::LEGACY_GENERATED_BASELINE_SUFFIX;
 use regex::Regex;
@@ -10,7 +11,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-const ROOT_REPORT_FAMILIES: &[&str] = &["flowchart", "gitgraph", "mindmap", "sequence", "state"];
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
     family: String,
@@ -292,7 +292,7 @@ fn run_disabled_root_compare(
     if family == "flowchart" {
         command.arg("--no-root-overrides");
     }
-    if ROOT_REPORT_FAMILIES.contains(&family) {
+    if diagram_supports_root_delta_report(family) {
         command.arg("--report-root-all");
     }
 
@@ -581,7 +581,7 @@ fn render_global_root_override_audit(
     for audit in audits {
         coverage.insert(
             audit.table.family.as_str(),
-            if ROOT_REPORT_FAMILIES.contains(&audit.table.family.as_str()) {
+            if diagram_supports_root_delta_report(audit.table.family.as_str()) {
                 "compare report includes root delta table"
             } else {
                 "mismatch cross-check only; per-family root delta table not yet wired"
@@ -726,9 +726,11 @@ fn fail_status_re() -> &'static Regex {
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_dom_mismatch_keys, collect_root_override_fixture_keys, collect_runner_issues,
-        count_root_viewport_entries,
+        FamilyAudit, RootOverrideTable, collect_dom_mismatch_keys,
+        collect_root_override_fixture_keys, collect_runner_issues, count_root_viewport_entries,
+        render_global_root_override_audit,
     };
+    use std::collections::BTreeSet;
 
     #[test]
     fn collects_all_fixture_keys_from_or_pattern_root_arms() {
@@ -786,5 +788,22 @@ match diagram_id {
                 .iter()
                 .any(|issue| issue.contains("missing upstream svg"))
         );
+    }
+
+    #[test]
+    fn coverage_notes_use_shared_root_delta_support_for_timeline() {
+        let audit = FamilyAudit::from_inventory(RootOverrideTable {
+            family: "timeline".to_string(),
+            file_name: "timeline_root_overrides_11_12_2.rs".to_string(),
+            inventory_entries: 1,
+            fixture_keys: BTreeSet::from(["timeline_fixture".to_string()]),
+        });
+
+        let report = render_global_root_override_audit(&[audit], true, 3);
+
+        assert!(report.contains("`timeline`: compare report includes root delta table"));
+        assert!(!report.contains(
+            "`timeline`: mismatch cross-check only; per-family root delta table not yet wired"
+        ));
     }
 }

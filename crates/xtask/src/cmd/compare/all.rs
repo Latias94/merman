@@ -6,24 +6,11 @@ use std::fs;
 use std::path::Path;
 
 use super::diagrams::*;
-use super::{RootDeltaReportLimit, parse_root_delta_report_limit};
+use super::{
+    RootDeltaReportLimit, diagram_supports_root_delta_report, parse_root_delta_report_limit,
+};
 
 const ROOT_VIEWPORT_DEFERRED_DIAGRAMS: &[&str] = &["treeView", "ishikawa", "eventmodeling"];
-
-fn diagram_supports_root_report(diagram: &str) -> bool {
-    matches!(
-        diagram,
-        "architecture"
-            | "class"
-            | "flowchart"
-            | "gitgraph"
-            | "journey"
-            | "mindmap"
-            | "sequence"
-            | "state"
-            | "timeline"
-    )
-}
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
@@ -245,18 +232,8 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
 
-        if report_root && diagram_supports_root_report(diagram) {
-            cmd_args.push("--report-root".to_string());
-            match root_report_limit {
-                Some(RootDeltaReportLimit::All) => {
-                    cmd_args.push("--report-root-all".to_string());
-                }
-                Some(RootDeltaReportLimit::Top(limit)) => {
-                    cmd_args.push("--report-root-limit".to_string());
-                    cmd_args.push(limit.to_string());
-                }
-                None => {}
-            }
+        if report_root && diagram_supports_root_delta_report(diagram) {
+            push_root_report_args(&mut cmd_args, root_report_limit);
         }
 
         let res = match diagram {
@@ -332,6 +309,23 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         Ok(())
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
+}
+
+fn push_root_report_args(
+    cmd_args: &mut Vec<String>,
+    root_report_limit: Option<RootDeltaReportLimit>,
+) {
+    cmd_args.push("--report-root".to_string());
+    match root_report_limit {
+        Some(RootDeltaReportLimit::All) => {
+            cmd_args.push("--report-root-all".to_string());
+        }
+        Some(RootDeltaReportLimit::Top(limit)) => {
+            cmd_args.push("--report-root-limit".to_string());
+            cmd_args.push(limit.to_string());
+        }
+        None => {}
     }
 }
 
@@ -619,9 +613,24 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
     fn root_report_support_covers_active_residual_families() {
         for diagram in ["class", "timeline", "journey"] {
             assert!(
-                diagram_supports_root_report(diagram),
+                diagram_supports_root_delta_report(diagram),
                 "{diagram} should emit root delta reports through compare-all"
             );
         }
+    }
+
+    #[test]
+    fn push_root_report_args_propagates_all_limit_shapes() {
+        let mut args = Vec::new();
+        push_root_report_args(&mut args, None);
+        assert_eq!(args, ["--report-root"]);
+
+        let mut args = Vec::new();
+        push_root_report_args(&mut args, Some(RootDeltaReportLimit::All));
+        assert_eq!(args, ["--report-root", "--report-root-all"]);
+
+        let mut args = Vec::new();
+        push_root_report_args(&mut args, Some(RootDeltaReportLimit::Top(7)));
+        assert_eq!(args, ["--report-root", "--report-root-limit", "7"]);
     }
 }
