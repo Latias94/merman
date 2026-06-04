@@ -1467,6 +1467,39 @@ Outcome:
 - The refresh is a queue/governance correction, not a root parity closure. Remaining rows still
   need source-backed or generated-measurement evidence before any production change.
 
+## 2026-06-04 - Architecture FCoSE Current Reclassification
+
+Fresh focused evidence:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_junction_current_hpd050_fcose.md`:
+  passed. The remaining root delta is only `-0.000244px` and does not fail the current
+  `parity-root` gate.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_batch6_junctions_current_hpd050_fcose.md`:
+  expected failure with upstream `max-width: 653.25px` versus local `699.25px`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/architecture_report_parity_current_hpd050_fcose.md`:
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/architecture_report_parity_root_current_hpd050_fcose.md`:
+  expected failure. The leading row is now
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` at `+46.001831px`.
+- `cargo run -p xtask -- report-overrides --check-no-growth`: passed; Architecture root overrides
+  remain `0`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --render-probe-dir target/compare/architecture-render-path-current-hpd050 --out target/compare/architecture-delta-render-path-current-hpd050`:
+  passed and wrote current render-path delta reports.
+
+Outcome:
+
+- This supersedes the older Architecture queue note that still put `junction_fork_join_026` at the
+  front of the active root residuals.
+- `junction_fork_join_026` is currently root-green at the comparison precision used by the
+  workstream; do not continue from the old junction run1/segment-rerun hypothesis unless a new
+  failing report reopens it.
+- `batch6_junctions_multi_split_with_group_edges_087` is the current active large Architecture
+  root row. The render-path delta report classifies it as near-symmetric group/service X
+  displacement (`edge` about `-23.000899px`, `core` about `+23.000899px`) plus a local `core`
+  group height increase of `+7.345448px`.
+- No root override, stored SVG baseline, generated pin table, renderer output, or `manatee` code
+  changed in this reclassification.
+
 ## Gate Set
 
 Run after any code or generated-data change:

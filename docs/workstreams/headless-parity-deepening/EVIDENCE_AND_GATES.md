@@ -359,6 +359,62 @@ Residual note:
   `1`. Do not tune Architecture root width, group padding, or emitted group rectangles from this
   evidence.
 
+## HPD-050 - Architecture FCoSE Current Reclassification
+
+Outcome:
+
+- Revalidated the current `worktree/hpd-architecture-fcose` HEAD before making any production
+  renderer or `manatee` change.
+- `stress_architecture_junction_fork_join_026` is no longer an active Architecture root residual at
+  the current gate precision. The focused `parity-root` report passes and shows only
+  `-0.000244px` max-width/viewBox width drift.
+- Full Architecture structural `parity` remains green.
+- Full Architecture `parity-root` remains an expected diagnostic failure, but the leading active
+  row is now `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` at
+  `+46.001831px` max-width/viewBox width delta.
+- The current render-path delta join says render-path stored facts still match upstream for both
+  focused rows. For `batch6_junctions_multi_split_with_group_edges_087`, local groups/services are
+  displaced almost symmetrically from the render-path SVG facts: `edge` around `-23.000899px` on X,
+  `core` around `+23.000899px` on X, with local `core` group height `+7.345448px`.
+- This supersedes the older junction-focused handoff. The current evidence does not justify a
+  production change to root bounds, group padding, final group rectangle emission, or `manatee`
+  rerun sequencing for `junction_fork_join_026`.
+
+Touched surfaces:
+
+- `target\compare\architecture_junction_current_hpd050_fcose.md`
+- `target\compare\architecture_batch6_junctions_current_hpd050_fcose.md`
+- `target\compare\architecture_report_parity_current_hpd050_fcose.md`
+- `target\compare\architecture_report_parity_root_current_hpd050_fcose.md`
+- `target\compare\architecture-render-path-current-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json`
+- `target\compare\architecture-render-path-current-hpd050\stress_architecture_batch6_junctions_multi_split_with_group_edges_087.render-path-probe.json`
+- `target\compare\architecture-delta-render-path-current-hpd050\stress_architecture_junction_fork_join_026.md`
+- `target\compare\architecture-delta-render-path-current-hpd050\stress_architecture_batch6_junctions_multi_split_with_group_edges_087.md`
+- `target\compare\architecture-delta-render-path-current-hpd050\architecture-delta-batch.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-fcose-current-reclassification.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_junction_fork_join_026 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_junction_current_hpd050_fcose.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_batch6_junctions_current_hpd050_fcose.md` -
+  expected-failed with the existing root/style mismatch, upstream `653.25px` vs local `699.25px`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_current_hpd050_fcose.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_current_hpd050_fcose.md` -
+  expected-failed with the current root/style queue led by
+  `batch6_junctions_multi_split_with_group_edges_087`.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root overrides
+  remain `0`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch6_junctions_multi_split_with_group_edges_087 --render-probe-dir target\compare\architecture-render-path-current-hpd050 --out target\compare\architecture-delta-render-path-current-hpd050` -
+  passed and wrote the focused render-path delta reports.
+
+Residual note:
+
+- This is evidence-only classification. The next Architecture production slice should start from
+  the current `batch6` group/service displacement evidence and only change code if a source-backed
+  rule survives family-level validation.
+
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 
 Outcome:

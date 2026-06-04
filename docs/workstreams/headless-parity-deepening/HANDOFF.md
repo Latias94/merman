@@ -33,23 +33,17 @@ Immediate next task:
 - HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
   when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
   rewrite.
-- Latest HPD-050 revalidation after HPD-090 closeout: Architecture structural DOM parity is green,
-  and Architecture `parity-root` remains the expected `25` root/style width mismatch queue. The top
-  rows are still `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076`
-  (`+5px`), `html_titles_and_escapes_041` (`+5px`), `unicode_and_xml_escapes_019` (`+3px`),
-  `batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`), and `nested_groups_002` (`+2.5px`).
-  `group_port_edges_017` is zero-delta in the fresh all-row report and should not be reopened from
-  older pre-Procrustes diagnostics.
-- Latest HPD-050 junction evidence: the actual Mermaid render-path probe now captures bundled
-  nested `cytoscape-fcose@2.2.0` / `cose-base@2.2.0` internal stages and
-  `debug-architecture-delta --render-probe-dir` joins those layout-base group rects against local
-  FCoSE compounds. The focused `junction_fork_join_026` probe still reproduces stored upstream
-  facts exactly and captures `22` internal stages with `0` errors. Local FCoSE compound
-  widths/heights match bundled run `0` `classicLayout.end` / `coseLayout.after-runLayout` exactly,
-  but diverge from bundled run `1` by the same residual group deltas: `left`
-  `dw=+17.331122/dh=-18.609285`, `right` `dw=-3.388269/dh=+6.107441`. Next junction work should
-  compare local `manatee` run sequencing and segment-edge rerun behavior against bundled run `1`,
-  not tune root bounds, group padding, or final group rect emission.
+- Latest HPD-050 Architecture FCoSE reclassification: current HEAD no longer reproduces
+  `stress_architecture_junction_fork_join_026` as an active root residual. Focused
+  `parity-root` passes for that row with only `-0.000244px` max-width/viewBox width drift, and
+  Architecture structural `parity` remains green. The current full Architecture `parity-root`
+  diagnostic queue is expected-fail and is led by
+  `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` at `+46.001831px`.
+  Render-path delta join shows the active `batch6` row as near-symmetric group/service X
+  displacement (`edge` about `-23.000899px`, `core` about `+23.000899px`) with local `core`
+  group height `+7.345448px`. Treat the older junction run1/segment-rerun note as superseded for
+  current triage; do not tune root bounds, group padding, emitted group rectangles, or `manatee`
+  rerun sequencing for `junction_fork_join_026` without new source-backed evidence.
 - Root residual work should wait behind HPD-080 when a supported diagram is visibly broken.
 
 Current repository reality to preserve:
