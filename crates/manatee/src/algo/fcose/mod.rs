@@ -164,6 +164,30 @@ pub struct IndexedLayoutResult {
     /// These are the internal compound node rects used by the FCoSE port, not Cytoscape
     /// `node.boundingBox()` values.
     pub compound_bounds: Vec<LayoutRect>,
+    /// Optional diagnostic stages collected only when `MANATEE_FCOSE_DEBUG_TRACE=1`.
+    ///
+    /// This is source-audit evidence for comparing local FCoSE phases with bundled
+    /// `cytoscape-fcose` probes. Ordinary layout callers should ignore it.
+    pub debug_stages: Vec<IndexedFcoseDebugStage>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexedFcoseDebugStage {
+    pub run_index: usize,
+    pub tag: String,
+    pub iterations: Option<usize>,
+    pub bbox: Option<LayoutRect>,
+    pub node_bounds: Vec<LayoutRect>,
+    pub node_displacements: Vec<Point>,
+    pub compound_bounds: Vec<LayoutRect>,
+    pub relocate: Option<IndexedFcoseRelocateDebug>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedFcoseRelocateDebug {
+    pub original_center: Point,
+    pub rect_center: Point,
+    pub delta: Point,
 }
 
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
@@ -219,6 +243,9 @@ pub fn layout_indexed(
     }
     let run_count = if opts.rerun { 2 } else { 1 };
     let mut spring_stats = SpringStats::default();
+    let collect_debug_trace =
+        std::env::var("MANATEE_FCOSE_DEBUG_TRACE").ok().as_deref() == Some("1");
+    let mut debug_stages = Vec::new();
 
     let debug_rng_calls = std::env::var("MANATEE_FCOSE_DEBUG_RNG_CALLS")
         .ok()
@@ -238,6 +265,15 @@ pub fn layout_indexed(
             }
         }
         let _ = sim.update_bounds();
+        if collect_debug_trace {
+            sim.push_debug_stage(
+                &mut debug_stages,
+                run_idx,
+                "run-start.after-update-bounds",
+                None,
+                None,
+            );
+        }
 
         // Mimic fcose's `aux.relocateComponent(...)`: keep the final component center aligned to
         // the original component center to avoid arbitrary global translations affecting viewBox
@@ -271,6 +307,8 @@ pub fn layout_indexed(
             &constraints,
             opts,
             &mut rng,
+            run_idx,
+            collect_debug_trace.then_some(&mut debug_stages),
             if timing_enabled {
                 Some(&mut timings.spring)
             } else {
@@ -300,9 +338,28 @@ pub fn layout_indexed(
             .ok()
             .as_deref()
             == Some("1");
+        let dx = orig_center.0 - new_center.0;
+        let dy = orig_center.1 - new_center.1;
+        if collect_debug_trace {
+            sim.push_debug_stage(
+                &mut debug_stages,
+                run_idx,
+                "relocateComponent.before-shift",
+                None,
+                Some(IndexedFcoseRelocateDebug {
+                    original_center: Point {
+                        x: orig_center.0,
+                        y: orig_center.1,
+                    },
+                    rect_center: Point {
+                        x: new_center.0,
+                        y: new_center.1,
+                    },
+                    delta: Point { x: dx, y: dy },
+                }),
+            );
+        }
         if !disable_relocate {
-            let dx = orig_center.0 - new_center.0;
-            let dy = orig_center.1 - new_center.1;
             if debug_relocate {
                 eprintln!(
                     "[manatee-fcose-relocate] run={} orig=({:.6},{:.6}) new=({:.6},{:.6}) d=({:.6},{:.6})",
@@ -310,6 +367,15 @@ pub fn layout_indexed(
                 );
             }
             sim.translate(dx, dy);
+        }
+        if collect_debug_trace {
+            sim.push_debug_stage(
+                &mut debug_stages,
+                run_idx,
+                "run-end.after-relocate",
+                None,
+                None,
+            );
         }
         if let Some(s) = translate_start {
             timings.translate = s.elapsed();
@@ -378,6 +444,7 @@ pub fn layout_indexed(
         node_positions,
         compound_positions,
         compound_bounds,
+        debug_stages,
     })
 }
 
@@ -1111,6 +1178,21 @@ impl SimGraph {
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
+
+    fn should_trace_iteration(iteration: usize) -> bool {
+        matches!(
+            iteration,
+            1 | 2 | 10 | 11 | 12 | 20 | 21 | 30 | 31 | 50 | 51 | 75 | 90 | 91 | 99 | 100 | 200
+        )
+    }
+
+    fn update_displacements_trace_tag(iteration: usize) -> String {
+        if iteration == 1 {
+            "updateDisplacements.start".to_string()
+        } else {
+            format!("updateDisplacements.iter-{iteration}.start")
+        }
+    }
     fn from_indexed(graph: &IndexedGraph) -> Self {
         let leaf_count = graph.nodes.len();
         let compound_count = graph.compounds.len();
@@ -1391,6 +1473,11 @@ impl SimGraph {
     }
 
     fn bounding_box_center_rects(&self) -> Option<(f64, f64)> {
+        self.layout_rect_bbox()
+            .map(|r| (r.left + (r.width / 2.0), r.top + (r.height / 2.0)))
+    }
+
+    fn layout_rect_bbox(&self) -> Option<LayoutRect> {
         if self.nodes.is_empty() {
             return None;
         }
@@ -1407,7 +1494,84 @@ impl SimGraph {
         if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
             return None;
         }
-        Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
+        Some(LayoutRect {
+            left: min_x,
+            top: min_y,
+            width: max_x - min_x,
+            height: max_y - min_y,
+        })
+    }
+
+    fn debug_compound_bounds(&self) -> Vec<LayoutRect> {
+        self.nodes
+            .iter()
+            .skip(self.leaf_count)
+            .map(|n| LayoutRect {
+                left: n.left,
+                top: n.top,
+                width: n.width,
+                height: n.height,
+            })
+            .collect()
+    }
+
+    fn debug_node_bounds(&self) -> Vec<LayoutRect> {
+        self.nodes
+            .iter()
+            .map(|n| LayoutRect {
+                left: n.left,
+                top: n.top,
+                width: n.width,
+                height: n.height,
+            })
+            .collect()
+    }
+
+    fn debug_node_displacements(&self, disps: &[(f64, f64)]) -> Vec<Point> {
+        self.nodes
+            .iter()
+            .enumerate()
+            .map(|(idx, _)| {
+                let (x, y) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
+                Point { x, y }
+            })
+            .collect()
+    }
+
+    fn push_debug_stage(
+        &self,
+        stages: &mut Vec<IndexedFcoseDebugStage>,
+        run_index: usize,
+        tag: &str,
+        iterations: Option<usize>,
+        relocate: Option<IndexedFcoseRelocateDebug>,
+    ) {
+        self.push_debug_stage_with_displacements(
+            stages, run_index, tag, iterations, relocate, None,
+        );
+    }
+
+    fn push_debug_stage_with_displacements(
+        &self,
+        stages: &mut Vec<IndexedFcoseDebugStage>,
+        run_index: usize,
+        tag: &str,
+        iterations: Option<usize>,
+        relocate: Option<IndexedFcoseRelocateDebug>,
+        node_displacements: Option<&[(f64, f64)]>,
+    ) {
+        stages.push(IndexedFcoseDebugStage {
+            run_index,
+            tag: tag.to_string(),
+            iterations,
+            bbox: self.layout_rect_bbox(),
+            node_bounds: self.debug_node_bounds(),
+            node_displacements: node_displacements
+                .map(|disps| self.debug_node_displacements(disps))
+                .unwrap_or_default(),
+            compound_bounds: self.debug_compound_bounds(),
+            relocate,
+        });
     }
 
     fn bounding_box_center_eles(&self, run_idx: usize) -> Option<(f64, f64)> {
@@ -1953,6 +2117,8 @@ impl SimGraph {
         constraints: &Constraints,
         opts: &IndexedFcoseOptions,
         rng: &mut XorShift64Star,
+        run_idx: usize,
+        mut debug_stages: Option<&mut Vec<IndexedFcoseDebugStage>>,
         mut timings: Option<&mut FcoseSpringTimings>,
     ) -> SpringStats {
         if self.nodes.is_empty() {
@@ -2060,6 +2226,9 @@ impl SimGraph {
                 n.padding = compound_padding;
             }
         }
+        if let Some(stages) = debug_stages.as_deref_mut() {
+            self.push_debug_stage(stages, run_idx, "classicLayout.start", None, None);
+        }
 
         // FCoSE performs a spectral initialization when `randomize=true`. Mermaid 11.15 sets
         // Architecture's default to `false`, while cytoscape-fcose's library default is `true`.
@@ -2154,6 +2323,9 @@ impl SimGraph {
             let pre_constraints_start = timing_enabled.then(web_time::Instant::now);
             handle_constraints_pre_layout(&mut self.nodes[..self.leaf_count], constraints);
             dump_positions("pre_constraints", &self.nodes);
+            if let Some(stages) = debug_stages.as_deref_mut() {
+                self.push_debug_stage(stages, run_idx, "after-pre-constraints", None, None);
+            }
             if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
                 t.pre_constraints = s.elapsed();
             }
@@ -2230,6 +2402,12 @@ impl SimGraph {
 
             // Match `cose-base` tick order: update compound bounds (with padding) before forces.
             let bounds = self.update_bounds();
+            if Self::should_trace_iteration(total_iterations) {
+                if let Some(stages) = debug_stages.as_deref_mut() {
+                    let tag = format!("tick-{total_iterations}.start");
+                    self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
+                }
+            }
 
             // Spring forces (per-edge ideal lengths).
             for e in &self.edges {
@@ -2461,6 +2639,19 @@ impl SimGraph {
                     );
                 }
             }
+            if Self::should_trace_iteration(total_iterations) {
+                if let Some(stages) = debug_stages.as_deref_mut() {
+                    let tag = Self::update_displacements_trace_tag(total_iterations);
+                    self.push_debug_stage_with_displacements(
+                        stages,
+                        run_idx,
+                        &tag,
+                        Some(total_iterations),
+                        None,
+                        Some(&disps),
+                    );
+                }
+            }
 
             // Move nodes (with constraints applied to displacements).
             //
@@ -2561,6 +2752,19 @@ impl SimGraph {
                     );
                 }
             }
+            if Self::should_trace_iteration(total_iterations) {
+                if let Some(stages) = debug_stages.as_deref_mut() {
+                    let tag = format!("tick-{total_iterations}.after-displacements");
+                    self.push_debug_stage_with_displacements(
+                        stages,
+                        run_idx,
+                        &tag,
+                        Some(total_iterations),
+                        None,
+                        Some(&disps),
+                    );
+                }
+            }
 
             for (idx, n) in self.nodes.iter_mut().enumerate() {
                 let (mdx, mdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
@@ -2587,6 +2791,12 @@ impl SimGraph {
             if debug_positions && total_iterations == 1 {
                 dump_positions("iter1", &self.nodes);
             }
+            if Self::should_trace_iteration(total_iterations) {
+                if let Some(stages) = debug_stages.as_deref_mut() {
+                    let tag = format!("tick-{total_iterations}.after-move");
+                    self.push_debug_stage(stages, run_idx, &tag, Some(total_iterations), None);
+                }
+            }
         }
         if let (Some(t), Some(s)) = (timings, iterations_start) {
             t.iterations = s.elapsed();
@@ -2595,6 +2805,22 @@ impl SimGraph {
         // Ensure compound rectangles reflect the final leaf positions before callers compute
         // component bbox/centering (e.g. `aux.relocateComponent(...)` parity).
         let _ = self.update_bounds();
+        if let Some(stages) = debug_stages.as_deref_mut() {
+            self.push_debug_stage(
+                stages,
+                run_idx,
+                "classicLayout.end",
+                Some(total_iterations),
+                None,
+            );
+            self.push_debug_stage(
+                stages,
+                run_idx,
+                "coseLayout.after-runLayout",
+                Some(total_iterations),
+                None,
+            );
+        }
         dump_positions("final", &self.nodes);
 
         SpringStats {

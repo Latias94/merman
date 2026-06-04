@@ -6,8 +6,9 @@ use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
-    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
-    LayoutNode, LayoutPoint,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
+    ArchitectureFcoseDebugNodeBounds, ArchitectureFcoseDebugStage, ArchitectureFcoseRelocateDebug,
+    Bounds, LayoutEdge, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -423,6 +424,15 @@ fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> 
     Bounds::from_points(pts)
 }
 
+fn architecture_bounds_from_layout_rect(rect: manatee::graph::LayoutRect) -> Bounds {
+    Bounds {
+        min_x: rect.left,
+        min_y: rect.top,
+        max_x: rect.left + rect.width,
+        max_y: rect.top + rect.height,
+    }
+}
+
 pub fn layout_architecture_diagram(
     model: &Value,
     effective_config: &Value,
@@ -745,6 +755,7 @@ fn layout_architecture_diagram_model(
     }
 
     let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
+    let mut fcose_debug_stages: Vec<ArchitectureFcoseDebugStage> = Vec::new();
 
     if use_manatee_layout && !nodes.is_empty() {
         let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
@@ -1258,14 +1269,78 @@ fn layout_architecture_diagram_model(
             if let Some(b) = result.compound_bounds.get(idx) {
                 fcose_compound_bounds.push(ArchitectureCompoundBounds {
                     id: group.id.to_string(),
-                    bounds: Bounds {
-                        min_x: b.left,
-                        min_y: b.top,
-                        max_x: b.left + b.width,
-                        max_y: b.top + b.height,
-                    },
+                    bounds: architecture_bounds_from_layout_rect(*b),
                 });
             }
+        }
+        fcose_debug_stages.reserve(result.debug_stages.len());
+        for stage in result.debug_stages {
+            let node_displacements = stage.node_displacements;
+            let stage_nodes = stage
+                .node_bounds
+                .into_iter()
+                .enumerate()
+                .filter_map(|(idx, b)| {
+                    let displacement = node_displacements
+                        .get(idx)
+                        .map(|p| LayoutPoint { x: p.x, y: p.y });
+                    if let Some(node) = model.nodes.get(idx) {
+                        Some(ArchitectureFcoseDebugNodeBounds {
+                            id: node.id.to_string(),
+                            kind: "node".to_string(),
+                            bounds: architecture_bounds_from_layout_rect(b),
+                            displacement,
+                        })
+                    } else {
+                        let group_idx = idx.checked_sub(model.nodes.len())?;
+                        model
+                            .groups
+                            .get(group_idx)
+                            .map(|group| ArchitectureFcoseDebugNodeBounds {
+                                id: group.id.to_string(),
+                                kind: "group".to_string(),
+                                bounds: architecture_bounds_from_layout_rect(b),
+                                displacement,
+                            })
+                    }
+                })
+                .collect();
+            let compound_bounds = stage
+                .compound_bounds
+                .into_iter()
+                .enumerate()
+                .filter_map(|(idx, b)| {
+                    model
+                        .groups
+                        .get(idx)
+                        .map(|group| ArchitectureCompoundBounds {
+                            id: group.id.to_string(),
+                            bounds: architecture_bounds_from_layout_rect(b),
+                        })
+                })
+                .collect();
+            fcose_debug_stages.push(ArchitectureFcoseDebugStage {
+                run_index: stage.run_index,
+                tag: stage.tag,
+                iterations: stage.iterations,
+                bbox: stage.bbox.map(architecture_bounds_from_layout_rect),
+                nodes: stage_nodes,
+                compound_bounds,
+                relocate: stage.relocate.map(|r| ArchitectureFcoseRelocateDebug {
+                    original_center: LayoutPoint {
+                        x: r.original_center.x,
+                        y: r.original_center.y,
+                    },
+                    rect_center: LayoutPoint {
+                        x: r.rect_center.x,
+                        y: r.rect_center.y,
+                    },
+                    delta: LayoutPoint {
+                        x: r.delta.x,
+                        y: r.delta.y,
+                    },
+                }),
+            });
         }
     }
 
@@ -1489,6 +1564,7 @@ fn layout_architecture_diagram_model(
         edges,
         cytoscape_service_bounds,
         fcose_compound_bounds,
+        fcose_debug_stages,
         bounds,
     })
 }

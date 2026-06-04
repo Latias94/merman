@@ -165,6 +165,12 @@ pub struct ArchitectureDiagramLayout {
     /// source audit; they are layout-engine rects, not browser `node.boundingBox()` values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fcose_compound_bounds: Vec<ArchitectureCompoundBounds>,
+    /// Optional local FCoSE phase trace for source-backed Architecture layout audits.
+    ///
+    /// This is populated only by explicit diagnostic runs and should stay out of normal rendering
+    /// decisions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fcose_debug_stages: Vec<ArchitectureFcoseDebugStage>,
     pub bounds: Option<Bounds>,
 }
 
@@ -172,6 +178,38 @@ pub struct ArchitectureDiagramLayout {
 pub struct ArchitectureCompoundBounds {
     pub id: String,
     pub bounds: Bounds,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureFcoseDebugStage {
+    pub run_index: usize,
+    pub tag: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iterations: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bbox: Option<Bounds>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nodes: Vec<ArchitectureFcoseDebugNodeBounds>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compound_bounds: Vec<ArchitectureCompoundBounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relocate: Option<ArchitectureFcoseRelocateDebug>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureFcoseDebugNodeBounds {
+    pub id: String,
+    pub kind: String,
+    pub bounds: Bounds,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub displacement: Option<LayoutPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureFcoseRelocateDebug {
+    pub original_center: LayoutPoint,
+    pub rect_center: LayoutPoint,
+    pub delta: LayoutPoint,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

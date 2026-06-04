@@ -383,9 +383,10 @@ function instrumentMermaidBundle(source) {
     `                  CoSELayout.prototype.tick = function() {\n                    this.totalIterations++;`,
     `                  CoSELayout.prototype.tick = function() {
                     this.totalIterations++;
-                    if (this.totalIterations === 1) {
+                    if ([1, 2, 10, 11, 12, 20, 21, 30, 31, 50, 51, 75, 90, 91, 99, 100, 200].includes(this.totalIterations)) {
                       try {
-                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("tick-1.start", this, null);
+                        const __tag = this.totalIterations === 1 ? "tick-1.start" : "tick-" + this.totalIterations + ".start";
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout(__tag, this, null);
                       } catch (e) {}
                     }`,
     "bundled FCoSE CoSELayout tick start"
@@ -396,9 +397,10 @@ function instrumentMermaidBundle(source) {
     `                    this.calcGravitationalForces();\n                    this.moveNodes();\n                    this.animate();`,
     `                    this.calcGravitationalForces();
                     this.moveNodes();
-                    if (this.totalIterations === 1) {
+                    if ([1, 2, 10, 11, 12, 20, 21, 30, 31, 50, 51, 75, 90, 91, 99, 100, 200].includes(this.totalIterations)) {
                       try {
-                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("tick-1.after-move", this, null);
+                        const __tag = this.totalIterations === 1 ? "tick-1.after-move" : "tick-" + this.totalIterations + ".after-move";
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout(__tag, this, null);
                       } catch (e) {}
                     }
                     this.animate();`,
@@ -420,13 +422,30 @@ function instrumentMermaidBundle(source) {
     out,
     `                  CoSELayout.prototype.updateDisplacements = function() {\n                    var self2 = this;`,
     `                  CoSELayout.prototype.updateDisplacements = function() {
-                    if (this.totalIterations === 1) {
+                    if ([1, 2, 10, 11, 12, 20, 21, 30, 31, 50, 51, 75, 90, 91, 99, 100, 200].includes(this.totalIterations)) {
                       try {
-                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout("updateDisplacements.start", this, null);
+                        const __tag = this.totalIterations === 1 ? "updateDisplacements.start" : "updateDisplacements.iter-" + this.totalIterations + ".start";
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout(__tag, this, null);
                       } catch (e) {}
                     }
                     var self2 = this;`,
     "bundled FCoSE CoSELayout updateDisplacements start"
+  );
+
+  out = replaceOnce(
+    out,
+    `                    if (Object.keys(this.constraints).length > 0) {\n                      this.updateDisplacements();\n                    }\n                    for (var i2 = 0; i2 < lNodes.length; i2++) {`,
+    `                    if (Object.keys(this.constraints).length > 0) {
+                      this.updateDisplacements();
+                    }
+                    if ([1, 2, 10, 11, 12, 20, 21, 30, 31, 50, 51, 75, 90, 91, 99, 100, 200].includes(this.totalIterations)) {
+                      try {
+                        const __tag = this.totalIterations === 1 ? "tick-1.after-displacements" : "tick-" + this.totalIterations + ".after-displacements";
+                        globalThis.__mermanArchRenderPathProbeDumpFcoseLayout && globalThis.__mermanArchRenderPathProbeDumpFcoseLayout(__tag, this, null);
+                      } catch (e) {}
+                    }
+                    for (var i2 = 0; i2 < lNodes.length; i2++) {`,
+    "bundled FCoSE CoSELayout moveNodes after-displacements"
   );
 
   out = replaceOnce(
