@@ -3,6 +3,59 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Delta Summary Root Residual Score
+
+Outcome:
+
+- `xtask summarize-architecture-deltas` now reports `viewBox width delta`,
+  `viewBox height delta`, and `root residual score`.
+- The score is the maximum absolute value across `max-width`, viewBox width, and viewBox height
+  deltas, then fixture name remains the deterministic tie-breaker.
+- This keeps height-only and viewBox-dominant root tails visible in the local Architecture delta
+  summary instead of letting the report be shaped only by `max-width`.
+- Regenerated the summary under
+  `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`.
+- The current top rows remain the active Architecture root queue:
+  - `junction_fork_join_026`: score `13.976`, with viewBox width `+13.976` and height `-12.502`.
+  - `batch5_long_titles_and_punct_076`: score `5.000`.
+  - `html_titles_and_escapes_041`: score `5.000`.
+  - `unicode_and_xml_escapes_019`: score `3.000`.
+  - `batch6_init_fontsize_icon_size_wrap_093`: score `2.500`.
+  - `nested_groups_002`: score `2.500`.
+- Smaller viewBox-height tails are now ordered correctly too: `group_to_group_multi_034`
+  scores `0.755` from height delta and ranks above `long_group_titles_018` at `0.656`.
+- `group_port_edges_017` remains zero-delta on current HEAD and should not be reopened from stale
+  pre-Procrustes artifacts.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-summary-root-score.md`
+- `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`
+- `target\compare\architecture_report_parity_root_hpd050_current.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_summary_order_sorts_by_root_residual_score_then_stem` -
+  passed, `1` test run.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-root-score-hpd050` -
+  passed and wrote the root-score sorted summary.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_current.md` -
+  expected-failed with `24` root-only mismatches.
+- `git diff --check` - passed.
+
+Residual note:
+
+- This is evidence tooling only. Root-score ordering makes the Architecture delta queue more honest
+  for width and height tails, but it does not justify a production layout, group-padding,
+  final-rect, or root-bounds formula change.
+
 ## HPD-050 - Architecture Nested Group Aggregate Delta Report
 
 Outcome:

@@ -280,6 +280,14 @@ Last updated: 2026-06-04
   the regenerated summary now puts `junction_fork_join`, `batch5`, `html_titles`, `unicode`,
   `batch6_init`, and `nested_groups` at the top. `group_port_edges_017` is zero-delta on current
   HEAD and should not be treated as active unless a fresh report regresses.
+  A follow-up root-score summary slice extends that report with viewBox width delta, viewBox height
+  delta, and `root residual score`, computed as the max absolute residual across `max-width`,
+  viewBox width, and viewBox height. The regenerated
+  `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`
+  keeps the same active top queue while also ordering smaller height/viewBox tails honestly; for
+  example, `group_to_group_multi_034` now ranks by its `0.755px` height score above
+  `long_group_titles_018` at `0.656px`. This is report governance only, not renderer or root-bounds
+  tuning.
   A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on

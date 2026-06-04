@@ -173,16 +173,28 @@ fn normalize_arch_junction_svg_id(id: &str) -> Option<String> {
 
 fn architecture_delta_summary_sort_order(
     a_stem: &str,
-    a_max_width_delta: Option<f64>,
+    a_root_residual_score: Option<f64>,
     b_stem: &str,
-    b_max_width_delta: Option<f64>,
+    b_root_residual_score: Option<f64>,
 ) -> std::cmp::Ordering {
-    let a_score = a_max_width_delta.map(f64::abs).unwrap_or(f64::NEG_INFINITY);
-    let b_score = b_max_width_delta.map(f64::abs).unwrap_or(f64::NEG_INFINITY);
+    let a_score = a_root_residual_score.unwrap_or(f64::NEG_INFINITY);
+    let b_score = b_root_residual_score.unwrap_or(f64::NEG_INFINITY);
     b_score
         .partial_cmp(&a_score)
         .unwrap_or(std::cmp::Ordering::Equal)
         .then_with(|| a_stem.cmp(b_stem))
+}
+
+fn architecture_root_residual_score(
+    max_width_delta: Option<f64>,
+    viewbox_width_delta: Option<f64>,
+    viewbox_height_delta: Option<f64>,
+) -> Option<f64> {
+    [max_width_delta, viewbox_width_delta, viewbox_height_delta]
+        .into_iter()
+        .flatten()
+        .map(f64::abs)
+        .reduce(f64::max)
 }
 
 fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli, XtaskError> {
@@ -2380,9 +2392,12 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         stem: String,
         up_vb: Option<(f64, f64, f64, f64)>,
         lo_vb: Option<(f64, f64, f64, f64)>,
+        viewbox_width_delta: Option<f64>,
+        viewbox_height_delta: Option<f64>,
         up_mw: Option<f64>,
         lo_mw: Option<f64>,
         max_width_delta: Option<f64>,
+        root_residual_score: Option<f64>,
         service_center_dx: Option<f64>,
         service_center_dy: Option<f64>,
         service_mean_dx: Option<f64>,
@@ -2471,14 +2486,24 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         let svc_mean = mean_delta_by_id(&up_services, &lo_services);
         let junc_mean = mean_delta_by_id(&up_junctions, &lo_junctions);
         let group_max = max_group_rect_delta_by_id(&up_groups, &lo_groups);
+        let viewbox_width_delta = up_vb.zip(lo_vb).map(|(up, lo)| lo.2 - up.2);
+        let viewbox_height_delta = up_vb.zip(lo_vb).map(|(up, lo)| lo.3 - up.3);
+        let max_width_delta = up_mw.zip(lo_mw).map(|(up, lo)| lo - up);
 
         rows.push(Row {
             stem,
             up_vb,
             lo_vb,
+            viewbox_width_delta,
+            viewbox_height_delta,
             up_mw,
             lo_mw,
-            max_width_delta: up_mw.zip(lo_mw).map(|(up, lo)| lo - up),
+            max_width_delta,
+            root_residual_score: architecture_root_residual_score(
+                max_width_delta,
+                viewbox_width_delta,
+                viewbox_height_delta,
+            ),
             service_center_dx,
             service_center_dy,
             service_mean_dx: svc_mean.map(|p| p.x),
@@ -2495,9 +2520,9 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
     rows.sort_by(|a, b| {
         architecture_delta_summary_sort_order(
             &a.stem,
-            a.max_width_delta,
+            a.root_residual_score,
             &b.stem,
-            b.max_width_delta,
+            b.root_residual_score,
         )
     });
 
@@ -2510,11 +2535,11 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
     );
     let _ = writeln!(
         &mut md,
-        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | max-width delta | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy | group max dx | group max dy | group max dw | group max dh |"
+        "| fixture | up viewBox | lo viewBox | viewBox width delta | viewBox height delta | up max-width | lo max-width | max-width delta | root residual score | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy | group max dx | group max dy | group max dw | group max dh |"
     );
     let _ = writeln!(
         &mut md,
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     );
 
     for r in rows {
@@ -2529,10 +2554,16 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         let _ = writeln!(
             &mut md,
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
             r.stem,
             vb_up,
             vb_lo,
+            r.viewbox_width_delta
+                .map(|v| format!("{:+.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
+            r.viewbox_height_delta
+                .map(|v| format!("{:+.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
             r.up_mw
                 .map(|v| format!("{:.3}", v))
                 .unwrap_or_else(|| "<missing>".to_string()),
@@ -2541,6 +2572,9 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
                 .unwrap_or_else(|| "<missing>".to_string()),
             r.max_width_delta
                 .map(|v| format!("{:+.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
+            r.root_residual_score
+                .map(|v| format!("{:.3}", v))
                 .unwrap_or_else(|| "<missing>".to_string()),
             r.service_center_dx
                 .map(|v| format!("{:.3}", v))
@@ -2634,17 +2668,30 @@ mod tests {
     }
 
     #[test]
-    fn architecture_delta_summary_order_sorts_by_abs_max_width_delta_then_stem() {
+    fn architecture_delta_summary_order_sorts_by_root_residual_score_then_stem() {
         assert_eq!(
-            architecture_delta_summary_sort_order("small", Some(2.0), "large", Some(-5.0)),
+            architecture_root_residual_score(Some(2.0), Some(-3.0), Some(5.0)),
+            Some(5.0)
+        );
+        assert_eq!(
+            architecture_root_residual_score(None, Some(-6.0), Some(1.0)),
+            Some(6.0)
+        );
+        assert_eq!(architecture_root_residual_score(None, None, None), None);
+        assert_eq!(
+            architecture_delta_summary_sort_order("small", Some(2.0), "large", Some(5.0)),
             std::cmp::Ordering::Greater
         );
         assert_eq!(
-            architecture_delta_summary_sort_order("large", Some(-5.0), "small", Some(2.0)),
+            architecture_delta_summary_sort_order("width", Some(5.0), "height", Some(6.0)),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            architecture_delta_summary_sort_order("large", Some(5.0), "small", Some(2.0)),
             std::cmp::Ordering::Less
         );
         assert_eq!(
-            architecture_delta_summary_sort_order("a", Some(1.0), "b", Some(-1.0)),
+            architecture_delta_summary_sort_order("a", Some(1.0), "b", Some(1.0)),
             std::cmp::Ordering::Less
         );
         assert_eq!(

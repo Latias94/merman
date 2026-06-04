@@ -424,6 +424,13 @@ Current repository reality to preserve:
     `html_titles`, `unicode`, `batch6_init`, and `nested_groups`. `group_port_edges_017` is
     zero-delta on current HEAD; keep it out of the active Architecture root queue unless a fresh
     report regresses.
+  - A follow-up root-score summary slice now adds viewBox width delta, viewBox height delta, and
+    `root residual score` to `summarize-architecture-deltas`. The score is the max absolute
+    residual across `max-width`, viewBox width, and viewBox height, so height/viewBox-dominant tails
+    no longer sort behind smaller width-only rows. The current root-score summary is
+    `target\compare\architecture-delta-summary-root-score-hpd050\architecture-delta-summary.md`;
+    it keeps `junction_fork_join_026` first at `13.976`, keeps the active top queue unchanged, and
+    still shows `group_port_edges_017` as zero-delta. Treat this as evidence governance only.
   - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command
