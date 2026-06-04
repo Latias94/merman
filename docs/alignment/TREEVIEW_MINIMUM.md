@@ -37,8 +37,8 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
 
 ## Known Gaps
 
-- `xtask compare-tree-view-svgs` exists, but `--check-dom --dom-mode parity` still reports
-  wrapper DOM residuals for the current baseline corpus.
+- `xtask compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for the
+  current committed baseline corpus.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/treeView/`.
 - Parser diagnostics are Rust-native and not exact Langium error strings.
 - SVG DOM ordering and browser `getBBox()` float details have not been strict-parity audited.

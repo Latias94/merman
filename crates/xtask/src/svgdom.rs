@@ -1034,6 +1034,37 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             children.retain(|c| c.name != "switch");
         }
 
+        fn is_ishikawa_nonsemantic_wrapper(n: &SvgDomNode) -> bool {
+            if n.name != "g" {
+                return false;
+            }
+            n.attrs.get("class").is_some_and(|class| {
+                class.split_whitespace().any(|token| {
+                    matches!(
+                        token,
+                        "ishikawa-pair" | "ishikawa-label-group" | "ishikawa-sub-group"
+                    )
+                })
+            })
+        }
+
+        fn flatten_ishikawa_nonsemantic_wrappers(children: &mut Vec<SvgDomNode>) {
+            let mut flattened = Vec::with_capacity(children.len());
+            for mut child in std::mem::take(children) {
+                flatten_ishikawa_nonsemantic_wrappers(&mut child.children);
+                if is_ishikawa_nonsemantic_wrapper(&child) {
+                    flattened.extend(child.children);
+                } else {
+                    flattened.push(child);
+                }
+            }
+            *children = flattened;
+        }
+
+        if matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
+            flatten_ishikawa_nonsemantic_wrappers(&mut children);
+        }
+
         children.sort_by(|a, b| {
             let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
             let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");

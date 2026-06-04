@@ -5,15 +5,15 @@
       "bounds": {
         "min_x": -30.0,
         "min_y": -30.0,
-        "max_x": 567.4,
-        "max_y": 300.0
+        "max_x": 487.4,
+        "max_y": 440.0
       },
-      "total_width": 597.4,
-      "total_height": 330.0,
+      "total_width": 517.4,
+      "total_height": 470.0,
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
       "padding": 30.0,
-      "use_max_width": false,
+      "use_max_width": true,
       "swimlanes": [
         {
           "index": 0.0,
@@ -21,7 +21,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 0.0,
-          "width": 537.4,
+          "width": 457.4,
           "height": 130.0
         },
         {
@@ -30,7 +30,16 @@
           "namespace": "Inventory",
           "x": 0.0,
           "y": 140.0,
-          "width": 537.4,
+          "width": 457.4,
+          "height": 130.0
+        },
+        {
+          "index": 201.0,
+          "label": "Stream: Inventory",
+          "namespace": "Inventory",
+          "x": 0.0,
+          "y": 280.0,
+          "width": 457.4,
           "height": 130.0
         }
       ],
@@ -72,13 +81,13 @@
           "model_entity_type": "evt",
           "entity_identifier": "Inventory.ItemAdded",
           "text": "ItemAdded",
-          "x": 404.24,
-          "y": 155.0,
+          "x": 324.24,
+          "y": 295.0,
           "width": 108.16,
           "height": 100.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
-          "swimlane_index": 101.0
+          "swimlane_index": 201.0
         }
       ],
       "relations": [
@@ -92,12 +101,12 @@
           "stroke": "#333333"
         },
         {
-          "source_frame": "01",
+          "source_frame": "02",
           "target_frame": "03",
-          "x1": 326.16,
-          "y1": 115.0,
-          "x2": 440.293,
-          "y2": 155.0,
+          "x1": 360.907,
+          "y1": 255.0,
+          "x2": 360.293,
+          "y2": 295.0,
           "stroke": "#333333"
         }
       ]

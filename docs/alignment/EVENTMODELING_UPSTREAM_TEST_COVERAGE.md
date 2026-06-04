@@ -36,8 +36,8 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 - Family-local command: `cargo run -p xtask -- compare-eventmodeling-svgs`
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram eventmodeling --check-dom --dom-mode parity --dom-decimals 3`
-- Current DOM residual: `compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3`
-  reports root `width` shape mismatch for every fixture (`<n>%` upstream vs `<n>` local).
+- Current DOM gate: `compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  passes for the committed baseline corpus.
 
 ## Upstream Sources Reviewed
 

@@ -52,8 +52,8 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 - Family-local command: `cargo run -p xtask -- compare-tree-view-svgs`
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram treeView --check-dom --dom-mode parity --dom-decimals 3`
-- Current DOM residual: `compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3`
-  reports one wrapper class mismatch per fixture (`svg/g[0]: extra attr class`).
+- Current DOM gate: `compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  passes for the committed baseline corpus.
 
 ## Not Yet Covered
 

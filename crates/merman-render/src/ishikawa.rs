@@ -634,7 +634,7 @@ fn ishikawa_config(effective_config: &Value) -> IshikawaConfig {
         padding: config_f64(effective_config, &["ishikawa", "diagramPadding"])
             .unwrap_or(20.0)
             .max(0.0),
-        use_max_width: config_bool(effective_config, &["ishikawa", "useMaxWidth"]).unwrap_or(false),
+        use_max_width: config_bool(effective_config, &["ishikawa", "useMaxWidth"]).unwrap_or(true),
         font_size: config_f64_css_px(effective_config, &["fontSize"])
             .unwrap_or(FONT_SIZE_DEFAULT)
             .max(1.0),

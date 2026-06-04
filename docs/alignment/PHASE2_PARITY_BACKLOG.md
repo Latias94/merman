@@ -66,7 +66,7 @@ Backlog:
 
 | ID | Priority | Task | Notes |
 |---|---:|---|---|
-| P2T-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. DOM parity residual remains: wrapper class mismatch at `svg/g[0]`. |
+| P2T-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2T-002 | P0 | Import the Cypress simple, complex, multiple-root, and custom-config examples as fixtures. | Done: 4 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
 | P2T-003 | P1 | Audit title/accessibility DOM behavior against upstream renderer output. | Current parser supports these fields, but SVG DOM parity has not been audited. |
 | P2T-004 | P1 | Add root viewport notes after the first compare run. | Track `viewBox`, `width`, `height`, and `max-width` residuals separately from subtree DOM parity. |
@@ -94,7 +94,7 @@ Backlog:
 
 | ID | Priority | Task | Notes |
 |---|---:|---|---|
-| P2I-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. DOM parity residual remains: root `width` shape mismatch. |
+| P2I-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2I-002 | P0 | Import Cypress examples 1-5 and 12 as source-backed fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
 | P2I-003 | P1 | Add config/theme fixtures for forest, dark, `diagramPadding`, and `useMaxWidth`. | These are present in upstream Cypress and should be separated from pure geometry fixtures. |
 | P2I-004 | P2 | Decide rough/handDrawn policy before importing the rough Cypress fixture. | Do not fake RoughJS parity with classic SVG branches. |
@@ -124,11 +124,11 @@ Backlog:
 
 | ID | Priority | Task | Notes |
 |---|---:|---|---|
-| P2E-001 | P0 | Add upstream SVG baseline and compare command for the existing minimum fixture. | Done. DOM parity residual remains: root `width` shape mismatch. |
+| P2E-001 | P0 | Add upstream SVG baseline and compare command for the existing minimum fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2E-002 | P0 | Import the six Cypress rendering examples as fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
 | P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | These are already near the Phase 1 parser scope and should be cheap to snapshot. |
 | P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | They are parsed upstream but explicitly outside Phase 1 render support. |
-| P2E-005 | P2 | Audit data block HTML/foreignObject output after subtree compare exists. | Current local renderer intentionally emits plain text for data block content. |
+| P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Current local renderer emits upstream-shaped `foreignObject` HTML; strict sanitization and browser text metrics are still not claimed. |
 
 Deferred:
 
@@ -148,16 +148,16 @@ Progress as of 2026-06-04:
   families, so the upstream baseline corpora are reproducible.
 - `compare-*-svgs` without `--check-dom` passes for all three families, proving parse/layout/render
   traversal works across the corpus.
-- `compare-*-svgs --check-dom --dom-mode parity --dom-decimals 3` intentionally remains red:
-  `treeView` has wrapper class residuals, while `ishikawa` and `eventmodeling` first expose root
-  `width` shape residuals.
+- `compare-*-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for all three family-local
+  corpora after closing the treeView wrapper, ishikawa root/wrapper, and eventmodeling root/DOM
+  shape residuals.
 
 1. `P2T-001`: `treeView` baseline plus compare command for the existing fixture.
 2. `P2I-001`: `ishikawa` baseline plus compare command for the existing fixture.
 3. `P2E-001`: `eventmodeling` baseline plus compare command for the existing fixture.
 4. Add the first Cypress fixture batch per family after each compare path exists.
-5. Revisit matrix admission only after all three have passing family-local compare evidence or
-   explicitly documented residuals.
+5. Revisit matrix admission now that all three have passing family-local compare evidence; keep
+   theme/config/rough/unsupported-statement policy work outside the main matrix until documented.
 
 ## Validation Gates
 

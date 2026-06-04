@@ -31,16 +31,16 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   - supports `eventmodeling.padding`, `eventmodeling.useMaxWidth`, and eventmodeling theme variables
   - preserves local swimlane namespace state for stable lane reuse
 - SVG:
-  - Stage B renderer with `.eventmodeling`, `.eventModeling-swimlane`, `.eventModeling-box`, `.eventModeling-reset-box`, `.eventModeling-relation`, and arrow marker DOM signals
-  - renders reset frames with dashed boxes
+  - Stage B renderer with upstream-shaped `.em-swimlane`, `.em-box`, `.em-relation`,
+    `foreignObject` box labels, and `em-arrowhead-*` marker DOM signals
   - uses frame fill/stroke colors and `themeVariables.emRelationStroke`
 
 ## Known Gaps
 
-- `xtask compare-eventmodeling-svgs` exists, but `--check-dom --dom-mode parity` still reports
-  root width/max-width residuals for the current baseline corpus.
+- `xtask compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for the
+  current committed baseline corpus.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/eventmodeling/`.
 - `entity`, `note`, and `gwt` statements are not rendered in Phase 1.
-- Data block formatting is captured conservatively and rendered as plain text rather than upstream `foreignObject` HTML.
-- Local namespace swimlane reuse is more stable than the current upstream runtime state shape, so strict layout parity has not been claimed.
+- Strict layout parity is not claimed; local geometry still uses deterministic headless text
+  measurement rather than browser `getBBox()` dimensions.
 - Browser `foreignObject`, HTML sanitization, and `getBBox()` float parity have not been strict-audited.
