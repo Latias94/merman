@@ -91,7 +91,7 @@ jobs:
             PYTHON=target/python-final-wheel-smoke/bin/python
           fi
           "$PYTHON" -m pip install --no-deps target/python-wheels/merman-*.whl
-          "$PYTHON" -c "import merman; e = merman.MermanEngine(); s = 'flowchart TD\nA[Hello] --> B[World]'; assert e.abi_version() == 2; assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'default' in e.themes()"
+          "$PYTHON" -c "import merman; e = merman.MermanEngine(); s = 'flowchart TD\nA[Hello] --> B[World]'; assert e.abi_version() == 1; assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'default' in e.themes()"
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v6

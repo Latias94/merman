@@ -8,6 +8,37 @@ use std::{
 };
 
 #[test]
+fn python_smoke_abi_expectations_match_uniffi_abi() {
+    let workspace_root = workspace_root();
+    let expected_eq = format!(
+        "abi_version() == {}",
+        merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
+    );
+    let expected_ne = format!(
+        "abi_version() != {}",
+        merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
+    );
+
+    for rel_path in [
+        "scripts/build-python-uniffi-wheel.py",
+        ".github/workflows/release-python.yml",
+        "docs/bindings/PYTHON_UNIFFI.md",
+        "platforms/python/merman/README.md",
+        "platforms/python/merman/examples/smoke.py",
+    ] {
+        let path = workspace_root.join(rel_path);
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        assert!(
+            text.contains(&expected_eq) || text.contains(&expected_ne),
+            "{} should assert UniFFI ABI version {}",
+            rel_path,
+            merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
+        );
+    }
+}
+
+#[test]
 fn generates_python_binding_from_cdylib_metadata() {
     let workspace_root = workspace_root();
     let cdylib = build_cdylib(&workspace_root);
