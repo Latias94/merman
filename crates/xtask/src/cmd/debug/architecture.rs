@@ -1403,13 +1403,15 @@ fn render_architecture_probe_join_markdown(
 ) {
     let probe_nodes = architecture_probe_nodes_by_id(probe);
     let mut local_service_child_frame: BTreeMap<String, DebugRect> = BTreeMap::new();
+    let mut local_service_final_node_frame: BTreeMap<String, DebugRect> = BTreeMap::new();
     for service in &layout.cytoscape_service_bounds {
         let local_body = DebugRect::from_model_bounds(&service.body_bounds);
         let local_union = DebugRect::from_model_bounds(&service.union_bounds);
-        local_service_child_frame.insert(
-            service.id.clone(),
-            local_union.translated(-local_body.w / 2.0, -local_body.h / 2.0),
-        );
+        let local_union_final_frame =
+            local_union.translated(-local_body.w / 2.0, -local_body.h / 2.0);
+        local_service_child_frame.insert(service.id.clone(), local_union_final_frame);
+        local_service_final_node_frame
+            .insert(service.id.clone(), local_union_final_frame.expanded(1.0));
     }
     let mut browser_service_child_union: BTreeMap<String, DebugRect> = BTreeMap::new();
     for node in probe_nodes
@@ -1453,6 +1455,128 @@ fn render_architecture_probe_join_markdown(
 
     let _ = writeln!(report, "## Browser probe phase join\n");
     let _ = writeln!(report, "Probe JSON: `{}`\n", probe_json_path.display());
+
+    let mut browser_final_nodes: Vec<(String, DebugRect)> = probe_nodes
+        .values()
+        .filter(|node| node.node_type == "service" || node.node_type == "group")
+        .filter_map(|node| {
+            node.bb
+                .map(|rect| (format!("{}-{}", node.node_type, node.id), rect))
+        })
+        .collect();
+    browser_final_nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut local_final_nodes: Vec<(String, DebugRect)> = local_service_final_node_frame
+        .iter()
+        .map(|(id, rect)| (format!("service-{id}"), *rect))
+        .chain(local_groups.iter().filter_map(|(id, rect)| {
+            id.strip_prefix("group-")
+                .map(|group_id| (format!("group-{group_id}"), *rect))
+        }))
+        .collect();
+    local_final_nodes.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let _ = writeln!(report, "### Final node edge attribution\n");
+    let _ = writeln!(
+        report,
+        "This table compares browser final node `bb` edge owners with local final-frame service bboxes plus emitted group rects. It is diagnostic evidence for boundary ownership and frame alignment, not a root-width formula; SVG text, nested group consumption, and root padding can still add later root-bounds phases.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| axis | browser min owner | local min owner | min delta | browser max owner | local max owner | max delta | span delta |\n|---|---|---|---:|---|---|---:|---:|"
+    );
+    if browser_final_nodes.is_empty() && local_final_nodes.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        let browser_left = debug_edge_owner(
+            browser_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Left,
+        );
+        let local_left = debug_edge_owner(
+            local_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Left,
+        );
+        let browser_right = debug_edge_owner(
+            browser_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Right,
+        );
+        let local_right = debug_edge_owner(
+            local_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Right,
+        );
+        let left_dx = local_left
+            .zip(browser_left)
+            .map(|(local, browser)| local.1 - browser.1);
+        let right_dx = local_right
+            .zip(browser_right)
+            .map(|(local, browser)| local.1 - browser.1);
+        let width_delta = right_dx.zip(left_dx).map(|(right, left)| right - left);
+        let _ = writeln!(
+            report,
+            "| `x` | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+            format_debug_edge_owner(browser_left),
+            format_debug_edge_owner(local_left),
+            format_debug_optional_f64(left_dx),
+            format_debug_edge_owner(browser_right),
+            format_debug_edge_owner(local_right),
+            format_debug_optional_f64(right_dx),
+            format_debug_optional_f64(width_delta),
+        );
+
+        let browser_top = debug_edge_owner(
+            browser_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Top,
+        );
+        let local_top = debug_edge_owner(
+            local_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Top,
+        );
+        let browser_bottom = debug_edge_owner(
+            browser_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Bottom,
+        );
+        let local_bottom = debug_edge_owner(
+            local_final_nodes
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            DebugEdge::Bottom,
+        );
+        let top_dy = local_top
+            .zip(browser_top)
+            .map(|(local, browser)| local.1 - browser.1);
+        let bottom_dy = local_bottom
+            .zip(browser_bottom)
+            .map(|(local, browser)| local.1 - browser.1);
+        let height_delta = bottom_dy.zip(top_dy).map(|(bottom, top)| bottom - top);
+        let _ = writeln!(
+            report,
+            "| `y` | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+            format_debug_edge_owner(browser_top),
+            format_debug_edge_owner(local_top),
+            format_debug_optional_f64(top_dy),
+            format_debug_edge_owner(browser_bottom),
+            format_debug_edge_owner(local_bottom),
+            format_debug_optional_f64(bottom_dy),
+            format_debug_optional_f64(height_delta),
+        );
+    }
+    let _ = writeln!(report);
 
     let _ = writeln!(report, "### Group content decomposition\n");
     let _ = writeln!(
@@ -4878,6 +5002,9 @@ mod tests {
         );
 
         assert!(md.contains("## Browser probe phase join"));
+        assert!(md.contains("### Final node edge attribution"));
+        assert!(md.contains("| `x` | `group-pipeline@0.000000` | `service-storage@-21.000000` | -21.000000 | `group-pipeline@183.000000` | `group-pipeline@198.000000` | 15.000000 | 36.000000 |"));
+        assert!(md.contains("| `y` | `group-pipeline@10.000000` | `service-storage@9.000000` | -1.000000 | `group-pipeline@143.000000` | `group-pipeline@153.000000` | 10.000000 | 11.000000 |"));
         assert!(md.contains("| `pipeline` | 1 | `x=10.000000 y=20.000000 w=100.000000 h=50.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | 3.000000 | -2.000000 |"));
         assert!(
             md.contains(
@@ -4981,6 +5108,9 @@ mod tests {
             &group_parents,
         );
 
+        assert!(md.contains("### Final node edge attribution"));
+        assert!(md.contains("| `x` | `group-platform@0.000000` | `group-platform@0.000000` | 0.000000 | `group-platform@200.000000` | `group-platform@203.000000` | 3.000000 | 3.000000 |"));
+        assert!(md.contains("| `y` | `group-platform@0.000000` | `group-platform@0.000000` | 0.000000 | `group-platform@200.000000` | `group-platform@200.000000` | 0.000000 | 0.000000 |"));
         assert!(md.contains("### Group aggregate child attribution"));
         assert!(md.contains("| `platform` | 0 | `runtime` | `x=10.000000 y=10.000000 w=100.000000 h=100.000000` | `x=10.000000 y=10.000000 w=103.000000 h=100.000000` | 3.000000 | 0.000000 |"));
         assert!(md.contains("### Child group parent-input phase"));

@@ -6614,3 +6614,40 @@ Gate notes:
 - `002` should remain classified as nested child-group / parent-input phase evidence. Do not fold
   it into the direct service label-width family or use it to justify a global child-group inset
   retune without full Architecture root verification.
+
+## HPD-050 - Architecture Final Node Edge Owner Diagnostics
+
+Outcome:
+
+- Added a `debug-architecture-delta` probe-join table for final node edge ownership.
+- The table compares browser final node `bb` edge owners with local final-frame service bboxes plus
+  emitted group rects, reporting X/Y min/max owners and span deltas.
+- Re-ran the top five post-strict Architecture rows. The direct width rows are final group-edge
+  owned (`076` `+5px`, `041` `+5px`, `019` `+3px`), and `093` is also final group-edge owned with
+  an X span delta of `-2.5px`. `002` remains a nested frame-mismatch row: the final-node table
+  shows a `+42.5px` X span delta while the SVG root delta is only `+2.5px`, so it still needs
+  render-path/source-frame evidence before any production change.
+
+Evidence:
+
+- `target/compare/architecture-delta-final-node-edge-owner-hpd050`
+- `target/compare/architecture-report-parity-final-node-edge-owner-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-final-node-edge-owner-diagnostics.md`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p xtask -E 'test(architecture_probe_join_reports_nested_group_aggregate_content) or test(architecture_probe_join_decomposes_group_and_service_bounds)'` - passed, `2` tests run.
+- `cargo nextest run -p xtask` - passed, `112` tests run.
+- `git diff --check` - passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-final-node-edge-owner-hpd050` - passed for the top five post-strict rows.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-final-node-edge-owner-hpd050` - passed.
+
+Gate notes:
+
+- No production renderer behavior changed.
+- The final-node owner table is evidence for boundary ownership and frame alignment, not a
+  root-width formula. Use it to route direct final group-edge rows separately from nested frame
+  rows.
