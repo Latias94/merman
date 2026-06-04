@@ -23,3 +23,8 @@ Treat browser-dependent behavior as a bounded residual unless there is a robust 
 
 Comparator normalization must be narrow and non-semantic. Accepted residuals should be documented
 rather than hidden.
+
+When refreshing Mermaid baselines, align DOM-id assertions with the current upstream SVG shape
+instead of historical forms. Mindmap, Flowchart, and related diagrams may use diagram-prefixed
+node ids such as `fixture-name-node_1`; tests and debug tools should read the current baseline or
+rendered SVG before hard-coding node selectors.

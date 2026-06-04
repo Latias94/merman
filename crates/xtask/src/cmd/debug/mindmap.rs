@@ -6,6 +6,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+fn is_mindmap_node_dom_id(id: &str) -> bool {
+    id.starts_with("node_")
+        || id
+            .rsplit_once('-')
+            .is_some_and(|(_, suffix)| suffix.starts_with("node_"))
+}
+
 pub(crate) fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<String> = None;
     let mut upstream: Option<PathBuf> = None;
@@ -143,7 +150,7 @@ pub(crate) fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), Xtask
             let Some(id) = n.attribute("id") else {
                 continue;
             };
-            if !id.starts_with("node_") {
+            if !is_mindmap_node_dom_id(id) {
                 continue;
             }
             let Some(class) = n.attribute("class") else {
@@ -235,4 +242,21 @@ pub(crate) fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), Xtask
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_mindmap_node_dom_id;
+
+    #[test]
+    fn mindmap_node_dom_id_accepts_bare_and_diagram_prefixed_ids() {
+        assert!(is_mindmap_node_dom_id("node_1"));
+        assert!(is_mindmap_node_dom_id(
+            "stress_mindmap_br_variants_031-node_1"
+        ));
+        assert!(!is_mindmap_node_dom_id(
+            "stress_mindmap_br_variants_031-edge_0_1"
+        ));
+        assert!(!is_mindmap_node_dom_id("mindmap-node_1-extra"));
+    }
 }
