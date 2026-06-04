@@ -1,4 +1,9 @@
 use crate::common::{BindingError, internal_json_error};
+use std::sync::OnceLock;
+
+static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 pub const SUPPORTED_DIAGRAMS: &[&str] = &[
     "architecture",
@@ -50,15 +55,28 @@ pub fn ascii_supported_diagrams() -> &'static [&'static str] {
 }
 
 pub fn supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(supported_diagrams()).map_err(internal_json_error)
+    cached_json(&SUPPORTED_DIAGRAMS_JSON, supported_diagrams)
 }
 
 pub fn ascii_supported_diagrams_json() -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(ascii_supported_diagrams()).map_err(internal_json_error)
+    cached_json(&ASCII_SUPPORTED_DIAGRAMS_JSON, ascii_supported_diagrams)
 }
 
 pub fn supported_themes_json() -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(supported_themes()).map_err(internal_json_error)
+    cached_json(&SUPPORTED_THEMES_JSON, supported_themes)
+}
+
+fn cached_json(
+    cache: &OnceLock<Vec<u8>>,
+    values: fn() -> &'static [&'static str],
+) -> Result<Vec<u8>, BindingError> {
+    if let Some(bytes) = cache.get() {
+        return Ok(bytes.clone());
+    }
+
+    let bytes = serde_json::to_vec(values()).map_err(internal_json_error)?;
+    let _ = cache.set(bytes.clone());
+    Ok(bytes)
 }
 
 #[cfg(test)]

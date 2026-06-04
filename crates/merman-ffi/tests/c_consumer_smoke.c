@@ -5,6 +5,7 @@
 #include <string.h>
 
 typedef MermanResult (*MermanCall)(const uint8_t*, size_t, const uint8_t*, size_t);
+typedef MermanResult (*MermanEngineCall)(const MermanEngine*, const uint8_t*, size_t);
 typedef void (*MermanFree)(MermanBuffer);
 
 typedef struct MermanApi {
@@ -14,6 +15,14 @@ typedef struct MermanApi {
     const char* (*package_version)(void);
     size_t (*buffer_struct_size)(void);
     size_t (*result_struct_size)(void);
+    size_t (*engine_result_struct_size)(void);
+    MermanEngineResult (*engine_new)(const uint8_t*, size_t);
+    void (*engine_free)(MermanEngine*);
+    MermanEngineCall engine_render_svg;
+    MermanEngineCall engine_render_ascii;
+    MermanEngineCall engine_parse_json;
+    MermanEngineCall engine_layout_json;
+    MermanEngineCall engine_validate_json;
     MermanCall render_svg;
     MermanCall render_ascii;
     MermanCall parse_json;
@@ -90,6 +99,14 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.package_version == NULL ||
         api.buffer_struct_size == NULL ||
         api.result_struct_size == NULL ||
+        api.engine_result_struct_size == NULL ||
+        api.engine_new == NULL ||
+        api.engine_free == NULL ||
+        api.engine_render_svg == NULL ||
+        api.engine_render_ascii == NULL ||
+        api.engine_parse_json == NULL ||
+        api.engine_layout_json == NULL ||
+        api.engine_validate_json == NULL ||
         api.render_svg == NULL ||
         api.render_ascii == NULL ||
         api.parse_json == NULL ||
@@ -114,6 +131,9 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
     if (api.result_struct_size() != sizeof(MermanResult)) {
         return 5;
+    }
+    if (api.engine_result_struct_size() != sizeof(MermanEngineResult)) {
+        return 6;
     }
 
     rc = api.render_enabled
@@ -207,6 +227,60 @@ int merman_c_consumer_smoke(MermanApi api) {
     if (rc != 0) {
         return rc;
     }
+
+    MermanEngineResult engine = api.engine_new(NULL, 0);
+    if (engine.code != MERMAN_OK || engine.engine == NULL) {
+        if (engine.data.data != NULL || engine.data.len != 0) {
+            api.buffer_free(engine.data);
+        }
+        return 50 + engine.code;
+    }
+
+    rc = api.render_enabled
+        ? expect_ok_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "<svg"
+        )
+        : expect_error_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = api.ascii_enabled
+        ? expect_ok_with(
+            api.engine_render_ascii(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "Hello"
+        )
+        : expect_error_with(
+            api.engine_render_ascii(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_validate_json(engine.engine, source, sizeof(source) - 1),
+        api.buffer_free,
+        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    api.engine_free(engine.engine);
 
     return expect_error_with(
         api.render_svg(NULL, 1, NULL, 0),

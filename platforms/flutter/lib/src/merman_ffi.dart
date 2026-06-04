@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 /// C ABI version expected by this Dart binding.
-const int mermanAbiVersion = 2;
+const int mermanAbiVersion = 1;
 
 /// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
@@ -218,6 +218,9 @@ class Merman {
       Merman.fromDynamicLibrary(openMermanLibraryFromPath(path));
 
   final _MermanBindings _bindings;
+  List<String>? _supportedDiagramsCache;
+  List<String>? _asciiSupportedDiagramsCache;
+  List<String>? _themesCache;
 
   /// Native `merman-ffi` package version.
   String get packageVersion => _bindings.packageVersion();
@@ -278,22 +281,28 @@ class Merman {
 
   /// Returns diagram types exposed by the binding surface.
   List<String> supportedDiagrams() {
-    return _decodeJsonStringList(
-      _decodeText(_bindings.metadata(_bindings.supportedDiagramsJson)),
+    return _supportedDiagramsCache ??= List.unmodifiable(
+      _decodeJsonStringList(
+        _decodeText(_bindings.metadata(_bindings.supportedDiagramsJson)),
+      ),
     );
   }
 
   /// Returns diagram types currently supported by ASCII rendering.
   List<String> asciiSupportedDiagrams() {
-    return _decodeJsonStringList(
-      _decodeText(_bindings.metadata(_bindings.asciiSupportedDiagramsJson)),
+    return _asciiSupportedDiagramsCache ??= List.unmodifiable(
+      _decodeJsonStringList(
+        _decodeText(_bindings.metadata(_bindings.asciiSupportedDiagramsJson)),
+      ),
     );
   }
 
   /// Returns built-in Mermaid theme names.
   List<String> themes() {
-    return _decodeJsonStringList(
-      _decodeText(_bindings.metadata(_bindings.themesJson)),
+    return _themesCache ??= List.unmodifiable(
+      _decodeJsonStringList(
+        _decodeText(_bindings.metadata(_bindings.themesJson)),
+      ),
     );
   }
 

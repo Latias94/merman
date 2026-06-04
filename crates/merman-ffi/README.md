@@ -17,6 +17,7 @@ terminal text, and raster formats depending on enabled features.
 
 Start with the main project README for product scope and diagram coverage:
 
+- Repository: <https://github.com/Latias94/merman>
 - Project README: <https://github.com/Latias94/merman>
 - Rust library: <https://crates.io/crates/merman>
 - CLI: <https://crates.io/crates/merman-cli>
@@ -68,10 +69,27 @@ merman_buffer_free(result.data);
 Every non-empty `MermanResult.data` buffer must be freed exactly once with `merman_buffer_free`.
 Do not use `free`, `delete`, or a host runtime allocator for buffers returned by Rust.
 
+For repeated calls with the same options, create a reusable engine:
+
+```c
+MermanEngineResult engine = merman_engine_new(NULL, 0);
+if (engine.code != MERMAN_OK) {
+    /* engine.data contains UTF-8 JSON error bytes. */
+    merman_buffer_free(engine.data);
+    return;
+}
+
+MermanResult result = merman_engine_render_svg(engine.engine, source, sizeof(source) - 1);
+merman_buffer_free(result.data);
+merman_engine_free(engine.engine);
+```
+
 ## Example
 
 [`examples/render_svg.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg.c)
 is a small C consumer that renders a flowchart to SVG through the C ABI.
+[`examples/render_svg_engine.c`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/examples/render_svg_engine.c)
+shows the reusable engine/context API for repeated calls with shared options.
 
 On macOS or Linux:
 
@@ -85,12 +103,23 @@ cc -I crates/merman-ffi/include \
 target/merman-ffi-render-svg
 ```
 
+To compile the reusable-engine example, replace `render_svg.c` with `render_svg_engine.c` in the
+same command.
+
 ## Entry Points
 
 - `merman_abi_version`
 - `merman_package_version`
 - `merman_buffer_struct_size`
 - `merman_result_struct_size`
+- `merman_engine_result_struct_size`
+- `merman_engine_new`
+- `merman_engine_free`
+- `merman_engine_render_svg`
+- `merman_engine_render_ascii`
+- `merman_engine_parse_json`
+- `merman_engine_layout_json`
+- `merman_engine_validate_json`
 - `merman_render_svg`
 - `merman_render_ascii`
 - `merman_parse_json`
