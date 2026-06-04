@@ -1,0 +1,16 @@
+{"file":"docs/workstreams/theme-capability-deepening/DESIGN.md","role":"design","required":true,"reason":"Authoritative problem statement, target state, non-goals, and first-slice architecture direction."}
+{"file":"docs/workstreams/theme-capability-deepening/TODO.md","role":"task_ledger","required":true,"reason":"Authoritative human task ledger for this lane."}
+{"file":"docs/workstreams/theme-capability-deepening/TASKS.jsonl","role":"task_state","required":true,"reason":"Machine-readable task state matching the lane ledger."}
+{"file":"docs/workstreams/theme-capability-deepening/EVIDENCE_AND_GATES.md","role":"gates","required":true,"reason":"Fresh command gates and evidence anchors for the lane."}
+{"file":"docs/adr/0068-render-side-presentation-theme-view.md","role":"adr","required":true,"reason":"Fixes the render-side presentation theme seam and host-boundary rules."}
+{"file":"docs/adr/0005-configuration-strategy.md","role":"adr","required":true,"reason":"Preserves the existing core config/theme authority boundary."}
+{"file":"docs/adr/0063-extensible-svg-output-pipeline.md","role":"adr","required":true,"reason":"Keeps renderer-owned theme work separate from post-render SVG pipeline concerns."}
+{"file":"docs/adr/0064-host-styling-svg-postprocessors.md","role":"adr","required":true,"reason":"Prevents host palette policy from leaking into default parity output."}
+{"file":"docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md","role":"architecture_audit","required":true,"reason":"ARCH-013 is the direct architecture finding that motivates this lane."}
+{"file":"docs/workstreams/theme-parity/DESIGN.md","role":"parent_workstream","required":true,"reason":"Completed prior lane that explicitly split this follow-on."}
+{"file":"docs/workstreams/theme-parity/TODO.md","role":"parent_execution","required":true,"reason":"Records the split-follow-up tasks that this lane now owns."}
+{"file":"repo-ref/beautiful-mermaid/src/theme.ts","role":"reference","required":true,"reason":"Reference for a render-side presentation theme module with stable semantic roles."}
+{"file":"repo-ref/beautiful-mermaid/src/xychart/colors.ts","role":"reference","required":true,"reason":"Reference for accent-derived chart palette behavior living in the renderer layer."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/mermaidAPI.ts","role":"reference","required":true,"reason":"Pinned source of truth for Mermaid config/theme initialization boundaries."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/styles.ts","role":"reference","required":true,"reason":"Pinned shared Mermaid style-entry seam for renderer CSS providers."}
+{"file":"crates/merman-render/src/svg/parity/util.rs","role":"existing_seam","required":false,"reason":"Current thin SvgTheme seam that this lane will deepen."}

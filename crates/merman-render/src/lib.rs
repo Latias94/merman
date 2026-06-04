@@ -10,6 +10,7 @@ pub mod architecture;
 pub(crate) mod architecture_metrics;
 pub mod block;
 pub mod c4;
+mod chart_palette;
 pub mod class;
 mod config;
 mod entities;

@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "slug": "theme-capability-deepening",
+  "title": "Theme Capability Deepening",
+  "status": "closed",
+  "updated": "2026-06-04",
+  "scope_kind": "execution",
+  "problem": "Post-parity theme work now needs a deeper render-side presentation theme seam so renderer capability can grow without scattering raw themeVariables access across diagram modules.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/theme-capability-deepening/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/theme-capability-deepening/TODO.md"
+    },
+    {
+      "role": "task_state",
+      "path": "docs/workstreams/theme-capability-deepening/TASKS.jsonl"
+    },
+    {
+      "role": "campaign_state",
+      "path": "docs/workstreams/theme-capability-deepening/CAMPAIGNS.jsonl"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/theme-capability-deepening/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/theme-capability-deepening/CONTEXT.jsonl"
+    },
+    {
+      "role": "handoff",
+      "path": "docs/workstreams/theme-capability-deepening/HANDOFF.md"
+    }
+  ],
+  "context_manifest": "docs/workstreams/theme-capability-deepening/CONTEXT.jsonl",
+  "current_task": null,
+  "gates": [
+    "cargo fmt --check --all",
+    "cargo nextest run -p merman-render flowchart_svg",
+    "cargo nextest run -p merman-render class_svg",
+    "cargo nextest run -p merman-render state_svg",
+    "cargo nextest run -p merman-render sequence_svg",
+    "cargo nextest run -p merman-render block_svg",
+    "cargo nextest run -p merman-render presentation_theme",
+    "cargo nextest run -p merman-render chart_palette",
+    "cargo nextest run -p merman-render xychart",
+    "cargo nextest run -p merman-render quadrantchart",
+    "cargo test -p merman --features render --test theme_renderability_smoke",
+    "git diff --check"
+  ],
+  "evidence": [
+    "docs/workstreams/theme-capability-deepening/EVIDENCE_AND_GATES.md"
+  ],
+  "adr_refs": [
+    "docs/adr/0005-configuration-strategy.md",
+    "docs/adr/0063-extensible-svg-output-pipeline.md",
+    "docs/adr/0064-host-styling-svg-postprocessors.md",
+    "docs/adr/0068-render-side-presentation-theme-view.md"
+  ],
+  "architecture_refs": [
+    "docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md",
+    "docs/rendering/SVG_OUTPUT_PIPELINE.md"
+  ],
+  "capability_tags": [
+    "theme",
+    "render-semantics",
+    "svg",
+    "presentation-theme",
+    "chart-palette"
+  ],
+  "lane_slug": null,
+  "parent_workstream": "docs/workstreams/theme-parity",
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "Closed after TCD-020, TCD-030, TCD-040, and TCD-050. Remaining raw-theme migrations, bindings/playground surfaces, and host-specific styling policy require narrower follow-ons rather than reopening this lane."
+  }
+}

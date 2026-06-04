@@ -1,3 +1,4 @@
+use crate::chart_palette::{plot_color_from_palette, resolve_xychart_plot_palette};
 use crate::config::config_f64_css_px as config_f64;
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
@@ -167,13 +168,6 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
     }
 }
 
-fn default_plot_color_palette() -> Vec<String> {
-    "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3"
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .collect()
-}
-
 fn theme_xychart_color(effective_config: &Value, key: &str) -> Option<String> {
     config_string(effective_config, &["themeVariables", "xyChart", key])
 }
@@ -204,16 +198,6 @@ fn parse_theme_config(effective_config: &Value) -> ChartThemeConfig {
         .or_else(|| invert_hex_color(&primary_color))
         .unwrap_or_else(|| "#333".to_string());
 
-    let palette_raw = theme_xychart_color(effective_config, "plotColorPalette");
-    let plot_color_palette = palette_raw
-        .map(|s| {
-            s.split(',')
-                .map(|c| c.trim().to_string())
-                .filter(|c| !c.is_empty())
-                .collect()
-        })
-        .unwrap_or_else(default_plot_color_palette);
-
     ChartThemeConfig {
         background_color: background,
         title_color: theme_xychart_color(effective_config, "titleColor")
@@ -234,7 +218,7 @@ fn parse_theme_config(effective_config: &Value) -> ChartThemeConfig {
             .unwrap_or_else(|| primary_text.clone()),
         y_axis_line_color: theme_xychart_color(effective_config, "yAxisLineColor")
             .unwrap_or_else(|| primary_text.clone()),
-        plot_color_palette,
+        plot_color_palette: resolve_xychart_plot_palette(effective_config),
     }
 }
 
@@ -951,18 +935,6 @@ impl Axis {
         }
         out
     }
-}
-
-fn plot_color_from_palette(palette: &[String], plot_index: usize) -> String {
-    if palette.is_empty() {
-        return String::new();
-    }
-    let idx = if plot_index == 0 {
-        0
-    } else {
-        plot_index % palette.len()
-    };
-    palette[idx].clone()
 }
 
 fn line_path(points: &[(f64, f64)]) -> Option<String> {
