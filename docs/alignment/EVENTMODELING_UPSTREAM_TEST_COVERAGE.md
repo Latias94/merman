@@ -45,6 +45,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram eventmodeling --check-dom --dom-mode parity --dom-decimals 3`
 - Current DOM gate: `compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3`
   passes for the committed baseline corpus.
+- Data `foreignObject` audit: P2E-005 confirms that the data-block fixture covers DOM shape and
+  render-model plumbing, not strict browser HTML serialization, DOMPurify output, non-breaking
+  space handling, or `getBBox()` text metrics.
 
 ## Upstream Sources Reviewed
 
@@ -64,4 +67,5 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   `noteEntities`, or `gwtEntities`.
 - `entity`, `note`, and `gwt` statement rendering. Local support stays deferred until an upstream
   rendering contract or a separate full-AST export scope exists.
+- Strict data-block HTML parity for `html` / `md` / rich content data types.
 - Full strict DOM parity for the current Cypress image snapshot corpus.

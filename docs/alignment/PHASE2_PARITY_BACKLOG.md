@@ -128,7 +128,7 @@ Backlog:
 | P2E-002 | P0 | Import the six Cypress rendering examples as fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
 | P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | Done: 3 parser-source fixtures now have semantic/layout goldens and upstream SVG baselines. |
 | P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | Done: audited as upstream parser AST-only constructs for the current Mermaid baseline. Keep them out of the render semantic model; defer `note`/`gwt` rendering and standalone `entity` semantics until there is an upstream rendering contract or a separate full-AST export scope. |
-| P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Current local renderer emits upstream-shaped `foreignObject` HTML; strict sanitization and browser text metrics are still not claimed. |
+| P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Done: documented upstream data HTML handling, local XML-escaped output, whitespace/`&nbsp;` normalization, and browser text-metric residuals in `EVENTMODELING_MINIMUM.md`. Strict HTML/DOMPurify serialization and browser `getBBox()` parity remain deferred. |
 
 Deferred:
 
