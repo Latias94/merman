@@ -48,7 +48,13 @@ Immediate next task:
   title XHTML span classes (`nodeLabel markdown-node-label`). Prototype-like item ids such as
   `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
   `compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- Remaining HPD-090 broad stale families are `mindmap` and `radar`.
+- The Mindmap refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, the
+  missing `zed_pr_57644_mindmap` layout golden was added, and the local Mindmap renderer now emits
+  Mermaid 11.15 DOM surfaces for root shadow defs, `data-look`, diagram-prefixed node/edge DOM ids,
+  margin markers, section class cycle wrapping, and direct classic rounded/hexagon shape DOM. The
+  unused local `roughjs46` helper was removed. `compare-mindmap-svgs --check-dom --dom-mode parity
+  --dom-decimals 3` is green.
+- Remaining HPD-090 broad stale family is `radar`.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

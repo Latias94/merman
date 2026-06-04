@@ -80,7 +80,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `info` | pass after refresh | `15 / 15` | Keep. |
 | `journey` | pass | `26 / 26` | Keep. |
 | `kanban` | refreshed + DOM parity fixed | `87 / 87` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
-| `mindmap` | stale, broad | `114 / 114` | Refresh by family. |
+| `mindmap` | refreshed + DOM parity fixed | `114 / 114` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `packet` | pass | `33 / 33` | Keep. |
 | `pie` | pass | `69 / 69` | Keep. |
 | `quadrantchart` | pass | `59 / 59` | Keep. |
@@ -226,6 +226,38 @@ Verification:
 - `cargo nextest run -p merman-render kanban_dom_ids_are_scoped_by_diagram_id`
 - `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+## Seventh Slice Completed
+
+Mindmap baseline refresh plus renderer DOM parity:
+
+- `fixtures/upstream-svgs/mindmap/*.svg` were regenerated to the pinned Mermaid 11.15 baseline; all
+  `114` stored SVGs changed.
+- `cargo run -p xtask -- update-layout-snapshots --diagram mindmap` added the missing
+  `fixtures/mindmap/zed_pr_57644_mindmap.layout.golden.json` snapshot.
+- Mindmap was not a pure stored-SVG refresh. Local SVG output now emits current Mermaid 11.15 DOM
+  surfaces needed by the family gate:
+  - default/classic nodes and edges explicitly carry `data-look="classic"`;
+  - node group ids, default rounded path ids, and edge path ids are diagram-prefixed, while edge
+    `data-id` keeps the raw business id;
+  - family-level drop-shadow filter defs and Mindmap margin markers are present;
+  - node and edge section classes wrap after Mermaid's `0..10` palette cycle instead of emitting
+    stale `section-11` style tokens;
+  - classic rounded and hexagon nodes render as direct `rect` / `polygon` DOM instead of the old
+    rough-wrapper structure;
+  - XHTML node labels keep the current `nodeLabel markdown-node-label` class tokens.
+- The old local `roughjs46` compatibility helper became unused after the classic shape correction
+  and was removed.
+- The Mindmap family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo nextest run -p merman-render --test mindmap_svg_test`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke mindmap`
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+- `cargo fmt --check -p merman-render -p merman`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -291,7 +323,7 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Refresh remaining broad stale stored SVG families: `mindmap` and `radar`.
+1. Refresh remaining broad stale stored SVG family: `radar`.
 2. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
    Flowchart HTML demo KaTeX fixtures (`4` fixtures).
 3. Update affected layout snapshots and run family compare gates after each refresh batch.

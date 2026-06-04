@@ -37,7 +37,6 @@ mod quadrantchart;
 mod radar;
 mod requirement;
 mod root_svg;
-mod roughjs46;
 mod roughjs_common;
 mod sankey;
 mod sequence;

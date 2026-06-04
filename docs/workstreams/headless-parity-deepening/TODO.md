@@ -641,7 +641,7 @@ Last updated: 2026-06-04
 
 ## M8 - Baseline Preparation Before Parity
 
-- [ ] HPD-090 [owner=codex] [deps=HPD-020,HPD-030,HPD-070] [scope=docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md,crates/merman-core/src/baseline.rs,crates/merman-render/src/info.rs,crates/merman-render/src/error.rs,crates/merman-render/src/svg/parity/requirement.rs,crates/merman-render/src/svg/parity/block.rs,crates/merman-render/src/svg/parity/gantt.rs,crates/merman-render/src/svg/parity/kanban.rs,crates/xtask/src/cmd/import,crates/xtask/src/cmd/audit.rs,fixtures,fixtures/upstream-svgs,docs/alignment]
+- [ ] HPD-090 [owner=codex] [deps=HPD-020,HPD-030,HPD-070] [scope=docs/workstreams/headless-parity-deepening/BASELINE_PREPARATION.md,crates/merman-core/src/baseline.rs,crates/merman-render/src/info.rs,crates/merman-render/src/error.rs,crates/merman-render/src/svg/parity/requirement.rs,crates/merman-render/src/svg/parity/block.rs,crates/merman-render/src/svg/parity/gantt.rs,crates/merman-render/src/svg/parity/kanban.rs,crates/merman-render/src/svg/parity/mindmap.rs,crates/xtask/src/cmd/import,crates/xtask/src/cmd/audit.rs,fixtures,fixtures/upstream-svgs,docs/alignment]
   Goal: Prepare the Mermaid 11.15 baseline corpus before further parity work by classifying stale
   current-facing baseline surfaces, deciding whether to refresh all stored upstream SVGs, and
   defining official fixture/test admission gates.
@@ -664,8 +664,11 @@ Last updated: 2026-06-04
   Requirement renderer DOM output for Mermaid 11.15 current surfaces (`data-look`, diagram-prefixed
   ids, `outer-path`, `divider`, and root drop-shadow defs), making
   `compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` green. Block, Gantt,
-  and Kanban are also now refreshed and locally DOM-green under their family compare gates; Kanban
-  required diagram-prefixed section/item DOM ids and current `markdown-node-label` title spans. Do
-  not refresh all SVG baselines: refresh remaining broad stale families `mindmap` and `radar`;
-  point-refresh `class`, `timeline`, and Flowchart HTML demo KaTeX drifts; then rerun layout,
-  compare, and renderability gates. No broad official fixture import is indicated yet.
+  Kanban, and Mindmap are also now refreshed and locally DOM-green under their family compare gates;
+  Kanban required diagram-prefixed section/item DOM ids and current markdown title spans, while
+  Mindmap required root shadow defs, explicit classic `data-look`, diagram-prefixed node/edge DOM
+  ids, margin markers, section class cycle wrapping, direct classic rounded/hexagon DOM, and removal
+  of the unused rough compatibility helper. Do not refresh all SVG baselines: refresh remaining
+  broad stale family `radar`; point-refresh `class`, `timeline`, and Flowchart HTML demo KaTeX
+  drifts; then rerun layout, compare, and renderability gates. No broad official fixture import is
+  indicated yet.

@@ -613,7 +613,9 @@ mindmap
     );
 
     assert!(
-        svg.contains(r#"class="node mindmap-node section-root section--1" id="node_0""#)
+        svg.contains(
+            r#"class="node mindmap-node section-root section--1" id="mindmap-neo-visible-audit-node_0""#
+        )
             && svg.contains(r#"data-look="neo""#),
         "Mindmap neo node CSS should only count when current node DOM exposes data-look: {svg}"
     );

@@ -51,6 +51,15 @@ Outcome:
     emitted DOM id is diagram-prefixed;
   - item title XHTML labels now carry `nodeLabel markdown-node-label`, while section labels,
     ticket/assigned labels, and empty placeholders keep the older `nodeLabel` class.
+- Refreshed the Mindmap stored upstream SVG family and fixed the local Mindmap renderer to match
+  Mermaid 11.15 current DOM under the parity gate:
+  - classic nodes and edges now explicitly emit `data-look="classic"`;
+  - node group ids, default rounded path ids, and edge path ids are diagram-prefixed while edge
+    `data-id` remains raw;
+  - root drop-shadow defs and Mindmap margin markers are present;
+  - node and edge section classes wrap through Mermaid's `0..10` palette cycle;
+  - classic rounded and hexagon nodes use direct `rect` / `polygon` DOM instead of the stale
+    rough-wrapper structure.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -64,17 +73,23 @@ Touched surfaces:
 - `crates/merman-render/src/svg/parity/block.rs`
 - `crates/merman-render/src/svg/parity/gantt.rs`
 - `crates/merman-render/src/svg/parity/kanban.rs`
+- `crates/merman-render/src/svg/parity/mindmap.rs`
+- `crates/merman-render/src/svg/parity/roughjs46.rs`
 - `crates/merman-render/tests/block_svg_test.rs`
+- `crates/merman-render/tests/mindmap_svg_test.rs`
 - `crates/merman-render/tests/svg_internal_id_test.rs`
+- `crates/merman/tests/theme_renderability_smoke.rs`
 - `crates/xtask/src/cmd/audit.rs`
 - `crates/xtask/src/cmd/import/{cypress,docs,examples}.rs`
 - `fixtures/info/*.layout.golden.json`
 - `fixtures/block/*.layout.golden.json`
 - `fixtures/gantt/zed_pr_57644_gantt.layout.golden.json`
+- `fixtures/mindmap/zed_pr_57644_mindmap.layout.golden.json`
 - `fixtures/upstream-svgs/info/*.svg`
 - `fixtures/upstream-svgs/block/*.svg`
 - `fixtures/upstream-svgs/gantt/*.svg`
 - `fixtures/upstream-svgs/kanban/*.svg`
+- `fixtures/upstream-svgs/mindmap/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
@@ -110,6 +125,14 @@ Focused verification:
   test run.
 - `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3` -
   passed after the Kanban renderer DOM id/title-label update.
+- `cargo nextest run -p merman-render --test mindmap_svg_test` - passed, `3` tests run.
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke mindmap` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed after the Mindmap renderer DOM update.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run after the Mindmap layout golden refresh.
+- `cargo fmt --check -p merman-render -p merman` - passed.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -123,8 +146,8 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  Next HPD-090 work should refresh the remaining broad stale families (`mindmap`, `radar`) and
-  narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
+  Next HPD-090 work should refresh the remaining broad stale family (`radar`) and narrow stale
+  fixtures listed in `BASELINE_PREPARATION.md`, then rerun
   layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
   import is indicated yet.
 
