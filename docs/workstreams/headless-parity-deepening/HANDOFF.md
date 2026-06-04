@@ -38,7 +38,12 @@ Immediate next task:
   parity gate (diagram-prefixed node/edge ids, XHTML paragraph label children including blank
   placeholders, table-cell label containers with `line-height: 1.5`, and Mermaid 11.15 edge class
   tokens). `compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- Remaining HPD-090 broad stale families are `gantt`, `kanban`, `mindmap`, and `radar`.
+- The Gantt refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, the
+  missing `zed_pr_57644_gantt` layout golden was added, and the local Gantt renderer now emits
+  diagram-prefixed DOM ids for exclude ranges, task bars, and task label text nodes. Prototype-like
+  task ids such as `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
+  `compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- Remaining HPD-090 broad stale families are `kanban`, `mindmap`, and `radar`.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

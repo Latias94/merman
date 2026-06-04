@@ -75,7 +75,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `class` | stale, narrow | `246 / 246`, `2` diffs | Point refresh after inspecting the two fixtures. |
 | `er` | pass | `101 / 101` | Keep. |
 | `flowchart` | stale, narrow | `1074 / 1074`, `4` diffs | Point refresh the four HTML demo KaTeX fixtures. |
-| `gantt` | stale, broad | `151 / 151`, `133` diffs | Refresh by family; preserve fixed-width baseline policy. |
+| `gantt` | refreshed + DOM parity fixed | `151 / 151`, `137` diffs | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `gitgraph` | pass under structure gate | `252 / 252` | Keep; textual diff exists, but no structure failure was logged. |
 | `info` | pass after refresh | `15 / 15` | Keep. |
 | `journey` | pass | `26 / 26` | Keep. |
@@ -178,6 +178,31 @@ Verification:
 - `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
 - `cargo fmt --all --check`
 
+## Fifth Slice Completed
+
+Gantt baseline refresh plus renderer DOM parity:
+
+- `fixtures/upstream-svgs/gantt/*.svg` were regenerated to the pinned Mermaid 11.15 baseline; `137`
+  of the `151` stored SVGs changed.
+- `cargo run -p xtask -- update-layout-snapshots --diagram gantt` added the missing
+  `fixtures/gantt/zed_pr_57644_gantt.layout.golden.json` snapshot.
+- Gantt SVG output now emits the current Mermaid 11.15 DOM ids for:
+  - excluded date range rectangles;
+  - task bar rectangles;
+  - task label text nodes.
+- Prototype-like task ids such as `__proto__` and `constructor` are now safe because the emitted DOM
+  id is diagram-prefixed.
+- The Gantt family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo run -p xtask -- compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\gantt_report_parity_hpd090_after_id_fix.md`
+- `cargo nextest run -p merman-render --test svg_internal_id_test`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
+- `cargo nextest run -p merman --features render --test theme_renderability_smoke gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible`
+- `cargo fmt --all --check`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -243,7 +268,7 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Refresh remaining broad stale stored SVG families: `gantt`, `kanban`, `mindmap`, and `radar`.
+1. Refresh remaining broad stale stored SVG families: `kanban`, `mindmap`, and `radar`.
 2. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
    Flowchart HTML demo KaTeX fixtures (`4` fixtures).
 3. Update affected layout snapshots and run family compare gates after each refresh batch.

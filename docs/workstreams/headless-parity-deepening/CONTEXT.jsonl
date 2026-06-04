@@ -661,3 +661,8 @@
 {"file":"fixtures/upstream-svgs/block","reason":"HPD-090 Block stored upstream baseline slice: Block upstream SVG baselines were regenerated to pinned Mermaid 11.15."}
 {"file":"fixtures/block","reason":"HPD-090 Block generated-artifact slice: Block layout goldens were refreshed after current label height measurement semantics."}
 {"file":"target/compare/block_report_parity_hpd090_after_label_fix.md","reason":"HPD-090 evidence: compare-block-svgs parity is green after the Block renderer/layout update and stored SVG refresh."}
+{"file":"crates/merman-render/src/svg/parity/gantt.rs","reason":"HPD-090 Gantt refresh follow-up: local Gantt SVG output now emits Mermaid 11.15 diagram-prefixed DOM ids for exclude ranges, task bars, and task label text nodes, including prototype-like task ids."}
+{"file":"crates/merman-render/tests/svg_internal_id_test.rs","reason":"HPD-090 Gantt regression: internal SVG id tests now cover Gantt task, exclude range, and prototype-like task id prefixing."}
+{"file":"fixtures/upstream-svgs/gantt","reason":"HPD-090 Gantt stored upstream baseline slice: Gantt upstream SVG baselines were regenerated to pinned Mermaid 11.15; 137 of 151 stored SVGs changed."}
+{"file":"fixtures/gantt/zed_pr_57644_gantt.layout.golden.json","reason":"HPD-090 Gantt generated-artifact slice: update-layout-snapshots added the missing layout golden for the existing Zed PR Gantt fixture."}
+{"file":"target/compare/gantt_report_parity_hpd090_after_id_fix.md","reason":"HPD-090 evidence: compare-gantt-svgs parity is green after the Gantt renderer DOM id update and stored SVG refresh."}

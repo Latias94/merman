@@ -40,8 +40,12 @@ fn fmt_allow_nan(v: f64) -> String {
     fmt_string(v)
 }
 
-fn gantt_is_unsafe_rect_id(id: &str) -> bool {
-    matches!(id, "__proto__" | "constructor" | "prototype")
+fn gantt_dom_id(diagram_id: &str, raw_id: &str) -> String {
+    if diagram_id.is_empty() {
+        raw_id.to_string()
+    } else {
+        format!("{diagram_id}-{raw_id}")
+    }
 }
 
 fn gantt_insert_before_width(base: &str, insert: &str) -> String {
@@ -250,7 +254,7 @@ pub(super) fn render_gantt_diagram_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<rect id="{id}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{cx}px {cy}px" class="exclude-range"/>"#,
-                    id = escape_attr(&r.id),
+                    id = escape_attr(&gantt_dom_id(diagram_id, &r.id)),
                     x = fmt(r.x),
                     y = fmt(r.y),
                     w = fmt(r.width),
@@ -321,9 +325,11 @@ pub(super) fn render_gantt_diagram_svg_model(
             );
 
             let _ = write!(&mut out, r#"<rect"#);
-            if !gantt_is_unsafe_rect_id(&t.id) {
-                let _ = write!(&mut out, r#" id="{}""#, escape_attr(&t.bar.id));
-            }
+            let _ = write!(
+                &mut out,
+                r#" id="{}""#,
+                escape_attr(&gantt_dom_id(diagram_id, &t.bar.id))
+            );
             let _ = write!(
                 &mut out,
                 r#" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{origin}" class="{cls}"/>"#,
@@ -392,7 +398,7 @@ pub(super) fn render_gantt_diagram_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<text id="{id}" font-size="{fs}" x="{x}" y="{y}" class="{cls}">{txt}</text>"#,
-                id = escape_attr(&t.label.id),
+                id = escape_attr(&gantt_dom_id(diagram_id, &t.label.id)),
                 fs = fmt(t.label.font_size),
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),

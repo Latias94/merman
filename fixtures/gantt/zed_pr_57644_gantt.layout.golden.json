@@ -1,0 +1,711 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 436.0
+      },
+      "width": 1184.0,
+      "height": 436.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%b %d",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Research",
+        "Design",
+        "Development",
+        "Launch"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 5.0,
+          "x": 0.0,
+          "y": 168.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 7.0,
+          "x": 0.0,
+          "y": 216.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 6.0,
+          "x": 0.0,
+          "y": 192.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 8.0,
+          "x": 0.0,
+          "y": 240.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 9.0,
+          "x": 0.0,
+          "y": 264.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 10.0,
+          "x": 0.0,
+          "y": 288.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 11.0,
+          "x": 0.0,
+          "y": 312.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        },
+        {
+          "index": 12.0,
+          "x": 0.0,
+          "y": 336.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        },
+        {
+          "index": 13.0,
+          "x": 0.0,
+          "y": 360.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Research",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Research"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Design",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 170.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Design"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        },
+        {
+          "section": "Development",
+          "index": 2.0,
+          "x": 10.0,
+          "y": 266.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Development"
+          ],
+          "class": "sectionTitle sectionTitle2"
+        },
+        {
+          "section": "Launch",
+          "index": 3.0,
+          "x": 10.0,
+          "y": 350.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Launch"
+          ],
+          "class": "sectionTitle sectionTitle3"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "r1",
+          "task": "Market analysis        ",
+          "section": "Research",
+          "task_type": "Research",
+          "order": 0.0,
+          "start_ms": 1736121600000.0,
+          "end_ms": 1737331200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "r1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 145.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "r1-text",
+            "text": "Market analysis        ",
+            "font_size": 11.0,
+            "width": 71.06,
+            "x": 147.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-71.06"
+          }
+        },
+        {
+          "id": "r3",
+          "task": "User interviews        ",
+          "section": "Research",
+          "task_type": "Research",
+          "order": 2.0,
+          "start_ms": 1736726400000.0,
+          "end_ms": 1737590400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "r3",
+            "x": 147.0,
+            "y": 98.0,
+            "width": 104.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "r3-text",
+            "text": "User interviews        ",
+            "font_size": 11.0,
+            "width": 72.27,
+            "x": 199.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-72.27000000000001"
+          }
+        },
+        {
+          "id": "r2",
+          "task": "Competitor review      ",
+          "section": "Research",
+          "task_type": "Research",
+          "order": 1.0,
+          "start_ms": 1737331200000.0,
+          "end_ms": 1737936000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "r2",
+            "x": 220.0,
+            "y": 74.0,
+            "width": 72.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "r2-text",
+            "text": "Competitor review      ",
+            "font_size": 11.0,
+            "width": 85.58,
+            "x": 297.0,
+            "y": 87.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-85.58"
+          }
+        },
+        {
+          "id": "d1",
+          "task": "Wireframes             ",
+          "section": "Design",
+          "task_type": "Design",
+          "order": 3.0,
+          "start_ms": 1737936000000.0,
+          "end_ms": 1738800000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d1",
+            "x": 292.0,
+            "y": 122.0,
+            "width": 104.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done1"
+          },
+          "label": {
+            "id": "d1-text",
+            "text": "Wireframes             ",
+            "font_size": 11.0,
+            "width": 54.12,
+            "x": 344.0,
+            "y": 135.5,
+            "class": "taskText taskText1 width-54.12"
+          }
+        },
+        {
+          "id": "d2",
+          "task": "Visual design          ",
+          "section": "Design",
+          "task_type": "Design",
+          "order": 4.0,
+          "start_ms": 1738800000000.0,
+          "end_ms": 1740009600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d2",
+            "x": 396.0,
+            "y": 146.0,
+            "width": 144.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active1"
+          },
+          "label": {
+            "id": "d2-text",
+            "text": "Visual design          ",
+            "font_size": 11.0,
+            "width": 57.31,
+            "x": 468.0,
+            "y": 159.5,
+            "class": "taskText taskText1 width-57.31"
+          }
+        },
+        {
+          "id": "d3",
+          "task": "Prototype              ",
+          "section": "Design",
+          "task_type": "Design",
+          "order": 5.0,
+          "start_ms": 1740009600000.0,
+          "end_ms": 1740614400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d3",
+            "x": 540.0,
+            "y": 170.0,
+            "width": 73.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "d3-text",
+            "text": "Prototype              ",
+            "font_size": 11.0,
+            "width": 45.76,
+            "x": 576.5,
+            "y": 183.5,
+            "class": "taskText taskText1 width-45.760000000000005"
+          }
+        },
+        {
+          "id": "dev1",
+          "task": "Backend API            ",
+          "section": "Development",
+          "task_type": "Development",
+          "order": 7.0,
+          "start_ms": 1740009600000.0,
+          "end_ms": 1741824000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "dev1",
+            "x": 540.0,
+            "y": 218.0,
+            "width": 217.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "dev1-text",
+            "text": "Backend API            ",
+            "font_size": 11.0,
+            "width": 56.43,
+            "x": 648.5,
+            "y": 231.5,
+            "class": "taskText taskText2 width-56.43"
+          }
+        },
+        {
+          "id": "d4",
+          "task": "Usability testing      ",
+          "section": "Design",
+          "task_type": "Design",
+          "order": 6.0,
+          "start_ms": 1740614400000.0,
+          "end_ms": 1741046400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d4",
+            "x": 613.0,
+            "y": 194.0,
+            "width": 51.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "d4-text",
+            "text": "Usability testing      ",
+            "font_size": 11.0,
+            "width": 75.9,
+            "x": 669.0,
+            "y": 207.5,
+            "class": "taskTextOutsideRight taskTextOutside1 width-75.89999999999999"
+          }
+        },
+        {
+          "id": "dev2",
+          "task": "Frontend implementation",
+          "section": "Development",
+          "task_type": "Development",
+          "order": 8.0,
+          "start_ms": 1740614400000.0,
+          "end_ms": 1742169600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "dev2",
+            "x": 613.0,
+            "y": 242.0,
+            "width": 186.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "dev2-text",
+            "text": "Frontend implementation",
+            "font_size": 11.0,
+            "width": 112.31,
+            "x": 706.0,
+            "y": 255.5,
+            "class": "taskText taskText2 width-112.30999999999999"
+          }
+        },
+        {
+          "id": "dev3",
+          "task": "Integration            ",
+          "section": "Development",
+          "task_type": "Development",
+          "order": 9.0,
+          "start_ms": 1741824000000.0,
+          "end_ms": 1742428800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "dev3",
+            "x": 757.0,
+            "y": 266.0,
+            "width": 73.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "dev3-text",
+            "text": "Integration            ",
+            "font_size": 11.0,
+            "width": 48.95,
+            "x": 793.5,
+            "y": 279.5,
+            "class": "taskText taskText2 width-48.95"
+          }
+        },
+        {
+          "id": "dev4",
+          "task": "QA testing             ",
+          "section": "Development",
+          "task_type": "Development",
+          "order": 10.0,
+          "start_ms": 1742428800000.0,
+          "end_ms": 1743292800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "dev4",
+            "x": 830.0,
+            "y": 290.0,
+            "width": 103.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task crit2"
+          },
+          "label": {
+            "id": "dev4-text",
+            "text": "QA testing             ",
+            "font_size": 11.0,
+            "width": 48.29,
+            "x": 881.5,
+            "y": 303.5,
+            "class": "taskText taskText2 width-48.290000000000006"
+          }
+        },
+        {
+          "id": "l1",
+          "task": "Staging deploy         ",
+          "section": "Launch",
+          "task_type": "Launch",
+          "order": 11.0,
+          "start_ms": 1743292800000.0,
+          "end_ms": 1743552000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "l1",
+            "x": 933.0,
+            "y": 314.0,
+            "width": 31.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task3"
+          },
+          "label": {
+            "id": "l1-text",
+            "text": "Staging deploy         ",
+            "font_size": 11.0,
+            "width": 65.01,
+            "x": 969.0,
+            "y": 327.5,
+            "class": "taskTextOutsideRight taskTextOutside3 width-65.01"
+          }
+        },
+        {
+          "id": "l2",
+          "task": "Beta release           ",
+          "section": "Launch",
+          "task_type": "Launch",
+          "order": 12.0,
+          "start_ms": 1743552000000.0,
+          "end_ms": 1744761600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "l2",
+            "x": 964.0,
+            "y": 338.0,
+            "width": 145.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task3"
+          },
+          "label": {
+            "id": "l2-text",
+            "text": "Beta release           ",
+            "font_size": 11.0,
+            "width": 55.88,
+            "x": 1036.5,
+            "y": 351.5,
+            "class": "taskText taskText3 width-55.88"
+          }
+        },
+        {
+          "id": "l3",
+          "task": "Production deploy      ",
+          "section": "Launch",
+          "task_type": "Launch",
+          "order": 13.0,
+          "start_ms": 1744761600000.0,
+          "end_ms": 1744761600000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "l3",
+            "x": 1099.0,
+            "y": 362.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task3"
+          },
+          "label": {
+            "id": "l3-text",
+            "text": "Production deploy      ",
+            "font_size": 11.0,
+            "width": 79.2,
+            "x": 1094.0,
+            "y": 375.5,
+            "class": "taskTextOutsideLeft taskTextOutside3"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1736640000000.0,
+          "x": 137.0,
+          "label": "Jan 12"
+        },
+        {
+          "time_ms": 1737244800000.0,
+          "x": 209.0,
+          "label": "Jan 19"
+        },
+        {
+          "time_ms": 1737849600000.0,
+          "x": 282.0,
+          "label": "Jan 26"
+        },
+        {
+          "time_ms": 1738454400000.0,
+          "x": 354.0,
+          "label": "Feb 02"
+        },
+        {
+          "time_ms": 1739059200000.0,
+          "x": 427.0,
+          "label": "Feb 09"
+        },
+        {
+          "time_ms": 1739664000000.0,
+          "x": 499.0,
+          "label": "Feb 16"
+        },
+        {
+          "time_ms": 1740268800000.0,
+          "x": 571.0,
+          "label": "Feb 23"
+        },
+        {
+          "time_ms": 1740873600000.0,
+          "x": 644.0,
+          "label": "Mar 02"
+        },
+        {
+          "time_ms": 1741478400000.0,
+          "x": 716.0,
+          "label": "Mar 09"
+        },
+        {
+          "time_ms": 1742083200000.0,
+          "x": 788.0,
+          "label": "Mar 16"
+        },
+        {
+          "time_ms": 1742688000000.0,
+          "x": 861.0,
+          "label": "Mar 23"
+        },
+        {
+          "time_ms": 1743292800000.0,
+          "x": 933.0,
+          "label": "Mar 30"
+        },
+        {
+          "time_ms": 1743897600000.0,
+          "x": 1006.0,
+          "label": "Apr 06"
+        },
+        {
+          "time_ms": 1744502400000.0,
+          "x": 1078.0,
+          "label": "Apr 13"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Product Launch Timeline",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -144,3 +144,36 @@ Bob-->>Alice: Back"#,
         "expected no exact bare sequence number CSS selector:\n{svg}"
     );
 }
+
+#[test]
+fn gantt_task_and_exclude_ids_are_prefixed_with_diagram_svg_id() {
+    let svg = render_svg_from_text(
+        r#"gantt
+dateFormat YYYY-MM-DD
+excludes 2024-01-02
+section Work
+  Build: a1, 2024-01-01, 3d"#,
+        "m15-gantt",
+    );
+
+    assert_scoped_definition_id(&svg, "m15-gantt", "a1");
+    assert_scoped_definition_id(&svg, "m15-gantt", "a1-text");
+    assert_scoped_definition_id(&svg, "m15-gantt", "exclude-2024-01-02");
+}
+
+#[test]
+fn gantt_prototype_like_task_ids_are_prefixed_with_diagram_svg_id() {
+    let svg = render_svg_from_text(
+        r#"gantt
+dateFormat YYYY-MM-DD
+section Work
+  Proto task: __proto__, 2024-01-01, 1d
+  Ctor task: constructor, 2024-01-02, 1d"#,
+        "m15-gantt-proto",
+    );
+
+    assert_scoped_definition_id(&svg, "m15-gantt-proto", "__proto__");
+    assert_scoped_definition_id(&svg, "m15-gantt-proto", "__proto__-text");
+    assert_scoped_definition_id(&svg, "m15-gantt-proto", "constructor");
+    assert_scoped_definition_id(&svg, "m15-gantt-proto", "constructor-text");
+}
