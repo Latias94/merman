@@ -53,6 +53,7 @@ struct ArchitectureDeltaRunSummary {
     local_svg_path: PathBuf,
     report_path: PathBuf,
     probe_json_path: Option<PathBuf>,
+    render_probe_json_path: Option<PathBuf>,
     viewbox_width_delta: Option<f64>,
     viewbox_height_delta: Option<f64>,
     max_width_delta: Option<f64>,
@@ -68,6 +69,7 @@ struct ArchitectureDeltaCli {
     fixture_filters: Vec<String>,
     out_dir: Option<PathBuf>,
     probe_dir: Option<PathBuf>,
+    render_probe_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -222,6 +224,7 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
     let mut fixture_filters: Vec<String> = Vec::new();
     let mut out_dir: Option<PathBuf> = None;
     let mut probe_dir: Option<PathBuf> = None;
+    let mut render_probe_dir: Option<PathBuf> = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -241,6 +244,10 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
                 i += 1;
                 probe_dir = args.get(i).map(PathBuf::from);
             }
+            "--render-probe-dir" => {
+                i += 1;
+                render_probe_dir = args.get(i).map(PathBuf::from);
+            }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -259,6 +266,7 @@ fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli
         fixture_filters,
         out_dir,
         probe_dir,
+        render_probe_dir,
     })
 }
 
@@ -435,6 +443,22 @@ fn json_svg_fact_rect(v: Option<&serde_json::Value>) -> Option<DebugRect> {
         w: json_f64(v, "w")?,
         h: json_f64(v, "h")?,
     })
+}
+
+fn parse_debug_viewbox(value: &str) -> Option<(f64, f64, f64, f64)> {
+    let nums: Vec<f64> = value
+        .split_whitespace()
+        .filter_map(|part| part.trim().parse::<f64>().ok())
+        .collect();
+    if nums.len() != 4 {
+        return None;
+    }
+    Some((nums[0], nums[1], nums[2], nums[3]))
+}
+
+fn format_debug_viewbox(v: Option<(f64, f64, f64, f64)>) -> String {
+    v.map(|v| format!("{:.6} {:.6} {:.6} {:.6}", v.0, v.1, v.2, v.3))
+        .unwrap_or_else(|| "<none>".to_string())
 }
 
 fn architecture_probe_nodes_by_id(
@@ -1196,21 +1220,22 @@ fn render_architecture_delta_batch_markdown(summaries: &[ArchitectureDeltaRunSum
     let _ = writeln!(&mut md, "# Architecture Delta Batch\n");
     let _ = writeln!(
         &mut md,
-        "| fixture | report | upstream svg | local svg | probe json | viewBox width delta | viewBox height delta | max-width delta | root residual score | services | junctions | group rects | delta rows |"
+        "| fixture | report | upstream svg | local svg | probe json | render-path probe json | viewBox width delta | viewBox height delta | max-width delta | root residual score | services | junctions | group rects | delta rows |"
     );
     let _ = writeln!(
         &mut md,
-        "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
     );
     for summary in summaries {
         let _ = writeln!(
             &mut md,
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
             summary.stem,
             summary.report_path.display(),
             summary.upstream_svg_path.display(),
             summary.local_svg_path.display(),
             format_optional_path(summary.probe_json_path.as_ref()),
+            format_optional_path(summary.render_probe_json_path.as_ref()),
             format_optional_delta(summary.viewbox_width_delta),
             format_optional_delta(summary.viewbox_height_delta),
             format_optional_delta(summary.max_width_delta),
@@ -1797,6 +1822,250 @@ fn render_architecture_probe_join_markdown(
     let _ = writeln!(report);
 }
 
+fn render_architecture_render_path_join_markdown(
+    report: &mut String,
+    render_probe_json_path: &Path,
+    render_probe: &serde_json::Value,
+    local_viewbox: Option<(f64, f64, f64, f64)>,
+    local_max_width: Option<f64>,
+    local_service_positions: &BTreeMap<String, DebugPt>,
+    local_groups: &BTreeMap<String, DebugRect>,
+    fcose_compound_rows: &[(String, DebugRect, Option<DebugRect>)],
+) {
+    let facts_match = render_probe.get("renderedFacts") == render_probe.get("storedFacts");
+    let probe_kind = render_probe
+        .pointer("/probe/kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<missing>");
+    let render_viewbox = render_probe
+        .pointer("/storedFacts/viewBox")
+        .and_then(|v| v.as_str())
+        .and_then(parse_debug_viewbox);
+    let render_max_width = render_probe
+        .pointer("/storedFacts/maxWidth")
+        .and_then(|v| v.as_f64());
+
+    let mut render_groups: BTreeMap<String, DebugRect> = BTreeMap::new();
+    if let Some(groups) = render_probe
+        .pointer("/storedFacts/groups")
+        .and_then(|v| v.as_object())
+    {
+        for (id, value) in groups {
+            if let Some(rect) = json_svg_fact_rect(Some(value)) {
+                render_groups.insert(id.clone(), rect);
+            }
+        }
+    }
+
+    let mut render_services: BTreeMap<String, DebugPt> = BTreeMap::new();
+    if let Some(services) = render_probe
+        .pointer("/storedFacts/services")
+        .and_then(|v| v.as_object())
+    {
+        for (id, value) in services {
+            if let Some(point) = json_debug_point(Some(value)) {
+                render_services.insert(id.clone(), point);
+            }
+        }
+    }
+
+    let local_fcose: BTreeMap<&str, DebugRect> = fcose_compound_rows
+        .iter()
+        .map(|(id, fcose, _)| (id.as_str(), *fcose))
+        .collect();
+
+    let _ = writeln!(report, "## Render-path probe join\n");
+    let _ = writeln!(
+        report,
+        "Render-path Probe JSON: `{}`",
+        render_probe_json_path.display()
+    );
+    let _ = writeln!(report, "- probe kind: `{probe_kind}`");
+    let _ = writeln!(report, "- rendered/stored facts match: `{facts_match}`\n");
+
+    let _ = writeln!(report, "### Render-path root facts vs local\n");
+    let _ = writeln!(
+        report,
+        "| fact | render-path stored | local | delta |\n|---|---|---|---:|"
+    );
+    let viewbox_width_delta = render_viewbox
+        .zip(local_viewbox)
+        .map(|(render, local)| local.2 - render.2);
+    let viewbox_height_delta = render_viewbox
+        .zip(local_viewbox)
+        .map(|(render, local)| local.3 - render.3);
+    let max_width_delta = render_max_width
+        .zip(local_max_width)
+        .map(|(render, local)| local - render);
+    let _ = writeln!(
+        report,
+        "| viewBox | `{}` | `{}` | `{}` |",
+        format_debug_viewbox(render_viewbox),
+        format_debug_viewbox(local_viewbox),
+        viewbox_width_delta
+            .map(|delta| format!("{delta:+.6} width"))
+            .unwrap_or_else(|| "<n/a>".to_string())
+    );
+    let _ = writeln!(
+        report,
+        "| viewBox height | `{}` | `{}` | `{}` |",
+        render_viewbox
+            .map(|v| format_debug_f64(v.3))
+            .unwrap_or_else(|| "<none>".to_string()),
+        local_viewbox
+            .map(|v| format_debug_f64(v.3))
+            .unwrap_or_else(|| "<none>".to_string()),
+        viewbox_height_delta
+            .map(|delta| format!("{delta:+.6}"))
+            .unwrap_or_else(|| "<n/a>".to_string())
+    );
+    let _ = writeln!(
+        report,
+        "| max-width | `{}` | `{}` | `{}` |",
+        render_max_width
+            .map(format_debug_f64)
+            .unwrap_or_else(|| "<none>".to_string()),
+        local_max_width
+            .map(format_debug_f64)
+            .unwrap_or_else(|| "<none>".to_string()),
+        max_width_delta
+            .map(|delta| format!("{delta:+.6}"))
+            .unwrap_or_else(|| "<n/a>".to_string())
+    );
+    let _ = writeln!(report);
+
+    let _ = writeln!(
+        report,
+        "### Render-path SVG group facts vs local emitted groups\n"
+    );
+    let _ = writeln!(
+        report,
+        "| group | render-path SVG rect | local emitted rect | dx | dy | dw | dh |\n|---|---|---|---:|---:|---:|---:|"
+    );
+    if render_groups.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for (id, render_rect) in &render_groups {
+            let local_rect = local_groups.get(&group_local_rect_key(id)).copied();
+            let _ = writeln!(
+                report,
+                "| `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+                id,
+                format_debug_rect(Some(*render_rect)),
+                format_debug_rect(local_rect),
+                format_debug_optional_f64(local_rect.map(|local| local.x - render_rect.x)),
+                format_debug_optional_f64(local_rect.map(|local| local.y - render_rect.y)),
+                format_debug_optional_f64(local_rect.map(|local| local.w - render_rect.w)),
+                format_debug_optional_f64(local_rect.map(|local| local.h - render_rect.h)),
+            );
+        }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(
+        report,
+        "### Render-path SVG service facts vs local emitted services\n"
+    );
+    let _ = writeln!(
+        report,
+        "| service | render-path SVG pos | local SVG pos | dx | dy |\n|---|---|---|---:|---:|"
+    );
+    if render_services.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for (id, render_pos) in &render_services {
+            let local_pos = local_service_positions
+                .get(&service_local_pos_key(id))
+                .copied();
+            let _ = writeln!(
+                report,
+                "| `{}` | `{}` | `{}` | {} | {} |",
+                id,
+                format_debug_point(Some(*render_pos)),
+                format_debug_point(local_pos),
+                format_debug_optional_f64(local_pos.map(|local| local.x - render_pos.x)),
+                format_debug_optional_f64(local_pos.map(|local| local.y - render_pos.y)),
+            );
+        }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(
+        report,
+        "### Render-path group stages vs local FCoSE compounds\n"
+    );
+    let _ = writeln!(
+        report,
+        "Render-path stage `bb` values are Cytoscape/FCoSE node bounding boxes. Local FCoSE compounds are the local layout-base rectangles exposed for diagnosis, not emitted SVG group rects.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| stage | group | render-path group bb | local FCoSE compound | dx | dy | dw | dh |\n|---|---|---|---|---:|---:|---:|---:|"
+    );
+    let mut wrote_stage = false;
+    if let Some(stages) = render_probe
+        .pointer("/probe/stages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            let tag = json_string(stage, "tag").unwrap_or("<missing>");
+            let Some(nodes) = stage.pointer("/elements/nodes").and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for node in nodes {
+                if node.pointer("/data/type").and_then(|v| v.as_str()) != Some("group") {
+                    continue;
+                }
+                let id = json_string(node, "id").unwrap_or("<missing>");
+                let render_bb = json_debug_rect(node.get("bb"));
+                let local_fcose = local_fcose.get(id).copied();
+                let _ = writeln!(
+                    report,
+                    "| `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+                    tag,
+                    id,
+                    format_debug_rect(render_bb),
+                    format_debug_rect(local_fcose),
+                    format_debug_optional_f64(
+                        render_bb
+                            .zip(local_fcose)
+                            .map(|(render, local)| local.x - render.x)
+                    ),
+                    format_debug_optional_f64(
+                        render_bb
+                            .zip(local_fcose)
+                            .map(|(render, local)| local.y - render.y)
+                    ),
+                    format_debug_optional_f64(
+                        render_bb
+                            .zip(local_fcose)
+                            .map(|(render, local)| local.w - render.w)
+                    ),
+                    format_debug_optional_f64(
+                        render_bb
+                            .zip(local_fcose)
+                            .map(|(render, local)| local.h - render.h)
+                    ),
+                );
+                wrote_stage = true;
+            }
+        }
+    }
+    if !wrote_stage {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    }
+    let _ = writeln!(report);
+}
+
 pub(crate) fn debug_architecture_fcose_probe(args: Vec<String>) -> Result<(), XtaskError> {
     let cli = parse_architecture_fcose_probe_args(&args)?;
     let fixtures: Vec<(PathBuf, String)> = cli
@@ -2066,6 +2335,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         fixture_filters,
         out_dir,
         probe_dir,
+        render_probe_dir,
     } = parse_architecture_delta_args(&args)?;
 
     fn parse_viewbox(v: &str) -> Option<(f64, f64, f64, f64)> {
@@ -2335,6 +2605,19 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         } else {
             None
         };
+        let render_probe_json: Option<(PathBuf, serde_json::Value)> =
+            if let Some(render_probe_dir) = &render_probe_dir {
+                let probe_path = architecture_render_path_probe_json_path(&render_probe_dir, &stem);
+                let probe_text =
+                    fs::read_to_string(&probe_path).map_err(|source| XtaskError::ReadFile {
+                        path: probe_path.display().to_string(),
+                        source,
+                    })?;
+                let probe = serde_json::from_str(&probe_text)?;
+                Some((probe_path, probe))
+            } else {
+                None
+            };
 
         #[derive(Debug, Clone)]
         struct DeltaRow {
@@ -2712,6 +2995,18 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 &group_parents,
             );
         }
+        if let Some((render_probe_path, render_probe)) = &render_probe_json {
+            render_architecture_render_path_join_markdown(
+                &mut report,
+                render_probe_path,
+                render_probe,
+                lo_vb,
+                lo_mw,
+                &lo_services,
+                &lo_groups,
+                &fcose_compound_rows,
+            );
+        }
 
         let _ = writeln!(
             &mut report,
@@ -2748,6 +3043,9 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             local_svg_path: out_local_svg.clone(),
             report_path: out_report.clone(),
             probe_json_path: probe_json
+                .as_ref()
+                .map(|(probe_path, _)| probe_path.clone()),
+            render_probe_json_path: render_probe_json
                 .as_ref()
                 .map(|(probe_path, _)| probe_path.clone()),
             viewbox_width_delta,
@@ -3374,6 +3672,8 @@ mod tests {
             "target/custom-delta",
             "--probe-dir",
             "target/custom-probe",
+            "--render-probe-dir",
+            "target/render-probe",
         ]))
         .unwrap();
 
@@ -3383,6 +3683,10 @@ mod tests {
         );
         assert_eq!(parsed.out_dir, Some(PathBuf::from("target/custom-delta")));
         assert_eq!(parsed.probe_dir, Some(PathBuf::from("target/custom-probe")));
+        assert_eq!(
+            parsed.render_probe_dir,
+            Some(PathBuf::from("target/render-probe"))
+        );
     }
 
     #[test]
@@ -3543,6 +3847,9 @@ mod tests {
                 probe_json_path: Some(PathBuf::from(
                     "target/probe/fixture_a.fcose-browser-probe.json",
                 )),
+                render_probe_json_path: Some(PathBuf::from(
+                    "target/render-probe/fixture_a.render-path-probe.json",
+                )),
                 viewbox_width_delta: Some(5.0),
                 viewbox_height_delta: Some(0.0),
                 max_width_delta: Some(5.0),
@@ -3558,6 +3865,7 @@ mod tests {
                 local_svg_path: PathBuf::from("target/delta/fixture_b.local.svg"),
                 report_path: PathBuf::from("target/delta/fixture_b.md"),
                 probe_json_path: None,
+                render_probe_json_path: None,
                 viewbox_width_delta: Some(0.0),
                 viewbox_height_delta: Some(-6.0),
                 max_width_delta: None,
@@ -3572,8 +3880,8 @@ mod tests {
         let md = render_architecture_delta_batch_markdown(&summaries);
 
         assert!(md.contains("# Architecture Delta Batch"));
-        let fixture_b = "| `fixture_b` | `target/delta/fixture_b.md` | `target/delta/fixture_b.upstream.svg` | `target/delta/fixture_b.local.svg` | `<none>` | `+0.000` | `-6.000` | `<missing>` | `6.000` | 3 | 0 | 2 | 5 |";
-        let fixture_a = "| `fixture_a` | `target/delta/fixture_a.md` | `target/delta/fixture_a.upstream.svg` | `target/delta/fixture_a.local.svg` | `target/probe/fixture_a.fcose-browser-probe.json` | `+5.000` | `+0.000` | `+5.000` | `5.000` | 2 | 1 | 1 | 4 |";
+        let fixture_b = "| `fixture_b` | `target/delta/fixture_b.md` | `target/delta/fixture_b.upstream.svg` | `target/delta/fixture_b.local.svg` | `<none>` | `<none>` | `+0.000` | `-6.000` | `<missing>` | `6.000` | 3 | 0 | 2 | 5 |";
+        let fixture_a = "| `fixture_a` | `target/delta/fixture_a.md` | `target/delta/fixture_a.upstream.svg` | `target/delta/fixture_a.local.svg` | `target/probe/fixture_a.fcose-browser-probe.json` | `target/render-probe/fixture_a.render-path-probe.json` | `+5.000` | `+0.000` | `+5.000` | `5.000` | 2 | 1 | 1 | 4 |";
         assert!(md.contains(fixture_a));
         assert!(md.contains(fixture_b));
         assert!(md.find(fixture_b).unwrap() < md.find(fixture_a).unwrap());
@@ -3731,6 +4039,90 @@ mod tests {
         assert!(md.contains("| `draw-after-layout-before-svg-emission` | `x=0.000000 y=0.000000 w=100.000000 h=50.000000` | 1 | 1 |"));
         assert!(md.contains("| `draw-after-layout-before-svg-emission` | `left` | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` | `x=2.000000 y=4.000000 w=20.000000 h=30.000000` | `x=3.000000 y=5.000000 w=10.000000 h=15.000000` |"));
         assert!(md.contains("| `stage-x` | `sample error` |"));
+    }
+
+    #[test]
+    fn architecture_render_path_join_reports_local_deltas() {
+        let probe_result = serde_json::json!({
+            "renderedFacts": {
+                "viewBox": "0 0 100 50",
+                "maxWidth": 100.0,
+                "groups": {
+                    "left": { "x": 10.0, "y": 20.0, "w": 30.0, "h": 40.0 }
+                },
+                "services": {
+                    "svc": { "x": 5.0, "y": 6.0 }
+                }
+            },
+            "storedFacts": {
+                "viewBox": "0 0 100 50",
+                "maxWidth": 100.0,
+                "groups": {
+                    "left": { "x": 10.0, "y": 20.0, "w": 30.0, "h": 40.0 }
+                },
+                "services": {
+                    "svc": { "x": 5.0, "y": 6.0 }
+                }
+            },
+            "probe": {
+                "kind": "architecture-render-path",
+                "stages": [{
+                    "tag": "draw-after-layout-before-svg-emission",
+                    "elements": {
+                        "nodes": [{
+                            "id": "left",
+                            "data": { "type": "group" },
+                            "bb": { "x1": 8.0, "y1": 18.0, "w": 34.0, "h": 44.0 }
+                        }]
+                    }
+                }]
+            }
+        });
+        let local_services =
+            BTreeMap::from([("service-svc".to_string(), DebugPt { x: 7.0, y: 3.0 })]);
+        let local_groups = BTreeMap::from([(
+            "group-left".to_string(),
+            DebugRect {
+                x: 9.0,
+                y: 21.0,
+                w: 33.0,
+                h: 38.0,
+            },
+        )]);
+        let fcose_compound_rows = vec![(
+            "left".to_string(),
+            DebugRect {
+                x: 6.0,
+                y: 16.0,
+                w: 36.0,
+                h: 42.0,
+            },
+            None,
+        )];
+
+        let mut md = String::new();
+        render_architecture_render_path_join_markdown(
+            &mut md,
+            Path::new("target/probe/fixture.render-path-probe.json"),
+            &probe_result,
+            Some((0.0, 0.0, 105.0, 47.0)),
+            Some(105.0),
+            &local_services,
+            &local_groups,
+            &fcose_compound_rows,
+        );
+
+        assert!(md.contains("## Render-path probe join"));
+        assert!(
+            md.contains("Render-path Probe JSON: `target/probe/fixture.render-path-probe.json`")
+        );
+        assert!(md.contains("| viewBox | `0.000000 0.000000 100.000000 50.000000` | `0.000000 0.000000 105.000000 47.000000` | `+5.000000 width` |"));
+        assert!(md.contains("| max-width | `100.000000` | `105.000000` | `+5.000000` |"));
+        assert!(md.contains("| `left` | `x=10.000000 y=20.000000 w=30.000000 h=40.000000` | `x=9.000000 y=21.000000 w=33.000000 h=38.000000` | -1.000000 | 1.000000 | 3.000000 | -2.000000 |"));
+        assert!(md.contains(
+            "| `svc` | `x=5.000000 y=6.000000` | `x=7.000000 y=3.000000` | 2.000000 | -3.000000 |"
+        ));
+        assert!(md.contains("| `draw-after-layout-before-svg-emission` | `left` | `x=8.000000 y=18.000000 w=34.000000 h=44.000000` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | -2.000000 | -2.000000 | 2.000000 | -2.000000 |"));
     }
 
     #[test]

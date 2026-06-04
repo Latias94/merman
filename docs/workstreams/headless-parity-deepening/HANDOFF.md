@@ -40,6 +40,15 @@ Immediate next task:
   `batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`), and `nested_groups_002` (`+2.5px`).
   `group_port_edges_017` is zero-delta in the fresh all-row report and should not be reopened from
   older pre-Procrustes diagnostics.
+- Latest HPD-050 junction evidence: `debug-architecture-delta` now accepts `--render-probe-dir`
+  and can join actual Mermaid render-path probe facts with local deltas. The focused
+  `junction_fork_join_026` join confirms render-path stored facts still match upstream exactly,
+  while local max-width is `+13.975586px`; local emitted group deltas are `left`
+  `dw=+17.331122/dh=-18.609285` and `right` `dw=-3.388269/dh=+6.107441`. The render-path stage
+  table shows local FCoSE compounds are close to the pre-segment run1 group `bb` shape but diverge
+  from the post-rerun `draw-after-layout-before-svg-emission` state that feeds the stored SVG.
+  Next junction work should compare against bundled `cytoscape-fcose@2.2.0` / `cose-base@2.2.0`
+  internal phases, not tune root bounds or group padding from this report alone.
 - Root residual work should wait behind HPD-080 when a supported diagram is visibly broken.
 
 Current repository reality to preserve:

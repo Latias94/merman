@@ -339,6 +339,56 @@ Residual note:
   comparison if more source evidence is needed. It still does not justify tuning `manatee` against
   the older manual probe when that probe disagrees with the real render path.
 
+## HPD-050 - Architecture Render-Path Delta Join
+
+Outcome:
+
+- Extended `xtask debug-architecture-delta` with optional `--render-probe-dir`.
+- The delta report can now join actual Mermaid render-path probe facts with local SVG deltas,
+  separately from the older manual FCoSE probe supplied by `--probe-dir`.
+- The new report section records:
+  - render-path stored root facts versus local root facts;
+  - render-path SVG group rectangles versus local emitted group rectangles;
+  - render-path SVG service positions versus local emitted service positions;
+  - render-path group stage `bb` values versus local FCoSE compound rectangles.
+- The Architecture delta batch index now has separate `probe json` and `render-path probe json`
+  columns.
+- Focused `junction_fork_join_026` output confirms the render-path probe is still authoritative:
+  `rendered/stored facts match: true`, stored max-width `2808.126709`, local max-width
+  `2822.102295`, delta `+13.975586`.
+- The same focused report shows the leading local emitted differences:
+  - `left` group: `dx=-6.954918`, `dy=+6.250922`, `dw=+17.331122`, `dh=-18.609285`;
+  - `right` group: `dx=+10.376204`, `dy=-12.358363`, `dw=-3.388269`, `dh=+6.107441`;
+  - service position deltas remain split across the same displacement axes.
+- Render-path stage comparison makes the junction row more precise: local FCoSE compound bounds are
+  close to the render-path `layoutstop-run1-before-segments` group `bb` shape (`dx=+3.25`,
+  `dy=+11`, `dw=-5`, `dh=-22` for both groups), but diverge from the post-rerun
+  `draw-after-layout-before-svg-emission` group `bb` state that feeds the stored SVG.
+- No production renderer, layout formula, SVG fixture, or baseline changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `target\compare\architecture-delta-render-path-join-hpd050\stress_architecture_junction_fork_join_026.md`
+- `target\compare\architecture_report_parity_after_render_path_join_hpd050.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-render-path-delta-join.md`
+
+Focused verification:
+
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask` - passed, `106` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --render-probe-dir target\compare\architecture-render-path-probe-xtask-hpd050 --out target\compare\architecture-delta-render-path-join-hpd050` -
+  passed and wrote the joined junction report.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_render_path_join_hpd050.md` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The next source-backed junction slice should compare local
+  `manatee` against bundled `cytoscape-fcose@2.2.0` / `cose-base@2.2.0` internal phases from the
+  actual render path. Do not tune root bounds, group padding, or final SVG group rect emission from
+  this report alone.
+
 ## HPD-050 - Architecture Render-Path Probe
 
 Outcome:
