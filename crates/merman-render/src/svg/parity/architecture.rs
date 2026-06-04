@@ -422,6 +422,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             settings: &settings,
             text_measurer: &text_measurer,
             sanitize_config,
+            icon_registry: options.icon_registry.as_deref(),
             content_bounds: &mut content_bounds,
             singleton_icon_text_service_id,
         };

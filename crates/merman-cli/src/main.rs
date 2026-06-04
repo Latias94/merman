@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod error;
 mod io;
+mod markdown;
 mod render;
 
 use clap::Parser;

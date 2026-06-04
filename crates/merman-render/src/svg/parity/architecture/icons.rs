@@ -40,3 +40,21 @@ pub(super) fn arch_icon_svg(icon_name: &str, icon_size_px: f64) -> String {
         body = body
     )
 }
+
+pub(super) fn arch_icon_svg_with_registry(
+    icon_name: &str,
+    icon_size_px: f64,
+    icon_registry: Option<&crate::svg::IconRegistry>,
+) -> String {
+    icon_registry
+        .and_then(|registry| {
+            registry.svg_for(
+                icon_name,
+                icon_size_px,
+                icon_size_px,
+                Some("architecture"),
+                None,
+            )
+        })
+        .unwrap_or_else(|| arch_icon_svg(icon_name, icon_size_px))
+}

@@ -45,6 +45,8 @@ ratex-parser = "0.1.10"
 ratex-svg = { version = "0.1.10", default-features = false }
 ratex-types = "0.1.10"
 regex = "1.11.1"
+reqwest = { version = "0.12.12", default-features = false, features = ["blocking", "rustls-tls"] }
+rayon = "1.10.0"
 roxmltree = "0.20.0"
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"

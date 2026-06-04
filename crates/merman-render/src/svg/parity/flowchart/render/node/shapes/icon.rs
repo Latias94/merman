@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> bool {
     // Port of Mermaid `icon.ts` (`icon-shape default`).
-    if let Some(_icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
+    if let Some(icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
         let label_text_plain =
             flowchart_label_plain_text(label.text, label.label_type, ctx.node_html_labels);
         let has_label = !label_text_plain.trim().is_empty();
@@ -134,17 +134,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
             escape_attr(&outer_path)
         );
 
-        // Mirror Mermaid's placeholder icon output (blue square with `?`).
         let icon_tx = -icon_size / 2.0;
         let icon_ty = icon_dy - icon_size / 2.0;
+        let icon_svg = super::super::helpers::icon_svg_or_placeholder(ctx, icon_name, icon_size);
         let _ = write!(
             out,
-            r#"<g transform="translate({},{})" style="color: {};"><g><svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg></g></g>"#,
+            r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
             fmt(icon_tx),
             fmt(icon_ty),
             escape_attr(common.stroke_color),
-            fmt(icon_size),
-            fmt(icon_size),
+            icon_svg,
         );
 
         out.push_str("</g>");

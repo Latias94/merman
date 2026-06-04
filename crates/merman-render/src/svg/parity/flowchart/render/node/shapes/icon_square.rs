@@ -47,7 +47,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> bool {
     // Port of Mermaid `iconSquare.ts` (`icon-shape default`).
-    if let Some(_icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
+    if let Some(icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
         // Mermaid `labelHelper(...)` uses the flowchart `nodePadding` (15px) and returns `halfPadding`.
         let half_padding = (ctx.node_padding / 2.0).max(0.0);
         let label_text_plain =
@@ -180,19 +180,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             escape_attr(&outer_path)
         );
 
-        // Mermaid CLI baseline at 11.12.2 renders iconify-based icons via a browser-loaded icon
-        // set. In our pinned baselines, the upstream renderer falls back to a placeholder icon SVG
-        // (a blue square with a `?`). Mirror that placeholder output here.
         let icon_tx = -icon_size / 2.0;
         let icon_ty = icon_dy - icon_size / 2.0;
+        let icon_svg = super::super::helpers::icon_svg_or_placeholder(ctx, icon_name, icon_size);
         let _ = write!(
             out,
-            r#"<g transform="translate({},{})" style="color: {};"><g><svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg></g></g>"#,
+            r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
             fmt(icon_tx),
             fmt(icon_ty),
             escape_attr(common.stroke_color),
-            fmt(icon_size),
-            fmt(icon_size),
+            icon_svg,
         );
 
         out.push_str("</g>");

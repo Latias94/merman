@@ -1,14 +1,24 @@
 use crate::cli::{ExportArgs, ParseCliArgs, RenderArgs, RenderCliArgs, RenderFormat};
 use crate::config::{engine_for, layout_options, math_renderer, parse_options};
 use crate::error::CliError;
-use crate::io::{OutputTarget, read_input, read_optional_text_file, write_output};
+use crate::io::{
+    OutputTarget, read_input, read_named_text_file, read_optional_text_file, write_file,
+    write_output,
+};
+use crate::markdown::{self, MarkdownImage};
 use merman::render::{
-    MathRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline,
+    IconRegistry, MathRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor, SvgPipeline,
     SvgRenderOptions,
 };
 use merman::{Engine, ParseOptions};
+use rayon::prelude::*;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
+
+const MMDC_DEFAULT_PDF_WIDTH_PT: f32 = 612.0;
+const MMDC_DEFAULT_PDF_HEIGHT_PT: f32 = 792.0;
 
 #[derive(Debug, Clone, Copy)]
 enum RenderMode {
@@ -26,6 +36,10 @@ pub(crate) struct RenderPlan {
     scale: f32,
     background: Option<String>,
     css: Option<String>,
+    icon_registry: Option<Arc<IconRegistry>>,
+    artefacts: Option<PathBuf>,
+    jobs: usize,
+    pdf_fit: bool,
     quiet: bool,
     sequence_mirror_actors: bool,
     mode: RenderMode,
@@ -38,11 +52,20 @@ struct RenderRequest<'a> {
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
 }
 
+struct RenderedArtifact {
+    bytes: Vec<u8>,
+    title: Option<String>,
+    desc: Option<String>,
+}
+
 pub(crate) fn render_plan_for_mmdc(
     positional_input: Option<String>,
     export: ExportArgs,
 ) -> Result<RenderPlan, CliError> {
     let input = merge_input(export.input_file.clone(), positional_input)?;
+    let artefacts = prepare_artefacts_dir(export.artefacts.as_deref(), input.as_deref())?;
+    validate_mmdc_output_path(export.output.as_deref())?;
+    let icon_registry = load_icon_registry(&export.icon_packs, &export.icon_packs_names_and_urls)?;
     let format = infer_output_format(export.output.as_deref(), export.output_format)
         .unwrap_or(RenderFormat::Svg);
     let output = Some(OutputTarget::from_cli(
@@ -67,6 +90,7 @@ pub(crate) fn render_plan_for_mmdc(
     };
 
     apply_official_defaults(&mut parse, &mut render);
+    validate_puppeteer_config_file(export.puppeteer_config_file.as_deref())?;
 
     Ok(RenderPlan {
         input,
@@ -82,6 +106,10 @@ pub(crate) fn render_plan_for_mmdc(
                 .unwrap_or_else(|| "white".to_string()),
         ),
         css: read_optional_text_file(export.css_file.as_deref(), "CSS file")?,
+        icon_registry,
+        artefacts,
+        jobs: export.jobs.unwrap_or_else(default_jobs),
+        pdf_fit: export.pdf_fit,
         quiet: export.quiet,
         sequence_mirror_actors: export.sequence_mirror_actors,
         mode: RenderMode::MmdcCompat,
@@ -93,6 +121,11 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
     let format = infer_output_format(args.export.output.as_deref(), args.export.output_format)
         .unwrap_or(RenderFormat::Svg);
     let output = subcommand_output_target(args.export.output.clone(), input.as_deref(), format);
+    let icon_registry = load_icon_registry(
+        &args.export.icon_packs,
+        &args.export.icon_packs_names_and_urls,
+    )?;
+    validate_puppeteer_config_file(args.export.puppeteer_config_file.as_deref())?;
 
     Ok(RenderPlan {
         input,
@@ -114,6 +147,10 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
         scale: args.export.scale.unwrap_or(1.0),
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
+        icon_registry,
+        artefacts: None,
+        jobs: args.export.jobs.unwrap_or_else(default_jobs),
+        pdf_fit: true,
         quiet: args.export.quiet,
         sequence_mirror_actors: args.export.sequence_mirror_actors,
         mode: RenderMode::Subcommand,
@@ -133,7 +170,11 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
         math_renderer,
     };
 
-    request.render(&text)
+    if plan.is_mmdc_markdown_input() {
+        request.render_markdown(&text)
+    } else {
+        request.render(&text)
+    }
 }
 
 impl<'a> RenderRequest<'a> {
@@ -150,18 +191,115 @@ impl<'a> RenderRequest<'a> {
                 .as_deref()
                 .map(merman::render::sanitize_svg_id),
             math_renderer: self.math_renderer.clone(),
+            icon_registry: self.plan.icon_registry.clone(),
             ..Default::default()
         }
     }
 
     fn render(&self, text: &str) -> Result<(), CliError> {
+        let artifact = self.render_artifact(text)?;
+        write_output(self.plan.output.as_ref(), &artifact.bytes)
+    }
+
+    fn render_markdown(&self, text: &str) -> Result<(), CliError> {
+        if self.plan.format.is_text() {
+            return Err(CliError::InvalidOutput(
+                "Markdown input does not support ASCII/Unicode output".to_string(),
+            ));
+        }
+
+        let output_path = match self.plan.output.as_ref() {
+            Some(OutputTarget::File(path)) => path.as_path(),
+            None | Some(OutputTarget::Stdout) => {
+                return Err(CliError::InvalidOutput(
+                    "Cannot use `stdout` with markdown input".to_string(),
+                ));
+            }
+        };
+
+        let charts = markdown::extract_charts(text);
+
+        if charts.is_empty() {
+            self.info("No mermaid charts found in Markdown input");
+        } else {
+            self.info(&format!(
+                "Found {} mermaid charts in Markdown input",
+                charts.len()
+            ));
+        }
+
+        let images = self.render_markdown_charts(output_path, &charts)?;
+
+        if markdown::is_markdown_path(output_path) {
+            let rewritten = markdown::replace_charts_with_images(text, &images);
+            write_file(output_path, rewritten.as_bytes())?;
+            self.info(&format!(" ✅ {}", output_path.display()));
+        }
+
+        Ok(())
+    }
+
+    fn render_markdown_charts(
+        &self,
+        output_path: &Path,
+        charts: &[markdown::MarkdownChart],
+    ) -> Result<Vec<MarkdownImage>, CliError> {
+        if charts.len() <= 1 || self.plan.jobs == 1 {
+            return charts
+                .iter()
+                .enumerate()
+                .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                .collect();
+        }
+
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(self.plan.jobs)
+            .build()
+            .map_err(|err| {
+                CliError::InvalidInput(format!("failed to configure Markdown render jobs: {err}"))
+            })?;
+
+        pool.install(|| {
+            charts
+                .par_iter()
+                .enumerate()
+                .map(|(index, chart)| self.render_markdown_chart(output_path, index, chart))
+                .collect()
+        })
+    }
+
+    fn render_markdown_chart(
+        &self,
+        output_path: &Path,
+        index: usize,
+        chart: &markdown::MarkdownChart,
+    ) -> Result<MarkdownImage, CliError> {
+        let output_file = markdown::numbered_output_path(
+            output_path,
+            index + 1,
+            self.plan.format,
+            self.plan.artefacts.as_deref(),
+        );
+        let artifact = self.render_artifact(&chart.definition)?;
+        write_file(&output_file, &artifact.bytes)?;
+
+        let url = markdown::relative_markdown_url(output_path, &output_file)?;
+        self.info(&format!(" ✅ {url}"));
+        Ok(MarkdownImage {
+            url,
+            title: artifact.title,
+            alt: artifact.desc.unwrap_or_else(|| "diagram".to_string()),
+        })
+    }
+
+    fn render_artifact(&self, text: &str) -> Result<RenderedArtifact, CliError> {
         if self.plan.format.is_text() {
             return self.render_text(text);
         }
 
         if text.trim_start().starts_with("<svg") && self.plan.format.is_raster() {
             let svg = self.postprocess_svg(text)?;
-            return self.write_rasterized_svg(&svg);
+            return self.rasterize_svg(&svg);
         }
 
         let Some(svg) = merman::render::render_svg_sync(
@@ -177,11 +315,9 @@ impl<'a> RenderRequest<'a> {
         let svg = self.postprocess_svg(&svg)?;
 
         match self.plan.format {
-            RenderFormat::Svg => write_output(self.plan.output.as_ref(), svg.as_bytes()),
+            RenderFormat::Svg => Ok(RenderedArtifact::from_svg(svg)),
             RenderFormat::Ascii | RenderFormat::Unicode => unreachable!("handled above"),
-            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => {
-                self.write_rasterized_svg(&svg)
-            }
+            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => self.rasterize_svg(&svg),
         }
     }
 
@@ -196,7 +332,8 @@ impl<'a> RenderRequest<'a> {
         Ok(merman::render::apply_svg_pipeline(svg, &pipeline)?)
     }
 
-    fn write_rasterized_svg(&self, svg: &str) -> Result<(), CliError> {
+    fn rasterize_svg(&self, svg: &str) -> Result<RenderedArtifact, CliError> {
+        let metadata = svg_metadata(svg);
         let svg = merman::render::svg_resvg_safe(svg)?;
         let options = merman::render::raster::RasterOptions {
             scale: self.plan.scale,
@@ -211,13 +348,20 @@ impl<'a> RenderRequest<'a> {
             }
             RenderFormat::Png => merman::render::raster::svg_to_png(&svg, &options)?,
             RenderFormat::Jpeg => merman::render::raster::svg_to_jpeg(&svg, &options)?,
-            RenderFormat::Pdf => merman::render::raster::svg_to_pdf(&svg)?,
+            RenderFormat::Pdf => {
+                let pdf_svg = self.pdf_svg_source(&svg);
+                merman::render::raster::svg_to_pdf(pdf_svg.as_ref())?
+            }
         };
-        write_output(self.plan.output.as_ref(), &bytes)
+        Ok(RenderedArtifact {
+            bytes,
+            title: metadata.0,
+            desc: metadata.1,
+        })
     }
 
     #[cfg(feature = "ascii")]
-    fn render_text(&self, text: &str) -> Result<(), CliError> {
+    fn render_text(&self, text: &str) -> Result<RenderedArtifact, CliError> {
         let options = match self.plan.format {
             RenderFormat::Ascii => merman::ascii::AsciiRenderOptions::ascii(),
             RenderFormat::Unicode => merman::ascii::AsciiRenderOptions::unicode(),
@@ -233,15 +377,59 @@ impl<'a> RenderRequest<'a> {
         else {
             return Err(CliError::NoDiagram);
         };
-        write_output(self.plan.output.as_ref(), rendered.as_bytes())
+        Ok(RenderedArtifact {
+            bytes: rendered.into_bytes(),
+            title: None,
+            desc: None,
+        })
     }
 
     #[cfg(not(feature = "ascii"))]
-    fn render_text(&self, _text: &str) -> Result<(), CliError> {
+    fn render_text(&self, _text: &str) -> Result<RenderedArtifact, CliError> {
         let _ = self.plan.sequence_mirror_actors;
         Err(CliError::InvalidOutput(
             "ASCII/Unicode output requires building merman-cli with --features ascii.".to_string(),
         ))
+    }
+
+    fn info(&self, message: &str) {
+        if !self.plan.quiet {
+            println!("{message}");
+        }
+    }
+
+    fn pdf_svg_source<'svg>(&self, svg: &'svg str) -> Cow<'svg, str> {
+        if matches!(self.plan.mode, RenderMode::MmdcCompat) && !self.plan.pdf_fit {
+            Cow::Owned(wrap_svg_for_mmdc_default_pdf_page(
+                svg,
+                self.plan.background.as_deref(),
+            ))
+        } else {
+            Cow::Borrowed(svg)
+        }
+    }
+}
+
+impl RenderPlan {
+    fn is_mmdc_markdown_input(&self) -> bool {
+        matches!(self.mode, RenderMode::MmdcCompat)
+            && self
+                .input
+                .as_deref()
+                .filter(|path| *path != "-")
+                .map(|path| markdown::is_markdown_path(Path::new(path)))
+                .unwrap_or(false)
+    }
+}
+
+impl RenderedArtifact {
+    fn from_svg(svg: String) -> Self {
+        let (title, desc) = svg_metadata(&svg);
+        Self {
+            bytes: svg.into_bytes(),
+            title,
+            desc,
+        }
     }
 }
 
@@ -255,6 +443,260 @@ fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs)
     if render.height.is_none() {
         render.height = Some(600.0);
     }
+}
+
+fn prepare_artefacts_dir(
+    artefacts: Option<&str>,
+    input: Option<&str>,
+) -> Result<Option<PathBuf>, CliError> {
+    let Some(raw_path) = artefacts else {
+        return Ok(None);
+    };
+
+    let is_markdown_input = input
+        .filter(|path| *path != "-")
+        .map(|path| markdown::is_markdown_path(Path::new(path)))
+        .unwrap_or(false);
+    if !is_markdown_input {
+        return Err(CliError::InvalidInput(
+            "Artefacts [-a|--artefacts] path can only be used with Markdown input file".to_string(),
+        ));
+    }
+
+    let path = PathBuf::from(raw_path);
+    std::fs::create_dir_all(&path)?;
+    Ok(Some(path))
+}
+
+fn validate_puppeteer_config_file(path: Option<&str>) -> Result<(), CliError> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+
+    let text = read_named_text_file(path, "Puppeteer configuration file")?;
+    let _: serde_json::Value = serde_json::from_str(&text)?;
+    Ok(())
+}
+
+fn load_icon_registry(
+    icon_packs: &[String],
+    icon_packs_names_and_urls: &[String],
+) -> Result<Option<Arc<IconRegistry>>, CliError> {
+    if icon_packs.is_empty() && icon_packs_names_and_urls.is_empty() {
+        return Ok(None);
+    }
+
+    let cwd = std::env::current_dir()?;
+    let mut registry = IconRegistry::new();
+
+    for icon_pack in icon_packs {
+        let prefix = icon_pack_package_prefix(icon_pack)?;
+        let source = local_icon_pack_path(icon_pack, &cwd)
+            .map(IconPackSource::LocalPath)
+            .unwrap_or_else(|| {
+                IconPackSource::RemoteUrl(format!("https://unpkg.com/{icon_pack}/icons.json"))
+            });
+        let json = read_icon_pack_source(&source)?;
+        register_icon_pack_json(&mut registry, &json, Some(&prefix), icon_pack)?;
+    }
+
+    for icon_pack_info in icon_packs_names_and_urls {
+        let (prefix, source) = icon_pack_info.split_once('#').ok_or_else(|| {
+            CliError::InvalidInput(format!(
+                "Invalid --iconPacksNamesAndUrls value `{icon_pack_info}`; expected prefix#url"
+            ))
+        })?;
+        let prefix = prefix.trim();
+        let source = source.trim();
+        if prefix.is_empty() || source.is_empty() {
+            return Err(CliError::InvalidInput(format!(
+                "Invalid --iconPacksNamesAndUrls value `{icon_pack_info}`; expected non-empty prefix and URL"
+            )));
+        }
+
+        let source = icon_pack_source_from_cli(source, &cwd);
+        let json = read_icon_pack_source(&source)?;
+        register_icon_pack_json(&mut registry, &json, Some(prefix), icon_pack_info)?;
+    }
+
+    Ok((!registry.is_empty()).then(|| Arc::new(registry)))
+}
+
+enum IconPackSource {
+    LocalPath(PathBuf),
+    RemoteUrl(String),
+}
+
+fn register_icon_pack_json(
+    registry: &mut IconRegistry,
+    json: &str,
+    prefix_override: Option<&str>,
+    label: &str,
+) -> Result<(), CliError> {
+    registry
+        .register_iconify_json_str(json, prefix_override)
+        .map_err(|err| {
+            CliError::InvalidInput(format!("Invalid icon pack JSON for `{label}`: {err}"))
+        })
+}
+
+fn icon_pack_package_prefix(icon_pack: &str) -> Result<String, CliError> {
+    let icon_pack = icon_pack.trim().trim_end_matches('/');
+    let prefix = icon_pack.rsplit('/').next().unwrap_or(icon_pack).trim();
+    if prefix.is_empty() || prefix.starts_with('@') {
+        return Err(CliError::InvalidInput(format!(
+            "Invalid --iconPacks value `{icon_pack}`; expected an Iconify package such as @iconify-json/logos"
+        )));
+    }
+    Ok(prefix.to_string())
+}
+
+fn local_icon_pack_path(icon_pack: &str, cwd: &Path) -> Option<PathBuf> {
+    if looks_like_path(icon_pack) {
+        let path = resolve_cli_path(icon_pack, cwd);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    let mut current = Some(cwd);
+    while let Some(dir) = current {
+        let candidate = dir.join("node_modules").join(icon_pack).join("icons.json");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        current = dir.parent();
+    }
+    None
+}
+
+fn icon_pack_source_from_cli(source: &str, cwd: &Path) -> IconPackSource {
+    if source.starts_with("http://") || source.starts_with("https://") {
+        IconPackSource::RemoteUrl(source.to_string())
+    } else if let Some(path) = file_url_to_path(source) {
+        IconPackSource::LocalPath(path)
+    } else {
+        IconPackSource::LocalPath(resolve_cli_path(source, cwd))
+    }
+}
+
+fn read_icon_pack_source(source: &IconPackSource) -> Result<String, CliError> {
+    match source {
+        IconPackSource::LocalPath(path) => std::fs::read_to_string(path).map_err(|err| {
+            CliError::InvalidInput(format!(
+                "Failed to read icon pack JSON `{}`: {err}",
+                path.display()
+            ))
+        }),
+        IconPackSource::RemoteUrl(url) => fetch_icon_pack_json(url),
+    }
+}
+
+fn fetch_icon_pack_json(url: &str) -> Result<String, CliError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|err| {
+            CliError::InvalidInput(format!("Failed to create icon pack HTTP client: {err}"))
+        })?;
+    let response = client.get(url).send().map_err(|err| {
+        CliError::InvalidInput(format!("Failed to fetch icon pack JSON `{url}`: {err}"))
+    })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(CliError::InvalidInput(format!(
+            "Failed to fetch icon pack JSON `{url}`: HTTP {status}"
+        )));
+    }
+    response.text().map_err(|err| {
+        CliError::InvalidInput(format!("Failed to read icon pack JSON `{url}`: {err}"))
+    })
+}
+
+fn looks_like_path(value: &str) -> bool {
+    value.ends_with(".json")
+        || value.starts_with('.')
+        || value.contains('\\')
+        || Path::new(value).is_absolute()
+}
+
+fn resolve_cli_path(value: &str, cwd: &Path) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    }
+}
+
+fn file_url_to_path(value: &str) -> Option<PathBuf> {
+    let raw = value.strip_prefix("file://")?;
+    let decoded = raw.replace("%20", " ");
+    #[cfg(windows)]
+    {
+        let trimmed = decoded.strip_prefix('/').unwrap_or(&decoded);
+        return Some(PathBuf::from(trimmed));
+    }
+    #[cfg(not(windows))]
+    {
+        Some(PathBuf::from(decoded))
+    }
+}
+
+fn default_jobs() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| (count.get() / 2).max(1))
+        .unwrap_or(1)
+}
+
+fn svg_metadata(svg: &str) -> (Option<String>, Option<String>) {
+    (
+        first_svg_element_text(svg, "title"),
+        first_svg_element_text(svg, "desc"),
+    )
+}
+
+fn first_svg_element_text(svg: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let start = svg.find(&open)?;
+    let content_start = svg[start..].find('>')? + start + 1;
+    let content_end = svg[content_start..].find(&close)? + content_start;
+    let value = svg[content_start..content_end].trim();
+    (!value.is_empty()).then(|| decode_basic_xml_entities(value))
+}
+
+fn decode_basic_xml_entities(value: &str) -> String {
+    value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+fn wrap_svg_for_mmdc_default_pdf_page(svg: &str, background: Option<&str>) -> String {
+    let background_rect = background
+        .filter(|value| !value.eq_ignore_ascii_case("transparent"))
+        .map(|value| {
+            format!(
+                r#"<rect width="100%" height="100%" fill="{}"/>"#,
+                escape_xml_attr(value)
+            )
+        })
+        .unwrap_or_default();
+
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{MMDC_DEFAULT_PDF_WIDTH_PT}" height="{MMDC_DEFAULT_PDF_HEIGHT_PT}" viewBox="0 0 {MMDC_DEFAULT_PDF_WIDTH_PT} {MMDC_DEFAULT_PDF_HEIGHT_PT}">{background_rect}{svg}</svg>"#
+    )
+}
+
+fn escape_xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn merge_input(
@@ -276,6 +718,40 @@ fn infer_output_format(
     explicit: Option<RenderFormat>,
 ) -> Option<RenderFormat> {
     explicit.or_else(|| output.and_then(format_from_output_path))
+}
+
+fn validate_mmdc_output_path(output: Option<&str>) -> Result<(), CliError> {
+    let Some(output) = output else {
+        return Ok(());
+    };
+    if output == "-" {
+        return Ok(());
+    }
+
+    let Some(ext) = Path::new(output)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase)
+    else {
+        return Err(invalid_mmdc_output_extension());
+    };
+
+    if matches!(
+        ext.as_str(),
+        "md" | "markdown" | "svg" | "png" | "pdf" | "jpg" | "jpeg" | "txt" | "ascii"
+    ) {
+        Ok(())
+    } else {
+        Err(invalid_mmdc_output_extension())
+    }
+}
+
+fn invalid_mmdc_output_extension() -> CliError {
+    CliError::InvalidOutput(
+        "Output file must end with \".md\"/\".markdown\", \".svg\", \".png\", \".pdf\", \
+         \".jpg\"/\".jpeg\", \".txt\" or \".ascii\""
+            .to_string(),
+    )
 }
 
 fn format_from_output_path(path: &str) -> Option<RenderFormat> {

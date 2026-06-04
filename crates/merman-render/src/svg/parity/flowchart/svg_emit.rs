@@ -242,6 +242,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         measurer,
         config: effective_config,
         math_renderer: options.math_renderer.as_deref(),
+        icon_registry: options.icon_registry.as_deref(),
         node_html_labels,
         edge_html_labels,
         class_defs: &model.class_defs,

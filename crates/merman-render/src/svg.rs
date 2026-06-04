@@ -8,10 +8,12 @@
 #![forbid(unsafe_code)]
 
 mod fallback;
+mod icon_registry;
 mod parity;
 mod pipeline;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
+pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};
 pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,

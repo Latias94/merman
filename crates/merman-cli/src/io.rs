@@ -33,7 +33,14 @@ pub(crate) fn read_input(path: Option<&str>, quiet: bool) -> Result<String, CliE
             std::io::stdin().read_to_string(&mut buf)?;
         }
         Some(p) => {
-            std::fs::File::open(p)?.read_to_string(&mut buf)?;
+            let path = Path::new(p);
+            if !path.exists() {
+                return Err(CliError::InvalidInput(format!(
+                    "Input file \"{}\" doesn't exist",
+                    path.display()
+                )));
+            }
+            std::fs::File::open(path)?.read_to_string(&mut buf)?;
         }
     }
     Ok(buf)
@@ -63,10 +70,15 @@ pub(crate) fn write_output(target: Option<&OutputTarget>, bytes: &[u8]) -> Resul
             std::io::stdout().write_all(bytes)?;
         }
         Some(OutputTarget::File(path)) => {
-            ensure_output_dir(path)?;
-            std::fs::write(path, bytes)?;
+            write_file(path, bytes)?;
         }
     }
+    Ok(())
+}
+
+pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> Result<(), CliError> {
+    ensure_output_dir(path)?;
+    std::fs::write(path, bytes)?;
     Ok(())
 }
 

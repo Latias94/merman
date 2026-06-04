@@ -4,10 +4,11 @@ pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::model::LayoutedDiagram;
 pub use merman_render::svg::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, foreign_object_label_fallback_svg_text, resvg_safe_svg,
+    ForeignObjectFallbackPostprocessor, IconRegistry, IconRegistryError, IconSvg,
+    RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
+    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset,
+    SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
+    foreign_object_label_fallback_svg_text, resvg_safe_svg,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,

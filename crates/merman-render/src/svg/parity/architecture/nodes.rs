@@ -9,7 +9,7 @@ use super::foreign_object::{
     escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
 };
 use super::geometry::{GroupRect, extend_bounds};
-use super::icons::arch_icon_svg;
+use super::icons::{arch_icon_svg, arch_icon_svg_with_registry};
 use super::labels::{
     svg_line_plain_text, wrap_svg_words_to_lines, write_architecture_service_title,
     write_svg_text_lines,
@@ -25,6 +25,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a VendoredFontMetricsTextMeasurer,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) singleton_icon_text_service_id: Option<&'a str>,
 }
@@ -77,7 +78,8 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
-                    let svg = arch_icon_svg(icon, settings.icon_size_px);
+                    let svg =
+                        arch_icon_svg_with_registry(icon, settings.icon_size_px, ctx.icon_registry);
                     out.push_str("<g>");
                     out.push_str(&svg);
                     out.push_str("</g>");
@@ -179,7 +181,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let mut shifted_x1 = x1;
             let mut shifted_y1 = y1;
             if let Some(icon) = grp.icon.map(str::trim).filter(|t| !t.is_empty()) {
-                let svg = arch_icon_svg(icon, group_icon_size_px);
+                let svg = arch_icon_svg_with_registry(icon, group_icon_size_px, ctx.icon_registry);
                 let _ = write!(
                     out,
                     r#"<g transform="translate({x}, {y})"><g>{svg}</g></g>"#,

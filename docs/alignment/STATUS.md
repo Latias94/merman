@@ -35,10 +35,15 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Top-level rendering defaults to SVG, infers PNG/JPG/PDF/text formats from output extensions,
   supports `-o -` for stdout, and keeps `parse`, `layout`, `detect`, and `render` as developer
   subcommands.
+- Dynamic Iconify packs are loaded through the Rust SVG icon registry: local
+  `node_modules/<package>/icons.json`, local/file URLs, and explicit HTTP(S) icon JSON sources are
+  supported by the documented CLI compatibility path.
 - CLI default features include `ratex-math`; `--math-renderer ratex` works out of the box unless
   the binary is built with `--no-default-features`.
-- Accepted-but-not-yet-complete compatibility lanes: Markdown batch extraction/rewriting,
-  `jobs` scheduling, browser-specific puppeteer behavior, and dynamic icon pack loading.
+- No accepted-but-not-yet-complete `merman-cli` compatibility lane is currently open in the
+  documented CLI surface; remaining work is normal renderer parity hardening outside the CLI
+  compatibility matrix.
+  Detailed tracking lives in `docs/alignment/CLI_COMPATIBILITY.md`.
 
 ## Diagram Coverage Matrix
 
