@@ -258,7 +258,11 @@ Last updated: 2026-06-04
   only a `-0.46875px` group-title SVG text `getBBox()` / root-union estimate tail. A later narrow
   production fix models that class by rounding only multi-line group-title SVG row widths for
   synthetic root union; `095` is now root-exact. The current Architecture queue is `20` mismatch
-  rows after the strict-intersects follow-up, without adding root pins or baselines.
+  rows after the strict-intersects follow-up, without adding root pins or baselines. A current-head
+  negative experiment reducing final group expansion from `padding + 2.5px` to `padding + 1.5px`
+  improved the three direct width tails to `+3/+3/+1`, but introduced `-2px` height deltas and
+  regressed full Architecture `parity-root` to `105` mismatch rows. It was reverted; keep global
+  group padding/final rect emission out of this residual class.
 
 ## M3 - Policy Closeout
 

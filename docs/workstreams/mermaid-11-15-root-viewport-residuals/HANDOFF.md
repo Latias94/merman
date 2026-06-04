@@ -610,6 +610,11 @@ a future Mermaid baseline changes the source behavior.
   `html_titles_and_escapes_041`, `unicode_and_xml_escapes_019`,
   `batch6_init_fontsize_icon_size_wrap_093`, and `nested_groups_002`, with smaller browser/Cytoscape
   bbox lattice rows remaining diagnostic unless a reusable source rule appears.
+- A current-head `padding + 1.5px` final group expansion experiment is rejected. It moved the
+  direct width tails from `+5/+5/+3` to `+3/+3/+1`, but introduced `-2px` height deltas and
+  expanded full Architecture `parity-root` from `20` to `105` mismatch rows. Keep the current
+  `padding + 2.5px` behavior and continue from service child contribution / Cytoscape compound bbox
+  phase evidence instead of global padding or final rect emission.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.

@@ -1737,3 +1737,29 @@ Outcome:
   `batch6_junctions_multi_split_with_group_edges_087` fix.
 - The post-095 Architecture root queue improves from `23` to `20` mismatch rows without adding
   root pins, fixture constants, baseline refreshes, or global padding changes.
+
+## 2026-06-05 - Architecture Group Padding 1.5 Rejection
+
+Fresh negative experiment evidence after the strict-intersects follow-up:
+
+- A temporary final Architecture SVG group bbox expansion change from `padding + 2.5px` to
+  `padding + 1.5px` improved only the direct width component:
+  `batch5_long_titles_and_punct_076` `+5 -> +3`,
+  `html_titles_and_escapes_041` `+5 -> +3`, and
+  `unicode_and_xml_escapes_019` `+3 -> +1`.
+- The focused experiment also introduced `-2px` viewBox height deltas for all three rows.
+- The full Architecture `parity-root` report regressed from the accepted post-strict `20`
+  mismatch rows to `105` mismatch rows.
+
+Evidence:
+
+- `target/compare/architecture-delta-direct-width-tails-current-hpd050`
+- `target/compare/architecture-delta-direct-width-tails-pad15-experiment-hpd050`
+- `target/compare/architecture-report-parity-root-pad15-experiment-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-pad15-experiment-rejected.md`
+
+Outcome:
+
+- The experiment was reverted. Keep the current `padding + 2.5px` group expansion.
+- Do not treat the direct `+5/+5/+3` width tails as evidence for a global padding or final group
+  rect change. They remain a service child contribution plus Cytoscape compound-bbox phase seam.

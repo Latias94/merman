@@ -6506,3 +6506,38 @@ Gate notes:
 - The post-095 Architecture root queue improves from `23` mismatch rows to `20` mismatch rows.
 - Do not reintroduce a global rectangle-intersection epsilon. The current source boundary is strict
   positive-gap handling plus narrowly tested near-equal-center handling for overlap direction.
+
+## HPD-050 - Architecture Group Padding 1.5 Rejection
+
+Outcome:
+
+- Tested a temporary global reduction of final Architecture SVG group bbox expansion from
+  `padding + 2.5px` to `padding + 1.5px` after the strict-intersects fix.
+- The focused direct-width tails improved only by the expected expansion component:
+  `batch5_long_titles_and_punct_076` `+5 -> +3`, `html_titles_and_escapes_041` `+5 -> +3`, and
+  `unicode_and_xml_escapes_019` `+3 -> +1`.
+- The same focused rows gained a `-2px` viewBox height delta, matching the earlier service-phase
+  join evidence that local child content is already `-2px` short in height and the existing
+  `+2px` final expansion cancels it.
+- Full Architecture `parity-root` regressed from the post-strict `20` mismatch rows to `105`
+  mismatch rows, so the experiment was rejected and reverted.
+
+Evidence:
+
+- `target/compare/architecture-delta-direct-width-tails-current-hpd050` - current focused direct
+  width baseline.
+- `target/compare/architecture-delta-direct-width-tails-pad15-experiment-hpd050` - focused
+  `padding + 1.5px` experiment; width deltas `+3`, `+3`, `+1`; height deltas `-2` for all three
+  rows.
+- `target/compare/architecture-report-parity-root-pad15-experiment-hpd050` - full rejected
+  experiment report with `105` Architecture root/style mismatches.
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-pad15-experiment-rejected.md`
+  - journal and residual boundary.
+
+Gate notes:
+
+- Do not globally change Architecture group padding, final group bbox extra, root padding, or final
+  group rect emission to chase the direct-width tails.
+- Continue from service label/content contribution geometry and browser final service
+  `node.boundingBox()` differences; any future production change must survive full Architecture
+  `parity-root` instead of just improving these three rows.

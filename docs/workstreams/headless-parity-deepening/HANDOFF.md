@@ -44,6 +44,13 @@ Immediate next task:
   group height `+7.345448px`. Treat the older junction run1/segment-rerun note as superseded for
   current triage; do not tune root bounds, group padding, emitted group rectangles, or `manatee`
   rerun sequencing for `junction_fork_join_026` without new source-backed evidence.
+- Fresher HPD-050 Architecture evidence supersedes that batch6-focused queue: after the multiline
+  group-title and strict-intersects fixes, full Architecture `parity-root` is expected-fail with
+  `20` mismatch rows; `group_port_edges_017` and `087` are root-exact. A post-strict temporary
+  `padding + 1.5px` final group expansion experiment improved the direct width tails from
+  `+5/+5/+3` to `+3/+3/+1`, but introduced `-2px` height deltas and regressed full Architecture
+  `parity-root` to `105` mismatch rows. It was reverted. Do not use global group padding, final
+  group bbox extra, root padding, or final rect emission to close these rows.
 - Main closeout recheck on 2026-06-05 passed:
   `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run --no-fail-fast` ran `1857` tests with
   `1857` passed and `5` skipped. This validates the integrated evidence/no-growth slices before
@@ -55,7 +62,7 @@ Current repository reality to preserve:
 - Structural `parity` is green for the implemented matrix.
 - `parity-root` remains the active numeric residual front, but visible rendering defects are higher
   priority than small root viewport tails.
-- Honest top residual buckets are currently Flowchart `61`, Architecture `24`, Sequence `27`,
+- Honest top residual buckets are currently Flowchart `61`, Architecture `20`, Sequence `27`,
   Class `12`, Timeline `3`, Journey `2`.
 - Sequence left-of wrapped note width semantics were improved in commit `cd9f02ff`, but a small
   root-width residual remains and should not be overfit without stronger evidence.

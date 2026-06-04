@@ -229,7 +229,11 @@ Last updated: 2026-06-04
   `+3/+3/+1` content width split, stable `+2` final expansion split, and height-side `-2/+2`
   cancellation without manual table subtraction. Treat this as evidence tooling only; the next
   production seam remains individual service label/content contribution width plus service
-  position drift.
+  position drift. A current-head negative experiment then reduced final group expansion from
+  `padding + 2.5px` to `padding + 1.5px`: the focused direct tails improved to `+3/+3/+1`, but
+  each gained a `-2px` height delta and full Architecture `parity-root` regressed from `20` to
+  `105` mismatch rows. That experiment was reverted; do not use global group padding or final rect
+  emission for these rows.
   A follow-up service-label-metrics slice adds local label `text_width`, `half_width`, and
   `applied_scale` to `ArchitectureCytoscapeServiceBounds`, then joins those values with browser
   final-node `metrics.labelWidth` / `metrics.labelHeight` in `debug-architecture-delta --probe-dir`.
