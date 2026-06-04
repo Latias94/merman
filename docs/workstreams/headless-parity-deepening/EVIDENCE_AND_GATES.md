@@ -6651,3 +6651,45 @@ Gate notes:
 - The final-node owner table is evidence for boundary ownership and frame alignment, not a
   root-width formula. Use it to route direct final group-edge rows separately from nested frame
   rows.
+
+## HPD-050 - Architecture Relocate Center Diagnostics
+
+Outcome:
+
+- Added a render-path join table for bundled/browser versus local
+  `relocateComponent.before-shift` inputs.
+- The table reports per-run `rectBbox`, `originalCenter`, `rectCenter`, `delta`, and local-minus-
+  bundled deltas, making the post-FCoSE component translation visible before same-stage group/node
+  comparisons.
+- Re-ran `002` and `093` with `MANATEE_FCOSE_DEBUG_TRACE=1` so local relocate trace values were
+  present. For `002`, run 1 has matching `rectBbox`/`rectCenter` but local `originalCenter.x` and
+  `delta.x` are both `+1.250000px`. For `093`, run 1 has matching `rectBbox`/`rectCenter` but
+  local `originalCenter.x` and `delta.x` are both `+22.963987px`.
+
+Evidence:
+
+- `target/compare/architecture-delta-relocate-table-check-trace-hpd050`
+- `target/compare/architecture-report-parity-relocate-table-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-relocate-center-diagnostics.md`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p xtask architecture_render_path_join_reports_local_deltas` - passed, `1`
+  test run.
+- `cargo nextest run -p xtask` - passed, `112` tests run.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-relocate-table-check-trace-hpd050`
+  with `MANATEE_FCOSE_DEBUG_TRACE=1` - passed for `002` and `093`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-relocate-table-hpd050` -
+  passed.
+
+Gate notes:
+
+- No production renderer behavior changed.
+- The local relocate columns require `MANATEE_FCOSE_DEBUG_TRACE=1`; without that trace, the table is
+  still structurally present but local values are `<none>`.
+- The table isolates post-FCoSE translation input drift. It does not by itself explain all residual
+  width, so continue through group-bounds consumption and SVG/root emission before any production
+  fix.

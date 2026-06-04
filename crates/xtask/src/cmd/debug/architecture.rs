@@ -2202,6 +2202,8 @@ fn render_architecture_render_path_join_markdown(
     let mut local_stage_compounds: BTreeMap<(usize, &str, &str), DebugRect> = BTreeMap::new();
     let mut local_stage_nodes: BTreeMap<(usize, &str, &str), DebugRect> = BTreeMap::new();
     let mut local_stage_displacements: BTreeMap<(usize, &str, &str), DebugPt> = BTreeMap::new();
+    let mut local_relocates: BTreeMap<usize, (Option<DebugRect>, DebugPt, DebugPt, DebugPt)> =
+        BTreeMap::new();
     for stage in local_fcose_debug_stages {
         for node in &stage.nodes {
             local_stage_nodes.insert(
@@ -2223,6 +2225,28 @@ fn render_architecture_render_path_join_markdown(
                 (stage.run_index, stage.tag.as_str(), compound.id.as_str()),
                 model_bounds_to_debug_rect(&compound.bounds),
             );
+        }
+        if stage.tag == "relocateComponent.before-shift" {
+            if let Some(relocate) = stage.relocate.as_ref() {
+                local_relocates.insert(
+                    stage.run_index,
+                    (
+                        stage.bbox.as_ref().map(model_bounds_to_debug_rect),
+                        DebugPt {
+                            x: relocate.original_center.x,
+                            y: relocate.original_center.y,
+                        },
+                        DebugPt {
+                            x: relocate.rect_center.x,
+                            y: relocate.rect_center.y,
+                        },
+                        DebugPt {
+                            x: relocate.delta.x,
+                            y: relocate.delta.y,
+                        },
+                    ),
+                );
+            }
         }
     }
 
@@ -2576,6 +2600,116 @@ fn render_architecture_render_path_join_markdown(
         let _ = writeln!(
             report,
             "| `<none>` | `<none>` | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(
+        report,
+        "### Bundled FCoSE/Cose relocate centers vs local trace\n"
+    );
+    let _ = writeln!(
+        report,
+        "This table compares the `relocateComponent.before-shift` inputs that decide the final global layout translation after each bundled/local FCoSE run.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| run | bundled rect bbox | local rect bbox | rect dx | rect dy | rect dw | rect dh | bundled original center | local original center | origin dx | origin dy | bundled rect center | local rect center | center dx | center dy | bundled delta | local delta | delta dx | delta dy |\n|---:|---|---|---:|---:|---:|---:|---|---|---:|---:|---|---|---:|---:|---|---|---:|---:|"
+    );
+    let mut wrote_relocate = false;
+    if let Some(stages) = render_probe
+        .pointer("/probe/fcoseStages")
+        .and_then(|v| v.as_array())
+    {
+        for stage in stages {
+            if json_string(stage, "tag") != Some("relocateComponent.before-shift") {
+                continue;
+            }
+            let run_index = stage
+                .get("runIndex")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize);
+            let bundled_bbox = json_debug_rect(stage.get("rectBbox"));
+            let bundled_origin = json_debug_point(stage.get("originalCenter"));
+            let bundled_center = json_debug_point(stage.get("rectCenter"));
+            let bundled_delta = json_debug_point(stage.get("delta"));
+            let local = run_index.and_then(|run| local_relocates.get(&run).copied());
+            let local_bbox = local.and_then(|(bbox, _, _, _)| bbox);
+            let local_origin = local.map(|(_, origin, _, _)| origin);
+            let local_center = local.map(|(_, _, center, _)| center);
+            let local_delta = local.map(|(_, _, _, delta)| delta);
+            let _ = writeln!(
+                report,
+                "| {} | `{}` | `{}` | {} | {} | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} |",
+                run_index
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "<none>".to_string()),
+                format_debug_rect(bundled_bbox),
+                format_debug_rect(local_bbox),
+                format_debug_optional_f64(
+                    bundled_bbox
+                        .zip(local_bbox)
+                        .map(|(bundled, local)| local.x - bundled.x)
+                ),
+                format_debug_optional_f64(
+                    bundled_bbox
+                        .zip(local_bbox)
+                        .map(|(bundled, local)| local.y - bundled.y)
+                ),
+                format_debug_optional_f64(
+                    bundled_bbox
+                        .zip(local_bbox)
+                        .map(|(bundled, local)| local.w - bundled.w)
+                ),
+                format_debug_optional_f64(
+                    bundled_bbox
+                        .zip(local_bbox)
+                        .map(|(bundled, local)| local.h - bundled.h)
+                ),
+                format_debug_point(bundled_origin),
+                format_debug_point(local_origin),
+                format_debug_optional_f64(
+                    bundled_origin
+                        .zip(local_origin)
+                        .map(|(bundled, local)| local.x - bundled.x)
+                ),
+                format_debug_optional_f64(
+                    bundled_origin
+                        .zip(local_origin)
+                        .map(|(bundled, local)| local.y - bundled.y)
+                ),
+                format_debug_point(bundled_center),
+                format_debug_point(local_center),
+                format_debug_optional_f64(
+                    bundled_center
+                        .zip(local_center)
+                        .map(|(bundled, local)| local.x - bundled.x)
+                ),
+                format_debug_optional_f64(
+                    bundled_center
+                        .zip(local_center)
+                        .map(|(bundled, local)| local.y - bundled.y)
+                ),
+                format_debug_point(bundled_delta),
+                format_debug_point(local_delta),
+                format_debug_optional_f64(
+                    bundled_delta
+                        .zip(local_delta)
+                        .map(|(bundled, local)| local.x - bundled.x)
+                ),
+                format_debug_optional_f64(
+                    bundled_delta
+                        .zip(local_delta)
+                        .map(|(bundled, local)| local.y - bundled.y)
+                ),
+            );
+            wrote_relocate = true;
+        }
+    }
+    if !wrote_relocate {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
         );
     }
     let _ = writeln!(report);
@@ -4791,6 +4925,13 @@ mod tests {
                             "rect": { "x1": 7.0, "y1": 17.0, "w": 35.0, "h": 43.0 }
                         }]
                     }
+                }, {
+                    "tag": "relocateComponent.before-shift",
+                    "runIndex": 1,
+                    "rectBbox": { "x1": 2.0, "y1": 3.0, "w": 50.0, "h": 60.0 },
+                    "originalCenter": { "x": 10.0, "y": 20.0 },
+                    "rectCenter": { "x": 12.0, "y": 22.0 },
+                    "delta": { "x": -2.0, "y": -2.0 }
                 }],
                 "stages": [{
                     "tag": "draw-after-layout-before-svg-emission",
@@ -4825,38 +4966,58 @@ mod tests {
             },
             None,
         )];
-        let local_fcose_debug_stages = vec![merman_render::model::ArchitectureFcoseDebugStage {
-            run_index: 1,
-            tag: "classicLayout.end".to_string(),
-            iterations: Some(300),
-            bbox: Some(merman_render::model::Bounds {
-                min_x: 6.0,
-                min_y: 16.0,
-                max_x: 42.0,
-                max_y: 58.0,
-            }),
-            nodes: vec![merman_render::model::ArchitectureFcoseDebugNodeBounds {
-                id: "left".to_string(),
-                kind: "group".to_string(),
-                bounds: merman_render::model::Bounds {
+        let local_fcose_debug_stages = vec![
+            merman_render::model::ArchitectureFcoseDebugStage {
+                run_index: 1,
+                tag: "classicLayout.end".to_string(),
+                iterations: Some(300),
+                bbox: Some(merman_render::model::Bounds {
                     min_x: 6.0,
                     min_y: 16.0,
                     max_x: 42.0,
                     max_y: 58.0,
-                },
-                displacement: Some(merman_render::model::LayoutPoint { x: 1.0, y: 2.0 }),
-            }],
-            compound_bounds: vec![merman_render::model::ArchitectureCompoundBounds {
-                id: "left".to_string(),
-                bounds: merman_render::model::Bounds {
-                    min_x: 6.0,
-                    min_y: 16.0,
-                    max_x: 42.0,
-                    max_y: 58.0,
-                },
-            }],
-            relocate: None,
-        }];
+                }),
+                nodes: vec![merman_render::model::ArchitectureFcoseDebugNodeBounds {
+                    id: "left".to_string(),
+                    kind: "group".to_string(),
+                    bounds: merman_render::model::Bounds {
+                        min_x: 6.0,
+                        min_y: 16.0,
+                        max_x: 42.0,
+                        max_y: 58.0,
+                    },
+                    displacement: Some(merman_render::model::LayoutPoint { x: 1.0, y: 2.0 }),
+                }],
+                compound_bounds: vec![merman_render::model::ArchitectureCompoundBounds {
+                    id: "left".to_string(),
+                    bounds: merman_render::model::Bounds {
+                        min_x: 6.0,
+                        min_y: 16.0,
+                        max_x: 42.0,
+                        max_y: 58.0,
+                    },
+                }],
+                relocate: None,
+            },
+            merman_render::model::ArchitectureFcoseDebugStage {
+                run_index: 1,
+                tag: "relocateComponent.before-shift".to_string(),
+                iterations: None,
+                bbox: Some(merman_render::model::Bounds {
+                    min_x: 3.0,
+                    min_y: 5.0,
+                    max_x: 54.0,
+                    max_y: 63.0,
+                }),
+                nodes: vec![],
+                compound_bounds: vec![],
+                relocate: Some(merman_render::model::ArchitectureFcoseRelocateDebug {
+                    original_center: merman_render::model::LayoutPoint { x: 11.0, y: 21.0 },
+                    rect_center: merman_render::model::LayoutPoint { x: 13.0, y: 24.0 },
+                    delta: merman_render::model::LayoutPoint { x: -2.0, y: -3.0 },
+                }),
+            },
+        ];
 
         let mut md = String::new();
         render_architecture_render_path_join_markdown(
@@ -4890,6 +5051,8 @@ mod tests {
         assert!(md.contains("| 1 | `classicLayout.end` | `300` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` | `<none>` | `left` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` |"));
         assert!(md.contains("### Local FCoSE debug stage nodes"));
         assert!(md.contains("| 1 | `classicLayout.end` | `group` | `left` | `x=6.000000 y=16.000000 w=36.000000 h=42.000000` |"));
+        assert!(md.contains("### Bundled FCoSE/Cose relocate centers vs local trace"));
+        assert!(md.contains("| 1 | `x=2.000000 y=3.000000 w=50.000000 h=60.000000` | `x=3.000000 y=5.000000 w=51.000000 h=58.000000` | 1.000000 | 2.000000 | 1.000000 | -2.000000 | `x=10.000000 y=20.000000` | `x=11.000000 y=21.000000` | 1.000000 | 1.000000 | `x=12.000000 y=22.000000` | `x=13.000000 y=24.000000` | 1.000000 | 2.000000 | `x=-2.000000 y=-2.000000` | `x=-2.000000 y=-3.000000` | 0.000000 | -1.000000 |"));
         assert!(
             md.contains("### Bundled FCoSE/Cose internal group rects vs local same-stage trace")
         );
