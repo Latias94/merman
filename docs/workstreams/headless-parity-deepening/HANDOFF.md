@@ -436,6 +436,13 @@ Current repository reality to preserve:
     max-width delta, and root residual score under `Root viewport`, while multi-fixture
     `architecture-delta-batch.md` sorts by the score. The current entrypoint is
     `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`.
+  - A follow-up nested aggregate-edge slice now adds `Group aggregate edge attribution` to
+    `debug-architecture-delta --probe-dir`. In
+    `target\compare\architecture-delta-current-top-aggregate-edge-hpd050\stress_architecture_nested_groups_002.md`,
+    `platform` attributes its aggregate `edge dw=-0.5` to child group `data` owning both horizontal
+    edges (`left dx=44.25`, `right dx=43.75`), while vertical aggregate height balances to
+    `edge dh=0` between `runtime` top and `data` bottom. This keeps the nested residual in
+    child-group aggregate boundary drift, not direct services or final expansion.
   - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command

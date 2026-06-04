@@ -294,6 +294,13 @@ Last updated: 2026-06-04
   `architecture-delta-batch.md` sorts by that score. The regenerated current-top batch is
   `target\compare\architecture-delta-current-top-root-score-hpd050\architecture-delta-batch.md`;
   use it as the first local-delta entrypoint for the active Architecture residual set.
+  A follow-up nested aggregate-edge slice adds `Group aggregate edge attribution` to the same
+  probe-backed delta reports. The regenerated
+  `target\compare\architecture-delta-current-top-aggregate-edge-hpd050\architecture-delta-batch.md`
+  shows `nested_groups_002/platform` as child groups `data, runtime`, with width owned by `data`
+  on both left/right edges (`left dx=44.25`, `right dx=43.75`, `edge dw=-0.5`) and height balanced
+  between `runtime` top and `data` bottom (`edge dh=0`). Continue treating this as child-group
+  aggregate boundary drift, not direct-service or final-expansion evidence.
   A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on

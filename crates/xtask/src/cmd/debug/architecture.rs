@@ -1119,6 +1119,125 @@ fn render_architecture_probe_join_markdown(
     }
     let _ = writeln!(report);
 
+    let _ = writeln!(report, "### Group aggregate edge attribution\n");
+    let _ = writeln!(
+        report,
+        "This table extends edge attribution to aggregate group content: browser direct service child unions plus child-group `node.boundingBox()` values compared with local direct service contributions plus child-group emitted rects. It is diagnostic evidence for nested groups.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| group | direct services | child groups | browser left | local left | left dx | browser right | local right | right dx | edge dw | browser top | local top | top dy | browser bottom | local bottom | bottom dy | edge dh |\n|---|---:|---|---|---|---:|---|---|---:|---:|---|---|---:|---|---|---:|---:|"
+    );
+    if group_ids.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | 0 | `<none>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for group_id in &group_ids {
+            let direct_service_ids: Vec<&str> = layout
+                .cytoscape_service_bounds
+                .iter()
+                .filter(|service| service.in_group.as_deref() == Some(group_id.as_str()))
+                .map(|service| service.id.as_str())
+                .collect();
+            let child_groups = child_groups_by_parent
+                .get(group_id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let child_group_names = if child_groups.is_empty() {
+                "<none>".to_string()
+            } else {
+                child_groups
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+
+            let browser_owner = |edge| {
+                debug_edge_owner(
+                    direct_service_ids
+                        .iter()
+                        .filter_map(|id| {
+                            browser_service_child_union
+                                .get(*id)
+                                .copied()
+                                .map(|rect| (*id, rect))
+                        })
+                        .chain(child_groups.iter().filter_map(|(id, _)| {
+                            probe_nodes
+                                .get(id)
+                                .filter(|node| node.node_type == "group")
+                                .and_then(|node| node.bb)
+                                .map(|rect| (id.as_str(), rect))
+                        })),
+                    edge,
+                )
+            };
+            let local_owner = |edge| {
+                debug_edge_owner(
+                    direct_service_ids
+                        .iter()
+                        .filter_map(|id| {
+                            local_service_child_frame
+                                .get(*id)
+                                .copied()
+                                .map(|rect| (*id, rect))
+                        })
+                        .chain(child_groups.iter().map(|(id, rect)| (id.as_str(), *rect))),
+                    edge,
+                )
+            };
+
+            let browser_left = browser_owner(DebugEdge::Left);
+            let local_left = local_owner(DebugEdge::Left);
+            let browser_right = browser_owner(DebugEdge::Right);
+            let local_right = local_owner(DebugEdge::Right);
+            let browser_top = browser_owner(DebugEdge::Top);
+            let local_top = local_owner(DebugEdge::Top);
+            let browser_bottom = browser_owner(DebugEdge::Bottom);
+            let local_bottom = local_owner(DebugEdge::Bottom);
+            let left_dx = local_left
+                .zip(browser_left)
+                .map(|(local, browser)| local.1 - browser.1);
+            let right_dx = local_right
+                .zip(browser_right)
+                .map(|(local, browser)| local.1 - browser.1);
+            let top_dy = local_top
+                .zip(browser_top)
+                .map(|(local, browser)| local.1 - browser.1);
+            let bottom_dy = local_bottom
+                .zip(browser_bottom)
+                .map(|(local, browser)| local.1 - browser.1);
+            let edge_dw = right_dx.zip(left_dx).map(|(right, left)| right - left);
+            let edge_dh = bottom_dy.zip(top_dy).map(|(bottom, top)| bottom - top);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | {} | `{}` | `{}` | `{}` | {} | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | `{}` | `{}` | {} | {} |",
+                group_id,
+                direct_service_ids.len(),
+                child_group_names,
+                format_debug_edge_owner(browser_left),
+                format_debug_edge_owner(local_left),
+                format_debug_optional_f64(left_dx),
+                format_debug_edge_owner(browser_right),
+                format_debug_edge_owner(local_right),
+                format_debug_optional_f64(right_dx),
+                format_debug_optional_f64(edge_dw),
+                format_debug_edge_owner(browser_top),
+                format_debug_edge_owner(local_top),
+                format_debug_optional_f64(top_dy),
+                format_debug_edge_owner(browser_bottom),
+                format_debug_edge_owner(local_bottom),
+                format_debug_optional_f64(bottom_dy),
+                format_debug_optional_f64(edge_dh),
+            );
+        }
+    }
+    let _ = writeln!(report);
+
     let _ = writeln!(report, "### Group content edge attribution\n");
     let _ = writeln!(
         report,
@@ -3194,5 +3313,7 @@ mod tests {
 
         assert!(md.contains("### Group aggregate child attribution"));
         assert!(md.contains("| `platform` | 0 | `runtime` | `x=10.000000 y=10.000000 w=100.000000 h=100.000000` | `x=10.000000 y=10.000000 w=103.000000 h=100.000000` | 3.000000 | 0.000000 |"));
+        assert!(md.contains("### Group aggregate edge attribution"));
+        assert!(md.contains("| `platform` | 0 | `runtime` | `runtime@10.000000` | `runtime@10.000000` | 0.000000 | `runtime@110.000000` | `runtime@113.000000` | 3.000000 | 3.000000 | `runtime@10.000000` | `runtime@10.000000` | 0.000000 | `runtime@110.000000` | `runtime@110.000000` | 0.000000 | 0.000000 |"));
     }
 }

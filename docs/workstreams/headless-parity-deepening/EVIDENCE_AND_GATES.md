@@ -3,6 +3,55 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Nested Group Aggregate Edge Attribution
+
+Outcome:
+
+- `xtask debug-architecture-delta --probe-dir` now adds a `Group aggregate edge attribution` table.
+- The table extends edge attribution beyond direct services by comparing:
+  - browser direct service child unions plus child-group `node.boundingBox()` values
+  - local direct service contribution bounds plus child-group emitted rects
+- This makes nested parent group content deltas attributable to left/right/top/bottom child owners
+  instead of requiring manual reconstruction from the aggregate content table.
+- Regenerated the current top-residual batch under
+  `target\compare\architecture-delta-current-top-aggregate-edge-hpd050`.
+- In `nested_groups_002/platform`, the new row reports:
+  - child groups: `data, runtime`
+  - browser/local left owner: `data`, left dx `44.250000`
+  - browser/local right owner: `data`, right dx `43.750000`
+  - aggregate edge width delta: `-0.500000`
+  - browser/local top owner: `runtime`, top dy `40.000000`
+  - browser/local bottom owner: `data`, bottom dy `40.000000`
+  - aggregate edge height delta: `0.000000`
+- This directly attributes the parent `platform` aggregate width tail to child-group boundary
+  placement/width, not direct services or final group expansion.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-nested-group-aggregate-edge.md`
+- `target\compare\architecture-delta-current-top-aggregate-edge-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_probe_join_reports_nested_group_aggregate_content architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-aggregate-edge-hpd050` -
+  passed and wrote the aggregate-edge batch.
+- `cargo fmt --check -p xtask` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. It narrows `nested_groups_002/platform` to child-group aggregate
+  boundary drift, but it does not justify changing group padding, final group expansion, service
+  label measurement, or root-bounds formulas.
+
 ## HPD-050 - Architecture Delta Batch Root Residual Score Projection
 
 Outcome:
