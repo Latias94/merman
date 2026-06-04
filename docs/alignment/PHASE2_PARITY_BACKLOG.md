@@ -45,7 +45,7 @@ Do not move these families into the main coverage matrix until each family has:
 | P2C-001 | P0 | Add compare plumbing for the three Phase 1 families. | Done: `compare-tree-view-svgs`, `compare-ishikawa-svgs`, and `compare-eventmodeling-svgs` exist. |
 | P2C-002 | P0 | Generate the first upstream SVG baseline batch from the pinned Mermaid commit. | Done: committed baselines exist under `fixtures/upstream-svgs/treeView`, `fixtures/upstream-svgs/ishikawa`, and `fixtures/upstream-svgs/eventmodeling`. |
 | P2C-003 | P0 | Keep Phase 2 docs synchronized with the dashboard. | Done for Series 1-4; keep updating when DOM residuals change. |
-| P2C-004 | P1 | Decide whether these families enter `compare-all-svgs` immediately or stay family-local until a broader gate is green. | The chosen policy is documented before any main matrix admission. |
+| P2C-004 | P1 | Decide whether these families enter `compare-all-svgs` immediately or stay family-local until a broader gate is green. | Done: admitted to `compare-all-svgs` primary `parity` mode; global `parity-root` skips these root-viewport-deferred families unless explicitly selected with `--diagram`. |
 
 ## TreeView
 
@@ -152,13 +152,18 @@ Progress as of 2026-06-04:
 - `compare-*-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for all three family-local
   corpora after closing the treeView wrapper, ishikawa root/wrapper, and eventmodeling root/DOM
   shape residuals.
+- `P2C-004` admits `treeView`, `ishikawa`, and `eventmodeling` to the primary
+  `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` matrix. The global
+  `parity-root` sweep skips these three families because current family-local `parity-root` audits
+  still report root viewport residuals; explicit `compare-all-svgs --diagram <family> --dom-mode
+  parity-root` or family-local commands remain the residual audit path.
 
 1. `P2T-001`: `treeView` baseline plus compare command for the existing fixture.
 2. `P2I-001`: `ishikawa` baseline plus compare command for the existing fixture.
 3. `P2E-001`: `eventmodeling` baseline plus compare command for the existing fixture.
 4. Add the first Cypress fixture batch per family after each compare path exists.
-5. Revisit matrix admission now that all three have passing family-local compare evidence; keep
-   theme/config/rough/unsupported-statement policy work outside the main matrix until documented.
+5. Continue theme/config/rough/unsupported-statement policy work outside the primary matrix until
+   documented and covered by source-backed fixtures.
 
 ## Validation Gates
 
