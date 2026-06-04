@@ -1,0 +1,170 @@
+{
+  "diagramType": "ishikawa",
+  "model": {
+    "type": "ishikawa",
+    "title": "Blurry Photo",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "text": "Blurry Photo",
+      "children": [
+        {
+          "text": "Process",
+          "children": [
+            {
+              "text": "Out of focus",
+              "children": []
+            },
+            {
+              "text": "Shutter speed too slow",
+              "children": []
+            },
+            {
+              "text": "Protective film not removed",
+              "children": []
+            },
+            {
+              "text": "Beautification filter applied",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "User",
+          "children": [
+            {
+              "text": "Shaky hands",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Equipment",
+          "children": [
+            {
+              "text": "LENS",
+              "children": [
+                {
+                  "text": "Inappropriate lens",
+                  "children": []
+                },
+                {
+                  "text": "Damaged lens",
+                  "children": []
+                },
+                {
+                  "text": "Dirty lens",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "text": "SENSOR",
+              "children": [
+                {
+                  "text": "Damaged sensor",
+                  "children": []
+                },
+                {
+                  "text": "Dirty sensor",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "text": "Environment",
+          "children": [
+            {
+              "text": "Subject moved too quickly",
+              "children": []
+            },
+            {
+              "text": "Too dark",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "text": "Blurry Photo",
+        "depth": 0
+      },
+      {
+        "text": "Process",
+        "depth": 1
+      },
+      {
+        "text": "Out of focus",
+        "depth": 2
+      },
+      {
+        "text": "Shutter speed too slow",
+        "depth": 2
+      },
+      {
+        "text": "Protective film not removed",
+        "depth": 2
+      },
+      {
+        "text": "Beautification filter applied",
+        "depth": 2
+      },
+      {
+        "text": "User",
+        "depth": 1
+      },
+      {
+        "text": "Shaky hands",
+        "depth": 2
+      },
+      {
+        "text": "Equipment",
+        "depth": 1
+      },
+      {
+        "text": "LENS",
+        "depth": 2
+      },
+      {
+        "text": "Inappropriate lens",
+        "depth": 3
+      },
+      {
+        "text": "Damaged lens",
+        "depth": 3
+      },
+      {
+        "text": "Dirty lens",
+        "depth": 3
+      },
+      {
+        "text": "SENSOR",
+        "depth": 2
+      },
+      {
+        "text": "Damaged sensor",
+        "depth": 3
+      },
+      {
+        "text": "Dirty sensor",
+        "depth": 3
+      },
+      {
+        "text": "Environment",
+        "depth": 1
+      },
+      {
+        "text": "Subject moved too quickly",
+        "depth": 2
+      },
+      {
+        "text": "Too dark",
+        "depth": 2
+      }
+    ]
+  }
+}

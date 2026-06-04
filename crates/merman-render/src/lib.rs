@@ -16,11 +16,13 @@ mod config;
 mod entities;
 pub mod er;
 pub mod error;
+pub mod eventmodeling;
 pub mod flowchart;
 pub mod gantt;
 mod generated;
 pub mod gitgraph;
 pub mod info;
+pub mod ishikawa;
 pub mod journey;
 mod json;
 pub mod kanban;
@@ -39,6 +41,7 @@ pub mod state;
 pub mod svg;
 pub mod text;
 pub mod timeline;
+pub mod tree_view;
 pub mod treemap;
 mod trig_tables;
 pub mod xychart;
@@ -328,6 +331,27 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?,
         ))),
+        RenderSemanticModel::TreeView(model) => Ok(LayoutDiagram::TreeViewDiagram(Box::new(
+            tree_view::layout_tree_view_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        RenderSemanticModel::Ishikawa(model) => Ok(LayoutDiagram::IshikawaDiagram(Box::new(
+            ishikawa::layout_ishikawa_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        RenderSemanticModel::EventModeling(model) => Ok(LayoutDiagram::EventModelingDiagram(
+            Box::new(eventmodeling::layout_eventmodeling_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
+        )),
         RenderSemanticModel::Json(semantic) => layout_json_by_type(
             diagram_type,
             semantic,
@@ -515,6 +539,27 @@ fn layout_json_by_type(
         ))),
         "sankey" => Ok(LayoutDiagram::SankeyDiagram(Box::new(
             sankey::layout_sankey_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "treeView" => Ok(LayoutDiagram::TreeViewDiagram(Box::new(
+            tree_view::layout_tree_view_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "ishikawa" => Ok(LayoutDiagram::IshikawaDiagram(Box::new(
+            ishikawa::layout_ishikawa_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        "eventmodeling" => Ok(LayoutDiagram::EventModelingDiagram(Box::new(
+            eventmodeling::layout_eventmodeling_diagram(
                 semantic,
                 effective_config_value,
                 options.text_measurer.as_ref(),

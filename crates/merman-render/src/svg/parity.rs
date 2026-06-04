@@ -2,10 +2,11 @@ use super::icon_registry::IconRegistry;
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::model::{
     ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout,
-    ErrorDiagramLayout, FlowchartV2Layout, InfoDiagramLayout, LayoutCluster, LayoutNode,
-    MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
-    RadarDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout,
-    StateDiagramV2Layout, TimelineDiagramLayout, XyChartDiagramLayout,
+    ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartV2Layout, InfoDiagramLayout,
+    IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
+    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
+    SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout,
+    TreeViewDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -22,10 +23,12 @@ mod curve;
 mod emitted_bounds;
 mod er;
 mod error;
+mod eventmodeling;
 mod flowchart;
 mod gantt;
 mod gitgraph;
 mod info;
+mod ishikawa;
 mod journey;
 mod kanban;
 mod layout_debug;
@@ -45,6 +48,7 @@ mod style;
 mod theme;
 mod timeline;
 mod timing;
+mod tree_view;
 mod treemap;
 mod util;
 mod xychart;
@@ -67,10 +71,10 @@ use theme::PresentationTheme;
 use util::{
     SvgTheme, apply_root_viewport_override, config_bool, config_f64, config_f64_css_px,
     config_string, css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr,
-    escape_attr_display, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_debug_3dp,
-    fmt_display, fmt_into, fmt_max_width_px, fmt_path, fmt_path_into, fmt_points, fmt_string,
-    json_stringify_points, json_stringify_points_into, normalize_css_font_family, push_points_attr,
-    scoped_svg_id, scoped_svg_url, theme_color,
+    escape_attr_display, escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt,
+    fmt_debug_3dp, fmt_display, fmt_into, fmt_max_width_px, fmt_path, fmt_path_into, fmt_points,
+    fmt_string, json_stringify_points, json_stringify_points_into, normalize_css_font_family,
+    push_points_attr, scoped_svg_id, scoped_svg_url, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
@@ -262,6 +266,15 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config, options)
         }
+        LayoutDiagram::TreeViewDiagram(layout) => {
+            render_tree_view_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::IshikawaDiagram(layout) => {
+            render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::EventModelingDiagram(layout) => {
+            render_eventmodeling_diagram_svg(layout, semantic, effective_config, options)
+        }
         LayoutDiagram::C4Diagram(layout) => {
             render_c4_diagram_svg(layout, semantic, effective_config, title, measurer, options)
         }
@@ -418,6 +431,15 @@ fn render_layout_svg_parts_with_config_raw(
         ),
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::TreeViewDiagram(layout) => {
+            render_tree_view_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::IshikawaDiagram(layout) => {
+            render_ishikawa_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::EventModelingDiagram(layout) => {
+            render_eventmodeling_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::C4Diagram(layout) => render_c4_diagram_svg(
             layout,
@@ -642,6 +664,30 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 effective_config.as_value(),
                 title,
                 measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::TreeViewDiagram(layout), RenderSemanticModel::TreeView(_)) => {
+            render_tree_view_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::IshikawaDiagram(layout), RenderSemanticModel::Ishikawa(_)) => {
+            render_ishikawa_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::EventModelingDiagram(layout), RenderSemanticModel::EventModeling(_)) => {
+            render_eventmodeling_diagram_svg(
+                layout,
+                &serde_json::Value::Null,
+                effective_config.as_value(),
                 options,
             )
         }
@@ -901,6 +947,33 @@ pub fn render_gitgraph_diagram_svg(
         measurer,
         options,
     )
+}
+
+pub fn render_tree_view_diagram_svg(
+    layout: &TreeViewDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    tree_view::render_tree_view_diagram_svg(layout, semantic, effective_config, options)
+}
+
+pub fn render_ishikawa_diagram_svg(
+    layout: &IshikawaDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    ishikawa::render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
+}
+
+pub fn render_eventmodeling_diagram_svg(
+    layout: &EventModelingDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    eventmodeling::render_eventmodeling_diagram_svg(layout, semantic, effective_config, options)
 }
 
 pub fn render_gantt_diagram_svg(

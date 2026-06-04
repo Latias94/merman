@@ -1,0 +1,69 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "children": [
+        {
+          "id": 1,
+          "level": 4,
+          "name": "packages",
+          "children": [
+            {
+              "id": 2,
+              "level": 8,
+              "name": "mermaid",
+              "children": [
+                {
+                  "id": 3,
+                  "level": 12,
+                  "name": "src",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": 4,
+              "level": 8,
+              "name": "parser",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/"
+      },
+      {
+        "id": 1,
+        "level": 4,
+        "name": "packages"
+      },
+      {
+        "id": 2,
+        "level": 8,
+        "name": "mermaid"
+      },
+      {
+        "id": 3,
+        "level": 12,
+        "name": "src"
+      },
+      {
+        "id": 4,
+        "level": 8,
+        "name": "parser"
+      }
+    ]
+  }
+}

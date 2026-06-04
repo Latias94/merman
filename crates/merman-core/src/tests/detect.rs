@@ -62,3 +62,34 @@ class Class1
         .unwrap();
     assert_eq!(res.diagram_type, "classDiagram");
 }
+
+#[test]
+fn detects_tree_view_beta_as_tree_view() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_metadata("treeView-beta\n\"Root\"", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "treeView");
+}
+
+#[test]
+fn detects_ishikawa_headers_as_ishikawa() {
+    let engine = Engine::new();
+    for header in ["ishikawa", "ishikawa-beta", "ISHIKAWA-BETA"] {
+        let res =
+            block_on(engine.parse_metadata(&format!("{header}\nProblem"), ParseOptions::default()))
+                .unwrap()
+                .unwrap();
+        assert_eq!(res.diagram_type, "ishikawa");
+    }
+}
+
+#[test]
+fn detects_eventmodeling_as_eventmodeling() {
+    let engine = Engine::new();
+    let res =
+        block_on(engine.parse_metadata("eventmodeling\ntf 01 evt Start", ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+    assert_eq!(res.diagram_type, "eventmodeling");
+}

@@ -1,0 +1,66 @@
+{
+  "diagramType": "eventmodeling",
+  "model": {
+    "type": "eventmodeling",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "frames": [
+      {
+        "name": "01",
+        "frameKind": "timeframe",
+        "modelEntityType": "ui",
+        "entityIdentifier": "Shop.Cart",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "02",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "entityIdentifier": "Ordering.AddItem",
+        "sourceFrames": [
+          "01"
+        ],
+        "dataInlineValue": "{ sku: \"SKU-1\" }",
+        "dataReference": null
+      },
+      {
+        "name": "03",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "Cart.ItemAdded",
+        "sourceFrames": [
+          "02"
+        ],
+        "dataInlineValue": null,
+        "dataReference": "ItemAddedData"
+      },
+      {
+        "name": "04",
+        "frameKind": "resetframe",
+        "modelEntityType": "rmo",
+        "entityIdentifier": "Read.CartSummary",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "05",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "Checkout.CheckedOut",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      }
+    ],
+    "dataEntities": [
+      {
+        "name": "ItemAddedData",
+        "dataBlockValue": "{\n  sku: \"SKU-1\"\n  quantity: 1\n}"
+      }
+    ]
+  }
+}
