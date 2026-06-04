@@ -33,7 +33,12 @@ Immediate next task:
   `outer-path`, `divider`, and root drop-shadow defs). `compare-requirement-svgs --check-dom
   --dom-mode parity --dom-decimals 3` is green. Default exact SVG byte comparison still reports
   textual mismatch from RoughJS/serialization churn and is not the current Requirement gate.
-- Remaining HPD-090 broad stale families are `block`, `gantt`, `kanban`, `mindmap`, and `radar`.
+- The Block refresh is now handled: stored upstream SVGs and layout goldens were regenerated to
+  Mermaid 11.15, and the local Block renderer now emits current DOM surfaces needed for the family
+  parity gate (diagram-prefixed node/edge ids, XHTML paragraph label children including blank
+  placeholders, table-cell label containers with `line-height: 1.5`, and Mermaid 11.15 edge class
+  tokens). `compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- Remaining HPD-090 broad stale families are `gantt`, `kanban`, `mindmap`, and `radar`.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

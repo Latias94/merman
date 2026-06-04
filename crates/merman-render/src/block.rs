@@ -52,17 +52,11 @@ fn block_html_label_metrics_px(
     style: &TextStyle,
 ) -> (f64, f64) {
     let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    let svg_metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
     let width =
         crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
             .unwrap_or(html_metrics.width)
             .max(0.0);
-    let height = crate::generated::block_text_overrides_11_12_2::lookup_html_height_px(
-        style.font_size,
-        text,
-    )
-    .unwrap_or(svg_metrics.height)
-    .max(0.0);
+    let height = html_metrics.height.max(0.0);
     (width, height)
 }
 
@@ -1059,6 +1053,6 @@ mod tests {
         );
 
         assert_eq!(width, 487.890625);
-        assert_eq!(height, 28.0);
+        assert_eq!(height, 36.0);
     }
 }

@@ -6,32 +6,32 @@
         {
           "id": "e",
           "x": 76.031,
-          "y": -74.4,
+          "y": -84.0,
           "width": 152.063,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "f",
           "x": 40.016,
-          "y": -74.4,
+          "y": -84.0,
           "width": 64.031,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
           "x": 112.047,
-          "y": -74.4,
+          "y": -84.0,
           "width": 64.031,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -95.2,
+        "min_y": -108.0,
         "max_x": 152.063,
         "max_y": 0.0
       }

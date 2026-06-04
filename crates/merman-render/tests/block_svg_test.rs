@@ -59,10 +59,44 @@ block
         "expected shared Mermaid edge thickness CSS to reach visible Block edges: {svg}"
     );
     assert!(
-        svg.contains(
-            r#"class="edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#
-        ),
+        svg.contains(r#"class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#),
         "expected Block edge path to carry the themed edge-thickness-normal class: {svg}"
+    );
+}
+
+#[test]
+fn block_svg_uses_mermaid_11_15_dom_ids_and_html_label_shape() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["Alpha"] --> B["Beta"]
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"id="merman-A""#),
+        "expected Block node DOM id to be diagram-prefixed: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="merman-1-A-B""#),
+        "expected Block edge DOM id to be diagram-prefixed: {svg}"
+    );
+    assert!(
+        svg.contains(r#"style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>Alpha</p></span>"#),
+        "expected Block node label to use Mermaid 11.15 XHTML paragraph shape: {svg}"
+    );
+}
+
+#[test]
+fn block_svg_keeps_blank_placeholder_label_paragraph() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  blockArrowId6<["   "]>(down)
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"<span class="nodeLabel"><p>   </p></span>"#),
+        "expected blank Block placeholder labels to keep Mermaid's paragraph child: {svg}"
     );
 }
 

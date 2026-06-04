@@ -6,25 +6,25 @@
         {
           "id": "Frontend",
           "x": 36.75,
-          "y": -61.371,
+          "y": -67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
           "id": "blockArrowId6",
           "x": 118.25,
-          "y": -61.371,
+          "y": -67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
           "id": "Backend",
           "x": 199.75,
-          "y": -61.371,
+          "y": -67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
@@ -32,40 +32,40 @@
           "x": 199.75,
           "y": 0.0,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
           "id": "Disk",
           "x": 36.75,
-          "y": 61.371,
+          "y": 67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
           "id": "left",
           "x": 118.25,
-          "y": 61.371,
+          "y": 67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         },
         {
           "id": "Database",
           "x": 199.75,
-          "y": 61.371,
+          "y": 67.771,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -88.056,
+        "min_y": -97.656,
         "max_x": 236.5,
-        "max_y": 88.056
+        "max_y": 97.656
       }
     }
   }

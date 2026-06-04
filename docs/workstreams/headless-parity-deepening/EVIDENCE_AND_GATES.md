@@ -18,7 +18,7 @@ Outcome:
   - error diagram visible version text now reads `PINNED_MERMAID_BASELINE_VERSION`;
   - `xtask` gap audit, upstream import report headers, and Cypress upstream-root diagnostics now
     route through `pinned_mermaid_baseline_label(...)`.
-- Classified stored upstream SVG drift by family. Broad stale families are `block`, `gantt`,
+- Classified stored upstream SVG drift by family. Broad stale families were `block`, `gantt`,
   `kanban`, `mindmap`, `radar`, and `requirement`. Narrow stale sets are `class` (`2` fixtures),
   `timeline` (`1` fixture), and Flowchart HTML demo KaTeX fixtures (`4` fixtures). The rest passed
   the structure gate or only had non-gating textual churn.
@@ -29,6 +29,14 @@ Outcome:
   - node class ordering, `outer-path`, divider groups, and root drop-shadow defs match the generic
     Mermaid 11.15 render path;
   - the prototype-like `constructor` id remains renderable while `__proto__` stays suppressed.
+- Refreshed the Block stored upstream SVG family and fixed the local Block renderer/layout to match
+  Mermaid 11.15 current DOM under the parity gate:
+  - labels now use current XHTML paragraph children and `display: table-cell; line-height: 1.5`;
+  - blank placeholder labels keep the paragraph child in the DOM while still measuring as empty;
+  - node and edge DOM ids are diagram-prefixed;
+  - edge paths carry Mermaid 11.15's repeated thickness/pattern class tokens;
+  - Block layout goldens now reflect current HTML-like label height measurement instead of stale
+    generated 11.12 height overrides.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -38,10 +46,15 @@ Touched surfaces:
 - `crates/merman-render/src/info.rs`
 - `crates/merman-render/src/error.rs`
 - `crates/merman-render/src/svg/parity/requirement.rs`
+- `crates/merman-render/src/block.rs`
+- `crates/merman-render/src/svg/parity/block.rs`
+- `crates/merman-render/tests/block_svg_test.rs`
 - `crates/xtask/src/cmd/audit.rs`
 - `crates/xtask/src/cmd/import/{cypress,docs,examples}.rs`
 - `fixtures/info/*.layout.golden.json`
+- `fixtures/block/*.layout.golden.json`
 - `fixtures/upstream-svgs/info/*.svg`
+- `fixtures/upstream-svgs/block/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
@@ -63,6 +76,11 @@ Focused verification:
   test run.
 - `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3` -
   passed after the Requirement renderer DOM update.
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\block_report_parity_hpd090_after_label_fix.md` -
+  passed after the Block renderer/layout update.
+- `cargo nextest run -p merman-render --test block_svg_test` - passed, `6` tests run.
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
+  passed, `1` test run after the Block layout golden refresh.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -76,9 +94,10 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  Next HPD-090 work should refresh the remaining broad stale families and narrow stale fixtures
-  listed in `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability gates before
-  resuming parity fixes. No broad official fixture import is indicated yet.
+  Next HPD-090 work should refresh the remaining broad stale families (`gantt`, `kanban`,
+  `mindmap`, `radar`) and narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
+  layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
+  import is indicated yet.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 

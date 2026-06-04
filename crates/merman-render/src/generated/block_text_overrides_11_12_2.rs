@@ -144,12 +144,6 @@ static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[
     (2400, "Wide edge label", 172.71875),
 ];
 
-static HTML_HEIGHT_OVERRIDES_PX: &[(u16, &str, f64)] = &[
-    (2400, "Font size precedence should widen this block", 28.0),
-    (2400, "Second block", 28.0),
-    (2400, "Wide edge label", 28.0),
-];
-
 pub fn lookup_html_width_px(font_size: f64, text: &str) -> Option<f64> {
     let fs = font_size_key(font_size);
     if fs == 0 || text.is_empty() {
@@ -160,29 +154,6 @@ pub fn lookup_html_width_px(font_size: f64, text: &str) -> Option<f64> {
     while lo < hi {
         let mid = (lo + hi) / 2;
         let (k_fs, k_text, value) = HTML_WIDTH_OVERRIDES_PX[mid];
-        match k_fs.cmp(&fs) {
-            std::cmp::Ordering::Equal => match k_text.cmp(text) {
-                std::cmp::Ordering::Equal => return Some(value),
-                std::cmp::Ordering::Less => lo = mid + 1,
-                std::cmp::Ordering::Greater => hi = mid,
-            },
-            std::cmp::Ordering::Less => lo = mid + 1,
-            std::cmp::Ordering::Greater => hi = mid,
-        }
-    }
-    None
-}
-
-pub fn lookup_html_height_px(font_size: f64, text: &str) -> Option<f64> {
-    let fs = font_size_key(font_size);
-    if fs == 0 || text.is_empty() {
-        return None;
-    }
-    let mut lo = 0usize;
-    let mut hi = HTML_HEIGHT_OVERRIDES_PX.len();
-    while lo < hi {
-        let mid = (lo + hi) / 2;
-        let (k_fs, k_text, value) = HTML_HEIGHT_OVERRIDES_PX[mid];
         match k_fs.cmp(&fs) {
             std::cmp::Ordering::Equal => match k_text.cmp(text) {
                 std::cmp::Ordering::Equal => return Some(value),

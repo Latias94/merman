@@ -95,6 +95,14 @@ pub(super) fn render_block_diagram_svg_model(
         format!("url(#{})", marker_id(diagram_id, marker))
     }
 
+    fn dom_id(diagram_id: &str, raw_id: &str) -> String {
+        if diagram_id.is_empty() {
+            raw_id.to_string()
+        } else {
+            format!("{diagram_id}-{raw_id}")
+        }
+    }
+
     fn edge_marker_end(arrow: Option<&str>) -> Option<&'static str> {
         match arrow.unwrap_or("").trim() {
             "arrow_point" => Some("pointEnd"),
@@ -823,11 +831,7 @@ pub(super) fn render_block_diagram_svg_model(
         let x = -width / 2.0;
         let y = -height / 2.0;
 
-        let id_attr = match n.id.as_str() {
-            // Mermaid block diagrams omit `id` for these special-case ids in SVG output.
-            "id" | "__proto__" | "constructor" => String::new(),
-            _ => format!(r#" id="{}""#, escape_attr(&n.id)),
-        };
+        let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
         let _ = write!(
             &mut out,
             r#"<g class="node default {}"{} transform="translate({}, {})">"#,
@@ -1216,11 +1220,6 @@ pub(super) fn render_block_diagram_svg_model(
         let label = decode_block_label_html(&node.label);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
-        let label_for_dom = if label_effectively_empty {
-            String::new()
-        } else {
-            label.clone()
-        };
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
         } else {
@@ -1233,9 +1232,14 @@ pub(super) fn render_block_diagram_svg_model(
         } else {
             format!(r#" style="{}""#, escape_attr(&node_text_style))
         };
+        let label_markup = if node.label.is_empty() {
+            String::new()
+        } else {
+            format!("<p>{}</p>", escape_xml(&label))
+        };
         let _ = write!(
             &mut out,
-            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: inline-block; white-space: nowrap;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
+            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g>"#,
             escape_attr(&node_text_style),
             fmt(label_tx),
             fmt(label_ty),
@@ -1243,7 +1247,7 @@ pub(super) fn render_block_diagram_svg_model(
             fmt(label_h),
             escape_attr(&node_div_style_prefix),
             span_style_attr,
-            escape_xml(&label_for_dom)
+            label_markup
         );
 
         out.push_str("</g>");
@@ -1285,12 +1289,12 @@ pub(super) fn render_block_diagram_svg_model(
             }
         }
         let d = curve_basis_path_d(&edge_points);
-        let class_attr = "edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
+        let class_attr = "edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1";
         let _ = write!(
             &mut out,
             r#"<path d="{}" id="{}" class="{}""#,
             escape_attr(&d),
-            escape_attr(&e.id),
+            escape_attr(&dom_id(diagram_id, &e.id)),
             escape_attr(class_attr)
         );
 
@@ -1321,7 +1325,7 @@ pub(super) fn render_block_diagram_svg_model(
 
         let _ = write!(
             &mut out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="stroke: rgb(51, 51, 51); stroke-width: 1.5px; display: inline-block; white-space: nowrap;"><span class="edgeLabel" style="stroke: #333; stroke-width: 1.5px;color:none;">{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="stroke: rgb(51, 51, 51); stroke-width: 1.5px; display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel" style="stroke: #333; stroke-width: 1.5px;color:none;"><p>{}</p></span></div></foreignObject></g></g>"#,
             fmt(lbl.x),
             fmt(lbl.y),
             fmt(-lbl.width / 2.0),

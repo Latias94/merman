@@ -6,66 +6,66 @@
         {
           "id": "a",
           "x": 60.031,
-          "y": -49.6,
+          "y": -56.0,
           "width": 120.063,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "e",
           "x": 60.031,
-          "y": -0.0,
+          "y": 0.0,
           "width": 120.063,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "f",
           "x": 32.016,
-          "y": -0.0,
+          "y": 0.0,
           "width": 48.031,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
           "x": 88.047,
-          "y": -0.0,
+          "y": 0.0,
           "width": 48.031,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "h",
           "x": 17.344,
-          "y": 49.6,
+          "y": 56.0,
           "width": 34.688,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "i",
           "x": 60.031,
-          "y": 49.6,
+          "y": 56.0,
           "width": 34.688,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "j",
           "x": 102.719,
-          "y": 49.6,
+          "y": 56.0,
           "width": 34.688,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -70.4,
+        "min_y": -80.0,
         "max_x": 120.063,
-        "max_y": 70.4
+        "max_y": 80.0
       }
     }
   }

@@ -6,42 +6,42 @@
         {
           "id": "block1",
           "x": 71.563,
-          "y": -24.8,
+          "y": -28.0,
           "width": 143.125,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "id-<id>-1",
           "x": 71.563,
-          "y": 24.8,
+          "y": 28.0,
           "width": 143.125,
-          "height": 41.6,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "block2",
           "x": 37.781,
-          "y": 24.8,
+          "y": 28.0,
           "width": 59.563,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "block3",
           "x": 105.344,
-          "y": 24.8,
+          "y": 28.0,
           "width": 59.563,
-          "height": 25.6,
+          "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -45.6,
+        "min_y": -52.0,
         "max_x": 143.125,
-        "max_y": 45.6
+        "max_y": 52.0
       }
     }
   }

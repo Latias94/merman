@@ -8,16 +8,16 @@
           "x": 36.75,
           "y": 0.0,
           "width": 73.5,
-          "height": 53.371,
+          "height": 59.771,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -26.685,
+        "min_y": -29.885,
         "max_x": 73.5,
-        "max_y": 26.685
+        "max_y": 29.885
       }
     }
   }

@@ -70,7 +70,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | Family | Result | Stored / Generated | Recommendation |
 | --- | --- | ---: | --- |
 | `architecture` | pass | `185 / 185` | Keep. |
-| `block` | stale, broad | `119 / 119` | Refresh by family. |
+| `block` | refreshed + DOM parity fixed | `119 / 119` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `c4` | pass | `51 / 51` | Keep. |
 | `class` | stale, narrow | `246 / 246`, `2` diffs | Point refresh after inspecting the two fixtures. |
 | `er` | pass | `101 / 101` | Keep. |
@@ -93,8 +93,8 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `treemap` | pass | `54 / 54` | Keep. |
 | `xychart` | pass | `71 / 71` | Keep. |
 
-Decision: do not refresh all stored upstream SVGs. Refresh only the broad stale families plus the
-three narrow stale sets, then run the readiness gates against the refreshed corpus.
+Decision: do not refresh all stored upstream SVGs. Refresh only the remaining broad stale families
+plus the three narrow stale sets, then run the readiness gates against the refreshed corpus.
 
 ## First Slice Completed
 
@@ -153,6 +153,29 @@ Verification:
 - `cargo run -p xtask -- compare-requirement-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals`
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe`
+- `cargo fmt --all --check`
+
+## Fourth Slice Completed
+
+Block baseline refresh plus renderer DOM/layout parity:
+
+- All `fixtures/upstream-svgs/block/*.svg` were refreshed to the pinned Mermaid 11.15 baseline.
+- All `fixtures/block/*.layout.golden.json` were refreshed after moving Block label height
+  measurement to current HTML-like `line-height: 1.5` semantics.
+- Block SVG output now emits the current Mermaid 11.15 DOM surfaces needed by the family gate:
+  - diagram-prefixed node and edge DOM ids;
+  - node and edge labels rendered through XHTML `<p>` children;
+  - blank placeholder labels keep Mermaid's paragraph child while still measuring as empty;
+  - node label containers use `display: table-cell` with `line-height: 1.5`;
+  - edge paths carry the repeated Mermaid thickness/pattern class tokens.
+- The legacy generated width override table remains for width parity, but its stale height
+  overrides are no longer used.
+
+Verification:
+
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\block_report_parity_hpd090_after_label_fix.md`
+- `cargo nextest run -p merman-render --test block_svg_test`
+- `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
 - `cargo fmt --all --check`
 
 ## Refresh Policy
@@ -220,8 +243,7 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Refresh remaining broad stale stored SVG families: `block`, `gantt`, `kanban`, `mindmap`, and
-   `radar`.
+1. Refresh remaining broad stale stored SVG families: `gantt`, `kanban`, `mindmap`, and `radar`.
 2. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
    Flowchart HTML demo KaTeX fixtures (`4` fixtures).
 3. Update affected layout snapshots and run family compare gates after each refresh batch.
