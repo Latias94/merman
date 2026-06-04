@@ -210,7 +210,7 @@ block
                 "rgba(56, 189, 248, 0.2)",
                 "#f59e0b",
                 r#"#theme-block .edge-thickness-normal{stroke-width:4px;}"#,
-                r#"class="edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#,
+                r#"class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link LS-a1 LE-b1""#,
             ],
         ),
         (

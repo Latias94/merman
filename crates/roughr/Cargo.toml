@@ -66,6 +66,3 @@ version = "0.11.0"
 
 [dependencies.svgtypes]
 version = "0.11"
-
-[dev-dependencies.plotlib]
-version = "0.5"
