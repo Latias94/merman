@@ -1,0 +1,39 @@
+{
+  "diagramType": "eventmodeling",
+  "model": {
+    "type": "eventmodeling",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "frames": [
+      {
+        "name": "02",
+        "frameKind": "timeframe",
+        "modelEntityType": "ui",
+        "entityIdentifier": "UI",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "01",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "Product.PriceChanged",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "03",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "Cart.ItemAdded",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      }
+    ],
+    "dataEntities": []
+  }
+}

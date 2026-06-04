@@ -21,6 +21,10 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.mmd`
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.mmd`
   - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.mmd`
+- Parser-source fixtures from `repo-ref/mermaid/packages/parser/tests/eventmodeling.test.ts`:
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_full_syntax_spec.mmd`
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_qualified_names_spec.mmd`
+  - `fixtures/eventmodeling/upstream_parser_eventmodeling_resetframe_spec.mmd`
 
 ## Upstream SVG Baselines
 
@@ -31,6 +35,9 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.svg`
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.svg`
 - `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_full_syntax_spec.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_qualified_names_spec.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_parser_eventmodeling_resetframe_spec.svg`
 
 ## Compare Coverage
 
@@ -51,6 +58,7 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 ## Deferred Coverage
 
-- Full upstream parser fixtures from `repo-ref/mermaid/packages/parser/tests/eventmodeling.test.ts`.
+- The complex upstream parser fixture that includes unrendered `entity`, `note`, and `gwt`
+  statements.
 - `entity`, `note`, and `gwt` statement rendering.
 - Full strict DOM parity for the current Cypress image snapshot corpus.

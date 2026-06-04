@@ -126,7 +126,7 @@ Backlog:
 |---|---:|---|---|
 | P2E-001 | P0 | Add upstream SVG baseline and compare command for the existing minimum fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2E-002 | P0 | Import the six Cypress rendering examples as fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
-| P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | These are already near the Phase 1 parser scope and should be cheap to snapshot. |
+| P2E-003 | P1 | Port parser fixture coverage for full syntax, qualified names, and reset frames. | Done: 3 parser-source fixtures now have semantic/layout goldens and upstream SVG baselines. |
 | P2E-004 | P1 | Decide the semantic policy for `entity`, `note`, and `gwt` before rendering them. | They are parsed upstream but explicitly outside Phase 1 render support. |
 | P2E-005 | P2 | Audit data block HTML/foreignObject output beyond parity DOM structure. | Current local renderer emits upstream-shaped `foreignObject` HTML; strict sanitization and browser text metrics are still not claimed. |
 
@@ -143,7 +143,8 @@ Progress as of 2026-06-04:
 - Series 1-3 are complete at the admission-infrastructure level: family-local compare commands and
   upstream SVG baseline corpora exist for `treeView`, `ishikawa`, and `eventmodeling`.
 - Series 4 first Cypress batch is imported: `treeView` has 4 Cypress fixtures, `ishikawa` has 6
-  selected Cypress fixtures, and `eventmodeling` has 6 Cypress fixtures.
+  selected Cypress fixtures, and `eventmodeling` has 6 Cypress fixtures plus 3 parser-source
+  fixtures.
 - `check-upstream-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for all three
   families, so the upstream baseline corpora are reproducible.
 - `compare-*-svgs` without `--check-dom` passes for all three families, proving parse/layout/render

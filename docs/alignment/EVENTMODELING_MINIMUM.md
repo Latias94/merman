@@ -23,6 +23,8 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   - captures frame name, entity type, qualified entity identifier, explicit `->>` sources, inline data, and `[[dataReference]]`
   - captures `data` blocks as named data entities
   - ignores blank lines and whole-line `%%` comments
+  - has source-backed fixture coverage for full `timeframe` syntax, qualified entity identifiers,
+    and `resetframe`
 - Render model:
   - typed `EventModelingDiagramRenderModel`
   - compatibility JSON from the same typed model
