@@ -52,3 +52,41 @@ treeView-beta
     assert!(svg.contains(r#"fill: #FF0000"#));
     assert!(svg.contains(r#"stroke: #00FF00"#));
 }
+
+#[test]
+fn tree_view_typed_render_model_outputs_accessibility_nodes() {
+    let input = r##"treeView-beta
+title TreeView Diagram Title
+accTitle: Accessible TreeView Title
+accDescr: Accessible TreeView Description
+"Root"
+    "Child"
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.meta.diagram_type, "treeView");
+
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-a11y-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert!(svg.contains(
+        r#"aria-describedby="chart-desc-tree-view-a11y-test" aria-labelledby="chart-title-tree-view-a11y-test""#
+    ));
+    assert!(svg.contains(
+        r#"<title id="chart-title-tree-view-a11y-test">Accessible TreeView Title</title><desc id="chart-desc-tree-view-a11y-test">Accessible TreeView Description</desc><style>"#
+    ));
+}

@@ -34,6 +34,10 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   - Stage B renderer with `.tree-view`, `.treeView-node-label`, and `.treeView-node-line`
   - `themeVariables.treeView.labelFontSize`, `labelColor`, and `lineColor`
   - upstream viewBox left offset rule `-lineThickness / 2`
+  - root accessibility DOM for `accTitle` and `accDescr`: `aria-labelledby`,
+    `aria-describedby`, `<title>`, and `<desc>` match Mermaid's common render layer
+  - ordinary `title` is parsed and stored, but the upstream treeView renderer does not render a
+    visible diagram title
 
 ## Known Gaps
 
@@ -42,4 +46,3 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/treeView/`.
 - Parser diagnostics are Rust-native and not exact Langium error strings.
 - SVG DOM ordering and browser `getBBox()` float details have not been strict-parity audited.
-- Title/accessibility DOM output is not yet audited against upstream treeView renderer behavior.

@@ -25,6 +25,8 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `should parse a treeView with accDescr`
 - `should parse a treeView with multiple accessibility attributes`
   - parser unit coverage in `crates/merman-core/src/diagrams/tree_view.rs`
+  - SVG root accessibility DOM coverage in
+    `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.mmd`
 - Cypress custom config example:
   - `crates/merman-render/tests/tree_view_svg_test.rs`
 
@@ -39,6 +41,13 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.mmd`
   - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.mmd`
   - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.mmd`
+- Parser-source accessibility fixture from
+  `repo-ref/mermaid/packages/parser/tests/treeView.test.ts`:
+  - `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.mmd`
+  - semantic snapshot:
+    `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.golden.json`
+  - layout snapshot:
+    `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.layout.golden.json`
 
 ## Upstream SVG Baselines
 
@@ -47,6 +56,7 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.svg`
 - `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.svg`
 - `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.svg`
+- `fixtures/upstream-svgs/treeView/upstream_parser_treeview_title_accessibility_spec.svg`
 
 ## Compare Coverage
 

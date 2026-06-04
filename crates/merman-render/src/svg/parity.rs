@@ -667,10 +667,10 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
-        (LayoutDiagram::TreeViewDiagram(layout), RenderSemanticModel::TreeView(_)) => {
-            render_tree_view_diagram_svg(
+        (LayoutDiagram::TreeViewDiagram(layout), RenderSemanticModel::TreeView(model)) => {
+            tree_view::render_tree_view_diagram_svg_model(
                 layout,
-                &serde_json::Value::Null,
+                model,
                 effective_config.as_value(),
                 options,
             )

@@ -68,7 +68,7 @@ Backlog:
 |---|---:|---|---|
 | P2T-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2T-002 | P0 | Import the Cypress simple, complex, multiple-root, and custom-config examples as fixtures. | Done: 4 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
-| P2T-003 | P1 | Audit title/accessibility DOM behavior against upstream renderer output. | Current parser supports these fields, but SVG DOM parity has not been audited. |
+| P2T-003 | P1 | Audit title/accessibility DOM behavior against upstream renderer output. | Done: parser-source fixture covers `title` + `accTitle` + `accDescr`; root `<svg>` now emits upstream-shaped `aria-describedby` / `aria-labelledby` plus `<title>` / `<desc>` before `<style>`. |
 | P2T-004 | P1 | Add root viewport notes after the first compare run. | Track `viewBox`, `width`, `height`, and `max-width` residuals separately from subtree DOM parity. |
 
 Deferred:
