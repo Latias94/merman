@@ -290,6 +290,14 @@ Last updated: 2026-06-04
   `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md` as the first
   entrypoint for the current `batch5` / `html_titles` / `unicode` local-vs-browser service
   contribution reports.
+  A follow-up nested-group aggregate slice adds a `Group aggregate child attribution` table to
+  `debug-architecture-delta --probe-dir`. The table combines local direct service contribution
+  bounds with direct child-group emitted rects before comparing them to browser
+  `childrenBoundingBoxIncludeLabels`. The current top-residual batch at
+  `target\compare\architecture-delta-current-top-residuals-hpd050\architecture-delta-batch.md`
+  now shows `nested_groups_002/platform` as child groups `data, runtime`, `content dw=-0.500000`,
+  and expansion `dw=0`, so nested parent residuals no longer depend on a `<none>` direct-service
+  blind spot.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

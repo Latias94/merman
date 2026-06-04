@@ -496,6 +496,22 @@ fn group_local_rect_key(group_id: &str) -> String {
     format!("group-{group_id}")
 }
 
+fn architecture_group_parent_map(semantic: &serde_json::Value) -> BTreeMap<String, Option<String>> {
+    let mut out = BTreeMap::new();
+    let Some(groups) = semantic.get("groups").and_then(|v| v.as_array()) else {
+        return out;
+    };
+
+    for group in groups {
+        let Some(id) = json_string(group, "id") else {
+            continue;
+        };
+        out.insert(id.to_string(), json_string(group, "in").map(str::to_string));
+    }
+
+    out
+}
+
 fn format_browser_label_metrics(node: Option<&ArchitectureProbeNode>) -> String {
     match (
         node.and_then(|node| node.label_width),
@@ -839,6 +855,7 @@ fn render_architecture_probe_join_markdown(
     local_service_positions: &BTreeMap<String, DebugPt>,
     upstream_groups: &BTreeMap<String, DebugRect>,
     local_groups: &BTreeMap<String, DebugRect>,
+    group_parents: &BTreeMap<String, Option<String>>,
 ) {
     let probe_nodes = architecture_probe_nodes_by_id(probe);
     let mut local_service_child_frame: BTreeMap<String, DebugRect> = BTreeMap::new();
@@ -870,9 +887,25 @@ fn render_architecture_probe_join_markdown(
                 .iter()
                 .filter_map(|service| service.in_group.clone()),
         )
+        .chain(group_parents.keys().cloned())
+        .chain(group_parents.values().filter_map(|parent| parent.clone()))
         .collect();
     group_ids.sort();
     group_ids.dedup();
+
+    let mut child_groups_by_parent: BTreeMap<String, Vec<(String, DebugRect)>> = BTreeMap::new();
+    for (child_id, parent_id) in group_parents {
+        let Some(parent_id) = parent_id else {
+            continue;
+        };
+        let Some(rect) = local_groups.get(&group_local_rect_key(child_id)).copied() else {
+            continue;
+        };
+        child_groups_by_parent
+            .entry(parent_id.clone())
+            .or_default()
+            .push((child_id.clone(), rect));
+    }
 
     let _ = writeln!(report, "## Browser probe phase join\n");
     let _ = writeln!(report, "Probe JSON: `{}`\n", probe_json_path.display());
@@ -949,6 +982,101 @@ fn render_architecture_probe_join_markdown(
                 format_debug_optional_f64(expansion_dh),
                 format_debug_optional_f64(emitted_dw),
                 format_debug_optional_f64(emitted_dh)
+            );
+        }
+    }
+    let _ = writeln!(report);
+
+    let _ = writeln!(report, "### Group aggregate child attribution\n");
+    let _ = writeln!(
+        report,
+        "This table compares browser `childrenBoundingBoxIncludeLabels` with a local aggregate made from direct service contribution bounds plus direct child-group emitted rects. It is diagnostic evidence for nested groups; it does not replace the source-specific child service table above.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| group | direct services | child groups | browser children labels | local aggregate content | content dw | content dh | browser final expansion | local emitted expansion | expansion dw | expansion dh | emitted dw | emitted dh |\n|---|---:|---|---|---|---:|---:|---|---|---:|---:|---:|---:|"
+    );
+    if group_ids.is_empty() {
+        let _ = writeln!(
+            report,
+            "| `<none>` | 0 | `<none>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    } else {
+        for group_id in &group_ids {
+            let direct_services: Vec<DebugRect> = layout
+                .cytoscape_service_bounds
+                .iter()
+                .filter(|service| service.in_group.as_deref() == Some(group_id.as_str()))
+                .map(|service| DebugRect::from_model_bounds(&service.union_bounds))
+                .collect();
+            let direct_service_count = direct_services.len();
+            let child_groups = child_groups_by_parent
+                .get(group_id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let child_group_names = if child_groups.is_empty() {
+                "<none>".to_string()
+            } else {
+                child_groups
+                    .iter()
+                    .map(|(id, _)| id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+
+            let local_content = debug_rect_union(
+                direct_services
+                    .into_iter()
+                    .chain(child_groups.iter().map(|(_, rect)| *rect)),
+            );
+            let browser_group = probe_nodes.get(group_id);
+            let browser_children = browser_group.and_then(|node| node.children_labels);
+            let browser_expansion = browser_group
+                .and_then(|node| node.bb.zip(node.children_labels))
+                .map(|(bb, children)| debug_rect_expansion(bb, children));
+            let local_emitted = local_groups.get(&group_local_rect_key(group_id)).copied();
+            let upstream_emitted = upstream_groups
+                .get(&group_local_rect_key(group_id))
+                .copied();
+            let local_expansion = local_emitted
+                .zip(local_content)
+                .map(|(emitted, content)| debug_rect_expansion(emitted, content));
+
+            let content_dw = local_content
+                .zip(browser_children)
+                .map(|(local, browser)| local.w - browser.w);
+            let content_dh = local_content
+                .zip(browser_children)
+                .map(|(local, browser)| local.h - browser.h);
+            let expansion_dw = local_expansion
+                .zip(browser_expansion)
+                .map(|(local, browser)| local.dw - browser.dw);
+            let expansion_dh = local_expansion
+                .zip(browser_expansion)
+                .map(|(local, browser)| local.dh - browser.dh);
+            let emitted_dw = local_emitted
+                .zip(upstream_emitted)
+                .map(|(local, upstream)| local.w - upstream.w);
+            let emitted_dh = local_emitted
+                .zip(upstream_emitted)
+                .map(|(local, upstream)| local.h - upstream.h);
+
+            let _ = writeln!(
+                report,
+                "| `{}` | {} | `{}` | `{}` | `{}` | {} | {} | `{}` | `{}` | {} | {} | {} | {} |",
+                group_id,
+                direct_service_count,
+                child_group_names,
+                format_debug_rect(browser_children),
+                format_debug_rect(local_content),
+                format_debug_optional_f64(content_dw),
+                format_debug_optional_f64(content_dh),
+                format_debug_rect_expansion(browser_expansion),
+                format_debug_rect_expansion(local_expansion),
+                format_debug_optional_f64(expansion_dw),
+                format_debug_optional_f64(expansion_dh),
+                format_debug_optional_f64(emitted_dw),
+                format_debug_optional_f64(emitted_dh),
             );
         }
     }
@@ -1900,6 +2028,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let _ = writeln!(&mut report);
 
         if let Some((probe_path, probe)) = &probe_json {
+            let group_parents = architecture_group_parent_map(&layouted.semantic);
             render_architecture_probe_join_markdown(
                 &mut report,
                 probe_path,
@@ -1908,6 +2037,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 &lo_services,
                 &up_groups,
                 &lo_groups,
+                &group_parents,
             );
         }
 
@@ -2836,6 +2966,7 @@ mod tests {
             &local_service_positions,
             &upstream_groups,
             &local_groups,
+            &BTreeMap::new(),
         );
 
         assert!(md.contains("## Browser probe phase join"));
@@ -2865,5 +2996,83 @@ mod tests {
         ));
         assert!(md.contains("### Group content edge attribution"));
         assert!(md.contains("| `pipeline` | 1 | `storage@20.000000` | `storage@-20.000000` | -40.000000 | `storage@121.000000` | `storage@83.000000` | -38.000000 | 2.000000 | `storage@30.000000` | `storage@10.000000` | -20.000000 | `storage@72.000000` | `storage@58.000000` | -14.000000 | 6.000000 |"));
+    }
+
+    #[test]
+    fn architecture_probe_join_reports_nested_group_aggregate_content() {
+        let probe = serde_json::json!({
+            "finalElements": {
+                "nodes": [
+                    {
+                        "id": "platform",
+                        "bb": { "x1": 0.0, "y1": 0.0, "w": 200.0, "h": 200.0 },
+                        "childrenBoundingBoxIncludeLabels": {
+                            "x1": 10.0,
+                            "y1": 10.0,
+                            "w": 100.0,
+                            "h": 100.0
+                        },
+                        "data": { "type": "group" }
+                    },
+                    {
+                        "id": "runtime",
+                        "bb": { "x1": 10.0, "y1": 10.0, "w": 100.0, "h": 100.0 },
+                        "data": { "type": "group" }
+                    }
+                ]
+            }
+        });
+        let layout = merman_render::model::ArchitectureDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            cytoscape_service_bounds: Vec::new(),
+            fcose_compound_bounds: Vec::new(),
+            bounds: None,
+        };
+        let upstream_groups = BTreeMap::from([(
+            "group-platform".to_string(),
+            DebugRect {
+                x: 0.0,
+                y: 0.0,
+                w: 200.0,
+                h: 200.0,
+            },
+        )]);
+        let local_groups = BTreeMap::from([
+            (
+                "group-platform".to_string(),
+                DebugRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 203.0,
+                    h: 200.0,
+                },
+            ),
+            (
+                "group-runtime".to_string(),
+                DebugRect {
+                    x: 10.0,
+                    y: 10.0,
+                    w: 103.0,
+                    h: 100.0,
+                },
+            ),
+        ]);
+        let group_parents = BTreeMap::from([("runtime".to_string(), Some("platform".to_string()))]);
+
+        let mut md = String::new();
+        render_architecture_probe_join_markdown(
+            &mut md,
+            Path::new("target/probe/nested.fcose-browser-probe.json"),
+            &probe,
+            &layout,
+            &BTreeMap::new(),
+            &upstream_groups,
+            &local_groups,
+            &group_parents,
+        );
+
+        assert!(md.contains("### Group aggregate child attribution"));
+        assert!(md.contains("| `platform` | 0 | `runtime` | `x=10.000000 y=10.000000 w=100.000000 h=100.000000` | `x=10.000000 y=10.000000 w=103.000000 h=100.000000` | 3.000000 | 0.000000 |"));
     }
 }

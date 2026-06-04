@@ -3,6 +3,48 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Nested Group Aggregate Delta Report
+
+Outcome:
+
+- `xtask debug-architecture-delta --probe-dir` now adds a `Group aggregate child attribution` table
+  to the browser probe phase join.
+- The aggregate table combines local direct service contribution bounds with direct child-group
+  emitted rects, then compares that local aggregate against browser
+  `childrenBoundingBoxIncludeLabels`.
+- This closes a diagnostic blind spot in nested Architecture fixtures where parent groups have no
+  direct services. The old direct-service table correctly printed `<none>` for those parents, but
+  that made nested residuals depend on manual child-group reconstruction.
+- Regenerated the current top Architecture residual batch under
+  `target\compare\architecture-delta-current-top-residuals-hpd050`.
+- In `nested_groups_002`, the new `platform` row now reports child groups `data, runtime`, local
+  aggregate width `375.654085`, browser children width `376.154085`, `content dw=-0.500000`, and
+  matching local/browser expansion `dw=83.000000`. This isolates the parent-width tail to nested
+  child-group aggregate width, not a direct-service missing-data gap.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-nested-group-aggregate.md`
+- `target\compare\architecture-delta-current-top-residuals-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_probe_join` - passed, `2` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_junction_fork_join_026 --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --fixture stress_architecture_batch6_init_fontsize_icon_size_wrap_093 --fixture stress_architecture_nested_groups_002 --probe-dir target\compare\architecture-fcose-probe-active-residuals-hpd050 --out target\compare\architecture-delta-current-top-residuals-hpd050` -
+  passed and wrote the indexed current top-residual batch.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask` - passed, `100` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. It makes nested group residuals source-phase-auditable, but it does
+  not justify a global group padding, final rect, child label, or root-bounds formula change.
+
 ## HPD-050 - Architecture Delta Batch Index
 
 Outcome:

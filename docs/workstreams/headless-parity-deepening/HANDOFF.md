@@ -433,6 +433,12 @@ Current repository reality to preserve:
     `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md` and links the
     `batch5`, `html_titles`, and `unicode` reports to their copied upstream/local SVGs and browser
     probe JSONs. Use it as the local-delta counterpart to the existing browser probe batch index.
+  - A follow-up nested-group aggregate slice now adds `Group aggregate child attribution` to
+    `debug-architecture-delta --probe-dir`. The current top-residual batch is
+    `target\compare\architecture-delta-current-top-residuals-hpd050\architecture-delta-batch.md`;
+    in `nested_groups_002`, `platform` now reports child groups `data, runtime`,
+    `content dw=-0.500000`, and matching local/browser expansion `dw=83.000000`. This keeps nested
+    parent residuals source-phase-auditable without changing renderer formulas.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
