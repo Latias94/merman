@@ -190,6 +190,11 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 - `-C, --cssFile <file>` injects CSS into SVG output before export.
 - `-I, --svgId <id>` sets the root SVG id and marker id prefix.
 - `-s, --scale <n>` controls PNG/JPG raster scale.
+- `--raster-fit-width <px>` and `--raster-fit-height <px>` fit PNG/JPG output to a
+  browser-like preview box before applying `--scale`.
+- `--raster-max-width <px>`, `--raster-max-height <px>`, and `--raster-max-pixels <n>` set the
+  PNG/JPG pixmap budget. Defaults are `8192 x 8192` and `8192*8192` total pixels.
+- `--raster-unbounded` disables the PNG/JPG pixmap budget for trusted oversized exports.
 - `-f, --pdfFit` uses a chart-sized PDF page instead of the top-level default Letter-sized page.
 - `-q, --quiet` suppresses non-error logs.
 - `--text-measurer deterministic|vendored` controls text measurement.
@@ -207,6 +212,13 @@ merman-cli render --format png --out diagram.png diagram.svg
 ```
 
 The raster path applies merman's `resvg`-safe SVG cleanup before conversion.
+
+Large Mermaid SVGs can be valid and still unsafe to rasterize at their intrinsic viewBox size.
+Browsers usually paint the vector SVG inside a visible container; they do not have to allocate one
+full-size pixmap up front. For preview-like PNG/JPG output, pass `--raster-fit-width` and/or
+`--raster-fit-height` plus `--scale` for device-pixel ratio. For export-like output, the default
+pixmap budget prevents accidental oversized allocations; use `--raster-unbounded` only when that
+memory cost is intentional.
 
 ## Compatibility Notes
 

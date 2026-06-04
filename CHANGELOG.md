@@ -6,11 +6,29 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- BREAKING: Updated the compatibility baseline to Mermaid `11.15.0`. Parser behavior, layout
+  geometry, SVG DOM output, root viewports, and CLI compatibility now track the pinned Mermaid /
+  `@mermaid-js/mermaid-cli` 11.15 line instead of the earlier 11.12.x baseline; downstream semantic,
+  layout, or SVG goldens may need to be refreshed.
+- BREAKING: `merman::render::raster::RasterOptions` now includes target-aware sizing fields
+  (`fit_to` and `size_limit`). Callers that construct `RasterOptions` with exhaustive struct
+  literals should add `..Default::default()` or set the new fields explicitly.
+- BREAKING: PNG/JPG raster output is now budgeted by default. Very large diagrams are downscaled to
+  fit the default `8192px` side / `8192*8192` pixel budget unless callers provide a preview
+  `fit_to` box, custom `RasterSizeLimit`, or explicitly opt into unbounded raster output.
+
 ### Added
 
 - Added productized ASCII/Unicode text rendering via the new `merman-ascii` crate, the opt-in
   `merman` `ascii` feature, `merman::ascii` public helpers, and `merman-cli render --format
   ascii|unicode` behind the CLI `ascii` feature.
+- Added target-aware PNG/JPG raster sizing: `RasterFitBox` for browser-like preview boxes,
+  `RasterSizeLimit` for pixmap budgets, `RasterPlan` / `svg_raster_plan` for allocation-free size
+  inspection, and builder helpers on `RasterOptions`.
+- Added CLI raster sizing controls: `--raster-fit-width`, `--raster-fit-height`,
+  `--raster-max-width`, `--raster-max-height`, `--raster-max-pixels`, and `--raster-unbounded`.
 - Expanded ASCII/Unicode flowchart support for edge labels, open/dotted/length-modified edges,
   common terminal node-shape approximations, and simple titled subgraphs.
 - Added grid-based ASCII/Unicode flowchart routing for multi-root graphs, fan-out/fan-in branches,
@@ -54,6 +72,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Advanced the upstream parity and CLI compatibility target to Mermaid `11.15.0`, including updated
+  fixture/baseline expectations, official CLI compatibility notes, and playground compare behavior.
+- Reworked PNG/JPG rasterization to compute the requested pixmap size, effective scale, and safety
+  limits before allocating `tiny-skia` buffers. SVG output remains Mermaid-parity and does not
+  clamp the root `viewBox`.
 - Hardened the pre-release `merman-ascii` public API by making ASCII errors and narrow option enums
   non-exhaustive, and moved `mermaid-ascii` padding directive handling out of the model-driven
   `merman-ascii` options surface into the higher-level source render entry points.
@@ -69,6 +92,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Fixed oversized Mermaid diagrams from forcing merman-owned PNG/JPG rasterization to allocate an
+  intrinsic full-size pixmap without an explicit budget.
+- Fixed JPG rasterization so the implicit default background remains opaque white after the raster
+  sizing refactor.
 - Aligned deeply nested State, Block, Mindmap, Treemap, C4, and Flowchart handling with Mermaid by
   removing Merman's custom 256-level depth-limit error for valid inputs and using stack-safe
   parser/layout traversals.

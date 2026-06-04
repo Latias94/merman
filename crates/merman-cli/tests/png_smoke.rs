@@ -80,6 +80,76 @@ fn cli_rasterizes_svg_input_to_png() {
 }
 
 #[test]
+fn cli_rasterizes_svg_input_to_png_with_fit_width_and_scale() {
+    let root = repo_root();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let svg_in = tmp.path().join("in.svg");
+    let out = tmp.path().join("out.png");
+
+    fs::write(
+        &svg_in,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill='#000'/></svg>"#,
+    )
+    .expect("write svg");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .current_dir(&root)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--raster-fit-width",
+            "250",
+            "--scale",
+            "2",
+            "--out",
+            out.to_string_lossy().as_ref(),
+            svg_in.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read png");
+    assert_eq!(png_dimensions(&bytes), (500, 250));
+}
+
+#[test]
+fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
+    let root = repo_root();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let svg_in = tmp.path().join("in.svg");
+    let out = tmp.path().join("out.png");
+
+    fs::write(
+        &svg_in,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill='#000'/></svg>"#,
+    )
+    .expect("write svg");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .current_dir(&root)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--raster-max-width",
+            "128",
+            "--out",
+            out.to_string_lossy().as_ref(),
+            svg_in.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read png");
+    assert_eq!(png_dimensions(&bytes), (128, 64));
+}
+
+#[test]
 fn cli_renders_png_with_default_out_path_for_file_input() {
     let root = repo_root();
     let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");
@@ -156,4 +226,11 @@ fn cli_renders_png_for_negative_viewbox_diagrams() {
         .chunks_exact(4)
         .any(|px| px[3] != 0);
     assert!(has_any_ink, "rendered PNG is fully transparent");
+}
+
+fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+    let decoder = png::Decoder::new(bytes);
+    let reader = decoder.read_info().expect("png read_info");
+    let info = reader.info();
+    (info.width, info.height)
 }

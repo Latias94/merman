@@ -34,6 +34,7 @@ pub(crate) struct RenderPlan {
     parse: ParseCliArgs,
     render: RenderCliArgs,
     scale: f32,
+    raster: RasterCliOptions,
     background: Option<String>,
     css: Option<String>,
     icon_registry: Option<Arc<IconRegistry>>,
@@ -43,6 +44,16 @@ pub(crate) struct RenderPlan {
     quiet: bool,
     sequence_mirror_actors: bool,
     mode: RenderMode,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct RasterCliOptions {
+    fit_width: Option<u32>,
+    fit_height: Option<u32>,
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+    max_pixels: Option<u64>,
+    unbounded: bool,
 }
 
 struct RenderRequest<'a> {
@@ -99,6 +110,7 @@ pub(crate) fn render_plan_for_mmdc(
         parse,
         render,
         scale: export.scale.unwrap_or(1.0),
+        raster: RasterCliOptions::from_export(&export)?,
         background: Some(
             export
                 .background_color
@@ -145,6 +157,7 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
             hand_drawn_seed: args.export.hand_drawn_seed,
         },
         scale: args.export.scale.unwrap_or(1.0),
+        raster: RasterCliOptions::from_export(&args.export)?,
         background: args.export.background_color.clone(),
         css: read_optional_text_file(args.export.css_file.as_deref(), "CSS file")?,
         icon_registry,
@@ -335,11 +348,7 @@ impl<'a> RenderRequest<'a> {
     fn rasterize_svg(&self, svg: &str) -> Result<RenderedArtifact, CliError> {
         let metadata = svg_metadata(svg);
         let svg = merman::render::svg_resvg_safe(svg)?;
-        let options = merman::render::raster::RasterOptions {
-            scale: self.plan.scale,
-            background: self.plan.background.clone(),
-            ..Default::default()
-        };
+        let options = self.plan.raster_options();
         let bytes = match self.plan.format {
             RenderFormat::Svg | RenderFormat::Ascii | RenderFormat::Unicode => {
                 return Err(CliError::InvalidOutput(
@@ -419,6 +428,60 @@ impl RenderPlan {
                 .filter(|path| *path != "-")
                 .map(|path| markdown::is_markdown_path(Path::new(path)))
                 .unwrap_or(false)
+    }
+
+    fn raster_options(&self) -> merman::render::raster::RasterOptions {
+        let mut options = merman::render::raster::RasterOptions {
+            scale: self.scale,
+            background: self.background.clone(),
+            ..Default::default()
+        };
+
+        if self.raster.fit_width.is_some() || self.raster.fit_height.is_some() {
+            options.fit_to = Some(merman::render::raster::RasterFitBox::new(
+                self.raster.fit_width,
+                self.raster.fit_height,
+            ));
+        }
+
+        if self.raster.unbounded {
+            options.size_limit = merman::render::raster::RasterSizeLimit::unbounded();
+        } else if self.raster.max_width.is_some()
+            || self.raster.max_height.is_some()
+            || self.raster.max_pixels.is_some()
+        {
+            let default = merman::render::raster::RasterSizeLimit::default();
+            options.size_limit = merman::render::raster::RasterSizeLimit::new(
+                self.raster.max_width.or(default.max_width),
+                self.raster.max_height.or(default.max_height),
+                self.raster.max_pixels.or(default.max_pixels),
+            );
+        }
+
+        options
+    }
+}
+
+impl RasterCliOptions {
+    fn from_export(export: &ExportArgs) -> Result<Self, CliError> {
+        if export.raster_unbounded
+            && (export.raster_max_width.is_some()
+                || export.raster_max_height.is_some()
+                || export.raster_max_pixels.is_some())
+        {
+            return Err(CliError::InvalidInput(
+                "--raster-unbounded cannot be combined with --raster-max-* limits".to_string(),
+            ));
+        }
+
+        Ok(Self {
+            fit_width: export.raster_fit_width,
+            fit_height: export.raster_fit_height,
+            max_width: export.raster_max_width,
+            max_height: export.raster_max_height,
+            max_pixels: export.raster_max_pixels,
+            unbounded: export.raster_unbounded,
+        })
     }
 }
 

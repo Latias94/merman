@@ -111,20 +111,30 @@ fn cli_prints_version_successfully() {
 #[test]
 fn cli_rejects_non_positive_numeric_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    let output = Command::new(exe)
-        .args(["-i", "-", "-o", "-", "--scale", "0"])
-        .output()
-        .expect("run cli");
 
-    assert!(
-        !output.status.success(),
-        "expected --scale 0 to be rejected"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("expected a positive number"),
-        "unexpected stderr:\n{stderr}"
-    );
+    for (flag, value, expected) in [
+        ("--scale", "0", "expected a positive number"),
+        ("--raster-fit-width", "0", "expected a positive integer"),
+        ("--raster-fit-height", "0", "expected a positive integer"),
+        ("--raster-max-width", "0", "expected a positive integer"),
+        ("--raster-max-height", "0", "expected a positive integer"),
+        ("--raster-max-pixels", "0", "expected a positive integer"),
+    ] {
+        let output = Command::new(&exe)
+            .args(["-i", "-", "-o", "-", flag, value])
+            .output()
+            .expect("run cli");
+
+        assert!(
+            !output.status.success(),
+            "expected {flag} {value} to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(expected),
+            "unexpected stderr for {flag} {value}:\n{stderr}"
+        );
+    }
 }
 
 #[test]
@@ -139,6 +149,34 @@ fn cli_rejects_non_positive_jobs() {
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
         stderr.contains("expected a positive integer"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn cli_rejects_conflicting_raster_unbounded_and_limits() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .stdin(Stdio::null())
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--raster-unbounded",
+            "--raster-max-width",
+            "128",
+            "-",
+        ])
+        .output()
+        .expect("run cli");
+
+    assert!(
+        !output.status.success(),
+        "expected raster unbounded/max conflict to fail"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--raster-unbounded cannot be combined with --raster-max-* limits"),
         "unexpected stderr:\n{stderr}"
     );
 }

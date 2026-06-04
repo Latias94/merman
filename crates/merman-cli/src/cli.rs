@@ -196,6 +196,30 @@ pub(crate) struct ExportArgs {
     #[arg(short = 's', long = "scale", value_parser = parse_positive_f32)]
     pub(crate) scale: Option<f32>,
 
+    /// Fit PNG/JPG raster output to this CSS-pixel width before applying --scale.
+    #[arg(long = "raster-fit-width", value_parser = parse_positive_u32)]
+    pub(crate) raster_fit_width: Option<u32>,
+
+    /// Fit PNG/JPG raster output to this CSS-pixel height before applying --scale.
+    #[arg(long = "raster-fit-height", value_parser = parse_positive_u32)]
+    pub(crate) raster_fit_height: Option<u32>,
+
+    /// Maximum PNG/JPG output width after scale and fit. Defaults to 8192.
+    #[arg(long = "raster-max-width", value_parser = parse_positive_u32)]
+    pub(crate) raster_max_width: Option<u32>,
+
+    /// Maximum PNG/JPG output height after scale and fit. Defaults to 8192.
+    #[arg(long = "raster-max-height", value_parser = parse_positive_u32)]
+    pub(crate) raster_max_height: Option<u32>,
+
+    /// Maximum PNG/JPG output pixels after scale and fit. Defaults to 8192*8192.
+    #[arg(long = "raster-max-pixels", value_parser = parse_positive_u64)]
+    pub(crate) raster_max_pixels: Option<u64>,
+
+    /// Disable PNG/JPG raster size limits. Use only for trusted oversized exports.
+    #[arg(long = "raster-unbounded")]
+    pub(crate) raster_unbounded: bool,
+
     /// Scale PDF to fit chart. Accepted for mmdc compatibility.
     #[arg(short = 'f', long = "pdfFit", alias = "pdf-fit")]
     pub(crate) pdf_fit: bool,
@@ -305,6 +329,26 @@ impl RenderFormat {
 fn parse_positive_usize(value: &str) -> Result<usize, String> {
     let parsed = value
         .parse::<usize>()
+        .map_err(|_| "expected a positive integer".to_string())?;
+    if parsed == 0 {
+        return Err("expected a positive integer".to_string());
+    }
+    Ok(parsed)
+}
+
+fn parse_positive_u32(value: &str) -> Result<u32, String> {
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|_| "expected a positive integer".to_string())?;
+    if parsed == 0 {
+        return Err("expected a positive integer".to_string());
+    }
+    Ok(parsed)
+}
+
+fn parse_positive_u64(value: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
         .map_err(|_| "expected a positive integer".to_string())?;
     if parsed == 0 {
         return Err("expected a positive integer".to_string());

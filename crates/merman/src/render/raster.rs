@@ -11,6 +11,10 @@ pub enum RasterError {
     SvgParse,
     #[error("failed to allocate pixmap for raster rendering")]
     PixmapAlloc,
+    #[error("invalid raster scale; expected a finite positive number")]
+    InvalidScale,
+    #[error("invalid raster sizing option: {0}")]
+    InvalidSizing(&'static str),
     #[error("failed to encode PNG")]
     PngEncode,
     #[error("invalid background color for JPG rendering")]
@@ -25,11 +29,107 @@ pub enum RasterError {
 
 pub type Result<T> = std::result::Result<T, RasterError>;
 
+pub const DEFAULT_MAX_RASTER_SIDE_LENGTH: u32 = 8192;
+pub const DEFAULT_MAX_RASTER_PIXELS: u64 =
+    (DEFAULT_MAX_RASTER_SIDE_LENGTH as u64) * (DEFAULT_MAX_RASTER_SIDE_LENGTH as u64);
+
+/// Optional display box for target-aware rasterization.
+///
+/// Browser previews typically draw Mermaid SVG as vector content inside a container. A headless
+/// rasterizer has to allocate a full pixmap, so UI hosts should pass the visible container size
+/// here and use [`RasterOptions::scale`] for device-pixel ratio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RasterFitBox {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+}
+
+impl RasterFitBox {
+    pub const fn new(width: Option<u32>, height: Option<u32>) -> Self {
+        Self { width, height }
+    }
+
+    pub const fn width(width: u32) -> Self {
+        Self {
+            width: Some(width),
+            height: None,
+        }
+    }
+
+    pub const fn height(height: u32) -> Self {
+        Self {
+            width: None,
+            height: Some(height),
+        }
+    }
+
+    pub const fn contain(width: u32, height: u32) -> Self {
+        Self {
+            width: Some(width),
+            height: Some(height),
+        }
+    }
+}
+
+/// Resource budget applied before allocating the output pixmap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RasterSizeLimit {
+    pub max_width: Option<u32>,
+    pub max_height: Option<u32>,
+    pub max_pixels: Option<u64>,
+}
+
+impl RasterSizeLimit {
+    pub const fn new(
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+        max_pixels: Option<u64>,
+    ) -> Self {
+        Self {
+            max_width,
+            max_height,
+            max_pixels,
+        }
+    }
+
+    pub const fn max_side_length(max_side_length: u32) -> Self {
+        Self {
+            max_width: Some(max_side_length),
+            max_height: Some(max_side_length),
+            max_pixels: None,
+        }
+    }
+
+    pub const fn default_safe() -> Self {
+        Self {
+            max_width: Some(DEFAULT_MAX_RASTER_SIDE_LENGTH),
+            max_height: Some(DEFAULT_MAX_RASTER_SIDE_LENGTH),
+            max_pixels: Some(DEFAULT_MAX_RASTER_PIXELS),
+        }
+    }
+
+    pub const fn unbounded() -> Self {
+        Self {
+            max_width: None,
+            max_height: None,
+            max_pixels: None,
+        }
+    }
+}
+
+impl Default for RasterSizeLimit {
+    fn default() -> Self {
+        Self::default_safe()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RasterOptions {
     pub scale: f32,
     pub background: Option<String>,
     pub jpeg_quality: u8,
+    pub fit_to: Option<RasterFitBox>,
+    pub size_limit: RasterSizeLimit,
 }
 
 impl Default for RasterOptions {
@@ -38,8 +138,48 @@ impl Default for RasterOptions {
             scale: 1.0,
             background: None,
             jpeg_quality: 90,
+            fit_to: None,
+            size_limit: RasterSizeLimit::default(),
         }
     }
+}
+
+impl RasterOptions {
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+
+    pub fn with_background(mut self, background: impl Into<String>) -> Self {
+        self.background = Some(background.into());
+        self
+    }
+
+    pub fn with_fit_to(mut self, fit_to: RasterFitBox) -> Self {
+        self.fit_to = Some(fit_to);
+        self
+    }
+
+    pub fn with_size_limit(mut self, size_limit: RasterSizeLimit) -> Self {
+        self.size_limit = size_limit;
+        self
+    }
+
+    pub fn with_unbounded_size(mut self) -> Self {
+        self.size_limit = RasterSizeLimit::unbounded();
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RasterPlan {
+    pub requested_width_px: u32,
+    pub requested_height_px: u32,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub requested_scale: f64,
+    pub effective_scale: f64,
+    pub limited: bool,
 }
 
 pub fn render_png_sync(
@@ -108,7 +248,7 @@ pub fn render_pdf_sync(
 }
 
 pub fn svg_to_png(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {
-    let pixmap = svg_to_pixmap(svg, options.scale, options.background.as_deref())?;
+    let pixmap = svg_to_pixmap(svg, options)?;
     pixmap.encode_png().map_err(|_| RasterError::PngEncode)
 }
 
@@ -121,7 +261,9 @@ pub fn svg_to_jpeg(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {
         return Err(RasterError::JpegOpaqueBackgroundRequired);
     }
 
-    let pixmap = svg_to_pixmap(svg, options.scale, Some(bg))?;
+    let mut raster_options = options.clone();
+    raster_options.background = Some(bg.to_string());
+    let pixmap = svg_to_pixmap(svg, &raster_options)?;
     let (w, h) = (pixmap.width(), pixmap.height());
 
     // tiny-skia renders into an RGBA8 buffer. When the destination is opaque (we always fill a
@@ -140,6 +282,15 @@ pub fn svg_to_jpeg(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {
     enc.encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
         .map_err(|_| RasterError::JpegEncode)?;
     Ok(out)
+}
+
+pub fn svg_raster_plan(svg: &str, options: &RasterOptions) -> Result<RasterPlan> {
+    let mut opt = usvg::Options::default();
+    configure_usvg_options_for_raster(&mut opt, svg);
+
+    let tree = usvg::Tree::from_str(svg, &opt).map_err(|_| RasterError::SvgParse)?;
+    let (geo, _) = raster_geometry_for_svg(svg, &tree);
+    raster_plan_for_geometry(geo, options)
 }
 
 pub fn svg_to_pdf(svg: &str) -> Result<Vec<u8>> {
@@ -191,73 +342,24 @@ struct RasterGeometry {
     height: f32,
 }
 
-fn svg_to_pixmap(svg: &str, scale: f32, background: Option<&str>) -> Result<tiny_skia::Pixmap> {
+fn svg_to_pixmap(svg: &str, options: &RasterOptions) -> Result<tiny_skia::Pixmap> {
     let mut opt = usvg::Options::default();
     configure_usvg_options_for_raster(&mut opt, svg);
 
     let tree = usvg::Tree::from_str(svg, &opt).map_err(|_| RasterError::SvgParse)?;
+    let (geo, translate_min_to_origin) = raster_geometry_for_svg(svg, &tree);
+    let plan = raster_plan_for_geometry(geo, options)?;
 
-    let (geo, translate_min_to_origin) = if let Some(vb) = parse_svg_viewbox(svg) {
-        // `usvg`/`resvg` already apply the root viewBox transform (including translating the
-        // viewBox min corner to (0,0)) when building/rendering the tree. If we also translate
-        // by `-min_x/-min_y` here, diagrams with negative viewBox mins (e.g. kanban, gitGraph)
-        // get shifted fully out of the viewport and render as a blank/transparent pixmap.
-        (
-            RasterGeometry {
-                min_x: 0.0,
-                min_y: 0.0,
-                width: vb.width,
-                height: vb.height,
-            },
-            false,
-        )
-    } else {
-        // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
-        // For raster formats, fall back to the rendered content bounds as computed by usvg.
-        let bbox = tree.root().abs_stroke_bounding_box();
-        let w = bbox.width().max(1.0);
-        let h = bbox.height().max(1.0);
-        if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
-            (
-                RasterGeometry {
-                    min_x: bbox.x(),
-                    min_y: bbox.y(),
-                    width: w,
-                    height: h,
-                },
-                true,
-            )
-        } else {
-            let size = tree.size();
-            (
-                RasterGeometry {
-                    min_x: 0.0,
-                    min_y: 0.0,
-                    width: size.width(),
-                    height: size.height(),
-                },
-                false,
-            )
-        }
-    };
+    let mut pixmap =
+        tiny_skia::Pixmap::new(plan.width_px, plan.height_px).ok_or(RasterError::PixmapAlloc)?;
 
-    // Make scaling more intuitive/stable: at scale=1 we already round up to whole pixels, so for
-    // scale>1 prefer scaling the *rounded* base size. This avoids surprising off-by-one shrinkage
-    // when the viewBox/bounds are fractional (e.g. 342.36 * 2 = 684.72 → ceil = 685, while
-    // ceil(342.36) * 2 = 686).
-    let base_width_px = geo.width.ceil().max(1.0);
-    let base_height_px = geo.height.ceil().max(1.0);
-    let width_px = (base_width_px * scale).ceil().max(1.0) as u32;
-    let height_px = (base_height_px * scale).ceil().max(1.0) as u32;
-
-    let mut pixmap = tiny_skia::Pixmap::new(width_px, height_px).ok_or(RasterError::PixmapAlloc)?;
-
-    if let Some(bg) = background {
+    if let Some(bg) = options.background.as_deref() {
         if let Some(color) = parse_tiny_skia_color(bg) {
             pixmap.fill(color);
         }
     }
 
+    let scale = plan.effective_scale as f32;
     let transform = if translate_min_to_origin {
         // Render at `scale`, translating so min_x/min_y map to (0,0).
         tiny_skia::Transform::from_row(
@@ -274,6 +376,205 @@ fn svg_to_pixmap(svg: &str, scale: f32, background: Option<&str>) -> Result<tiny
 
     resvg::render(&tree, transform, &mut pixmap.as_mut());
     Ok(pixmap)
+}
+
+fn raster_geometry_for_svg(svg: &str, tree: &usvg::Tree) -> (RasterGeometry, bool) {
+    if let Some(vb) = parse_svg_viewbox(svg) {
+        // `usvg`/`resvg` already apply the root viewBox transform (including translating the
+        // viewBox min corner to (0,0)) when building/rendering the tree. If we also translate
+        // by `-min_x/-min_y` here, diagrams with negative viewBox mins (e.g. kanban, gitGraph)
+        // get shifted fully out of the viewport and render as a blank/transparent pixmap.
+        return (
+            RasterGeometry {
+                min_x: 0.0,
+                min_y: 0.0,
+                width: vb.width,
+                height: vb.height,
+            },
+            false,
+        );
+    }
+
+    // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
+    // For raster formats, fall back to the rendered content bounds as computed by usvg.
+    let bbox = tree.root().abs_stroke_bounding_box();
+    let w = bbox.width().max(1.0);
+    let h = bbox.height().max(1.0);
+    if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+        (
+            RasterGeometry {
+                min_x: bbox.x(),
+                min_y: bbox.y(),
+                width: w,
+                height: h,
+            },
+            true,
+        )
+    } else {
+        let size = tree.size();
+        (
+            RasterGeometry {
+                min_x: 0.0,
+                min_y: 0.0,
+                width: size.width(),
+                height: size.height(),
+            },
+            false,
+        )
+    }
+}
+
+fn raster_plan_for_geometry(geo: RasterGeometry, options: &RasterOptions) -> Result<RasterPlan> {
+    if !(options.scale.is_finite() && options.scale > 0.0) {
+        return Err(RasterError::InvalidScale);
+    }
+
+    validate_fit_box(options.fit_to)?;
+    validate_size_limit(options.size_limit)?;
+
+    // Make scaling more intuitive/stable: at scale=1 we already round up to whole pixels, so for
+    // scale>1 prefer scaling the *rounded* base size. This avoids surprising off-by-one shrinkage
+    // when the viewBox/bounds are fractional (e.g. 342.36 * 2 = 684.72 -> ceil = 685, while
+    // ceil(342.36) * 2 = 686).
+    let base_width_px = f64::from(geo.width).ceil().max(1.0);
+    let base_height_px = f64::from(geo.height).ceil().max(1.0);
+
+    let fit_scale = fit_scale_for_base_size(base_width_px, base_height_px, options.fit_to);
+    let requested_scale = fit_scale * f64::from(options.scale);
+    let requested_width_px = raster_dim_px(base_width_px * requested_scale, None)?;
+    let requested_height_px = raster_dim_px(base_height_px * requested_scale, None)?;
+
+    let limit_scale = size_limit_scale(
+        base_width_px * requested_scale,
+        base_height_px * requested_scale,
+        options.size_limit,
+    );
+    let mut effective_scale = requested_scale * limit_scale;
+    let (mut width_px, mut height_px) = raster_limited_dims(
+        base_width_px,
+        base_height_px,
+        effective_scale,
+        options.size_limit,
+    )?;
+
+    if let Some(max_pixels) = options.size_limit.max_pixels {
+        for _ in 0..8 {
+            if u64::from(width_px) * u64::from(height_px) <= max_pixels {
+                break;
+            }
+            let pixels = f64::from(width_px) * f64::from(height_px);
+            let shrink = ((max_pixels as f64) / pixels).sqrt() * 0.999_999;
+            effective_scale *= shrink;
+            (width_px, height_px) = raster_limited_dims(
+                base_width_px,
+                base_height_px,
+                effective_scale,
+                options.size_limit,
+            )?;
+        }
+    }
+
+    Ok(RasterPlan {
+        requested_width_px,
+        requested_height_px,
+        width_px,
+        height_px,
+        requested_scale,
+        effective_scale,
+        limited: width_px != requested_width_px || height_px != requested_height_px,
+    })
+}
+
+fn validate_fit_box(fit: Option<RasterFitBox>) -> Result<()> {
+    let Some(fit) = fit else {
+        return Ok(());
+    };
+
+    if fit.width.is_none() && fit.height.is_none() {
+        return Err(RasterError::InvalidSizing(
+            "fit_to must include a positive width or height",
+        ));
+    }
+    if fit.width == Some(0) || fit.height == Some(0) {
+        return Err(RasterError::InvalidSizing(
+            "fit_to width and height must be positive",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_size_limit(limit: RasterSizeLimit) -> Result<()> {
+    if limit.max_width == Some(0) || limit.max_height == Some(0) {
+        return Err(RasterError::InvalidSizing(
+            "size_limit max_width and max_height must be positive",
+        ));
+    }
+    if limit.max_pixels == Some(0) {
+        return Err(RasterError::InvalidSizing(
+            "size_limit max_pixels must be positive",
+        ));
+    }
+    Ok(())
+}
+
+fn fit_scale_for_base_size(width: f64, height: f64, fit: Option<RasterFitBox>) -> f64 {
+    let Some(fit) = fit else {
+        return 1.0;
+    };
+
+    let mut scale: f64 = 1.0;
+    if let Some(target_width) = fit.width {
+        scale = scale.min(f64::from(target_width) / width);
+    }
+    if let Some(target_height) = fit.height {
+        scale = scale.min(f64::from(target_height) / height);
+    }
+    scale.min(1.0).max(0.0)
+}
+
+fn size_limit_scale(width: f64, height: f64, limit: RasterSizeLimit) -> f64 {
+    let mut scale: f64 = 1.0;
+    if let Some(max_width) = limit.max_width {
+        scale = scale.min(f64::from(max_width) / width);
+    }
+    if let Some(max_height) = limit.max_height {
+        scale = scale.min(f64::from(max_height) / height);
+    }
+    if let Some(max_pixels) = limit.max_pixels {
+        let pixels = width * height * scale * scale;
+        if pixels > max_pixels as f64 {
+            scale *= ((max_pixels as f64) / pixels).sqrt();
+        }
+    }
+    scale.min(1.0).max(0.0)
+}
+
+fn raster_limited_dims(
+    base_width_px: f64,
+    base_height_px: f64,
+    scale: f64,
+    limit: RasterSizeLimit,
+) -> Result<(u32, u32)> {
+    Ok((
+        raster_dim_px(base_width_px * scale, limit.max_width)?,
+        raster_dim_px(base_height_px * scale, limit.max_height)?,
+    ))
+}
+
+fn raster_dim_px(value: f64, max: Option<u32>) -> Result<u32> {
+    if !(value.is_finite() && value > 0.0) {
+        return Err(RasterError::InvalidSizing(
+            "computed raster dimension must be finite and positive",
+        ));
+    }
+    let value = value.ceil().max(1.0);
+    if value > f64::from(u32::MAX) {
+        return Err(RasterError::InvalidSizing(
+            "computed raster dimension exceeds u32",
+        ));
+    }
+    let px = value as u32;
+    Ok(max.map_or(px, |max| px.min(max)))
 }
 
 fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
@@ -485,10 +786,95 @@ mod tests {
     }
 
     #[test]
+    fn svg_to_jpeg_defaults_to_white_background() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"></svg>"#;
+        let bytes = svg_to_jpeg(svg, &RasterOptions::default()).unwrap();
+        let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
+            .unwrap()
+            .to_rgb8();
+        let px = img.get_pixel(0, 0);
+
+        assert!(
+            px[0] > 240 && px[1] > 240 && px[2] > 240,
+            "expected default JPG background to be white-ish, got {px:?}"
+        );
+    }
+
+    #[test]
     fn svg_to_png_keeps_text_visible_when_requested_font_is_missing() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v11.12.2</text></svg>"##;
         let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
         assert_png_has_visible_non_background_ink(&bytes);
+    }
+
+    #[test]
+    fn default_plan_downscales_large_intrinsic_svg_without_allocating() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14544.4375 6565.5"><rect width="14544.4375" height="6565.5" fill="white"/></svg>"#;
+        let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+
+        assert_eq!(plan.requested_width_px, 14545);
+        assert_eq!(plan.requested_height_px, 6566);
+        assert_eq!(plan.width_px, DEFAULT_MAX_RASTER_SIDE_LENGTH);
+        assert!(plan.height_px < DEFAULT_MAX_RASTER_SIDE_LENGTH);
+        assert!(plan.limited);
+        assert!(plan.effective_scale < plan.requested_scale);
+    }
+
+    #[test]
+    fn fit_to_models_browser_preview_container_before_scale() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill="black"/></svg>"#;
+        let options = RasterOptions::default()
+            .with_fit_to(RasterFitBox::width(250))
+            .with_scale(2.0);
+        let plan = svg_raster_plan(svg, &options).unwrap();
+
+        assert_eq!(plan.requested_width_px, 500);
+        assert_eq!(plan.requested_height_px, 250);
+        assert_eq!(plan.width_px, 500);
+        assert_eq!(plan.height_px, 250);
+        assert!(!plan.limited);
+    }
+
+    #[test]
+    fn size_limit_caps_actual_png_dimensions() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500"><rect width="1000" height="500" fill="black"/></svg>"#;
+        let options = RasterOptions::default()
+            .with_size_limit(RasterSizeLimit::max_side_length(128))
+            .with_background("white");
+        let bytes = svg_to_png(svg, &options).unwrap();
+        let (width, height) = png_size(&bytes);
+
+        assert_eq!((width, height), (128, 64));
+    }
+
+    #[test]
+    fn size_limit_caps_by_total_pixels() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="black"/></svg>"#;
+        let options = RasterOptions::default().with_size_limit(RasterSizeLimit::new(
+            None,
+            None,
+            Some(10_000),
+        ));
+        let plan = svg_raster_plan(svg, &options).unwrap();
+
+        assert_eq!((plan.width_px, plan.height_px), (100, 100));
+        assert!(plan.limited);
+    }
+
+    #[test]
+    fn unbounded_size_keeps_requested_dimensions() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 4500"><rect width="9000" height="4500" fill="black"/></svg>"#;
+        let plan = svg_raster_plan(svg, &RasterOptions::default().with_unbounded_size()).unwrap();
+
+        assert_eq!((plan.width_px, plan.height_px), (9000, 4500));
+        assert!(!plan.limited);
+    }
+
+    fn png_size(bytes: &[u8]) -> (u32, u32) {
+        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .unwrap()
+            .to_rgba8();
+        img.dimensions()
     }
 
     fn assert_png_has_visible_non_background_ink(bytes: &[u8]) {

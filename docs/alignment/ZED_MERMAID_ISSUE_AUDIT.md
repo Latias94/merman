@@ -31,7 +31,7 @@ requirements evidence, not as code to copy into this repository.
 | zed-industries/zed#57967 | Upgrade to `merman = "0.6"` and `SvgPipeline::resvg_safe()` changes preview colors/fallback overlays | Host theme boundary plus optional merman pipeline support | Zed's color cleanup is host palette policy. The generic fallback duplicate issue is covered by `DropNativeDuplicateFallbacksPostprocessor`, which removes only fallback groups whose text duplicates native SVG text. See `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-zed-resvg-safe-theme-feedback.md`. |
 | zed-industries/zed#57875 | `markdown_preview_theme` not reflected in Mermaid preview | Host integration boundary | `merman` exposes `MermaidConfig`, `SvgPipeline`, and host CSS postprocessors, but Zed must pass the preview theme instead of the editor theme. |
 | zed-industries/zed#56914 / #51466 / #51623 / #56695 | Fonts missing or substituted incorrectly in Zed/GPUI rasterization | Mostly host integration boundary | `merman` can use vendored measurement and host-provided font families. Actual glyph rasterization and font fallback are handled by the host SVG/raster stack. |
-| zed-industries/zed#56466 / #56468 / #51242 | Huge Mermaid diagrams can allocate oversized GPUI textures | Host boundary with possible merman follow-up | Zed must cap preview textures. `merman` raster helpers should eventually expose an explicit max-pixmap policy if consumers depend on built-in PNG/JPG/PDF export for untrusted huge diagrams. |
+| zed-industries/zed#56466 / #56468 / #51242 | Huge Mermaid diagrams can allocate oversized GPUI textures | Host boundary plus covered merman raster policy | Zed must still cap preview textures when it rasterizes SVGs itself. `merman` PNG/JPG helpers now expose target-aware `fit_to` sizing plus an explicit pixmap budget, with a default `8192px` side / `8192*8192` pixel cap for untrusted oversized diagrams. |
 
 ## Practical Conclusion
 
@@ -43,7 +43,8 @@ surface:
 - theme selection must be wired from the host preview theme,
 - host-specific palette replacement should stay in the host or an explicit postprocessor,
 - font fallback and glyph rasterization live in the host SVG renderer,
-- huge texture allocation needs a host-side cap,
+- huge texture allocation needs a host-side cap when the host rasterizes SVG itself; merman-owned
+  PNG/JPG rasterization now has a reusable sizing policy,
 - arbitrary external Mermaid SVGs need host SVG preview support or an explicit fallback pass.
 
 The regression suite added in `crates/merman/tests/zed_mermaid_issue_fixtures.rs` is intentionally

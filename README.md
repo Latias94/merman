@@ -233,6 +233,14 @@ prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
 `HeadlessRenderer::render_svg_readable_sync()` when you want to keep the original
 `<foreignObject>` nodes and add best-effort `<text>/<tspan>` fallback overlays.
 
+When you enable the `raster` feature, PNG/JPG conversion is target-aware and budgeted. A Mermaid
+SVG can legitimately have a very large `viewBox`; browser previews usually draw that vector SVG
+inside a smaller container, while a headless PNG/JPG path must allocate a concrete pixmap. Use
+`RasterOptions::with_fit_to(...)` for preview-sized output, `scale` for device-pixel ratio, and
+`RasterSizeLimit` for the final pixmap budget. The default PNG/JPG budget caps output at `8192px`
+per side and `8192*8192` pixels; trusted oversized exports can call
+`RasterOptions::with_unbounded_size()`.
+
 The split is intentional:
 
 - `render_svg_sync` is for Mermaid-parity snapshots and callers that want the raw SVG contract.
@@ -600,6 +608,9 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.
+- PNG/JPG export is constrained by a default pixmap budget. This protects headless hosts from
+  oversized allocations, but it also means extremely large diagrams are downscaled unless callers
+  choose a target fit box or explicitly opt into unbounded raster output.
 - Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
 
