@@ -6248,3 +6248,40 @@ Review notes:
   source-backed audit of `@upsetjs/venn.js`.
 - `railroad-*` and `cynefin-beta` may exist in newer Mermaid development branches, but they are not
   part of the current pinned 11.15 scope.
+
+## HPD-080 - Flowchart Renderability Audit
+
+Outcome:
+
+- Audited current HEAD for a fresh Flowchart visible/renderability defect.
+- No new defect was found, so no production code or tests were changed.
+- Existing Flowchart dark-theme smoke still proves DOM-consumed visible theme signals, including
+  the visible `.edge-thickness-normal` stroke-width rule and matching current edge-path DOM.
+- Recommendation: return this slice's remaining budget to HPD-050 Architecture until a new failing
+  renderability gate, source-backed emitted-surface gap, or concrete consumer report appears.
+
+Evidence written:
+
+- [docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md](/F:/SourceCodes/Rust/merman-worktrees/hpd-renderability-flowchart/docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md)
+
+Focused verification:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test theme_renderability_smoke` -
+  passed, `12` tests run.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke` -
+  passed, `5` tests run and `1` skipped.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run -p merman-render --test flowchart_svg_test` -
+  passed, `29` tests run.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo run -p xtask -- report-overrides --check-no-growth` -
+  passed; override growth and root viewport usage checks were both ok.
+- `cargo fmt --check` - passed.
+
+Gate notes:
+
+- Full ignored all-supported Flowchart raster audit was not rerun. This slice was scoped to fresh
+  visible-defect triage, and the public theme smoke, representative `resvg_safe` smoke, Flowchart
+  renderer tests, structural compare, and override-growth check all passed.
+- Known Flowchart root/max-width residuals remain outside this renderability slice. No layout,
+  root viewport, baseline, or override-pin changes were made.
