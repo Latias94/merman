@@ -1,6 +1,6 @@
 use super::*;
 
-const BOX_TEXT_LINE_HEIGHT: f64 = 20.0;
+const BOX_TEXT_PADDING: f64 = 10.0;
 
 pub(super) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
@@ -48,103 +48,100 @@ pub(super) fn render_eventmodeling_diagram_svg(
     }
 
     let css = eventmodeling_css(effective_config);
-    let marker_id = format!("eventmodeling-arrow-{diagram_id}");
+    let marker_id = format!("em-arrowhead-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
-    let _ = write!(&mut out, r#"<g class="eventmodeling"><defs><marker id=""#);
-    escape_xml_into(&mut out, &marker_id);
-    out.push_str(
-        r#"" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" class="eventModeling-arrow"></path></marker></defs>"#,
-    );
+    out.push_str("<g/>");
 
     for swimlane in &layout.swimlanes {
         let _ = write!(
             &mut out,
-            r#"<g class="eventModeling-swimlane" data-index="{}"><rect class="eventModeling-swimlane-bg" x="{}" y="{}" width="{}" height="{}"></rect><text class="eventModeling-swimlane-label" x="{}" y="{}">"#,
-            swimlane.index,
+            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect><text font-weight="bold" x="{}" y="{}">"#,
             fmt(swimlane.x),
             fmt(swimlane.y),
             fmt(swimlane.width),
             fmt(swimlane.height),
-            fmt(swimlane.x + 16.0),
-            fmt(swimlane.y + swimlane.height / 2.0)
+            escape_attr_display(&swimlane_fill(effective_config)),
+            escape_attr_display(&swimlane_stroke(effective_config)),
+            fmt(swimlane.x + 30.0),
+            fmt(swimlane.y + 30.0)
         );
         escape_xml_into(&mut out, &swimlane.label);
         out.push_str("</text></g>");
     }
 
-    for relation in &layout.relations {
-        let _ = write!(
-            &mut out,
-            r#"<line class="eventModeling-relation" data-source="{}" data-target="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" marker-end="url(#{})"></line>"#,
-            escape_attr_display(&relation.source_frame),
-            escape_attr_display(&relation.target_frame),
-            fmt(relation.x1),
-            fmt(relation.y1),
-            fmt(relation.x2),
-            fmt(relation.y2),
-            escape_attr_display(&relation.stroke),
-            escape_attr_display(&marker_id)
-        );
-    }
-
     for box_layout in &layout.boxes {
-        let class_name = if box_layout.frame_kind == "resetframe" {
-            "eventModeling-box eventModeling-reset-box"
-        } else {
-            "eventModeling-box"
-        };
         let _ = write!(
             &mut out,
-            r#"<g class="eventModeling-frame" data-frame="{}" data-entity-type="{}"><rect class="{}" x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}"></rect>"#,
-            escape_attr_display(&box_layout.frame_name),
-            escape_attr_display(&box_layout.model_entity_type),
-            class_name,
+            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#,
             fmt(box_layout.x),
             fmt(box_layout.y),
             fmt(box_layout.width),
             fmt(box_layout.height),
+            escape_attr_display(&box_layout.stroke),
             escape_attr_display(&box_layout.fill),
-            escape_attr_display(&box_layout.stroke)
+            fmt(box_layout.x + BOX_TEXT_PADDING),
+            fmt(box_layout.y + BOX_TEXT_PADDING),
+            fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
+            fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0))
         );
-        push_box_text(&mut out, box_layout);
-        out.push_str("</g>");
+        push_box_html_label(&mut out, &box_layout.text);
+        out.push_str("</span></div></foreignObject></g>");
     }
 
-    out.push_str("</g></svg>\n");
+    for relation in &layout.relations {
+        let _ = write!(
+            &mut out,
+            r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="1" marker-end="url(#{})" d="M{} {} L{} {}"></path>"#,
+            escape_attr_display(&relation.stroke),
+            escape_attr_display(&marker_id),
+            fmt(relation.x1),
+            fmt(relation.y1),
+            fmt(relation.x2),
+            fmt(relation.y2)
+        );
+    }
+
+    let marker_fill = eventmodeling_arrow_fill(effective_config);
+    let _ = write!(&mut out, r#"<defs><marker id=""#);
+    escape_xml_into(&mut out, &marker_id);
+    out.push_str(
+        r#"" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill=""#,
+    );
+    escape_xml_into(&mut out, &marker_fill);
+    out.push_str(r#""></polygon></marker></defs></svg>"#);
+    out.push('\n');
     Ok(out)
 }
 
-fn push_box_text(out: &mut String, box_layout: &crate::model::EventModelingBoxLayout) {
-    let lines: Vec<&str> = box_layout.text.lines().collect();
-    let line_count = lines.len().max(1);
-    let x = box_layout.x + box_layout.width / 2.0;
-    let first_y = box_layout.y + box_layout.height / 2.0
-        - ((line_count.saturating_sub(1)) as f64 * BOX_TEXT_LINE_HEIGHT) / 2.0;
-    let _ = write!(
-        out,
-        r#"<text class="eventModeling-box-text" x="{}" y="{}">"#,
-        fmt(x),
-        fmt(first_y)
-    );
-    if lines.is_empty() {
-        escape_xml_into(out, &box_layout.entity_identifier);
-    } else {
-        for (idx, line) in lines.iter().enumerate() {
-            let _ = write!(
-                out,
-                r#"<tspan x="{}" dy="{}">"#,
-                fmt(x),
-                if idx == 0 {
-                    "0".to_string()
-                } else {
-                    fmt_string(BOX_TEXT_LINE_HEIGHT)
-                }
-            );
-            escape_xml_into(out, line);
-            out.push_str("</tspan>");
-        }
+fn push_box_html_label(out: &mut String, text: &str) {
+    let mut lines = text.lines();
+    let title = lines.next().unwrap_or(text);
+    let rest = lines.collect::<Vec<_>>().join("\n");
+
+    out.push_str("<b>");
+    escape_xml_into(out, title);
+    out.push_str("</b>");
+
+    let code = normalize_eventmodeling_code_text(&rest);
+    if code.is_empty() {
+        return;
     }
-    out.push_str("</text>");
+
+    out.push_str(r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#);
+    escape_xml_into(out, &code);
+    if code.contains('\n') {
+        out.push_str("<br/>");
+    }
+    out.push_str("</code>");
+}
+
+fn normalize_eventmodeling_code_text(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let without_outer_braces = trimmed
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(trimmed);
+    without_outer_braces.trim().to_string()
 }
 
 fn eventmodeling_css(effective_config: &serde_json::Value) -> String {
@@ -154,7 +151,15 @@ fn eventmodeling_css(effective_config: &serde_json::Value) -> String {
         .unwrap_or_else(|| "trebuchet ms, verdana, arial, sans-serif".to_string());
     let text_color = config_string(effective_config, &["themeVariables", "textColor"])
         .unwrap_or_else(|| "#333".to_string());
-    let swimlane_fill = config_string(
+
+    format!(
+        ".em-swimlane text,.em-box span {{ font-family: {font_family}; color: {text_color}; }}\
+.em-relation {{ fill: none; }}"
+    )
+}
+
+fn swimlane_fill(effective_config: &serde_json::Value) -> String {
+    config_string(
         effective_config,
         &["themeVariables", "emSwimlaneBackgroundOdd"],
     )
@@ -164,30 +169,20 @@ fn eventmodeling_css(effective_config: &serde_json::Value) -> String {
             &["themeVariables", "emSwimlaneBackground"],
         )
     })
-    .unwrap_or_else(|| "rgb(250,250,250)".to_string());
-    let swimlane_stroke = config_string(
+    .unwrap_or_else(|| "rgb(250,250,250)".to_string())
+}
+
+fn swimlane_stroke(effective_config: &serde_json::Value) -> String {
+    config_string(
         effective_config,
         &["themeVariables", "emSwimlaneBackgroundStroke"],
     )
     .or_else(|| config_string(effective_config, &["themeVariables", "emSwimlaneBorder"]))
-    .unwrap_or_else(|| "rgb(240,240,240)".to_string());
-    let label_color = config_string(
-        effective_config,
-        &["themeVariables", "emSwimlaneLabelColor"],
-    )
-    .unwrap_or_else(|| text_color.clone());
-    let arrow_fill = config_string(effective_config, &["themeVariables", "emArrowhead"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "emRelationStroke"]))
-        .unwrap_or_else(|| "#000".to_string());
+    .unwrap_or_else(|| "rgb(240,240,240)".to_string())
+}
 
-    format!(
-        ".eventmodeling text {{ font-family: {font_family}; fill: {text_color}; }}\
-.eventmodeling .eventModeling-swimlane-bg {{ fill: {swimlane_fill}; stroke: {swimlane_stroke}; stroke-width: 1; }}\
-.eventmodeling .eventModeling-swimlane-label {{ fill: {label_color}; font-size: 14px; font-weight: 600; dominant-baseline: middle; }}\
-.eventmodeling .eventModeling-box {{ stroke-width: 2; rx: 4; ry: 4; }}\
-.eventmodeling .eventModeling-reset-box {{ stroke-dasharray: 5 3; }}\
-.eventmodeling .eventModeling-box-text {{ font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }}\
-.eventmodeling .eventModeling-relation {{ stroke-width: 2; fill: none; }}\
-.eventmodeling .eventModeling-arrow {{ fill: {arrow_fill}; }}"
-    )
+fn eventmodeling_arrow_fill(effective_config: &serde_json::Value) -> String {
+    config_string(effective_config, &["themeVariables", "emArrowhead"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "emRelationStroke"]))
+        .unwrap_or_else(|| "#333333".to_string())
 }

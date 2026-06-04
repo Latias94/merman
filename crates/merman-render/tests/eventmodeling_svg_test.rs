@@ -49,12 +49,12 @@ data ItemAddedData {
     .unwrap();
 
     assert!(svg.contains(r#"aria-roledescription="eventmodeling""#));
-    assert!(svg.contains(r#"<g class="eventmodeling">"#));
-    assert!(svg.contains(r#"class="eventModeling-swimlane""#));
-    assert!(svg.contains(r#"class="eventModeling-relation""#));
-    assert!(svg.contains(r#"class="eventModeling-box""#));
-    assert!(svg.contains(r#"eventModeling-reset-box"#));
-    assert!(svg.contains(r#"id="eventmodeling-arrow-eventmodeling-test""#));
+    assert!(svg.contains(r#"width="100%""#));
+    assert!(svg.contains(r#"max-width:"#));
+    assert!(svg.contains(r#"<g/><g class="em-swimlane">"#));
+    assert!(svg.contains(r#"class="em-relation""#));
+    assert!(svg.contains(r#"class="em-box""#));
+    assert!(svg.contains(r#"id="em-arrowhead-eventmodeling-test""#));
     assert!(svg.contains(r##"stroke="#135790""##));
     assert!(svg.contains(r##"fill="#DDEEFF""##));
 }

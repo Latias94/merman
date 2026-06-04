@@ -1,0 +1,70 @@
+{
+  "diagramType": "ishikawa",
+  "model": {
+    "type": "ishikawa",
+    "title": "Problem",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "text": "Problem",
+      "children": [
+        {
+          "text": "Cause A",
+          "children": [
+            {
+              "text": "Subcause A1",
+              "children": []
+            },
+            {
+              "text": "Subcause A2",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Cause B",
+          "children": [
+            {
+              "text": "Subcause B1",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Cause C",
+          "children": []
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "text": "Problem",
+        "depth": 0
+      },
+      {
+        "text": "Cause A",
+        "depth": 1
+      },
+      {
+        "text": "Subcause A1",
+        "depth": 2
+      },
+      {
+        "text": "Subcause A2",
+        "depth": 2
+      },
+      {
+        "text": "Cause B",
+        "depth": 1
+      },
+      {
+        "text": "Subcause B1",
+        "depth": 2
+      },
+      {
+        "text": "Cause C",
+        "depth": 1
+      }
+    ]
+  }
+}

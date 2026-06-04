@@ -49,6 +49,7 @@ pub(super) fn render_ishikawa_diagram_svg(
     let css = ishikawa_css(layout, effective_config);
     let marker_id = format!("ishikawa-arrow-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
+    out.push_str("<g/>");
     let _ = write!(&mut out, r#"<g class="ishikawa"><defs><marker id=""#);
     escape_xml_into(&mut out, &marker_id);
     out.push_str(
@@ -64,7 +65,7 @@ pub(super) fn render_ishikawa_diagram_svg(
         );
         escape_attr_into(&mut out, &head.path_d);
         out.push_str(r#""></path>"#);
-        push_text_with_offset(&mut out, &head.label, -head.x, -head.y);
+        push_ishikawa_head_text(&mut out, &head.label, -head.x, -head.y);
         out.push_str("</g>");
     }
 
@@ -105,6 +106,42 @@ pub(super) fn render_ishikawa_diagram_svg(
 
     out.push_str("</g></svg>\n");
     Ok(out)
+}
+
+fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {
+    let mut shifted = text.clone();
+    shifted.anchor = "start".to_string();
+    shifted.x = 0.0;
+    shifted.y += dy;
+    let transform_x = text.x + dx - (text.bbox.max_x - text.bbox.min_x) / 2.0;
+    let transform_y = text.y + dy - shifted.y;
+    let first_y =
+        shifted.y - ((shifted.lines.len().saturating_sub(1)) as f64 * shifted.line_height) / 2.0;
+    let _ = write!(
+        out,
+        r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})">"#,
+        escape_attr_display(&shifted.class_name),
+        escape_attr_display(&shifted.anchor),
+        fmt(shifted.x),
+        fmt(first_y),
+        fmt(transform_x),
+        fmt(transform_y)
+    );
+    for (idx, line) in shifted.lines.iter().enumerate() {
+        let _ = write!(
+            out,
+            r#"<tspan x="{}" dy="{}">"#,
+            fmt(shifted.x),
+            if idx == 0 {
+                "0".to_string()
+            } else {
+                fmt_string(shifted.line_height)
+            }
+        );
+        escape_xml_into(out, line);
+        out.push_str("</tspan>");
+    }
+    out.push_str("</text>");
 }
 
 fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {

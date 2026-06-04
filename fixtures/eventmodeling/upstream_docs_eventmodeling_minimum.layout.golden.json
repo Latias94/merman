@@ -13,7 +13,7 @@
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
       "padding": 30.0,
-      "use_max_width": false,
+      "use_max_width": true,
       "swimlanes": [
         {
           "index": 1.0,

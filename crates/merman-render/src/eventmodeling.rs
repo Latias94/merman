@@ -285,17 +285,6 @@ fn calculate_swimlane_props(
     swimlanes: &BTreeMap<i64, SwimlaneState>,
 ) -> SwimlaneProps {
     let namespace = extract_namespace(&frame.entity_identifier);
-    if let Some(swimlane) = find_swimlane_by_namespace(swimlanes, namespace.as_deref()) {
-        return SwimlaneProps {
-            index: swimlane.index,
-            label: swimlane
-                .namespace
-                .clone()
-                .unwrap_or_else(|| default_swimlane_label(&frame.model_entity_type).to_string()),
-            namespace,
-        };
-    }
-
     match frame.model_entity_type.as_str() {
         "ui" | "pcr" | "processor" => {
             namespaced_or_default_swimlane(swimlanes, namespace, 0, 100, "UI/Automation", "UI/A: ")
@@ -324,6 +313,16 @@ fn namespaced_or_default_swimlane(
     prefix: &str,
 ) -> SwimlaneProps {
     if let Some(namespace) = namespace {
+        if let Some(swimlane) =
+            find_swimlane_by_namespace(swimlanes, &namespace, boundary_min, boundary_max)
+        {
+            return SwimlaneProps {
+                index: swimlane.index,
+                label: swimlane.label.clone(),
+                namespace: Some(namespace),
+            };
+        }
+
         SwimlaneProps {
             index: find_next_available_index(swimlanes, boundary_min, boundary_max),
             label: format!("{prefix}{namespace}"),
@@ -335,14 +334,6 @@ fn namespaced_or_default_swimlane(
             label: default_label.to_string(),
             namespace: None,
         }
-    }
-}
-
-fn default_swimlane_label(entity_type: &str) -> &'static str {
-    match entity_type {
-        "ui" | "pcr" | "processor" => "UI/Automation",
-        "rmo" | "readmodel" | "cmd" | "command" => "Command/Read Model",
-        _ => "Events",
     }
 }
 
@@ -374,12 +365,15 @@ fn extract_name(entity_identifier: &str) -> &str {
 
 fn find_swimlane_by_namespace<'a>(
     swimlanes: &'a BTreeMap<i64, SwimlaneState>,
-    namespace: Option<&str>,
+    namespace: &str,
+    boundary_min: i64,
+    boundary_max: i64,
 ) -> Option<&'a SwimlaneState> {
-    let namespace = namespace?;
-    swimlanes
-        .values()
-        .find(|swimlane| swimlane.namespace.as_deref() == Some(namespace))
+    swimlanes.values().find(|swimlane| {
+        swimlane.index > boundary_min
+            && swimlane.index < boundary_max
+            && swimlane.namespace.as_deref() == Some(namespace)
+    })
 }
 
 fn find_next_available_index(
@@ -513,7 +507,7 @@ fn eventmodeling_config(effective_config: &Value) -> EventModelingConfig {
             .unwrap_or(30.0)
             .max(0.0),
         use_max_width: config_bool(effective_config, &["eventmodeling", "useMaxWidth"])
-            .unwrap_or(false),
+            .unwrap_or(true),
     }
 }
 

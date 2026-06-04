@@ -1,0 +1,34 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "file1.ts",
+          "children": []
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "file1.ts"
+      }
+    ]
+  }
+}

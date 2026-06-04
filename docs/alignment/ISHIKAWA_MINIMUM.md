@@ -35,8 +35,9 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
 
 ## Known Gaps
 
-- No dedicated `xtask compare-ishikawa-svgs` command yet.
-- No committed upstream SVG baseline corpus yet.
+- `xtask compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for the
+  current committed baseline corpus.
+- A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/ishikawa/`.
 - Hand-drawn / rough.js mode is not implemented in local SVG output.
 - Browser `getBBox()` float parity for labels and head shape has not been strict-audited.
 - Full Cypress image snapshot coverage has not been imported.

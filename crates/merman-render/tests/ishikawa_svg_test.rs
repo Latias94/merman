@@ -45,6 +45,9 @@ ishikawa-beta
     .unwrap();
 
     assert!(svg.contains(r#"aria-roledescription="ishikawa""#));
+    assert!(svg.contains(r#"width="100%""#));
+    assert!(svg.contains(r#"max-width:"#));
+    assert!(svg.contains(r#"<g/><g class="ishikawa">"#));
     assert!(svg.contains(r#"<g class="ishikawa">"#));
     assert!(svg.contains(r#"class="ishikawa-spine""#));
     assert!(svg.contains(r#"class="ishikawa-branch""#));

@@ -49,6 +49,7 @@ pub(super) fn render_tree_view_diagram_svg(
 
     let css = tree_view_css(effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
+    out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     for node in &layout.nodes {
         let _ = write!(

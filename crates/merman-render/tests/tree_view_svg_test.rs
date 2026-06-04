@@ -43,6 +43,8 @@ treeView-beta
     .unwrap();
 
     assert!(svg.contains(r#"aria-roledescription="treeView""#));
+    assert!(svg.contains(r#"width="100%""#));
+    assert!(svg.contains(r#"<g/><g class="tree-view">"#));
     assert!(svg.contains(r#"<g class="tree-view">"#));
     assert!(svg.contains(r#"class="treeView-node-label""#));
     assert!(svg.contains(r#"class="treeView-node-line""#));

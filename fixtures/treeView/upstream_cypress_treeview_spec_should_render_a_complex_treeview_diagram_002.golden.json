@@ -1,0 +1,160 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "root",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "folder1",
+              "children": [
+                {
+                  "id": 3,
+                  "level": 20,
+                  "name": "file1.js",
+                  "children": []
+                },
+                {
+                  "id": 4,
+                  "level": 20,
+                  "name": "file2.ts",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": 5,
+              "level": 16,
+              "name": "folder2",
+              "children": [
+                {
+                  "id": 6,
+                  "level": 20,
+                  "name": "file3.spec.ts",
+                  "children": []
+                },
+                {
+                  "id": 7,
+                  "level": 20,
+                  "name": "folder3",
+                  "children": [
+                    {
+                      "id": 8,
+                      "level": 24,
+                      "name": "file4.ts",
+                      "children": []
+                    },
+                    {
+                      "id": 9,
+                      "level": 24,
+                      "name": "file5.ts",
+                      "children": []
+                    },
+                    {
+                      "id": 10,
+                      "level": 24,
+                      "name": "folder4",
+                      "children": [
+                        {
+                          "id": 11,
+                          "level": 28,
+                          "name": "file6.ts",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": 12,
+              "level": 16,
+              "name": "file7.ts",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "root"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "folder1"
+      },
+      {
+        "id": 3,
+        "level": 20,
+        "name": "file1.js"
+      },
+      {
+        "id": 4,
+        "level": 20,
+        "name": "file2.ts"
+      },
+      {
+        "id": 5,
+        "level": 16,
+        "name": "folder2"
+      },
+      {
+        "id": 6,
+        "level": 20,
+        "name": "file3.spec.ts"
+      },
+      {
+        "id": 7,
+        "level": 20,
+        "name": "folder3"
+      },
+      {
+        "id": 8,
+        "level": 24,
+        "name": "file4.ts"
+      },
+      {
+        "id": 9,
+        "level": 24,
+        "name": "file5.ts"
+      },
+      {
+        "id": 10,
+        "level": 24,
+        "name": "folder4"
+      },
+      {
+        "id": 11,
+        "level": 28,
+        "name": "file6.ts"
+      },
+      {
+        "id": 12,
+        "level": 16,
+        "name": "file7.ts"
+      }
+    ]
+  }
+}

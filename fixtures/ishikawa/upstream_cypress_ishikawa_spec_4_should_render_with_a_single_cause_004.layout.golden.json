@@ -1,0 +1,91 @@
+{
+  "diagramType": "ishikawa",
+  "layout": {
+    "IshikawaDiagram": {
+      "bounds": {
+        "min_x": -92.959,
+        "min_y": 158.687,
+        "max_x": 92.096,
+        "max_y": 307.6
+      },
+      "total_width": 185.055,
+      "total_height": 148.913,
+      "viewbox_x": -92.959,
+      "viewbox_y": 158.687,
+      "padding": 20.0,
+      "use_max_width": true,
+      "font_size": 16.0,
+      "head": {
+        "x": 0.0,
+        "y": 250.0,
+        "width": 60.08,
+        "height": 75.2,
+        "path_d": "M 0 -37.60000000000002 L 0 37.60000000000002 Q 144.19199999999998 0 0 -37.60000000000002 Z",
+        "label": {
+          "text": "Problem",
+          "lines": [
+            "Problem"
+          ],
+          "class_name": "ishikawa-head-label",
+          "x": 42.0,
+          "y": 250.0,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": 14.96,
+            "min_y": 241.2,
+            "max_x": 69.04,
+            "max_y": 258.8
+          }
+        }
+      },
+      "lines": [
+        {
+          "x1": -20.0,
+          "y1": 250.0,
+          "x2": -26.959,
+          "y2": 200.487,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -52.959,
+          "y1": 250.0,
+          "x2": 0.0,
+          "y2": 250.0,
+          "class_name": "ishikawa-spine",
+          "marker_start": false
+        }
+      ],
+      "labels": [
+        {
+          "text": "Cause A",
+          "lines": [
+            "Cause A"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -26.959,
+          "y": 189.487,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -52.959,
+            "min_y": 180.687,
+            "max_x": -0.959,
+            "max_y": 198.287
+          }
+        }
+      ],
+      "label_boxes": [
+        {
+          "x": -72.959,
+          "y": 178.687,
+          "width": 92.0,
+          "height": 21.6
+        }
+      ]
+    }
+  }
+}

@@ -6,6 +6,7 @@ mod class;
 mod er;
 mod flowchart;
 mod gantt;
+mod generic_stage_b;
 mod gitgraph;
 mod info;
 mod journey;
@@ -30,6 +31,9 @@ pub(crate) use class::compare_class_svgs;
 pub(crate) use er::compare_er_svgs;
 pub(crate) use flowchart::compare_flowchart_svgs;
 pub(crate) use gantt::compare_gantt_svgs;
+pub(crate) use generic_stage_b::{
+    compare_eventmodeling_svgs, compare_ishikawa_svgs, compare_tree_view_svgs,
+};
 pub(crate) use gitgraph::compare_gitgraph_svgs;
 pub(crate) use info::compare_info_svgs;
 pub(crate) use journey::compare_journey_svgs;

@@ -1,0 +1,115 @@
+{
+  "diagramType": "eventmodeling",
+  "layout": {
+    "EventModelingDiagram": {
+      "bounds": {
+        "min_x": -30.0,
+        "min_y": -30.0,
+        "max_x": 487.4,
+        "max_y": 440.0
+      },
+      "total_width": 517.4,
+      "total_height": 470.0,
+      "viewbox_x": -30.0,
+      "viewbox_y": -30.0,
+      "padding": 30.0,
+      "use_max_width": true,
+      "swimlanes": [
+        {
+          "index": 0.0,
+          "label": "UI/Automation",
+          "namespace": null,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 457.4,
+          "height": 130.0
+        },
+        {
+          "index": 100.0,
+          "label": "Command/Read Model",
+          "namespace": null,
+          "x": 0.0,
+          "y": 140.0,
+          "width": 457.4,
+          "height": 130.0
+        },
+        {
+          "index": 200.0,
+          "label": "Events",
+          "namespace": null,
+          "x": 0.0,
+          "y": 280.0,
+          "width": 457.4,
+          "height": 130.0
+        }
+      ],
+      "boxes": [
+        {
+          "index": 0.0,
+          "frame_name": "01",
+          "frame_kind": "timeframe",
+          "model_entity_type": "ui",
+          "entity_identifier": "CartScreen",
+          "text": "CartScreen",
+          "x": 250.0,
+          "y": 15.0,
+          "width": 114.24,
+          "height": 100.0,
+          "fill": "white",
+          "stroke": "#dbdada",
+          "swimlane_index": 0.0
+        },
+        {
+          "index": 1.0,
+          "frame_name": "02",
+          "frame_kind": "timeframe",
+          "model_entity_type": "cmd",
+          "entity_identifier": "AddItem",
+          "text": "AddItem",
+          "x": 294.24,
+          "y": 155.0,
+          "width": 100.0,
+          "height": 100.0,
+          "fill": "#bcd6fe",
+          "stroke": "#679ac3",
+          "swimlane_index": 100.0
+        },
+        {
+          "index": 2.0,
+          "frame_name": "03",
+          "frame_kind": "timeframe",
+          "model_entity_type": "evt",
+          "entity_identifier": "ItemAdded",
+          "text": "ItemAdded",
+          "x": 324.24,
+          "y": 295.0,
+          "width": 108.16,
+          "height": 100.0,
+          "fill": "#ffb778",
+          "stroke": "#c19a0f",
+          "swimlane_index": 200.0
+        }
+      ],
+      "relations": [
+        {
+          "source_frame": "01",
+          "target_frame": "02",
+          "x1": 326.16,
+          "y1": 115.0,
+          "x2": 327.573,
+          "y2": 155.0,
+          "stroke": "#333333"
+        },
+        {
+          "source_frame": "02",
+          "target_frame": "03",
+          "x1": 360.907,
+          "y1": 255.0,
+          "x2": 360.293,
+          "y2": 295.0,
+          "stroke": "#333333"
+        }
+      ]
+    }
+  }
+}
