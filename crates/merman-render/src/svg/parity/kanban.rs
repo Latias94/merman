@@ -242,6 +242,14 @@ fn calibrated_kanban_root_height(
     raw_height
 }
 
+fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
+    if diagram_id.is_empty() {
+        raw_id.to_string()
+    } else {
+        format!("{diagram_id}-{raw_id}")
+    }
+}
+
 pub(super) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
     _semantic: &serde_json::Value,
@@ -297,7 +305,7 @@ pub(super) fn render_kanban_diagram_svg(
             &mut out,
             r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="classic"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_w}px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
             idx = s.index,
-            id = escape_attr(&s.id),
+            id = escape_attr(&kanban_dom_id(diagram_id, &s.id)),
             rx = fmt(s.rx),
             ry = fmt(s.ry),
             x = fmt(left),
@@ -394,7 +402,7 @@ pub(super) fn render_kanban_diagram_svg(
         let _ = write!(
             &mut out,
             r##"<g class="node undefined" id="{id}" transform="translate({x}, {y})">"##,
-            id = escape_attr(&n.id),
+            id = escape_attr(&kanban_dom_id(diagram_id, &n.id)),
             x = fmt(n.center_x),
             y = fmt(n.center_y),
         );
@@ -467,15 +475,21 @@ pub(super) fn render_kanban_diagram_svg(
                     mw = fmt(max_w),
                 )
             };
+            let span_class = if wrap_title {
+                "nodeLabel markdown-node-label"
+            } else {
+                "nodeLabel"
+            };
             let _ = write!(
                 out,
-                r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{w}" height="{h}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="nodeLabel">"##,
+                r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{w}" height="{h}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
                 x = fmt(x),
                 y = fmt(y),
                 w = fmt(fo_w),
                 h = fmt(fo_h),
                 div_style = escape_attr(&div_style),
-                class_attr = class_attr
+                class_attr = class_attr,
+                span_class = span_class,
             );
             if let Some(t) = text.filter(|t| !t.is_empty()) {
                 let _ = write!(out, r#"<p>{}</p>"#, escape_xml(t));
@@ -551,6 +565,7 @@ pub(super) fn render_kanban_diagram_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 
     #[test]
     fn kanban_css_includes_upstream_theme_rules() {
@@ -580,5 +595,89 @@ mod tests {
             ),
             "expected kanban label styling: {css}"
         );
+    }
+
+    #[test]
+    fn kanban_dom_ids_are_scoped_by_diagram_id() {
+        let layout = KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 240.0,
+                max_y: 180.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            sections: vec![KanbanSectionLayout {
+                id: "constructor".to_string(),
+                label: "Todo".to_string(),
+                index: 1,
+                center_x: 100.0,
+                center_y: 0.0,
+                width: 200.0,
+                rect_y: -300.0,
+                rect_height: 100.0,
+                rx: 5.0,
+                ry: 5.0,
+                label_width: 40.0,
+                label_height: KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+            }],
+            items: vec![
+                KanbanItemLayout {
+                    id: "task1".to_string(),
+                    label: "Task".to_string(),
+                    parent_id: "constructor".to_string(),
+                    center_x: 100.0,
+                    center_y: -240.0,
+                    width: 185.0,
+                    height: 44.0,
+                    rx: 5.0,
+                    ry: 5.0,
+                    ticket: None,
+                    assigned: None,
+                    priority: None,
+                    icon: None,
+                },
+                KanbanItemLayout {
+                    id: "__proto__".to_string(),
+                    label: "Prototype".to_string(),
+                    parent_id: "constructor".to_string(),
+                    center_x: 100.0,
+                    center_y: -190.0,
+                    width: 185.0,
+                    height: 44.0,
+                    rx: 5.0,
+                    ry: 5.0,
+                    ticket: None,
+                    assigned: None,
+                    priority: None,
+                    icon: None,
+                },
+            ],
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("kanban_fixture".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_kanban_diagram_svg(
+            &layout,
+            &serde_json::Value::Null,
+            &serde_json::json!({}),
+            &options,
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"id="kanban_fixture-constructor""#));
+        assert!(svg.contains(r#"id="kanban_fixture-task1""#));
+        assert!(svg.contains(r#"id="kanban_fixture-__proto__""#));
+        assert!(svg.contains(
+            r#"<span style="text-align:left !important" class="nodeLabel markdown-node-label"><p>Task</p></span>"#
+        ));
+        assert!(!svg.contains(r#"id="constructor""#));
+        assert!(!svg.contains(r#"id="task1""#));
+        assert!(!svg.contains(r#"id="__proto__""#));
     }
 }

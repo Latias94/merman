@@ -43,7 +43,12 @@ Immediate next task:
   diagram-prefixed DOM ids for exclude ranges, task bars, and task label text nodes. Prototype-like
   task ids such as `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
   `compare-gantt-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
-- Remaining HPD-090 broad stale families are `kanban`, `mindmap`, and `radar`.
+- The Kanban refresh is now handled: stored upstream SVGs were regenerated to Mermaid 11.15, and
+  the local Kanban renderer now emits diagram-prefixed section/item group DOM ids plus current item
+  title XHTML span classes (`nodeLabel markdown-node-label`). Prototype-like item ids such as
+  `__proto__` and `constructor` are renderable because their DOM ids are prefixed.
+  `compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- Remaining HPD-090 broad stale families are `mindmap` and `radar`.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.

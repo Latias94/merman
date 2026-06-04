@@ -79,7 +79,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `gitgraph` | pass under structure gate | `252 / 252` | Keep; textual diff exists, but no structure failure was logged. |
 | `info` | pass after refresh | `15 / 15` | Keep. |
 | `journey` | pass | `26 / 26` | Keep. |
-| `kanban` | stale, broad | `87 / 87` | Refresh by family. |
+| `kanban` | refreshed + DOM parity fixed | `87 / 87` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `mindmap` | stale, broad | `114 / 114` | Refresh by family. |
 | `packet` | pass | `33 / 33` | Keep. |
 | `pie` | pass | `69 / 69` | Keep. |
@@ -203,6 +203,29 @@ Verification:
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible`
 - `cargo fmt --all --check`
 
+## Sixth Slice Completed
+
+Kanban baseline refresh plus renderer DOM parity:
+
+- `fixtures/upstream-svgs/kanban/*.svg` were regenerated to the pinned Mermaid 11.15 baseline; all
+  `87` stored SVGs changed.
+- Kanban SVG output now emits current Mermaid 11.15 DOM surfaces for item/section ids and item
+  title labels:
+  - section and item group DOM ids are diagram-prefixed;
+  - prototype-like item ids such as `__proto__` and `constructor` are renderable because the
+    emitted DOM id is diagram-prefixed;
+  - item title XHTML labels carry `nodeLabel markdown-node-label`, while section labels, tickets,
+    assigned labels, and empty placeholders keep the older `nodeLabel` class.
+- No layout golden changed in this slice; `update-layout-snapshots --diagram kanban` had no
+  additional committed output.
+- The Kanban family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo nextest run -p merman-render kanban_dom_ids_are_scoped_by_diagram_id`
+- `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -268,7 +291,7 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Refresh remaining broad stale stored SVG families: `kanban`, `mindmap`, and `radar`.
+1. Refresh remaining broad stale stored SVG families: `mindmap` and `radar`.
 2. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
    Flowchart HTML demo KaTeX fixtures (`4` fixtures).
 3. Update affected layout snapshots and run family compare gates after each refresh batch.

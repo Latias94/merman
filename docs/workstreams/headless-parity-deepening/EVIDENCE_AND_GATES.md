@@ -44,6 +44,13 @@ Outcome:
   - prototype-like task ids such as `__proto__` and `constructor` remain renderable because the
     emitted DOM id is diagram-prefixed;
   - Gantt layout snapshot refresh added the missing `zed_pr_57644_gantt` layout golden.
+- Refreshed the Kanban stored upstream SVG family and fixed the local Kanban renderer to match
+  Mermaid 11.15 current DOM under the parity gate:
+  - section and item group DOM ids now use the diagram-prefixed id shape;
+  - prototype-like item ids such as `__proto__` and `constructor` remain renderable because the
+    emitted DOM id is diagram-prefixed;
+  - item title XHTML labels now carry `nodeLabel markdown-node-label`, while section labels,
+    ticket/assigned labels, and empty placeholders keep the older `nodeLabel` class.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -56,6 +63,7 @@ Touched surfaces:
 - `crates/merman-render/src/block.rs`
 - `crates/merman-render/src/svg/parity/block.rs`
 - `crates/merman-render/src/svg/parity/gantt.rs`
+- `crates/merman-render/src/svg/parity/kanban.rs`
 - `crates/merman-render/tests/block_svg_test.rs`
 - `crates/merman-render/tests/svg_internal_id_test.rs`
 - `crates/xtask/src/cmd/audit.rs`
@@ -66,6 +74,7 @@ Touched surfaces:
 - `fixtures/upstream-svgs/info/*.svg`
 - `fixtures/upstream-svgs/block/*.svg`
 - `fixtures/upstream-svgs/gantt/*.svg`
+- `fixtures/upstream-svgs/kanban/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
@@ -97,6 +106,10 @@ Focused verification:
 - `cargo nextest run -p merman-render --test svg_internal_id_test` - passed, `6` tests run.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke gantt_theme_smoke_counts_normal_and_done_task_dom_as_visible` -
   passed, `1` test run.
+- `cargo nextest run -p merman-render kanban_dom_ids_are_scoped_by_diagram_id` - passed, `1`
+  test run.
+- `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed after the Kanban renderer DOM id/title-label update.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -110,8 +123,8 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  Next HPD-090 work should refresh the remaining broad stale families (`kanban`, `mindmap`,
-  `radar`) and narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
+  Next HPD-090 work should refresh the remaining broad stale families (`mindmap`, `radar`) and
+  narrow stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun
   layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
   import is indicated yet.
 
