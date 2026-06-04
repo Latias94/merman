@@ -20,7 +20,6 @@ pub(super) enum SvgRootFixedHeightPlacement {
     BeforeXmlns,
     AfterXmlns,
     AfterClass,
-    AfterViewBox,
 }
 
 pub(super) struct SvgRootAttrs<'a> {
@@ -88,7 +87,6 @@ pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
     // Keep attribute order stable (helps strict-mode diffs) and match existing renderers:
     // id, width/height (with configurable fixed-height placement), xmlns, class?,
     // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
-    let mut deferred_height_after_viewbox: Option<&str> = None;
     let mut deferred_height_after_class: Option<&str> = None;
     out.push_str(r#"<svg id=""#);
     escape_xml_into(out, diagram_id);
@@ -128,12 +126,6 @@ pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
                     );
                     deferred_height_after_class = Some(height_attr.unwrap_or("0"));
                 }
-                SvgRootFixedHeightPlacement::AfterViewBox => {
-                    out.push_str(
-                        r#" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink""#,
-                    );
-                    deferred_height_after_viewbox = Some(height_attr.unwrap_or("0"));
-                }
             }
         }
     }
@@ -159,11 +151,6 @@ pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
                 out.push_str(r#" viewBox=""#);
                 out.push_str(viewbox_attr);
                 out.push('"');
-                if let Some(h) = deferred_height_after_viewbox.take() {
-                    out.push_str(r#" height=""#);
-                    out.push_str(h);
-                    out.push('"');
-                }
             }
         }
         SvgRootStyleViewBoxOrder::ViewBoxThenStyle => {
@@ -171,11 +158,6 @@ pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
                 out.push_str(r#" viewBox=""#);
                 out.push_str(viewbox_attr);
                 out.push('"');
-                if let Some(h) = deferred_height_after_viewbox.take() {
-                    out.push_str(r#" height=""#);
-                    out.push_str(h);
-                    out.push('"');
-                }
             }
             if let Some(style_attr) = style_attr {
                 out.push_str(r#" style=""#);
@@ -183,11 +165,6 @@ pub(super) fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
                 out.push('"');
             }
         }
-    }
-    if let Some(h) = deferred_height_after_viewbox.take() {
-        out.push_str(r#" height=""#);
-        out.push_str(h);
-        out.push('"');
     }
     if let Some(h) = deferred_height_after_class.take() {
         out.push_str(r#" height=""#);

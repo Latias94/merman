@@ -84,7 +84,7 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `packet` | pass | `33 / 33` | Keep. |
 | `pie` | pass | `69 / 69` | Keep. |
 | `quadrantchart` | pass | `59 / 59` | Keep. |
-| `radar` | stale, broad | `41 / 41`, `36` diffs | Refresh by family. |
+| `radar` | refreshed + DOM parity fixed | `41 / 41` | Keep refreshed; local renderer now matches Mermaid 11.15 current root DOM under the parity gate. |
 | `requirement` | refreshed + DOM parity fixed | `47 / 47` | Keep refreshed; local renderer now matches Mermaid 11.15 current DOM under the parity gate. |
 | `sankey` | pass | `33 / 33` | Keep. |
 | `sequence` | pass under structure gate | `322 / 321` | Keep; `stress_end_keyword_016` is a known skipped upstream SVG check fixture. |
@@ -93,8 +93,9 @@ Generated upstream SVG check inventory from `2026-06-04`:
 | `treemap` | pass | `54 / 54` | Keep. |
 | `xychart` | pass | `71 / 71` | Keep. |
 
-Decision: do not refresh all stored upstream SVGs. Refresh only the remaining broad stale families
-plus the three narrow stale sets, then run the readiness gates against the refreshed corpus.
+Decision: do not refresh all stored upstream SVGs. The broad stale family set has been refreshed by
+family; point-refresh the three narrow stale sets, then run the readiness gates against the
+refreshed corpus.
 
 ## First Slice Completed
 
@@ -258,6 +259,30 @@ Verification:
 - `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present`
 - `cargo fmt --check -p merman-render -p merman`
 
+## Eighth Slice Completed
+
+Radar baseline refresh plus root DOM parity:
+
+- `fixtures/upstream-svgs/radar/*.svg` were regenerated to the pinned Mermaid 11.15 baseline; all
+  `41` stored SVGs changed.
+- Radar was not a pure stored-SVG refresh. Mermaid 11.15 Radar roots now emit responsive
+  `width="100%"`, omit the fixed root `height`, and carry `max-width: <width>px` in the root
+  `style` attribute.
+- Local Radar SVG output now uses the current root attribute shape, and the stale
+  root-helper `AfterViewBox` fixed-height placement branch was removed after Radar stopped using
+  it.
+- No layout golden changed in this slice; `update-layout-snapshots --diagram radar` produced no
+  committed output.
+- The Radar family gate is green under DOM comparison with
+  `--check-dom --dom-mode parity --dom-decimals 3`.
+
+Verification:
+
+- `cargo fmt -p merman-render --check`
+- `cargo nextest run -p merman-render radar`
+- `cargo run -p xtask -- update-layout-snapshots --diagram radar`
+- `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 ## Refresh Policy
 
 Before refreshing all stored SVGs:
@@ -323,9 +348,8 @@ expected diagnostics:
 
 ## Next Actions
 
-1. Refresh remaining broad stale stored SVG family: `radar`.
-2. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
+1. Point-refresh the narrow stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and
    Flowchart HTML demo KaTeX fixtures (`4` fixtures).
-3. Update affected layout snapshots and run family compare gates after each refresh batch.
-4. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
+2. Update affected layout snapshots and run family compare gates after each refresh batch.
+3. Re-run the readiness gates. Do not run a broad official fixture import yet; the current
    inventory points to stored-baseline drift in existing fixtures, not missing fixture intake.

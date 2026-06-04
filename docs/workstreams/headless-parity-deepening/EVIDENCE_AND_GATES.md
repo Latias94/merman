@@ -60,6 +60,13 @@ Outcome:
   - node and edge section classes wrap through Mermaid's `0..10` palette cycle;
   - classic rounded and hexagon nodes use direct `rect` / `polygon` DOM instead of the stale
     rough-wrapper structure.
+- Refreshed the Radar stored upstream SVG family and fixed the local Radar root DOM to match
+  Mermaid 11.15 under the parity gate:
+  - all `41` stored Radar upstream SVGs now carry Mermaid 11.15 root attributes;
+  - local Radar roots now emit responsive `width="100%"`;
+  - the fixed root `height` attribute is no longer emitted;
+  - root `style` now carries `max-width: <width>px; background-color: white;`;
+  - the now-unused root-helper fixed-height `AfterViewBox` branch was removed.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -74,6 +81,8 @@ Touched surfaces:
 - `crates/merman-render/src/svg/parity/gantt.rs`
 - `crates/merman-render/src/svg/parity/kanban.rs`
 - `crates/merman-render/src/svg/parity/mindmap.rs`
+- `crates/merman-render/src/svg/parity/radar.rs`
+- `crates/merman-render/src/svg/parity/root_svg.rs`
 - `crates/merman-render/src/svg/parity/roughjs46.rs`
 - `crates/merman-render/tests/block_svg_test.rs`
 - `crates/merman-render/tests/mindmap_svg_test.rs`
@@ -90,6 +99,7 @@ Touched surfaces:
 - `fixtures/upstream-svgs/gantt/*.svg`
 - `fixtures/upstream-svgs/kanban/*.svg`
 - `fixtures/upstream-svgs/mindmap/*.svg`
+- `fixtures/upstream-svgs/radar/*.svg`
 - `fixtures/upstream-svgs/requirement/*.svg`
 - `target/hpd090-baseline-check/*.log`
 - `target/hpd090-baseline-check/flowchart-slices/*.log`
@@ -133,6 +143,12 @@ Focused verification:
 - `cargo nextest run -p merman-render --test layout_snapshots_test fixtures_match_layout_golden_snapshots_when_present` -
   passed, `1` test run after the Mindmap layout golden refresh.
 - `cargo fmt --check -p merman-render -p merman` - passed.
+- `cargo fmt -p merman-render --check` - passed after the Radar root update.
+- `cargo nextest run -p merman-render radar` - passed, `3` tests run.
+- `cargo run -p xtask -- update-layout-snapshots --diagram radar` - passed with no committed
+  layout snapshot changes.
+- `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed after the Radar root DOM update.
 - `cargo nextest run -p merman --features render --test theme_renderability_smoke requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals` -
   passed, `1` test run.
 - `cargo nextest run -p merman --features render --test resvg_safe_fixture_smoke boundary_fixtures_render_headless_resvg_safe` -
@@ -146,10 +162,9 @@ Focused verification:
 Residual note:
 
 - This slice prepares the baseline corpus; it does not claim broad parity/root residual closure.
-  Next HPD-090 work should refresh the remaining broad stale family (`radar`) and narrow stale
-  fixtures listed in `BASELINE_PREPARATION.md`, then rerun
-  layout, compare, and renderability gates before resuming parity fixes. No broad official fixture
-  import is indicated yet.
+  The broad stale family set is now refreshed. Next HPD-090 work should point-refresh the narrow
+  stale fixtures listed in `BASELINE_PREPARATION.md`, then rerun layout, compare, and renderability
+  gates before resuming parity fixes. No broad official fixture import is indicated yet.
 
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 

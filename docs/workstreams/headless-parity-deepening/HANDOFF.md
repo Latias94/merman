@@ -54,7 +54,14 @@ Immediate next task:
   margin markers, section class cycle wrapping, and direct classic rounded/hexagon shape DOM. The
   unused local `roughjs46` helper was removed. `compare-mindmap-svgs --check-dom --dom-mode parity
   --dom-decimals 3` is green.
-- Remaining HPD-090 broad stale family is `radar`.
+- The Radar refresh is now handled: all `41` stored upstream SVGs were regenerated to Mermaid
+  11.15, and local Radar root output now matches the current responsive root DOM shape
+  (`width="100%"`, root `max-width` style, and no fixed root `height`). The stale root-helper
+  `AfterViewBox` fixed-height branch was removed after Radar stopped using it.
+  `compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3` is green.
+- No HPD-090 broad stale family remains. Remaining HPD-090 work is point-refreshing the narrow
+  stale sets: `class` (`2` fixtures), `timeline` (`1` fixture), and Flowchart HTML demo KaTeX
+  fixtures (`4` fixtures), then rerunning readiness gates.
 - HPD-080 is now the active priority override. Continue scanning for functional renderability
   failures that DOM parity can miss: blank output, hidden text, black labels/cards, missing semantic
   colors, and missing diagram-specific Mermaid 11.15 CSS/theme emission.
