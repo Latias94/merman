@@ -68,6 +68,7 @@ impl DiagramRegistry {
         reg.insert("packet", crate::diagrams::packet::parse_packet);
         reg.insert("radar", crate::diagrams::radar::parse_radar);
         reg.insert("treeView", crate::diagrams::tree_view::parse_tree_view);
+        reg.insert("ishikawa", crate::diagrams::ishikawa::parse_ishikawa);
         reg.insert("treemap", crate::diagrams::treemap::parse_treemap);
         reg.insert("sankey", crate::diagrams::sankey::parse_sankey);
         reg.insert("xychart", crate::diagrams::xychart::parse_xychart);
@@ -114,6 +115,7 @@ pub enum RenderSemanticModel {
     XyChart(crate::diagrams::xychart::XyChartDiagramRenderModel),
     GitGraph(crate::diagrams::git_graph::GitGraphRenderModel),
     TreeView(crate::diagrams::tree_view::TreeViewDiagramRenderModel),
+    Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramRenderModel),
 }
 
 impl RenderSemanticModel {
@@ -144,6 +146,7 @@ impl RenderSemanticModel {
             Self::XyChart(_) => "xychart",
             Self::GitGraph(_) => "gitGraph",
             Self::TreeView(_) => "treeView",
+            Self::Ishikawa(_) => "ishikawa",
         }
     }
 
@@ -176,6 +179,7 @@ impl RenderSemanticModel {
             Self::XyChart(_) => diagram_type == "xychart",
             Self::GitGraph(_) => diagram_type == "gitGraph",
             Self::TreeView(_) => diagram_type == "treeView",
+            Self::Ishikawa(_) => diagram_type == "ishikawa",
         }
     }
 }
@@ -315,6 +319,10 @@ impl RenderDiagramRegistry {
         reg.insert("treeView", |code, meta| {
             crate::diagrams::tree_view::parse_tree_view_model_for_render(code, meta)
                 .map(RenderSemanticModel::TreeView)
+        });
+        reg.insert("ishikawa", |code, meta| {
+            crate::diagrams::ishikawa::parse_ishikawa_model_for_render(code, meta)
+                .map(RenderSemanticModel::Ishikawa)
         });
 
         reg

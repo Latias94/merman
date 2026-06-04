@@ -137,6 +137,7 @@ impl DetectorRegistry {
         reg.add_fn("xychart", detector_xychart);
         reg.add_fn("block", detector_block);
         reg.add_fn("treeView", detector_tree_view);
+        reg.add_fn("ishikawa", detector_ishikawa);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -175,6 +176,7 @@ impl DetectorRegistry {
         reg.add_fn("xychart", detector_xychart);
         reg.add_fn("block", detector_block);
         reg.add_fn("treeView", detector_tree_view);
+        reg.add_fn("ishikawa", detector_ishikawa);
         reg.add_fn("radar", detector_radar);
         reg.add_fn("treemap", detector_treemap);
 
@@ -261,6 +263,12 @@ fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
     }
     if let Some(rest) = t.strip_prefix("treeView-beta") {
         return has_boundary(rest).then_some("treeView");
+    }
+    if let Some(rest) = t.strip_prefix("ishikawa-beta") {
+        return has_boundary(rest).then_some("ishikawa");
+    }
+    if let Some(rest) = t.strip_prefix("ishikawa") {
+        return has_boundary(rest).then_some("ishikawa");
     }
 
     None
@@ -444,6 +452,25 @@ fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
 
 fn detector_tree_view(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("treeView-beta")
+}
+
+fn detector_ishikawa(txt: &str, _config: &mut MermaidConfig) -> bool {
+    let t = txt.trim_start();
+    starts_with_header_case_insensitive(t, "ishikawa-beta")
+        || starts_with_header_case_insensitive(t, "ishikawa")
+}
+
+fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {
+    let Some(actual) = text.get(..header.len()) else {
+        return false;
+    };
+    if !actual.eq_ignore_ascii_case(header) {
+        return false;
+    }
+    text[header.len()..]
+        .chars()
+        .next()
+        .map_or(true, |c| c.is_whitespace() || c == ';')
 }
 
 fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {

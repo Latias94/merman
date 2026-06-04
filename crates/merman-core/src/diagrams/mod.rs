@@ -8,6 +8,7 @@ pub mod flowchart;
 pub mod gantt;
 pub mod git_graph;
 pub mod info;
+pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
 pub mod mindmap;
