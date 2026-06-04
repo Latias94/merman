@@ -3,6 +3,53 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Cytoscape Child Union Source Audit
+
+Outcome:
+
+- Audited the installed Mermaid `11.15.0` / Cytoscape `3.33.4` source path behind Architecture
+  service child-union bounds.
+- Confirmed Mermaid Architecture services set Cytoscape node `width` / `height` from
+  `architecture.iconSize`, service `label` from title, `compound-sizing-wrt-labels: include`,
+  `text-valign: bottom`, `text-halign: center`, and `font-size` from `architecture.fontSize`.
+- Confirmed Mermaid emits group rects from final Cytoscape `node.boundingBox()`, then shifts
+  `x1` / `y1` by `halfIconSize`.
+- Confirmed Cytoscape parent compound content uses
+  `children.boundingBox({ includeLabels: true, includeOverlays: false, useCache: false })`.
+- Confirmed Cytoscape service child contribution is the union of separately stored `bodyBounds`
+  and `labelBounds.all`: body bounds are expanded by `1px`, label bounds use renderer
+  `labelWidth` / `labelHeight`, `text-valign`, `text-halign`, and a hardcoded
+  `marginOfError = 2`.
+- Confirmed final default `node.boundingBox()` adds another whole-bbox `1px` expansion, but the
+  child bbox used by compound sizing does not apply that final expansion again.
+- This source path explains the observed child-union `dy=+1`, `dh=-2` phase and the distinct
+  final-bbox expansion, but it still does not justify a production formula without a durable
+  browser-faithful Architecture service `labelWidth` measurement seam.
+- No code, renderer output, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-cytoscape-child-union-source-audit.md`
+- `docs/workstreams/headless-parity-deepening/EVIDENCE_AND_GATES.md`
+- `docs/workstreams/headless-parity-deepening/HANDOFF.md`
+- `docs/workstreams/headless-parity-deepening/TODO.md`
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl`
+
+Focused verification:
+
+- Source read:
+  `repo-ref\mermaid\packages\mermaid\src\diagrams\architecture\architectureRenderer.ts`.
+- Source read: `repo-ref\mermaid\packages\mermaid\src\diagrams\architecture\svgDraw.ts`.
+- Source read: `tools\mermaid-cli\node_modules\cytoscape\dist\cytoscape.cjs.js`.
+- Confirmed installed package versions: Mermaid `11.15.0`, Cytoscape `3.33.4`.
+- Confirmed pinned Mermaid checkout: `41646dfd43ac83f001b03c70605feb036afae46d`.
+
+Residual note:
+
+- The next production-capable seam is Architecture service label measurement, not group padding or
+  body-border tweaks. A candidate must provide browser-faithful `labelWidth` and pair it with the
+  source child-union plus final group-expansion phases across the full Architecture queue.
+
 ## HPD-050 - Architecture Service Child Union Attribution
 
 Outcome:

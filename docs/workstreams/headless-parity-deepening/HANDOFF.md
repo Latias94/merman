@@ -390,6 +390,13 @@ Current repository reality to preserve:
     and `unicode/i` is `metrics left dx=-3.5` and `store right dx=-2.5`. All three have top/bottom
     `+1/-1`, producing child `dh=-2` before final group expansion cancels it. Do not turn this into
     a global scale/body/padding tweak.
+  - A follow-up source audit confirmed that upstream compound sizing is exactly the Cytoscape child
+    union path: `children.boundingBox({ includeLabels: true, includeOverlays: false,
+    useCache: false })` unions stored `bodyBounds` and `labelBounds.all`; body bounds get a `1px`
+    expansion, label bounds use `labelWidth` / `labelHeight` plus `marginOfError = 2`, and final
+    default `node.boundingBox()` adds a separate whole-bbox `1px` expansion. This reinforces that
+    the next production-capable seam is browser-faithful Architecture service `labelWidth`
+    measurement paired with child-union/final-expansion phases.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

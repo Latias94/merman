@@ -246,6 +246,13 @@ Last updated: 2026-06-04
   `unicode/i` is `metrics left dx=-3.5` plus `store right dx=-2.5` for `edge dw=+1`. The top/bottom
   split is stable at `+1/-1`, giving child-union `edge dh=-2` before final group expansion cancels
   it. Continue from boundary service child-contribution modeling, not aggregate group width.
+  A follow-up source audit confirmed the exact upstream phase split in Mermaid `11.15.0` and
+  Cytoscape `3.33.4`: compound sizing uses `children.boundingBox({ includeLabels: true,
+  includeOverlays: false, useCache: false })`, which unions stored body bounds and label bounds;
+  body bounds have a `1px` expansion, label bounds include hardcoded `marginOfError = 2`, and
+  default final `node.boundingBox()` adds a separate whole-bbox `1px` expansion. This makes the next
+  production-capable seam Architecture service `labelWidth` measurement, not body-border or
+  group-padding tweaks.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
