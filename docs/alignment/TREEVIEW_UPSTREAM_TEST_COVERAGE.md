@@ -34,9 +34,28 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - source: `repo-ref/mermaid/docs/syntax/treeView.md`
   - semantic snapshot: `fixtures/treeView/upstream_docs_treeview_basic.golden.json`
   - layout snapshot: `fixtures/treeView/upstream_docs_treeview_basic.layout.golden.json`
+- Cypress rendering fixtures from `repo-ref/mermaid/cypress/integration/rendering/treeView/treeView.spec.ts`:
+  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001.mmd`
+  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.mmd`
+  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.mmd`
+  - `fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.mmd`
+
+## Upstream SVG Baselines
+
+- `fixtures/upstream-svgs/treeView/upstream_docs_treeview_basic.svg`
+- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001.svg`
+- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.svg`
+- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.svg`
+- `fixtures/upstream-svgs/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.svg`
+
+## Compare Coverage
+
+- Family-local command: `cargo run -p xtask -- compare-tree-view-svgs`
+- Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram treeView --check-dom --dom-mode parity --dom-decimals 3`
+- Current DOM residual: `compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  reports one wrapper class mismatch per fixture (`svg/g[0]: extra attr class`).
 
 ## Not Yet Covered
 
-- Upstream SVG baselines under fixtures/upstream-svgs/treeView.
-- Dedicated `xtask compare-tree-view-svgs`.
-- Full Cypress image snapshot corpus import.
+- Exact Langium diagnostics and offsets.
+- Full strict DOM parity for the current Cypress image snapshot corpus.

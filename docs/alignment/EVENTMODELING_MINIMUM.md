@@ -37,8 +37,9 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
 
 ## Known Gaps
 
-- No dedicated `xtask compare-eventmodeling-svgs` command yet.
-- No committed upstream SVG baseline corpus yet.
+- `xtask compare-eventmodeling-svgs` exists, but `--check-dom --dom-mode parity` still reports
+  root width/max-width residuals for the current baseline corpus.
+- A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/eventmodeling/`.
 - `entity`, `note`, and `gwt` statements are not rendered in Phase 1.
 - Data block formatting is captured conservatively and rendered as plain text rather than upstream `foreignObject` HTML.
 - Local namespace swimlane reuse is more stable than the current upstream runtime state shape, so strict layout parity has not been claimed.

@@ -1,0 +1,44 @@
+{
+  "diagramType": "eventmodeling",
+  "model": {
+    "type": "eventmodeling",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "frames": [
+      {
+        "name": "01",
+        "frameKind": "timeframe",
+        "modelEntityType": "ui",
+        "entityIdentifier": "CartScreen",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "02",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "entityIdentifier": "AddItem",
+        "sourceFrames": [],
+        "dataInlineValue": "{ productId: 7 }",
+        "dataReference": null
+      },
+      {
+        "name": "03",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "ItemAdded",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": "ItemAddedData"
+      }
+    ],
+    "dataEntities": [
+      {
+        "name": "ItemAddedData",
+        "dataBlockValue": "{\n  productId: 7,\n  quantity: 1\n}"
+      }
+    ]
+  }
+}

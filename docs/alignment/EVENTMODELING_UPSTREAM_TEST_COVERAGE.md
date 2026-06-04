@@ -14,6 +14,30 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - inferred cross-swimlane relation
   - inline data and `data` block reference
   - semantic golden and layout golden
+- Cypress rendering fixtures from `repo-ref/mermaid/cypress/integration/rendering/eventmodeling/eventmodeling.spec.ts`:
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_view_pattern_001.mmd`
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002.mmd`
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_translation_pattern_003.mmd`
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.mmd`
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.mmd`
+  - `fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.mmd`
+
+## Upstream SVG Baselines
+
+- `fixtures/upstream-svgs/eventmodeling/upstream_docs_eventmodeling_minimum.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_view_pattern_001.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_translation_pattern_003.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005.svg`
+- `fixtures/upstream-svgs/eventmodeling/upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006.svg`
+
+## Compare Coverage
+
+- Family-local command: `cargo run -p xtask -- compare-eventmodeling-svgs`
+- Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram eventmodeling --check-dom --dom-mode parity --dom-decimals 3`
+- Current DOM residual: `compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  reports root `width` shape mismatch for every fixture (`<n>%` upstream vs `<n>` local).
 
 ## Upstream Sources Reviewed
 
@@ -28,6 +52,5 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 ## Deferred Coverage
 
 - Full upstream parser fixtures from `repo-ref/mermaid/packages/parser/tests/eventmodeling.test.ts`.
-- Cypress image snapshot corpus from `repo-ref/mermaid/cypress/integration/rendering/eventmodeling/eventmodeling.spec.ts`.
-- SVG DOM parity fixtures under fixtures/upstream-svgs/eventmodeling.
 - `entity`, `note`, and `gwt` statement rendering.
+- Full strict DOM parity for the current Cypress image snapshot corpus.

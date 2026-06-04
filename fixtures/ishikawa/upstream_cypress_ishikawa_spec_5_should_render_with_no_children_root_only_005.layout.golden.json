@@ -1,0 +1,57 @@
+{
+  "diagramType": "ishikawa",
+  "layout": {
+    "IshikawaDiagram": {
+      "bounds": {
+        "min_x": -20.0,
+        "min_y": 192.4,
+        "max_x": 92.096,
+        "max_y": 307.6
+      },
+      "total_width": 112.096,
+      "total_height": 115.2,
+      "viewbox_x": -20.0,
+      "viewbox_y": 192.4,
+      "padding": 20.0,
+      "use_max_width": false,
+      "font_size": 16.0,
+      "head": {
+        "x": 0.0,
+        "y": 250.0,
+        "width": 60.08,
+        "height": 75.2,
+        "path_d": "M 0 -37.60000000000002 L 0 37.60000000000002 Q 144.19199999999998 0 0 -37.60000000000002 Z",
+        "label": {
+          "text": "Problem",
+          "lines": [
+            "Problem"
+          ],
+          "class_name": "ishikawa-head-label",
+          "x": 42.0,
+          "y": 250.0,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": 14.96,
+            "min_y": 241.2,
+            "max_x": 69.04,
+            "max_y": 258.8
+          }
+        }
+      },
+      "lines": [
+        {
+          "x1": 0.0,
+          "y1": 250.0,
+          "x2": 0.0,
+          "y2": 250.0,
+          "class_name": "ishikawa-spine",
+          "marker_start": false
+        }
+      ],
+      "labels": [],
+      "label_boxes": []
+    }
+  }
+}

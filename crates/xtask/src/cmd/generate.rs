@@ -461,7 +461,9 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "block",
                 "radar",
                 "treemap",
-                "xychart",
+                "treeView",
+                "ishikawa",
+                "eventmodeling",
             ] {
                 if let Err(err) =
                     run_one(&workspace_root, &fixtures_root, &out_root, &mmdc, d, filter)
@@ -477,8 +479,8 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
-        | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap"
-        | "architecture" => run_one(
+        | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap" | "treeView"
+        | "ishikawa" | "eventmodeling" | "architecture" => run_one(
             &workspace_root,
             &fixtures_root,
             &out_root,
@@ -487,7 +489,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             filter,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, treeView, ishikawa, eventmodeling, all)"
         ))),
     }
 }
@@ -706,6 +708,10 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "block",
                 "radar",
                 "treemap",
+                "xychart",
+                "treeView",
+                "ishikawa",
+                "eventmodeling",
             ] {
                 if let Err(err) = check_one(UpstreamSvgCheck {
                     baseline_root: &baseline_root,
@@ -727,19 +733,18 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
-        | "block" | "radar" | "quadrantchart" | "treemap" | "mindmap" | "architecture" => {
-            check_one(UpstreamSvgCheck {
-                baseline_root: &baseline_root,
-                out_root: &out_root,
-                diagram: diagram.as_str(),
-                filter,
-                check_dom,
-                dom_mode: parsed_dom_mode,
-                dom_decimals,
-            })
-        }
+        | "block" | "radar" | "quadrantchart" | "treemap" | "mindmap" | "treeView" | "ishikawa"
+        | "eventmodeling" | "architecture" => check_one(UpstreamSvgCheck {
+            baseline_root: &baseline_root,
+            out_root: &out_root,
+            diagram: diagram.as_str(),
+            filter,
+            check_dom,
+            dom_mode: parsed_dom_mode,
+            dom_decimals,
+        }),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, treeView, ishikawa, eventmodeling, all)"
         ))),
     }
 }

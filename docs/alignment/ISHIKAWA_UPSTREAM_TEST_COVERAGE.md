@@ -27,10 +27,33 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - source: `repo-ref/mermaid/docs/syntax/ishikawa.md`
   - semantic snapshot: `fixtures/ishikawa/upstream_docs_ishikawa_basic.golden.json`
   - layout snapshot: `fixtures/ishikawa/upstream_docs_ishikawa_basic.layout.golden.json`
+- Cypress rendering fixtures from `repo-ref/mermaid/cypress/integration/rendering/ishikawa/ishikawa.spec.ts`:
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_2_should_render_with_many_causes_on_both_sides_002.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_12_should_render_correctly_when_effect_is_indented_more_than_cau_010.mmd`
+
+## Upstream SVG Baselines
+
+- `fixtures/upstream-svgs/ishikawa/upstream_docs_ishikawa_basic.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_2_should_render_with_many_causes_on_both_sides_002.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_12_should_render_correctly_when_effect_is_indented_more_than_cau_010.svg`
+
+## Compare Coverage
+
+- Family-local command: `cargo run -p xtask -- compare-ishikawa-svgs`
+- Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram ishikawa --check-dom --dom-mode parity --dom-decimals 3`
+- Current DOM residual: `compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  reports root `width` shape mismatch for every fixture (`<n>%` upstream vs `<n>` local).
 
 ## Not Yet Covered
 
-- Upstream SVG baselines under fixtures/upstream-svgs/ishikawa.
-- Dedicated `xtask compare-ishikawa-svgs`.
 - Hand-drawn / rough.js renderer branch.
-- Full Cypress image snapshot corpus import.
+- Theme/config Cypress cases: forest, dark, `diagramPadding`, and `useMaxWidth`.
+- Full strict DOM parity for the current Cypress image snapshot corpus.

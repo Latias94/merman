@@ -439,9 +439,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             "requirement" => Some("requirement".to_string()),
             "architecture-beta" => Some("architecture".to_string()),
             "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
+            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap"
+            | "treeView" | "ishikawa" | "eventmodeling" => Some(detected.to_string()),
             _ => None,
         }
     }

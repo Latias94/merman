@@ -1,0 +1,104 @@
+{
+  "diagramType": "ishikawa",
+  "model": {
+    "type": "ishikawa",
+    "title": "Manufacturing Defect",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "text": "Manufacturing Defect",
+      "children": [
+        {
+          "text": "Machine",
+          "children": [
+            {
+              "text": "Worn tooling",
+              "children": []
+            },
+            {
+              "text": "Calibration",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Method",
+          "children": [
+            {
+              "text": "Missing step",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Material",
+          "children": [
+            {
+              "text": "Contamination",
+              "children": []
+            },
+            {
+              "text": "Wrong grade",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "Manpower",
+          "children": [
+            {
+              "text": "Insufficient training",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "text": "Manufacturing Defect",
+        "depth": 0
+      },
+      {
+        "text": "Machine",
+        "depth": 1
+      },
+      {
+        "text": "Worn tooling",
+        "depth": 2
+      },
+      {
+        "text": "Calibration",
+        "depth": 2
+      },
+      {
+        "text": "Method",
+        "depth": 1
+      },
+      {
+        "text": "Missing step",
+        "depth": 2
+      },
+      {
+        "text": "Material",
+        "depth": 1
+      },
+      {
+        "text": "Contamination",
+        "depth": 2
+      },
+      {
+        "text": "Wrong grade",
+        "depth": 2
+      },
+      {
+        "text": "Manpower",
+        "depth": 1
+      },
+      {
+        "text": "Insufficient training",
+        "depth": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,345 @@
+{
+  "diagramType": "ishikawa",
+  "layout": {
+    "IshikawaDiagram": {
+      "bounds": {
+        "min_x": -337.695,
+        "min_y": -38.556,
+        "max_x": 134.912,
+        "max_y": 540.178
+      },
+      "total_width": 472.607,
+      "total_height": 578.734,
+      "viewbox_x": -337.695,
+      "viewbox_y": -38.556,
+      "padding": 20.0,
+      "use_max_width": false,
+      "font_size": 16.0,
+      "head": {
+        "x": 0.0,
+        "y": 333.333,
+        "width": 95.76,
+        "height": 107.2,
+        "path_d": "M 0 -53.60000000000002 L 0 53.60000000000002 Q 229.82399999999998 0 0 -53.60000000000002 Z",
+        "label": {
+          "text": "Manufacturing\nDefect",
+          "lines": [
+            "Manufacturing",
+            "Defect"
+          ],
+          "class_name": "ishikawa-head-label",
+          "x": 42.0,
+          "y": 333.333,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -2.88,
+            "min_y": 316.533,
+            "max_x": 86.88,
+            "max_y": 350.133
+          }
+        }
+      },
+      "lines": [
+        {
+          "x1": -20.0,
+          "y1": 333.333,
+          "x2": -66.391,
+          "y2": 3.244,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -35.464,
+          "y1": 223.304,
+          "x2": -65.464,
+          "y2": 223.304,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -50.927,
+          "y1": 113.274,
+          "x2": -80.927,
+          "y2": 113.274,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -20.0,
+          "y1": 333.333,
+          "x2": -43.196,
+          "y2": 498.378,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -31.598,
+          "y1": 415.856,
+          "x2": -61.598,
+          "y2": 415.856,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -163.807,
+          "y1": 333.333,
+          "x2": -210.198,
+          "y2": 3.244,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -179.271,
+          "y1": 223.304,
+          "x2": -209.271,
+          "y2": 223.304,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -194.735,
+          "y1": 113.274,
+          "x2": -224.735,
+          "y2": 113.274,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -163.807,
+          "y1": 333.333,
+          "x2": -187.003,
+          "y2": 498.378,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -175.405,
+          "y1": 415.856,
+          "x2": -205.405,
+          "y2": 415.856,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -317.695,
+          "y1": 333.333,
+          "x2": 0.0,
+          "y2": 333.333,
+          "class_name": "ishikawa-spine",
+          "marker_start": false
+        }
+      ],
+      "labels": [
+        {
+          "text": "Machine",
+          "lines": [
+            "Machine"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -66.391,
+          "y": -7.756,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -90.631,
+            "min_y": -16.556,
+            "max_x": -42.151,
+            "max_y": 1.044
+          }
+        },
+        {
+          "text": "Calibration",
+          "lines": [
+            "Calibration"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -65.464,
+          "y": 223.304,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -136.664,
+            "min_y": 214.504,
+            "max_x": -65.464,
+            "max_y": 232.104
+          }
+        },
+        {
+          "text": "Worn tooling",
+          "lines": [
+            "Worn tooling"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -80.927,
+          "y": 113.274,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -163.807,
+            "min_y": 104.474,
+            "max_x": -80.927,
+            "max_y": 122.074
+          }
+        },
+        {
+          "text": "Method",
+          "lines": [
+            "Method"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -43.196,
+          "y": 509.378,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -65.196,
+            "min_y": 500.578,
+            "max_x": -21.196,
+            "max_y": 518.178
+          }
+        },
+        {
+          "text": "Missing step",
+          "lines": [
+            "Missing step"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -61.598,
+          "y": 415.856,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -140.478,
+            "min_y": 407.056,
+            "max_x": -61.598,
+            "max_y": 424.656
+          }
+        },
+        {
+          "text": "Material",
+          "lines": [
+            "Material"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -210.198,
+          "y": -7.756,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -236.678,
+            "min_y": -16.556,
+            "max_x": -183.718,
+            "max_y": 1.044
+          }
+        },
+        {
+          "text": "Wrong grade",
+          "lines": [
+            "Wrong grade"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -209.271,
+          "y": 223.304,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -290.071,
+            "min_y": 214.504,
+            "max_x": -209.271,
+            "max_y": 232.104
+          }
+        },
+        {
+          "text": "Contamination",
+          "lines": [
+            "Contamination"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -224.735,
+          "y": 113.274,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -317.695,
+            "min_y": 104.474,
+            "max_x": -224.735,
+            "max_y": 122.074
+          }
+        },
+        {
+          "text": "Manpower",
+          "lines": [
+            "Manpower"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -187.003,
+          "y": 509.378,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -218.683,
+            "min_y": 500.578,
+            "max_x": -155.323,
+            "max_y": 518.178
+          }
+        },
+        {
+          "text": "Insufficient\ntraining",
+          "lines": [
+            "Insufficient",
+            "training"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -205.405,
+          "y": 415.856,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -281.085,
+            "min_y": 399.056,
+            "max_x": -205.405,
+            "max_y": 432.656
+          }
+        }
+      ],
+      "label_boxes": [
+        {
+          "x": -110.631,
+          "y": -18.556,
+          "width": 88.48,
+          "height": 21.6
+        },
+        {
+          "x": -85.196,
+          "y": 498.578,
+          "width": 84.0,
+          "height": 21.6
+        },
+        {
+          "x": -256.678,
+          "y": -18.556,
+          "width": 92.96,
+          "height": 21.6
+        },
+        {
+          "x": -238.683,
+          "y": 498.578,
+          "width": 103.36,
+          "height": 21.6
+        }
+      ]
+    }
+  }
+}

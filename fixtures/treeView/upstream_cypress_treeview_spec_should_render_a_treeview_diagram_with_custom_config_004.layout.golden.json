@@ -1,0 +1,329 @@
+{
+  "diagramType": "treeView",
+  "layout": {
+    "TreeViewDiagram": {
+      "bounds": {
+        "min_x": -1.5,
+        "min_y": 0.0,
+        "max_x": 412.4,
+        "max_y": 384.0
+      },
+      "total_width": 412.4,
+      "total_height": 384.0,
+      "row_indent": 80.0,
+      "padding_x": 5.0,
+      "padding_y": 5.0,
+      "line_thickness": 3.0,
+      "use_max_width": true,
+      "label_font_size": 20.0,
+      "nodes": [
+        {
+          "id": 0.0,
+          "level": -1.0,
+          "name": "/",
+          "depth": 0.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 16.6,
+          "height": 32.0,
+          "label_x": 5.0,
+          "label_y": 16.0,
+          "label_width": 6.6,
+          "label_height": 22.0
+        },
+        {
+          "id": 1.0,
+          "level": 6.0,
+          "name": "folder1",
+          "depth": 1.0,
+          "x": 85.0,
+          "y": 32.0,
+          "width": 69.8,
+          "height": 32.0,
+          "label_x": 90.0,
+          "label_y": 48.0,
+          "label_width": 59.8,
+          "label_height": 22.0
+        },
+        {
+          "id": 2.0,
+          "level": 10.0,
+          "name": "file1.js",
+          "depth": 2.0,
+          "x": 170.0,
+          "y": 64.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 175.0,
+          "label_y": 80.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 3.0,
+          "level": 10.0,
+          "name": "file2.ts",
+          "depth": 2.0,
+          "x": 170.0,
+          "y": 96.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 175.0,
+          "label_y": 112.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 4.0,
+          "level": 6.0,
+          "name": "folder2",
+          "depth": 1.0,
+          "x": 85.0,
+          "y": 128.0,
+          "width": 69.8,
+          "height": 32.0,
+          "label_x": 90.0,
+          "label_y": 144.0,
+          "label_width": 59.8,
+          "label_height": 22.0
+        },
+        {
+          "id": 5.0,
+          "level": 10.0,
+          "name": "file3.spec.ts",
+          "depth": 2.0,
+          "x": 170.0,
+          "y": 160.0,
+          "width": 112.4,
+          "height": 32.0,
+          "label_x": 175.0,
+          "label_y": 176.0,
+          "label_width": 102.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 6.0,
+          "level": 10.0,
+          "name": "folder3",
+          "depth": 2.0,
+          "x": 170.0,
+          "y": 192.0,
+          "width": 69.8,
+          "height": 32.0,
+          "label_x": 175.0,
+          "label_y": 208.0,
+          "label_width": 59.8,
+          "label_height": 22.0
+        },
+        {
+          "id": 7.0,
+          "level": 14.0,
+          "name": "file4.ts",
+          "depth": 3.0,
+          "x": 255.0,
+          "y": 224.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 260.0,
+          "label_y": 240.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 8.0,
+          "level": 14.0,
+          "name": "file5.ts",
+          "depth": 3.0,
+          "x": 255.0,
+          "y": 256.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 260.0,
+          "label_y": 272.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 9.0,
+          "level": 14.0,
+          "name": "folder4",
+          "depth": 3.0,
+          "x": 255.0,
+          "y": 288.0,
+          "width": 69.8,
+          "height": 32.0,
+          "label_x": 260.0,
+          "label_y": 304.0,
+          "label_width": 59.8,
+          "label_height": 22.0
+        },
+        {
+          "id": 10.0,
+          "level": 18.0,
+          "name": "file6.ts",
+          "depth": 4.0,
+          "x": 340.0,
+          "y": 320.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 345.0,
+          "label_y": 336.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        },
+        {
+          "id": 11.0,
+          "level": 6.0,
+          "name": "file7.ts",
+          "depth": 1.0,
+          "x": 85.0,
+          "y": 352.0,
+          "width": 72.4,
+          "height": 32.0,
+          "label_x": 90.0,
+          "label_y": 368.0,
+          "label_width": 62.4,
+          "label_height": 22.0
+        }
+      ],
+      "lines": [
+        {
+          "x1": -80.0,
+          "y1": 16.0,
+          "x2": 0.0,
+          "y2": 16.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 5.0,
+          "y1": 48.0,
+          "x2": 85.0,
+          "y2": 48.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 90.0,
+          "y1": 80.0,
+          "x2": 170.0,
+          "y2": 80.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 90.0,
+          "y1": 112.0,
+          "x2": 170.0,
+          "y2": 112.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 90.0,
+          "y1": 64.0,
+          "x2": 90.0,
+          "y2": 113.5,
+          "stroke_width": 3.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 5.0,
+          "y1": 144.0,
+          "x2": 85.0,
+          "y2": 144.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 90.0,
+          "y1": 176.0,
+          "x2": 170.0,
+          "y2": 176.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 90.0,
+          "y1": 208.0,
+          "x2": 170.0,
+          "y2": 208.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 175.0,
+          "y1": 240.0,
+          "x2": 255.0,
+          "y2": 240.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 175.0,
+          "y1": 272.0,
+          "x2": 255.0,
+          "y2": 272.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 175.0,
+          "y1": 304.0,
+          "x2": 255.0,
+          "y2": 304.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 260.0,
+          "y1": 336.0,
+          "x2": 340.0,
+          "y2": 336.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 260.0,
+          "y1": 320.0,
+          "x2": 260.0,
+          "y2": 337.5,
+          "stroke_width": 3.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 175.0,
+          "y1": 224.0,
+          "x2": 175.0,
+          "y2": 305.5,
+          "stroke_width": 3.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 90.0,
+          "y1": 160.0,
+          "x2": 90.0,
+          "y2": 209.5,
+          "stroke_width": 3.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 5.0,
+          "y1": 368.0,
+          "x2": 85.0,
+          "y2": 368.0,
+          "stroke_width": 3.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 5.0,
+          "y1": 32.0,
+          "x2": 5.0,
+          "y2": 369.5,
+          "stroke_width": 3.0,
+          "kind": "vertical"
+        }
+      ]
+    }
+  }
+}

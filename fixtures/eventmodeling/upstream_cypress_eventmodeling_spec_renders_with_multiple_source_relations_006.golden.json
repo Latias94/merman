@@ -1,0 +1,51 @@
+{
+  "diagramType": "eventmodeling",
+  "model": {
+    "type": "eventmodeling",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "frames": [
+      {
+        "name": "01",
+        "frameKind": "timeframe",
+        "modelEntityType": "ui",
+        "entityIdentifier": "CartScreen",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "02",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "entityIdentifier": "AddItem",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "03",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "entityIdentifier": "RemoveItem",
+        "sourceFrames": [],
+        "dataInlineValue": null,
+        "dataReference": null
+      },
+      {
+        "name": "04",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "entityIdentifier": "ItemChanged",
+        "sourceFrames": [
+          "02",
+          "03"
+        ],
+        "dataInlineValue": null,
+        "dataReference": null
+      }
+    ],
+    "dataEntities": []
+  }
+}
