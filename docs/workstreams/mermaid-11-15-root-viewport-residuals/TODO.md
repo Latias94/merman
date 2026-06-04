@@ -255,7 +255,10 @@ Last updated: 2026-06-04
   classification shows `batch3_long_group_titles_wrapping_055` is not a group-title root-bbox row:
   it is a `-1px` Cytoscape service child label/bbox phase cancellation. The
   `batch6_long_group_titles_wrapping_extreme_095` row has exact services and group rects, leaving
-  only a `-0.46875px` group-title SVG text `getBBox()` / root-union estimate tail.
+  only a `-0.46875px` group-title SVG text `getBBox()` / root-union estimate tail. A later narrow
+  production fix models that class by rounding only multi-line group-title SVG row widths for
+  synthetic root union; `095` is now root-exact, and the Architecture queue drops to 23 mismatch
+  rows without adding root pins or baselines.
 
 ## M3 - Policy Closeout
 

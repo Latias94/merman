@@ -6422,3 +6422,41 @@ Gate notes:
 
 - A production fix for the `batch6_long...095` class needs a reusable group-title SVG text
   `getBBox()` rule across fixtures. Do not add a single-title constant or Architecture root pin.
+
+## HPD-050 - Architecture Multiline Group Title Root Bounds
+
+Outcome:
+
+- Landed the narrow reusable rule identified by the previous small-residual classification:
+  wrapped Architecture group titles now round each measured SVG title row width up to an integer
+  pixel boundary only when the title emits multiple outer `tspan` rows.
+- The rule is scoped to synthetic root content-bounds union for group titles. It does not change
+  one-line group titles, service labels, child contribution bounds, group rectangles, FCoSE inputs,
+  root overrides, or stored SVG baselines.
+- `stress_architecture_batch6_long_group_titles_wrapping_extreme_095` is root-exact after the
+  change. `stress_architecture_long_group_titles_018` remains a separate existing residual because
+  its title is one outer row and its group/service geometry still drifts.
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+- `cargo nextest run -p merman-render architecture` - passed, `31` tests run.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`, and override-growth/root-usage checks are ok.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed across the implemented matrix.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_batch6_long_group_titles_wrapping_extreme_095 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\arch-focused-095-ceil` -
+  passed with upstream/local `max-width: 533.000px`.
+- `cargo run -p xtask -- compare-architecture-svgs --filter stress_architecture_long_group_titles_018 --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\arch-focused-018-ceil` -
+  expected-failed with the existing `+0.656px` root-width tail.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --no-root-overrides --out target\compare\architecture-report-parity-root-multiline-title-ceil-final` -
+  expected-failed with `23` Architecture root/style mismatches, `28` non-zero root delta rows, and
+  absolute root-width residual sum `27.596px`. The prior Architecture queue was `24` mismatches,
+  `29` non-zero root delta rows, and about `28.065px` absolute residual sum.
+
+Gate notes:
+
+- This is not a root pin or fixture constant. It closes the multi-line group-title SVG
+  `getBBox()` lattice tail represented by `095` and leaves the remaining service child
+  contribution / Cytoscape bbox phase residuals open.

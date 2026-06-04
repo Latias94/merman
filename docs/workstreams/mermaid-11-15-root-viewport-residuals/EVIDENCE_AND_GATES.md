@@ -1564,9 +1564,29 @@ Outcome:
 
 - Do not use `batch3_long_group_titles_wrapping_055` as a group-title root-bbox target; its
   `-1px` comes from the already-known Cytoscape child label/bbox phase cancellation.
-- A future production candidate for `batch6_long_group_titles_wrapping_extreme_095` must model
-  browser SVG text `getBBox()` lattice for group titles across multiple fixtures. Do not add a
-  single-title constant or root pin for this row.
+- The production candidate for `batch6_long_group_titles_wrapping_extreme_095` must model browser
+  SVG text `getBBox()` lattice for group titles across multiple fixtures. Do not add a
+  single-title constant or root pin for this row. The follow-up below records the landed narrow
+  version of that rule.
+
+Follow-up production result:
+
+- The reusable candidate is now landed narrowly in Architecture group-title root-bounds union:
+  only multi-line group titles round each measured SVG title row width up to an integer pixel
+  boundary before the synthetic root `getBBox()` union.
+- Focused `stress_architecture_batch6_long_group_titles_wrapping_extreme_095` parity-root passes
+  with upstream/local `max-width: 533.000px`.
+- Full Architecture parity-root remains an expected diagnostic failure, but improves from `24`
+  to `23` DOM mismatches and from `29` to `28` non-zero root delta rows. The absolute root-width
+  residual sum drops from about `28.065px` to `27.596px`.
+- The rule does not apply to `stress_architecture_long_group_titles_018`, which remains a
+  separate existing `+0.656px` residual with one outer title row plus group/service geometry drift.
+- No root override, root tolerance, stored SVG baseline refresh, single-string constant, service
+  label scale change, or group padding change was added.
+- `cargo run -p xtask -- report-overrides --check-no-growth` passed after the change, with
+  Architecture root overrides still at `0`.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` passed
+  across the implemented matrix after the change.
 
 ## Gate Set
 
