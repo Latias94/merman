@@ -8,7 +8,8 @@ mod mindmap;
 mod svg;
 
 pub(crate) use architecture::{
-    debug_architecture_delta, debug_architecture_fcose_probe, summarize_architecture_deltas,
+    debug_architecture_delta, debug_architecture_fcose_probe, debug_architecture_render_path_probe,
+    summarize_architecture_deltas,
 };
 pub(crate) use dagre::compare_dagre_layout;
 pub(crate) use flowchart::{

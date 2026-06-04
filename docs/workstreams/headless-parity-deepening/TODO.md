@@ -315,6 +315,11 @@ Last updated: 2026-06-04
   (`left=1805.888x1630.544`). Treat the manual FCoSE probe as diagnostic-only when it disagrees
   with this render-path evidence; future junction work should target bundled FCoSE/internal phases,
   not stored-baseline drift or a one-off manatee tune.
+  A follow-up xtask wrapper slice promotes that real render-path probe into
+  `debug-architecture-render-path-probe`, with repeated `--fixture`, stable
+  `.render-path-probe.json` / `.render-path-probe.md` artifacts, optional `--browser-exe`, and a
+  batch index. Use this wrapper before any future `junction_fork_join_026` source claim so the
+  evidence stays tied to `mermaid.render(...)` rather than hand-run Node output.
   A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on

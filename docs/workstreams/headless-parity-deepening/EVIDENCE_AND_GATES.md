@@ -3,6 +3,49 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
+
+Outcome:
+
+- Added `xtask debug-architecture-render-path-probe` as the stable command wrapper for the
+  Architecture render-path browser probe.
+- The command reuses `tools/debug/arch_render_path_probe_fixture.js`, so evidence still comes from
+  the actual installed Mermaid `mermaid.render(...)` Architecture renderer path instead of the
+  manual ArchitectureDB/FCoSE reconstruction harness.
+- The wrapper supports repeated `--fixture` filters, `--out` / `--out-dir`, and `--browser-exe`.
+- Each fixture now writes:
+  - raw JSON as `<fixture>.render-path-probe.json`
+  - Markdown summary as `<fixture>.render-path-probe.md`
+  - `architecture-render-path-probe-batch.md` when multiple fixtures are run
+- The Markdown summary records Mermaid/Cytoscape/FCoSE versions, rendered-vs-stored root facts,
+  group rectangles, service positions, captured stage bboxes, and group bounds by stage.
+- A focused junction run through the new xtask wrapper reproduced the same authoritative result:
+  `facts match: true`, `6` captured stages, `2` SVG groups, and `5` SVG services.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `crates/xtask/src/cmd/debug/mod.rs`
+- `crates/xtask/src/main.rs`
+- `target\compare\architecture-render-path-probe-xtask-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.json`
+- `target\compare\architecture-render-path-probe-xtask-hpd050\stress_architecture_junction_fork_join_026.render-path-probe.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask render_path_probe fcose_probe_args_accept_out_dir_aliases fcose_probe_batch_markdown_links_per_fixture_artifacts` -
+  passed, `7` tests run.
+- `cargo run -p xtask -- debug-architecture-render-path-probe --fixture stress_architecture_junction_fork_join_026 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --out target\compare\architecture-render-path-probe-xtask-hpd050` -
+  passed and wrote JSON plus Markdown artifacts.
+
+Residual note:
+
+- This is evidence tooling only. Future `junction_fork_join_026` work should use the xtask wrapper
+  when it needs actual Mermaid render-path facts, then move to bundled FCoSE/Cose internal-phase
+  comparison if more source evidence is needed. It still does not justify tuning `manatee` against
+  the older manual probe when that probe disagrees with the real render path.
+
 ## HPD-050 - Architecture Render-Path Probe
 
 Outcome:

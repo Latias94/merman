@@ -86,6 +86,7 @@ fn print_help(topic: Option<&str>) {
     println!("  debug-svg-data-points");
     println!("  debug-architecture-delta");
     println!("  debug-architecture-fcose-probe");
+    println!("  debug-architecture-render-path-probe");
     println!("  summarize-architecture-deltas");
     println!("  compare-dagre-layout");
     println!("  analyze-state-fixture");
@@ -191,6 +192,9 @@ fn main() -> Result<(), XtaskError> {
         "debug-svg-data-points" => cmd::debug_svg_data_points(args.collect()),
         "debug-architecture-delta" => cmd::debug_architecture_delta(args.collect()),
         "debug-architecture-fcose-probe" => cmd::debug_architecture_fcose_probe(args.collect()),
+        "debug-architecture-render-path-probe" => {
+            cmd::debug_architecture_render_path_probe(args.collect())
+        }
         "summarize-architecture-deltas" => cmd::summarize_architecture_deltas(args.collect()),
         "compare-dagre-layout" => cmd::compare_dagre_layout(args.collect()),
         "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
