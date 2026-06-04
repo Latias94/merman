@@ -1531,6 +1531,43 @@ Outcome:
   FCoSE run.
 - No root pins or browser-specific metric constants were added.
 
+## 2026-06-05 - Architecture Long Group Title Small Residual Classification
+
+Fresh focused evidence for two small post-FCoSE-fix Architecture root tails:
+
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --out target\compare\architecture-delta-batch3-long-group-title-hpd050`:
+  passed. Services match exactly; the only element delta is
+  `group-very_long_group_title` at `dx=+0.500px`, `dw=-1.000px`.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --out-dir target\compare\architecture-fcose-probe-batch3-long-group-title-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"`:
+  passed from the main workspace Mermaid CLI installation, writing artifacts into this worktree's
+  `target\compare`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --probe-dir target\compare\architecture-fcose-probe-batch3-long-group-title-hpd050 --out target\compare\architecture-delta-batch3-long-group-title-probe-join-hpd050`:
+  passed. Browser child labels are `3px` wider and `2px` taller than the local contribution label
+  phase, while browser final group expansion is `83px` and local emitted expansion is `85px`. The
+  cancellation leaves the observed `-1px` group/root width delta.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch6_long_group_titles_wrapping_extreme_095 --out target\compare\architecture-delta-long-group-title-small-residuals-hpd050`:
+  passed. Services and both group rects are exact; the remaining root delta is only
+  `-0.468750px`, so the residual is in the synthetic group-title SVG text root-bounds union, not
+  FCoSE, service placement, or group rectangle sizing.
+
+Source boundary:
+
+- Mermaid `svgDraw.ts::drawGroups(...)` draws group rects from Cytoscape `node.boundingBox()` and
+  draws group titles via `createText(..., { useHtmlLabels: false, width: w })`; final root sizing
+  then observes the emitted SVG through browser `getBBox()`.
+- Local `push_architecture_groups(...)` already emits the same group title structure but estimates
+  title root contribution with deterministic text metrics. The `batch6_long...095` row shows this
+  deterministic group-title bbox estimate is about `0.46875px` narrower than Chromium for that
+  wrapped title.
+
+Outcome:
+
+- Do not use `batch3_long_group_titles_wrapping_055` as a group-title root-bbox target; its
+  `-1px` comes from the already-known Cytoscape child label/bbox phase cancellation.
+- A future production candidate for `batch6_long_group_titles_wrapping_extreme_095` must model
+  browser SVG text `getBBox()` lattice for group titles across multiple fixtures. Do not add a
+  single-title constant or root pin for this row.
+
 ## Gate Set
 
 Run after any code or generated-data change:

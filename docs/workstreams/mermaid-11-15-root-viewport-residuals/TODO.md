@@ -251,7 +251,11 @@ Last updated: 2026-06-04
   `stress_architecture_batch6_junctions_multi_split_with_group_edges_087` again by treating
   near-touch rectangles and near-equal overlap centers with a `1e-9` geometry epsilon; full
   Architecture structural parity stays green and Architecture `parity-root` now has `24` mismatch
-  rows led by the existing `+5px` long-title/HTML-title tails.
+  rows led by the existing `+5px` long-title/HTML-title tails. A follow-up small-residual
+  classification shows `batch3_long_group_titles_wrapping_055` is not a group-title root-bbox row:
+  it is a `-1px` Cytoscape service child label/bbox phase cancellation. The
+  `batch6_long_group_titles_wrapping_extreme_095` row has exact services and group rects, leaving
+  only a `-0.46875px` group-title SVG text `getBBox()` / root-union estimate tail.
 
 ## M3 - Policy Closeout
 

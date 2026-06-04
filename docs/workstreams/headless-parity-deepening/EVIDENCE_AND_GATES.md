@@ -6390,3 +6390,35 @@ Gate notes:
 
 - Remaining Architecture `parity-root` failures are led by the existing `+5px`
   long-title/HTML-title tails and remain HPD-050 follow-up material.
+
+## HPD-050 - Architecture Long Group Title Small Residuals
+
+Outcome:
+
+- Classified two smaller Architecture long-group-title residuals after the FCoSE geometry epsilon
+  fix without changing production code.
+- `stress_architecture_batch3_long_group_titles_wrapping_055` is not a group-title root-bounds
+  target. Local service positions match upstream exactly; the row's `-1px` group/root width tail
+  comes from Cytoscape child label/bbox phase cancellation: browser child labels are `3px` wider
+  and `2px` taller than the local contribution label phase, while browser final expansion is `83px`
+  versus local emitted expansion `85px`.
+- `stress_architecture_batch6_long_group_titles_wrapping_extreme_095` has exact services and group
+  rects. Its remaining `-0.468750px` root-width tail is in group-title SVG text root-bounds
+  estimation, where upstream relies on Chromium `getBBox()` after `createText(...)`.
+
+Focused verification:
+
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --out target\compare\architecture-delta-batch3-long-group-title-hpd050` -
+  passed.
+- `cargo run -p xtask -- debug-architecture-fcose-probe --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --out-dir target\compare\architecture-fcose-probe-batch3-long-group-title-hpd050 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"` -
+  passed from the main workspace Mermaid CLI installation, writing artifacts into this worktree's
+  `target\compare`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch3_long_group_titles_wrapping_055 --probe-dir target\compare\architecture-fcose-probe-batch3-long-group-title-hpd050 --out target\compare\architecture-delta-batch3-long-group-title-probe-join-hpd050` -
+  passed.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch6_long_group_titles_wrapping_extreme_095 --out target\compare\architecture-delta-long-group-title-small-residuals-hpd050` -
+  passed.
+
+Gate notes:
+
+- A production fix for the `batch6_long...095` class needs a reusable group-title SVG text
+  `getBBox()` rule across fixtures. Do not add a single-title constant or Architecture root pin.
