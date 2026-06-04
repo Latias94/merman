@@ -1,6 +1,9 @@
 #[cfg(feature = "render")]
 #[test]
 fn mindmap_br_variants_031_matches_upstream_node_geometry() {
+    const DIAGRAM_ID: &str = "stress_mindmap_br_variants_031";
+    const NODE_1_ID: &str = "stress_mindmap_br_variants_031-node_1";
+
     let input = include_str!("../../../fixtures/mindmap/stress_mindmap_br_variants_031.mmd");
 
     let engine = merman_core::Engine::new();
@@ -19,7 +22,7 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
     };
 
     let svg_opts = merman::render::SvgRenderOptions {
-        diagram_id: Some("stress_mindmap_br_variants_031".to_string()),
+        diagram_id: Some(DIAGRAM_ID.to_string()),
         ..Default::default()
     };
 
@@ -34,10 +37,10 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
     let doc = roxmltree::Document::parse(&svg).expect("valid svg xml");
     let node_1 = doc
         .descendants()
-        .find(|n| n.has_tag_name("g") && n.attribute("id") == Some("node_1"))
-        .expect("node_1 should exist in svg output");
+        .find(|n| n.has_tag_name("g") && n.attribute("id") == Some(NODE_1_ID))
+        .expect("prefixed node_1 should exist in svg output");
 
-    // Upstream Mermaid (11.12.x) renders the 2-line label with a 48px foreignObject height and
+    // Upstream Mermaid 11.15 renders the 2-line label with a 48px foreignObject height and
     // a 68px outer rect (padding=20).
     let node_1_rect = node_1
         .children()
