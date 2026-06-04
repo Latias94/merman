@@ -33,6 +33,13 @@ Immediate next task:
 - HPD-050 remains an active residual-driven audit lane with multiple landed slices. Continue it only
   when there is a source-backed Architecture/Dagre/Graphlib seam to audit, not as a broad solver
   rewrite.
+- Latest HPD-050 revalidation after HPD-090 closeout: Architecture structural DOM parity is green,
+  and Architecture `parity-root` remains the expected `25` root/style width mismatch queue. The top
+  rows are still `junction_fork_join_026` (`+13.976px`), `batch5_long_titles_and_punct_076`
+  (`+5px`), `html_titles_and_escapes_041` (`+5px`), `unicode_and_xml_escapes_019` (`+3px`),
+  `batch6_init_fontsize_icon_size_wrap_093` (`-2.5px`), and `nested_groups_002` (`+2.5px`).
+  `group_port_edges_017` is zero-delta in the fresh all-row report and should not be reopened from
+  older pre-Procrustes diagnostics.
 - Root residual work should wait behind HPD-080 when a supported diagram is visibly broken.
 
 Current repository reality to preserve:

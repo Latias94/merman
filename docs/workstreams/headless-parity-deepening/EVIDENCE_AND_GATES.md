@@ -257,6 +257,45 @@ Residual note:
   fixture import unless a fresh inventory changes the decision. Continue with HPD-080 only for
   fresh visible renderability defects; otherwise return to HPD-050 source-backed audits.
 
+## HPD-050 - Architecture Root Revalidation After HPD-090
+
+Outcome:
+
+- Regenerated Architecture structural DOM parity and `parity-root` diagnostic reports after HPD-090
+  baseline preparation closed.
+- Architecture structural DOM parity remains green.
+- Architecture `parity-root` remains an expected diagnostic failure with `25` root/style width
+  mismatch rows.
+- The current leading root queue is:
+  - `stress_architecture_junction_fork_join_026`: `+13.976px`
+  - `stress_architecture_batch5_long_titles_and_punct_076`: `+5.000px`
+  - `stress_architecture_html_titles_and_escapes_041`: `+5.000px`
+  - `stress_architecture_unicode_and_xml_escapes_019`: `+3.000px`
+  - `stress_architecture_batch6_init_fontsize_icon_size_wrap_093`: `-2.500px`
+  - `stress_architecture_nested_groups_002`: `+2.500px`
+- `stress_architecture_group_port_edges_017` is zero-delta in the fresh all-row report and should
+  not be reopened from older pre-Procrustes diagnostics.
+- No renderer, layout, fixture, baseline, or source code changed.
+
+Touched surfaces:
+
+- `target\compare\architecture_report_parity_after_hpd090_closeout_revalidation.md`
+- `target\compare\architecture_report_parity_root_after_hpd090_closeout.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-root-revalidation-after-hpd090.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture_report_parity_after_hpd090_closeout_revalidation.md` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_after_hpd090_closeout.md` -
+  expected-failed with the existing `25` root/style mismatch rows.
+
+Residual note:
+
+- This is a diagnostic refresh, not a production fix. Continue Architecture work only from
+  source-backed FCoSE/Cytoscape phase evidence; standalone group padding, root padding, font-family
+  switching, exact label-width lookup, and one-off root pins remain rejected.
+
 ## HPD-050 - Architecture Render-Path Probe Xtask Wrapper
 
 Outcome:
