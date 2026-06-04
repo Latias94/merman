@@ -6340,3 +6340,23 @@ Gate notes:
   renderer tests, structural compare, and override-growth check all passed.
 - Known Flowchart root/max-width residuals remain outside this renderability slice. No layout,
   root viewport, baseline, or override-pin changes were made.
+
+## 2026-06-05 - Main Closeout Nextest Recheck
+
+Fresh main-worktree evidence from 2026-06-05 00:57 +08:00:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run --no-fail-fast`:
+  passed on current `main`, run id `d9fcbd92-73cb-4ba7-8eb3-91118fa8c7fd`.
+- Nextest summary: `1857` tests run, `1857` passed, `5` skipped.
+
+Scope:
+
+- This recheck covers the integrated root-report coverage work, the Class/Sequence measurement
+  no-growth cleanup, the HPD-080 Flowchart renderability audit docs, and the HPD-050 Architecture
+  FCoSE residual reclassification docs now present on `main`.
+
+Outcome:
+
+- No broad test regression was found after the integrated evidence/no-growth slices.
+- Continue from HPD-050 Architecture/FCoSE source-backed audit work when no fresh visible
+  renderability defect is active.

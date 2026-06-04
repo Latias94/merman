@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Handoff
 
 Status: Active
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 This workstream opens the post-11.15 structural-parity phase.
 
@@ -44,6 +44,10 @@ Immediate next task:
   group height `+7.345448px`. Treat the older junction run1/segment-rerun note as superseded for
   current triage; do not tune root bounds, group padding, emitted group rectangles, or `manatee`
   rerun sequencing for `junction_fork_join_026` without new source-backed evidence.
+- Main closeout recheck on 2026-06-05 passed:
+  `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run --no-fail-fast` ran `1857` tests with
+  `1857` passed and `5` skipped. This validates the integrated evidence/no-growth slices before
+  returning to HPD-050.
 - Root residual work should wait behind HPD-080 when a supported diagram is visibly broken.
 
 Current repository reality to preserve:

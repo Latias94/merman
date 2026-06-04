@@ -1,7 +1,7 @@
 # Mermaid 11.15 Root Viewport Residuals - Handoff
 
 Status: Active
-Last updated: 2026-06-02
+Last updated: 2026-06-05
 
 ## Current State
 
@@ -611,3 +611,7 @@ a future Mermaid baseline changes the source behavior.
 - For Sequence wrap work, keep the distinction between final emitted SVG text evidence and
   incremental wrap probes. Exact SVG evidence may only short-circuit wrapping when the full string
   demonstrably fits; it should not become a general prefix-width replacement.
+- Main closeout recheck on 2026-06-05 passed:
+  `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run --no-fail-fast` ran `1857` tests with
+  `1857` passed and `5` skipped after the integrated root-report coverage and Class measurement
+  no-growth cleanup.

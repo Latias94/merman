@@ -1603,3 +1603,19 @@ Outcome:
   rendered-width `+handle(...)` row.
 - No Sequence table or renderer change was made. The fresh Sequence report is evidence-only and
   preserves the distinction between final emitted SVG evidence and incremental wrap probes.
+
+## 2026-06-05 - Main Closeout Nextest Recheck
+
+Fresh main-worktree evidence from 2026-06-05 00:57 +08:00:
+
+- `$env:RUSTFLAGS='-C linker=rust-lld'; cargo nextest run --no-fail-fast`:
+  passed on current `main`, run id `d9fcbd92-73cb-4ba7-8eb3-91118fa8c7fd`.
+- Nextest summary: `1857` tests run, `1857` passed, `5` skipped.
+
+Outcome:
+
+- The integrated M15RV root-report coverage and Class measurement no-growth cleanup did not
+  introduce a broad Rust test regression.
+- Keep Architecture root overrides at `0`; the active Architecture follow-up remains the
+  source-backed HPD-050 audit around the current batch6 FCoSE/root residual, not a root-pin or
+  fixture-constant closure.
