@@ -6262,7 +6262,7 @@ Outcome:
 
 Evidence written:
 
-- [docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md](/F:/SourceCodes/Rust/merman-worktrees/hpd-renderability-flowchart/docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md)
+- [docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md](/F:/SourceCodes/Rust/merman/docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-080-flowchart-renderability-audit.md)
 
 Focused verification:
 
