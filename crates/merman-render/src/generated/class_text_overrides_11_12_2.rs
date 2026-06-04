@@ -76,7 +76,6 @@ pub fn lookup_class_calc_text_width_px(font_size_px: i64, text: &str) -> Option<
         (16, "+getItem() : T") => Some(95),
         (16, "+addUser(user: User)") => Some(143),
         (16, "+removeUser(user: User)") => Some(168),
-        (16, "+handle(req: Request) : Response") => Some(221),
         (16, "+start()") => Some(52),
         (16, "+template()") => Some(79),
         (16, "+toString() : String") => Some(127),

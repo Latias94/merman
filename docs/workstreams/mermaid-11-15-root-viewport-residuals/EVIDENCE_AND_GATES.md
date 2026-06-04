@@ -1522,3 +1522,51 @@ Outcome:
 - Do not treat the surviving `11_12_2` suffixes themselves as proof of a rendering gap. They are
   now explicitly documented as naming debt until a controlled regeneration/rename migration is
   worth the churn.
+
+## 2026-06-04 - Class / Sequence Measurement No-Growth Recheck
+
+Fresh focused evidence from 2026-06-04:
+
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target/compare/class_m15rv_seq_class_measurement_baseline.md`:
+  expected failure with the current 14 Class root mismatches.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target/compare/sequence_m15rv_seq_class_measurement_baseline.md`:
+  expected failure with 27 Sequence root mismatches in this worktree, including the existing
+  `zed_pr_57644_sequence` row.
+- Removing only `(16, "+handle(req: Request) : Response") => Some(221)` from
+  `lookup_class_calc_text_width_px` kept
+  `stress_class_styles_multiple_classdef_016` root-green:
+  `target/compare/class_stress_multiple_classdef_final_handle_calc_delete.md`.
+- The full Class root report after that one-row deletion still has the same 14-fixture mismatch
+  membership as the baseline:
+  `target/compare/class_m15rv_final_handle_calc_delete.md`.
+- `cargo run -p xtask -- report-overrides --check-no-growth`:
+  passed after the deletion. Current text lookup inventory is 685 total entries, with
+  `lookup_class_calc_text_width_px` reduced to 149 entries and
+  `lookup_class_rendered_width_px` still at 108 entries.
+- A negative delete-one probe removed the matching rendered-width row
+  `(16, false, "+handle(req: Request) : Response") => Some(240.375)` and immediately reproduced
+  the previously documented style-definition residual:
+  `stress_class_styles_multiple_classdef_016` changed to upstream `890.25px` vs local `890.5px`.
+  Evidence: `target/compare/class_stress_multiple_classdef_after_handle_pair_delete.md`.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/class_m15rv_final_structural.md`:
+  passed.
+- `cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target/compare/sequence_m15rv_final_structural.md`:
+  passed.
+- `cargo nextest run -p merman-render class`:
+  passed, 49 tests. The stale Class HTML-cap assertion for
+  `stress_class_styles_multiple_classdef_016` was updated from `271px` to the current
+  Mermaid-matching `276px` after the calc-width row deletion.
+- `cargo fmt --check` and `git diff --check`:
+  passed.
+
+Outcome:
+
+- Keep the calc-width `+handle(...)` row deleted. It is stale under current fixtures and no-growth
+  policy.
+- Keep the rendered-width `+handle(...)` row. It is not stale; removing it adds
+  `stress_class_styles_multiple_classdef_016` to the Class root residual set.
+- The earlier grouped method warning should now be read more narrowly: in the current table,
+  `+query(...)` and `+request(...)` are no longer present, and the live non-stale blocker is the
+  rendered-width `+handle(...)` row.
+- No Sequence table or renderer change was made. The fresh Sequence report is evidence-only and
+  preserves the distinction between final emitted SVG evidence and incremental wrap probes.

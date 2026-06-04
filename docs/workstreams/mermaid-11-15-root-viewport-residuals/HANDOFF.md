@@ -543,6 +543,15 @@ a future Mermaid baseline changes the source behavior.
   membership changed. That is not good enough for the stale-table lane. Keep those six method rows
   for now, and revisit them only with finer-grained one-row-at-a-time probes or generated evidence
   that explains the style-definition interaction.
+- A 2026-06-04 finer-grained pass narrowed that caution note. In the current table, `+query(...)`
+  and `+request(...)` are no longer present. The calc-width `+handle(req: Request) : Response`
+  row is stale and should stay deleted: removing only
+  `(16, "+handle(req: Request) : Response") => Some(221)` preserves the full 14-fixture Class
+  root residual membership and keeps `stress_class_styles_multiple_classdef_016` root-green. The
+  rendered-width `+handle(...)` row is not stale: removing
+  `(16, false, "+handle(req: Request) : Response") => Some(240.375)` reintroduces
+  `stress_class_styles_multiple_classdef_016` (`890.25px -> 890.5px`). Keep that rendered row
+  unless a generated Class HTML width evidence path replaces it.
 - Architecture junction group membership must come from `junction.in` only. Do not infer group
   parents from neighboring services; Mermaid 11.15 does not do that in `addJunctions(...)`.
 - Architecture `groupAlignments` must be generated in the same endpoint traversal order as
