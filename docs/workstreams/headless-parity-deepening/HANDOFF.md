@@ -409,6 +409,14 @@ Current repository reality to preserve:
     focused boundary services still show width drift after final expansion, while the height side
     narrows to a stable final `-1px`; continue from service child contribution and body/label phase
     modeling, not final rect or group padding.
+  - A follow-up service-label final-frame report slice now adds
+    `local contribution label final-frame` and label `dx/dy/dw/dh` to the service join. It shifts
+    the local contribution-label rectangle into browser final-frame coordinates before comparing it
+    with `labelBounds.all`. The focused rows all show `label dy=-78` / `label dh=+77`, which is the
+    expected concept gap between a local extended child contribution rectangle and browser text
+    label bounds. Keep using the horizontal `label dx` / `label dw` values to audit service
+    contribution width and placement drift; do not convert the vertical label comparison into a
+    group-padding, final-rect, or text-bbox production tweak.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

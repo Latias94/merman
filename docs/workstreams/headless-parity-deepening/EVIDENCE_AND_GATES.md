@@ -3,6 +3,54 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Service Label Final-Frame Report
+
+Outcome:
+
+- Extended `debug-architecture-delta --probe-dir` service joins with
+  `local contribution label final-frame` plus label `dx` / `dy` / `dw` / `dh` columns.
+- The new final-frame label column shifts the local contribution-label rectangle by half the local
+  body size before comparing it with browser `labelBounds.all`.
+- This makes the concept boundary explicit: local contribution-label bounds are extended child
+  contribution rectangles from icon top to label bottom, not browser text-label bounds.
+- Regenerated focused reports under
+  `target\compare\architecture-delta-label-final-frame-hpd050`.
+- Representative boundary-service label readings:
+  - `batch5` / `registry`: `label dx=-1.5`, `label dw=+2`, `label dh=+77`.
+  - `batch5` / `storage`: `label dx=-2.5`, `label dw=+4`, `label dh=+77`.
+  - `html_titles` / `web`: `label dx=-0.5`, `label dw=+2`, `label dh=+77`.
+  - `html_titles` / `origin`: `label dx=-1.5`, `label dw=+4`, `label dh=+77`.
+  - `unicode` / `metrics`: `label dx=-3.5`, `label dw=+4`, `label dh=+77`.
+  - `unicode` / `store`: `label dx=-0.5`, `label dw=-2`, `label dh=+77`.
+- All focused rows show `label dy=-78` and `label dh=+77`, which is the expected phase mismatch
+  between the extended local contribution-label rectangle and browser text label bounds. The useful
+  residual signal is the service-specific horizontal `label dx` / `label dw`, not the vertical
+  label comparison.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-service-label-final-frame-report.md`
+- `target\compare\architecture-delta-label-final-frame-hpd050`
+
+Focused verification:
+
+- `cargo nextest run -p xtask architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `1` test run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `pipeline` label final-frame join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_html_titles_and_escapes_041 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `ui` label final-frame join.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-label-final-frame-hpd050` -
+  passed and wrote the `i` label final-frame join.
+
+Residual note:
+
+- Treat this as evidence tooling only. The new label columns narrow the next audit to
+  service-specific horizontal contribution width and placement drift. They do not justify changing
+  vertical label math, group padding, final rect emission, or a lookup-only `labelWidth` patch.
+
 ## HPD-050 - Architecture Service Final BBox Report
 
 Outcome:

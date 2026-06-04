@@ -267,6 +267,13 @@ Last updated: 2026-06-04
   phase (`registry +2`, `storage +4`, `web +2`, `origin +4`, `metrics +4`, `store -2`) and reduces
   the height comparison to a stable service final-bbox `-1px`. Treat this as evidence tooling only,
   not as a final rect or group-padding production fix.
+  A follow-up service-label final-frame report slice adds
+  `local contribution label final-frame` plus label `dx/dy/dw/dh` columns to the same service join.
+  The focused rows show a stable `label dy=-78` / `label dh=+77` because local contribution-label
+  bounds are extended child contribution rectangles from icon top to label bottom, not browser
+  text-label bounds. The actionable signal remains the service-specific horizontal drift
+  (`registry +2`, `storage +4`, `web +2`, `origin +4`, `metrics +4`, `store -2` label `dw`) plus
+  placement drift; do not treat the vertical label comparison as a production bug.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
