@@ -428,6 +428,11 @@ Current repository reality to preserve:
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command
     before a source-backed experiment. Use it to avoid stale manual per-fixture report drift.
+  - A follow-up local-delta batch-index slice now writes `architecture-delta-batch.md` for
+    multi-fixture `debug-architecture-delta` runs. The focused current index is
+    `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md` and links the
+    `batch5`, `html_titles`, and `unicode` reports to their copied upstream/local SVGs and browser
+    probe JSONs. Use it as the local-delta counterpart to the existing browser probe batch index.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making

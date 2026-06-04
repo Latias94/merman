@@ -3,6 +3,45 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Delta Batch Index
+
+Outcome:
+
+- `xtask debug-architecture-delta` now writes `architecture-delta-batch.md` when a run includes
+  more than one `--fixture`.
+- The batch index lists each fixture's Markdown report, copied upstream SVG, local SVG, optional
+  browser probe JSON, `max-width` delta, and matched service/junction/group-rect counts.
+- Single-fixture behavior is unchanged; the index is only emitted for batch runs.
+- Regenerated probe-backed reports for `batch5`, `html_titles`, and `unicode` under
+  `target\compare\architecture-delta-batch-index-hpd050`.
+- The new index records the focused residuals directly:
+  - `batch5_long_titles_and_punct_076`: `max-width delta=+5.000`, `4` services, `1` group rect.
+  - `html_titles_and_escapes_041`: `max-width delta=+5.000`, `3` services, `1` group rect.
+  - `unicode_and_xml_escapes_019`: `max-width delta=+3.000`, `4` services, `1` group rect.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-batch-index.md`
+- `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md`
+
+Focused verification:
+
+- `cargo fmt -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta` - passed, `3` tests run.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --out target\compare\architecture-delta-batch-index-hpd050` -
+  passed and wrote the batch index.
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask` - passed, `99` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed; Architecture structural parity stayed green.
+
+Residual note:
+
+- This is evidence tooling only. The index makes multi-fixture local delta reports citable and
+  reviewable, but it does not change Architecture residual classification or production layout.
+
 ## HPD-050 - Architecture Delta Batch Fixture CLI
 
 Outcome:

@@ -29,6 +29,20 @@ struct ArchitectureFcoseProbeRunSummary {
 }
 
 #[derive(Debug, Clone)]
+struct ArchitectureDeltaRunSummary {
+    stem: String,
+    upstream_svg_path: PathBuf,
+    local_svg_path: PathBuf,
+    report_path: PathBuf,
+    probe_json_path: Option<PathBuf>,
+    max_width_delta: Option<f64>,
+    service_count: usize,
+    junction_count: usize,
+    group_rect_count: usize,
+    delta_row_count: usize,
+}
+
+#[derive(Debug, Clone)]
 struct ArchitectureDeltaCli {
     fixture_filters: Vec<String>,
     out_dir: Option<PathBuf>,
@@ -311,6 +325,10 @@ fn architecture_fcose_probe_markdown_path(out_dir: &Path, stem: &str) -> PathBuf
 
 fn architecture_fcose_probe_batch_markdown_path(out_dir: &Path) -> PathBuf {
     out_dir.join("architecture-fcose-probe-batch.md")
+}
+
+fn architecture_delta_batch_markdown_path(out_dir: &Path) -> PathBuf {
+    out_dir.join("architecture-delta-batch.md")
 }
 
 fn json_f64(v: &serde_json::Value, key: &str) -> Option<f64> {
@@ -770,6 +788,44 @@ fn render_architecture_fcose_probe_batch_markdown(
             summary.stage_count,
             summary.node_count,
             summary.edge_count,
+        );
+    }
+    md
+}
+
+fn render_architecture_delta_batch_markdown(summaries: &[ArchitectureDeltaRunSummary]) -> String {
+    fn format_optional_path(path: Option<&PathBuf>) -> String {
+        path.map(|path| path.display().to_string())
+            .unwrap_or_else(|| "<none>".to_string())
+    }
+
+    fn format_optional_delta(delta: Option<f64>) -> String {
+        delta
+            .map(|delta| format!("{delta:+.3}"))
+            .unwrap_or_else(|| "<missing>".to_string())
+    }
+
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture Delta Batch\n");
+    let _ = writeln!(
+        &mut md,
+        "| fixture | report | upstream svg | local svg | probe json | max-width delta | services | junctions | group rects | delta rows |"
+    );
+    let _ = writeln!(&mut md, "|---|---|---|---|---|---:|---:|---:|---:|---:|");
+    for summary in summaries {
+        let _ = writeln!(
+            &mut md,
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |",
+            summary.stem,
+            summary.report_path.display(),
+            summary.upstream_svg_path.display(),
+            summary.local_svg_path.display(),
+            format_optional_path(summary.probe_json_path.as_ref()),
+            format_optional_delta(summary.max_width_delta),
+            summary.service_count,
+            summary.junction_count,
+            summary.group_rect_count,
+            summary.delta_row_count,
         );
     }
     md
@@ -1392,6 +1448,8 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             .join("architecture-delta")
     });
 
+    let mut summaries: Vec<ArchitectureDeltaRunSummary> = Vec::new();
+
     for (idx, fixture) in fixture_filters.iter().enumerate() {
         let candidates = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, Some(fixture), true);
 
@@ -1882,6 +1940,21 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             source,
         })?;
 
+        summaries.push(ArchitectureDeltaRunSummary {
+            stem: stem.clone(),
+            upstream_svg_path: out_upstream_svg.clone(),
+            local_svg_path: out_local_svg.clone(),
+            report_path: out_report.clone(),
+            probe_json_path: probe_json
+                .as_ref()
+                .map(|(probe_path, _)| probe_path.clone()),
+            max_width_delta: up_mw.zip(lo_mw).map(|(up, lo)| lo - up),
+            service_count: up_services.len().min(lo_services.len()),
+            junction_count: up_junctions.len().min(lo_junctions.len()),
+            group_rect_count: up_groups.len().min(lo_groups.len()),
+            delta_row_count: deltas.len(),
+        });
+
         if idx > 0 {
             println!();
         }
@@ -1904,6 +1977,20 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             up_junctions.len().min(lo_junctions.len()),
             up_groups.len().min(lo_groups.len())
         );
+    }
+
+    if summaries.len() > 1 {
+        let out_batch = architecture_delta_batch_markdown_path(&out_dir);
+        fs::write(
+            &out_batch,
+            render_architecture_delta_batch_markdown(&summaries),
+        )
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_batch.display().to_string(),
+            source,
+        })?;
+        println!();
+        println!("batch:   {}", out_batch.display());
     }
 
     Ok(())
@@ -2541,6 +2628,44 @@ mod tests {
         assert!(md.contains("# Architecture FCoSE Browser Probe Batch"));
         assert!(md.contains("| `fixture_a` | `target/probe/fixture_a.fcose-browser-probe.json` | `target/probe/fixture_a.fcose-browser-probe.md` | 4 | 5 | 3 |"));
         assert!(md.contains("| `fixture_b` | `target/probe/fixture_b.fcose-browser-probe.json` | `target/probe/fixture_b.fcose-browser-probe.md` | 4 | 6 | 4 |"));
+    }
+
+    #[test]
+    fn architecture_delta_batch_markdown_links_per_fixture_artifacts() {
+        let summaries = vec![
+            ArchitectureDeltaRunSummary {
+                stem: "fixture_a".to_string(),
+                upstream_svg_path: PathBuf::from("target/delta/fixture_a.upstream.svg"),
+                local_svg_path: PathBuf::from("target/delta/fixture_a.local.svg"),
+                report_path: PathBuf::from("target/delta/fixture_a.md"),
+                probe_json_path: Some(PathBuf::from(
+                    "target/probe/fixture_a.fcose-browser-probe.json",
+                )),
+                max_width_delta: Some(5.0),
+                service_count: 2,
+                junction_count: 1,
+                group_rect_count: 1,
+                delta_row_count: 4,
+            },
+            ArchitectureDeltaRunSummary {
+                stem: "fixture_b".to_string(),
+                upstream_svg_path: PathBuf::from("target/delta/fixture_b.upstream.svg"),
+                local_svg_path: PathBuf::from("target/delta/fixture_b.local.svg"),
+                report_path: PathBuf::from("target/delta/fixture_b.md"),
+                probe_json_path: None,
+                max_width_delta: None,
+                service_count: 3,
+                junction_count: 0,
+                group_rect_count: 2,
+                delta_row_count: 5,
+            },
+        ];
+
+        let md = render_architecture_delta_batch_markdown(&summaries);
+
+        assert!(md.contains("# Architecture Delta Batch"));
+        assert!(md.contains("| `fixture_a` | `target/delta/fixture_a.md` | `target/delta/fixture_a.upstream.svg` | `target/delta/fixture_a.local.svg` | `target/probe/fixture_a.fcose-browser-probe.json` | `+5.000` | 2 | 1 | 1 | 4 |"));
+        assert!(md.contains("| `fixture_b` | `target/delta/fixture_b.md` | `target/delta/fixture_b.upstream.svg` | `target/delta/fixture_b.local.svg` | `<none>` | `<missing>` | 3 | 0 | 2 | 5 |"));
     }
 
     #[test]

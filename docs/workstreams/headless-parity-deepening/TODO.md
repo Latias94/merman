@@ -284,6 +284,12 @@ Last updated: 2026-06-04
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on
   stale per-fixture artifacts or hand-written shell loops.
+  A follow-up local-delta batch-index slice writes `architecture-delta-batch.md` beside multi-fixture
+  delta outputs. The index lists each fixture's report, copied upstream/local SVGs, optional probe
+  JSON, `max-width` delta, and matched element counts. Use
+  `target\compare\architecture-delta-batch-index-hpd050\architecture-delta-batch.md` as the first
+  entrypoint for the current `batch5` / `html_titles` / `unicode` local-vs-browser service
+  contribution reports.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for
