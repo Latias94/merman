@@ -96,7 +96,7 @@ Backlog:
 |---|---:|---|---|
 | P2I-001 | P0 | Add upstream SVG baseline and compare command for the existing docs fixture. | Done. Family-local DOM parity mode now passes for the committed corpus. |
 | P2I-002 | P0 | Import Cypress examples 1-5 and 12 as source-backed fixtures. | Done: 6 Cypress fixtures with semantic/layout goldens and upstream SVG baselines. |
-| P2I-003 | P1 | Add config/theme fixtures for forest, dark, `diagramPadding`, and `useMaxWidth`. | These are present in upstream Cypress and should be separated from pure geometry fixtures. |
+| P2I-003 | P1 | Add config/theme fixtures for forest, dark, `diagramPadding`, and `useMaxWidth`. | Done: Cypress examples 7-11 have semantic/layout goldens, upstream SVG baselines, and green family-local DOM parity. |
 | P2I-004 | P2 | Decide rough/handDrawn policy before importing the rough Cypress fixture. | Do not fake RoughJS parity with classic SVG branches. |
 
 Deferred:

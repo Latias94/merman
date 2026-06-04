@@ -33,6 +33,11 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_7_should_render_with_forest_theme_007.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_8_should_render_with_dark_theme_008.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_9_should_render_with_custom_diagrampadding_009.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_10_should_render_when_usemaxwidth_is_true_010.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_11_should_render_when_usemaxwidth_is_false_011.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_12_should_render_correctly_when_effect_is_indented_more_than_cau_010.mmd`
 
 ## Upstream SVG Baselines
@@ -43,6 +48,11 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_7_should_render_with_forest_theme_007.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_8_should_render_with_dark_theme_008.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_9_should_render_with_custom_diagrampadding_009.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_10_should_render_when_usemaxwidth_is_true_010.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_11_should_render_when_usemaxwidth_is_false_011.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_12_should_render_correctly_when_effect_is_indented_more_than_cau_010.svg`
 
 ## Compare Coverage
@@ -55,5 +65,5 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 ## Not Yet Covered
 
 - Hand-drawn / rough.js renderer branch.
-- Theme/config Cypress cases: forest, dark, `diagramPadding`, and `useMaxWidth`.
+- Very deep nested Cypress image snapshot case.
 - Full strict DOM parity for the current Cypress image snapshot corpus.

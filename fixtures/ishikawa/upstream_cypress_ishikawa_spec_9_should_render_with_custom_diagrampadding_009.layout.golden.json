@@ -1,0 +1,176 @@
+{
+  "diagramType": "ishikawa",
+  "layout": {
+    "IshikawaDiagram": {
+      "bounds": {
+        "min_x": -199.477,
+        "min_y": -69.367,
+        "max_x": 122.0,
+        "max_y": 569.367
+      },
+      "total_width": 321.477,
+      "total_height": 638.734,
+      "viewbox_x": -199.477,
+      "viewbox_y": -69.367,
+      "padding": 50.0,
+      "use_max_width": true,
+      "font_size": 16.0,
+      "head": {
+        "x": 0.0,
+        "y": 250.0,
+        "width": 60.0,
+        "height": 107.2,
+        "path_d": "M 0 -53.60000000000002 L 0 53.60000000000002 Q 144 0 0 -53.60000000000002 Z",
+        "label": {
+          "text": "Blurry\nPhoto",
+          "lines": [
+            "Blurry",
+            "Photo"
+          ],
+          "class_name": "ishikawa-head-label",
+          "x": 42.0,
+          "y": 250.0,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": 20.24,
+            "min_y": 233.2,
+            "max_x": 63.76,
+            "max_y": 266.8
+          }
+        }
+      },
+      "lines": [
+        {
+          "x1": -20.0,
+          "y1": 250.0,
+          "x2": -54.793,
+          "y2": 2.433,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -37.397,
+          "y1": 126.216,
+          "x2": -67.397,
+          "y2": 126.216,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -20.0,
+          "y1": 250.0,
+          "x2": -54.793,
+          "y2": 497.567,
+          "class_name": "ishikawa-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -37.397,
+          "y1": 373.784,
+          "x2": -67.397,
+          "y2": 373.784,
+          "class_name": "ishikawa-sub-branch",
+          "marker_start": true
+        },
+        {
+          "x1": -149.477,
+          "y1": 250.0,
+          "x2": 0.0,
+          "y2": 250.0,
+          "class_name": "ishikawa-spine",
+          "marker_start": false
+        }
+      ],
+      "labels": [
+        {
+          "text": "Process",
+          "lines": [
+            "Process"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -54.793,
+          "y": -8.567,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -80.233,
+            "min_y": -17.367,
+            "max_x": -29.353,
+            "max_y": 0.233
+          }
+        },
+        {
+          "text": "Out of focus",
+          "lines": [
+            "Out of focus"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -67.397,
+          "y": 126.216,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -149.477,
+            "min_y": 117.416,
+            "max_x": -67.397,
+            "max_y": 135.016
+          }
+        },
+        {
+          "text": "User",
+          "lines": [
+            "User"
+          ],
+          "class_name": "ishikawa-label cause",
+          "x": -54.793,
+          "y": 508.567,
+          "anchor": "middle",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -69.913,
+            "min_y": 499.767,
+            "max_x": -39.673,
+            "max_y": 517.367
+          }
+        },
+        {
+          "text": "Shaky hands",
+          "lines": [
+            "Shaky hands"
+          ],
+          "class_name": "ishikawa-label align",
+          "x": -67.397,
+          "y": 373.784,
+          "anchor": "end",
+          "line_height": 16.8,
+          "font_size": 16.0,
+          "bbox": {
+            "min_x": -148.037,
+            "min_y": 364.984,
+            "max_x": -67.397,
+            "max_y": 382.584
+          }
+        }
+      ],
+      "label_boxes": [
+        {
+          "x": -100.233,
+          "y": -19.367,
+          "width": 90.88,
+          "height": 21.6
+        },
+        {
+          "x": -89.913,
+          "y": 497.767,
+          "width": 70.24,
+          "height": 21.6
+        }
+      ]
+    }
+  }
+}
