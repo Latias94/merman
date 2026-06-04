@@ -301,6 +301,11 @@ Last updated: 2026-06-04
   on both left/right edges (`left dx=44.25`, `right dx=43.75`, `edge dw=-0.5`) and height balanced
   between `runtime` top and `data` bottom (`edge dh=0`). Continue treating this as child-group
   aggregate boundary drift, not direct-service or final-expansion evidence.
+  A follow-up production-path experiment rejected retuning `GroupRectComputer`'s global
+  `child_group_inset` from `1.0` to `0.75`: Architecture `parity-root` expanded from `24` to `44`
+  mismatches, `nested_groups_002` worsened to `+2.75`, and `group_port_edges_017` regressed back
+  into the queue. The code was restored; do not pursue global child-group inset tuning as the
+  nested residual fix.
   A follow-up delta batch CLI slice lets `debug-architecture-delta` accept repeated `--fixture`
   filters, including `--probe-dir` joins. Use this to regenerate the focused Architecture residual
   reports in one command before any next source-backed formula experiment, instead of relying on

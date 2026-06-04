@@ -443,6 +443,11 @@ Current repository reality to preserve:
     edges (`left dx=44.25`, `right dx=43.75`), while vertical aggregate height balances to
     `edge dh=0` between `runtime` top and `data` bottom. This keeps the nested residual in
     child-group aggregate boundary drift, not direct services or final expansion.
+  - A follow-up production-path experiment rejected global child-group inset retuning. Changing
+    `GroupRectComputer`'s `child_group_inset` from `1.0` to `0.75` expanded Architecture
+    `parity-root` from `24` to `44`, worsened `nested_groups_002` to `+2.75`, and reintroduced
+    `group_port_edges_017` at `+0.25`. The code is restored to `1.0`; do not use global child-group
+    inset tuning as the nested-groups fix.
   - A follow-up delta batch CLI slice now lets `debug-architecture-delta` accept repeated
     `--fixture` filters. The repeated form preserves one report per fixture and also works with
     `--probe-dir`, so focused Architecture residual reports can be regenerated in one command

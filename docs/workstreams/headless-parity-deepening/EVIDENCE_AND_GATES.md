@@ -3,6 +3,42 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Child Group Inset Experiment Rejected
+
+Outcome:
+
+- Audited the renderer-side nested group production path in
+  `crates/merman-render/src/svg/parity/architecture/geometry.rs`.
+- `GroupRectComputer` does not union child group emitted rects raw for parent content; it first
+  applies the existing `child_group_inset = 1.0` on each edge, then applies group padding.
+- A focused experiment changed that inset to `0.75` to test whether `nested_groups_002/platform`
+  was a narrow child-group aggregate boundary fix.
+- The experiment was rejected:
+  - Architecture `parity-root` mismatches expanded from the current `24` to `44`.
+  - `nested_groups_002` worsened from `+2.500` to `+2.750`.
+  - Previously resolved `group_port_edges_017` reappeared at `+0.250`.
+  - Deep/nested group rows such as `deep_group_chain_027` and
+    `batch6_deep_group_chain_crosslinks_094` regressed.
+- The production code was restored to `child_group_inset = 1.0`; no renderer behavior changed.
+
+Touched surfaces:
+
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-child-group-inset-rejected.md`
+- `target\compare\architecture_report_parity_root_child_inset_075_hpd050.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_child_inset_075_hpd050.md` -
+  expected-failed with `44` root-only mismatches under the rejected experiment.
+- `git diff -- crates/merman-render/src/svg/parity/architecture/geometry.rs` - clean after
+  restoring `child_group_inset = 1.0`.
+
+Residual note:
+
+- Do not fix `nested_groups_002` by retuning `child_group_inset` globally. The residual remains a
+  child-group aggregate boundary diagnostic unless a narrower source-backed phase model survives
+  full Architecture verification.
+
 ## HPD-050 - Architecture Nested Group Aggregate Edge Attribution
 
 Outcome:
