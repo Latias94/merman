@@ -157,6 +157,20 @@ fn normalize_arch_junction_svg_id(id: &str) -> Option<String> {
     })
 }
 
+fn architecture_delta_summary_sort_order(
+    a_stem: &str,
+    a_max_width_delta: Option<f64>,
+    b_stem: &str,
+    b_max_width_delta: Option<f64>,
+) -> std::cmp::Ordering {
+    let a_score = a_max_width_delta.map(f64::abs).unwrap_or(f64::NEG_INFINITY);
+    let b_score = b_max_width_delta.map(f64::abs).unwrap_or(f64::NEG_INFINITY);
+    b_score
+        .partial_cmp(&a_score)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| a_stem.cmp(b_stem))
+}
+
 fn parse_architecture_delta_args(args: &[String]) -> Result<ArchitectureDeltaCli, XtaskError> {
     let mut fixture: Option<String> = None;
     let mut out_dir: Option<PathBuf> = None;
@@ -2142,6 +2156,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         lo_vb: Option<(f64, f64, f64, f64)>,
         up_mw: Option<f64>,
         lo_mw: Option<f64>,
+        max_width_delta: Option<f64>,
         service_center_dx: Option<f64>,
         service_center_dy: Option<f64>,
         service_mean_dx: Option<f64>,
@@ -2237,6 +2252,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             lo_vb,
             up_mw,
             lo_mw,
+            max_width_delta: up_mw.zip(lo_mw).map(|(up, lo)| lo - up),
             service_center_dx,
             service_center_dy,
             service_mean_dx: svc_mean.map(|p| p.x),
@@ -2250,7 +2266,14 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         });
     }
 
-    rows.sort_by(|a, b| a.stem.cmp(&b.stem));
+    rows.sort_by(|a, b| {
+        architecture_delta_summary_sort_order(
+            &a.stem,
+            a.max_width_delta,
+            &b.stem,
+            b.max_width_delta,
+        )
+    });
 
     let out_report = out_dir.join("architecture-delta-summary.md");
     let mut md = String::new();
@@ -2261,11 +2284,11 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
     );
     let _ = writeln!(
         &mut md,
-        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy | group max dx | group max dy | group max dw | group max dh |"
+        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | max-width delta | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy | group max dx | group max dy | group max dw | group max dh |"
     );
     let _ = writeln!(
         &mut md,
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
     );
 
     for r in rows {
@@ -2280,7 +2303,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
 
         let _ = writeln!(
             &mut md,
-            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
             r.stem,
             vb_up,
             vb_lo,
@@ -2289,6 +2312,9 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
                 .unwrap_or_else(|| "<missing>".to_string()),
             r.lo_mw
                 .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
+            r.max_width_delta
+                .map(|v| format!("{:+.3}", v))
                 .unwrap_or_else(|| "<missing>".to_string()),
             r.service_center_dx
                 .map(|v| format!("{:.3}", v))
@@ -2378,6 +2404,26 @@ mod tests {
         assert_eq!(
             normalize_arch_junction_svg_id("junction-fork").as_deref(),
             Some("junction-fork")
+        );
+    }
+
+    #[test]
+    fn architecture_delta_summary_order_sorts_by_abs_max_width_delta_then_stem() {
+        assert_eq!(
+            architecture_delta_summary_sort_order("small", Some(2.0), "large", Some(-5.0)),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            architecture_delta_summary_sort_order("large", Some(-5.0), "small", Some(2.0)),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            architecture_delta_summary_sort_order("a", Some(1.0), "b", Some(-1.0)),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            architecture_delta_summary_sort_order("has-delta", Some(0.0), "missing", None),
+            std::cmp::Ordering::Less
         );
     }
 

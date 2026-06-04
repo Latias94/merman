@@ -274,6 +274,12 @@ Last updated: 2026-06-04
   text-label bounds. The actionable signal remains the service-specific horizontal drift
   (`registry +2`, `storage +4`, `web +2`, `origin +4`, `metrics +4`, `store -2` label `dw`) plus
   placement drift; do not treat the vertical label comparison as a production bug.
+  A follow-up current residual ordering slice adds `max-width delta` to
+  `summarize-architecture-deltas` and sorts by absolute max-width residual before fixture name. A
+  fresh current Architecture `parity-root` report expected-fails with `24` root-only mismatches, and
+  the regenerated summary now puts `junction_fork_join`, `batch5`, `html_titles`, `unicode`,
+  `batch6_init`, and `nested_groups` at the top. `group_port_edges_017` is zero-delta on current
+  HEAD and should not be treated as active unless a fresh report regresses.
   A follow-up edge-summary slice adds final edge rows to the same Markdown output. The focused
   `group_port_edges_017` probe now records browser/Cytoscape edge bboxes, endpoint coordinates,
   source/target directions, and segment style values as table evidence; keep using this for

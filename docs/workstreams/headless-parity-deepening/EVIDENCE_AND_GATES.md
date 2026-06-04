@@ -3,6 +3,56 @@
 Status: Active
 Last updated: 2026-06-04
 
+## HPD-050 - Architecture Delta Summary Residual Ordering
+
+Outcome:
+
+- Enhanced `xtask summarize-architecture-deltas` with a `max-width delta` column.
+- The summary now sorts rows by absolute `max-width` delta descending, with fixture name as the
+  deterministic tie-breaker.
+- This makes the local Architecture delta summary align with the `parity-root` residual queue
+  instead of hiding active rows in alphabetical fixture order.
+- Refreshed the current Architecture root snapshot at
+  `target\compare\architecture_report_parity_root_hpd050_current.md`; it expected-fails with `24`
+  root-only mismatches.
+- Regenerated the ordered delta summary at
+  `target\compare\architecture-delta-summary-hpd050-current\architecture-delta-summary.md`.
+- The top rows now surface directly in one table:
+  - `junction_fork_join_026`: `max-width Δ=+13.976`, `group max dw=+17.331`,
+    `group max dh=-18.609`.
+  - `batch5_long_titles_and_punct_076`: `max-width Δ=+5.000`, `group max dw=+5.000`.
+  - `html_titles_and_escapes_041`: `max-width Δ=+5.000`, `group max dw=+5.000`.
+  - `unicode_and_xml_escapes_019`: `max-width Δ=+3.000`, `group max dw=+3.000`.
+  - `batch6_init_fontsize_icon_size_wrap_093`: `max-width Δ=-2.500`,
+    `group max dw=-3.000`.
+  - `nested_groups_002`: `max-width Δ=+2.500`, `group max dw=-0.500`.
+- `group_port_edges_017` is zero-delta in the current summary and should not be treated as part of
+  the active root mismatch queue unless a fresh report regresses.
+- No renderer output, layout formula, SVG fixture, or baseline behavior changed.
+
+Touched surfaces:
+
+- `crates/xtask/src/cmd/debug/architecture.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-04-hpd-050-architecture-delta-summary-order.md`
+- `target\compare\architecture_report_parity_root_hpd050_current.md`
+- `target\compare\architecture-delta-summary-hpd050-current`
+
+Focused verification:
+
+- `cargo fmt --check -p xtask` - passed.
+- `cargo nextest run -p xtask architecture_delta_summary_order_sorts_by_abs_max_width_delta_then_stem architecture_probe_join_decomposes_group_and_service_bounds` -
+  passed, `2` tests run.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all --out target\compare\architecture_report_parity_root_hpd050_current.md` -
+  expected-failed with `24` root-only mismatches.
+- `cargo run -p xtask -- summarize-architecture-deltas --out target\compare\architecture-delta-summary-hpd050-current` -
+  passed and wrote the sorted summary.
+
+Residual note:
+
+- This is evidence tooling only. Sorting by current residual size prevents stale 25-row queue
+  assumptions from driving work, but it does not change the known Architecture residual
+  classification or justify a production layout tweak.
+
 ## HPD-050 - Architecture Service Label Final-Frame Report
 
 Outcome:

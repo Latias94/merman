@@ -417,6 +417,13 @@ Current repository reality to preserve:
     label bounds. Keep using the horizontal `label dx` / `label dw` values to audit service
     contribution width and placement drift; do not convert the vertical label comparison into a
     group-padding, final-rect, or text-bbox production tweak.
+  - A follow-up current residual ordering slice now adds `max-width delta` to
+    `summarize-architecture-deltas` and sorts the summary by absolute max-width residual. A fresh
+    current Architecture `parity-root` report expected-fails with `24` root-only mismatches, and
+    the sorted summary aligns with that queue: `junction_fork_join` first, then `batch5`,
+    `html_titles`, `unicode`, `batch6_init`, and `nested_groups`. `group_port_edges_017` is
+    zero-delta on current HEAD; keep it out of the active Architecture root queue unless a fresh
+    report regresses.
   - A follow-up edge-summary slice adds final edge rows to that Markdown output. For
     `group_port_edges_017`, the summary now exposes browser/Cytoscape edge bboxes, endpoint
     coordinates, source/target directions, and segment style values. Use this table before making
