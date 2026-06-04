@@ -363,8 +363,7 @@ Residual note:
 
 Outcome:
 
-- Revalidated the current `worktree/hpd-architecture-fcose` HEAD before making any production
-  renderer or `manatee` change.
+- Revalidated the current HEAD before making any production renderer or `manatee` change.
 - `stress_architecture_junction_fork_join_026` is no longer an active Architecture root residual at
   the current gate precision. The focused `parity-root` report passes and shows only
   `-0.000244px` max-width/viewBox width drift.
