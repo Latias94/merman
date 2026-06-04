@@ -24,6 +24,8 @@ __pycache__/
 !android/src/main/jniLibs/**
 !ios/MermanFFI.xcframework/
 !ios/MermanFFI.xcframework/**
+!macos/MermanFFI.xcframework/
+!macos/MermanFFI.xcframework/**
 !macos/Libraries/
 !macos/Libraries/**
 !windows/merman_ffi.dll

@@ -15,8 +15,8 @@ protect them before any registry publication is enabled.
 | Apple | SwiftPM `Merman` with `Merman.xcframework` | `release-apple.yml` | GitHub Release + SwiftPM tag | Builds, zips, computes checksum, and patches `Package.swift` on the release tag. |
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. |
-| Android | `io.merman` Android library module | `release-android.yml` | GitHub Release AAR | Maven Central publishing needs Gradle signing/POM metadata and namespace confirmation. |
-| Web/WASM | none | none | none | Add only if a WASM API/package is built. |
+| Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
+| Web/WASM | `@merman/web` | none | npm planned | Package metadata is present; npm Trusted Publishing/provenance workflow still needs to be added before registry publication. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
 

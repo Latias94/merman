@@ -3,7 +3,7 @@ Pod::Spec.new do |s|
   s.version          = '0.7.0-alpha.1'
   s.summary          = 'Flutter FFI bindings for headless Mermaid rendering on macOS.'
   s.description      = <<-DESC
-    Provides a Flutter plugin that links the merman Rust FFI dylib and exposes
+    Provides a Flutter plugin that links the merman Rust FFI library and exposes
     it to Dart FFI via DynamicLibrary.process().
   DESC
   s.homepage         = 'https://github.com/Latias94/merman'
@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.platform         = :osx, '11.0'
   s.swift_version    = '5.7'
 
-  s.source_files     = 'Classes/**/*.swift'
+  s.source_files     = 'merman/Sources/merman/**/*.swift'
   s.dependency       'FlutterMacOS'
   s.vendored_libraries = 'Libraries/libmerman_ffi.dylib'
 

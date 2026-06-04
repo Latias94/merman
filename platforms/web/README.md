@@ -90,3 +90,9 @@ The web binding is suitable for browser-to-browser benchmarks after initializati
 This is the useful comparison for playground and browser embedding performance. Native
 `merman-cli` benchmarks should be reported separately because they do not include the same runtime
 or DOM costs as Mermaid JS.
+
+## License
+
+This package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full license
+texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
