@@ -7,6 +7,7 @@ members = [
   "crates/merman-bindings-core",
   "crates/merman-cli",
   "crates/merman-ffi",
+  "crates/merman-rustdoc",
   "crates/merman-render",
   "crates/merman-uniffi",
   "crates/merman-wasm",
@@ -68,8 +69,11 @@ clap = { version = "4.5", features = ["derive"] }
 console_error_panic_hook = "0.1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 png = "0.17.16"
+proc-macro2 = "1"
+quote = "1"
 resvg = "0.46.0"
 serde-wasm-bindgen = "0.6"
+syn = { version = "2", features = ["full", "parsing"] }
 usvg = "0.46.0"
 tiny-skia = "0.11.4"
 svg2pdf = "0.13.0"
@@ -79,11 +83,12 @@ web-time = "1.1.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
-merman = { path = "crates/merman", version = "0.7.0" }
+merman = { path = "crates/merman", version = "0.7.0", default-features = false }
 merman-ascii = { path = "crates/merman-ascii", version = "0.7.0" }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.7.0", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.7.0" }
 merman-ffi = { path = "crates/merman-ffi", version = "0.7.0" }
+merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.7.0" }
 merman-render = { path = "crates/merman-render", version = "0.7.0" }
 merman-uniffi = { path = "crates/merman-uniffi", version = "0.7.0" }
 merman-wasm = { path = "crates/merman-wasm", version = "0.7.0" }

@@ -29,6 +29,7 @@ Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 | Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Static live editor powered by the wasm web package. |
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
+| Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
 | Embed in a browser or TypeScript app | [`@merman/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
 | Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
@@ -59,6 +60,9 @@ cargo add merman --features ascii
 # Rust library: SVG + PNG/JPG/PDF
 cargo add merman --features raster
 
+# Rustdoc integration
+cargo add merman-rustdoc --optional
+
 # Browser / TypeScript package
 npm install @merman/web
 
@@ -68,6 +72,9 @@ flutter pub add merman
 # Python package (experimental UniFFI wheels)
 pip install merman
 ```
+
+For rustdoc feature setup and examples, see
+[`crates/merman-rustdoc/README.md`](crates/merman-rustdoc/README.md).
 
 From a local checkout:
 
@@ -643,6 +650,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 | --- | --- |
 | [`merman`](https://crates.io/crates/merman) | Public Rust facade. Enable `render`, `ascii`, and/or `raster` depending on output needs. |
 | [`merman-cli`](https://crates.io/crates/merman-cli) | Command-line interface for detect/parse/layout/render workflows. |
+| [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rendering Mermaid fences in rustdoc as inline headless SVG. |
 | [`merman-core`](https://crates.io/crates/merman-core) | Detection, parsing, metadata, semantic JSON, and typed render models. |
 | [`merman-render`](https://crates.io/crates/merman-render) | Headless layout, SVG rendering, SVG pipelines, and raster-friendly postprocessing. |
 | [`merman-ascii`](https://crates.io/crates/merman-ascii) | ASCII/Unicode terminal rendering for typed models. |

@@ -56,6 +56,7 @@ jobs:
             merman-render
             merman-ascii
             merman
+            merman-rustdoc
             merman-bindings-core
             merman-ffi
             merman-uniffi
