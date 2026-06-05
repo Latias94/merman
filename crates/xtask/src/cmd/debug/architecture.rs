@@ -617,6 +617,27 @@ fn format_debug_edge_owner(v: Option<(&str, f64)>) -> String {
         .unwrap_or_else(|| "<none>".to_string())
 }
 
+fn debug_viewbox_edge(viewbox: Option<(f64, f64, f64, f64)>, edge: DebugEdge) -> Option<f64> {
+    viewbox.map(|(x, y, w, h)| match edge {
+        DebugEdge::Left => x,
+        DebugEdge::Right => x + w,
+        DebugEdge::Top => y,
+        DebugEdge::Bottom => y + h,
+    })
+}
+
+fn debug_root_padding(
+    root_edge: Option<f64>,
+    owner: Option<(&str, f64)>,
+    edge: DebugEdge,
+) -> Option<f64> {
+    let (root_edge, (_, owner_edge)) = root_edge.zip(owner)?;
+    Some(match edge {
+        DebugEdge::Left | DebugEdge::Top => owner_edge - root_edge,
+        DebugEdge::Right | DebugEdge::Bottom => root_edge - owner_edge,
+    })
+}
+
 fn service_local_pos_key(service_id: &str) -> String {
     format!("service-{service_id}")
 }
@@ -2155,6 +2176,7 @@ fn render_architecture_render_path_join_markdown(
     local_max_width: Option<f64>,
     local_service_positions: &BTreeMap<String, DebugPt>,
     local_groups: &BTreeMap<String, DebugRect>,
+    layout: &merman_render::model::ArchitectureDiagramLayout,
     fcose_compound_rows: &[(String, DebugRect, Option<DebugRect>)],
     local_fcose_debug_stages: &[merman_render::model::ArchitectureFcoseDebugStage],
 ) {
@@ -2194,6 +2216,57 @@ fn render_architecture_render_path_join_markdown(
             }
         }
     }
+
+    let service_body_sizes: BTreeMap<&str, (f64, f64)> = layout
+        .cytoscape_service_bounds
+        .iter()
+        .map(|service| {
+            let body = DebugRect::from_model_bounds(&service.body_bounds);
+            (service.id.as_str(), (body.w, body.h))
+        })
+        .collect();
+    let mut render_root_contributors: Vec<(String, DebugRect)> = render_groups
+        .iter()
+        .map(|(id, rect)| (group_local_rect_key(id), *rect))
+        .collect();
+    for (id, pos) in &render_services {
+        let (w, h) = service_body_sizes
+            .get(id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        render_root_contributors.push((
+            service_local_pos_key(id),
+            DebugRect {
+                x: pos.x,
+                y: pos.y,
+                w,
+                h,
+            },
+        ));
+    }
+    render_root_contributors.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut local_root_contributors: Vec<(String, DebugRect)> = local_groups
+        .iter()
+        .map(|(id, rect)| (id.clone(), *rect))
+        .collect();
+    for (id, pos) in local_service_positions {
+        let service_id = id.strip_prefix("service-").unwrap_or(id);
+        let (w, h) = service_body_sizes
+            .get(service_id)
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        local_root_contributors.push((
+            id.clone(),
+            DebugRect {
+                x: pos.x,
+                y: pos.y,
+                w,
+                h,
+            },
+        ));
+    }
+    local_root_contributors.sort_by(|a, b| a.0.cmp(&b.0));
 
     let local_fcose: BTreeMap<&str, DebugRect> = fcose_compound_rows
         .iter()
@@ -2308,6 +2381,98 @@ fn render_architecture_render_path_join_markdown(
             .map(|delta| format!("{delta:+.6}"))
             .unwrap_or_else(|| "<n/a>".to_string())
     );
+    let _ = writeln!(report);
+
+    let _ = writeln!(report, "### Root viewport edge attribution\n");
+    let _ = writeln!(
+        report,
+        "This table attributes actual SVG root viewBox edges to render-path/local group rects and service SVG body boxes. Owner deltas are pre-padding contributor movement; root edge deltas are the final emitted viewBox movement after root padding.\n"
+    );
+    let _ = writeln!(
+        report,
+        "| axis | render min root | local min root | root min delta | render min owner | local min owner | owner min delta | render min padding | local min padding | render max root | local max root | root max delta | render max owner | local max owner | owner max delta | render max padding | local max padding | span delta |\n|---|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|"
+    );
+    let mut wrote_root_edge_attribution = false;
+    for (axis, min_edge, max_edge) in [
+        ("x", DebugEdge::Left, DebugEdge::Right),
+        ("y", DebugEdge::Top, DebugEdge::Bottom),
+    ] {
+        let render_min_root = debug_viewbox_edge(render_viewbox, min_edge);
+        let local_min_root = debug_viewbox_edge(local_viewbox, min_edge);
+        let render_max_root = debug_viewbox_edge(render_viewbox, max_edge);
+        let local_max_root = debug_viewbox_edge(local_viewbox, max_edge);
+        let render_min_owner = debug_edge_owner(
+            render_root_contributors
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            min_edge,
+        );
+        let local_min_owner = debug_edge_owner(
+            local_root_contributors
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            min_edge,
+        );
+        let render_max_owner = debug_edge_owner(
+            render_root_contributors
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            max_edge,
+        );
+        let local_max_owner = debug_edge_owner(
+            local_root_contributors
+                .iter()
+                .map(|(id, rect)| (id.as_str(), *rect)),
+            max_edge,
+        );
+        let root_min_delta = local_min_root
+            .zip(render_min_root)
+            .map(|(local, render)| local - render);
+        let root_max_delta = local_max_root
+            .zip(render_max_root)
+            .map(|(local, render)| local - render);
+        let owner_min_delta = local_min_owner
+            .zip(render_min_owner)
+            .map(|(local, render)| local.1 - render.1);
+        let owner_max_delta = local_max_owner
+            .zip(render_max_owner)
+            .map(|(local, render)| local.1 - render.1);
+        let render_min_padding = debug_root_padding(render_min_root, render_min_owner, min_edge);
+        let local_min_padding = debug_root_padding(local_min_root, local_min_owner, min_edge);
+        let render_max_padding = debug_root_padding(render_max_root, render_max_owner, max_edge);
+        let local_max_padding = debug_root_padding(local_max_root, local_max_owner, max_edge);
+        let span_delta = root_max_delta
+            .zip(root_min_delta)
+            .map(|(max_delta, min_delta)| max_delta - min_delta);
+        let _ = writeln!(
+            report,
+            "| `{axis}` | {} | {} | {} | `{}` | `{}` | {} | {} | {} | {} | {} | {} | `{}` | `{}` | {} | {} | {} | {} |",
+            format_debug_optional_f64(render_min_root),
+            format_debug_optional_f64(local_min_root),
+            format_debug_optional_f64(root_min_delta),
+            format_debug_edge_owner(render_min_owner),
+            format_debug_edge_owner(local_min_owner),
+            format_debug_optional_f64(owner_min_delta),
+            format_debug_optional_f64(render_min_padding),
+            format_debug_optional_f64(local_min_padding),
+            format_debug_optional_f64(render_max_root),
+            format_debug_optional_f64(local_max_root),
+            format_debug_optional_f64(root_max_delta),
+            format_debug_edge_owner(render_max_owner),
+            format_debug_edge_owner(local_max_owner),
+            format_debug_optional_f64(owner_max_delta),
+            format_debug_optional_f64(render_max_padding),
+            format_debug_optional_f64(local_max_padding),
+            format_debug_optional_f64(span_delta),
+        );
+        wrote_root_edge_attribution = true;
+    }
+    if !wrote_root_edge_attribution {
+        let _ = writeln!(
+            report,
+            "| `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` | `<none>` | `<none>` | `<n/a>` | `<n/a>` | `<n/a>` | `<n/a>` |"
+        );
+    }
     let _ = writeln!(report);
 
     let _ = writeln!(
@@ -3825,6 +3990,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 lo_mw,
                 &lo_services,
                 &lo_groups,
+                layout,
                 &fcose_compound_rows,
                 &layout.fcose_debug_stages,
             );
@@ -4956,6 +5122,33 @@ mod tests {
                 h: 38.0,
             },
         )]);
+        let layout = merman_render::model::ArchitectureDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            cytoscape_service_bounds: vec![
+                merman_render::model::ArchitectureCytoscapeServiceBounds {
+                    id: "svc".to_string(),
+                    in_group: None,
+                    body_bounds: merman_render::model::Bounds {
+                        min_x: 0.0,
+                        min_y: 0.0,
+                        max_x: 12.0,
+                        max_y: 14.0,
+                    },
+                    label_bounds: None,
+                    label_metrics: None,
+                    union_bounds: merman_render::model::Bounds {
+                        min_x: 0.0,
+                        min_y: 0.0,
+                        max_x: 12.0,
+                        max_y: 14.0,
+                    },
+                },
+            ],
+            fcose_compound_bounds: Vec::new(),
+            fcose_debug_stages: Vec::new(),
+            bounds: None,
+        };
         let fcose_compound_rows = vec![(
             "left".to_string(),
             DebugRect {
@@ -5028,6 +5221,7 @@ mod tests {
             Some(105.0),
             &local_services,
             &local_groups,
+            &layout,
             &fcose_compound_rows,
             &local_fcose_debug_stages,
         );
@@ -5038,6 +5232,8 @@ mod tests {
         );
         assert!(md.contains("| viewBox | `0.000000 0.000000 100.000000 50.000000` | `0.000000 0.000000 105.000000 47.000000` | `+5.000000 width` |"));
         assert!(md.contains("| max-width | `100.000000` | `105.000000` | `+5.000000` |"));
+        assert!(md.contains("### Root viewport edge attribution"));
+        assert!(md.contains("| `x` | 0.000000 | 0.000000 | 0.000000 | `service-svc@5.000000` | `service-svc@7.000000` | 2.000000 | 5.000000 | 7.000000 | 100.000000 | 105.000000 | 5.000000 | `group-left@40.000000` | `group-left@42.000000` | 2.000000 | 60.000000 | 63.000000 | 5.000000 |"));
         assert!(md.contains("| `left` | `x=10.000000 y=20.000000 w=30.000000 h=40.000000` | `x=9.000000 y=21.000000 w=33.000000 h=38.000000` | -1.000000 | 1.000000 | 3.000000 | -2.000000 |"));
         assert!(md.contains(
             "| `svc` | `x=5.000000 y=6.000000` | `x=7.000000 y=3.000000` | 2.000000 | -3.000000 |"

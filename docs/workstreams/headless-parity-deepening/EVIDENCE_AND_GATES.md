@@ -6744,3 +6744,47 @@ Gate notes:
 - Continue the remaining `2.5px` tails through final group/root bbox modeling. For `093`, the next
   evidence is direct group-width deltas (`left=-3px`, `right=-1px`); for `002`, the row remains a
   nested frame/root-width sensor.
+
+## HPD-050 - Architecture Root Tail Edge Attribution
+
+Outcome:
+
+- Added a `Root viewport edge attribution` table to `debug-architecture-delta` render-path joins.
+- The table compares render-path/local SVG root viewBox min/max edges with the group/service owner
+  edge that drives each side before root padding.
+- Service contributors are expanded from SVG service positions using local service body dimensions,
+  so top-level service-owned root edges are visible beside group-owned root edges.
+- Regenerated the current `002` / `093` joint report after the edge curve-style fix.
+- `093` now decomposes to `group-left` root-left delta `+2.730461px` and `group-right` root-right
+  delta `+0.230461px`, producing the remaining `-2.5px` width tail.
+- `002` decomposes to `service-ingress` root-left delta `+1.250000px` and `group-platform`
+  root-right delta `+3.750000px`, producing the remaining `+2.5px` width tail.
+- Root padding stayed stable on both sides (`~30px` for `093`, `~40px` for `002`), so this
+  evidence rejects another root-padding constant change.
+
+Evidence:
+
+- `target/compare/architecture-delta-root-tail-attribution-002-093-hpd050`
+- `target/compare/architecture-report-parity-root-tail-attribution-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-root-tail-edge-attribution.md`
+- `crates/xtask/src/cmd/debug/architecture.rs`
+
+Focused verification:
+
+- `cargo fmt --check` - passed.
+- `cargo nextest run -p xtask -E 'test(architecture_render_path_join_reports_local_deltas) or test(architecture_probe_join_decomposes_group_and_service_bounds)'` -
+  passed, `2` tests run.
+- `cargo nextest run -p xtask` - passed, `112` tests run.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3 --out target\compare\architecture-report-parity-root-tail-attribution-hpd050` -
+  passed.
+- `MANATEE_FCOSE_DEBUG_TRACE=1 MANATEE_FCOSE_DEBUG_ELES_BBOX=1 cargo run -p xtask -- debug-architecture-delta ... --out target\compare\architecture-delta-root-tail-attribution-002-093-hpd050` -
+  passed for `002` and `093`.
+
+Gate notes:
+
+- This is an evidence-surface improvement only. It does not change Architecture rendering, layout,
+  root overrides, or baselines.
+- The next production-capable seam must explain why the owning final SVG edges differ; this table
+  only removes ambiguity about which edges own the remaining root tails.
