@@ -40,6 +40,77 @@ graph TD;A-->B;"#;
 }
 
 #[test]
+fn parse_maps_top_level_frontmatter_diagram_config() {
+    let engine = Engine::new();
+    let text = r#"---
+title: Frontmatter Example
+displayMode: compact
+config:
+  theme: forest
+gantt:
+  useWidth: 400
+  topAxis: true
+  numberSectionStyles: 2
+unknownDiagram:
+  ignored: true
+---
+gantt
+    section Waffle
+        Iron  : 1982, 3y
+        House : 1986, 3y
+"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.diagram_type, "gantt");
+    assert_eq!(
+        res.config.as_value(),
+        &json!({
+            "theme": "forest",
+            "gantt": {
+                "displayMode": "compact",
+                "useWidth": 400,
+                "topAxis": true,
+                "numberSectionStyles": 2
+            }
+        })
+    );
+}
+
+#[test]
+fn parse_frontmatter_config_takes_priority_over_diagram_compat() {
+    let engine = Engine::new();
+    let text = r#"---
+config:
+  look: neo
+  layout: elk
+  gantt:
+    useWidth: 640
+gantt:
+  useWidth: 400
+  rightPadding: 10
+classDiagram:
+  htmlLabels: false
+---
+gantt
+    section Waffle
+        Iron  : 1982, 3y
+"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.config.get_str("look"), Some("neo"));
+    assert_eq!(res.config.get_str("layout"), Some("elk"));
+    assert_eq!(res.config.as_value()["gantt"]["useWidth"], json!(640));
+    assert_eq!(res.config.as_value()["gantt"]["rightPadding"], json!(10));
+    assert_eq!(res.config.get_bool("class.htmlLabels"), Some(false));
+}
+
+#[test]
 fn parse_diagram_as_sync_matches_auto_detect_for_flowchart_v2() {
     let engine = Engine::new();
     let input = "flowchart TD; A[Start]-->B[End];";

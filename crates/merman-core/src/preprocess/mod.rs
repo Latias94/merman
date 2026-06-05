@@ -32,6 +32,37 @@ pub struct PreprocessResult {
     pub config: MermaidConfig,
 }
 
+const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
+    "architecture",
+    "block",
+    "c4",
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitGraph",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "pie",
+    "quadrantChart",
+    "radar",
+    "requirement",
+    "sankey",
+    "sequence",
+    "state",
+    "timeline",
+    "xyChart",
+];
+
+const FRONTMATTER_DIAGRAM_CONFIG_ALIASES: &[(&str, &str)] = &[
+    ("classDiagram", "class"),
+    ("erDiagram", "er"),
+    ("stateDiagram", "state"),
+    ("xychart", "xyChart"),
+];
+
 pub fn preprocess_diagram(input: &str, registry: &DetectorRegistry) -> Result<PreprocessResult> {
     preprocess_diagram_with_known_type(input, registry, None)
 }
@@ -175,21 +206,20 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
     let parsed_obj = parsed.as_object().cloned().unwrap_or_default();
 
     let mut title = None;
-    let mut config_value = Value::Object(Default::default());
     let mut display_mode = None;
 
     if let Some(Value::String(t)) = parsed_obj.get("title") {
         title = Some(t.clone());
-    }
-    if let Some(v) = parsed_obj.get("config") {
-        config_value = v.clone();
     }
     if let Some(Value::String(dm)) = parsed_obj.get("displayMode") {
         display_mode = Some(dm.clone());
     }
 
     let mut config = MermaidConfig::empty_object();
-    config.deep_merge(&config_value);
+    merge_top_level_frontmatter_diagram_configs(&parsed_obj, &mut config);
+    if let Some(v) = parsed_obj.get("config") {
+        config.deep_merge(v);
+    }
     crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
     if let Some(dm) = display_mode {
         config.set_value("gantt.displayMode", Value::String(dm));
@@ -197,6 +227,25 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
 
     let stripped = caps.get(0).map_or(input, |m| &input[m.end()..]);
     Ok((stripped, title, config))
+}
+
+fn merge_top_level_frontmatter_diagram_configs(
+    parsed_obj: &serde_json::Map<String, Value>,
+    config: &mut MermaidConfig,
+) {
+    // Mermaid upstream only consumes `config`, but users commonly read docs examples as allowing
+    // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
+    for &(source_key, target_key) in FRONTMATTER_DIAGRAM_CONFIG_ALIASES {
+        if let Some(value) = parsed_obj.get(source_key) {
+            config.set_value(target_key, value.clone());
+        }
+    }
+
+    for &key in FRONTMATTER_DIAGRAM_CONFIG_KEYS {
+        if let Some(value) = parsed_obj.get(key) {
+            config.set_value(key, value.clone());
+        }
+    }
 }
 
 fn process_directives<'a>(
