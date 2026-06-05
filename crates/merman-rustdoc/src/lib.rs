@@ -68,7 +68,8 @@
 //!         pipeline = "readable",
 //!         fail = "error",
 //!         source = "hide",
-//!         sanitize = "strict"
+//!         sanitize = "strict",
+//!         theme = "rustdoc"
 //!     )
 //! )]
 //! /// ```mermaid
@@ -85,6 +86,7 @@
 //! | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 //! | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
 //! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
+//! | `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
 //!
 //! Use `scope = "tree"` to process docs on children inside an inline module, trait, impl block,
 //! struct fields, and enum variants:
@@ -118,6 +120,8 @@
 //! Not supported today:
 //!
 //! - Crate-level inner docs using `//!`.
+//! - Rewriting Markdown loaded through `#[doc = include_str!("...")]`.
+//! - Rustdoc intra-doc symbol links inside rendered Mermaid SVG text.
 //! - Recursive processing for external `mod name;` files.
 //! - Running Mermaid JavaScript in the browser.
 //! - Fetching Mermaid source or assets from remote URLs.
@@ -139,6 +143,25 @@
 //! /// ```
 //! pub mod architecture {}
 //! ````
+//!
+//! # External docs, links, and themes
+//!
+//! `merman-rustdoc` does not evaluate or rewrite Markdown loaded through
+//! `#[doc = include_str!("...")]`. Use `include_mmd!("path.mmd")` for Mermaid files instead.
+//!
+//! Mermaid source is rendered to SVG before rustdoc resolves intra-doc links. Text inside the SVG
+//! does not participate in rustdoc link resolution, so labels such as `[Type](crate::Type)` are
+//! treated as Mermaid text or Mermaid links, not rustdoc symbol links.
+//!
+//! By default, `merman-rustdoc` follows rustdoc's light/dark theme setting. It renders light and
+//! dark SVG variants during `cargo doc` and uses rustdoc's page theme state to show the matching
+//! variant.
+//!
+//! Use `theme = "mermaid"` for a single SVG controlled by Mermaid source config. Use
+//! `theme = "dark"` or another supported Mermaid theme to choose one fixed build-time theme.
+//! Source-level Mermaid config, such as an `%%init%%` directive, is still passed to Merman with the
+//! rest of the diagram and overrides the rustdoc-level theme default. Whether a specific theme
+//! directive works depends on Merman's renderer support for that diagram and config.
 
 extern crate proc_macro;
 

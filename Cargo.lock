@@ -2146,6 +2146,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "roxmltree 0.20.0",
+ "serde_json",
  "syn 2.0.114",
 ]
 

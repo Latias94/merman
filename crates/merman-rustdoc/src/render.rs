@@ -1,31 +1,38 @@
 use std::fs;
 use std::path::PathBuf;
 
-use merman::render::HeadlessRenderer;
+use merman::{MermaidConfig, render::HeadlessRenderer};
+use serde_json::Value;
 
 use crate::error::{Error, Result};
-use crate::options::PipelineMode;
+use crate::options::{Options, PipelineMode, ThemeMode};
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum RenderedDiagram {
+    Single(String),
+    RustdocTheme { light: String, dark: String },
+}
 
 pub(crate) trait MermaidRenderer {
-    fn render_mermaid_svg(
+    fn render_mermaid_diagram(
         &mut self,
         source: &str,
         index: usize,
-        pipeline: PipelineMode,
-    ) -> Result<String>;
+        options: Options,
+    ) -> Result<RenderedDiagram>;
 }
 
 impl<F> MermaidRenderer for F
 where
-    F: FnMut(&str, usize, PipelineMode) -> Result<String>,
+    F: FnMut(&str, usize, Options) -> Result<RenderedDiagram>,
 {
-    fn render_mermaid_svg(
+    fn render_mermaid_diagram(
         &mut self,
         source: &str,
         index: usize,
-        pipeline: PipelineMode,
-    ) -> Result<String> {
-        self(source, index, pipeline)
+        options: Options,
+    ) -> Result<RenderedDiagram> {
+        self(source, index, options)
     }
 }
 
@@ -45,13 +52,13 @@ where
 pub(crate) struct HeadlessMermaidRenderer;
 
 impl MermaidRenderer for HeadlessMermaidRenderer {
-    fn render_mermaid_svg(
+    fn render_mermaid_diagram(
         &mut self,
         source: &str,
         index: usize,
-        pipeline: PipelineMode,
-    ) -> Result<String> {
-        render_mermaid_svg(source, index, pipeline)
+        options: Options,
+    ) -> Result<RenderedDiagram> {
+        render_mermaid_diagram(source, index, options)
     }
 }
 
@@ -79,9 +86,68 @@ pub(crate) fn source_preview(source: &str) -> String {
     out
 }
 
-fn render_mermaid_svg(source: &str, index: usize, pipeline: PipelineMode) -> Result<String> {
-    let diagram_id = diagram_id(source, index);
-    let renderer = HeadlessRenderer::new().with_diagram_id(&diagram_id);
+fn render_mermaid_diagram(source: &str, index: usize, options: Options) -> Result<RenderedDiagram> {
+    let base_id = diagram_id(source, index);
+    match options.theme {
+        ThemeMode::Rustdoc => {
+            let light = render_mermaid_svg(
+                source,
+                index,
+                options.pipeline,
+                &format!("{base_id}-light"),
+                Some("default"),
+                "rustdoc light theme",
+            )?;
+            let dark = render_mermaid_svg(
+                source,
+                index,
+                options.pipeline,
+                &format!("{base_id}-dark"),
+                Some("dark"),
+                "rustdoc dark theme",
+            )?;
+            Ok(RenderedDiagram::RustdocTheme { light, dark })
+        }
+        ThemeMode::Mermaid => {
+            let svg = render_mermaid_svg(
+                source,
+                index,
+                options.pipeline,
+                &base_id,
+                None,
+                "Mermaid theme",
+            )?;
+            Ok(RenderedDiagram::Single(svg))
+        }
+        ThemeMode::Fixed(theme) => {
+            let svg = render_mermaid_svg(
+                source,
+                index,
+                options.pipeline,
+                &base_id,
+                Some(theme),
+                theme,
+            )?;
+            Ok(RenderedDiagram::Single(svg))
+        }
+    }
+}
+
+fn render_mermaid_svg(
+    source: &str,
+    index: usize,
+    pipeline: PipelineMode,
+    diagram_id: &str,
+    site_theme: Option<&str>,
+    context: &str,
+) -> Result<String> {
+    let mut renderer = HeadlessRenderer::new().with_diagram_id(diagram_id);
+    if let Some(theme) = site_theme {
+        let mut config = MermaidConfig::empty_object();
+        config.set_value("theme", Value::String(theme.to_string()));
+        renderer = renderer.with_site_config(config);
+    }
+
     let rendered = match pipeline {
         PipelineMode::Parity => renderer.render_svg_sync(source),
         PipelineMode::Readable => renderer.render_svg_readable_sync(source),
@@ -90,7 +156,7 @@ fn render_mermaid_svg(source: &str, index: usize, pipeline: PipelineMode) -> Res
     rendered
         .map_err(|err| {
             Error::new(format!(
-                "failed to render Mermaid diagram #{} for rustdoc: {err}",
+                "failed to render Mermaid diagram #{} for rustdoc ({context}): {err}",
                 index + 1
             ))
         })?
@@ -146,5 +212,73 @@ mod tests {
             diagram_id("flowchart TD\nA-->B", 0),
             diagram_id("flowchart TD\nA-->C", 0)
         );
+    }
+
+    #[test]
+    fn default_rustdoc_theme_renders_light_and_dark_svgs() {
+        let source = "flowchart TD\nA[Plain source] --> B[Themed]";
+        let rendered = render_mermaid_diagram(source, 0, Options::default()).unwrap();
+
+        let RenderedDiagram::RustdocTheme { light, dark } = rendered else {
+            panic!("expected rustdoc theme variants");
+        };
+        assert!(light.contains(r#"id="merman-rustdoc-0-"#));
+        assert!(light.contains("-light"));
+        assert!(dark.contains("-dark"));
+        assert_ne!(light, dark);
+    }
+
+    #[test]
+    fn fixed_theme_renders_single_svg() {
+        let source = "flowchart TD\nA[Plain source] --> B[Themed]";
+        let rendered = render_mermaid_diagram(
+            source,
+            0,
+            Options {
+                theme: ThemeMode::Fixed("dark"),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(rendered, RenderedDiagram::Single(_)));
+    }
+
+    #[test]
+    fn source_level_theme_overrides_rustdoc_theme() {
+        let source = r#"%%{init: {"theme": "default"}}%%
+flowchart TD
+A[Source theme] --> B[Rustdoc theme]
+"#;
+        let source_default = render_mermaid_diagram(
+            source,
+            0,
+            Options {
+                theme: ThemeMode::Fixed("default"),
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        let rustdoc = render_mermaid_diagram(source, 0, Options::default()).unwrap();
+
+        let RenderedDiagram::Single(source_default_svg) = source_default else {
+            panic!("expected fixed theme to render one SVG");
+        };
+        let RenderedDiagram::RustdocTheme { light, dark } = rustdoc else {
+            panic!("expected rustdoc theme variants");
+        };
+
+        assert_eq!(
+            strip_theme_suffixes(&source_default_svg),
+            strip_theme_suffixes(&light)
+        );
+        assert_eq!(
+            strip_theme_suffixes(&source_default_svg),
+            strip_theme_suffixes(&dark)
+        );
+    }
+
+    fn strip_theme_suffixes(svg: &str) -> String {
+        svg.replace("-light", "").replace("-dark", "")
     }
 }

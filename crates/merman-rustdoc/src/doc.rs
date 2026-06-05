@@ -3,7 +3,7 @@ use crate::html::diagram_html;
 use crate::options::{FailMode, Options};
 use crate::render::{
     HeadlessMermaidRenderer, IncludeResolver, ManifestIncludeResolver, MermaidRenderer,
-    source_preview,
+    RenderedDiagram, source_preview,
 };
 use crate::svg::validate_svg;
 
@@ -132,13 +132,23 @@ where
     R: MermaidRenderer,
 {
     let index = *next_diagram;
-    let svg = render
-        .render_mermaid_svg(source, index, options.pipeline)
+    let diagram = render
+        .render_mermaid_diagram(source, index, options)
         .map_err(|err| Error::new(format!("{origin} near `{}`: {err}", source_preview(source))))?;
-    validate_svg(&svg, options.sanitize)
+    validate_rendered_diagram(&diagram, options)
         .map_err(|err| Error::new(format!("{origin} near `{}`: {err}", source_preview(source))))?;
     *next_diagram += 1;
-    Ok(diagram_html(source, &svg, options.source))
+    Ok(diagram_html(source, &diagram, options.source))
+}
+
+fn validate_rendered_diagram(diagram: &RenderedDiagram, options: Options) -> Result<()> {
+    match diagram {
+        RenderedDiagram::Single(svg) => validate_svg(svg, options.sanitize),
+        RenderedDiagram::RustdocTheme { light, dark } => {
+            validate_svg(light, options.sanitize)?;
+            validate_svg(dark, options.sanitize)
+        }
+    }
 }
 
 fn markdown_line(line: &str) -> &str {
@@ -215,7 +225,7 @@ fn parse_include_mmd(line: &str) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::{PipelineMode, SanitizeMode, SourceMode};
+    use crate::options::{SanitizeMode, SourceMode, ThemeMode};
 
     fn rewrite_with_fake_renderer(lines: &[&str]) -> Result<(Vec<String>, Vec<String>)> {
         rewrite_with_fake_renderer_options(lines, Options::default())
@@ -230,10 +240,11 @@ mod tests {
             .map(|line| (*line).to_string())
             .collect::<Vec<_>>();
         let mut rendered_sources = Vec::new();
-        let mut render = |source: &str, index: usize, pipeline: PipelineMode| {
-            assert_eq!(pipeline, options.pipeline);
+        let mut render = |source: &str, index: usize, render_options: Options| {
+            assert_eq!(render_options.pipeline, options.pipeline);
+            assert_eq!(render_options.theme, options.theme);
             rendered_sources.push(source.to_string());
-            Ok(format!(r#"<svg id="diagram-{index}"></svg>"#))
+            Ok(fake_rendered_diagram(index, render_options.theme))
         };
         let mut include = |path: &str| Ok(format!("flowchart TD\nA[{path}] --> B[Done]"));
         let mut next = 0;
@@ -256,7 +267,8 @@ mod tests {
         assert_eq!(rendered_sources, vec!["flowchart TD\n  A --> B"]);
         assert_eq!(out[0], " Intro");
         assert!(out[1].contains(r#"class="merman-rustdoc-diagram""#));
-        assert!(out[1].contains(r#"<svg id="diagram-0"></svg>"#));
+        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
+        assert!(out[1].contains(r#"<svg id="diagram-0-dark"></svg>"#));
         assert_eq!(out[2], " Outro");
     }
 
@@ -272,7 +284,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(rendered_sources, vec!["sequenceDiagram\n  A->>B: hi"]);
-        assert!(out[1].contains(r#"<svg id="diagram-0"></svg>"#));
+        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
     }
 
     #[test]
@@ -284,7 +296,7 @@ mod tests {
             rendered_sources,
             vec!["flowchart TD\nA[docs/diagram.mmd] --> B[Done]"]
         );
-        assert!(out[1].contains(r#"<svg id="diagram-0"></svg>"#));
+        assert!(out[1].contains(r#"<svg id="diagram-0-light"></svg>"#));
     }
 
     #[test]
@@ -346,8 +358,7 @@ mod tests {
             fail: FailMode::KeepSource,
             ..Options::default()
         };
-        let mut render =
-            |_source: &str, _index: usize, _pipeline: PipelineMode| Err(Error::new("boom"));
+        let mut render = |_source: &str, _index: usize, _options: Options| Err(Error::new("boom"));
         let mut include = |_path: &str| Ok(String::new());
         let mut next = 0;
 
@@ -368,7 +379,9 @@ mod tests {
             fail: FailMode::KeepSource,
             ..Options::default()
         };
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| Ok(String::new());
+        let mut render = |_source: &str, index: usize, options: Options| {
+            Ok(fake_rendered_diagram(index, options.theme))
+        };
         let mut include = |_path: &str| Err(Error::new("missing"));
         let mut next = 0;
 
@@ -390,9 +403,8 @@ mod tests {
         .into_iter()
         .map(str::to_string)
         .collect::<Vec<_>>();
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| {
-            Err(Error::new("render failed"))
-        };
+        let mut render =
+            |_source: &str, _index: usize, _options: Options| Err(Error::new("render failed"));
         let mut include = |_path: &str| Ok(String::new());
         let mut next = 0;
 
@@ -417,7 +429,9 @@ mod tests {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| Ok(String::new());
+        let mut render = |_source: &str, index: usize, options: Options| {
+            Ok(fake_rendered_diagram(index, options.theme))
+        };
         let mut include = |_path: &str| Ok(String::new());
         let mut next = 0;
 
@@ -440,7 +454,9 @@ mod tests {
             .map(str::to_string)
             .collect::<Vec<_>>();
         let mut next = 0;
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| Ok(String::new());
+        let mut render = |_source: &str, index: usize, options: Options| {
+            Ok(fake_rendered_diagram(index, options.theme))
+        };
         let mut include = |_path: &str| Ok(String::new());
 
         let err = rewrite_doc_lines_with(
@@ -471,8 +487,10 @@ mod tests {
             .into_iter()
             .map(str::to_string)
             .collect::<Vec<_>>();
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| {
-            Ok(r#"<svg><script>alert(1)</script></svg>"#.to_string())
+        let mut render = |_source: &str, _index: usize, _options: Options| {
+            Ok(RenderedDiagram::Single(
+                r#"<svg><script>alert(1)</script></svg>"#.to_string(),
+            ))
         };
         let mut include = |_path: &str| Ok(String::new());
         let mut next = 0;
@@ -500,8 +518,10 @@ mod tests {
             sanitize: SanitizeMode::Off,
             ..Options::default()
         };
-        let mut render = |_source: &str, _index: usize, _pipeline: PipelineMode| {
-            Ok(r#"<svg><script>alert(1)</script></svg>"#.to_string())
+        let mut render = |_source: &str, _index: usize, _options: Options| {
+            Ok(RenderedDiagram::Single(
+                r#"<svg><script>alert(1)</script></svg>"#.to_string(),
+            ))
         };
         let mut include = |_path: &str| Ok(String::new());
         let mut next = 0;
@@ -511,5 +531,17 @@ mod tests {
 
         assert!(out[0].contains("<script>"));
         assert_eq!(next, 1);
+    }
+
+    fn fake_rendered_diagram(index: usize, theme: ThemeMode) -> RenderedDiagram {
+        match theme {
+            ThemeMode::Rustdoc => RenderedDiagram::RustdocTheme {
+                light: format!(r#"<svg id="diagram-{index}-light"></svg>"#),
+                dark: format!(r#"<svg id="diagram-{index}-dark"></svg>"#),
+            },
+            ThemeMode::Mermaid | ThemeMode::Fixed(_) => {
+                RenderedDiagram::Single(format!(r#"<svg id="diagram-{index}"></svg>"#))
+            }
+        }
     }
 }

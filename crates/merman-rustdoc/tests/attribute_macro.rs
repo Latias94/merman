@@ -13,6 +13,25 @@ fn documented_fence() {}
 /// include_mmd!("tests/fixtures/simple.mmd")
 fn documented_include() {}
 
+#[merman_rustdoc::merman(theme = "dark")]
+/// Render with a fixed Mermaid theme for rustdoc output.
+///
+/// ```mermaid
+/// flowchart TD
+///   T[Theme] --> D[Docs]
+/// ```
+fn themed_diagram() {}
+
+#[merman_rustdoc::merman(theme = "mermaid")]
+/// Render one SVG using Mermaid source-level theme config.
+///
+/// ```mermaid
+/// %%{init: {"theme": "base"}}%%
+/// flowchart TD
+///   M[Mermaid] --> T[Theme]
+/// ```
+fn mermaid_themed_diagram() {}
+
 #[merman_rustdoc::merman]
 /// ```mermaid
 /// flowchart TD
@@ -74,6 +93,8 @@ mod documented_tree_scope {
 fn attribute_macro_expands_for_fence_and_include() {
     documented_fence();
     documented_include();
+    themed_diagram();
+    mermaid_themed_diagram();
     let _ = DocumentedStruct;
     let target = ImplTarget;
     target.method();

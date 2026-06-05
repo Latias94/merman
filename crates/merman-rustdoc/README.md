@@ -219,7 +219,8 @@ The attribute accepts string options:
         pipeline = "readable",
         fail = "error",
         source = "hide",
-        sanitize = "strict"
+        sanitize = "strict",
+        theme = "rustdoc"
     )
 )]
 /// ```mermaid
@@ -236,6 +237,7 @@ pub fn configured() {}
 | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
 | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
+| `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
 
 ### `scope = "tree"`
 
@@ -371,6 +373,59 @@ Use `sanitize = "off"` only when you are deliberately inspecting raw renderer ou
 pub fn raw_svg() {}
 ```
 
+### `theme`
+
+`theme = "rustdoc"` is the default. It renders light and dark SVG variants during `cargo doc`, then
+uses rustdoc's page theme state to show the matching variant. Readers can switch rustdoc light,
+dark, or ayu themes without loading Mermaid JavaScript in the browser.
+
+Use `theme = "mermaid"` when you want a single SVG and want Mermaid source-level config, such as
+front matter or an `%%init%%` directive, to decide the theme:
+
+````rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(theme = "mermaid")
+)]
+/// ```mermaid
+/// %%{init: {"theme": "base"}}%%
+/// flowchart TD
+///   A --> B
+/// ```
+pub fn mermaid_configured_diagram() {}
+````
+
+Use a fixed Mermaid theme when you want one static SVG regardless of the reader's rustdoc theme:
+
+````rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(theme = "dark")
+)]
+/// ```mermaid
+/// flowchart TD
+///   A --> B
+/// ```
+pub fn dark_diagram() {}
+````
+
+Supported fixed theme names follow Merman's Mermaid theme surface: `default`, `base`, `dark`,
+`forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and
+`redux-dark-color`.
+
+Rustdoc theme mode and fixed themes are passed as Mermaid site config. Source-level config still
+wins, so a diagram can override them with front matter or an `%%init%%` directive:
+
+```mermaid
+%%{init: {"theme": "base"}}%%
+flowchart TD
+  A --> B
+```
+
+When source-level config sets an explicit Mermaid theme, both rustdoc variants may render with that
+source-selected theme. Use source-level theme directives only when a diagram should intentionally
+opt out of rustdoc theme adaptation.
+
 ## Re-exports
 
 Inline SVG is stored in the expanded rustdoc attributes. That makes re-exported pages work when the
@@ -489,6 +544,47 @@ Put crate-level diagrams on a public module or item instead:
 /// ```
 pub mod architecture {}
 ````
+
+### Does this rewrite `#[doc = include_str!(...)]`?
+
+No. `merman-rustdoc` rewrites literal rustdoc lines that come from item doc comments and
+`include_mmd!("path.mmd")` lines. It does not evaluate or rewrite Markdown loaded through
+`#[doc = include_str!("...")]`.
+
+Use `include_mmd!` for Mermaid files:
+
+```rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+/// include_mmd!("docs/architecture.mmd")
+pub fn architecture() {}
+```
+
+### Do rustdoc symbol links work inside Mermaid diagrams?
+
+No. Mermaid source is rendered to SVG before rustdoc resolves intra-doc links. Text inside the SVG
+does not participate in rustdoc link resolution, so labels such as `[Type](crate::Type)` are treated
+as Mermaid text or Mermaid links, not rustdoc symbol links.
+
+Normal Mermaid links follow whatever Merman renders, subject to `sanitize = "strict"`.
+
+### What about themes?
+
+By default, `merman-rustdoc` follows rustdoc's light/dark theme setting. It renders light and dark
+SVG variants during `cargo doc` and uses rustdoc's `data-theme` state to show the matching variant.
+
+Use `theme = "mermaid"` for a single SVG controlled by Mermaid source config. Use `theme = "dark"`
+or another supported Mermaid theme to choose one fixed build-time theme. If your Mermaid source uses
+Mermaid's own source-level config, such as an `%%init%%` directive, it is passed to Merman with the
+rest of the diagram and overrides the rustdoc-level theme default:
+
+```mermaid
+%%{init: {"theme": "base"}}%%
+flowchart TD
+  A --> B
+```
+
+Whether a specific Mermaid theme directive works depends on Merman's renderer support for that
+diagram and config. `merman-rustdoc` does not add a separate SVG recoloring layer on top.
 
 ## Why Build-Time SVG
 

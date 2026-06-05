@@ -178,6 +178,9 @@ pub mod tree_scope {
         fs::read_to_string(out_dir.join("merman_rustdoc_e2e/fn.documented_fence.html")).unwrap();
     assert!(function_html.contains(r#"class="merman-rustdoc-source""#));
     assert!(function_html.contains("language-mermaid"));
+    assert!(function_html.contains(r#"data-merman-rustdoc-theme="light""#));
+    assert!(function_html.contains(r#"data-merman-rustdoc-theme="dark""#));
+    assert!(function_html.contains(r#":root[data-theme="dark"]"#));
 
     let footnote_html =
         fs::read_to_string(out_dir.join("merman_rustdoc_e2e/fn.documented_footnote.html")).unwrap();
