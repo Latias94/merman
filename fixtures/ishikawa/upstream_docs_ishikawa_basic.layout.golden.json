@@ -3,15 +3,15 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -361.206,
-        "min_y": -37.977,
+        "min_x": -361.2,
+        "min_y": -39.989,
         "max_x": 92.0,
-        "max_y": 540.757
+        "max_y": 540.145
       },
-      "total_width": 453.206,
-      "total_height": 578.734,
-      "viewbox_x": -361.206,
-      "viewbox_y": -37.977,
+      "total_width": 453.2,
+      "total_height": 580.134,
+      "viewbox_x": -361.2,
+      "viewbox_y": -39.989,
       "padding": 20.0,
       "use_max_width": true,
       "font_size": 16.0,
@@ -19,8 +19,8 @@
         "x": 0.0,
         "y": 392.857,
         "width": 60.0,
-        "height": 107.2,
-        "path_d": "M 0 -53.60000000000002 L 0 53.60000000000002 Q 144 0 0 -53.60000000000002 Z",
+        "height": 105.6,
+        "path_d": "M 0 -52.80000000000001 L 0 52.80000000000001 Q 144 0 0 -52.80000000000001 Z",
         "label": {
           "text": "Blurry\nPhoto",
           "lines": [
@@ -34,10 +34,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 20.24,
-            "min_y": 376.057,
-            "max_x": 63.76,
-            "max_y": 409.657
+            "min_x": 22.96,
+            "min_y": 376.457,
+            "max_x": 61.04,
+            "max_y": 409.257
           }
         }
       },
@@ -99,95 +99,95 @@
           "marker_start": true
         },
         {
-          "x1": -175.82,
+          "x1": -175.818,
           "y1": 392.857,
-          "x2": -230.495,
+          "x2": -230.493,
           "y2": 3.823,
           "class_name": "ishikawa-branch",
           "marker_start": true
         },
         {
-          "x1": -182.655,
+          "x1": -182.653,
           "y1": 344.228,
-          "x2": -252.655,
+          "x2": -252.653,
           "y2": 344.228,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -229.321,
+          "x1": -229.319,
           "y1": 344.228,
-          "x2": -236.156,
+          "x2": -236.154,
           "y2": 295.599,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -205.988,
+          "x1": -205.986,
           "y1": 344.228,
-          "x2": -219.657,
+          "x2": -219.655,
           "y2": 246.969,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -203.158,
+          "x1": -203.156,
           "y1": 198.34,
-          "x2": -278.158,
+          "x2": -278.156,
           "y2": 198.34,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -259.408,
+          "x1": -259.406,
           "y1": 198.34,
-          "x2": -266.242,
+          "x2": -266.24,
           "y2": 149.711,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -240.658,
+          "x1": -240.656,
           "y1": 198.34,
-          "x2": -254.326,
+          "x2": -254.325,
           "y2": 101.082,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -221.908,
+          "x1": -221.906,
           "y1": 198.34,
-          "x2": -242.411,
+          "x2": -242.409,
           "y2": 52.452,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -175.82,
+          "x1": -175.818,
           "y1": 392.857,
-          "x2": -190.732,
+          "x2": -190.73,
           "y2": 498.957,
           "class_name": "ishikawa-branch",
           "marker_start": true
         },
         {
-          "x1": -180.791,
+          "x1": -180.789,
           "y1": 428.224,
-          "x2": -210.791,
+          "x2": -210.789,
           "y2": 428.224,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -185.761,
+          "x1": -185.759,
           "y1": 463.591,
-          "x2": -215.761,
+          "x2": -215.759,
           "y2": 463.591,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -341.206,
+          "x1": -341.2,
           "y1": 392.857,
           "x2": 0.0,
           "y2": 392.857,
@@ -209,9 +209,9 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -100.115,
-            "min_y": -15.977,
+            "min_y": -17.989,
             "max_x": -49.235,
-            "max_y": 1.623
+            "max_y": 1.011
           }
         },
         {
@@ -227,10 +227,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -152.775,
-            "min_y": 298.25,
+            "min_x": -152.779,
+            "min_y": 295.838,
             "max_x": -60.935,
-            "max_y": 331.85
+            "max_y": 331.638
           }
         },
         {
@@ -246,10 +246,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -174.59,
-            "min_y": 220.444,
+            "min_x": -174.589,
+            "min_y": 218.031,
             "max_x": -71.87,
-            "max_y": 254.044
+            "max_y": 253.831
           }
         },
         {
@@ -265,10 +265,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -173.365,
-            "min_y": 142.637,
+            "min_x": -173.368,
+            "min_y": 140.224,
             "max_x": -82.805,
-            "max_y": 176.237
+            "max_y": 176.024
           }
         },
         {
@@ -283,10 +283,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -175.82,
-            "min_y": 72.83,
+            "min_x": -175.818,
+            "min_y": 70.818,
             "max_x": -93.74,
-            "max_y": 90.43
+            "max_y": 89.818
           }
         },
         {
@@ -302,9 +302,9 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -50.031,
-            "min_y": 501.157,
+            "min_y": 499.145,
             "max_x": -19.791,
-            "max_y": 518.757
+            "max_y": 518.145
           }
         },
         {
@@ -320,9 +320,9 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -138.096,
-            "min_y": 437.107,
+            "min_y": 435.095,
             "max_x": -57.456,
-            "max_y": 454.707
+            "max_y": 454.095
           }
         },
         {
@@ -331,16 +331,16 @@
             "Equipment"
           ],
           "class_name": "ishikawa-label cause",
-          "x": -230.495,
+          "x": -230.493,
           "y": -7.177,
           "anchor": "middle",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -264.415,
-            "min_y": -15.977,
-            "max_x": -196.575,
-            "max_y": 1.623
+            "min_x": -264.413,
+            "min_y": -17.989,
+            "max_x": -196.573,
+            "max_y": 1.011
           }
         },
         {
@@ -349,16 +349,16 @@
             "SENSOR"
           ],
           "class_name": "ishikawa-label align",
-          "x": -252.655,
+          "x": -252.653,
           "y": 344.228,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -310.255,
-            "min_y": 335.428,
-            "max_x": -252.655,
-            "max_y": 353.028
+            "min_x": -310.246,
+            "min_y": 333.415,
+            "max_x": -252.653,
+            "max_y": 352.415
           }
         },
         {
@@ -367,15 +367,15 @@
             "Dirty sensor"
           ],
           "class_name": "ishikawa-label up",
-          "x": -236.156,
+          "x": -236.154,
           "y": 295.599,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -319.356,
-            "min_y": 277.999,
-            "max_x": -236.156,
+            "min_x": -319.357,
+            "min_y": 276.599,
+            "max_x": -236.154,
             "max_y": 295.599
           }
         },
@@ -385,15 +385,15 @@
             "Damaged sensor"
           ],
           "class_name": "ishikawa-label up",
-          "x": -219.657,
+          "x": -219.655,
           "y": 246.969,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -322.697,
-            "min_y": 229.369,
-            "max_x": -219.657,
+            "min_x": -322.702,
+            "min_y": 227.969,
+            "max_x": -219.655,
             "max_y": 246.969
           }
         },
@@ -403,16 +403,16 @@
             "LENS"
           ],
           "class_name": "ishikawa-label align",
-          "x": -278.158,
+          "x": -278.156,
           "y": 198.34,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -316.558,
-            "min_y": 189.54,
-            "max_x": -278.158,
-            "max_y": 207.14
+            "min_x": -316.562,
+            "min_y": 187.528,
+            "max_x": -278.156,
+            "max_y": 206.528
           }
         },
         {
@@ -421,15 +421,15 @@
             "Dirty lens"
           ],
           "class_name": "ishikawa-label up",
-          "x": -266.242,
+          "x": -266.24,
           "y": 149.711,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -333.282,
-            "min_y": 132.111,
-            "max_x": -266.242,
+            "min_x": -333.287,
+            "min_y": 130.711,
+            "max_x": -266.24,
             "max_y": 149.711
           }
         },
@@ -439,15 +439,15 @@
             "Damaged lens"
           ],
           "class_name": "ishikawa-label up",
-          "x": -254.326,
+          "x": -254.325,
           "y": 101.082,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -341.206,
-            "min_y": 83.482,
-            "max_x": -254.326,
+            "min_x": -341.2,
+            "min_y": 82.082,
+            "max_x": -254.325,
             "max_y": 101.082
           }
         },
@@ -458,15 +458,15 @@
             "lens"
           ],
           "class_name": "ishikawa-label up",
-          "x": -242.411,
+          "x": -242.409,
           "y": 52.452,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -327.371,
-            "min_y": 18.852,
-            "max_x": -242.411,
+            "min_x": -327.362,
+            "min_y": 16.652,
+            "max_x": -242.409,
             "max_y": 52.452
           }
         },
@@ -476,16 +476,16 @@
             "Environment"
           ],
           "class_name": "ishikawa-label cause",
-          "x": -190.732,
+          "x": -190.73,
           "y": 509.957,
           "anchor": "middle",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -231.532,
-            "min_y": 501.157,
-            "max_x": -149.932,
-            "max_y": 518.757
+            "min_x": -231.53,
+            "min_y": 499.145,
+            "max_x": -149.93,
+            "max_y": 518.145
           }
         },
         {
@@ -495,16 +495,16 @@
             "too quickly"
           ],
           "class_name": "ishikawa-label align",
-          "x": -210.791,
+          "x": -210.789,
           "y": 428.224,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -306.951,
-            "min_y": 411.424,
-            "max_x": -210.791,
-            "max_y": 445.024
+            "min_x": -306.945,
+            "min_y": 409.011,
+            "max_x": -210.789,
+            "max_y": 444.811
           }
         },
         {
@@ -513,43 +513,43 @@
             "Too dark"
           ],
           "class_name": "ishikawa-label align",
-          "x": -215.761,
+          "x": -215.759,
           "y": 463.591,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -273.841,
-            "min_y": 454.791,
-            "max_x": -215.761,
-            "max_y": 472.391
+            "min_x": -273.837,
+            "min_y": 452.778,
+            "max_x": -215.759,
+            "max_y": 471.778
           }
         }
       ],
       "label_boxes": [
         {
           "x": -120.115,
-          "y": -17.977,
+          "y": -19.989,
           "width": 90.88,
-          "height": 21.6
+          "height": 23.0
         },
         {
           "x": -70.031,
-          "y": 499.157,
+          "y": 497.145,
           "width": 70.24,
-          "height": 21.6
+          "height": 23.0
         },
         {
-          "x": -284.415,
-          "y": -17.977,
+          "x": -284.413,
+          "y": -19.989,
           "width": 107.84,
-          "height": 21.6
+          "height": 23.0
         },
         {
-          "x": -251.532,
-          "y": 499.157,
+          "x": -251.53,
+          "y": 497.145,
           "width": 121.6,
-          "height": 21.6
+          "height": 23.0
         }
       ]
     }

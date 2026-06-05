@@ -3,8 +3,9 @@
 use super::{
     DeterministicTextMeasurer, FLOWCHART_DEFAULT_FONT_KEY, TextMeasurer, TextMetrics, TextStyle,
     WrapMode, flowchart_default_bold_delta_em, flowchart_default_bold_kern_delta_em,
-    font_key_uses_courier_metrics, is_flowchart_default_font, overrides, round_to_1_64_px,
-    style_requests_bold_font_weight, svg_wrapped_first_line_bbox_height_px,
+    flowchart_default_bold_svg_right_overhang_em, font_key_uses_courier_metrics,
+    is_flowchart_default_font, overrides, round_to_1_64_px, style_requests_bold_font_weight,
+    svg_wrapped_first_line_bbox_height_px,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -539,6 +540,17 @@ impl VendoredFontMetricsTextMeasurer {
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
+        Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang_and_weight(
+            table, text, font_size, false,
+        )
+    }
+
+    fn line_svg_bbox_extents_px_single_run_with_ascii_overhang_and_weight(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+        bold: bool,
+    ) -> (f64, f64) {
         let profile = Self::metric_profile(table);
         let t = text.trim_end();
         if t.is_empty() {
@@ -554,7 +566,7 @@ impl VendoredFontMetricsTextMeasurer {
         let first = t.chars().next().unwrap_or(' ');
         let last = t.chars().last().unwrap_or(' ');
 
-        let advance_px_unscaled = Self::line_width_px(profile, t, false, font_size);
+        let advance_px_unscaled = Self::line_width_px(profile, t, bold, font_size);
 
         let advance_px = advance_px_unscaled * table.svg_scale;
         let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
@@ -564,11 +576,14 @@ impl VendoredFontMetricsTextMeasurer {
             table.svg_bbox_overhang_left_default_em,
             first,
         );
-        let right_oh_em = Self::lookup_overhang_em(
+        let mut right_oh_em = Self::lookup_overhang_em(
             table.svg_bbox_overhang_right,
             table.svg_bbox_overhang_right_default_em,
             last,
         );
+        if bold && table.font_key == FLOWCHART_DEFAULT_FONT_KEY {
+            right_oh_em = right_oh_em.max(flowchart_default_bold_svg_right_overhang_em(last));
+        }
 
         let left = (half + left_oh_em * font_size).max(0.0);
         let right = (half + right_oh_em * font_size).max(0.0);
@@ -1487,6 +1502,25 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
             let (l, r) = Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang(
                 table, &line, font_size,
+            );
+            width = width.max((l + r).max(0.0));
+        }
+        width
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let Some(table) = self.lookup_table(style) else {
+            return self
+                .fallback
+                .measure_svg_raw_text_bbox_width_px(text, style);
+        };
+
+        let font_size = style.font_size.max(1.0);
+        let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
+        let mut width: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            let (l, r) = Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang_and_weight(
+                table, &line, font_size, bold,
             );
             width = width.max((l + r).max(0.0));
         }

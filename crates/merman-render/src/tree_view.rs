@@ -83,14 +83,8 @@ struct LayoutCtx<'a> {
 
 fn layout_node(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> Result<usize> {
     let indent = depth as f64 * (ctx.cfg.row_indent + ctx.cfg.padding_x);
-    let label_width = ctx
-        .measurer
-        .measure_svg_simple_text_bbox_width_px(&node.name, &ctx.style)
-        .max(0.0);
-    let label_height = ctx
-        .measurer
-        .measure_svg_simple_text_bbox_height_px(&node.name, &ctx.style)
-        .max(0.0);
+    let label_width = tree_view_label_bbox_width_px(ctx.measurer, &node.name, &ctx.style);
+    let label_height = tree_view_label_bbox_height_px(ctx.cfg.label_font_size);
     let height = label_height + ctx.cfg.padding_y * 2.0;
     let width = label_width + ctx.cfg.padding_x * 2.0;
     let y = ctx.total_height;
@@ -164,5 +158,23 @@ fn tree_view_config(effective_config: &Value) -> TreeViewConfig {
         )
         .unwrap_or(16.0)
         .max(1.0),
+    }
+}
+
+fn tree_view_label_bbox_height_px(font_size: f64) -> f64 {
+    (font_size.max(1.0) * 1.15).ceil()
+}
+
+fn tree_view_label_bbox_width_px(
+    measurer: &dyn TextMeasurer,
+    label: &str,
+    style: &TextStyle,
+) -> f64 {
+    if style.font_size > 16.0 {
+        measurer.measure(label, style).width.max(0.0)
+    } else {
+        measurer
+            .measure_svg_raw_text_bbox_width_px(label, style)
+            .max(0.0)
     }
 }

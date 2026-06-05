@@ -64,6 +64,14 @@ pub trait TextMeasurer {
         (l + r).max(0.0)
     }
 
+    /// Measures raw SVG `<text>.getBBox().width` for diagram renderers that append text directly.
+    ///
+    /// Unlike [`TextMeasurer::measure_svg_simple_text_bbox_width_px`], this intentionally avoids
+    /// diagram-specific `drawSimpleText(...)` compatibility overrides.
+    fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_simple_text_bbox_width_px(text, style)
+    }
+
     /// Measures simple SVG text for wrap decisions.
     ///
     /// Some implementations carry fixture-derived exact text-width overrides for final layout
