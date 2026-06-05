@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": -30.0,
         "min_y": -30.0,
-        "max_x": 552.52,
-        "max_y": 480.0
+        "max_x": 875.653,
+        "max_y": 456.0
       },
-      "total_width": 582.52,
-      "total_height": 510.0,
+      "total_width": 905.653,
+      "total_height": 486.0,
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
       "padding": 30.0,
@@ -21,7 +21,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 0.0,
-          "width": 522.52,
+          "width": 845.653,
           "height": 130.0
         },
         {
@@ -30,7 +30,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 140.0,
-          "width": 522.52,
+          "width": 845.653,
           "height": 130.0
         },
         {
@@ -39,8 +39,8 @@
           "namespace": null,
           "x": 0.0,
           "y": 280.0,
-          "width": 522.52,
-          "height": 170.0
+          "width": 845.653,
+          "height": 146.0
         }
       ],
       "boxes": [
@@ -53,7 +53,7 @@
           "text": "CartScreen",
           "x": 250.0,
           "y": 15.0,
-          "width": 114.24,
+          "width": 178.0,
           "height": 100.0,
           "fill": "white",
           "stroke": "#dbdada",
@@ -66,9 +66,9 @@
           "model_entity_type": "cmd",
           "entity_identifier": "AddItem",
           "text": "AddItem\n{ productId: 7 }",
-          "x": 294.24,
+          "x": 358.0,
           "y": 155.0,
-          "width": 139.68,
+          "width": 247.306,
           "height": 100.0,
           "fill": "#bcd6fe",
           "stroke": "#679ac3",
@@ -81,10 +81,10 @@
           "model_entity_type": "evt",
           "entity_identifier": "ItemAdded",
           "text": "ItemAdded\n{\n  productId: 7,\n  quantity: 1\n}",
-          "x": 363.92,
+          "x": 535.306,
           "y": 295.0,
-          "width": 133.6,
-          "height": 140.0,
+          "width": 285.347,
+          "height": 116.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
           "swimlane_index": 200.0
@@ -94,18 +94,18 @@
         {
           "source_frame": "01",
           "target_frame": "02",
-          "x1": 326.16,
+          "x1": 368.667,
           "y1": 115.0,
-          "x2": 340.8,
+          "x2": 440.435,
           "y2": 155.0,
           "stroke": "#333333"
         },
         {
           "source_frame": "02",
           "target_frame": "03",
-          "x1": 387.36,
+          "x1": 522.871,
           "y1": 255.0,
-          "x2": 408.453,
+          "x2": 630.422,
           "y2": 295.0,
           "stroke": "#333333"
         }

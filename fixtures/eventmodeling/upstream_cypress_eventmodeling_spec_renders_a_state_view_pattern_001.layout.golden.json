@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": -30.0,
         "min_y": -30.0,
-        "max_x": 487.4,
+        "max_x": 673.0,
         "max_y": 440.0
       },
-      "total_width": 517.4,
+      "total_width": 703.0,
       "total_height": 470.0,
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
@@ -21,7 +21,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 0.0,
-          "width": 457.4,
+          "width": 643.0,
           "height": 130.0
         },
         {
@@ -30,7 +30,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 140.0,
-          "width": 457.4,
+          "width": 643.0,
           "height": 130.0
         },
         {
@@ -39,7 +39,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 280.0,
-          "width": 457.4,
+          "width": 643.0,
           "height": 130.0
         }
       ],
@@ -53,7 +53,7 @@
           "text": "CartScreen",
           "x": 250.0,
           "y": 15.0,
-          "width": 114.24,
+          "width": 178.0,
           "height": 100.0,
           "fill": "white",
           "stroke": "#dbdada",
@@ -66,9 +66,9 @@
           "model_entity_type": "cmd",
           "entity_identifier": "AddItem",
           "text": "AddItem",
-          "x": 294.24,
+          "x": 358.0,
           "y": 155.0,
-          "width": 100.0,
+          "width": 158.0,
           "height": 100.0,
           "fill": "#bcd6fe",
           "stroke": "#679ac3",
@@ -81,9 +81,9 @@
           "model_entity_type": "evt",
           "entity_identifier": "ItemAdded",
           "text": "ItemAdded",
-          "x": 324.24,
+          "x": 446.0,
           "y": 295.0,
-          "width": 108.16,
+          "width": 172.0,
           "height": 100.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
@@ -94,18 +94,18 @@
         {
           "source_frame": "01",
           "target_frame": "02",
-          "x1": 326.16,
+          "x1": 368.667,
           "y1": 115.0,
-          "x2": 327.573,
+          "x2": 410.667,
           "y2": 155.0,
           "stroke": "#333333"
         },
         {
           "source_frame": "02",
           "target_frame": "03",
-          "x1": 360.907,
+          "x1": 463.333,
           "y1": 255.0,
-          "x2": 360.293,
+          "x2": 503.333,
           "y2": 295.0,
           "stroke": "#333333"
         }
