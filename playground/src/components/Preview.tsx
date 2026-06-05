@@ -180,10 +180,9 @@ export function Preview({ className }: PreviewProps) {
     },
     [t]
   );
-  const warmMermaidRenderer = useCallback(() => {
+  const warmCompareRenderer = useCallback(() => {
     void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
   }, [diagramTheme, mermaidConfig]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -251,13 +250,6 @@ export function Preview({ className }: PreviewProps) {
     setDiagramType,
     setLastRenderTime,
   ]);
-
-  useEffect(() => {
-    if (!code.trim()) return;
-
-    const timeout = window.setTimeout(warmMermaidRenderer, 50);
-    return () => window.clearTimeout(timeout);
-  }, [code, warmMermaidRenderer]);
 
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
@@ -459,7 +451,7 @@ export function Preview({ className }: PreviewProps) {
     <TabBar
       mode={previewMode}
       onModeChange={setPreviewMode}
-      onCompareWarmup={warmMermaidRenderer}
+      onCompareWarmup={warmCompareRenderer}
       isAsciiSupported={isAsciiSupported}
       t={t}
       rightContent={rightContent}
