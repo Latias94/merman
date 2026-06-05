@@ -2139,6 +2139,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-rustdoc"
+version = "0.7.0"
+dependencies = [
+ "merman",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "merman-uniffi"
 version = "0.7.0"
 dependencies = [

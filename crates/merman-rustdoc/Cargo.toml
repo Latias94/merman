@@ -1,0 +1,23 @@
+[package]
+name = "merman-rustdoc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Render Mermaid fences in rustdoc with headless Merman SVG output."
+documentation = "https://docs.rs/merman-rustdoc"
+readme = "README.md"
+keywords = ["mermaid", "rustdoc", "proc-macro", "svg", "docs"]
+categories = ["development-tools::build-utils", "visualization"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+merman = { workspace = true, default-features = false, features = ["render"] }
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true

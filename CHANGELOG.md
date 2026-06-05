@@ -6,6 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- Added `merman-rustdoc`, a proc-macro crate that renders Mermaid fences and `include_mmd!` files in
+  rustdoc as inline headless SVG without injecting Mermaid JavaScript. The macro supports
+  `pipeline`, `fail`, and `source` options for initial output customization.
+
 ## [0.7.0] - 2026-06-05
 
 Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility, adds a broader set of render surfaces, and makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.
