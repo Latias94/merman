@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
 use merman_core::diagrams::eventmodeling::{
     EventModelingDataEntityRenderModel, EventModelingDiagramRenderModel,
     EventModelingFrameRenderModel,
@@ -25,6 +25,9 @@ const CONTENT_START_X: f64 = 250.0;
 const TEXT_MAX_WIDTH: f64 = 430.0;
 const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
+const HTML_LABEL_TEXT_WIDTH_OFFSET: f64 = 6.0;
+const HTML_LABEL_DATA_WIDTH_SCALE: f64 = 1.047;
+const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
 #[derive(Debug, Clone)]
 struct EventModelingConfig {
@@ -62,7 +65,7 @@ pub fn layout_eventmodeling_diagram_typed(
 
     for (index, frame) in model.frames.iter().enumerate() {
         let text = frame_text(frame, &data_entities);
-        let text_dimension = measure_frame_text(&text, measurer);
+        let text_dimension = measure_frame_text(frame, &data_entities, measurer);
         let event_width = text_dimension.width + 2.0 * BOX_TEXT_PADDING;
         let event_height = text_dimension.height + 2.0 * BOX_TEXT_PADDING;
         let width = event_width.clamp(BOX_MIN_WIDTH, BOX_MAX_WIDTH) + 2.0 * BOX_PADDING;
@@ -444,22 +447,150 @@ fn frame_text(
     text
 }
 
-fn measure_frame_text(text: &str, measurer: &dyn TextMeasurer) -> TextDimension {
+fn measure_frame_text(
+    frame: &EventModelingFrameRenderModel,
+    data_entities: &HashMap<&str, &EventModelingDataEntityRenderModel>,
+    measurer: &dyn TextMeasurer,
+) -> TextDimension {
     let style = TextStyle {
         font_size: TEXT_FONT_SIZE,
         font_weight: Some("700".to_string()),
         ..Default::default()
     };
-    let mut width: f64 = 0.0;
-    let mut lines = 0usize;
-    for line in text.lines() {
-        lines += 1;
-        width = width.max(measurer.measure_svg_simple_text_bbox_width_px(line, &style));
+    let (html, has_data) = frame_label_html_for_measurement(frame, data_entities, measurer, &style);
+    let mut dimension = measure_eventmodeling_label_html(&html, measurer, &style);
+    if has_data {
+        dimension.width = (dimension.width * HTML_LABEL_DATA_WIDTH_SCALE) / 3.0;
+    } else {
+        dimension.width += HTML_LABEL_TEXT_WIDTH_OFFSET;
     }
     TextDimension {
-        width: width.min(TEXT_MAX_WIDTH),
-        height: (lines.max(1) as f64) * TEXT_FONT_SIZE * 1.25,
+        width: dimension.width.min(TEXT_MAX_WIDTH),
+        height: dimension.height,
     }
+}
+
+fn measure_eventmodeling_label_html(
+    html: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> TextDimension {
+    let sans_style = TextStyle {
+        font_family: Some("sans-serif".to_string()),
+        font_size: style.font_size,
+        font_weight: style.font_weight.clone(),
+    };
+    let default_font_style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: style.font_size,
+        font_weight: style.font_weight.clone(),
+    };
+    let sans = measure_eventmodeling_label_html_with_style(html, measurer, &sans_style);
+    let default_font =
+        measure_eventmodeling_label_html_with_style(html, measurer, &default_font_style);
+
+    if sans.height > default_font.height
+        && sans.width > default_font.width
+        && sans.line_height > default_font.line_height
+    {
+        sans.into_dimension()
+    } else {
+        default_font.into_dimension()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EventModelingHtmlTextDimension {
+    width: f64,
+    height: f64,
+    line_height: f64,
+}
+
+impl EventModelingHtmlTextDimension {
+    fn into_dimension(self) -> TextDimension {
+        TextDimension {
+            width: self.width,
+            height: self.height,
+        }
+    }
+}
+
+fn measure_eventmodeling_label_html_with_style(
+    html: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> EventModelingHtmlTextDimension {
+    let mut width: f64 = 0.0;
+    let mut height: f64 = 0.0;
+    let mut line_height: f64 = 0.0;
+    for line in split_html_br_lines(html) {
+        let line = line.replace(['\r', '\n'], " ");
+        width = width.max(
+            measurer
+                .measure_svg_simple_text_bbox_width_px(&line, style)
+                .round(),
+        );
+        let current_height = measurer
+            .measure_svg_simple_text_bbox_height_px(&line, style)
+            .round()
+            .max(HTML_LABEL_BBOX_LINE_HEIGHT);
+        height += current_height;
+        line_height = line_height.max(current_height);
+    }
+    EventModelingHtmlTextDimension {
+        width,
+        height,
+        line_height,
+    }
+}
+
+fn frame_label_html_for_measurement(
+    frame: &EventModelingFrameRenderModel,
+    data_entities: &HashMap<&str, &EventModelingDataEntityRenderModel>,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> (String, bool) {
+    let title = wrap_eventmodeling_label(extract_name(&frame.entity_identifier), measurer, style);
+    let mut html = format!("<b>{title}</b>");
+    let data = frame
+        .data_inline_value
+        .as_deref()
+        .or_else(|| {
+            frame
+                .data_reference
+                .as_deref()
+                .and_then(|reference| data_entities.get(reference))
+                .map(|entity| entity.data_block_value.as_str())
+        })
+        .map(normalize_eventmodeling_data_for_measurement);
+
+    if let Some(data) = data {
+        let wrapped_data = wrap_eventmodeling_label(&data, measurer, style).replace(' ', "&nbsp;");
+        html.push_str(
+            r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#,
+        );
+        html.push_str(&wrapped_data);
+        if frame.data_reference.is_some() {
+            html.push_str("<br/>");
+        }
+        html.push_str("</code>");
+        (html, true)
+    } else {
+        (html, false)
+    }
+}
+
+fn wrap_eventmodeling_label(label: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> String {
+    wrap_label_like_mermaid_lines(label, measurer, style, TEXT_MAX_WIDTH).join("<br/>")
+}
+
+fn normalize_eventmodeling_data_for_measurement(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let without_outer_braces = trimmed
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(trimmed);
+    without_outer_braces.trim().to_string()
 }
 
 fn entity_visual_props(effective_config: &Value, entity_type: &str) -> VisualProps {

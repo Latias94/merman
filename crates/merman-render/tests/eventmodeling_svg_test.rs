@@ -1,5 +1,7 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
+use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 
 #[test]
@@ -57,4 +59,38 @@ data ItemAddedData {
     assert!(svg.contains(r#"id="em-arrowhead-eventmodeling-test""#));
     assert!(svg.contains(r##"stroke="#135790""##));
     assert!(svg.contains(r##"fill="#DDEEFF""##));
+}
+
+#[test]
+fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
+    let input =
+        include_str!("../../../fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    let LayoutDiagram::EventModelingDiagram(layout) = layout else {
+        panic!("expected eventmodeling layout");
+    };
+
+    assert_close(layout.total_width, 1157.666_666_666_666_7, 1.0);
+    assert_close(layout.boxes[0].width, 134.0, 2.0);
+    assert_close(layout.boxes[2].width, 307.333_333_333_333_3, 1.0);
+    assert_close(layout.boxes[2].height, 116.0, 1.0);
+}
+
+fn assert_close(actual: f64, expected: f64, tolerance: f64) {
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "expected {actual} to be within {tolerance} of {expected}"
+    );
 }

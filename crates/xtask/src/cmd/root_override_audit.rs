@@ -2,7 +2,9 @@
 
 use crate::cmd::compare::diagram_supports_root_delta_report;
 use crate::{XtaskError, cmd};
-use merman_core::baseline::LEGACY_GENERATED_BASELINE_SUFFIX;
+use merman_core::baseline::{
+    LEGACY_GENERATED_BASELINE_SUFFIX, PINNED_MERMAID_BASELINE_VERSION_SUFFIX,
+};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -240,13 +242,7 @@ fn collect_root_override_tables(
         else {
             continue;
         };
-        let Some(family) = file_name
-            .strip_suffix(&format!(
-                "_root_overrides_{}.rs",
-                LEGACY_GENERATED_BASELINE_SUFFIX
-            ))
-            .map(str::to_owned)
-        else {
+        let Some(family) = root_override_family_from_file_name(&file_name) else {
             continue;
         };
 
@@ -266,6 +262,21 @@ fn collect_root_override_tables(
 
     tables.sort_by(|a, b| a.family.cmp(&b.family));
     Ok(tables)
+}
+
+fn root_override_family_from_file_name(file_name: &str) -> Option<String> {
+    for suffix in [
+        PINNED_MERMAID_BASELINE_VERSION_SUFFIX,
+        LEGACY_GENERATED_BASELINE_SUFFIX,
+    ] {
+        if let Some(family) = file_name
+            .strip_suffix(&format!("_root_overrides_{suffix}.rs"))
+            .map(str::to_owned)
+        {
+            return Some(family);
+        }
+    }
+    None
 }
 
 fn run_disabled_root_compare(
@@ -728,7 +739,7 @@ mod tests {
     use super::{
         FamilyAudit, RootOverrideTable, collect_dom_mismatch_keys,
         collect_root_override_fixture_keys, collect_runner_issues, count_root_viewport_entries,
-        render_global_root_override_audit,
+        render_global_root_override_audit, root_override_family_from_file_name,
     };
     use std::collections::BTreeSet;
 
@@ -788,6 +799,19 @@ match diagram_id {
                 .iter()
                 .any(|issue| issue.contains("missing upstream svg"))
         );
+    }
+
+    #[test]
+    fn root_override_inventory_accepts_current_and_legacy_suffixes() {
+        assert_eq!(
+            root_override_family_from_file_name("eventmodeling_root_overrides_11_15_0.rs"),
+            Some("eventmodeling".to_string())
+        );
+        assert_eq!(
+            root_override_family_from_file_name("timeline_root_overrides_11_12_2.rs"),
+            Some("timeline".to_string())
+        );
+        assert_eq!(root_override_family_from_file_name("not_root.rs"), None);
     }
 
     #[test]
