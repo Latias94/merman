@@ -12,6 +12,11 @@ documentation = "https://docs.rs/merman-render"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
 categories = ["visualization"]
+exclude = [
+  "examples/*_debug_svg.rs",
+  "examples/ratex_math_audit.rs",
+  "tests/**",
+]
 
 [features]
 default = []

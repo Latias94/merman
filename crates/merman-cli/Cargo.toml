@@ -12,6 +12,7 @@ documentation = "https://docs.rs/merman-cli"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
+exclude = ["tests/**"]
 
 [features]
 default = ["ratex-math", "ascii"]

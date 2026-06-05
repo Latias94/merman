@@ -89,7 +89,7 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
         ("class_medium", include_str!("fixtures/class_medium.mmd")),
         (
             "class_namespace_dense",
-            include_str!("../../../fixtures/class/stress_class_dense_namespaces_generics_001.mmd"),
+            include_str!("fixtures/stress_class_dense_namespaces_generics_001.mmd"),
         ),
         ("state_tiny", include_str!("fixtures/state_tiny.mmd")),
         ("state_medium", include_str!("fixtures/state_medium.mmd")),

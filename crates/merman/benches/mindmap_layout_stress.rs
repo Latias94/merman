@@ -3,8 +3,7 @@ use merman::render::{LayoutOptions, headless_layout_options};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
-const MINDMAP_BALANCED_TREE: &str =
-    include_str!("../../../fixtures/mindmap/stress_balanced_tree_009.mmd");
+const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_009.mmd");
 
 fn bench_mindmap_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();

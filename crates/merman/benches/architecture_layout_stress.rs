@@ -3,9 +3,8 @@ use merman::render::{LayoutOptions, headless_layout_options};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
-const ARCH_REASONABLE_HEIGHT: &str = include_str!(
-    "../../../fixtures/architecture/upstream_architecture_layout_reasonable_height.mmd"
-);
+const ARCH_REASONABLE_HEIGHT: &str =
+    include_str!("fixtures/upstream_architecture_layout_reasonable_height.mmd");
 
 fn bench_architecture_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();

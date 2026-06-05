@@ -12,6 +12,12 @@ documentation = "https://docs.rs/merman"
 readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
+exclude = [
+  "tests/mindmap_br_variants_031.rs",
+  "tests/resvg_safe_fixture_smoke.rs",
+  "tests/zed_mermaid_issue_fixtures.rs",
+  "tests/zed_pr_57644_corpus.rs",
+]
 
 [package.metadata.docs.rs]
 features = ["render", "ascii"]

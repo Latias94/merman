@@ -3,9 +3,8 @@ use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
-const ARCH_MANY_SERVICES_ONE_GROUP: &str = include_str!(
-    "../../../fixtures/architecture/stress_architecture_batch3_many_services_one_group_059.mmd"
-);
+const ARCH_MANY_SERVICES_ONE_GROUP: &str =
+    include_str!("fixtures/stress_architecture_batch3_many_services_one_group_059.mmd");
 
 fn bench_architecture_stress(c: &mut Criterion) {
     let engine = Engine::new();
