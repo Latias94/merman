@@ -23,7 +23,7 @@ This document tracks Mermaid config/frontmatter behavior that is intentionally s
 | `theme` | Supported | Supported | Theme defaults are applied to the effective config before parsing/rendering. |
 | `themeVariables` | Supported | Supported | Includes legacy `fontFamily` mirroring into `themeVariables.fontFamily`. |
 | `themeCSS` | Supported | Supported | SVG output scopes injected CSS through the parity CSS postprocessor. |
-| `look` | Supported | Partial by diagram | Flowchart, state, mindmap, requirement, class, and ER consume `look` in SVG DOM/style paths. Sequence consumes `look` in presentation CSS/theme paths, but does not currently expose a diagram-wide `data-look` DOM contract. Kanban keeps `look` in its render model, while some SVG groups still emit `classic`. |
+| `look` | Supported | Partial by diagram | Flowchart, state, mindmap, requirement, class, ER, and Kanban section clusters consume `look` in SVG DOM/style paths. Sequence consumes `look` in presentation CSS/theme paths, but does not currently expose a diagram-wide `data-look` DOM contract. Kanban item groups do not currently expose a broader `data-look` DOM contract. |
 | `layout` | Supported | Partial by diagram | Detection preserves `flowchart-elk` / `flowchart.defaultRenderer=elk` side effects, but the local flowchart layout path is not a full ELK implementation. |
 | `flowchart.defaultRenderer` | Supported | Partial | Detection can select `flowchart-elk` semantics and set root `layout=elk`; layout parity remains incomplete. |
 | `class.defaultRenderer` | Supported | Supported for detector branching | Used to select class renderer variants like Mermaid's detector order. |

@@ -292,6 +292,11 @@ pub(super) fn render_kanban_diagram_svg(
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    let data_look = config_string(effective_config, &["look"])
+        .map(|look| look.trim().to_string())
+        .filter(|look| !look.is_empty())
+        .unwrap_or_else(|| "classic".to_string());
+    let data_look_attr = escape_attr(&data_look);
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
@@ -303,9 +308,10 @@ pub(super) fn render_kanban_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="classic"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_w}px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
+            r##"<g class="cluster undefined section-{idx}" id="{id}" data-look="{look}"><rect style="" rx="{rx}" ry="{ry}" x="{x}" y="{y}" width="{w}" height="{h}"/><g class="cluster-label" transform="translate({lx}, {ly})"><foreignObject width="{lw}" height="{fo_h}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_w}px; text-align: center;"><span class="nodeLabel"><p>{label}</p></span></div></foreignObject></g></g>"##,
             idx = s.index,
             id = escape_attr(&kanban_dom_id(diagram_id, &s.id)),
+            look = data_look_attr,
             rx = fmt(s.rx),
             ry = fmt(s.ry),
             x = fmt(left),
@@ -679,5 +685,57 @@ mod tests {
         assert!(!svg.contains(r#"id="constructor""#));
         assert!(!svg.contains(r#"id="task1""#));
         assert!(!svg.contains(r#"id="__proto__""#));
+    }
+
+    #[test]
+    fn kanban_sections_use_configured_look_in_dom_attributes() {
+        let layout = KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -300.0,
+                max_x: 220.0,
+                max_y: 80.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            sections: vec![KanbanSectionLayout {
+                id: "todo".to_string(),
+                label: "Todo".to_string(),
+                index: 1,
+                center_x: 100.0,
+                center_y: 0.0,
+                width: 200.0,
+                rect_y: -300.0,
+                rect_height: 120.0,
+                rx: 5.0,
+                ry: 5.0,
+                label_width: 40.0,
+                label_height: KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+            }],
+            items: Vec::new(),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("kb".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_kanban_diagram_svg(
+            &layout,
+            &serde_json::Value::Null,
+            &serde_json::json!({"look": "neo"}),
+            &options,
+        )
+        .unwrap();
+
+        assert!(
+            svg.contains(r#"id="kb-todo" data-look="neo""#),
+            "expected kanban section to propagate configured look: {svg}"
+        );
+        assert!(
+            !svg.contains(r#"data-look="classic""#),
+            "configured kanban look must not leave classic section attributes: {svg}"
+        );
     }
 }

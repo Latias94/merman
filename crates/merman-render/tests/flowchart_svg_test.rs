@@ -57,6 +57,27 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
 }
 
 #[test]
+fn flowchart_svg_uses_configured_look_for_subgraph_clusters() {
+    let svg = render_flowchart_svg_from_text(
+        r#"%%{init: {"look": "neo"}}%%
+flowchart TB
+subgraph Group
+  A
+end
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"<g class="cluster" id="merman-Group" data-look="neo""#),
+        "expected flowchart subgraph cluster to propagate configured look: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"data-look="classic""#),
+        "configured flowchart look must not leave classic DOM attributes: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
     let text = "flowchart TB\nsubgraph A[\"This is a very very very very very very very long title that should wrap\"]\n  a\nend\n";
     let engine = Engine::new();
