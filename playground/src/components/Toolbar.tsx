@@ -255,20 +255,20 @@ export function Toolbar() {
   return (
     <>
       <Toaster position="bottom-right" richColors />
-      <header className="flex h-14 items-center justify-between border-b px-4 bg-card">
+      <header className="relative flex h-14 items-center gap-2 overflow-hidden border-b bg-card px-3 sm:px-4">
         {/* 左侧：Logo 和功能按钮 */}
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
             <div className="size-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-sm">M</span>
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-sm font-semibold leading-none">Merman</h1>
               <p className="text-xs text-muted-foreground">{t("app.playground")}</p>
             </div>
           </div>
 
-          <div className="h-6 w-px bg-border" />
+          <div className="hidden h-6 w-px bg-border sm:block" />
 
           {/* 示例按钮 */}
           <Tooltip>
@@ -285,11 +285,98 @@ export function Toolbar() {
             <TooltipContent>{t("toolbar.examples")}</TooltipContent>
           </Tooltip>
 
-          <BenchDialog />
+          <div className="hidden sm:block">
+            <BenchDialog />
+          </div>
+        </div>
+
+        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:hidden">
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm">
+                    <Palette className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{t("toolbar.theme")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={diagramTheme}
+                onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
+              >
+                {themeOptions.map((option) => (
+                  <DropdownMenuRadioItem key={option.value} value={option.value}>
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon-sm" disabled={isExporting}>
+                    <Download className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{t("toolbar.export")}</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportSVG}>
+                <FileCode className="size-4" />
+                {t("export.svg")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPNG}>
+                <ImageIcon className="size-4" />
+                {t("export.png")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
+                <FileText className="size-4" />
+                {t("export.ascii")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleCopyCode}>
+                <Code className="size-4" />
+                {t("export.copyCode")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyMarkdown}>
+                <FileText className="size-4" />
+                {t("export.copyMarkdown")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopySVG}>
+                <Copy className="size-4" />
+                {t("export.copySvg")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleOpenMermaidLive}>
+                <ExternalLink className="size-4" />
+                {t("share.openMermaidLive")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon-sm" onClick={handleShare}>
+                <Share2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("share.copyLink")}</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* 右侧：主题、导出、分享 */}
-        <div className="flex items-center gap-2">
+        <div className="hidden min-w-0 items-center gap-2 sm:ml-auto sm:flex">
           {/* 渲染时间 */}
           {lastRenderTime > 0 && (
             <span className="text-xs text-muted-foreground hidden md:inline">
@@ -302,10 +389,14 @@ export function Toolbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-8 px-0 sm:w-auto sm:px-2.5"
+                  >
                     <Palette className="size-4" />
                     <span className="hidden sm:inline capitalize">{diagramTheme}</span>
-                    <ChevronDown className="size-3 opacity-50" />
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
@@ -332,10 +423,15 @@ export function Toolbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={isExporting}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-8 px-0 sm:w-auto sm:px-2.5"
+                    disabled={isExporting}
+                  >
                     <Download className="size-4" />
                     <span className="hidden sm:inline">{t("toolbar.export")}</span>
-                    <ChevronDown className="size-3 opacity-50" />
+                    <ChevronDown className="hidden size-3 opacity-50 sm:block" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
@@ -391,7 +487,12 @@ export function Toolbar() {
           {/* 分享 */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={handleShare}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-8 px-0 sm:w-auto sm:px-2.5"
+                onClick={handleShare}
+              >
                 <Share2 className="size-4" />
                 <span className="hidden sm:inline">{t("toolbar.share")}</span>
               </Button>
@@ -399,70 +500,79 @@ export function Toolbar() {
             <TooltipContent>{t("share.copyLink")}</TooltipContent>
           </Tooltip>
 
-          <div className="h-6 w-px bg-border" />
+          <div className="hidden h-6 w-px shrink-0 bg-border sm:block" />
 
           {/* 语言切换 */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm">
-                    <Languages className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{t("toolbar.language")}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={currentLang}
-                onValueChange={handleLanguageChange}
-              >
-                {languages.map((lang) => (
-                  <DropdownMenuRadioItem key={lang.code} value={lang.code}>
-                    <span className="mr-2">{lang.flag}</span>
-                    {lang.name}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="hidden sm:block">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm">
+                      <Languages className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{t("toolbar.language")}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={currentLang}
+                  onValueChange={handleLanguageChange}
+                >
+                  {languages.map((lang) => (
+                    <DropdownMenuRadioItem key={lang.code} value={lang.code}>
+                      <span className="mr-2">{lang.flag}</span>
+                      {lang.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* UI 主题切换 */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm">
-                    {UI_THEME_ICONS[uiTheme]}
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{t("toolbar.toggleTheme")}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={uiTheme}
-                onValueChange={(v) => handleUIThemeChange(v as UITheme)}
-              >
-                {UI_THEME_OPTIONS.map((option) => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
-                    {UI_THEME_ICONS[option.value]}
-                    {option.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="hidden sm:block">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm">
+                      {UI_THEME_ICONS[uiTheme]}
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{t("toolbar.toggleTheme")}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup
+                  value={uiTheme}
+                  onValueChange={(v) => handleUIThemeChange(v as UITheme)}
+                >
+                  {UI_THEME_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option.value} value={option.value}>
+                      {UI_THEME_ICONS[option.value]}
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* GitHub 链接 */}
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="hidden sm:inline-flex"
+                asChild
+              >
                 <a
                   href="https://github.com/Latias94/merman"
                   target="_blank"

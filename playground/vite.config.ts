@@ -16,6 +16,11 @@ export default defineConfig({
   build: {
     outDir: "dist",
     target: "esnext",
+    rolldownOptions: {
+      output: {
+        codeSplitting: true,
+      },
+    },
   },
   optimizeDeps: {
     exclude: ["@merman/web"],

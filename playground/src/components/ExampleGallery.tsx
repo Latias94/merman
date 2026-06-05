@@ -67,16 +67,16 @@ export function ExampleGallery() {
         </Button>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden md:flex-row">
         {/* 左侧分类 */}
-        <div className="w-48 border-r p-2 flex-shrink-0 overflow-y-auto">
-          <nav className="space-y-1">
+        <div className="scrollbar-thin shrink-0 overflow-x-auto border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
+          <nav className="flex gap-1 md:block md:space-y-1">
             {categories.map((category) => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
                 className={cn(
-                  "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors text-left",
+                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
                   selectedCategory === category
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -85,7 +85,7 @@ export function ExampleGallery() {
                 <Code className="size-4 flex-shrink-0" />
                 <span>{getCategoryLabel(category)}</span>
                 {selectedCategory === category && (
-                  <ChevronRight className="size-4 ml-auto" />
+                  <ChevronRight className="hidden size-4 ml-auto md:block" />
                 )}
               </button>
             ))}

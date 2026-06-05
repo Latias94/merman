@@ -14,6 +14,10 @@
     "toggleTheme": "切换主题",
     "viewSource": "在 GitHub 上查看源码"
   },
+  "layout": {
+    "editor": "编辑",
+    "preview": "预览"
+  },
   "export": {
     "title": "导出",
     "svg": "导出 SVG",
