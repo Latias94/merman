@@ -18,12 +18,6 @@ const THEME_COLOR_LIMIT: usize = 8;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
 
-fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
-    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
-        .unwrap_or(16.0)
-        .max(1.0)
-}
-
 #[derive(Debug, Clone, Copy)]
 struct CommitPosition {
     x: f64,
@@ -592,7 +586,9 @@ pub fn layout_gitgraph_diagram_typed(
         .map(|s| s.trim().trim_end_matches(';').trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
-    let font_size = cfg_font_size(effective_config);
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
 
     let label_style = TextStyle {
         font_family: Some(font_family),
@@ -853,7 +849,12 @@ mod tests {
             },
         });
 
-        assert_eq!(cfg_font_size(&cfg), 16.0);
+        assert_eq!(
+            config_f64_css_px(&cfg, &["themeVariables", "fontSize"])
+                .unwrap_or(16.0)
+                .max(1.0),
+            16.0
+        );
     }
 
     #[test]
@@ -865,7 +866,12 @@ mod tests {
             },
         });
 
-        assert_eq!(cfg_font_size(&cfg), 24.0);
+        assert_eq!(
+            config_f64_css_px(&cfg, &["themeVariables", "fontSize"])
+                .unwrap_or(16.0)
+                .max(1.0),
+            24.0
+        );
     }
 
     #[test]

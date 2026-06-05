@@ -10,18 +10,14 @@ pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
 
-fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
-    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(cfg, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0)
-}
-
 fn kanban_text_style(effective_config: &serde_json::Value) -> TextStyle {
     let font_family = cfg_string(effective_config, &["fontFamily"])
         .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = cfg_font_size(effective_config);
+    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
     TextStyle {
         font_family,
         font_size,
