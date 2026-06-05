@@ -10,7 +10,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Added `merman-rustdoc`, a proc-macro crate that renders Mermaid fences and `include_mmd!` files in
   rustdoc as inline headless SVG without injecting Mermaid JavaScript. The macro supports
-  `pipeline`, `fail`, and `source` options for initial output customization.
+  `scope`, `pipeline`, `fail`, `source`, `sanitize`, and `theme` options for initial output
+  customization, including recursive inline item processing with `scope = "tree"`, rustdoc
+  light/dark theme switching by default, fixed build-time Mermaid themes with source-level config
+  precedence, and strict SVG safety checks by default.
 
 ## [0.7.0] - 2026-06-05
 
