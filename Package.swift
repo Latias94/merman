@@ -20,7 +20,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "MermanFFI",
-            path: "platforms/apple/Merman.xcframework"
+            url: "https://github.com/Latias94/merman/releases/download/v0.7.0-alpha.1/Merman.xcframework-v0.7.0-alpha.1.zip",
+            checksum: "cdc6459fe727aae56a72504e3524cc0f1c69c6dc59fd8054b639224ba0244e1e"
         ),
         .target(
             name: "Merman",
