@@ -617,9 +617,11 @@ centralized the SVG root font-size rule where `themeVariables.fontSize` accepts
 CSS px strings while root `fontSize` stays numeric-only, via
 `config_theme_font_size_css_or_root_number_px`, and reused
 `config_font_family_css` for the shared info-like CSS root font-family fallback.
-Flowchart, Class, and Sequence still keep diagram-specific font precedence
-rules. The remaining ARCH-013 work is broader: replace scattered raw JSON config
-lookups with narrow per-family presentation/config views.
+Timeline render text now also uses the shared theme/root px font-size fallback,
+while its root-only layout probe remains local. Flowchart, Class, and Sequence
+still keep diagram-specific font precedence rules. The remaining ARCH-013 work
+is broader: replace scattered raw JSON config lookups with narrow per-family
+presentation/config views.
 
 Related decisions:
 
