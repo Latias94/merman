@@ -121,6 +121,24 @@
 //! - Recursive processing for external `mod name;` files.
 //! - Running Mermaid JavaScript in the browser.
 //! - Fetching Mermaid source or assets from remote URLs.
+//!
+//! # Crate-level docs
+//!
+//! `merman-rustdoc` rewrites item-level outer docs. It does not rewrite crate-level inner docs
+//! written with `//!`.
+//!
+//! Put crate-level diagrams on a public module or item instead:
+//!
+//! ````rust
+//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+//! /// Crate architecture.
+//! ///
+//! /// ```mermaid
+//! /// flowchart TD
+//! ///   Crate --> Module
+//! /// ```
+//! pub mod architecture {}
+//! ````
 
 extern crate proc_macro;
 

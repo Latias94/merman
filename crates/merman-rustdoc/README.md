@@ -472,6 +472,24 @@ pub mod api {
 
 External module files are not traversed by the proc macro.
 
+### Can I use this on crate-level `//!` docs?
+
+No. `merman-rustdoc` rewrites item-level outer docs. It does not rewrite crate-level inner docs
+written with `//!`.
+
+Put crate-level diagrams on a public module or item instead:
+
+````rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+/// Crate architecture.
+///
+/// ```mermaid
+/// flowchart TD
+///   Crate --> Module
+/// ```
+pub mod architecture {}
+````
+
 ## Why Build-Time SVG
 
 Many rustdoc Mermaid integrations inject Mermaid JavaScript into the generated page. That works, but
