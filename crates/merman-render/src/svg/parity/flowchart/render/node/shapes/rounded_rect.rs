@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::flowchart::flowchart_config_look;
+use crate::svg::parity::flowchart::flowchart_config_diagram_look;
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::{arc_points, path_from_points};
@@ -67,7 +67,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     ));
     let path_data = path_from_points(&pts);
 
-    let rough_paths = if flowchart_config_look(ctx.config) == "handDrawn" {
+    let rough_paths = if flowchart_config_diagram_look(ctx.config).is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,

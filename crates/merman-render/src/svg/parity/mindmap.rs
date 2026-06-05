@@ -210,10 +210,8 @@ fn mindmap_viewport_bounds_from_layout(
 fn mindmap_model_look(model_look: &str, config: &merman_core::MermaidConfig) -> String {
     let model_look = model_look.trim();
     if model_look.is_empty() || model_look == "default" {
-        config
-            .get_str("look")
-            .unwrap_or("classic")
-            .trim()
+        crate::config::mermaid_config_diagram_look(config)
+            .as_str()
             .to_string()
     } else {
         model_look.to_string()
@@ -361,7 +359,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     }
 
     let theme = config_string(effective_config, &["theme"]).unwrap_or_default();
-    let look = config_string(effective_config, &["look"]).unwrap_or_default();
+    let look = config_diagram_look(effective_config);
     let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
         .map(|v| v.round() as i64)
         .filter(|v| *v > 0)
@@ -403,7 +401,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
             &format!("cScaleLabel{}", i),
             default_mindmap_label(i),
         );
-        let sw = if look == "neo" {
+        let sw = if look.is_neo() {
             (10_i64 - (section * 2)).max(2)
         } else {
             17_i64 - 3_i64 * (i as i64)

@@ -30,6 +30,16 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub timing_enabled: bool,
 }
 
+impl FlowchartNodeRenderCommon<'_> {
+    pub(super) fn look_is_neo(&self) -> bool {
+        self.look == "neo"
+    }
+
+    pub(super) fn look_is_hand_drawn(&self) -> bool {
+        self.look == "handDrawn"
+    }
+}
+
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeLabelState<'a> {
     pub text: &'a str,
     pub label_type: &'a str,

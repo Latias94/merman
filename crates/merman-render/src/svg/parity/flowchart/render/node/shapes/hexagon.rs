@@ -15,7 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
 ) {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
-    let f = if common.look == "neo" { 3.5 } else { 4.0 };
+    let f = if common.look_is_neo() { 3.5 } else { 4.0 };
     let m = h / f;
 
     let pts: Vec<(f64, f64)> = vec![
@@ -28,7 +28,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_hexagon(
     ];
     let path_data = path_from_points(&pts);
 
-    let rough_paths = if common.look == "handDrawn" {
+    let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,

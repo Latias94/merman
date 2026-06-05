@@ -96,7 +96,7 @@ pub(super) fn state_markers(
     let diagram_id = escape_xml(diagram_id);
     let transition_color = theme.transition_color.as_str();
 
-    if theme.common.look == "neo" {
+    if theme.common.is_neo() {
         let _ = write!(
             out,
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,

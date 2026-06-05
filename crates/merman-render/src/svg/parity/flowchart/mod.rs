@@ -54,10 +54,13 @@ pub(super) fn render_flowchart_v2_debug_svg(
 pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
     config: &merman_core::MermaidConfig,
 ) -> &str {
-    config
-        .get_str("look")
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or("classic")
+    flowchart_config_diagram_look(config).as_str()
+}
+
+pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
+    config: &merman_core::MermaidConfig,
+) -> crate::config::DiagramLook<'_> {
+    crate::config::mermaid_config_diagram_look(config)
 }
 
 // Entry points (split from parity.rs).

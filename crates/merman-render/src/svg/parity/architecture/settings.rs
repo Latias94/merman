@@ -1,6 +1,6 @@
 use crate::text::TextStyle;
 
-use super::super::{SvgTheme, config_f64, config_f64_css_px};
+use super::super::{SvgTheme, config_f64};
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
@@ -33,10 +33,9 @@ impl ArchitectureRenderSettings {
         let arch_font_size_px = config_f64(effective_config, &["architecture", "fontSize"])
             .unwrap_or(16.0)
             .max(1.0);
-        let svg_font_size_px = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_f64(effective_config, &["fontSize"]))
-            .unwrap_or(16.0)
-            .max(1.0);
+        let svg_font_size_px =
+            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+                .max(1.0);
         let use_max_width = effective_config
             .get("architecture")
             .and_then(|v| v.get("useMaxWidth"))

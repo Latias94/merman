@@ -14,7 +14,7 @@ fn write_stacked_rectangle_rough_path_group(
     fill_d: &str,
     stroke_d: &str,
 ) {
-    if common.look == "handDrawn" {
+    if common.look_is_hand_drawn() {
         let _ = write!(
             out,
             r#"<g><path d="{}" stroke="none" stroke-width="0" fill="{}"{} /><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"{} /></g>"#,

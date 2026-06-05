@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px, config_string_or_first_array};
+use crate::config::config_f64;
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -922,15 +922,10 @@ pub fn layout_block_diagram_typed(
 ) -> Result<BlockDiagramLayout> {
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {
-        font_family: config_string_or_first_array(
+        font_family: Some(crate::config::config_font_family_or_first_array_css(
             effective_config,
-            &["themeVariables", "fontFamily"],
-        )
-        .or_else(|| config_string_or_first_array(effective_config, &["fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
-        font_size: config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-            .unwrap_or(16.0)
+        )),
+        font_size: crate::config::config_theme_or_root_font_size_px(effective_config, 16.0)
             .max(1.0),
         font_weight: None,
     };

@@ -248,9 +248,8 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
-    let look = config_string(effective_config, &["look"]).unwrap_or_default();
-    let look = look.trim();
-    let look = if look.is_empty() { "classic" } else { look };
+    let look = config_diagram_look(effective_config);
+    let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
     let node_id_prefix = if diagram_id.is_empty() {
         String::new()
@@ -271,12 +270,10 @@ pub(super) fn render_requirement_diagram_svg_model(
         .collect();
 
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0);
+    let font_family = Some(crate::config::config_font_family_or_first_array_css(
+        effective_config,
+    ));
+    let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
     let hand_drawn_seed = effective_config
         .get("handDrawnSeed")
         .and_then(|v| v.as_u64())

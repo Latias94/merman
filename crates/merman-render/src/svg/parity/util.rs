@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 use std::str::FromStr as _;
 
-pub(super) use crate::config::{config_f64, config_f64_css_px};
+pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
 pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     let mut cur = cfg;
@@ -76,7 +76,9 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn look(&self) -> String {
-        config_string(self.effective_config, &["look"]).unwrap_or_else(|| "classic".to_string())
+        crate::config::config_diagram_look(self.effective_config)
+            .as_str()
+            .to_string()
     }
 
     pub(super) fn css_value(&self, key: &str, fallback: &str) -> String {
@@ -89,9 +91,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn font_size_px(&self) -> f64 {
-        config_f64_css_px(self.effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_f64(self.effective_config, &["fontSize"]))
-            .unwrap_or(16.0)
+        crate::config::config_theme_font_size_css_or_root_number_px(self.effective_config, 16.0)
             .max(1.0)
     }
 }

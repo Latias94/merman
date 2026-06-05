@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px, config_string_or_first_array};
+use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
@@ -217,13 +217,10 @@ pub fn layout_requirement_diagram_typed(
         .or_else(|| config_f64(effective_config, &["flowchart", "rankSpacing"]))
         .unwrap_or(50.0);
 
-    let font_family =
-        config_string_or_first_array(effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string_or_first_array(effective_config, &["fontFamily"]))
-            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0);
+    let font_family = Some(crate::config::config_font_family_or_first_array_css(
+        effective_config,
+    ));
+    let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
     let html_style_regular = TextStyle {
         font_family: font_family.clone(),
         font_size,

@@ -85,24 +85,14 @@ fn info_css_parts_with_font_size_source(
 ) -> InfoCssParts {
     let id = escape_xml(diagram_id);
 
-    // Mermaid's legacy `fontFamily` config is migrated into `themeVariables.fontFamily` during
-    // initialization (when `themeVariables.fontFamily` is unset). Prefer the theme variable when
-    // present so our emitted root CSS matches upstream baselines.
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-    let font_family = normalize_css_font_family(font_family.as_str());
-    let font_family = if font_family.is_empty() {
-        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-    } else {
-        font_family
-    };
-    let theme_font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"]);
+    let font_family = crate::config::config_font_family_css(effective_config);
     let font_size = match font_size_source {
         InfoCssFontSizeSource::ThemeThenTopLevel => {
-            theme_font_size.or_else(|| config_f64(effective_config, &["fontSize"]))
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
         }
-        InfoCssFontSizeSource::ThemeOnly => theme_font_size,
+        InfoCssFontSizeSource::ThemeOnly => {
+            config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        }
     }
     .unwrap_or(16.0)
     .max(1.0);
@@ -184,10 +174,9 @@ pub(super) fn architecture_css_with_config(
     let id = escape_xml(diagram_id);
 
     let font_family = SvgTheme::new(effective_config).font_family_css();
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let font_size =
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+            .max(1.0);
 
     let text_color = theme_color(effective_config, "textColor", "#333");
     let line_color = theme_color(effective_config, "lineColor", "#333333");
@@ -326,8 +315,8 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     )
     .unwrap_or_else(|| edge_label_background.clone());
     let node_border = option("nodeBorder", "#9370DB");
-    let look = config_string(effective_config, &["look"]).unwrap_or_default();
-    let relationship_line_stroke_width = if look.trim() == "neo" {
+    let look = config_diagram_look(effective_config);
+    let relationship_line_stroke_width = if look.is_neo() {
         option("strokeWidth", "1")
     } else {
         "1px".to_string()
@@ -392,7 +381,7 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
         id,
         requirement_edge_label_background
     );
-    if look.trim() == "neo" {
+    if look.is_neo() {
         let _ = write!(
             &mut out,
             r#"#{} .node .neo-node{{stroke:{};}}#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
@@ -410,8 +399,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
     let id = escape_xml(diagram_id);
     let theme = SvgTheme::new(effective_config);
     let font = theme.font_family_css();
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
         .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);

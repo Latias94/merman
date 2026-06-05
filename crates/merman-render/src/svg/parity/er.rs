@@ -408,10 +408,8 @@ pub(super) fn render_er_diagram_svg_model(
         .get("layout")
         .and_then(|v| v.as_str())
         .is_some_and(|s| s.eq_ignore_ascii_case("elk"));
-    let data_look = config_string(effective_config, &["look"])
-        .map(|look| look.trim().to_string())
-        .filter(|look| !look.is_empty())
-        .unwrap_or_else(|| "classic".to_string());
+    let data_look = config_diagram_look(effective_config);
+    let data_look = data_look.as_str();
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
@@ -428,8 +426,7 @@ pub(super) fn render_er_diagram_svg_model(
     let font_family = er_font_family_css(effective_config);
     // Mermaid ER unified output inherits the root SVG font-size, so `themeVariables.fontSize`
     // wins when present (including Mermaid's common `"NNpx"` form).
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
         .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0)
         .max(1.0);

@@ -2,6 +2,7 @@ use serde_json::Value;
 
 pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
     r#""trebuchet ms",verdana,arial,sans-serif"#;
+pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut cur = cfg;
@@ -46,6 +47,47 @@ pub(crate) fn config_string_vec(cfg: &Value, path: &[&str]) -> Vec<String> {
 
 pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct DiagramLook<'a> {
+    value: &'a str,
+}
+
+impl<'a> DiagramLook<'a> {
+    pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
+        let value = raw
+            .map(str::trim)
+            .filter(|look| !look.is_empty())
+            .unwrap_or(DEFAULT_DIAGRAM_LOOK);
+        Self { value }
+    }
+
+    pub(crate) fn as_str(&self) -> &'a str {
+        self.value
+    }
+
+    pub(crate) fn is_neo(&self) -> bool {
+        self.value == "neo"
+    }
+
+    pub(crate) fn is_hand_drawn(&self) -> bool {
+        self.value == "handDrawn"
+    }
+}
+
+impl std::fmt::Display for DiagramLook<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.value)
+    }
+}
+
+pub(crate) fn config_diagram_look(cfg: &Value) -> DiagramLook<'_> {
+    DiagramLook::from_raw(value_at(cfg, &["look"]).and_then(Value::as_str))
+}
+
+pub(crate) fn mermaid_config_diagram_look(cfg: &merman_core::MermaidConfig) -> DiagramLook<'_> {
+    DiagramLook::from_raw(cfg.get_str("look"))
 }
 
 pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
@@ -94,12 +136,41 @@ pub(crate) fn config_font_family_css(cfg: &Value) -> String {
     let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
         .or_else(|| config_string(cfg, &["fontFamily"]))
         .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    font_family_css(font_family)
+}
+
+pub(crate) fn config_font_family_or_first_array_css(cfg: &Value) -> String {
+    let font_family = config_string_or_first_array(cfg, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string_or_first_array(cfg, &["fontFamily"]))
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    font_family_css(font_family)
+}
+
+fn font_family_css(font_family: String) -> String {
     let font_family = normalize_css_font_family(font_family.as_str());
     if font_family.is_empty() {
         MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
     } else {
         font_family
     }
+}
+
+pub(crate) fn config_theme_or_root_font_size_px_opt(cfg: &Value) -> Option<f64> {
+    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(cfg, &["fontSize"]))
+}
+
+pub(crate) fn config_theme_or_root_font_size_px(cfg: &Value, default: f64) -> f64 {
+    config_theme_or_root_font_size_px_opt(cfg).unwrap_or(default)
+}
+
+pub(crate) fn config_theme_font_size_css_or_root_number_px_opt(cfg: &Value) -> Option<f64> {
+    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(cfg, &["fontSize"]))
+}
+
+pub(crate) fn config_theme_font_size_css_or_root_number_px(cfg: &Value, default: f64) -> f64 {
+    config_theme_font_size_css_or_root_number_px_opt(cfg).unwrap_or(default)
 }
 
 pub(crate) fn json_f64(value: &Value) -> Option<f64> {
@@ -269,6 +340,24 @@ mod tests {
     }
 
     #[test]
+    fn config_diagram_look_trims_and_defaults_to_classic() {
+        assert_eq!(
+            config_diagram_look(&json!({ "look": " neo " })).as_str(),
+            "neo"
+        );
+        assert!(config_diagram_look(&json!({ "look": "neo" })).is_neo());
+        assert!(config_diagram_look(&json!({ "look": "handDrawn" })).is_hand_drawn());
+        assert_eq!(
+            config_diagram_look(&json!({})).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
+        assert_eq!(
+            config_diagram_look(&json!({ "look": "" })).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
+    }
+
+    #[test]
     fn json_f64_css_px_accepts_plain_and_css_numeric_strings() {
         assert_eq!(json_f64_css_px(&json!("24")), Some(24.0));
         assert_eq!(json_f64_css_px(&json!("24px")), Some(24.0));
@@ -346,6 +435,91 @@ mod tests {
                 }
             })),
             MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn config_font_family_or_first_array_css_uses_theme_then_legacy_then_default() {
+        assert_eq!(
+            config_font_family_or_first_array_css(&json!({
+                "fontFamily": ["Courier, monospace", "Ignored Sans"],
+                "themeVariables": {
+                    "fontFamily": ["\"IBM Plex Sans\", Arial, sans-serif", "Ignored Sans"]
+                }
+            })),
+            r#""IBM Plex Sans",Arial,sans-serif"#
+        );
+        assert_eq!(
+            config_font_family_or_first_array_css(&json!({
+                "fontFamily": ["Courier, monospace", "Ignored Sans"]
+            })),
+            "Courier,monospace"
+        );
+        assert_eq!(
+            config_font_family_or_first_array_css(&json!({
+                "fontFamily": []
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn config_theme_or_root_font_size_px_uses_theme_then_legacy_then_default() {
+        assert_eq!(
+            config_theme_or_root_font_size_px(
+                &json!({
+                    "fontSize": "18px",
+                    "themeVariables": {
+                        "fontSize": "24px"
+                    }
+                }),
+                16.0,
+            ),
+            24.0
+        );
+        assert_eq!(
+            config_theme_or_root_font_size_px(
+                &json!({
+                    "fontSize": "18px"
+                }),
+                16.0,
+            ),
+            18.0
+        );
+        assert_eq!(config_theme_or_root_font_size_px(&json!({}), 16.0), 16.0);
+    }
+
+    #[test]
+    fn config_theme_font_size_css_or_root_number_px_keeps_root_number_semantics() {
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": 18,
+                    "themeVariables": {
+                        "fontSize": "24px"
+                    }
+                }),
+                16.0,
+            ),
+            24.0
+        );
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": "18"
+                }),
+                16.0,
+            ),
+            18.0
+        );
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": "18px"
+                }),
+                16.0,
+            ),
+            16.0
         );
     }
 }

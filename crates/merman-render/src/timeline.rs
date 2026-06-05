@@ -28,10 +28,8 @@ fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
         .or_else(|| cfg_string(effective_config, &["fontFamily"]))
         .map(|s| s.trim().trim_end_matches(';').trim().to_string())
         .filter(|s| !s.is_empty());
-    let font_size = cfg_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| cfg_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let font_size =
+        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
     TextStyle {
         font_family,
         font_size,

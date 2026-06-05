@@ -78,6 +78,14 @@ Suggested direction:
 Create a root context entry point that points to the authoritative ADRs,
 alignment status, active workstreams, and current Mermaid baseline.
 
+Status note 2026-06-05:
+
+`CONTEXT.md` now exists at the repository root as the current-facing entry
+point. It records the active Mermaid baseline, major ownership boundaries,
+non-goals such as full ELK layout support, and the first documents to inspect.
+ARCH-001 is closed as a discoverability gap, though the file should stay current
+as future architecture lanes land.
+
 Related decisions:
 
 - ADR-0001 upstream baseline
@@ -125,6 +133,16 @@ Suggested direction:
 Create a pinned baseline registry module or manifest used by import, generation,
 reports, docs projections, detector/diagram registry naming, and generated
 override provenance.
+
+Status note 2026-06-05:
+
+This issue has been partially narrowed. `crates/merman-core/src/baseline.rs`
+now records the pinned Mermaid `11.15.0` constants and the legacy generated
+suffix explicitly, while detector and parser registries expose
+`for_pinned_mermaid_baseline` / `pinned_mermaid_baseline_*` constructors. The
+remaining work is not to invent the baseline seam from scratch, but to pay down
+stale `11.12.x` wording in historical docs/comments and remove production
+call-site reliance on deprecated versioned names where compatibility allows.
 
 Related decisions:
 
@@ -491,6 +509,15 @@ Suggested direction:
 Move emitted SVG geometry bounds into an independent parity module. Keep the
 ADR-0057 split between geometry layer and opt-in text layer.
 
+Status note 2026-06-05:
+
+This ownership move has landed. The emitted-bounds implementation now lives at
+`crates/merman-render/src/svg/parity/emitted_bounds.rs`, and State,
+Architecture, and GitGraph consume it through the SVG parity layer rather than a
+State-owned module. ARCH-011 is closed as an ownership-location issue; future
+work belongs under ARCH-010/ARCH-017 if the root viewport policy itself needs to
+be deepened.
+
 Related decisions:
 
 - ADR-0057 headless SVG text bbox
@@ -570,6 +597,31 @@ Suggested direction:
 
 Create a deeper effective config/theme view module. Diagram renderers should
 consume prepared settings in diagram terms rather than raw JSON paths.
+
+Status note 2026-06-05:
+
+The recent frontmatter/config and `look` pass narrowed this issue but did not
+close it. Top-level frontmatter diagram namespaces are now mapped into
+`config.<diagram>` where supported, and Flowchart, Class, ER, State, Mindmap,
+Requirement, and Kanban section SVG paths now have regression coverage for
+`look=neo` DOM/style consumption. Sequence is intentionally documented as a
+CSS/theme consumer rather than a diagram-wide `data-look` DOM contract. The
+first follow-up centralized render-side `look` interpretation in
+`DiagramLook` / `config_diagram_look`, replacing repeated raw JSON default/trim
+logic across SVG parity renderers. A second follow-up centralized the common
+`themeVariables.fontSize` then root `fontSize` pixel fallback in
+`config_theme_or_root_font_size_px`, plus moved Block/Requirement's matching
+font-family fallback onto `config_font_family_or_first_array_css` without
+dropping their array-first compatibility. A third follow-up separated and
+centralized the SVG root font-size rule where `themeVariables.fontSize` accepts
+CSS px strings while root `fontSize` stays numeric-only, via
+`config_theme_font_size_css_or_root_number_px`, and reused
+`config_font_family_css` for the shared info-like CSS root font-family fallback.
+Timeline render text now also uses the shared theme/root px font-size fallback,
+while its root-only layout probe remains local. Flowchart, Class, and Sequence
+still keep diagram-specific font precedence rules. The remaining ARCH-013 work
+is broader: replace scattered raw JSON config lookups with narrow per-family
+presentation/config views.
 
 Related decisions:
 

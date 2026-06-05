@@ -17,6 +17,10 @@ impl CommonCssTheme {
     pub(super) fn is_dark_theme(&self) -> bool {
         self.theme_name.contains("dark")
     }
+
+    pub(super) fn is_neo(&self) -> bool {
+        self.look == "neo"
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -217,7 +221,7 @@ impl<'a> PresentationTheme<'a> {
                 .optional_value("noteFontWeight")
                 .map(|font_weight| format!("font-weight:{};", font_weight))
                 .unwrap_or_default(),
-            label_box_filter: if self.common.look == "neo" {
+            label_box_filter: if self.common.is_neo() {
                 self.raw.css_value("dropShadow", "none")
             } else {
                 "none".to_string()
