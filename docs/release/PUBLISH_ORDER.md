@@ -1,11 +1,11 @@
 # Publish Order
 
 Status: draft for next workspace release.
-Last updated: 2026-05-30
+Last updated: 2026-06-05
 
 ## Version Decision
 
-Next release target: `0.7.0`.
+Next release target: `0.7.0-alpha.1`.
 
 Rationale:
 
@@ -14,11 +14,12 @@ Rationale:
 - `merman-render 0.6.0` on crates.io does not expose the local `ratex-math` feature needed by
   `merman-bindings-core`.
 - The workspace has added public binding crates and surfaces: `merman-bindings-core`,
-  `merman-ffi`, and `merman-uniffi`.
-- A minor bump is clearer than a patch bump for a pre-1.0 release that adds public package
-  capabilities.
+  `merman-ffi`, `merman-uniffi`, and `merman-rustdoc`.
+- An alpha pre-release lets the expanded 0.7 package graph, rustdoc integration, platform bindings,
+  and Mermaid 11.15 parity work ship for external testing before a final 0.7.0.
 
-Manifests were aligned to `0.7.0` in `WRV-030` before package verification.
+Manifests are aligned to `0.7.0-alpha.1` for this alpha release. Python package metadata uses the
+PEP 440 spelling `0.7.0a1`.
 
 ## Publish Order
 
@@ -31,10 +32,11 @@ Publish crates in dependency order:
 5. `merman-render`
 6. `merman-ascii`
 7. `merman`
-8. `merman-bindings-core`
-9. `merman-ffi`
-10. `merman-uniffi`
-11. `merman-cli`
+8. `merman-rustdoc`
+9. `merman-bindings-core`
+10. `merman-ffi`
+11. `merman-uniffi`
+12. `merman-cli`
 
 `roughr-merman` is versioned separately as `0.12.0`. Publish it before `merman-render` only if that
 crate changed and needs a new release.
@@ -70,6 +72,7 @@ For packaging, distinguish file-list checks from full crates.io dependency verif
 
 ```bash
 cargo package -p merman-render --allow-dirty
+cargo package -p merman-rustdoc --allow-dirty --list
 cargo package -p merman-bindings-core --allow-dirty --list
 cargo package -p merman-ffi --allow-dirty --list
 cargo package -p merman-uniffi --allow-dirty --list
@@ -80,23 +83,25 @@ one step farther down the dependency chain.
 
 ## Current Package Matrix
 
-As of 2026-05-30:
+As of 2026-06-05:
 
 | Crate | Gate | Current result |
 | --- | --- | --- |
 | `dugong-graphlib` | `cargo package -p dugong-graphlib --allow-dirty` | Pass |
 | `manatee` | `cargo package -p manatee --allow-dirty` | Pass |
 | `merman-core` | `cargo package -p merman-core --allow-dirty` | Pass |
-| `dugong` | `cargo package -p dugong --allow-dirty` | Blocked until `dugong-graphlib 0.7.0` is published |
-| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.7.0` is published |
+| `dugong` | `cargo package -p dugong --allow-dirty` | Blocked until `dugong-graphlib 0.7.0-alpha.1` is published |
+| `merman-render` | `cargo package -p merman-render --allow-dirty` | Blocked until `dugong 0.7.0-alpha.1` is published |
 | `merman-ascii` | `cargo package -p merman-ascii --allow-dirty --list` | Pass |
 | `merman` | `cargo package -p merman --allow-dirty --list` | Pass |
+| `merman-rustdoc` | `cargo package -p merman-rustdoc --allow-dirty --list` | Pass |
+| `merman-rustdoc` | `cargo package -p merman-rustdoc --allow-dirty` | Blocked until `merman 0.7.0-alpha.1` is published |
 | `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty --list` | Pass |
-| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty` | Blocked until `merman 0.7.0` is published |
+| `merman-bindings-core` | `cargo package -p merman-bindings-core --allow-dirty` | Blocked until `merman 0.7.0-alpha.1` is published |
 | `merman-ffi` | `cargo package -p merman-ffi --allow-dirty --list` | Pass |
-| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0` is published |
+| `merman-ffi` | `cargo package -p merman-ffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0-alpha.1` is published |
 | `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty --list` | Pass |
-| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0` is published |
+| `merman-uniffi` | `cargo package -p merman-uniffi --allow-dirty` | Blocked until `merman-bindings-core 0.7.0-alpha.1` is published |
 | `merman-cli` | `cargo package -p merman-cli --allow-dirty --list` | Pass |
 
 ## Publish Guardrail

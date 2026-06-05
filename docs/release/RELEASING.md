@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-05-31
+Last updated: 2026-06-05
 
 Merman releases are tag-driven. Push a `v*` tag whose version matches every package manifest that
 will publish in that release.
@@ -39,7 +39,8 @@ Before tagging, verify these versions match the intended release:
 - `platforms/flutter/pubspec.yaml` `version`
 - `platforms/web/package.json` `version`
 - `platforms/android/build.gradle.kts` `version`
-- `platforms/python/merman/pyproject.toml` `project.version`
+- `platforms/python/merman/pyproject.toml` `project.version`; pre-releases should use the PEP 440
+  spelling, for example `0.7.0a1` for workspace release `0.7.0-alpha.1`
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 
@@ -84,8 +85,8 @@ generated Android, iOS, macOS, Windows, and Linux native artifacts and then publ
 ## Tag And Push
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.7.0-alpha.1
+git push origin v0.7.0-alpha.1
 ```
 
 The Apple workflow patches `Package.swift` on the release tag so SwiftPM consumers can resolve the
