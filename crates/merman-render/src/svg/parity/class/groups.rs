@@ -23,6 +23,7 @@ pub(super) struct ClassClusterEdgeGroupsRenderContext<'a> {
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) edge_use_html_labels: bool,
+    pub(super) look: &'a str,
     pub(super) timing_enabled: bool,
 }
 
@@ -55,6 +56,7 @@ pub(super) fn render_class_cluster_edge_groups(
                 content_ty: ctx.content_ty,
                 bounds_dx,
                 bounds_dy,
+                look: ctx.look,
                 timing_enabled: ctx.timing_enabled,
             },
         );
@@ -77,6 +79,7 @@ pub(super) fn render_class_cluster_edge_groups(
             bounds_dx,
             bounds_dy,
             edge_use_html_labels: ctx.edge_use_html_labels,
+            look: ctx.look,
             timing_enabled: ctx.timing_enabled,
         },
     );
@@ -112,6 +115,7 @@ pub(super) fn render_class_split_edge_groups(
             bounds_dx,
             bounds_dy,
             edge_use_html_labels: ctx.edge_use_html_labels,
+            look: ctx.look,
             timing_enabled: ctx.timing_enabled,
         },
     );

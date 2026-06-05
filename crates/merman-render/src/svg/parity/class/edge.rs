@@ -32,6 +32,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub bounds_dx: f64,
     pub bounds_dy: f64,
     pub edge_use_html_labels: bool,
+    pub look: &'a str,
     pub timing_enabled: bool,
 }
 
@@ -357,13 +358,14 @@ pub(super) fn render_class_edge_groups(
 
         let _ = write!(
             out,
-            r#"<path d="{}" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
+            r#"<path d="{}" id="{}-{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
             escape_attr_display(&d),
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_class_buf),
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_points_b64_buf),
+            escape_attr_display(ctx.look),
         );
         if !e.id.starts_with("edgeNote") {
             if let Some(rel) = ctx.relations_by_id.get(e.id.as_str()) {

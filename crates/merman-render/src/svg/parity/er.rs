@@ -408,6 +408,10 @@ pub(super) fn render_er_diagram_svg_model(
         .get("layout")
         .and_then(|v| v.as_str())
         .is_some_and(|s| s.eq_ignore_ascii_case("elk"));
+    let data_look = config_string(effective_config, &["look"])
+        .map(|look| look.trim().to_string())
+        .filter(|look| !look.is_empty())
+        .unwrap_or_else(|| "classic".to_string());
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
@@ -809,12 +813,13 @@ pub(super) fn render_er_diagram_svg_model(
 
             let _ = write!(
                 &mut out,
-                r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="classic""#,
+                r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
                 escape_xml(&d),
                 escape_xml(&edge_svg_id),
                 escape_xml(&line_classes),
                 escape_xml(&edge_dom_id),
-                escape_xml(&data_points)
+                escape_xml(&data_points),
+                escape_xml(&data_look)
             );
             if let Some(m) = &e.start_marker {
                 let marker = er_unified_marker_id(diagram_id, diagram_type, m);
@@ -1053,10 +1058,11 @@ pub(super) fn render_er_diagram_svg_model(
         };
         let _ = write!(
             &mut out,
-            r#"<g id="{}-{}" class="{}" data-look="classic" transform="translate({}, {})">"#,
+            r#"<g id="{}-{}" class="{}" data-look="{}" transform="translate({}, {})">"#,
             escape_xml(diagram_id),
             escape_xml(&entity.id),
             escape_xml(&group_class),
+            escape_xml(&data_look),
             fmt(cx),
             fmt(cy)
         );

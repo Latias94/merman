@@ -106,6 +106,29 @@ classDiagram
 }
 
 #[test]
+fn class_svg_uses_configured_look_in_dom_attributes() {
+    let svg = render_class_svg_from_text(
+        r#"%%{init: {"look": "neo"}}%%
+classDiagram
+namespace Zoo {
+  class Animal
+  class Keeper
+}
+Animal --> Keeper
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"data-look="neo""#),
+        "expected class SVG to propagate configured look: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"data-look="classic""#),
+        "configured class look must not leave classic DOM attributes: {svg}"
+    );
+}
+
+#[test]
 fn class_svg_honors_numeric_stroke_width_theme_css() {
     let svg = render_class_svg_from_text(
         r##"%%{init: {"themeVariables": {"mainBkg": "#112233", "nodeBorder": "#445566", "lineColor": "#778899", "strokeWidth": 7}}}%%

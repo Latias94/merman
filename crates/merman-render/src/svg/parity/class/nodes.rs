@@ -131,6 +131,7 @@ pub(super) fn render_class_nodes(
                 parent,
                 &clusters_by_id,
                 ctx.diagram_id,
+                ctx.settings.look.as_str(),
             );
         }
 
@@ -450,6 +451,7 @@ fn render_class_split_edges_for_namespace(
             edge_ctx.content_ty
         },
         edge_use_html_labels: edge_ctx.edge_use_html_labels,
+        look: edge_ctx.look,
         timing_enabled: edge_ctx.timing_enabled,
     };
     render_class_split_edge_groups(
@@ -512,6 +514,7 @@ fn render_class_namespace_root(
             content_ty: ctx.content_ty,
             bounds_dx: 0.0,
             bounds_dy: 0.0,
+            look: ctx.settings.look.as_str(),
             timing_enabled: ctx.timing_enabled,
         },
         ns_id,
@@ -650,6 +653,7 @@ fn render_class_node_id(
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
                 use_html_labels: settings.diagram_use_html_labels,
+                look: settings.look.as_str(),
                 timing_enabled: ctx.timing_enabled,
             },
         );
@@ -673,6 +677,7 @@ fn render_class_node_id(
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
                 line_height: settings.line_height,
+                look: settings.look.as_str(),
             },
         );
         return;
@@ -697,7 +702,8 @@ fn render_class_node_id(
         .trim();
     let node_stroke_dasharray = node_inline_styles.stroke_dasharray.unwrap_or("0 0");
 
-    let node_link_open = render_class_node_shell_open(out, node, position, ctx.diagram_id);
+    let node_link_open =
+        render_class_node_shell_open(out, node, position, ctx.diagram_id, settings.look.as_str());
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {
             out,

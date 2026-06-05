@@ -141,6 +141,7 @@ pub(super) fn render_class_node_shell_open(
     node: &ClassSvgNode,
     position: ClassNodeRenderPosition,
     diagram_id: &str,
+    look: &str,
 ) -> bool {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -158,7 +159,9 @@ pub(super) fn render_class_node_shell_open(
 
     if let Some(link) = link {
         out.push_str("<a");
-        out.push_str(r#" data-look="classic""#);
+        out.push_str(r#" data-look=""#);
+        super::super::util::escape_attr_into(out, look);
+        out.push('"');
         if include_href {
             out.push_str(r#" xlink:href=""#);
             super::super::util::escape_attr_into(out, link);
@@ -183,7 +186,9 @@ pub(super) fn render_class_node_shell_open(
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
     if link.is_none() {
-        out.push_str(r#" data-look="classic""#);
+        out.push_str(r#" data-look=""#);
+        super::super::util::escape_attr_into(out, look);
+        out.push('"');
     }
     if has_tooltip {
         out.push_str(r#" title=""#);

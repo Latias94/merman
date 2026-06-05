@@ -14,6 +14,7 @@ pub(super) struct ClassRenderSettings {
     pub(super) hide_empty_members_box: bool,
     pub(super) default_node_fill: String,
     pub(super) default_node_stroke: String,
+    pub(super) look: String,
 }
 
 impl ClassRenderSettings {
@@ -84,6 +85,10 @@ impl ClassRenderSettings {
                     config_string(effective_config, &["themeVariables", "primaryBorderColor"])
                 })
                 .unwrap_or_else(|| "#9370DB".to_string());
+        let look = config_string(effective_config, &["look"])
+            .map(|look| look.trim().to_string())
+            .filter(|look| !look.is_empty())
+            .unwrap_or_else(|| "classic".to_string());
 
         Self {
             diagram_use_html_labels,
@@ -99,6 +104,7 @@ impl ClassRenderSettings {
             hide_empty_members_box,
             default_node_fill,
             default_node_stroke,
+            look,
         }
     }
 }

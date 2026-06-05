@@ -87,6 +87,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub content_ty: f64,
     pub bounds_dx: f64,
     pub bounds_dy: f64,
+    pub look: &'a str,
     pub timing_enabled: bool,
 }
 
@@ -190,9 +191,10 @@ pub(super) fn render_class_namespace_cluster_group(
 
         let _ = write!(
             out,
-            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&c.id),
+            escape_attr_display(ctx.look),
             fmt(left),
             fmt(top),
             fmt(w),
@@ -264,9 +266,10 @@ pub(super) fn render_class_namespace_clusters_in_root(
 
         let _ = write!(
             out,
-            r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
             escape_attr_display(ctx.diagram_id),
             escape_attr_display(&c.id),
+            escape_attr_display(ctx.look),
             fmt(left),
             fmt(top),
             fmt(w),
@@ -396,6 +399,7 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
     parent: Option<&'a str>,
     clusters_by_id: &HashMap<&str, &LayoutCluster>,
     diagram_id: &str,
+    look: &str,
 ) {
     if parent == state.active_subgraph {
         return;
@@ -440,9 +444,10 @@ pub(super) fn transition_class_namespace_subgraph<'a>(
 
             let _ = write!(
                 out,
-                r#"<g class="cluster undefined" id="{}-{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                r#"<g class="cluster undefined" id="{}-{}" data-look="{}"><rect x="{}" y="{}" width="{}" height="{}" style="fill:none !important;stroke:black !important"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
                 escape_attr(diagram_id),
                 escape_attr(&c.id),
+                escape_attr(look),
                 fmt(local_left),
                 fmt(local_top),
                 fmt(w),

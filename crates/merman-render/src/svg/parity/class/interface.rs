@@ -14,6 +14,7 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
     pub line_height: f64,
+    pub look: &'a str,
 }
 
 pub(super) struct ClassInterfaceRenderState<'a> {
@@ -66,9 +67,10 @@ pub(super) fn render_class_interface_node(
 
     let _ = write!(
         out,
-        r#"<g class="node undefined" id="{}-{}" data-look="classic" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>"#,
+        r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>"#,
         escape_attr_display(ctx.diagram_id),
         escape_attr_display(&iface.id),
+        escape_attr_display(ctx.look),
         fmt(position.node_tx),
         fmt(position.node_ty),
         fmt(left),
