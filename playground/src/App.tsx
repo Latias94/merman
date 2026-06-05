@@ -11,7 +11,6 @@ import { StatusBar } from "./components/StatusBar";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
 import { prewarmWasmRenderer } from "./lib/wasm-loader";
-import { prewarmMermaidRenderer } from "./lib/mermaid-renderer";
 import { normalizeThemeName } from "@merman/web";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -99,11 +98,10 @@ export default function App() {
     }
   }, [uiTheme]);
 
-  // 页面级后台预热，避免首次切到对比/预览时把资源准备算进渲染耗时。
+  // 页面级后台预热核心 WASM 渲染器；Mermaid JS 是可选对比引擎，按需加载。
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void prewarmWasmRenderer(diagramTheme, mermaidConfig).catch(() => undefined);
-      void prewarmMermaidRenderer(diagramTheme, mermaidConfig);
     }, 120);
 
     return () => window.clearTimeout(timeout);

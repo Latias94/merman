@@ -315,6 +315,16 @@ Higher-level wrappers build on the same ABI:
 - Flutter/Dart FFI: [`docs/bindings/FLUTTER_DART_FFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md)
 - Python UniFFI package: [`docs/bindings/PYTHON_UNIFFI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md)
 
+### Binary size
+
+The FFI and wasm packages carry the full parser, layout, and headless renderer stack. Treat them as
+application/runtime dependencies rather than tiny scripting shims: current release artifacts are
+roughly 9-17 MB per native dynamic-library slice before app-store or package compression, while the
+browser wasm artifact is about 9.8 MB uncompressed and 3.6 MB with gzip. Universal Apple
+XCFrameworks and static archives can be larger because they bundle multiple architectures. Use
+normal platform controls such as release builds, stripping/LTO, package compression, lazy loading,
+and long-lived caching for versioned artifacts.
+
 ## Math Labels
 
 `merman-cli` enables the pure-Rust RaTeX backend by default. Use `--math-renderer ratex`

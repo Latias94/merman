@@ -9,7 +9,9 @@ import {
   supportedDiagrams,
   themes,
   validate as validateDiagram,
+  type MermanWasmModule,
 } from "@merman/web";
+import mermanWasmUrl from "@merman/web/pkg/merman_wasm_bg.wasm?url";
 import {
   DEFAULT_MERMAID_CONFIG,
   sourceWithConfig,
@@ -47,6 +49,7 @@ let warmupConfigSignature: string | null = null;
 let warmupPromise: Promise<void> | null = null;
 
 const WARMUP_SOURCE = "flowchart TD\n  warmupA[Warmup] --> warmupB[Ready]";
+const WASM_CACHE_NAME = "merman-playground-wasm-v1";
 
 export async function loadWasm(): Promise<MermanWasm> {
   if (wasmModule) {
@@ -57,7 +60,10 @@ export async function loadWasm(): Promise<MermanWasm> {
   }
 
   loadingPromise = (async () => {
-    await initMerman();
+    await initMerman({
+      loader: loadWasmModule,
+      wasm: await loadCachedWasmResponse(),
+    });
     wasmModule = createWasmAdapter();
     return wasmModule;
   })().catch((error) => {
@@ -69,6 +75,47 @@ export async function loadWasm(): Promise<MermanWasm> {
   });
 
   return loadingPromise;
+}
+
+async function loadWasmModule(): Promise<MermanWasmModule> {
+  return (await import("@merman/web/pkg/merman_wasm.js")) as MermanWasmModule;
+}
+
+async function loadCachedWasmResponse(): Promise<Response | undefined> {
+  if (typeof window === "undefined" || !("caches" in window)) {
+    return undefined;
+  }
+
+  const wasmUrl = new URL(mermanWasmUrl, window.location.href).href;
+
+  try {
+    const cache = await window.caches.open(WASM_CACHE_NAME);
+    const cached = await cache.match(wasmUrl);
+    if (cached) {
+      return cached;
+    }
+
+    const response = await fetch(wasmUrl, { cache: "force-cache" });
+    if (!response.ok) {
+      return response;
+    }
+
+    await cache.put(wasmUrl, response.clone());
+    pruneStaleWasmCacheEntries(cache, wasmUrl);
+    return response;
+  } catch {
+    return undefined;
+  }
+}
+
+function pruneStaleWasmCacheEntries(cache: Cache, currentUrl: string) {
+  void cache.keys().then((requests) =>
+    Promise.all(
+      requests
+        .filter((request) => request.url !== currentUrl)
+        .map((request) => cache.delete(request))
+    )
+  );
 }
 
 export async function prewarmWasmRenderer(
