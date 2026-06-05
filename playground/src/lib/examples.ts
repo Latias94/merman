@@ -96,6 +96,25 @@ export const examples: Example[] = [
     API-->>App: Accepted`,
   },
   {
+    id: "sequence-control-flow",
+    name: "Control Flow",
+    category: "Sequence",
+    code: `sequenceDiagram
+    participant Client
+    participant API
+    participant Worker
+    Client->>API: Submit job
+    alt Valid request
+      API->>Worker: Queue work
+      loop Poll status
+        Client->>API: GET /jobs/123
+        API-->>Client: Running
+      end
+    else Invalid request
+      API-->>Client: 400 Bad Request
+    end`,
+  },
+  {
     id: "class-basic",
     name: "Basic Class Diagram",
     category: "Class",
@@ -146,6 +165,23 @@ export const examples: Example[] = [
     Completed --> [*]`,
   },
   {
+    id: "state-composite-concurrency",
+    name: "Composite State",
+    category: "State",
+    code: `stateDiagram-v2
+    [*] --> Active
+    state Active {
+      [*] --> Idle
+      Idle --> Saving: change
+      Saving --> Idle: saved
+      --
+      [*] --> Online
+      Online --> Offline: lost connection
+      Offline --> Online: reconnect
+    }
+    Active --> [*]: close`,
+  },
+  {
     id: "er-basic",
     name: "ER Diagram",
     category: "ER",
@@ -175,6 +211,25 @@ export const examples: Example[] = [
     }`,
   },
   {
+    id: "er-relationships-and-styles",
+    name: "Relationships and Styles",
+    category: "ER",
+    code: `erDiagram
+    CAR ||--o{ DRIVER : "insured for"
+    CAR }o--|| PERSON : "owned by"
+    NODE ||--o{ NODE : "leads to"
+    BOOK["Book"]:::core {
+      string *title PK "Title"
+      string[] author-ref[name](1) FK "Author ref"
+    }
+    BOOK ||--o{ PAGE : has
+    PAGE {
+      int number PK
+    }
+    classDef core fill:#f96,stroke:#333,stroke-width:2px,color:#fff
+    class BOOK core`,
+  },
+  {
     id: "gantt-basic",
     name: "Gantt Chart",
     category: "Gantt",
@@ -190,6 +245,20 @@ export const examples: Example[] = [
     section Testing
     Integration     :c1, after b1, 7d
     User Testing    :c2, after c1, 5d`,
+  },
+  {
+    id: "gantt-tags-and-calendar",
+    name: "Tags and Calendar",
+    category: "Gantt",
+    code: `gantt
+    title Tagged Release Plan
+    dateFormat YYYY-MM-DD
+    excludes weekends 2026-02-16,friday
+    section Build
+    Parser Freeze  :done, parser, 2026-02-09, 2d
+    Renderer Pass  :active, render, after parser, 4d
+    section Validation
+    Browser Matrix :crit, qa, after render, 3d`,
   },
   {
     id: "pie-basic",
@@ -222,6 +291,25 @@ export const examples: Example[] = [
       forest`,
   },
   {
+    id: "mindmap-shapes-icons",
+    name: "Shapes and Icons",
+    category: "Mindmap",
+    code: `mindmap
+  root((Merman))
+    Parser[Parser]
+      :::urgent large
+      ::icon(fa fa-code)
+      Lexer
+      AST
+    Renderer(Renderer)
+      ::icon(fa fa-image)
+      SVG[SVG output]
+      PNG(PNG output)
+    Themes
+      default
+      dark`,
+  },
+  {
     id: "gitgraph-basic",
     name: "Git Graph",
     category: "Git",
@@ -242,6 +330,19 @@ export const examples: Example[] = [
     merge feature`,
   },
   {
+    id: "gitgraph-tags-cherrypick",
+    name: "Tags and Cherry-pick",
+    category: "Git",
+    code: `gitGraph
+    commit id: "base"
+    branch feature
+    checkout feature
+    commit id: "parser-fix"
+    checkout main
+    commit id: "release" tag: "v1.0"
+    cherry-pick id: "parser-fix" tag: "backport"`,
+  },
+  {
     id: "timeline-basic",
     name: "Timeline",
     category: "Timeline",
@@ -259,31 +360,44 @@ export const examples: Example[] = [
            : Community Feedback`,
   },
   {
-    id: "eventmodeling-full-syntax",
-    name: "Event Modeling Full Syntax",
-    category: "EventModeling",
-    code: `eventmodeling
-timeframe 01 event Start`,
+    id: "journey-working-day",
+    name: "Working Day Journey",
+    category: "Journey",
+    code: `journey
+    title My working day
+    section Go to work
+      Make tea: 5: Me
+      Go upstairs: 3: Me
+      Do work: 1: Me, Cat
+    section Go home
+      Go downstairs: 5: Me
+      Sit down: 5: Me`,
   },
   {
-    id: "eventmodeling-qualified-names",
-    name: "Event Modeling Qualified Names",
-    category: "EventModeling",
-    code: `eventmodeling
-
-timeframe 02 ui UI
-tf 01 evt Product.PriceChanged
-tf 03 evt Cart.ItemAdded`,
+    id: "info-show-info",
+    name: "Info Diagram",
+    category: "Info",
+    code: `info showInfo`,
   },
   {
-    id: "eventmodeling-resetframe",
-    name: "Event Modeling Reset Frame",
-    category: "EventModeling",
-    code: `eventmodeling
-
-tf 02 ui UI
-resetframe 01 evt Product.PriceChanged
-tf 03 evt Cart.ItemAdded`,
+    id: "zenuml-basic",
+    name: "Basic ZenUML",
+    category: "ZenUML",
+    code: `zenuml
+  Alice->Bob: Hello
+  Bob-->Alice: Reply`,
+  },
+  {
+    id: "zenuml-conditional-flow",
+    name: "Conditional Flow",
+    category: "ZenUML",
+    code: `zenuml
+  Client->API: Submit order
+  if(valid) {
+    API->Worker: Queue fulfillment
+  } else {
+    API->Client: Reject request
+  }`,
   },
   {
     id: "xychart-render-timing",
@@ -295,6 +409,15 @@ tf 03 evt Cart.ItemAdded`,
     y-axis "ms" 0 --> 120
     bar [12, 34, 58, 96]
     line [10, 28, 50, 85]`,
+  },
+  {
+    id: "xychart-negative-values",
+    name: "Negative Values",
+    category: "XY Chart",
+    code: `xychart
+    title "Error budget delta"
+    y-axis -2.4 --> 3.5
+    line [+1.3, .6, 2.4, -.34]`,
   },
   {
     id: "architecture-binding-stack",
@@ -312,6 +435,65 @@ tf 03 evt Cart.ItemAdded`,
     renderer:B --> T:cache`,
   },
   {
+    id: "architecture-junctions",
+    name: "Junction Fanout",
+    category: "Architecture",
+    code: `architecture-beta
+    service browser(internet)[Browser]
+    service api(server)[API]
+    service db(database)[Database]
+    service queue(server)[Queue]
+    junction fanout
+    browser:R --> L:fanout
+    fanout:R --> L:api
+    fanout:B --> T:db
+    fanout:T --> B:queue`,
+  },
+  {
+    id: "c4-system-context",
+    name: "System Context",
+    category: "C4",
+    code: `C4Context
+    title System Context diagram
+    Person(customerA, "Customer", "A customer")
+    System(sys, "Banking System", "Does banking")
+    Rel(customerA, sys, "Uses")`,
+  },
+  {
+    id: "c4-container-view",
+    name: "Container View",
+    category: "C4",
+    code: `C4Container
+    title Playground container view
+    Person(user, "Diagram Author", "Edits Mermaid source")
+    System_Ext(cdn, "Mermaid CDN", "Optional compare engine")
+    Container_Boundary(playground, "Merman Playground") {
+      Container(ui, "Web UI", "React", "Editor and preview shell")
+      Container(wasm, "WASM Renderer", "Rust", "Parses and renders diagrams")
+      ContainerDb(cache, "Settings Cache", "Browser storage", "Stores local preferences")
+    }
+    Rel(user, ui, "Uses")
+    Rel(ui, wasm, "Renders with")
+    Rel(ui, cdn, "Compares against")
+    Rel(wasm, cache, "Reads config")`,
+  },
+  {
+    id: "c4-dynamic-flow",
+    name: "Dynamic Flow",
+    category: "C4",
+    code: `C4Dynamic
+    title Render request flow
+    Container(ui, "Web UI", "React", "Collects source and config")
+    Container_Boundary(engine, "Render Engine") {
+      Component(parser, "Parser", "Rust", "Builds diagram model")
+      Component(renderer, "SVG Renderer", "Rust", "Produces SVG")
+    }
+    ContainerDb(cache, "Theme Cache", "Browser storage", "Stores selected theme")
+    Rel(ui, parser, "Submits source")
+    Rel(parser, renderer, "Passes layout model")
+    Rel(renderer, cache, "Reads theme")`,
+  },
+  {
     id: "block-render-pipeline",
     name: "Render Pipeline",
     category: "Block",
@@ -321,6 +503,36 @@ tf 03 evt Cart.ItemAdded`,
     source --> parser
     parser --> layout
     layout --> svg["SVG"]`,
+  },
+  {
+    id: "block-shapes-and-styles",
+    name: "Shapes and Styles",
+    category: "Block",
+    code: `block-beta
+    columns 4
+    input>"Input"]
+    parser(("Parser"))
+    ast{{"AST"}}
+    output["SVG"]
+    input --> parser
+    parser --> ast
+    ast --> output
+    classDef focus color:#ffffff,fill:#0f766e
+    class parser,ast focus`,
+  },
+  {
+    id: "block-nested-groups",
+    name: "Nested Groups",
+    category: "Block",
+    code: `block-beta
+    block
+      editor["Editor"]
+      preview["Preview"]
+    end
+    block
+      parser["Parser"]
+      renderer["Renderer"]
+    end`,
   },
   {
     id: "packet-ipv4-header",
@@ -336,6 +548,26 @@ tf 03 evt Cart.ItemAdded`,
     +13: "Fragment Offset"`,
   },
   {
+    id: "packet-tcp-header",
+    name: "TCP Header",
+    category: "Packet",
+    code: `packet
+    0-15: "Source Port"
+    16-31: "Destination Port"
+    32-63: "Sequence Number"
+    64-95: "Acknowledgment Number"
+    96-99: "Data Offset"
+    100-105: "Reserved"
+    106: "URG"
+    107: "ACK"
+    108: "PSH"
+    109: "RST"
+    110: "SYN"
+    111: "FIN"
+    112-127: "Window"
+    128-143: "Checksum"`,
+  },
+  {
     id: "kanban-release-work",
     name: "Release Work",
     category: "Kanban",
@@ -347,6 +579,19 @@ tf 03 evt Cart.ItemAdded`,
       flutter[Flutter packaging]@{ assigned: "Mobile", priority: "High" }
     done[Done]
       ci[CI matrix]@{ assigned: "Infra", priority: "Very Low" }`,
+  },
+  {
+    id: "kanban-ticket-metadata",
+    name: "Ticket Metadata",
+    category: "Kanban",
+    code: `kanban
+    todo[Todo]
+      spec[Write parity spec]@{ ticket: "MER-101", assigned: "Docs", priority: "High" }
+      audit[Audit fixtures]@{ ticket: "MER-102", assigned: "Core", priority: "Low" }
+    progress[In Progress]
+      render[Implement renderer]@{ ticket: "MER-103", assigned: "Rust", priority: "Very High" }
+    done[Done]
+      smoke[Browser smoke test]@{ ticket: "MER-104", assigned: "QA", priority: "Very Low" }`,
   },
   {
     id: "quadrant-integration-priority",
@@ -388,6 +633,16 @@ tf 03 evt Cart.ItemAdded`,
     min 0`,
   },
   {
+    id: "radar-named-values",
+    name: "Named Values",
+    category: "Radar",
+    code: `radar-beta
+    title Parser Readiness
+    axis Syntax, Errors, Layout
+    curve Current{ Syntax: 4, Errors: 3, Layout: 2 }
+    curve Target{ Syntax: 5, Errors: 4, Layout: 4 }`,
+  },
+  {
     id: "treemap-package-surface",
     name: "Package Surface",
     category: "Treemap",
@@ -398,6 +653,22 @@ tf 03 evt Cart.ItemAdded`,
       "Flutter": 15
       "Python": 12
       "Swift": 8`,
+  },
+  {
+    id: "treemap-styled-sections",
+    name: "Styled Sections",
+    category: "Treemap",
+    code: `treemap-beta
+"Runtime"
+  "Parser": 35
+  "Renderer":::hot
+    "SVG": 25
+    "ASCII": 10
+"Bindings"
+  "Web": 20:::hot
+  "CLI": 10
+
+classDef hot fill:#fecaca,color:#7f1d1d,stroke:#f87171;`,
   },
   {
     id: "requirement-ffi-api",
@@ -414,6 +685,25 @@ tf 03 evt Cart.ItemAdded`,
       type: library
     }
     wasm - satisfies -> ffi_api`,
+  },
+  {
+    id: "requirement-styled-elements",
+    name: "Styled Elements",
+    category: "Requirement",
+    code: `requirementDiagram
+    requirement cache_req:::important {
+      id: 2
+      text: "Cache selected theme"
+      risk: low
+      verifymethod: inspection
+    }
+    element local_storage {
+      type: database
+    }
+    local_storage - satisfies -> cache_req
+    classDef important font-weight:bold
+    class local_storage important
+    style local_storage fill:#dbeafe,stroke:#1d4ed8`,
   },
 ];
 

@@ -145,7 +145,11 @@ export function Preview({ className }: PreviewProps) {
     if (firstLine.startsWith("mindmap")) return "mindmap";
     if (firstLine.startsWith("gitgraph")) return "gitgraph";
     if (firstLine.startsWith("timeline")) return "timeline";
+    if (firstLine.startsWith("journey")) return "journey";
+    if (firstLine.startsWith("info")) return "info";
+    if (firstLine.startsWith("zenuml")) return "zenuml";
     if (firstLine.startsWith("eventmodeling")) return "eventmodeling";
+    if (firstLine.startsWith("c4")) return "c4";
     if (firstLine.startsWith("xychart")) return "xychart";
     if (firstLine.startsWith("architecture")) return "architecture";
     if (firstLine.startsWith("block")) return "block";
@@ -707,8 +711,8 @@ function TabBar({
   rightContent,
 }: TabBarProps) {
   return (
-    <div className="flex items-center justify-between h-10 px-2 border-b bg-muted/30 shrink-0">
-      <div className="flex items-center gap-1">
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-muted/30 px-2">
+      <div className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto">
         <TabButton active={mode === "svg"} onClick={() => onModeChange("svg")}>
           SVG
         </TabButton>
@@ -718,7 +722,7 @@ function TabBar({
               onClick={() => isAsciiSupported && onModeChange("ascii")}
               disabled={!isAsciiSupported}
               className={cn(
-                "px-3 py-1.5 text-sm rounded-md transition-colors",
+                "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
                 mode === "ascii"
                   ? "bg-background text-foreground shadow-sm font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50",
@@ -749,7 +753,9 @@ function TabBar({
         </TabButton>
       </div>
 
-      <div className="flex items-center gap-1">{rightContent}</div>
+      <div className="scrollbar-thin flex shrink-0 items-center gap-1 overflow-x-auto">
+        {rightContent}
+      </div>
     </div>
   );
 }
@@ -775,7 +781,7 @@ function TabButton({
       onFocus={onFocus}
       onPointerEnter={onPointerEnter}
       className={cn(
-        "px-3 py-1.5 text-sm rounded-md transition-colors",
+        "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
         active
           ? "bg-background text-foreground shadow-sm font-medium"
           : "text-muted-foreground hover:text-foreground hover:bg-background/50"

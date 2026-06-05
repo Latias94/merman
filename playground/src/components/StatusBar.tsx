@@ -16,8 +16,8 @@ export function StatusBar() {
   };
 
   return (
-    <footer className="h-7 border-t bg-card px-4 flex items-center justify-between text-xs text-muted-foreground">
-      <div className="flex items-center gap-4">
+    <footer className="h-7 overflow-hidden border-t bg-card px-3 sm:px-4 flex items-center justify-between text-xs text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
         <span className="flex items-center gap-1.5">
           <span
             className={cn(
@@ -28,14 +28,14 @@ export function StatusBar() {
           {getDiagramTypeLabel()}
         </span>
         <span>{lineCount} {t("status.lines")}</span>
-        <span>{charCount} {t("status.chars")}</span>
+        <span className="hidden sm:inline">{charCount} {t("status.chars")}</span>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="hidden items-center gap-4 sm:flex">
         {lastRenderTime > 0 && (
           <span>{t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms</span>
         )}
         <span className="capitalize">{t("status.theme")}: {t(`themes.${diagramTheme}`)}</span>
-        <span>{t("app.title")}</span>
+        <span className="hidden lg:inline">{t("app.title")}</span>
       </div>
     </footer>
   );
