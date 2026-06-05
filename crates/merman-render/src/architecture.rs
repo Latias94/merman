@@ -164,6 +164,230 @@ enum ArchitectureNodeType {
     Other,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Dir {
+    L,
+    R,
+    T,
+    B,
+}
+
+impl Dir {
+    fn from_char(ch: char) -> Option<Self> {
+        match ch {
+            'L' => Some(Self::L),
+            'R' => Some(Self::R),
+            'T' => Some(Self::T),
+            'B' => Some(Self::B),
+            _ => None,
+        }
+    }
+
+    fn is_x(self) -> bool {
+        matches!(self, Self::L | Self::R)
+    }
+}
+
+fn dir_pair_key(source: Dir, target: Dir) -> Option<&'static str> {
+    match (source, target) {
+        (Dir::L, Dir::R) => Some("LR"),
+        (Dir::L, Dir::T) => Some("LT"),
+        (Dir::L, Dir::B) => Some("LB"),
+        (Dir::R, Dir::L) => Some("RL"),
+        (Dir::R, Dir::T) => Some("RT"),
+        (Dir::R, Dir::B) => Some("RB"),
+        (Dir::T, Dir::L) => Some("TL"),
+        (Dir::T, Dir::R) => Some("TR"),
+        (Dir::T, Dir::B) => Some("TB"),
+        (Dir::B, Dir::L) => Some("BL"),
+        (Dir::B, Dir::R) => Some("BR"),
+        (Dir::B, Dir::T) => Some("BT"),
+        _ => None,
+    }
+}
+
+fn shift_position_by_arch_pair(x: i32, y: i32, pair: &str) -> (i32, i32) {
+    // Port of Mermaid@11.12.2 `shiftPositionByArchitectureDirectionPair`.
+    let bytes = pair.as_bytes();
+    if bytes.len() != 2 {
+        return (x, y);
+    }
+    let lhs = match bytes[0] as char {
+        'L' => Dir::L,
+        'R' => Dir::R,
+        'T' => Dir::T,
+        'B' => Dir::B,
+        _ => return (x, y),
+    };
+    let rhs = match bytes[1] as char {
+        'L' => Dir::L,
+        'R' => Dir::R,
+        'T' => Dir::T,
+        'B' => Dir::B,
+        _ => return (x, y),
+    };
+
+    if lhs.is_x() {
+        if !rhs.is_x() {
+            (
+                x + if lhs == Dir::L { -1 } else { 1 },
+                y + if rhs == Dir::T { 1 } else { -1 },
+            )
+        } else {
+            (x + if lhs == Dir::L { -1 } else { 1 }, y)
+        }
+    } else if rhs.is_x() {
+        (
+            x + if rhs == Dir::L { 1 } else { -1 },
+            y + if lhs == Dir::T { 1 } else { -1 },
+        )
+    } else {
+        (x, y + if lhs == Dir::T { 1 } else { -1 })
+    }
+}
+
+fn anchor_from_dir(dir: Dir) -> manatee::Anchor {
+    match dir {
+        Dir::L => manatee::Anchor::Left,
+        Dir::R => manatee::Anchor::Right,
+        Dir::T => manatee::Anchor::Top,
+        Dir::B => manatee::Anchor::Bottom,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GroupAlignment {
+    Horizontal,
+    Vertical,
+    Bend,
+}
+
+fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
+    let (Some(a), Some(b)) = (a.and_then(Dir::from_char), b.and_then(Dir::from_char)) else {
+        return GroupAlignment::Bend;
+    };
+    if a.is_x() != b.is_x() {
+        GroupAlignment::Bend
+    } else if a.is_x() {
+        GroupAlignment::Horizontal
+    } else {
+        GroupAlignment::Vertical
+    }
+}
+
+fn flatten_alignments(
+    alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>,
+    alignment_dir: GroupAlignment,
+    group_alignments: &std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, GroupAlignment>,
+    >,
+) -> Vec<Vec<usize>> {
+    // Mirror Mermaid's `flattenAlignments(...)` + `Object.values(...)` ordering.
+    //
+    // Mermaid uses plain JS objects keyed by row/col number. Enumeration order puts
+    // non-negative integer keys first (ascending), then other string keys (insertion
+    // order). We reproduce that here to keep the first element of each alignment group
+    // stable, since `cose-base` uses it to seed dummy-node positions.
+    fn js_object_dir_order(obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>) -> Vec<i32> {
+        let mut non_neg: Vec<i32> = Vec::new();
+        let mut other: Vec<i32> = Vec::new();
+        for &k in obj.keys() {
+            if k >= 0 {
+                non_neg.push(k);
+            } else {
+                other.push(k);
+            }
+        }
+        non_neg.sort_unstable();
+        non_neg.extend(other);
+        non_neg
+    }
+
+    fn is_js_array_index_key(k: &str) -> Option<u32> {
+        if k.is_empty() {
+            return None;
+        }
+        if k.as_bytes().iter().all(|b| b.is_ascii_digit()) {
+            return k.parse::<u32>().ok();
+        }
+        None
+    }
+
+    let mut prev: IndexMap<String, Vec<usize>> = IndexMap::new();
+
+    for dir in js_object_dir_order(alignment_obj) {
+        let Some(alignments) = alignment_obj.get(&dir) else {
+            continue;
+        };
+        let mut cnt = 0usize;
+        let mut arr: Vec<(String, Vec<usize>)> = alignments
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        if arr.len() == 1 {
+            if let Some((_, node_ids)) = arr.pop() {
+                prev.insert(dir.to_string(), node_ids);
+            }
+            continue;
+        }
+        for i in 0..arr.len().saturating_sub(1) {
+            for j in (i + 1)..arr.len() {
+                let (a_group_id, a_node_ids) = &arr[i];
+                let (b_group_id, b_node_ids) = &arr[j];
+                let alignment = group_alignments
+                    .get(a_group_id)
+                    .and_then(|m| m.get(b_group_id))
+                    .copied();
+
+                if alignment == Some(alignment_dir)
+                    || a_group_id == "default"
+                    || b_group_id == "default"
+                {
+                    prev.entry(dir.to_string())
+                        .or_default()
+                        .extend(a_node_ids.iter().cloned());
+                    prev.entry(dir.to_string())
+                        .or_default()
+                        .extend(b_node_ids.iter().cloned());
+                } else {
+                    let key_a = format!("{dir}-{cnt}");
+                    cnt += 1;
+                    prev.insert(key_a, a_node_ids.clone());
+                    let key_b = format!("{dir}-{cnt}");
+                    cnt += 1;
+                    prev.insert(key_b, b_node_ids.clone());
+                }
+            }
+        }
+    }
+
+    // `Object.values(prev)` ordering.
+    let mut numeric_keys: Vec<(u32, String)> = Vec::new();
+    let mut other_keys: Vec<String> = Vec::new();
+    for k in prev.keys() {
+        if let Some(ix) = is_js_array_index_key(k.as_str()) {
+            numeric_keys.push((ix, k.clone()));
+        } else {
+            other_keys.push(k.clone());
+        }
+    }
+    numeric_keys.sort_by_key(|(ix, _)| *ix);
+
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    for (_, k) in numeric_keys {
+        if let Some(v) = prev.get(&k) {
+            out.push(v.clone());
+        }
+    }
+    for k in other_keys {
+        if let Some(v) = prev.get(&k) {
+            out.push(v.clone());
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ArchitectureNodeView<'a> {
     id: &'a str,
@@ -359,6 +583,464 @@ fn architecture_fcose_node_bounds_extras<'a>(
     node_bounds_extras
 }
 
+#[derive(Debug, Clone)]
+struct ArchitectureFcoseInputPlan<'a> {
+    node_ids: Vec<&'a str>,
+    compound_ids: Vec<&'a str>,
+    node_index_by_id: FxHashMap<&'a str, usize>,
+    spatial_maps: Vec<IndexMap<&'a str, (i32, i32)>>,
+    graph: manatee::algo::fcose::IndexedGraph,
+    options: manatee::algo::fcose::IndexedFcoseOptions,
+    default_edge_length: f64,
+    compound_padding_px: f64,
+}
+
+struct ArchitectureFcoseInputPlanInput<'m, 'a> {
+    model: &'m ArchitectureModelView<'a>,
+    layout_nodes: &'m [LayoutNode],
+    node_bounds_extras: &'m FxHashMap<&'a str, manatee::BoundsExtras>,
+    text_measurer: &'m dyn TextMeasurer,
+    icon_size: f64,
+    padding_px: f64,
+    ideal_edge_length_multiplier: f64,
+    same_group_edge_elasticity: f64,
+    fcose_randomize: bool,
+    fcose_node_separation: f64,
+    fcose_num_iter: usize,
+    fcose_seed: u64,
+}
+
+fn build_architecture_fcose_input_plan<'a>(
+    input: ArchitectureFcoseInputPlanInput<'_, 'a>,
+) -> Result<ArchitectureFcoseInputPlan<'a>> {
+    let ArchitectureFcoseInputPlanInput {
+        model,
+        layout_nodes,
+        node_bounds_extras,
+        text_measurer,
+        icon_size,
+        padding_px,
+        ideal_edge_length_multiplier,
+        same_group_edge_elasticity,
+        fcose_randomize,
+        fcose_node_separation,
+        fcose_num_iter,
+        fcose_seed,
+    } = input;
+
+    if layout_nodes.len() != model.nodes.len() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "architecture FCoSE input node count mismatch: model={} layout={}",
+                model.nodes.len(),
+                layout_nodes.len()
+            ),
+        });
+    }
+
+    let node_ids: Vec<&str> = model.nodes.iter().map(|n| n.id).collect();
+    let compound_ids: Vec<&str> = model.groups.iter().map(|g| g.id).collect();
+
+    for (idx, (model_node, layout_node)) in model.nodes.iter().zip(layout_nodes).enumerate() {
+        if layout_node.id != model_node.id {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "architecture FCoSE input node order mismatch at {idx}: model={} layout={}",
+                    model_node.id, layout_node.id
+                ),
+            });
+        }
+    }
+
+    let mut incident_edges: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
+    incident_edges.reserve(model.nodes.len().saturating_mul(2));
+    for (edge_idx, e) in model.edges.iter().enumerate() {
+        incident_edges.entry(e.lhs_id).or_default().push(edge_idx);
+        incident_edges.entry(e.rhs_id).or_default().push(edge_idx);
+    }
+
+    let mut adj_list: FxHashMap<&str, IndexMap<&'static str, &str>> = FxHashMap::default();
+    adj_list.reserve(model.nodes.len().saturating_mul(2));
+    for &id in &node_ids {
+        let mut adj: IndexMap<&'static str, &str> = IndexMap::new();
+        let Some(edges) = incident_edges.get(id) else {
+            adj_list.insert(id, adj);
+            continue;
+        };
+        for &edge_idx in edges {
+            let e = &model.edges[edge_idx];
+            let (rhs_id, lhs_dir, rhs_dir) = if e.lhs_id == id {
+                (e.rhs_id, e.lhs_dir, e.rhs_dir)
+            } else {
+                (e.lhs_id, e.rhs_dir, e.lhs_dir)
+            };
+            let (Some(lhs_dir), Some(rhs_dir)) = (
+                lhs_dir.and_then(Dir::from_char),
+                rhs_dir.and_then(Dir::from_char),
+            ) else {
+                continue;
+            };
+            let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) else {
+                continue;
+            };
+            if let Some(existing) = adj.get_mut(pair) {
+                *existing = rhs_id;
+            } else {
+                adj.insert(pair, rhs_id);
+            }
+        }
+        adj_list.insert(id, adj);
+    }
+
+    // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
+    // node order and taking the first not-yet-visited id for each component.
+    let mut spatial_maps: Vec<IndexMap<&str, (i32, i32)>> = Vec::new();
+    let mut visited: FxHashSet<&str> = FxHashSet::default();
+    visited.reserve(model.nodes.len().saturating_mul(2));
+    for &start_id in &node_ids {
+        if visited.contains(start_id) {
+            continue;
+        }
+
+        let mut spatial: IndexMap<&str, (i32, i32)> = IndexMap::new();
+        spatial.insert(start_id, (0, 0));
+
+        let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
+        queue.push_back(start_id);
+
+        while let Some(id) = queue.pop_front() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(&(pos_x, pos_y)) = spatial.get(id) else {
+                continue;
+            };
+            let Some(adj) = adj_list.get(id) else {
+                continue;
+            };
+            for (&pair, &rhs_id) in adj.iter() {
+                if visited.contains(rhs_id) {
+                    continue;
+                }
+                let (nx, ny) = shift_position_by_arch_pair(pos_x, pos_y, pair);
+                // Mermaid updates `spatialMap[rhsId]` even if the node is already enqueued,
+                // because `visited[rhsId]` is only set when the node is dequeued.
+                spatial.insert(rhs_id, (nx, ny));
+                queue.push_back(rhs_id);
+            }
+        }
+
+        spatial_maps.push(spatial);
+    }
+
+    let mut node_group: std::collections::BTreeMap<&str, Option<&str>> =
+        std::collections::BTreeMap::new();
+    for n in &model.nodes {
+        node_group.insert(n.id, n.in_group);
+    }
+
+    let mut node_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
+    node_index_by_id.reserve(model.nodes.len().saturating_mul(2));
+    for (idx, &id) in node_ids.iter().enumerate() {
+        node_index_by_id.insert(id, idx);
+    }
+
+    let mut compound_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
+    compound_index_by_id.reserve(model.groups.len().saturating_mul(2));
+    for (idx, g) in model.groups.iter().enumerate() {
+        compound_index_by_id.insert(g.id, idx);
+    }
+
+    // Track how groups connect (used when flattening alignment arrays across groups).
+    //
+    // Mermaid builds this while reducing `this.nodes` and each node's `service.edges` list in
+    // `ArchitectureDB.getDataStructures()`. The same edge can therefore update the map once
+    // per endpoint, and later endpoint traversal overwrites earlier alignment values. Do not
+    // collapse this to a single global edge pass: fixtures with mixed core/data edges rely on
+    // the source traversal order to decide which group alignment survives.
+    let mut group_alignments: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, GroupAlignment>,
+    > = std::collections::BTreeMap::new();
+    for &id in &node_ids {
+        let Some(edge_indices) = incident_edges.get(id) else {
+            continue;
+        };
+        for &edge_idx in edge_indices {
+            let e = &model.edges[edge_idx];
+            let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
+                continue;
+            };
+            let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
+                continue;
+            };
+            if lhs_group == rhs_group {
+                continue;
+            }
+            let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
+            if alignment == GroupAlignment::Bend {
+                continue;
+            }
+            group_alignments
+                .entry(lhs_group.to_string())
+                .or_default()
+                .insert(rhs_group.to_string(), alignment);
+            group_alignments
+                .entry(rhs_group.to_string())
+                .or_default()
+                .insert(lhs_group.to_string(), alignment);
+        }
+    }
+
+    let mut horizontal_all: Vec<Vec<usize>> = Vec::new();
+    let mut vertical_all: Vec<Vec<usize>> = Vec::new();
+    for spatial_map in &spatial_maps {
+        let mut horizontal_alignments: IndexMap<i32, IndexMap<String, Vec<usize>>> =
+            IndexMap::new();
+        let mut vertical_alignments: IndexMap<i32, IndexMap<String, Vec<usize>>> = IndexMap::new();
+
+        for (id, (x, y)) in spatial_map {
+            let id = *id;
+            let Some(&node_idx) = node_index_by_id.get(id) else {
+                continue;
+            };
+            let node_group = node_group
+                .get(id)
+                .and_then(|v| *v)
+                .unwrap_or("default")
+                .to_string();
+
+            horizontal_alignments
+                .entry(*y)
+                .or_default()
+                .entry(node_group.clone())
+                .or_default()
+                .push(node_idx);
+
+            vertical_alignments
+                .entry(*x)
+                .or_default()
+                .entry(node_group)
+                .or_default()
+                .push(node_idx);
+        }
+
+        let horiz_map = flatten_alignments(
+            &horizontal_alignments,
+            GroupAlignment::Horizontal,
+            &group_alignments,
+        );
+        let vert_map = flatten_alignments(
+            &vertical_alignments,
+            GroupAlignment::Vertical,
+            &group_alignments,
+        );
+
+        for v in &horiz_map {
+            if v.len() > 1 {
+                horizontal_all.push(v.clone());
+            }
+        }
+        for v in &vert_map {
+            if v.len() > 1 {
+                vertical_all.push(v.clone());
+            }
+        }
+    }
+
+    // RelativePlacementConstraint (gap between borders).
+    //
+    // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
+    // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
+    // input even when the underlying spatial map discovery is approximate.
+    let gap = ideal_edge_length_multiplier * icon_size;
+    let relative =
+        architecture_relative_placement_constraints(&spatial_maps, &node_index_by_id, gap);
+
+    let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
+    let mut default_edge_length_sum = 0.0f64;
+    let mut default_edge_length_cnt = 0.0f64;
+    let edge_text_style = architecture_cytoscape_edge_text_style();
+
+    // Cytoscape FCoSE de-duplicates multiple edges between the same two nodes when building
+    // its internal layout graph:
+    //
+    // `sourceNode.getEdgesBetween(targetNode).length == 0`
+    //
+    // This means bidirectional/multi edges still render in the final SVG, but only the first
+    // edge between each undirected node pair contributes forces to the layout.
+    //
+    // Without this, our spring forces can cancel in small symmetric graphs, which makes the
+    // final spacing (and thus the root `viewBox/max-width`) diverge from Mermaid baselines.
+    let mut seen_undirected_layout_edges: FxHashSet<(usize, usize)> = FxHashSet::default();
+
+    for e in &model.edges {
+        let Some(&a_idx) = node_index_by_id.get(e.lhs_id) else {
+            return Err(Error::InvalidModel {
+                message: format!("edge lhs node not found: {}", e.lhs_id),
+            });
+        };
+        let Some(&b_idx) = node_index_by_id.get(e.rhs_id) else {
+            return Err(Error::InvalidModel {
+                message: format!("edge rhs node not found: {}", e.rhs_id),
+            });
+        };
+        let (k1, k2) = if a_idx <= b_idx {
+            (a_idx, b_idx)
+        } else {
+            (b_idx, a_idx)
+        };
+        if !seen_undirected_layout_edges.insert((k1, k2)) {
+            continue;
+        }
+
+        let lhs_g = node_group.get(e.lhs_id).and_then(|v| *v);
+        let rhs_g = node_group.get(e.rhs_id).and_then(|v| *v);
+        let same_parent = lhs_g == rhs_g;
+
+        let base_ideal_length = if same_parent {
+            ideal_edge_length_multiplier * icon_size
+        } else {
+            0.5 * icon_size
+        };
+        default_edge_length_sum += base_ideal_length;
+        default_edge_length_cnt += 1.0;
+
+        let elasticity = if same_parent {
+            same_group_edge_elasticity
+        } else {
+            0.001
+        };
+
+        let source_anchor = e.lhs_dir.and_then(Dir::from_char).map(anchor_from_dir);
+        let target_anchor = e.rhs_dir.and_then(Dir::from_char).map(anchor_from_dir);
+        let curve_style_segments = match (
+            e.lhs_dir.and_then(Dir::from_char),
+            e.rhs_dir.and_then(Dir::from_char),
+        ) {
+            (Some(a), Some(b)) => a.is_x() != b.is_x(),
+            _ => false,
+        };
+
+        let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty()) {
+            Some(label) => {
+                let m = text_measurer.measure(label, &edge_text_style);
+                let w = m.width.max(0.0);
+                // Cytoscape edge label bounding boxes are slightly taller than the measured
+                // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
+                let h = (m.height + 1.0).max(0.0);
+                (Some(w), Some(h))
+            }
+            None => (None, None),
+        };
+        edges.push(manatee::algo::fcose::IndexedEdge {
+            source: a_idx,
+            target: b_idx,
+            label_width,
+            label_height,
+            source_anchor,
+            target_anchor,
+            curve_style_segments,
+            ideal_length: base_ideal_length,
+            elasticity,
+        });
+    }
+
+    let default_edge_length = if default_edge_length_cnt > 0.0 {
+        default_edge_length_sum / default_edge_length_cnt
+    } else {
+        50.0
+    };
+
+    let mut indexed_nodes: Vec<manatee::algo::fcose::IndexedNode> =
+        Vec::with_capacity(layout_nodes.len());
+    for (idx, n) in layout_nodes.iter().enumerate() {
+        let model_node = &model.nodes[idx];
+        let parent =
+            match model_node.in_group {
+                Some(group_id) => Some(*compound_index_by_id.get(group_id).ok_or_else(|| {
+                    Error::InvalidModel {
+                        message: format!("node parent group not found: {}/{}", n.id, group_id),
+                    }
+                })?),
+                None => None,
+            };
+        indexed_nodes.push(manatee::algo::fcose::IndexedNode {
+            parent,
+            width: n.width,
+            height: n.height,
+            // Mermaid Architecture feeds Cytoscape node `position()` values directly
+            // into the SVG `translate(x,y)` for the icon box (i.e. it treats the
+            // Cytoscape "center" as a top-left anchor). This keeps the coordinate convention
+            // consistent across nodes, edges, and viewBox in upstream baselines.
+            x: n.x,
+            y: n.y,
+            bounds_extras: node_bounds_extras
+                .get(model_node.id)
+                .copied()
+                .unwrap_or_default(),
+        });
+    }
+
+    let mut indexed_compounds: Vec<manatee::algo::fcose::IndexedCompound> =
+        Vec::with_capacity(model.groups.len());
+    for g in &model.groups {
+        let parent =
+            match g.in_group {
+                Some(parent_id) => Some(*compound_index_by_id.get(parent_id).ok_or_else(|| {
+                    Error::InvalidModel {
+                        message: format!("compound parent group not found: {}/{}", g.id, parent_id),
+                    }
+                })?),
+                None => None,
+            };
+        indexed_compounds.push(manatee::algo::fcose::IndexedCompound { parent });
+    }
+
+    let graph = manatee::algo::fcose::IndexedGraph {
+        nodes: indexed_nodes,
+        edges,
+        compounds: indexed_compounds,
+    };
+
+    // Mermaid Architecture styles group nodes with `padding: ${db.getConfigField('padding')}px`
+    // before running FCoSE, and CoSE uses that per-compound padding when updating bounds.
+    let compound_padding_px = padding_px;
+    let options = manatee::algo::fcose::IndexedFcoseOptions {
+        alignment_constraint: Some(manatee::algo::fcose::IndexedAlignmentConstraint {
+            horizontal: horizontal_all,
+            vertical: vertical_all,
+        }),
+        relative_placement_constraint: relative,
+        default_edge_length: Some(default_edge_length),
+        randomize: fcose_randomize,
+        node_separation: Some(fcose_node_separation),
+        num_iter: Some(fcose_num_iter),
+        compound_padding: Some(compound_padding_px),
+        relocate_center: None,
+        // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
+        // which advances the seeded RNG stream and can change final positions.
+        rerun: true,
+        // Mermaid@11.15 wraps FCoSE in a seeded `Math.random()` helper. Seed 0 opts out
+        // upstream; the Rust port keeps a deterministic fallback for headless repeatability.
+        random_seed: fcose_seed,
+        // The shipped Mermaid 11.15 Architecture render path consumes two seeded random
+        // values before the first FCoSE constraint shuffle even when `randomize=false`.
+        random_seed_offset: Some(2),
+    };
+
+    Ok(ArchitectureFcoseInputPlan {
+        node_ids,
+        compound_ids,
+        node_index_by_id,
+        spatial_maps,
+        graph,
+        options,
+        default_edge_length,
+        compound_padding_px,
+    })
+}
+
 fn architecture_cytoscape_service_bounds<'a>(
     model: &ArchitectureModelView<'a>,
     nodes: &[LayoutNode],
@@ -541,189 +1223,7 @@ fn layout_architecture_diagram_model(
         );
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum Dir {
-        L,
-        R,
-        T,
-        B,
-    }
-
-    impl Dir {
-        fn from_char(ch: char) -> Option<Self> {
-            match ch {
-                'L' => Some(Self::L),
-                'R' => Some(Self::R),
-                'T' => Some(Self::T),
-                'B' => Some(Self::B),
-                _ => None,
-            }
-        }
-
-        fn is_x(self) -> bool {
-            matches!(self, Self::L | Self::R)
-        }
-    }
-
-    fn dir_pair_key(source: Dir, target: Dir) -> Option<&'static str> {
-        match (source, target) {
-            (Dir::L, Dir::R) => Some("LR"),
-            (Dir::L, Dir::T) => Some("LT"),
-            (Dir::L, Dir::B) => Some("LB"),
-            (Dir::R, Dir::L) => Some("RL"),
-            (Dir::R, Dir::T) => Some("RT"),
-            (Dir::R, Dir::B) => Some("RB"),
-            (Dir::T, Dir::L) => Some("TL"),
-            (Dir::T, Dir::R) => Some("TR"),
-            (Dir::T, Dir::B) => Some("TB"),
-            (Dir::B, Dir::L) => Some("BL"),
-            (Dir::B, Dir::R) => Some("BR"),
-            (Dir::B, Dir::T) => Some("BT"),
-            _ => None,
-        }
-    }
-
-    fn shift_position_by_arch_pair(x: i32, y: i32, pair: &str) -> (i32, i32) {
-        // Port of Mermaid@11.12.2 `shiftPositionByArchitectureDirectionPair`.
-        let bytes = pair.as_bytes();
-        if bytes.len() != 2 {
-            return (x, y);
-        }
-        let lhs = match bytes[0] as char {
-            'L' => Dir::L,
-            'R' => Dir::R,
-            'T' => Dir::T,
-            'B' => Dir::B,
-            _ => return (x, y),
-        };
-        let rhs = match bytes[1] as char {
-            'L' => Dir::L,
-            'R' => Dir::R,
-            'T' => Dir::T,
-            'B' => Dir::B,
-            _ => return (x, y),
-        };
-
-        if lhs.is_x() {
-            if !rhs.is_x() {
-                (
-                    x + if lhs == Dir::L { -1 } else { 1 },
-                    y + if rhs == Dir::T { 1 } else { -1 },
-                )
-            } else {
-                (x + if lhs == Dir::L { -1 } else { 1 }, y)
-            }
-        } else if rhs.is_x() {
-            (
-                x + if rhs == Dir::L { 1 } else { -1 },
-                y + if lhs == Dir::T { 1 } else { -1 },
-            )
-        } else {
-            (x, y + if lhs == Dir::T { 1 } else { -1 })
-        }
-    }
-
-    let build_adjacency_start = timing_enabled.then(web_time::Instant::now);
-
     let mut nodes: Vec<LayoutNode> = Vec::new();
-
-    // Mermaid's Architecture layout uses Cytoscape FCoSE with constraints derived from BFS spatial
-    // maps. As a deterministic scaffold (pre-FCoSE port), we reproduce the BFS spatial maps and
-    // place nodes on a grid in a way that is close to upstream fixtures.
-    //
-    // IMPORTANT: `shiftPositionByArchitectureDirectionPair` uses a y-up convention; when mapping
-    // to SVG coordinates we invert the sign to keep y-down in pixel space.
-    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id).collect();
-
-    // Mermaid Architecture derives spatial maps by BFS over a per-node adjacency map:
-    // - adjacency keys are direction pairs (e.g. `RL`, `TB`)
-    // - multiple edges with the same direction pair overwrite the neighbor, but keep the original
-    //   key insertion order (JS object semantics)
-    //
-    // Reference: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureDb.ts`
-    let mut incident_edges: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
-    incident_edges.reserve(model.nodes.len().saturating_mul(2));
-    for (edge_idx, e) in model.edges.iter().enumerate() {
-        incident_edges.entry(e.lhs_id).or_default().push(edge_idx);
-        incident_edges.entry(e.rhs_id).or_default().push(edge_idx);
-    }
-
-    let mut adj_list: FxHashMap<&str, IndexMap<&'static str, &str>> = FxHashMap::default();
-    adj_list.reserve(model.nodes.len().saturating_mul(2));
-    for &id in &node_order {
-        let mut adj: IndexMap<&'static str, &str> = IndexMap::new();
-        let Some(edges) = incident_edges.get(id) else {
-            adj_list.insert(id, adj);
-            continue;
-        };
-        for &edge_idx in edges {
-            let e = &model.edges[edge_idx];
-            let (rhs_id, lhs_dir, rhs_dir) = if e.lhs_id == id {
-                (e.rhs_id, e.lhs_dir, e.rhs_dir)
-            } else {
-                (e.lhs_id, e.rhs_dir, e.lhs_dir)
-            };
-            let (Some(lhs_dir), Some(rhs_dir)) = (
-                lhs_dir.and_then(Dir::from_char),
-                rhs_dir.and_then(Dir::from_char),
-            ) else {
-                continue;
-            };
-            let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) else {
-                continue;
-            };
-            if let Some(existing) = adj.get_mut(pair) {
-                *existing = rhs_id;
-            } else {
-                adj.insert(pair, rhs_id);
-            }
-        }
-        adj_list.insert(id, adj);
-    }
-
-    // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
-    // `node_order` and taking the first not-yet-visited id for each component.
-    let mut components: Vec<IndexMap<&str, (i32, i32)>> = Vec::new();
-    let mut visited: FxHashSet<&str> = FxHashSet::default();
-    visited.reserve(model.nodes.len().saturating_mul(2));
-    for &start_id in &node_order {
-        if visited.contains(start_id) {
-            continue;
-        }
-
-        let mut spatial: IndexMap<&str, (i32, i32)> = IndexMap::new();
-        spatial.insert(start_id, (0, 0));
-
-        let mut queue: std::collections::VecDeque<&str> = std::collections::VecDeque::new();
-        queue.push_back(start_id);
-
-        while let Some(id) = queue.pop_front() {
-            if !visited.insert(id) {
-                continue;
-            }
-            let Some(&(pos_x, pos_y)) = spatial.get(id) else {
-                continue;
-            };
-            let Some(adj) = adj_list.get(id) else {
-                continue;
-            };
-            for (&pair, &rhs_id) in adj.iter() {
-                if visited.contains(rhs_id) {
-                    continue;
-                }
-                let (nx, ny) = shift_position_by_arch_pair(pos_x, pos_y, pair);
-                // NOTE: Mermaid updates `spatialMap[rhsId]` even if the node is already enqueued,
-                // because `visited[rhsId]` is only set when the node is dequeued.
-                spatial.insert(rhs_id, (nx, ny));
-                queue.push_back(rhs_id);
-            }
-        }
-
-        components.push(spatial);
-    }
-    if let Some(s) = build_adjacency_start {
-        timings.build_adjacency_and_components = s.elapsed();
-    }
 
     let positions_start = timing_enabled.then(web_time::Instant::now);
     if let Some(s) = positions_start {
@@ -765,470 +1265,20 @@ fn layout_architecture_diagram_model(
 
     if use_manatee_layout && !nodes.is_empty() {
         let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
-
-        // Build Mermaid-like FCoSE constraints from the BFS spatial maps.
-        //
-        // The full Mermaid renderer uses Cytoscape + FCoSE, which internally combines spectral
-        // initialization with a CoSE force-directed refinement step subject to the constraints.
-        //
-        // `manatee` contains our Rust port entry point; for now we feed it the deterministic BFS
-        // grid as initial positions so the subsequent refinement stays stable and fixture-friendly.
-        let mut node_group: std::collections::BTreeMap<&str, Option<&str>> =
-            std::collections::BTreeMap::new();
-        for n in &model.nodes {
-            node_group.insert(n.id, n.in_group);
-        }
-
-        let mut node_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
-        node_index_by_id.reserve(nodes.len().saturating_mul(2));
-        for (idx, n) in nodes.iter().enumerate() {
-            node_index_by_id.insert(n.id.as_str(), idx);
-        }
-
-        let mut compound_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
-        compound_index_by_id.reserve(model.groups.len().saturating_mul(2));
-        for (idx, g) in model.groups.iter().enumerate() {
-            compound_index_by_id.insert(g.id, idx);
-        }
-
-        // Build spatial maps in Mermaid's coordinate space (y-up), keyed by node id.
-        let spatial_maps: &[IndexMap<&str, (i32, i32)>] = &components;
-
-        // AlignmentConstraint.
-        let mut horizontal_all: Vec<Vec<usize>> = Vec::new();
-        let mut vertical_all: Vec<Vec<usize>> = Vec::new();
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum GroupAlignment {
-            Horizontal,
-            Vertical,
-            Bend,
-        }
-
-        fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
-            let (Some(a), Some(b)) = (a.and_then(Dir::from_char), b.and_then(Dir::from_char))
-            else {
-                return GroupAlignment::Bend;
-            };
-            if a.is_x() != b.is_x() {
-                GroupAlignment::Bend
-            } else if a.is_x() {
-                GroupAlignment::Horizontal
-            } else {
-                GroupAlignment::Vertical
-            }
-        }
-
-        // Track how groups connect (used when flattening alignment arrays across groups).
-        //
-        // Mermaid builds this while reducing `this.nodes` and each node's `service.edges` list in
-        // `ArchitectureDB.getDataStructures()`. The same edge can therefore update the map once
-        // per endpoint, and later endpoint traversal overwrites earlier alignment values. Do not
-        // collapse this to a single global edge pass: fixtures with mixed core/data edges rely on
-        // the source traversal order to decide which group alignment survives.
-        let mut group_alignments: std::collections::BTreeMap<
-            String,
-            std::collections::BTreeMap<String, GroupAlignment>,
-        > = std::collections::BTreeMap::new();
-        for &id in &node_order {
-            let Some(edge_indices) = incident_edges.get(id) else {
-                continue;
-            };
-            for &edge_idx in edge_indices {
-                let e = &model.edges[edge_idx];
-                let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
-                    continue;
-                };
-                let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
-                    continue;
-                };
-                if lhs_group == rhs_group {
-                    continue;
-                }
-                let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
-                if alignment == GroupAlignment::Bend {
-                    continue;
-                }
-                group_alignments
-                    .entry(lhs_group.to_string())
-                    .or_default()
-                    .insert(rhs_group.to_string(), alignment);
-                group_alignments
-                    .entry(rhs_group.to_string())
-                    .or_default()
-                    .insert(lhs_group.to_string(), alignment);
-            }
-        }
-
-        fn flatten_alignments(
-            alignment_obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>,
-            alignment_dir: GroupAlignment,
-            group_alignments: &std::collections::BTreeMap<
-                String,
-                std::collections::BTreeMap<String, GroupAlignment>,
-            >,
-        ) -> Vec<Vec<usize>> {
-            // Mirror Mermaid's `flattenAlignments(...)` + `Object.values(...)` ordering.
-            //
-            // Mermaid uses plain JS objects keyed by row/col number. Enumeration order puts
-            // non-negative integer keys first (ascending), then other string keys (insertion
-            // order). We reproduce that here to keep the first element of each alignment group
-            // stable, since `cose-base` uses it to seed dummy-node positions.
-            fn js_object_dir_order(obj: &IndexMap<i32, IndexMap<String, Vec<usize>>>) -> Vec<i32> {
-                let mut non_neg: Vec<i32> = Vec::new();
-                let mut other: Vec<i32> = Vec::new();
-                for &k in obj.keys() {
-                    if k >= 0 {
-                        non_neg.push(k);
-                    } else {
-                        other.push(k);
-                    }
-                }
-                non_neg.sort_unstable();
-                non_neg.extend(other);
-                non_neg
-            }
-
-            fn is_js_array_index_key(k: &str) -> Option<u32> {
-                if k.is_empty() {
-                    return None;
-                }
-                if k.as_bytes().iter().all(|b| b.is_ascii_digit()) {
-                    return k.parse::<u32>().ok();
-                }
-                None
-            }
-
-            let mut prev: IndexMap<String, Vec<usize>> = IndexMap::new();
-
-            for dir in js_object_dir_order(alignment_obj) {
-                let Some(alignments) = alignment_obj.get(&dir) else {
-                    continue;
-                };
-                let mut cnt = 0usize;
-                let mut arr: Vec<(String, Vec<usize>)> = alignments
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                if arr.len() == 1 {
-                    if let Some((_, node_ids)) = arr.pop() {
-                        prev.insert(dir.to_string(), node_ids);
-                    }
-                    continue;
-                }
-                for i in 0..arr.len().saturating_sub(1) {
-                    for j in (i + 1)..arr.len() {
-                        let (a_group_id, a_node_ids) = &arr[i];
-                        let (b_group_id, b_node_ids) = &arr[j];
-                        let alignment = group_alignments
-                            .get(a_group_id)
-                            .and_then(|m| m.get(b_group_id))
-                            .copied();
-
-                        if alignment == Some(alignment_dir)
-                            || a_group_id == "default"
-                            || b_group_id == "default"
-                        {
-                            prev.entry(dir.to_string())
-                                .or_default()
-                                .extend(a_node_ids.iter().cloned());
-                            prev.entry(dir.to_string())
-                                .or_default()
-                                .extend(b_node_ids.iter().cloned());
-                        } else {
-                            let key_a = format!("{dir}-{cnt}");
-                            cnt += 1;
-                            prev.insert(key_a, a_node_ids.clone());
-                            let key_b = format!("{dir}-{cnt}");
-                            cnt += 1;
-                            prev.insert(key_b, b_node_ids.clone());
-                        }
-                    }
-                }
-            }
-
-            // `Object.values(prev)` ordering.
-            let mut numeric_keys: Vec<(u32, String)> = Vec::new();
-            let mut other_keys: Vec<String> = Vec::new();
-            for k in prev.keys() {
-                if let Some(ix) = is_js_array_index_key(k.as_str()) {
-                    numeric_keys.push((ix, k.clone()));
-                } else {
-                    other_keys.push(k.clone());
-                }
-            }
-            numeric_keys.sort_by_key(|(ix, _)| *ix);
-
-            let mut out: Vec<Vec<usize>> = Vec::new();
-            for (_, k) in numeric_keys {
-                if let Some(v) = prev.get(&k) {
-                    out.push(v.clone());
-                }
-            }
-            for k in other_keys {
-                if let Some(v) = prev.get(&k) {
-                    out.push(v.clone());
-                }
-            }
-            out
-        }
-
-        for spatial_map in spatial_maps {
-            let mut horizontal_alignments: IndexMap<i32, IndexMap<String, Vec<usize>>> =
-                IndexMap::new();
-            let mut vertical_alignments: IndexMap<i32, IndexMap<String, Vec<usize>>> =
-                IndexMap::new();
-
-            for (id, (x, y)) in spatial_map {
-                let id = *id;
-                let Some(&node_idx) = node_index_by_id.get(id) else {
-                    continue;
-                };
-                let node_group = node_group
-                    .get(id)
-                    .and_then(|v| *v)
-                    .unwrap_or("default")
-                    .to_string();
-
-                horizontal_alignments
-                    .entry(*y)
-                    .or_default()
-                    .entry(node_group.clone())
-                    .or_default()
-                    .push(node_idx);
-
-                vertical_alignments
-                    .entry(*x)
-                    .or_default()
-                    .entry(node_group)
-                    .or_default()
-                    .push(node_idx);
-            }
-
-            let horiz_map = flatten_alignments(
-                &horizontal_alignments,
-                GroupAlignment::Horizontal,
-                &group_alignments,
-            );
-            let vert_map = flatten_alignments(
-                &vertical_alignments,
-                GroupAlignment::Vertical,
-                &group_alignments,
-            );
-
-            for v in &horiz_map {
-                if v.len() > 1 {
-                    horizontal_all.push(v.clone());
-                }
-            }
-            for v in &vert_map {
-                if v.len() > 1 {
-                    vertical_all.push(v.clone());
-                }
-            }
-        }
-
-        // RelativePlacementConstraint (gap between borders).
-        //
-        // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
-        // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
-        // input even when the underlying spatial map discovery is approximate.
-        let gap = ideal_edge_length_multiplier * icon_size;
-        let relative =
-            architecture_relative_placement_constraints(spatial_maps, &node_index_by_id, gap);
-
-        // Run `manatee` layout refinement.
-        //
-        // Mermaid Architecture uses Cytoscape FCoSE with `idealEdgeLength` and `edgeElasticity`
-        // callbacks that depend *only* on whether the connected nodes share the same parent
-        // compound (group). Avoid adding layout-base "smart" adjustments here: upstream Mermaid
-        // does not apply them, and doing so causes `parity-root` viewport drift in group-heavy
-        // fixtures.
-
-        let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
-        let mut default_edge_length_sum = 0.0f64;
-        let mut default_edge_length_cnt = 0.0f64;
-        let edge_text_style = architecture_cytoscape_edge_text_style();
-
-        // Cytoscape FCoSE de-duplicates multiple edges between the same two nodes when building
-        // its internal layout graph:
-        //
-        // `sourceNode.getEdgesBetween(targetNode).length == 0`
-        //
-        // This means bidirectional/multi edges still render in the final SVG, but only the first
-        // edge between each undirected node pair contributes forces to the layout.
-        //
-        // Without this, our spring forces can cancel in small symmetric graphs, which makes the
-        // final spacing (and thus the root `viewBox/max-width`) diverge from Mermaid baselines.
-        let mut seen_undirected_layout_edges: FxHashSet<(usize, usize)> = FxHashSet::default();
-
-        for e in &model.edges {
-            let Some(&a_idx) = node_index_by_id.get(e.lhs_id) else {
-                return Err(Error::InvalidModel {
-                    message: format!("edge lhs node not found: {}", e.lhs_id),
-                });
-            };
-            let Some(&b_idx) = node_index_by_id.get(e.rhs_id) else {
-                return Err(Error::InvalidModel {
-                    message: format!("edge rhs node not found: {}", e.rhs_id),
-                });
-            };
-            let (k1, k2) = if a_idx <= b_idx {
-                (a_idx, b_idx)
-            } else {
-                (b_idx, a_idx)
-            };
-            if !seen_undirected_layout_edges.insert((k1, k2)) {
-                continue;
-            }
-
-            let lhs_g = node_group.get(e.lhs_id).and_then(|v| *v);
-            let rhs_g = node_group.get(e.rhs_id).and_then(|v| *v);
-            let same_parent = lhs_g == rhs_g;
-
-            let base_ideal_length = if same_parent {
-                ideal_edge_length_multiplier * icon_size
-            } else {
-                0.5 * icon_size
-            };
-            default_edge_length_sum += base_ideal_length;
-            default_edge_length_cnt += 1.0;
-
-            let ideal_length = base_ideal_length;
-
-            let elasticity = if same_parent {
-                same_group_edge_elasticity
-            } else {
-                0.001
-            };
-
-            let source_anchor = e.lhs_dir.and_then(Dir::from_char).map(|d| match d {
-                Dir::L => manatee::Anchor::Left,
-                Dir::R => manatee::Anchor::Right,
-                Dir::T => manatee::Anchor::Top,
-                Dir::B => manatee::Anchor::Bottom,
-            });
-            let target_anchor = e.rhs_dir.and_then(Dir::from_char).map(|d| match d {
-                Dir::L => manatee::Anchor::Left,
-                Dir::R => manatee::Anchor::Right,
-                Dir::T => manatee::Anchor::Top,
-                Dir::B => manatee::Anchor::Bottom,
-            });
-            let curve_style_segments = match (
-                e.lhs_dir.and_then(Dir::from_char),
-                e.rhs_dir.and_then(Dir::from_char),
-            ) {
-                (Some(a), Some(b)) => a.is_x() != b.is_x(),
-                _ => false,
-            };
-
-            let (label_width, label_height) = match e.title.map(str::trim).filter(|t| !t.is_empty())
-            {
-                Some(label) => {
-                    let m = text_measurer.measure(label, &edge_text_style);
-                    let w = m.width.max(0.0);
-                    // Cytoscape edge label bounding boxes are slightly taller than the measured
-                    // font metrics height (roughly `fontSize + 1px` at Mermaid defaults).
-                    let h = (m.height + 1.0).max(0.0);
-                    (Some(w), Some(h))
-                }
-                None => (None, None),
-            };
-            edges.push(manatee::algo::fcose::IndexedEdge {
-                source: a_idx,
-                target: b_idx,
-                label_width,
-                label_height,
-                source_anchor,
-                target_anchor,
-                curve_style_segments,
-                ideal_length,
-                elasticity,
-            });
-        }
-
-        let default_edge_length = if default_edge_length_cnt > 0.0 {
-            default_edge_length_sum / default_edge_length_cnt
-        } else {
-            50.0
-        };
-
-        let mut indexed_nodes: Vec<manatee::algo::fcose::IndexedNode> =
-            Vec::with_capacity(nodes.len());
-        for n in &nodes {
-            let parent = match node_group.get(n.id.as_str()).copied().flatten() {
-                Some(group_id) => Some(*compound_index_by_id.get(group_id).ok_or_else(|| {
-                    Error::InvalidModel {
-                        message: format!("node parent group not found: {}/{}", n.id, group_id),
-                    }
-                })?),
-                None => None,
-            };
-            indexed_nodes.push(manatee::algo::fcose::IndexedNode {
-                parent,
-                width: n.width,
-                height: n.height,
-                // Mermaid Architecture feeds Cytoscape node `position()` values directly
-                // into the SVG `translate(x,y)` for the 80x80 icon box (i.e. it treats the
-                // Cytoscape "center" as a top-left anchor). This creates a consistent
-                // coordinate convention across nodes/edges/viewBox in upstream baselines.
-                //
-                // Mirror that here by passing through our top-left anchored `{x,y}` without
-                // converting to geometric centers.
-                x: n.x,
-                y: n.y,
-                bounds_extras: node_bounds_extras
-                    .get(n.id.as_str())
-                    .copied()
-                    .unwrap_or_default(),
-            });
-        }
-
-        let mut indexed_compounds: Vec<manatee::algo::fcose::IndexedCompound> =
-            Vec::with_capacity(model.groups.len());
-        for g in &model.groups {
-            let parent = match g.in_group {
-                Some(parent_id) => Some(*compound_index_by_id.get(parent_id).ok_or_else(|| {
-                    Error::InvalidModel {
-                        message: format!("compound parent group not found: {}/{}", g.id, parent_id),
-                    }
-                })?),
-                None => None,
-            };
-            indexed_compounds.push(manatee::algo::fcose::IndexedCompound { parent });
-        }
-
-        let graph = manatee::algo::fcose::IndexedGraph {
-            nodes: indexed_nodes,
-            edges,
-            compounds: indexed_compounds,
-        };
-
-        // Mermaid Architecture styles group nodes with `padding: ${db.getConfigField('padding')}px`
-        // before running FCoSE, and CoSE uses that per-compound padding when updating bounds.
-        let compound_padding_px = padding_px;
-
-        let opts = manatee::algo::fcose::IndexedFcoseOptions {
-            alignment_constraint: Some(manatee::algo::fcose::IndexedAlignmentConstraint {
-                horizontal: horizontal_all,
-                vertical: vertical_all,
-            }),
-            relative_placement_constraint: relative,
-            default_edge_length: Some(default_edge_length),
-            randomize: fcose_randomize,
-            node_separation: Some(fcose_node_separation),
-            num_iter: Some(fcose_num_iter),
-            compound_padding: Some(compound_padding_px),
-            relocate_center: None,
-            // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
-            // which advances the seeded RNG stream and can change final positions.
-            rerun: true,
-            // Mermaid@11.15 wraps FCoSE in a seeded `Math.random()` helper. Seed 0 opts out
-            // upstream; the Rust port keeps a deterministic fallback for headless repeatability.
-            random_seed: fcose_seed,
-            // The shipped Mermaid 11.15 Architecture render path consumes two seeded random
-            // values before the first FCoSE constraint shuffle even when `randomize=false`.
-            random_seed_offset: Some(2),
-        };
+        let plan = build_architecture_fcose_input_plan(ArchitectureFcoseInputPlanInput {
+            model,
+            layout_nodes: &nodes,
+            node_bounds_extras: &node_bounds_extras,
+            text_measurer,
+            icon_size,
+            padding_px,
+            ideal_edge_length_multiplier,
+            same_group_edge_elasticity,
+            fcose_randomize,
+            fcose_node_separation,
+            fcose_num_iter,
+            fcose_seed,
+        })?;
 
         if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")
             .ok()
@@ -1236,33 +1286,35 @@ fn layout_architecture_diagram_model(
             == Some("1")
         {
             eprintln!(
-                "[arch-fcose] nodes={} edges={} compounds={} default_edge_length={:.6} compound_padding={:.6}",
-                graph.nodes.len(),
-                graph.edges.len(),
-                graph.compounds.len(),
-                default_edge_length,
-                compound_padding_px,
+                "[arch-fcose] nodes={} edges={} compounds={} spatial_maps={} index_entries={} default_edge_length={:.6} compound_padding={:.6}",
+                plan.graph.nodes.len(),
+                plan.graph.edges.len(),
+                plan.graph.compounds.len(),
+                plan.spatial_maps.len(),
+                plan.node_index_by_id.len(),
+                plan.default_edge_length,
+                plan.compound_padding_px,
             );
-            if let Some(a) = &opts.alignment_constraint {
+            if let Some(a) = &plan.options.alignment_constraint {
                 eprintln!("[arch-fcose] alignment.horizontal={:?}", a.horizontal);
                 eprintln!("[arch-fcose] alignment.vertical={:?}", a.vertical);
             }
             eprintln!(
                 "[arch-fcose] relative_placement_constraint={:?}",
-                opts.relative_placement_constraint
+                plan.options.relative_placement_constraint
             );
         }
 
         if let Some(s) = manatee_prepare_start {
             timings.manatee_prepare = s.elapsed();
         }
-
         let manatee_layout_start = timing_enabled.then(web_time::Instant::now);
-        let result = manatee::algo::fcose::layout_indexed(&graph, &opts).map_err(|e| {
-            Error::InvalidModel {
-                message: format!("manatee layout failed: {e}"),
-            }
-        })?;
+        let result =
+            manatee::algo::fcose::layout_indexed(&plan.graph, &plan.options).map_err(|e| {
+                Error::InvalidModel {
+                    message: format!("manatee layout failed: {e}"),
+                }
+            })?;
         if let Some(s) = manatee_layout_start {
             timings.manatee_layout = s.elapsed();
         }
@@ -1273,11 +1325,11 @@ fn layout_architecture_diagram_model(
                 n.y = p.y;
             }
         }
-        fcose_compound_bounds.reserve(model.groups.len());
-        for (idx, group) in model.groups.iter().enumerate() {
+        fcose_compound_bounds.reserve(plan.compound_ids.len());
+        for (idx, group_id) in plan.compound_ids.iter().enumerate() {
             if let Some(b) = result.compound_bounds.get(idx) {
                 fcose_compound_bounds.push(ArchitectureCompoundBounds {
-                    id: group.id.to_string(),
+                    id: (*group_id).to_string(),
                     bounds: architecture_bounds_from_layout_rect(*b),
                 });
             }
@@ -1293,24 +1345,23 @@ fn layout_architecture_diagram_model(
                     let displacement = node_displacements
                         .get(idx)
                         .map(|p| LayoutPoint { x: p.x, y: p.y });
-                    if let Some(node) = model.nodes.get(idx) {
+                    if let Some(node_id) = plan.node_ids.get(idx) {
                         Some(ArchitectureFcoseDebugNodeBounds {
-                            id: node.id.to_string(),
+                            id: (*node_id).to_string(),
                             kind: "node".to_string(),
                             bounds: architecture_bounds_from_layout_rect(b),
                             displacement,
                         })
                     } else {
-                        let group_idx = idx.checked_sub(model.nodes.len())?;
-                        model
-                            .groups
-                            .get(group_idx)
-                            .map(|group| ArchitectureFcoseDebugNodeBounds {
-                                id: group.id.to_string(),
+                        let group_idx = idx.checked_sub(plan.node_ids.len())?;
+                        plan.compound_ids.get(group_idx).map(|group_id| {
+                            ArchitectureFcoseDebugNodeBounds {
+                                id: (*group_id).to_string(),
                                 kind: "group".to_string(),
                                 bounds: architecture_bounds_from_layout_rect(b),
                                 displacement,
-                            })
+                            }
+                        })
                     }
                 })
                 .collect();
@@ -1319,11 +1370,10 @@ fn layout_architecture_diagram_model(
                 .into_iter()
                 .enumerate()
                 .filter_map(|(idx, b)| {
-                    model
-                        .groups
+                    plan.compound_ids
                         .get(idx)
-                        .map(|group| ArchitectureCompoundBounds {
-                            id: group.id.to_string(),
+                        .map(|group_id| ArchitectureCompoundBounds {
+                            id: (*group_id).to_string(),
                             bounds: architecture_bounds_from_layout_rect(b),
                         })
                 })
@@ -1581,6 +1631,225 @@ fn layout_architecture_diagram_model(
 
 #[cfg(test)]
 mod tests {
+    fn layout_node(id: &str, width: f64, height: f64) -> crate::model::LayoutNode {
+        crate::model::LayoutNode {
+            id: id.to_string(),
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        }
+    }
+
+    fn build_test_plan<'a>(
+        model: &'a super::ArchitectureModelView<'a>,
+        layout_nodes: &[crate::model::LayoutNode],
+        node_bounds_extras: &rustc_hash::FxHashMap<&'a str, manatee::BoundsExtras>,
+    ) -> super::ArchitectureFcoseInputPlan<'a> {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
+            model,
+            layout_nodes,
+            node_bounds_extras,
+            text_measurer: &measurer,
+            icon_size: 80.0,
+            padding_px: 40.0,
+            ideal_edge_length_multiplier: 1.5,
+            same_group_edge_elasticity: 0.45,
+            fcose_randomize: false,
+            fcose_node_separation: 75.0,
+            fcose_num_iter: 2500,
+            fcose_seed: 1,
+        })
+        .expect("build architecture FCoSE input plan")
+    }
+
+    #[test]
+    fn architecture_fcose_input_plan_preserves_minimal_graph_order_and_edge_input() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "api",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("API"),
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "db",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("DB"),
+                    in_group: None,
+                },
+            ],
+            groups: Vec::new(),
+            edges: vec![super::ArchitectureEdgeView {
+                lhs_id: "api",
+                rhs_id: "db",
+                lhs_dir: Some('R'),
+                rhs_dir: Some('L'),
+                title: Some("reads"),
+            }],
+        };
+        let layout_nodes = vec![
+            layout_node("api", 80.0, 80.0),
+            layout_node("db", 80.0, 80.0),
+        ];
+        let node_bounds_extras = rustc_hash::FxHashMap::default();
+
+        let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
+
+        assert_eq!(plan.node_ids, vec!["api", "db"]);
+        assert_eq!(plan.node_index_by_id.get("api"), Some(&0));
+        assert_eq!(plan.node_index_by_id.get("db"), Some(&1));
+        assert_eq!(plan.graph.nodes.len(), 2);
+        assert_eq!(plan.graph.nodes[0].width, 80.0);
+        assert_eq!(plan.graph.nodes[0].height, 80.0);
+        assert_eq!(plan.graph.edges.len(), 1);
+        assert_eq!(plan.graph.edges[0].source, 0);
+        assert_eq!(plan.graph.edges[0].target, 1);
+        assert_eq!(
+            plan.graph.edges[0].source_anchor,
+            Some(manatee::Anchor::Right)
+        );
+        assert_eq!(
+            plan.graph.edges[0].target_anchor,
+            Some(manatee::Anchor::Left)
+        );
+        assert!(plan.graph.edges[0].label_width.unwrap_or_default() > 0.0);
+        assert_eq!(plan.options.default_edge_length, Some(120.0));
+    }
+
+    #[test]
+    fn architecture_fcose_input_plan_preserves_nested_compound_parents() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "api",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: Some("platform"),
+                },
+                super::ArchitectureNodeView {
+                    id: "db",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: Some("core"),
+                },
+            ],
+            groups: vec![
+                super::ArchitectureGroupView {
+                    id: "core",
+                    in_group: None,
+                },
+                super::ArchitectureGroupView {
+                    id: "platform",
+                    in_group: Some("core"),
+                },
+            ],
+            edges: Vec::new(),
+        };
+        let layout_nodes = vec![
+            layout_node("api", 80.0, 80.0),
+            layout_node("db", 80.0, 80.0),
+        ];
+        let node_bounds_extras = rustc_hash::FxHashMap::default();
+
+        let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
+
+        assert_eq!(plan.compound_ids, vec!["core", "platform"]);
+        assert_eq!(plan.graph.compounds.len(), 2);
+        assert_eq!(plan.graph.compounds[0].parent, None);
+        assert_eq!(plan.graph.compounds[1].parent, Some(0));
+        assert_eq!(plan.graph.nodes[0].parent, Some(1));
+        assert_eq!(plan.graph.nodes[1].parent, Some(0));
+    }
+
+    #[test]
+    fn architecture_fcose_input_plan_uses_layout_node_size_and_bounds_extras() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![super::ArchitectureNodeView {
+                id: "api",
+                node_type: super::ArchitectureNodeType::Service,
+                title: Some("API"),
+                in_group: None,
+            }],
+            groups: Vec::new(),
+            edges: Vec::new(),
+        };
+        let layout_nodes = vec![layout_node("api", 96.0, 72.0)];
+        let mut node_bounds_extras = rustc_hash::FxHashMap::default();
+        node_bounds_extras.insert(
+            "api",
+            manatee::BoundsExtras {
+                left: 5.0,
+                right: 6.0,
+                top: 7.0,
+                bottom: 8.0,
+            },
+        );
+
+        let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
+
+        let node = plan.graph.nodes[0];
+        assert_eq!(node.width, 96.0);
+        assert_eq!(node.height, 72.0);
+        assert_eq!(node.bounds_extras.left, 5.0);
+        assert_eq!(node.bounds_extras.right, 6.0);
+        assert_eq!(node.bounds_extras.top, 7.0);
+        assert_eq!(node.bounds_extras.bottom, 8.0);
+    }
+
+    #[test]
+    fn architecture_fcose_input_plan_deduplicates_undirected_layout_edges() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "api",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "db",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: None,
+                    in_group: None,
+                },
+            ],
+            groups: Vec::new(),
+            edges: vec![
+                super::ArchitectureEdgeView {
+                    lhs_id: "api",
+                    rhs_id: "db",
+                    lhs_dir: Some('R'),
+                    rhs_dir: Some('L'),
+                    title: None,
+                },
+                super::ArchitectureEdgeView {
+                    lhs_id: "db",
+                    rhs_id: "api",
+                    lhs_dir: Some('L'),
+                    rhs_dir: Some('R'),
+                    title: None,
+                },
+            ],
+        };
+        let layout_nodes = vec![
+            layout_node("api", 80.0, 80.0),
+            layout_node("db", 80.0, 80.0),
+        ];
+        let node_bounds_extras = rustc_hash::FxHashMap::default();
+
+        let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
+
+        assert_eq!(plan.graph.edges.len(), 1);
+        assert_eq!(plan.graph.edges[0].source, 0);
+        assert_eq!(plan.graph.edges[0].target, 1);
+    }
+
     #[test]
     fn architecture_fcose_node_bounds_extras_feed_label_bounds() {
         let model = super::ArchitectureModelView {
