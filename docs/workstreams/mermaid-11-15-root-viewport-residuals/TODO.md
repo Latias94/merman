@@ -269,7 +269,13 @@ Last updated: 2026-06-04
   Cytoscape node-label font-family experiment left both deltas unchanged and was reverted. Treat
   these two rows as diagnostic unless a broader service-label/final-bbox model is found; resume
   production-capable HPD-050 work from the larger direct service label/content rows `076`, `041`,
-  and `019`.
+  and `019`. A fresh current-HEAD render-path revalidation for those three rows showed stored
+  upstream facts still match the actual Mermaid render path, and the known split remains:
+  `076=content +3 / expansion +2`, `041=content +3 / expansion +2`, and
+  `019=content +1 / expansion +2`. Boundary service attribution keeps the content component
+  service-label owned (`storage/registry`, `web/origin`, `metrics/store`). Standalone exact
+  `labelWidth` lookup remains rejected because the existing experiment only reduced these rows to
+  `+2px`, raised the full Architecture root queue, and regressed `093`.
 
 ## M3 - Policy Closeout
 

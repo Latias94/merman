@@ -1021,6 +1021,12 @@ Current repository reality to preserve:
     Cytoscape node-label font-family experiment did not move either delta. The next
     production-capable Architecture target remains the larger direct service label/content rows
     `076`, `041`, and `019`, with `002` / `093` preserved as regression sensors.
+  - A subsequent HPD-050 direct-service revalidation regenerated actual Mermaid render-path probes
+    for `076`, `041`, and `019`; all matched stored upstream facts. Current deltas remain
+    `+5/+5/+3`, decomposed as service content `+3/+3/+1` plus final expansion `+2`. Boundary
+    attribution keeps the content component owned by service label/content edges, while the prior
+    exact `labelWidth` lookup experiment remains rejected because it only reduced focused rows to
+    `+2px`, raised the full Architecture root queue, and regressed `093`.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

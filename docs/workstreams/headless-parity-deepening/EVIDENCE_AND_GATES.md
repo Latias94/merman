@@ -6841,3 +6841,49 @@ Gate notes:
 - The next HPD-050 production-capable target should return to the larger direct service
   label/content rows `076`, `041`, and `019`; any candidate must keep the now-small `002` / `093`
   tails stable.
+
+## HPD-050 - Architecture Direct Service Tail Render-Path Revalidation
+
+Outcome:
+
+- Regenerated actual `mermaid.render(...)` render-path probes for the direct service label/content
+  residual rows `076`, `041`, and `019` on current `main`.
+- All three render-path probes reported `facts match: true`, so their browser facts match the
+  stored upstream SVGs.
+- Joined those render-path facts with the existing FCoSE label-contribution probe batch and current
+  local SVG delta reports.
+- Current focused deltas remain `076=+5px`, `041=+5px`, and `019=+3px`.
+- The same source split still holds:
+  - `076`: service content `+3px` plus final expansion `+2px`;
+  - `041`: service content `+3px` plus final expansion `+2px`;
+  - `019`: service content `+1px` plus final expansion `+2px`.
+- Boundary service attribution remains service-label/content owned:
+  - `076/pipeline`: `storage` left `-2.5px`, `registry` right `+0.5px`, edge width `+3px`;
+  - `041/ui`: `web` left `-0.5px`, `origin` right `+2.5px`, edge width `+3px`;
+  - `019/i`: `metrics` left `-3.5px`, `store` right `-2.5px`, edge width `+1px`.
+- This revalidation does not reopen exact `labelWidth` lookup as a standalone production seam: the
+  existing rejected experiment reduced focused widths only to `+2px`, raised full Architecture
+  root mismatches to `25`, and shifted `093` to `-8px`.
+
+Evidence:
+
+- `target/compare/architecture-render-path-direct-service-tails-main-hpd050`
+- `target/compare/architecture-delta-direct-service-tail-render-path-main-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-direct-service-tail-render-path.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- debug-architecture-render-path-probe --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --out target\compare\architecture-render-path-direct-service-tails-main-hpd050` -
+  passed; all three fixtures reported `facts match: true`.
+- `MANATEE_FCOSE_DEBUG_TRACE=1 MANATEE_FCOSE_DEBUG_ELES_BBOX=1 cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_batch5_long_titles_and_punct_076 --fixture stress_architecture_html_titles_and_escapes_041 --fixture stress_architecture_unicode_and_xml_escapes_019 --probe-dir target\compare\architecture-fcose-probe-label-contribution-active-residuals-hpd050 --render-probe-dir target\compare\architecture-render-path-direct-service-tails-main-hpd050 --out target\compare\architecture-delta-direct-service-tail-render-path-main-hpd050` -
+  passed and wrote the joined current-HEAD reports.
+- `git diff --check` - passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+
+Gate notes:
+
+- No renderer, layout, fixture, baseline, or root override behavior changed in this pass.
+- The next production candidate must handle service child-label contribution, final group
+  expansion, and root SVG consumption together across both axes. Improving only `076` / `041` /
+  `019` width remains insufficient.
