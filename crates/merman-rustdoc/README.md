@@ -51,18 +51,33 @@ Put `#[cfg_attr(doc, merman_rustdoc::merman)]` on any item whose docs contain a 
 
 ````rust
 #[cfg_attr(doc, merman_rustdoc::merman)]
-/// Rendered by rustdoc as inline SVG:
+/// Documentation prose stays before the diagram.
 ///
 /// ```mermaid
 /// flowchart TD
-///   A[Start] --> B[Done]
+///   Source[Mermaid source] --> Macro[merman-rustdoc]
+///   Macro --> Svg[Inline SVG]
+///   Svg --> Docs[Rustdoc page]
 /// ```
+///
+/// Documentation prose stays after the diagram too.
 pub fn example() {}
 ````
 
 When you run `cargo doc`, the Mermaid fence is replaced with an inline `<svg>` in the generated
-HTML. The source view still shows your original Rust source. If you use the optional dependency
-setup above, run `cargo doc --features doc-diagrams` instead.
+HTML, preserving the prose around it. The source view still shows your original Rust source. If you
+use the optional dependency setup above, run `cargo doc --features doc-diagrams` instead.
+
+Rendered output:
+
+![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
+
+A full rustdoc page keeps the item heading, signature, prose, and generated SVG together:
+
+![Rendered Mermaid diagram in a rustdoc function page](resources/rustdoc-realworld.png)
+
+The default `theme = "rustdoc"` mode embeds light and dark SVG variants in the generated rustdoc
+page and lets rustdoc's current theme choose which one is visible.
 
 ## Common Patterns
 
@@ -164,7 +179,7 @@ my-crate/
 
 `docs/architecture.mmd`:
 
-```mermaid
+```text
 flowchart TD
   Api[Public API] --> Core[Core Model]
   Core --> Render[Renderer]
@@ -431,7 +446,7 @@ Supported fixed theme names follow Merman's Mermaid theme surface: `default`, `b
 Rustdoc theme mode and fixed themes are passed as Mermaid site config. Source-level config still
 wins, so a diagram can override them with front matter or an `%%init%%` directive:
 
-```mermaid
+```text
 %%{init: {"theme": "base"}}%%
 flowchart TD
   A --> B
@@ -602,7 +617,7 @@ or another supported Mermaid theme to choose one fixed build-time theme. If your
 Mermaid's own source-level config, such as an `%%init%%` directive, it is passed to Merman with the
 rest of the diagram and overrides the rustdoc-level theme default:
 
-```mermaid
+```text
 %%{init: {"theme": "base"}}%%
 flowchart TD
   A --> B
