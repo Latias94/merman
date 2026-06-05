@@ -612,9 +612,12 @@ logic across SVG parity renderers. A second follow-up centralized the common
 `themeVariables.fontSize` then root `fontSize` pixel fallback in
 `config_theme_or_root_font_size_px`, plus moved Block/Requirement's matching
 font-family fallback onto `config_font_family_or_first_array_css` without
-dropping their array-first compatibility. Flowchart, Class, and Sequence still
-keep diagram-specific font precedence rules. The remaining ARCH-013 work is
-broader: replace scattered raw JSON config lookups with narrow per-family
+dropping their array-first compatibility. A third follow-up separated and
+centralized the SVG root font-size rule where `themeVariables.fontSize` accepts
+CSS px strings while root `fontSize` stays numeric-only, via
+`config_theme_font_size_css_or_root_number_px`. Flowchart, Class, and Sequence
+still keep diagram-specific font precedence rules. The remaining ARCH-013 work
+is broader: replace scattered raw JSON config lookups with narrow per-family
 presentation/config views.
 
 Related decisions:

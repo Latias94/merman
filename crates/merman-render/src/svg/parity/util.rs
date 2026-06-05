@@ -91,9 +91,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn font_size_px(&self) -> f64 {
-        config_f64_css_px(self.effective_config, &["themeVariables", "fontSize"])
-            .or_else(|| config_f64(self.effective_config, &["fontSize"]))
-            .unwrap_or(16.0)
+        crate::config::config_theme_font_size_css_or_root_number_px(self.effective_config, 16.0)
             .max(1.0)
     }
 }

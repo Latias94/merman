@@ -97,12 +97,13 @@ fn info_css_parts_with_font_size_source(
     } else {
         font_family
     };
-    let theme_font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"]);
     let font_size = match font_size_source {
         InfoCssFontSizeSource::ThemeThenTopLevel => {
-            theme_font_size.or_else(|| config_f64(effective_config, &["fontSize"]))
+            crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
         }
-        InfoCssFontSizeSource::ThemeOnly => theme_font_size,
+        InfoCssFontSizeSource::ThemeOnly => {
+            config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
+        }
     }
     .unwrap_or(16.0)
     .max(1.0);
@@ -184,10 +185,9 @@ pub(super) fn architecture_css_with_config(
     let id = escape_xml(diagram_id);
 
     let font_family = SvgTheme::new(effective_config).font_family_css();
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let font_size =
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
+            .max(1.0);
 
     let text_color = theme_color(effective_config, "textColor", "#333");
     let line_color = theme_color(effective_config, "lineColor", "#333333");

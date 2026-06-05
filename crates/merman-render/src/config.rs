@@ -164,6 +164,15 @@ pub(crate) fn config_theme_or_root_font_size_px(cfg: &Value, default: f64) -> f6
     config_theme_or_root_font_size_px_opt(cfg).unwrap_or(default)
 }
 
+pub(crate) fn config_theme_font_size_css_or_root_number_px_opt(cfg: &Value) -> Option<f64> {
+    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64(cfg, &["fontSize"]))
+}
+
+pub(crate) fn config_theme_font_size_css_or_root_number_px(cfg: &Value, default: f64) -> f64 {
+    config_theme_font_size_css_or_root_number_px_opt(cfg).unwrap_or(default)
+}
+
 pub(crate) fn json_f64(value: &Value) -> Option<f64> {
     value
         .as_f64()
@@ -478,5 +487,39 @@ mod tests {
             18.0
         );
         assert_eq!(config_theme_or_root_font_size_px(&json!({}), 16.0), 16.0);
+    }
+
+    #[test]
+    fn config_theme_font_size_css_or_root_number_px_keeps_root_number_semantics() {
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": 18,
+                    "themeVariables": {
+                        "fontSize": "24px"
+                    }
+                }),
+                16.0,
+            ),
+            24.0
+        );
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": "18"
+                }),
+                16.0,
+            ),
+            18.0
+        );
+        assert_eq!(
+            config_theme_font_size_css_or_root_number_px(
+                &json!({
+                    "fontSize": "18px"
+                }),
+                16.0,
+            ),
+            16.0
+        );
     }
 }
