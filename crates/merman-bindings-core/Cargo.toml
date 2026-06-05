@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Safe shared binding facade for merman native bindings."
 documentation = "https://docs.rs/merman-bindings-core"
+readme = "README.md"
 keywords = ["mermaid", "diagrams", "bindings", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 

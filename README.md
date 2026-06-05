@@ -11,11 +11,12 @@ Mermaid, but headless, in Rust.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
+Merman is a parity-focused, headless Rust implementation of Mermaid for parsing, layout, and
+browserless rendering. It targets `mermaid@11.15.0`, produces semantic JSON, layout JSON, SVG,
+raster formats, and ASCII/Unicode output, and does not launch a browser to render diagrams.
 
-`merman` is a Rust, headless re-implementation of Mermaid (baseline: `mermaid@11.15.0`).
-Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so
-changes that affect semantics, layout, or rendering are caught and reviewed.
+Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so changes
+that affect semantics, layout, or rendering are caught and reviewed.
 Merman is independent from the upstream Mermaid project; see
 [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
 for Mermaid license and provenance notes.
@@ -107,9 +108,6 @@ MSRV is `rust-version = 1.87`.
 - [Architecture notes](#architecture-notes)
 - [Workspace crates](#workspace-crates)
 - [Links](#links)
-- [Star History](#star-history)
-- [Changelog](#changelog)
-- [License](#license)
 
 ## Quickstart (library)
 
@@ -435,7 +433,7 @@ Fixture: [`fixtures/architecture/stress_architecture_batch4_many_groups_sparse_s
 
 ```mermaid
 architecture-beta
-%% Authored stress fixture (Mermaid@11.12.3): many groups with sparse services (group rect bounds).
+%% Authored stress fixture: many groups with sparse services (group rect bounds).
 
 group g1(cloud)[G1]
 group g2(cloud)[G2]
@@ -467,7 +465,7 @@ Fixture: [`fixtures/mindmap/stress_mindmap_br_variants_031.mmd`](https://github.
 
 ```mermaid
 mindmap
-  %% Authored stress fixture (Mermaid@11.12.3): <br> variants inside labels.
+  %% Authored stress fixture: <br> variants inside labels.
   root((Root))
     n1["line 1<br>line 2"]
     n2["line 1<br/>line 2"]
@@ -657,6 +655,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI for native hosts and platform wrappers. |
 | [`merman-bindings-core`](https://crates.io/crates/merman-bindings-core) | Shared safe facade behind C ABI and UniFFI bindings. |
 | [`merman-uniffi`](https://crates.io/crates/merman-uniffi) | UniFFI-generated binding surface, currently used for Python packaging. |
+| [`merman-wasm`](https://crates.io/crates/merman-wasm) | wasm-bindgen transport crate behind the `@merman/web` TypeScript package. |
 | [`dugong`](https://crates.io/crates/dugong) | Dagre-compatible layout port. |
 | [`dugong-graphlib`](https://crates.io/crates/dugong-graphlib) | Graph container APIs ported from `dagrejs/graphlib`. |
 | [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |
@@ -674,16 +673,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
   (MIT; grid/routing/fixture reference for `merman-ascii`)
 - ASCII reference: [lukilabs/beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)
   (MIT; reference for future class, ER, xychart, color, and multiline terminal output)
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Latias94/merman&type=Date)](https://star-history.com/#Latias94/merman&Date)
-
-## Changelog
-
-See [CHANGELOG.md](https://github.com/Latias94/merman/blob/main/CHANGELOG.md).
-
-## License
-
-Dual-licensed under MIT or Apache-2.0. See `LICENSE`, `LICENSE-MIT`, `LICENSE-APACHE`.
-Mermaid compatibility and upstream attribution are documented in `THIRD_PARTY_NOTICES.md`.
+- Changelog: [CHANGELOG.md](https://github.com/Latias94/merman/blob/main/CHANGELOG.md)
+- License: dual MIT or Apache-2.0; see `LICENSE`, `LICENSE-MIT`, and `LICENSE-APACHE`
+- Upstream attribution: [THIRD_PARTY_NOTICES.md](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
+- Star history: [star-history.com/#Latias94/merman](https://star-history.com/#Latias94/merman&Date)
