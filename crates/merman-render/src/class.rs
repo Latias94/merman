@@ -1,4 +1,6 @@
-use crate::config::{config_f64, config_f64_css_px, config_f64_explicit_css_px};
+use crate::config::{
+    config_bool, config_f64, config_f64_css_px, config_f64_explicit_css_px, config_string,
+};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -17,22 +19,6 @@ use std::sync::Arc;
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {

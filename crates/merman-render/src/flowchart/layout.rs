@@ -1,4 +1,4 @@
-use crate::config::config_f64;
+use crate::config::{config_f64, config_string};
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -22,14 +22,6 @@ use super::{
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
     flowchart_node_has_span_css_height_parity, flowchart_whole_label_font_style_requests_italic,
 };
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
 
 fn flowchart_svg_plain_computed_width_px(
     measurer: &dyn TextMeasurer,

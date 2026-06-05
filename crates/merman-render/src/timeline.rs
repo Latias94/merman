@@ -1,5 +1,8 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, config_f64_css_px as cfg_f64_css_px};
+use crate::config::{
+    config_bool as cfg_bool, config_f64 as cfg_f64, config_f64_css_px as cfg_f64_css_px,
+    config_string as cfg_string,
+};
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
@@ -19,22 +22,6 @@ const EVENT_GAP_Y: f64 = 10.0;
 
 const TITLE_Y: f64 = 20.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
-
-fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_bool()
-}
-
-fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
 
 fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
     let font_family = cfg_string(effective_config, &["themeVariables", "fontFamily"])

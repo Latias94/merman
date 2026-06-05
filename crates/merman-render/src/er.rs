@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -524,14 +524,6 @@ fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
 fn is_er_self_loop_dummy_node_id(id: &str) -> bool {
     // Mermaid's dagre renderer creates self-loop helper nodes using `${nodeId}---${nodeId}---{1|2}`.
     id.contains("---")
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
 }
 
 pub(crate) fn er_relationship_html_labels(effective_config: &Value) -> bool {
