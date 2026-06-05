@@ -38,14 +38,14 @@ On its own this crate can not draw on any context. One needs to use existing dra
 roughr. In this workspace an example adapter is implemented for [piet](https://github.com/linebender/piet). Below examples are
 output of [rough_piet](https://github.com/orhanbalci/rough-rs/tree/main/rough_piet) adapter.
 
-## 📦 Cargo.toml
+## Cargo.toml
 
 ```toml
 [dependencies]
 roughr = { package = "roughr-merman", version = "0.12.0" }
 ```
 
-## 🔧 Example
+## Example
 
 ### Rectangle
 
@@ -75,7 +75,7 @@ rc.fill(
 rect.draw(&mut rc);
 ```
 
-### 🖨️ Output Rectangle
+### Output Rectangle
 ![rectangle](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/rectangle.png)
 
 ### Circle
@@ -103,7 +103,7 @@ rc.fill(
 circle_paths.draw(&mut rc);
 ```
 
-### 🖨️ Output Circle
+### Output Circle
 ![circle](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/circle.png)
 
 
@@ -133,11 +133,11 @@ rc.fill(
 ellipse_paths.draw(&mut rc);
 ```
 
-### 🖨️ Output Ellipse
+### Output Ellipse
 ![ellipse](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/ellipse.png)
 
 
-### Svg Path
+### SVG Path
 
 ```rust
 let options = OptionsBuilder::default()
@@ -159,7 +159,7 @@ rc.fill(
 heart_svg_path_drawing.draw(&mut rc);
 ```
 
-### 🖨️ Output Svg Path
+### Output SVG Path
 ![svgheart](https://raw.githubusercontent.com/orhanbalci/rough-rs/main/roughr/assets/heart_svg_path.png)
 
 ## Filler Implementation Status
@@ -170,17 +170,17 @@ heart_svg_path_drawing.draw(&mut rc);
 - [x] Dashed
 - [x] Zigzag-Line
 
-## 🔭 Examples
+## Examples
 
 For more examples have a look at the
 [examples](https://github.com/orhanbalci/rough-rs/tree/main/rough_piet/examples) folder.
 
 <!-- cargo-sync-readme end -->
 
-## 📝 License
+## License
 
 Licensed under MIT License ([LICENSE](LICENSE)).
 
-### 🚧 Contributions
+### Contributions
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the MIT license, shall be licensed as above, without any additional terms or conditions.

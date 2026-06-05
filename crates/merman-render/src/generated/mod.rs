@@ -12,6 +12,7 @@ pub mod c4_text_overrides_11_12_2;
 pub mod class_text_overrides_11_12_2;
 pub mod er_root_overrides_11_12_2;
 pub mod er_text_overrides_11_12_2;
+pub mod eventmodeling_root_overrides_11_15_0;
 pub mod flowchart_root_overrides_11_12_2;
 pub mod flowchart_text_overrides_11_12_2;
 pub mod font_metrics_flowchart_11_12_2;

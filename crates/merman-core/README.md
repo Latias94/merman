@@ -83,4 +83,4 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Compatibility
 
-`merman-core` tracks Mermaid 11.12.x behavior and treats upstream Mermaid as the compatibility target. The semantic JSON API is the stable parser-facing shape; typed render models are optimized for the renderer and may expose a different internal structure.
+`merman-core` tracks the pinned Mermaid baseline documented in the project README and treats upstream Mermaid as the compatibility target. The semantic JSON API is the stable parser-facing shape; typed render models are optimized for the renderer and may expose a different internal structure.

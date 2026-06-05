@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "UniFFI bindings for merman headless Mermaid rendering."
 documentation = "https://docs.rs/merman-uniffi"
+readme = "README.md"
 keywords = ["mermaid", "diagrams", "uniffi", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 

@@ -1,6 +1,6 @@
 # merman Python Package
 
-Experimental Python package scaffold for UniFFI-generated merman bindings.
+Experimental Python bindings for Merman through UniFFI.
 
 Merman renders Mermaid diagrams without a browser. It can parse Mermaid source, return semantic
 JSON, compute layout JSON, and render SVG through a headless Rust engine. See the

@@ -129,6 +129,32 @@ Animal --> Keeper
 }
 
 #[test]
+fn class_svg_namespace_clusters_keep_theme_fill() {
+    let svg = render_class_svg_from_text(
+        r#"classDiagram
+namespace Platform {
+  class Api
+}
+namespace Platform.FFI {
+  class Bridge
+}
+namespace Platform.Core {
+  class Engine
+}
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"#merman .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}"#),
+        "expected class namespace cluster CSS to provide the upstream yellow fill: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"style="fill:none !important;stroke:black !important""#),
+        "namespace cluster rects must not override the theme fill with transparent inline CSS: {svg}"
+    );
+}
+
+#[test]
 fn class_svg_honors_numeric_stroke_width_theme_css() {
     let svg = render_class_svg_from_text(
         r##"%%{init: {"themeVariables": {"mainBkg": "#112233", "nodeBorder": "#445566", "lineColor": "#778899", "strokeWidth": 7}}}%%

@@ -9,16 +9,26 @@ pub(super) fn render_eventmodeling_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
-    let viewbox_attr = format!(
+    let mut viewbox_attr = format!(
         "{} {} {} {}",
         fmt(layout.viewbox_x),
         fmt(layout.viewbox_y),
         fmt(layout.total_width),
         fmt(layout.total_height)
     );
-    let fixed_width = fmt_string(layout.total_width);
-    let fixed_height = fmt_string(layout.total_height);
-    let max_width = fmt_string(layout.total_width);
+    let mut fixed_width = fmt_string(layout.total_width);
+    let mut fixed_height = fmt_string(layout.total_height);
+    let mut max_width = fmt_string(layout.total_width);
+    if options.apply_root_overrides {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut fixed_width,
+            &mut fixed_height,
+            &mut max_width,
+            crate::generated::eventmodeling_root_overrides_11_15_0::lookup_eventmodeling_root_viewport_override,
+        );
+    }
     let style_attr = format!("max-width: {max_width}px; background-color: white;");
 
     let mut out = String::new();
