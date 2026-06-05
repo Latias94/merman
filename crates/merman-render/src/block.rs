@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_f64, config_f64_css_px, config_string_or_first_array};
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -21,18 +21,6 @@ struct SizedBlock {
     label_height: f64,
     x: f64,
     y: f64,
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string()).or_else(|| {
-        cur.as_array()
-            .and_then(|values| values.first()?.as_str())
-            .map(|s| s.to_string())
-    })
 }
 
 fn decode_block_label_html(raw: &str) -> String {
@@ -934,9 +922,12 @@ pub fn layout_block_diagram_typed(
 ) -> Result<BlockDiagramLayout> {
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {
-        font_family: config_string(effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string(effective_config, &["fontFamily"]))
-            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
+        font_family: config_string_or_first_array(
+            effective_config,
+            &["themeVariables", "fontFamily"],
+        )
+        .or_else(|| config_string_or_first_array(effective_config, &["fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
         font_size: config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
             .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
             .unwrap_or(16.0)

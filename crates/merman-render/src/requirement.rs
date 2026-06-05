@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_f64, config_f64_css_px, config_string_or_first_array};
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
@@ -9,18 +9,6 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 use serde_json::Value;
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string()).or_else(|| {
-        cur.as_array()
-            .and_then(|values| values.first()?.as_str())
-            .map(|s| s.to_string())
-    })
-}
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
@@ -229,9 +217,10 @@ pub fn layout_requirement_diagram_typed(
         .or_else(|| config_f64(effective_config, &["flowchart", "rankSpacing"]))
         .unwrap_or(50.0);
 
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    let font_family =
+        config_string_or_first_array(effective_config, &["themeVariables", "fontFamily"])
+            .or_else(|| config_string_or_first_array(effective_config, &["fontFamily"]))
+            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
         .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
         .unwrap_or(16.0);

@@ -1,5 +1,7 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, json_f64_css_px};
+use crate::config::{
+    config_bool as cfg_bool, config_f64 as cfg_f64, config_f64_css_px, config_string as cfg_string,
+};
 use crate::model::{
     Bounds, GitGraphArrowLayout, GitGraphBranchLayout, GitGraphCommitLayout, GitGraphDiagramLayout,
 };
@@ -16,26 +18,8 @@ const THEME_COLOR_LIMIT: usize = 8;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
 
-fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_bool()
-}
-
-fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
-
 fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
-    cfg.get("themeVariables")
-        .and_then(|v| v.get("fontSize"))
-        .and_then(json_f64_css_px)
+    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
         .unwrap_or(16.0)
         .max(1.0)
 }

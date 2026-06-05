@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, json_f64_css_px};
+use crate::config::{config_f64 as cfg_f64, config_f64_css_px, config_string as cfg_string};
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
@@ -10,19 +10,9 @@ pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
 
-fn cfg_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
-
 fn cfg_font_size(cfg: &serde_json::Value) -> f64 {
-    cfg.get("themeVariables")
-        .and_then(|v| v.get("fontSize"))
-        .and_then(json_f64_css_px)
-        .or_else(|| cfg.get("fontSize").and_then(json_f64_css_px))
+    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+        .or_else(|| config_f64_css_px(cfg, &["fontSize"]))
         .unwrap_or(16.0)
         .max(1.0)
 }

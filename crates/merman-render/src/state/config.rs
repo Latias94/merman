@@ -1,34 +1,14 @@
 //! Shared helpers for state diagram layout.
 
 use super::StateNode;
-pub(super) use crate::config::config_f64;
-use crate::config::config_f64_css_px;
+pub(super) use crate::config::{config_bool, config_f64};
+use crate::config::{config_f64_css_px, config_string_or_first_array};
 use crate::text::TextStyle;
 use dugong::RankDir;
 use serde_json::Value;
 
 pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
-}
-
-pub(super) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string()).or_else(|| {
-        cur.as_array()
-            .and_then(|a| a.first()?.as_str())
-            .map(|s| s.to_string())
-    })
 }
 
 pub(super) fn normalize_dir(direction: &str) -> String {
@@ -132,8 +112,10 @@ pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
     // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
     // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
     // rule applies to SVG `<text>` elements, not HTML labels.
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+    let font_family = config_string_or_first_array(effective_config, &["fontFamily"])
+        .or_else(|| {
+            config_string_or_first_array(effective_config, &["themeVariables", "fontFamily"])
+        })
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
     // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
     // (`themeVariables.fontSize`, typically a `"NNpx"` string).

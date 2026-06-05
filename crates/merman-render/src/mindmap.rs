@@ -1,18 +1,10 @@
-use crate::config::config_f64_css_px;
+use crate::config::{config_f64_css_px, config_string};
 use crate::json::from_value_ref;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 use crate::{Error, Result};
 use serde_json::Value;
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut v = cfg;
-    for p in path {
-        v = v.get(*p)?;
-    }
-    v.as_str().map(|s| s.to_string())
-}
 
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
     config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])

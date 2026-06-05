@@ -15,6 +15,23 @@ pub(crate) fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     value_at(cfg, path).and_then(|v| v.as_str().map(str::to_string))
 }
 
+pub(crate) fn json_string_or_first_array(value: &Value) -> Option<String> {
+    value.as_str().map(str::to_string).or_else(|| {
+        value
+            .as_array()
+            .and_then(|values| values.first()?.as_str())
+            .map(str::to_string)
+    })
+}
+
+pub(crate) fn config_string_or_first_array(cfg: &Value, path: &[&str]) -> Option<String> {
+    value_at(cfg, path).and_then(json_string_or_first_array)
+}
+
+pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
+    value_at(cfg, path).and_then(Value::as_bool)
+}
+
 pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
     let s = font_family.trim().trim_end_matches(';').trim();
     if s.is_empty() {
@@ -176,6 +193,40 @@ mod tests {
         assert_eq!(config_f64(&cfg, &["flowchart", "rankSpacing"]), Some(100.0));
         assert_eq!(config_f64(&cfg, &["flowchart", "nodeSpacing"]), Some(70.5));
         assert_eq!(config_f64(&cfg, &["missing", "rankSpacing"]), None);
+    }
+
+    #[test]
+    fn config_string_or_first_array_accepts_string_and_array_first_item() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": ["Courier", "Ignored"],
+                "textColor": "#333"
+            }
+        });
+
+        assert_eq!(
+            config_string_or_first_array(&cfg, &["themeVariables", "fontFamily"]),
+            Some("Courier".to_string())
+        );
+        assert_eq!(
+            config_string_or_first_array(&cfg, &["themeVariables", "textColor"]),
+            Some("#333".to_string())
+        );
+        assert_eq!(
+            config_string_or_first_array(&cfg, &["themeVariables", "missing"]),
+            None
+        );
+    }
+
+    #[test]
+    fn config_bool_accepts_only_json_bool() {
+        let cfg = json!({
+            "a": true,
+            "b": "true"
+        });
+
+        assert_eq!(config_bool(&cfg, &["a"]), Some(true));
+        assert_eq!(config_bool(&cfg, &["b"]), None);
     }
 
     #[test]
