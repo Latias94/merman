@@ -85,10 +85,7 @@ impl ClassRenderSettings {
                     config_string(effective_config, &["themeVariables", "primaryBorderColor"])
                 })
                 .unwrap_or_else(|| "#9370DB".to_string());
-        let look = config_string(effective_config, &["look"])
-            .map(|look| look.trim().to_string())
-            .filter(|look| !look.is_empty())
-            .unwrap_or_else(|| "classic".to_string());
+        let look = config_diagram_look(effective_config).as_str().to_string();
 
         Self {
             diagram_use_html_labels,

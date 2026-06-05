@@ -2,6 +2,7 @@ use serde_json::Value;
 
 pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
     r#""trebuchet ms",verdana,arial,sans-serif"#;
+pub(crate) const DEFAULT_DIAGRAM_LOOK: &str = "classic";
 
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut cur = cfg;
@@ -46,6 +47,47 @@ pub(crate) fn config_string_vec(cfg: &Value, path: &[&str]) -> Vec<String> {
 
 pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct DiagramLook<'a> {
+    value: &'a str,
+}
+
+impl<'a> DiagramLook<'a> {
+    pub(crate) fn from_raw(raw: Option<&'a str>) -> Self {
+        let value = raw
+            .map(str::trim)
+            .filter(|look| !look.is_empty())
+            .unwrap_or(DEFAULT_DIAGRAM_LOOK);
+        Self { value }
+    }
+
+    pub(crate) fn as_str(&self) -> &'a str {
+        self.value
+    }
+
+    pub(crate) fn is_neo(&self) -> bool {
+        self.value == "neo"
+    }
+
+    pub(crate) fn is_hand_drawn(&self) -> bool {
+        self.value == "handDrawn"
+    }
+}
+
+impl std::fmt::Display for DiagramLook<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.value)
+    }
+}
+
+pub(crate) fn config_diagram_look(cfg: &Value) -> DiagramLook<'_> {
+    DiagramLook::from_raw(value_at(cfg, &["look"]).and_then(Value::as_str))
+}
+
+pub(crate) fn mermaid_config_diagram_look(cfg: &merman_core::MermaidConfig) -> DiagramLook<'_> {
+    DiagramLook::from_raw(cfg.get_str("look"))
 }
 
 pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
@@ -266,6 +308,24 @@ mod tests {
 
         assert_eq!(config_bool(&cfg, &["a"]), Some(true));
         assert_eq!(config_bool(&cfg, &["b"]), None);
+    }
+
+    #[test]
+    fn config_diagram_look_trims_and_defaults_to_classic() {
+        assert_eq!(
+            config_diagram_look(&json!({ "look": " neo " })).as_str(),
+            "neo"
+        );
+        assert!(config_diagram_look(&json!({ "look": "neo" })).is_neo());
+        assert!(config_diagram_look(&json!({ "look": "handDrawn" })).is_hand_drawn());
+        assert_eq!(
+            config_diagram_look(&json!({})).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
+        assert_eq!(
+            config_diagram_look(&json!({ "look": "" })).as_str(),
+            DEFAULT_DIAGRAM_LOOK
+        );
     }
 
     #[test]

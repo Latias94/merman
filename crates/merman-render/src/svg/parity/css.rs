@@ -326,8 +326,8 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     )
     .unwrap_or_else(|| edge_label_background.clone());
     let node_border = option("nodeBorder", "#9370DB");
-    let look = config_string(effective_config, &["look"]).unwrap_or_default();
-    let relationship_line_stroke_width = if look.trim() == "neo" {
+    let look = config_diagram_look(effective_config);
+    let relationship_line_stroke_width = if look.is_neo() {
         option("strokeWidth", "1")
     } else {
         "1px".to_string()
@@ -392,7 +392,7 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
         id,
         requirement_edge_label_background
     );
-    if look.trim() == "neo" {
+    if look.is_neo() {
         let _ = write!(
             &mut out,
             r#"#{} .node .neo-node{{stroke:{};}}#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,

@@ -606,8 +606,11 @@ close it. Top-level frontmatter diagram namespaces are now mapped into
 Requirement, and Kanban section SVG paths now have regression coverage for
 `look=neo` DOM/style consumption. Sequence is intentionally documented as a
 CSS/theme consumer rather than a diagram-wide `data-look` DOM contract. The
-remaining ARCH-013 work is broader: replace scattered raw JSON config lookups
-with narrow per-family presentation/config views.
+first follow-up centralized render-side `look` interpretation in
+`DiagramLook` / `config_diagram_look`, replacing repeated raw JSON default/trim
+logic across SVG parity renderers. The remaining ARCH-013 work is broader:
+replace scattered raw JSON config lookups with narrow per-family
+presentation/config views.
 
 Related decisions:
 

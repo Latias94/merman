@@ -248,9 +248,8 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
-    let look = config_string(effective_config, &["look"]).unwrap_or_default();
-    let look = look.trim();
-    let look = if look.is_empty() { "classic" } else { look };
+    let look = config_diagram_look(effective_config);
+    let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
     let node_id_prefix = if diagram_id.is_empty() {
         String::new()

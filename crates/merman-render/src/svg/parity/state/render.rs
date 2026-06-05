@@ -121,10 +121,10 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     // `nodes` already preserves that first-seen insertion order, so use it directly.
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
+    let diagram_look = config_diagram_look(effective_config).as_str().to_string();
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
-        diagram_look: config_string(effective_config, &["look"])
-            .unwrap_or_else(|| "classic".to_string()),
+        diagram_look,
         hand_drawn_seed: effective_config
             .get("handDrawnSeed")
             .and_then(|v| v.as_u64())

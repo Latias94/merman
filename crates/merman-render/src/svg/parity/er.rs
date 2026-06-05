@@ -408,10 +408,8 @@ pub(super) fn render_er_diagram_svg_model(
         .get("layout")
         .and_then(|v| v.as_str())
         .is_some_and(|s| s.eq_ignore_ascii_case("elk"));
-    let data_look = config_string(effective_config, &["look"])
-        .map(|look| look.trim().to_string())
-        .filter(|look| !look.is_empty())
-        .unwrap_or_else(|| "classic".to_string());
+    let data_look = config_diagram_look(effective_config);
+    let data_look = data_look.as_str();
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.

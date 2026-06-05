@@ -292,11 +292,8 @@ pub(super) fn render_kanban_diagram_svg(
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    let data_look = config_string(effective_config, &["look"])
-        .map(|look| look.trim().to_string())
-        .filter(|look| !look.is_empty())
-        .unwrap_or_else(|| "classic".to_string());
-    let data_look_attr = escape_attr(&data_look);
+    let data_look = config_diagram_look(effective_config);
+    let data_look_attr = escape_attr(data_look.as_str());
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
