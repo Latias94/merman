@@ -12,8 +12,19 @@ back into the generated rustdoc page.
 
 ## Install
 
-For most libraries, keep the macro behind a documentation feature. Normal builds do not need to
-compile the renderer.
+Use a normal dependency for the simplest setup:
+
+```toml
+[dependencies]
+merman-rustdoc = "0.7"
+```
+
+This works for local `cargo doc` and for docs.rs because the examples below use `cfg_attr(doc, ...)`.
+The macro only expands during rustdoc builds, but Cargo will still compile the dependency during
+ordinary builds.
+
+If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
+documentation feature:
 
 ```toml
 [dependencies]
@@ -26,21 +37,20 @@ doc-diagrams = ["dep:merman-rustdoc"]
 features = ["doc-diagrams"]
 ```
 
-Build docs locally with:
+With this optional setup, build docs locally with:
 
 ```sh
 cargo doc --features doc-diagrams
 ```
 
-docs.rs will enable `doc-diagrams` because of the `package.metadata.docs.rs` section.
+docs.rs will also enable `doc-diagrams` because of the `package.metadata.docs.rs` section.
 
 ## Quickstart
 
-Put `#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]` on any item whose
-docs contain a Mermaid fence.
+Put `#[cfg_attr(doc, merman_rustdoc::merman)]` on any item whose docs contain a Mermaid fence.
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Rendered by rustdoc as inline SVG:
 ///
 /// ```mermaid
@@ -50,15 +60,16 @@ docs contain a Mermaid fence.
 pub fn example() {}
 ````
 
-When you run `cargo doc --features doc-diagrams`, the Mermaid fence is replaced with an inline
-`<svg>` in the generated HTML. The source view still shows your original Rust source.
+When you run `cargo doc`, the Mermaid fence is replaced with an inline `<svg>` in the generated
+HTML. The source view still shows your original Rust source. If you use the optional dependency
+setup above, run `cargo doc --features doc-diagrams` instead.
 
 ## Common Patterns
 
 ### Functions
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Parse, layout, and render a diagram.
 ///
 /// ```mermaid
@@ -73,7 +84,7 @@ pub fn render_svg(input: &str) -> String {
 ### Modules
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Rendering pipeline.
 ///
 /// ```mermaid
@@ -87,7 +98,7 @@ pub mod render {}
 ### Structs
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// A renderer configured for rustdoc output.
 ///
 /// ```mermaid
@@ -101,7 +112,7 @@ pub struct RustdocRenderer;
 ### Traits
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Something that can render a diagram.
 ///
 /// ```mermaid
@@ -121,7 +132,7 @@ pub trait RenderDiagram {
 ````rust
 pub struct Client;
 
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// High-level client workflow.
 ///
 /// ```mermaid
@@ -163,7 +174,7 @@ flowchart TD
 `src/lib.rs`:
 
 ```rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Crate architecture.
 ///
 /// include_mmd!("docs/architecture.mmd")
@@ -179,7 +190,7 @@ You can put more than one diagram on the same item. SVG ids are scoped per diagr
 definitions do not collide.
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Input flow:
 ///
 /// ```mermaid
@@ -199,7 +210,7 @@ pub fn pipeline() {}
 Backtick and tilde fences are both supported:
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// ~~~ mermaid
 /// flowchart TD
 ///   A --> B
@@ -213,7 +224,7 @@ The attribute accepts string options:
 
 ```rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(
         scope = "item",
         pipeline = "readable",
@@ -247,7 +258,7 @@ variants that are visible in the annotated item.
 
 ````rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(scope = "tree")
 )]
 pub mod api {
@@ -277,7 +288,7 @@ pub mod api {
 `scope = "tree"` requires inline Rust syntax. It does not inspect external module files:
 
 ```rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman(scope = "tree"))]
+#[cfg_attr(doc, merman_rustdoc::merman(scope = "tree"))]
 pub mod external;
 ```
 
@@ -289,7 +300,7 @@ Use this when readers should be able to inspect the Mermaid source from the gene
 
 ````rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(source = "details")
 )]
 /// ```mermaid
@@ -308,7 +319,7 @@ original Mermaid fence or `include_mmd!` line is left in place when rendering fa
 
 ````rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(fail = "keep-source")
 )]
 /// ```mermaid
@@ -331,7 +342,7 @@ Choose the SVG pipeline that fits the target:
 
 ```rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(pipeline = "resvg-safe")
 )]
 /// ```mermaid
@@ -349,7 +360,7 @@ remote resource references such as `<image href="https://...">`.
 
 ```rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(sanitize = "strict")
 )]
 /// ```mermaid
@@ -363,7 +374,7 @@ Use `sanitize = "off"` only when you are deliberately inspecting raw renderer ou
 
 ```rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(sanitize = "off")
 )]
 /// ```mermaid
@@ -384,7 +395,7 @@ front matter or an `%%init%%` directive, to decide the theme:
 
 ````rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(theme = "mermaid")
 )]
 /// ```mermaid
@@ -399,7 +410,7 @@ Use a fixed Mermaid theme when you want one static SVG regardless of the reader'
 
 ````rust
 #[cfg_attr(
-    all(doc, feature = "doc-diagrams"),
+    doc,
     merman_rustdoc::merman(theme = "dark")
 )]
 /// ```mermaid
@@ -433,7 +444,7 @@ upstream item was documented with `merman-rustdoc`.
 
 ```rust
 // upstream crate
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// ```mermaid
 /// flowchart TD
 ///   Upstream --> Reexport
@@ -447,8 +458,9 @@ pub struct DiagrammedType;
 pub use upstream::DiagrammedType;
 ```
 
-The upstream crate still has to enable its documentation feature when its docs are built. A
-downstream re-export cannot render diagrams that were never expanded upstream.
+If the upstream crate uses the optional documentation feature setup, that feature still has to be
+enabled when its docs are built. A downstream re-export cannot render diagrams that were never
+expanded upstream.
 
 ## What Gets Rendered
 
@@ -474,13 +486,19 @@ Not supported today:
 
 ### The generated docs still show a Mermaid code block
 
-Make sure the documentation feature is enabled:
+Make sure the item has the attribute:
+
+```rust
+#[cfg_attr(doc, merman_rustdoc::merman)]
+```
+
+If you use the optional dependency setup, also make sure the documentation feature is enabled:
 
 ```sh
 cargo doc --features doc-diagrams
 ```
 
-Also check that the item has the attribute:
+Also gate the attribute with the same feature:
 
 ```rust
 #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
@@ -502,7 +520,8 @@ my-crate/docs/architecture.mmd
 
 ### docs.rs does not render diagrams
 
-Add the docs.rs feature configuration:
+The normal dependency setup does not need docs.rs metadata. If `merman-rustdoc` is optional behind a
+documentation feature, add the docs.rs feature configuration:
 
 ```toml
 [package.metadata.docs.rs]
@@ -519,7 +538,7 @@ going while preserving the original Mermaid source.
 Use an inline module when you want recursive processing:
 
 ```rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman(scope = "tree"))]
+#[cfg_attr(doc, merman_rustdoc::merman(scope = "tree"))]
 pub mod api {
     // child docs are visible to the proc macro here
 }
@@ -535,7 +554,7 @@ written with `//!`.
 Put crate-level diagrams on a public module or item instead:
 
 ````rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// Crate architecture.
 ///
 /// ```mermaid
@@ -554,7 +573,7 @@ No. `merman-rustdoc` rewrites literal rustdoc lines that come from item doc comm
 Use `include_mmd!` for Mermaid files:
 
 ```rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+#[cfg_attr(doc, merman_rustdoc::merman)]
 /// include_mmd!("docs/architecture.mmd")
 pub fn architecture() {}
 ```

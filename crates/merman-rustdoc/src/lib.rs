@@ -9,7 +9,19 @@
 //!
 //! # Install
 //!
-//! Keep the macro behind a documentation feature so normal builds do not compile the renderer:
+//! Use a normal dependency for the simplest setup:
+//!
+//! ```toml
+//! [dependencies]
+//! merman-rustdoc = "0.7"
+//! ```
+//!
+//! This works for local `cargo doc` and for docs.rs because the examples below use
+//! `cfg_attr(doc, ...)`. The macro only expands during rustdoc builds, but Cargo will still compile
+//! the dependency during ordinary builds.
+//!
+//! If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
+//! documentation feature:
 //!
 //! ```toml
 //! [dependencies]
@@ -22,7 +34,7 @@
 //! features = ["doc-diagrams"]
 //! ```
 //!
-//! Build docs locally with:
+//! With this optional setup, build docs locally with:
 //!
 //! ```sh
 //! cargo doc --features doc-diagrams
@@ -33,7 +45,7 @@
 //! Put the attribute on any item whose docs contain a Mermaid fence:
 //!
 //! ````rust
-//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+//! #[cfg_attr(doc, merman_rustdoc::merman)]
 //! /// Rendered by rustdoc as inline SVG:
 //! ///
 //! /// ```mermaid
@@ -49,7 +61,7 @@
 //! crate's `CARGO_MANIFEST_DIR`.
 //!
 //! ```rust
-//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+//! #[cfg_attr(doc, merman_rustdoc::merman)]
 //! /// Crate architecture.
 //! ///
 //! /// include_mmd!("docs/architecture.mmd")
@@ -62,7 +74,7 @@
 //!
 //! ```rust
 //! #[cfg_attr(
-//!     all(doc, feature = "doc-diagrams"),
+//!     doc,
 //!     merman_rustdoc::merman(
 //!         scope = "item",
 //!         pipeline = "readable",
@@ -93,7 +105,7 @@
 //!
 //! ````rust
 //! #[cfg_attr(
-//!     all(doc, feature = "doc-diagrams"),
+//!     doc,
 //!     merman_rustdoc::merman(scope = "tree")
 //! )]
 //! pub mod api {
@@ -134,7 +146,7 @@
 //! Put crate-level diagrams on a public module or item instead:
 //!
 //! ````rust
-//! #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+//! #[cfg_attr(doc, merman_rustdoc::merman)]
 //! /// Crate architecture.
 //! ///
 //! /// ```mermaid
