@@ -1,11 +1,72 @@
 use serde_json::Value;
 
+pub(crate) const MERMAID_DEFAULT_FONT_FAMILY_CSS: &str =
+    r#""trebuchet ms",verdana,arial,sans-serif"#;
+
 pub(crate) fn value_at<'a>(cfg: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut cur = cfg;
     for key in path {
         cur = cur.get(*key)?;
     }
     Some(cur)
+}
+
+pub(crate) fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    value_at(cfg, path).and_then(|v| v.as_str().map(str::to_string))
+}
+
+pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
+    let s = font_family.trim().trim_end_matches(';').trim();
+    if s.is_empty() {
+        return String::new();
+    }
+
+    // Mermaid serializes generated CSS with comma-separated font-family lists and no extra
+    // whitespace around commas. Keep that spelling stable for SVG parity and font-metric keys.
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+
+    for ch in s.chars() {
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                cur.push(ch);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                cur.push(ch);
+            }
+            ',' if !in_single && !in_double => {
+                let p = cur.trim();
+                if !p.is_empty() {
+                    parts.push(p.to_string());
+                }
+                cur.clear();
+            }
+            _ => cur.push(ch),
+        }
+    }
+
+    let p = cur.trim();
+    if !p.is_empty() {
+        parts.push(p.to_string());
+    }
+
+    parts.join(",")
+}
+
+pub(crate) fn config_font_family_css(cfg: &Value) -> String {
+    let font_family = config_string(cfg, &["themeVariables", "fontFamily"])
+        .or_else(|| config_string(cfg, &["fontFamily"]))
+        .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+    let font_family = normalize_css_font_family(font_family.as_str());
+    if font_family.is_empty() {
+        MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
+    } else {
+        font_family
+    }
 }
 
 pub(crate) fn json_f64(value: &Value) -> Option<f64> {
@@ -157,5 +218,44 @@ mod tests {
             Some("24px !important".to_string())
         );
         assert_eq!(json_css_number_or_string(&json!(true)), None);
+    }
+
+    #[test]
+    fn normalize_css_font_family_matches_mermaid_spacing() {
+        assert_eq!(
+            normalize_css_font_family(r#" "trebuchet ms", verdana, arial, sans-serif; "#),
+            r#""trebuchet ms",verdana,arial,sans-serif"#
+        );
+        assert_eq!(
+            normalize_css_font_family(r#"'Open Sans', "IBM Plex Sans", sans-serif"#),
+            r#"'Open Sans',"IBM Plex Sans",sans-serif"#
+        );
+    }
+
+    #[test]
+    fn config_font_family_css_uses_theme_then_legacy_then_default() {
+        assert_eq!(
+            config_font_family_css(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": {
+                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+                }
+            })),
+            r#""IBM Plex Sans",Arial,sans-serif"#
+        );
+        assert_eq!(
+            config_font_family_css(&json!({
+                "fontFamily": "Courier, monospace"
+            })),
+            "Courier,monospace"
+        );
+        assert_eq!(
+            config_font_family_css(&json!({
+                "themeVariables": {
+                    "fontFamily": " ; "
+                }
+            })),
+            MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
     }
 }

@@ -121,6 +121,50 @@ Alice->Bob: Hi
 }
 
 #[test]
+fn parse_init_font_family_mirrors_legacy_theme_variable_like_upstream() {
+    let engine = Engine::new();
+    let text = r#"%%{init: { "fontFamily": "Courier" } }%%
+graph TD;A-->B;
+"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.config.get_str("fontFamily"), Some("Courier"));
+    assert_eq!(
+        res.config.get_str("themeVariables.fontFamily"),
+        Some("Courier")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.fontFamily"),
+        Some("Courier")
+    );
+}
+
+#[test]
+fn parse_init_theme_variable_font_family_overrides_legacy_root() {
+    let engine = Engine::new();
+    let text = r#"%%{init: { "fontFamily": "Courier", "themeVariables": { "fontFamily": "Inter" } } }%%
+graph TD;A-->B;
+"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.config.get_str("fontFamily"), Some("Courier"));
+    assert_eq!(
+        res.config.get_str("themeVariables.fontFamily"),
+        Some("Inter")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.fontFamily"),
+        Some("Inter")
+    );
+}
+
+#[test]
 fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata(

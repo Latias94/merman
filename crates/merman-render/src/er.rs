@@ -12,14 +12,6 @@ pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
-
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
@@ -190,7 +182,7 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
 }
 
 fn er_text_style(effective_config: &Value) -> TextStyle {
-    let font_family = config_string(effective_config, &["fontFamily"]);
+    let font_family = Some(crate::config::config_font_family_css(effective_config));
     // Mermaid ER unified renderer inherits the root SVG font-size, so `themeVariables.fontSize`
     // wins when present (including Mermaid's common `"NNpx"` form).
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
@@ -1107,5 +1099,20 @@ mod tests {
             "htmlLabels": false,
             "flowchart": { "htmlLabels": true }
         })));
+    }
+
+    #[test]
+    fn er_text_style_uses_theme_font_family_css() {
+        let style = super::er_text_style(&json!({
+            "fontFamily": "Courier, monospace",
+            "themeVariables": {
+                "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+            }
+        }));
+
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+        );
     }
 }

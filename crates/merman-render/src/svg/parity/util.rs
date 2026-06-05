@@ -38,46 +38,7 @@ pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool
 }
 
 pub(super) fn normalize_css_font_family(font_family: &str) -> String {
-    let s = font_family.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return String::new();
-    }
-
-    // Mermaid's generated CSS uses a comma-separated `font-family` list with no extra whitespace
-    // around commas (e.g. `"trebuchet ms",verdana,arial,sans-serif`). Normalize config-provided
-    // values to the same format so strict SVG XML compares are stable.
-    let mut parts: Vec<String> = Vec::new();
-    let mut cur = String::new();
-    let mut in_single = false;
-    let mut in_double = false;
-
-    for ch in s.chars() {
-        match ch {
-            '\'' if !in_double => {
-                in_single = !in_single;
-                cur.push(ch);
-            }
-            '"' if !in_single => {
-                in_double = !in_double;
-                cur.push(ch);
-            }
-            ',' if !in_single && !in_double => {
-                let p = cur.trim();
-                if !p.is_empty() {
-                    parts.push(p.to_string());
-                }
-                cur.clear();
-            }
-            _ => cur.push(ch),
-        }
-    }
-
-    let p = cur.trim();
-    if !p.is_empty() {
-        parts.push(p.to_string());
-    }
-
-    parts.join(",")
+    crate::config::normalize_css_font_family(font_family)
 }
 
 pub(super) fn theme_color(
@@ -124,15 +85,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn font_family_css(&self) -> String {
-        let font_family = config_string(self.effective_config, &["themeVariables", "fontFamily"])
-            .or_else(|| config_string(self.effective_config, &["fontFamily"]))
-            .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-        let font_family = normalize_css_font_family(font_family.as_str());
-        if font_family.is_empty() {
-            r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-        } else {
-            font_family
-        }
+        crate::config::config_font_family_css(self.effective_config)
     }
 
     pub(super) fn font_size_px(&self) -> f64 {

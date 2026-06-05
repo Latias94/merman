@@ -1,6 +1,6 @@
 use crate::text::TextStyle;
 
-use super::super::{config_f64, config_f64_css_px};
+use super::super::{SvgTheme, config_f64, config_f64_css_px};
 
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
@@ -43,8 +43,9 @@ impl ArchitectureRenderSettings {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        let font_family = SvgTheme::new(effective_config).font_family_css();
         let text_style = TextStyle {
-            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_family: Some(font_family),
             font_size: svg_font_size_px,
             font_weight: None,
         };
@@ -65,5 +66,37 @@ impl ArchitectureRenderSettings {
             text_style,
             compound_text_style,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn architecture_render_settings_use_css_font_family_for_measurement() {
+        let cfg = serde_json::json!({
+            "fontFamily": "Courier, monospace",
+            "themeVariables": {
+                "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+            },
+            "architecture": {
+                "fontSize": 18
+            }
+        });
+
+        let settings = ArchitectureRenderSettings::from_config("arch", &cfg);
+
+        assert_eq!(
+            settings.text_style.font_family.as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+        );
+        assert_eq!(
+            settings.compound_text_style.font_family.as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+        );
+        assert!(settings.css.contains(
+            r#"#arch{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
+        ));
     }
 }

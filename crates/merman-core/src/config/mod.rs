@@ -87,6 +87,46 @@ impl MermaidConfig {
     }
 }
 
+pub(crate) fn mirror_legacy_font_family_into_theme_variables(config: &mut MermaidConfig) {
+    let value = Arc::make_mut(&mut config.0);
+    mirror_legacy_font_family_into_theme_variables_value(value);
+}
+
+pub(crate) fn mirror_legacy_font_family_into_theme_variables_value(value: &mut Value) {
+    let Some(root) = value.as_object_mut() else {
+        return;
+    };
+    let Some(font_family) = root
+        .get("fontFamily")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+    else {
+        return;
+    };
+
+    let has_theme_font_family = root
+        .get("themeVariables")
+        .and_then(Value::as_object)
+        .and_then(|theme_variables| theme_variables.get("fontFamily"))
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty());
+    if has_theme_font_family {
+        return;
+    }
+
+    let theme_variables = root
+        .entry("themeVariables")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !theme_variables.is_object() {
+        *theme_variables = Value::Object(Map::new());
+    }
+    if let Some(theme_variables) = theme_variables.as_object_mut() {
+        theme_variables.insert("fontFamily".to_string(), Value::String(font_family));
+    }
+}
+
 fn deep_merge_value(base: &mut Value, incoming: &Value) {
     match (base, incoming) {
         (Value::Object(base_map), Value::Object(in_map)) => {
@@ -102,5 +142,36 @@ fn deep_merge_value(base: &mut Value, incoming: &Value) {
         (base_slot, in_value) => {
             *base_slot = in_value.clone();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn mirror_legacy_font_family_populates_missing_theme_variable() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "fontFamily": "Courier"
+        }));
+
+        mirror_legacy_font_family_into_theme_variables(&mut cfg);
+
+        assert_eq!(cfg.get_str("themeVariables.fontFamily"), Some("Courier"));
+    }
+
+    #[test]
+    fn mirror_legacy_font_family_preserves_explicit_theme_variable() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "fontFamily": "Courier",
+            "themeVariables": {
+                "fontFamily": "Inter"
+            }
+        }));
+
+        mirror_legacy_font_family_into_theme_variables(&mut cfg);
+
+        assert_eq!(cfg.get_str("themeVariables.fontFamily"), Some("Inter"));
     }
 }

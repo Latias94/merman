@@ -388,6 +388,10 @@ pub(super) fn render_er_diagram_svg(
     )
 }
 
+fn er_font_family_css(effective_config: &serde_json::Value) -> String {
+    crate::config::config_font_family_css(effective_config)
+}
+
 pub(super) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
@@ -417,10 +421,7 @@ pub(super) fn render_er_diagram_svg_model(
     );
     let text_color = theme_color(effective_config, "textColor", "#333333");
     let _node_text_color = theme_color(effective_config, "nodeTextColor", &text_color);
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| normalize_css_font_family(&s))
-        .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
+    let font_family = er_font_family_css(effective_config);
     // Mermaid ER unified output inherits the root SVG font-size, so `themeVariables.fontSize`
     // wins when present (including Mermaid's common `"NNpx"` form).
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
@@ -1853,4 +1854,30 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &
     };
 
     format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    #[test]
+    fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {
+        assert_eq!(
+            super::er_font_family_css(&json!({})),
+            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+    }
+
+    #[test]
+    fn er_font_family_css_prefers_theme_variables() {
+        assert_eq!(
+            super::er_font_family_css(&json!({
+                "fontFamily": "Courier, monospace",
+                "themeVariables": {
+                    "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+                }
+            })),
+            r#""IBM Plex Sans",Arial,sans-serif"#
+        );
+    }
 }

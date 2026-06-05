@@ -292,11 +292,12 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
+    font_family: &'m str,
 }
 
-fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
+fn architecture_cytoscape_text_style(font_size_px: f64, font_family: &str) -> TextStyle {
     TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_family: Some(font_family.to_string()),
         font_size: font_size_px,
         font_weight: None,
     }
@@ -325,8 +326,9 @@ fn architecture_fcose_node_bounds_extras<'a>(
         text_measurer,
         icon_size,
         font_size_px,
+        font_family,
     } = input;
-    let text_style = architecture_cytoscape_text_style(font_size_px);
+    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
 
     let mut node_title: FxHashMap<&str, &str> = FxHashMap::default();
     node_title.reserve(model.nodes.len().saturating_mul(2));
@@ -363,8 +365,9 @@ fn architecture_cytoscape_service_bounds<'a>(
     text_measurer: &dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
+    font_family: &str,
 ) -> Vec<ArchitectureCytoscapeServiceBounds> {
-    let text_style = architecture_cytoscape_text_style(font_size_px);
+    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len().saturating_mul(2));
     for node in nodes {
@@ -491,6 +494,7 @@ fn layout_architecture_diagram_model(
     let padding_px = padding_px.max(0.0);
     let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let font_size_px = font_size_px.max(1.0);
+    let font_family = crate::config::config_font_family_css(effective_config);
     let fcose_randomize =
         config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
     let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
@@ -521,6 +525,7 @@ fn layout_architecture_diagram_model(
             text_measurer,
             icon_size,
             font_size_px,
+            font_family: font_family.as_str(),
         });
     if std::env::var("MERMAN_ARCH_DEBUG_NODE_BOUNDS_EXTRAS")
         .ok()
@@ -1354,6 +1359,7 @@ fn layout_architecture_diagram_model(
         text_measurer,
         icon_size,
         font_size_px,
+        font_family.as_str(),
     );
 
     let build_edges_start = timing_enabled.then(web_time::Instant::now);
@@ -1598,6 +1604,7 @@ mod tests {
                 text_measurer: &measurer,
                 icon_size: 80.0,
                 font_size_px: 16.0,
+                font_family: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS,
             },
         );
         let extras = node_bounds_extras.get("api").expect("api node extras");
@@ -1610,10 +1617,15 @@ mod tests {
 
     #[test]
     fn architecture_fcose_edge_label_style_keeps_cytoscape_defaults() {
-        let node_style = super::architecture_cytoscape_text_style(18.0);
+        let node_style =
+            super::architecture_cytoscape_text_style(18.0, r#""IBM Plex Sans",Arial,sans-serif"#);
         let edge_style = super::architecture_cytoscape_edge_text_style();
 
         assert_eq!(node_style.font_size, 18.0);
+        assert_eq!(
+            node_style.font_family.as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+        );
         assert_eq!(edge_style.font_size, 16.0);
         assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));
     }

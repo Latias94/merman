@@ -183,15 +183,7 @@ pub(super) fn architecture_css_with_config(
     // user-configured `fontFamily` / `fontSize` and theme variable colors.
     let id = escape_xml(diagram_id);
 
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-    let font_family = normalize_css_font_family(font_family.as_str());
-    let font_family = if font_family.is_empty() {
-        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-    } else {
-        font_family
-    };
+    let font_family = SvgTheme::new(effective_config).font_family_css();
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
         .or_else(|| config_f64(effective_config, &["fontSize"]))
         .unwrap_or(16.0)
@@ -936,6 +928,25 @@ mod tests {
         ));
         assert!(
             css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#)
+        );
+    }
+
+    #[test]
+    fn architecture_css_prefers_theme_font_family_over_legacy_root() {
+        let cfg = serde_json::json!({
+            "fontFamily": "Courier, monospace",
+            "themeVariables": {
+                "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
+            }
+        });
+
+        let css = architecture_css_with_config("diag", &cfg);
+
+        assert!(css.contains(
+            r#"#diag{font-family:"IBM Plex Sans",Arial,sans-serif;font-size:16px;fill:#333;}"#
+        ));
+        assert!(
+            css.contains(r#"#diag :root{--mermaid-font-family:"IBM Plex Sans",Arial,sans-serif;}"#)
         );
     }
 

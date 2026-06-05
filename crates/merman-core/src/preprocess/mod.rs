@@ -190,6 +190,7 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
 
     let mut config = MermaidConfig::empty_object();
     config.deep_merge(&config_value);
+    crate::config::mirror_legacy_font_family_into_theme_variables(&mut config);
     if let Some(dm) = display_mode {
         config.set_value("gantt.displayMode", Value::String(dm));
     }
@@ -258,6 +259,7 @@ fn detect_init(
                 }
             }
         }
+        crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
 
         merged.deep_merge(&args);
     }

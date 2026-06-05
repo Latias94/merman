@@ -131,8 +131,9 @@ impl Engine {
         self
     }
 
-    pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
+    pub fn with_site_config(mut self, mut site_config: MermaidConfig) -> Self {
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
+        config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
         self.site_config.deep_merge(site_config.as_value());
         self
     }

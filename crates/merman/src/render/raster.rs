@@ -295,9 +295,7 @@ pub fn svg_raster_plan(svg: &str, options: &RasterOptions) -> Result<RasterPlan>
 
 pub fn svg_to_pdf(svg: &str) -> Result<Vec<u8>> {
     let mut opt = svg2pdf::usvg::Options::default();
-    opt.fontdb_mut().load_system_fonts();
-    // Keep output stable-ish across environments while still using system fonts.
-    opt.font_family = "Arial".to_string();
+    configure_usvg_options_for_pdf(&mut opt);
 
     let tree = svg2pdf::usvg::Tree::from_str(svg, &opt).map_err(|_| RasterError::SvgParse)?;
 
@@ -596,6 +594,14 @@ fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
     opt.font_resolver = browser_like_font_resolver();
 }
 
+fn configure_usvg_options_for_pdf(opt: &mut svg2pdf::usvg::Options<'_>) {
+    opt.fontdb_mut().load_system_fonts();
+    configure_fontdb_generic_families(opt.fontdb_mut());
+    opt.font_family =
+        raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
+    opt.font_resolver = browser_like_pdf_font_resolver();
+}
+
 fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     let default_select = usvg::FontResolver::default_font_selector();
 
@@ -606,6 +612,19 @@ fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
                 .or_else(|| fontdb.faces().next().map(|face| face.id))
         }),
         select_fallback: usvg::FontResolver::default_fallback_selector(),
+    }
+}
+
+fn browser_like_pdf_font_resolver() -> svg2pdf::usvg::FontResolver<'static> {
+    let default_select = svg2pdf::usvg::FontResolver::default_font_selector();
+
+    svg2pdf::usvg::FontResolver {
+        select_font: Box::new(move |font, fontdb| {
+            default_select(font, fontdb)
+                .or_else(|| query_browser_like_pdf_fallback_font(font, fontdb.as_ref()))
+                .or_else(|| fontdb.faces().next().map(|face| face.id))
+        }),
+        select_fallback: svg2pdf::usvg::FontResolver::default_fallback_selector(),
     }
 }
 
@@ -661,6 +680,30 @@ fn query_browser_like_fallback_font(
     fontdb.query(&query)
 }
 
+fn query_browser_like_pdf_fallback_font(
+    font: &svg2pdf::usvg::Font,
+    fontdb: &svg2pdf::usvg::fontdb::Database,
+) -> Option<svg2pdf::usvg::fontdb::ID> {
+    let mut families = Vec::with_capacity(3);
+    if pdf_font_requests_monospace(font) {
+        families.push(svg2pdf::usvg::fontdb::Family::Monospace);
+        families.push(svg2pdf::usvg::fontdb::Family::SansSerif);
+        families.push(svg2pdf::usvg::fontdb::Family::Serif);
+    } else {
+        families.push(svg2pdf::usvg::fontdb::Family::SansSerif);
+        families.push(svg2pdf::usvg::fontdb::Family::Serif);
+        families.push(svg2pdf::usvg::fontdb::Family::Monospace);
+    }
+
+    let query = svg2pdf::usvg::fontdb::Query {
+        families: &families,
+        weight: svg2pdf::usvg::fontdb::Weight(font.weight()),
+        stretch: font.stretch().into(),
+        style: font.style().into(),
+    };
+    fontdb.query(&query)
+}
+
 fn query_normal_font_family(
     fontdb: &usvg::fontdb::Database,
     family: usvg::fontdb::Family<'_>,
@@ -700,6 +743,20 @@ fn font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
         usvg::FontFamily::Monospace => true,
         usvg::FontFamily::Named(name) => {
+            let name = name.to_ascii_lowercase();
+            name.contains("mono")
+                || name.contains("courier")
+                || name.contains("consolas")
+                || name.contains("menlo")
+        }
+        _ => false,
+    })
+}
+
+fn pdf_font_requests_monospace(font: &svg2pdf::usvg::Font) -> bool {
+    font.families().iter().any(|family| match family {
+        svg2pdf::usvg::FontFamily::Monospace => true,
+        svg2pdf::usvg::FontFamily::Named(name) => {
             let name = name.to_ascii_lowercase();
             name.contains("mono")
                 || name.contains("courier")
