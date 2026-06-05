@@ -85,18 +85,7 @@ fn info_css_parts_with_font_size_source(
 ) -> InfoCssParts {
     let id = escape_xml(diagram_id);
 
-    // Mermaid's legacy `fontFamily` config is migrated into `themeVariables.fontFamily` during
-    // initialization (when `themeVariables.fontFamily` is unset). Prefer the theme variable when
-    // present so our emitted root CSS matches upstream baselines.
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .unwrap_or_else(|| r#""trebuchet ms",verdana,arial,sans-serif"#.to_string());
-    let font_family = normalize_css_font_family(font_family.as_str());
-    let font_family = if font_family.is_empty() {
-        r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()
-    } else {
-        font_family
-    };
+    let font_family = crate::config::config_font_family_css(effective_config);
     let font_size = match font_size_source {
         InfoCssFontSizeSource::ThemeThenTopLevel => {
             crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
