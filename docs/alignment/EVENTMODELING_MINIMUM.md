@@ -13,6 +13,21 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
 - Grammar: `packages/parser/src/language/eventmodeling/event-modeling.langium`
 - Syntax docs: `docs/syntax/eventmodeling.md`
 
+## Support Contract
+
+Local EventModeling support follows the pinned Mermaid rendered contract: render every construct
+that the upstream syntax docs expose and the upstream DB/renderer consumes, and preserve DOM
+parity for the committed upstream SVG fixture corpus. This currently includes `timeframe` /
+`resetframe`, qualified entity identifiers, namespace-derived swimlanes, explicit and inferred
+relations, inline data, `[[dataReference]]`, data blocks, eventmodeling config, and eventmodeling
+theme variables.
+
+Grammar-only constructs are not treated as missing rendered features. If upstream Langium accepts
+statements that Mermaid's DB/renderer does not consume (currently `entity`, `note`, and `gwt`),
+merman keeps them out of the render model until either upstream adds a rendering contract or a
+separate full-AST export scope is opened. Revisit this section whenever the pinned Mermaid
+baseline changes.
+
 ## Implemented (Phase 1)
 
 - Detection:
