@@ -6788,3 +6788,56 @@ Gate notes:
   root overrides, or baselines.
 - The next production-capable seam must explain why the owning final SVG edges differ; this table
   only removes ambiguity about which edges own the remaining root tails.
+
+## HPD-050 - Architecture Small Root Tail Precision
+
+Outcome:
+
+- Re-read the current `002` / `093` render-path probe and root-tail attribution reports after the
+  edge curve-style fix landed on `main`.
+- Confirmed both browser render-path probes match the stored upstream SVG facts, so the focused
+  evidence is not relying on a stale manual FCoSE reconstruction.
+- Classified `093` as a small final group-edge owner tail:
+  - `group-left` root-left owner delta is `+2.730461px`;
+  - `group-right` root-right owner delta is `+0.230461px`;
+  - the owner-span/root-width tail is therefore `-2.500000px`;
+  - local group SVG widths are `-3px` for `left` and `-1px` for `right`.
+- Classified `002` as a mixed top-level service plus parent-group root edge tail:
+  - `service-ingress` root-left owner delta is `+1.250000px`;
+  - `group-platform` root-right owner delta is `+3.750000px`;
+  - the owner-span/root-width tail is therefore `+2.500000px`;
+  - nested child-group parent-input evidence remains active for `platform`.
+- Root padding is unchanged in both rows (`~30px` for `093`, `~40px` for `002`), so the focused
+  precision pass continues to reject root-padding fixes.
+- A temporary Cytoscape node-label font-family experiment also left both focused deltas unchanged
+  (`093=-2.500`, `002=+2.500`) and was reverted.
+
+Evidence:
+
+- `target/compare/architecture-render-path-source-frame-002-093-main-hpd050`
+- `target/compare/architecture-delta-root-tail-attribution-002-093-main-hpd050`
+- `target/compare/architecture-delta-cy-node-default-family-experiment-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-05-hpd-050-architecture-small-root-tail-precision.md`
+
+Focused verification:
+
+- Current worktree inspection confirmed no production change from the reverted font-family
+  experiment.
+- The no-output-change experiment's focused batch report kept `002` and `093` at the same
+  `2.5px` residuals.
+- `git diff --check` - passed.
+- `cargo fmt --check` - passed.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed across the implemented matrix.
+
+Gate notes:
+
+- No renderer, layout, fixture, baseline, or root override behavior changed in this pass.
+- The `002` / `093` precision is now good enough to stop chasing them with global constants. Keep
+  them as small diagnostic tails unless a broader service-label/final-bbox model survives full
+  Architecture verification.
+- The next HPD-050 production-capable target should return to the larger direct service
+  label/content rows `076`, `041`, and `019`; any candidate must keep the now-small `002` / `093`
+  tails stable.

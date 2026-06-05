@@ -1014,6 +1014,13 @@ Current repository reality to preserve:
     rendering should skip them during contentful raster audit. After that gate fix, filtered
     raster-enabled all-supported audits passed for every implemented family, including full
     Flowchart. No new production visible rendering defect was found in that pass.
+  - A follow-up HPD-050 Architecture precision pass classified the current `002` / `093` `2.5px`
+    root-width tails as small diagnostic owner-edge tails, not fresh production formula targets.
+    `093` is now final group-edge owned (`group-left` / `group-right`); `002` mixes top-level
+    `service-ingress` with parent `group-platform`. Root padding stayed stable, and a temporary
+    Cytoscape node-label font-family experiment did not move either delta. The next
+    production-capable Architecture target remains the larger direct service label/content rows
+    `076`, `041`, and `019`, with `002` / `093` preserved as regression sensors.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

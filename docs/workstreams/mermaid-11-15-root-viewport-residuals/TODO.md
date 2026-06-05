@@ -262,7 +262,14 @@ Last updated: 2026-06-04
   negative experiment reducing final group expansion from `padding + 2.5px` to `padding + 1.5px`
   improved the three direct width tails to `+3/+3/+1`, but introduced `-2px` height deltas and
   regressed full Architecture `parity-root` to `105` mismatch rows. It was reverted; keep global
-  group padding/final rect emission out of this residual class.
+  group padding/final rect emission out of this residual class. A follow-up focused precision
+  pass on `002` / `093` confirmed the remaining `2.5px` rows are now small root-owner tails rather
+  than root-padding defects: `093` is final group-edge owned (`group-left` / `group-right`), while
+  `002` mixes top-level `service-ingress` and parent `group-platform` ownership. A temporary
+  Cytoscape node-label font-family experiment left both deltas unchanged and was reverted. Treat
+  these two rows as diagnostic unless a broader service-label/final-bbox model is found; resume
+  production-capable HPD-050 work from the larger direct service label/content rows `076`, `041`,
+  and `019`.
 
 ## M3 - Policy Closeout
 
