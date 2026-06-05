@@ -64,9 +64,11 @@
 //! #[cfg_attr(
 //!     all(doc, feature = "doc-diagrams"),
 //!     merman_rustdoc::merman(
+//!         scope = "item",
 //!         pipeline = "readable",
 //!         fail = "error",
-//!         source = "hide"
+//!         source = "hide",
+//!         sanitize = "strict"
 //!     )
 //! )]
 //! /// ```mermaid
@@ -78,9 +80,28 @@
 //!
 //! | Option | Values | Default | Meaning |
 //! | --- | --- | --- | --- |
+//! | `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
 //! | `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Selects the SVG output pipeline. |
 //! | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 //! | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
+//! | `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
+//!
+//! Use `scope = "tree"` to process docs on children inside an inline module, trait, impl block,
+//! struct fields, and enum variants:
+//!
+//! ````rust
+//! #[cfg_attr(
+//!     all(doc, feature = "doc-diagrams"),
+//!     merman_rustdoc::merman(scope = "tree")
+//! )]
+//! pub mod api {
+//!     /// ```mermaid
+//!     /// flowchart TD
+//!     ///   Child --> Docs
+//!     /// ```
+//!     pub fn child() {}
+//! }
+//! ````
 //!
 //! # Scope
 //!
@@ -89,6 +110,7 @@
 //! - Mermaid fences using backticks or tildes.
 //! - `include_mmd!("path/to/file.mmd")` lines outside other Markdown code fences.
 //! - Item docs on functions, modules, structs, traits, and impl blocks.
+//! - Recursive inline item docs with `scope = "tree"`.
 //! - Multiple diagrams on the same item.
 //! - Footnotes and normal Markdown around diagrams.
 //! - Re-exported item docs when the upstream item was rendered first.
@@ -96,6 +118,7 @@
 //! Not supported today:
 //!
 //! - Crate-level inner docs using `//!`.
+//! - Recursive processing for external `mod name;` files.
 //! - Running Mermaid JavaScript in the browser.
 //! - Fetching Mermaid source or assets from remote URLs.
 
@@ -104,7 +127,10 @@ extern crate proc_macro;
 mod doc;
 mod error;
 mod expand;
+mod html;
 mod options;
+mod render;
+mod svg;
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;

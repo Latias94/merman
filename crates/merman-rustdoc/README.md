@@ -215,9 +215,11 @@ The attribute accepts string options:
 #[cfg_attr(
     all(doc, feature = "doc-diagrams"),
     merman_rustdoc::merman(
+        scope = "item",
         pipeline = "readable",
         fail = "error",
-        source = "hide"
+        source = "hide",
+        sanitize = "strict"
     )
 )]
 /// ```mermaid
@@ -229,9 +231,55 @@ pub fn configured() {}
 
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
+| `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
 | `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Selects the SVG output pipeline. |
 | `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
 | `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
+| `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
+
+### `scope = "tree"`
+
+Use `scope = "tree"` when one attribute should process docs inside an inline item tree. This is most
+useful for modules, but it also handles docs on impl methods, trait methods, fields, and enum
+variants that are visible in the annotated item.
+
+````rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(scope = "tree")
+)]
+pub mod api {
+    /// Nested function diagram.
+    ///
+    /// ```mermaid
+    /// flowchart TD
+    ///   Request --> Handler --> Response
+    /// ```
+    pub fn handler() {}
+
+    pub struct Client;
+
+    impl Client {
+        /// Nested method diagram.
+        ///
+        /// ```mermaid
+        /// sequenceDiagram
+        ///   User->>Client: call()
+        ///   Client-->>User: result
+        /// ```
+        pub fn call(&self) {}
+    }
+}
+````
+
+`scope = "tree"` requires inline Rust syntax. It does not inspect external module files:
+
+```rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman(scope = "tree"))]
+pub mod external;
+```
+
+That form fails with a clear error because a proc macro cannot safely recurse into `external.rs`.
 
 ### `source = "details"`
 
@@ -291,6 +339,38 @@ Choose the SVG pipeline that fits the target:
 pub fn resvg_safe_docs() {}
 ```
 
+### `sanitize = "strict"`
+
+`sanitize = "strict"` is the default. It validates rendered SVG before inserting it into rustdoc and
+fails the documentation build if it finds script elements, event attributes, `javascript:` URLs, or
+remote resource references such as `<image href="https://...">`.
+
+```rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(sanitize = "strict")
+)]
+/// ```mermaid
+/// flowchart TD
+///   A --> B
+/// ```
+pub fn checked_svg() {}
+```
+
+Use `sanitize = "off"` only when you are deliberately inspecting raw renderer output:
+
+```rust
+#[cfg_attr(
+    all(doc, feature = "doc-diagrams"),
+    merman_rustdoc::merman(sanitize = "off")
+)]
+/// ```mermaid
+/// flowchart TD
+///   A --> B
+/// ```
+pub fn raw_svg() {}
+```
+
 ## Re-exports
 
 Inline SVG is stored in the expanded rustdoc attributes. That makes re-exported pages work when the
@@ -322,6 +402,7 @@ Supported today:
 - Mermaid fences using backticks or tildes.
 - `include_mmd!("path/to/file.mmd")` lines outside other Markdown code fences.
 - Item docs on functions, modules, structs, traits, and impl blocks.
+- Recursive inline item docs with `scope = "tree"`.
 - Multiple diagrams on the same item.
 - Footnotes and normal Markdown around diagrams.
 - Re-exported item docs when the upstream item was rendered first.
@@ -329,6 +410,7 @@ Supported today:
 Not supported today:
 
 - Crate-level inner docs using `//!`.
+- Recursive processing for external `mod name;` files.
 - Running Mermaid JavaScript in the browser.
 - Fetching Mermaid source or assets from remote URLs.
 - Copying external SVG files into the rustdoc output directory.
@@ -376,6 +458,19 @@ features = ["doc-diagrams"]
 
 That is the default behavior. Use `fail = "keep-source"` if you prefer documentation builds to keep
 going while preserving the original Mermaid source.
+
+### `scope = "tree"` fails on `mod name;`
+
+Use an inline module when you want recursive processing:
+
+```rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman(scope = "tree"))]
+pub mod api {
+    // child docs are visible to the proc macro here
+}
+```
+
+External module files are not traversed by the proc macro.
 
 ## Why Build-Time SVG
 

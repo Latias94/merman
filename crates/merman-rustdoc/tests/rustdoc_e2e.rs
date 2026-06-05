@@ -78,6 +78,49 @@ impl ImplTarget {
 ///
 /// [^render-note]: Footnote content should still render.
 pub fn documented_footnote() {}
+
+#[merman_rustdoc::merman(scope = "tree")]
+pub mod tree_scope {
+    /// Nested function diagram.
+    ///
+    /// ```mermaid
+    /// flowchart TD
+    ///   NestedFunction --> Docs
+    /// ```
+    pub fn nested_function() {}
+
+    pub struct NestedStruct {
+        /// Nested field diagram.
+        ///
+        /// ```mermaid
+        /// flowchart TD
+        ///   Field --> Docs
+        /// ```
+        pub field: u8,
+    }
+
+    pub trait NestedTrait {
+        /// Nested trait method diagram.
+        ///
+        /// ```mermaid
+        /// flowchart TD
+        ///   TraitMethod --> Docs
+        /// ```
+        fn nested_trait_method(&self);
+    }
+
+    pub struct NestedImpl;
+
+    impl NestedImpl {
+        /// Nested impl method diagram.
+        ///
+        /// ```mermaid
+        /// flowchart TD
+        ///   ImplMethod --> Docs
+        /// ```
+        pub fn nested_method(&self) {}
+    }
+}
 "####,
     )
     .unwrap();
@@ -114,6 +157,22 @@ pub fn documented_footnote() {}
     assert_doc_contains_svg(&out_dir, "merman_rustdoc_e2e/trait.DocumentedTrait.html");
     assert_doc_contains_svg(&out_dir, "merman_rustdoc_e2e/struct.ImplTarget.html");
     assert_doc_contains_svg(&out_dir, "merman_rustdoc_e2e/fn.documented_footnote.html");
+    assert_doc_contains_svg(
+        &out_dir,
+        "merman_rustdoc_e2e/tree_scope/fn.nested_function.html",
+    );
+    assert_doc_contains_svg(
+        &out_dir,
+        "merman_rustdoc_e2e/tree_scope/struct.NestedStruct.html",
+    );
+    assert_doc_contains_svg(
+        &out_dir,
+        "merman_rustdoc_e2e/tree_scope/trait.NestedTrait.html",
+    );
+    assert_doc_contains_svg(
+        &out_dir,
+        "merman_rustdoc_e2e/tree_scope/struct.NestedImpl.html",
+    );
 
     let function_html =
         fs::read_to_string(out_dir.join("merman_rustdoc_e2e/fn.documented_fence.html")).unwrap();

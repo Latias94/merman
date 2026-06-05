@@ -2145,6 +2145,7 @@ dependencies = [
  "merman",
  "proc-macro2",
  "quote",
+ "roxmltree 0.20.0",
  "syn 2.0.114",
 ]
 

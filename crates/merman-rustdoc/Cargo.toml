@@ -20,4 +20,5 @@ proc-macro = true
 merman = { workspace = true, default-features = false, features = ["render"] }
 proc-macro2.workspace = true
 quote.workspace = true
+roxmltree.workspace = true
 syn.workspace = true

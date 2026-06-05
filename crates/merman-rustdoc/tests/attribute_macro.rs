@@ -51,6 +51,25 @@ impl ImplTarget {
     fn method(&self) {}
 }
 
+#[merman_rustdoc::merman(scope = "tree", sanitize = "strict")]
+mod documented_tree_scope {
+    /// ```mermaid
+    /// flowchart TD
+    ///   Child --> Docs
+    /// ```
+    pub fn child() {}
+
+    pub struct Child;
+
+    impl Child {
+        /// ```mermaid
+        /// flowchart TD
+        ///   Method --> Docs
+        /// ```
+        pub fn method(&self) {}
+    }
+}
+
 #[test]
 fn attribute_macro_expands_for_fence_and_include() {
     documented_fence();
@@ -59,4 +78,7 @@ fn attribute_macro_expands_for_fence_and_include() {
     let target = ImplTarget;
     target.method();
     target.run();
+    documented_tree_scope::child();
+    let child = documented_tree_scope::Child;
+    child.method();
 }

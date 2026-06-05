@@ -23,18 +23,34 @@ pub(crate) enum SourceMode {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScopeMode {
+    Item,
+    Tree,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SanitizeMode {
+    Strict,
+    Off,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Options {
+    pub(crate) scope: ScopeMode,
     pub(crate) pipeline: PipelineMode,
     pub(crate) fail: FailMode,
     pub(crate) source: SourceMode,
+    pub(crate) sanitize: SanitizeMode,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
+            scope: ScopeMode::Item,
             pipeline: PipelineMode::Readable,
             fail: FailMode::Error,
             source: SourceMode::Hide,
+            sanitize: SanitizeMode::Strict,
         }
     }
 }
@@ -52,23 +68,37 @@ impl Options {
         for pair in pairs {
             let Some(ident) = pair.path.get_ident() else {
                 return Err(Error::new(
-                    "unsupported merman_rustdoc option path; expected pipeline, fail, or source",
+                    "unsupported merman_rustdoc option path; expected scope, pipeline, fail, source, or sanitize",
                 ));
             };
             let value = literal_string(&pair.value)?;
             match ident.to_string().as_str() {
+                "scope" => options.scope = ScopeMode::parse(&value)?,
                 "pipeline" => options.pipeline = PipelineMode::parse(&value)?,
                 "fail" => options.fail = FailMode::parse(&value)?,
                 "source" => options.source = SourceMode::parse(&value)?,
+                "sanitize" => options.sanitize = SanitizeMode::parse(&value)?,
                 other => {
                     return Err(Error::new(format!(
-                        "unsupported merman_rustdoc option `{other}`; expected pipeline, fail, or source"
+                        "unsupported merman_rustdoc option `{other}`; expected scope, pipeline, fail, source, or sanitize"
                     )));
                 }
             }
         }
 
         Ok(options)
+    }
+}
+
+impl ScopeMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "item" => Ok(Self::Item),
+            "tree" => Ok(Self::Tree),
+            other => Err(Error::new(format!(
+                "unsupported merman_rustdoc scope `{other}`; expected item or tree"
+            ))),
+        }
     }
 }
 
@@ -109,6 +139,18 @@ impl SourceMode {
     }
 }
 
+impl SanitizeMode {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "strict" => Ok(Self::Strict),
+            "off" => Ok(Self::Off),
+            other => Err(Error::new(format!(
+                "unsupported merman_rustdoc sanitize mode `{other}`; expected strict or off"
+            ))),
+        }
+    }
+}
+
 fn literal_string(expr: &Expr) -> Result<String> {
     let Expr::Lit(ExprLit {
         lit: Lit::Str(value),
@@ -139,15 +181,19 @@ mod tests {
     #[test]
     fn parses_all_supported_options() {
         let options = Options::parse(quote! {
+            scope = "tree",
             pipeline = "resvg-safe",
             fail = "keep-source",
-            source = "details"
+            source = "details",
+            sanitize = "off"
         })
         .unwrap();
 
+        assert_eq!(options.scope, ScopeMode::Tree);
         assert_eq!(options.pipeline, PipelineMode::ResvgSafe);
         assert_eq!(options.fail, FailMode::KeepSource);
         assert_eq!(options.source, SourceMode::Details);
+        assert_eq!(options.sanitize, SanitizeMode::Off);
     }
 
     #[test]
@@ -165,5 +211,19 @@ mod tests {
         let err = Options::parse(quote! { pipeline = readable }).unwrap_err();
 
         assert!(err.to_string().contains("string literals"));
+    }
+
+    #[test]
+    fn rejects_unknown_scope() {
+        let err = Options::parse(quote! { scope = "module" }).unwrap_err();
+
+        assert!(err.to_string().contains("expected item or tree"));
+    }
+
+    #[test]
+    fn rejects_unknown_sanitize_mode() {
+        let err = Options::parse(quote! { sanitize = "loose" }).unwrap_err();
+
+        assert!(err.to_string().contains("expected strict or off"));
     }
 }
