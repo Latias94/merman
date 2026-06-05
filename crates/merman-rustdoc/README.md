@@ -390,6 +390,10 @@ pub fn raw_svg() {}
 uses rustdoc's page theme state to show the matching variant. Readers can switch rustdoc light,
 dark, or ayu themes without loading Mermaid JavaScript in the browser.
 
+The switch is CSS-only: both SVG variants are embedded in the rustdoc HTML, and a small inline style
+uses rustdoc's `:root[data-theme]` attribute to show the light or dark variant. The browser never
+loads a Mermaid runtime to render or recolor diagrams.
+
 Use `theme = "mermaid"` when you want a single SVG and want Mermaid source-level config, such as
 front matter or an `%%init%%` directive, to decide the theme:
 
@@ -590,6 +594,8 @@ Normal Mermaid links follow whatever Merman renders, subject to `sanitize = "str
 
 By default, `merman-rustdoc` follows rustdoc's light/dark theme setting. It renders light and dark
 SVG variants during `cargo doc` and uses rustdoc's `data-theme` state to show the matching variant.
+The switch is CSS-only: both variants are embedded in the generated HTML, and the browser does not
+load Mermaid JavaScript to render or recolor diagrams.
 
 Use `theme = "mermaid"` for a single SVG controlled by Mermaid source config. Use `theme = "dark"`
 or another supported Mermaid theme to choose one fixed build-time theme. If your Mermaid source uses

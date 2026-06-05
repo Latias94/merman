@@ -168,6 +168,8 @@
 //! By default, `merman-rustdoc` follows rustdoc's light/dark theme setting. It renders light and
 //! dark SVG variants during `cargo doc` and uses rustdoc's page theme state to show the matching
 //! variant.
+//! The switch is CSS-only: both variants are embedded in the generated HTML, and the browser does
+//! not load Mermaid JavaScript to render or recolor diagrams.
 //!
 //! Use `theme = "mermaid"` for a single SVG controlled by Mermaid source config. Use
 //! `theme = "dark"` or another supported Mermaid theme to choose one fixed build-time theme.
