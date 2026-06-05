@@ -259,6 +259,34 @@ export const examples: Example[] = [
            : Community Feedback`,
   },
   {
+    id: "journey-working-day",
+    name: "Working Day Journey",
+    category: "Journey",
+    code: `journey
+    title My working day
+    section Go to work
+      Make tea: 5: Me
+      Go upstairs: 3: Me
+      Do work: 1: Me, Cat
+    section Go home
+      Go downstairs: 5: Me
+      Sit down: 5: Me`,
+  },
+  {
+    id: "info-show-info",
+    name: "Info Diagram",
+    category: "Info",
+    code: `info showInfo`,
+  },
+  {
+    id: "zenuml-basic",
+    name: "Basic ZenUML",
+    category: "ZenUML",
+    code: `zenuml
+  Alice->Bob: Hello
+  Bob-->Alice: Reply`,
+  },
+  {
     id: "eventmodeling-full-syntax",
     name: "Event Modeling Full Syntax",
     category: "EventModeling",
@@ -310,6 +338,16 @@ tf 03 evt Cart.ItemAdded`,
     browser:R --> L:api
     api:R --> L:renderer
     renderer:B --> T:cache`,
+  },
+  {
+    id: "c4-system-context",
+    name: "System Context",
+    category: "C4",
+    code: `C4Context
+    title System Context diagram
+    Person(customerA, "Customer", "A customer")
+    System(sys, "Banking System", "Does banking")
+    Rel(customerA, sys, "Uses")`,
   },
   {
     id: "block-render-pipeline",
