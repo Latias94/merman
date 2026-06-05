@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::config_f64;
+use crate::config::{config_bool, config_f64};
 use crate::model::{Bounds, PacketBlockLayout, PacketDiagramLayout, PacketWordLayout};
 use crate::text::TextMeasurer;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
@@ -22,14 +22,6 @@ pub fn layout_packet_diagram_typed(
     _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
-
-    fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-        let mut cur = cfg;
-        for key in path {
-            cur = cur.get(*key)?;
-        }
-        cur.as_bool()
-    }
 
     fn config_i64(cfg: &Value, path: &[&str]) -> Option<i64> {
         let mut cur = cfg;

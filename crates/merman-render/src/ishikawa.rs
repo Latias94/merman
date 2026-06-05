@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{
     Bounds, IshikawaDiagramLayout, IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout,
     IshikawaTextLayout,
@@ -639,14 +639,6 @@ fn ishikawa_config(effective_config: &Value) -> IshikawaConfig {
             .unwrap_or(FONT_SIZE_DEFAULT)
             .max(1.0),
     }
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
 }
 
 fn lerp(a: f64, b: f64, t: f64) -> f64 {

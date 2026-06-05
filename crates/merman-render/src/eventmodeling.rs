@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64, value_at};
+use crate::config::{config_bool, config_f64, config_string};
 use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
@@ -509,20 +509,6 @@ fn eventmodeling_config(effective_config: &Value) -> EventModelingConfig {
         use_max_width: config_bool(effective_config, &["eventmodeling", "useMaxWidth"])
             .unwrap_or(true),
     }
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    value_at(cfg, path)
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 #[derive(Debug, Clone, Copy)]

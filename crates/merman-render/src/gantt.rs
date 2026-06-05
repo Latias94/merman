@@ -1,4 +1,4 @@
-use crate::config::config_f64 as cfg_f64;
+use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64};
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
@@ -29,14 +29,6 @@ fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {
         cur = cur.get(*k)?;
     }
     cur.as_i64()
-}
-
-fn cfg_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for k in path {
-        cur = cur.get(*k)?;
-    }
-    cur.as_bool()
 }
 
 fn month_name_short(m: u32) -> &'static str {
