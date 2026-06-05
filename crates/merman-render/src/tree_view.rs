@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64, config_f64_css_px};
+use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNodeLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::tree_view::{
@@ -165,12 +165,4 @@ fn tree_view_config(effective_config: &Value) -> TreeViewConfig {
         .unwrap_or(16.0)
         .max(1.0),
     }
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
 }

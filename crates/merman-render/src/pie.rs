@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64, value_at};
+use crate::config::{config_f64, config_string, value_at};
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
@@ -231,12 +231,6 @@ impl ColorScale {
         self.mapping.insert(label.to_string(), idx);
         self.palette[idx % self.palette.len()].clone()
     }
-}
-
-fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-    value_at(cfg, path)
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
 }
 
 fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {

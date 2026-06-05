@@ -1,5 +1,5 @@
 use crate::chart_palette::{plot_color_from_palette, resolve_xychart_plot_palette};
-use crate::config::config_f64_css_px as config_f64;
+use crate::config::{config_bool, config_f64_css_px as config_f64, config_string};
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
@@ -87,22 +87,6 @@ struct BoundingRect {
     y: f64,
     width: f64,
     height: f64,
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
 }
 
 fn is_ref_only_object(v: &Value) -> bool {

@@ -1,4 +1,4 @@
-use crate::config::{config_f64, json_f64};
+use crate::config::{config_bool, config_f64, config_string, json_f64};
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
 use merman_core::diagrams::treemap::{
@@ -23,22 +23,6 @@ struct HierNode {
     y0: f64,
     x1: f64,
     y1: f64,
-}
-
-fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_bool()
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
 }
 
 #[derive(Debug, Clone)]

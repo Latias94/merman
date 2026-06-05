@@ -1,14 +1,7 @@
+use crate::config::config_string;
 use serde_json::Value;
 
 const CHART_ACCENT_FALLBACK: &str = "#3b82f6";
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
 
 fn theme_xychart_color(effective_config: &Value, key: &str) -> Option<String> {
     config_string(effective_config, &["themeVariables", "xyChart", key])

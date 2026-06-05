@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::config_f64;
+use crate::config::{config_f64, config_string};
 use crate::json::from_value_ref;
 use crate::model::{
     QuadrantChartAxisLabelData, QuadrantChartBorderLineData, QuadrantChartDiagramLayout,
@@ -29,14 +29,6 @@ struct QuadrantChartConfig {
     y_axis_position: String,
     quadrant_internal_border_stroke_width: f64,
     quadrant_external_border_stroke_width: f64,
-}
-
-fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
 }
 
 fn default_quadrant_config(effective_config: &Value) -> QuadrantChartConfig {
