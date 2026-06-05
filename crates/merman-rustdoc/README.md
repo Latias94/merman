@@ -10,6 +10,11 @@ without loading Mermaid JavaScript in the browser. It reads Mermaid code fences 
 lines from doc comments, renders them with Merman during `cargo doc`, and writes the resulting SVG
 back into the generated rustdoc page.
 
+Choose `merman-rustdoc` when you want Mermaid diagrams to be part of the generated rustdoc HTML
+itself: no browser Mermaid runtime, no CDN dependency, offline-friendly docs, and CI-visible diagram
+failures. If you only need the smallest possible macro and are comfortable with browser-side
+Mermaid rendering, a JavaScript-based rustdoc integration may be a lighter fit.
+
 ## Install
 
 Use a normal dependency for the simplest setup:
