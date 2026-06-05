@@ -153,6 +153,23 @@ export const examples: Example[] = [
     Platform.FFI.PythonBinding --> Platform.Core.Renderer : calls`,
   },
   {
+    id: "class-generics-interfaces",
+    name: "Generics and Interfaces",
+    category: "Class",
+    code: `classDiagram
+    direction TB
+    class Repository~T~
+    <<interface>> Repository~T~
+    class Service~T~ {
+      +get(id: String) T
+    }
+    class SqlRepo~T~ {
+      +get(id: String) T
+    }
+    Repository~T~ <|.. SqlRepo~T~
+    Service~T~ ..> Repository~T~ : depends`,
+  },
+  {
     id: "state-basic",
     name: "State Diagram",
     category: "State",
@@ -272,6 +289,16 @@ export const examples: Example[] = [
     "Svelte" : 10`,
   },
   {
+    id: "pie-decimal-values",
+    name: "Decimal Values",
+    category: "Pie",
+    code: `pie
+    title Build Time Share
+    "Parse" : 42.5
+    "Layout" : 31.25
+    "Render" : 26.25`,
+  },
+  {
     id: "mindmap-basic",
     name: "Mindmap",
     category: "Mindmap",
@@ -360,6 +387,21 @@ export const examples: Example[] = [
            : Community Feedback`,
   },
   {
+    id: "timeline-stacked-events",
+    name: "Stacked Events",
+    category: "Timeline",
+    code: `timeline
+    title Runtime Capability Timeline
+    section Core
+      Parser parity : Flowchart
+                    : Sequence
+      Renderer parity : SVG
+                      : ASCII
+    section Bindings
+      Web package : WASM API
+      Playground : Examples`,
+  },
+  {
     id: "journey-working-day",
     name: "Working Day Journey",
     category: "Journey",
@@ -372,6 +414,19 @@ export const examples: Example[] = [
     section Go home
       Go downstairs: 5: Me
       Sit down: 5: Me`,
+  },
+  {
+    id: "journey-review-flow",
+    name: "Review Flow",
+    category: "Journey",
+    code: `journey
+    title Review flow
+    section Authoring
+      Write diagram: 5: Author
+      Request review: 3: Author, Reviewer
+    section Validation
+      Run smoke tests: 4: CI, Reviewer
+      Merge change: 5: Maintainer`,
   },
   {
     id: "info-show-info",
@@ -610,6 +665,22 @@ export const examples: Example[] = [
     Event Modeling: [0.72, 0.45]`,
   },
   {
+    id: "quadrant-styled-points",
+    name: "Styled Points",
+    category: "Quadrant",
+    code: `quadrantChart
+    title Feature Risk
+    x-axis Low Effort --> High Effort
+    y-axis Low Risk --> High Risk
+    quadrant-1 Major Bets
+    quadrant-2 Guarded Bets
+    quadrant-3 Safe Wins
+    quadrant-4 Risky Work
+    Parser: [0.20, 0.80] radius: 8, color: #22c55e
+    Renderer: [0.62, 0.70] radius: 10, color: #f97316, stroke-color: #9a3412
+    Export: [0.35, 0.32] radius: 6, color: #3b82f6`,
+  },
+  {
     id: "sankey-render-flow",
     name: "Render Flow",
     category: "Sankey",
@@ -619,6 +690,24 @@ export const examples: Example[] = [
     Layout,SVG,6
     Layout,Diagnostics,3
     SVG,Export,4`,
+  },
+  {
+    id: "sankey-shared-nodes",
+    name: "Shared Nodes",
+    category: "Sankey",
+    code: `sankey
+    In,A,10
+    In,B,8
+    In,C,6
+    A,X,5
+    A,Y,5
+    B,Y,3
+    B,Z,5
+    C,X,2
+    C,Z,4
+    X,Out 1,7
+    Y,Out 1,6
+    Z,Out 2,7`,
   },
   {
     id: "radar-binding-coverage",
