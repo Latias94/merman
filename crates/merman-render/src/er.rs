@@ -185,8 +185,7 @@ fn er_text_style(effective_config: &Value) -> TextStyle {
     let font_family = Some(crate::config::config_font_family_css(effective_config));
     // Mermaid ER unified renderer inherits the root SVG font-size, so `themeVariables.fontSize`
     // wins when present (including Mermaid's common `"NNpx"` form).
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
+    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
         .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
         .unwrap_or(16.0);
     TextStyle {

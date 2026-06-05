@@ -119,10 +119,8 @@ pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
     // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
     // (`themeVariables.fontSize`, typically a `"NNpx"` string).
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let font_size =
+        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
     TextStyle {
         font_family,
         font_size,

@@ -608,8 +608,13 @@ Requirement, and Kanban section SVG paths now have regression coverage for
 CSS/theme consumer rather than a diagram-wide `data-look` DOM contract. The
 first follow-up centralized render-side `look` interpretation in
 `DiagramLook` / `config_diagram_look`, replacing repeated raw JSON default/trim
-logic across SVG parity renderers. The remaining ARCH-013 work is broader:
-replace scattered raw JSON config lookups with narrow per-family
+logic across SVG parity renderers. A second follow-up centralized the common
+`themeVariables.fontSize` then root `fontSize` pixel fallback in
+`config_theme_or_root_font_size_px`, plus moved Block/Requirement's matching
+font-family fallback onto `config_font_family_or_first_array_css` without
+dropping their array-first compatibility. Flowchart, Class, and Sequence still
+keep diagram-specific font precedence rules. The remaining ARCH-013 work is
+broader: replace scattered raw JSON config lookups with narrow per-family
 presentation/config views.
 
 Related decisions:

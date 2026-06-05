@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, config_f64_css_px, config_string as cfg_string};
+use crate::config::{config_f64 as cfg_f64, config_string as cfg_string};
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
@@ -14,10 +14,8 @@ fn kanban_text_style(effective_config: &serde_json::Value) -> TextStyle {
     let font_family = cfg_string(effective_config, &["fontFamily"])
         .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
         .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
-        .or_else(|| config_f64_css_px(effective_config, &["fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
+    let font_size =
+        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
     TextStyle {
         font_family,
         font_size,
