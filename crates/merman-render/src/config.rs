@@ -28,6 +28,22 @@ pub(crate) fn config_string_or_first_array(cfg: &Value, path: &[&str]) -> Option
     value_at(cfg, path).and_then(json_string_or_first_array)
 }
 
+pub(crate) fn json_string_vec(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn config_string_vec(cfg: &Value, path: &[&str]) -> Vec<String> {
+    value_at(cfg, path).map_or_else(Vec::new, json_string_vec)
+}
+
 pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
@@ -215,6 +231,29 @@ mod tests {
         assert_eq!(
             config_string_or_first_array(&cfg, &["themeVariables", "missing"]),
             None
+        );
+    }
+
+    #[test]
+    fn config_string_vec_accepts_string_arrays_and_ignores_non_arrays() {
+        let cfg = json!({
+            "journey": {
+                "actorColours": ["#111", 2, "#333"],
+                "sectionFills": "not-an-array"
+            }
+        });
+
+        assert_eq!(
+            config_string_vec(&cfg, &["journey", "actorColours"]),
+            vec!["#111".to_string(), "#333".to_string()]
+        );
+        assert_eq!(
+            config_string_vec(&cfg, &["journey", "sectionFills"]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            config_string_vec(&cfg, &["journey", "missing"]),
+            Vec::<String>::new()
         );
     }
 

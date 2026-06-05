@@ -1,5 +1,7 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, config_string as cfg_str};
+use crate::config::{
+    config_f64 as cfg_f64, config_string as cfg_str, config_string_vec as cfg_string_vec,
+};
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
     JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
@@ -15,23 +17,6 @@ pub(crate) const JOURNEY_TITLE_EXTRA_HEIGHT_PX: f64 = 70.0;
 pub(crate) const JOURNEY_FACE_RADIUS_PX: f64 = 15.0;
 const JOURNEY_FACE_BASE_Y_PX: f64 = 300.0;
 const JOURNEY_FACE_SCORE_STEP_Y_PX: f64 = 30.0;
-
-fn cfg_string_vec(cfg: &serde_json::Value, path: &[&str]) -> Vec<String> {
-    let mut cur = cfg;
-    for k in path {
-        let Some(next) = cur.get(*k) else {
-            return Vec::new();
-        };
-        cur = next;
-    }
-    cur.as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-}
 
 fn actors_from_tasks(tasks: &[JourneyRenderTask]) -> Vec<String> {
     let mut set = BTreeSet::<String>::new();
