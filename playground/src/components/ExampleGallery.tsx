@@ -23,7 +23,6 @@ const categoryKeys: Record<string, string> = {
   Journey: "examples.categories.journey",
   Info: "examples.categories.info",
   ZenUML: "examples.categories.zenuml",
-  EventModeling: "examples.categories.eventmodeling",
   "XY Chart": "examples.categories.xychart",
   Architecture: "examples.categories.architecture",
   C4: "examples.categories.c4",
