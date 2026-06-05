@@ -6,18 +6,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-### Added
+## [0.7.0-alpha.1] - 2026-06-05
 
-- Added `merman-rustdoc`, a proc-macro crate that renders Mermaid fences and `include_mmd!` files in
-  rustdoc as inline headless SVG without injecting Mermaid JavaScript. The macro supports
-  `scope`, `pipeline`, `fail`, `source`, `sanitize`, and `theme` options for initial output
-  customization, including recursive inline item processing with `scope = "tree"`, rustdoc
-  light/dark theme switching by default, fixed build-time Mermaid themes with source-level config
-  precedence, and strict SVG safety checks by default.
-
-## [0.7.0] - 2026-06-05
-
-Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility, adds a broader set of render surfaces, and makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.
+Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility and adds new public surfaces for [native FFI](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [ASCII/Unicode rendering](https://github.com/Latias94/merman/tree/main/crates/merman-ascii), and [rustdoc Mermaid rendering](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc). It also makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.
 
 ### Breaking Changes
 
@@ -27,10 +18,11 @@ Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compat
 
 ### Added
 
-- Added ASCII/Unicode rendering through `merman-ascii`, `merman::ascii`, and `merman-cli render --format ascii|unicode`.
+- Added ASCII/Unicode rendering through [`merman-ascii`](https://github.com/Latias94/merman/tree/main/crates/merman-ascii), `merman::ascii`, and `merman-cli render --format ascii|unicode`.
+- Added rustdoc integration through [`merman-rustdoc`](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc), a proc-macro crate that renders Mermaid fences and `include_mmd!` files in rustdoc as inline headless SVG without injecting Mermaid JavaScript. The macro supports `scope`, `pipeline`, `fail`, `source`, `sanitize`, and `theme` options, including recursive inline item processing with `scope = "tree"`, rustdoc light/dark theme switching by default, fixed build-time Mermaid themes with source-level config precedence, and strict SVG safety checks by default.
 - Added a more Mermaid CLI-like `merman-cli render` surface, including markdown input handling, icon pack compatibility, and raster sizing flags.
 - Added the `@merman/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid JS compare mode, diagnostics, benchmark tools, mobile layout support, and a larger example gallery.
-- Added experimental platform bindings: C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI packages.
+- Added experimental platform bindings through [`merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi): C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI packages.
 - Added minimum support and parity tracking for additional Mermaid families including TreeView, Ishikawa, and Event Modeling, alongside Mermaid 11.15 updates for Class, XY Chart, Sankey, Pie, Flowchart, Sequence, C4, Timeline, Radar, Mindmap, Kanban, Gantt, and Block.
 
 ### Changed

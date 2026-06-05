@@ -17,9 +17,12 @@ raster formats, and ASCII/Unicode output, and does not launch a browser to rende
 
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so changes
 that affect semantics, layout, or rendering are caught and reviewed.
-Merman is independent from the upstream Mermaid project; see
-[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
-for Mermaid license and provenance notes.
+Disclaimer: Merman is not affiliated with, endorsed by, or sponsored by the Mermaid project or its
+maintainers. It is an independent compatibility implementation by Mermaid users. Many examples and
+fixtures in this repository are extracted from Mermaid documentation or tests, either verbatim or
+with small updates for local context; see
+[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for
+Mermaid license and provenance notes.
 
 Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
@@ -50,19 +53,19 @@ Diagram coverage and current parity status live in [docs/alignment/STATUS.md](ht
 
 ```sh
 # Command-line tool
-cargo install merman-cli
+cargo install merman-cli --version 0.7.0-alpha.1
 
 # Rust library: SVG rendering
-cargo add merman --features render
+cargo add merman@0.7.0-alpha.1 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman --features ascii
+cargo add merman@0.7.0-alpha.1 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman --features raster
+cargo add merman@0.7.0-alpha.1 --features raster
 
 # Rustdoc integration
-cargo add merman-rustdoc --optional
+cargo add merman-rustdoc@0.7.0-alpha.1 --optional
 
 # Browser / TypeScript package
 npm install @merman/web
