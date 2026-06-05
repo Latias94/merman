@@ -127,7 +127,9 @@
       "journey-working-day": "Working Day Journey",
       "info-show-info": "Info Diagram",
       "zenuml-basic": "Basic ZenUML",
+      "zenuml-conditional-flow": "Conditional Flow",
       "xychart-render-timing": "Render Timing",
+      "xychart-negative-values": "Negative Values",
       "architecture-binding-stack": "Binding Stack",
       "architecture-junctions": "Junction Fanout",
       "c4-system-context": "System Context",
@@ -137,13 +139,17 @@
       "block-shapes-and-styles": "Shapes and Styles",
       "block-nested-groups": "Nested Groups",
       "packet-ipv4-header": "IPv4 Header",
+      "packet-tcp-header": "TCP Header",
       "kanban-release-work": "Release Work",
       "kanban-ticket-metadata": "Ticket Metadata",
       "quadrant-integration-priority": "Integration Priority",
       "sankey-render-flow": "Render Flow",
       "radar-binding-coverage": "Binding Coverage",
+      "radar-named-values": "Named Values",
       "treemap-package-surface": "Package Surface",
-      "requirement-ffi-api": "FFI API Requirement"
+      "treemap-styled-sections": "Styled Sections",
+      "requirement-ffi-api": "FFI API Requirement",
+      "requirement-styled-elements": "Styled Elements"
     }
   },
   "editor": {

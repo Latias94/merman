@@ -388,6 +388,18 @@ export const examples: Example[] = [
   Bob-->Alice: Reply`,
   },
   {
+    id: "zenuml-conditional-flow",
+    name: "Conditional Flow",
+    category: "ZenUML",
+    code: `zenuml
+  Client->API: Submit order
+  if(valid) {
+    API->Worker: Queue fulfillment
+  } else {
+    API->Client: Reject request
+  }`,
+  },
+  {
     id: "xychart-render-timing",
     name: "Render Timing",
     category: "XY Chart",
@@ -397,6 +409,15 @@ export const examples: Example[] = [
     y-axis "ms" 0 --> 120
     bar [12, 34, 58, 96]
     line [10, 28, 50, 85]`,
+  },
+  {
+    id: "xychart-negative-values",
+    name: "Negative Values",
+    category: "XY Chart",
+    code: `xychart
+    title "Error budget delta"
+    y-axis -2.4 --> 3.5
+    line [+1.3, .6, 2.4, -.34]`,
   },
   {
     id: "architecture-binding-stack",
@@ -527,6 +548,26 @@ export const examples: Example[] = [
     +13: "Fragment Offset"`,
   },
   {
+    id: "packet-tcp-header",
+    name: "TCP Header",
+    category: "Packet",
+    code: `packet
+    0-15: "Source Port"
+    16-31: "Destination Port"
+    32-63: "Sequence Number"
+    64-95: "Acknowledgment Number"
+    96-99: "Data Offset"
+    100-105: "Reserved"
+    106: "URG"
+    107: "ACK"
+    108: "PSH"
+    109: "RST"
+    110: "SYN"
+    111: "FIN"
+    112-127: "Window"
+    128-143: "Checksum"`,
+  },
+  {
     id: "kanban-release-work",
     name: "Release Work",
     category: "Kanban",
@@ -592,6 +633,16 @@ export const examples: Example[] = [
     min 0`,
   },
   {
+    id: "radar-named-values",
+    name: "Named Values",
+    category: "Radar",
+    code: `radar-beta
+    title Parser Readiness
+    axis Syntax, Errors, Layout
+    curve Current{ Syntax: 4, Errors: 3, Layout: 2 }
+    curve Target{ Syntax: 5, Errors: 4, Layout: 4 }`,
+  },
+  {
     id: "treemap-package-surface",
     name: "Package Surface",
     category: "Treemap",
@@ -602,6 +653,22 @@ export const examples: Example[] = [
       "Flutter": 15
       "Python": 12
       "Swift": 8`,
+  },
+  {
+    id: "treemap-styled-sections",
+    name: "Styled Sections",
+    category: "Treemap",
+    code: `treemap-beta
+"Runtime"
+  "Parser": 35
+  "Renderer":::hot
+    "SVG": 25
+    "ASCII": 10
+"Bindings"
+  "Web": 20:::hot
+  "CLI": 10
+
+classDef hot fill:#fecaca,color:#7f1d1d,stroke:#f87171;`,
   },
   {
     id: "requirement-ffi-api",
@@ -618,6 +685,25 @@ export const examples: Example[] = [
       type: library
     }
     wasm - satisfies -> ffi_api`,
+  },
+  {
+    id: "requirement-styled-elements",
+    name: "Styled Elements",
+    category: "Requirement",
+    code: `requirementDiagram
+    requirement cache_req:::important {
+      id: 2
+      text: "Cache selected theme"
+      risk: low
+      verifymethod: inspection
+    }
+    element local_storage {
+      type: database
+    }
+    local_storage - satisfies -> cache_req
+    classDef important font-weight:bold
+    class local_storage important
+    style local_storage fill:#dbeafe,stroke:#1d4ed8`,
   },
 ];
 

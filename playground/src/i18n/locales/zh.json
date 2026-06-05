@@ -127,7 +127,9 @@
       "journey-working-day": "工作日旅程",
       "info-show-info": "信息图",
       "zenuml-basic": "基础 ZenUML",
+      "zenuml-conditional-flow": "条件流程",
       "xychart-render-timing": "渲染耗时",
+      "xychart-negative-values": "负数数据",
       "architecture-binding-stack": "绑定栈",
       "architecture-junctions": "汇合分流",
       "c4-system-context": "系统上下文",
@@ -137,13 +139,17 @@
       "block-shapes-and-styles": "形状与样式",
       "block-nested-groups": "嵌套分组",
       "packet-ipv4-header": "IPv4 头",
+      "packet-tcp-header": "TCP 头",
       "kanban-release-work": "发布工作",
       "kanban-ticket-metadata": "工单元数据",
       "quadrant-integration-priority": "集成优先级",
       "sankey-render-flow": "渲染流",
       "radar-binding-coverage": "绑定覆盖率",
+      "radar-named-values": "命名值",
       "treemap-package-surface": "包结构",
-      "requirement-ffi-api": "FFI API 需求"
+      "treemap-styled-sections": "样式分区",
+      "requirement-ffi-api": "FFI API 需求",
+      "requirement-styled-elements": "样式元素"
     }
   },
   "editor": {
