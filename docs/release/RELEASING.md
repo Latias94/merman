@@ -18,6 +18,8 @@ will publish in that release.
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 
 All workflows can be run manually with `workflow_dispatch`, but they must be run from a `v*` tag.
+The crates.io workflow is idempotent for already-published crate versions, so a rerun can continue
+after a partial publish caused by registry propagation delays.
 
 ## Required Credentials
 
