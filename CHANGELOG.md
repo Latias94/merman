@@ -6,107 +6,36 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-05
+
+Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility, adds a broader set of render surfaces, and makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.
+
 ### Breaking Changes
 
-- BREAKING: Updated the compatibility baseline to Mermaid `11.15.0`. Parser behavior, layout
-  geometry, SVG DOM output, root viewports, and CLI compatibility now track the pinned Mermaid /
-  `@mermaid-js/mermaid-cli` 11.15 line instead of the earlier 11.12.x baseline; downstream semantic,
-  layout, or SVG goldens may need to be refreshed.
-- BREAKING: `merman::render::raster::RasterOptions` now includes target-aware sizing fields
-  (`fit_to` and `size_limit`). Callers that construct `RasterOptions` with exhaustive struct
-  literals should add `..Default::default()` or set the new fields explicitly.
-- BREAKING: PNG/JPG raster output is now budgeted by default. Very large diagrams are downscaled to
-  fit the default `8192px` side / `8192*8192` pixel budget unless callers provide a preview
-  `fit_to` box, custom `RasterSizeLimit`, or explicitly opt into unbounded raster output.
+- Updated the compatibility target to Mermaid `11.15.0`. If you keep semantic, layout, or SVG goldens, expect to refresh them.
+- PNG/JPG raster output now applies a safety budget by default. Very large diagrams are downscaled unless callers configure `RasterOptions`, provide a `RasterSizeLimit`, or opt into unbounded raster output.
+- `RasterOptions` gained target-aware sizing fields. Callers using exhaustive struct literals should add `..Default::default()` or set the new fields explicitly.
 
 ### Added
 
-- Added productized ASCII/Unicode text rendering via the new `merman-ascii` crate, the opt-in
-  `merman` `ascii` feature, `merman::ascii` public helpers, and `merman-cli render --format
-  ascii|unicode` behind the CLI `ascii` feature.
-- Added target-aware PNG/JPG raster sizing: `RasterFitBox` for browser-like preview boxes,
-  `RasterSizeLimit` for pixmap budgets, `RasterPlan` / `svg_raster_plan` for allocation-free size
-  inspection, and builder helpers on `RasterOptions`.
-- Added CLI raster sizing controls: `--raster-fit-width`, `--raster-fit-height`,
-  `--raster-max-width`, `--raster-max-height`, `--raster-max-pixels`, and `--raster-unbounded`.
-- Expanded ASCII/Unicode flowchart support for edge labels, open/dotted/length-modified edges,
-  common terminal node-shape approximations, and simple titled subgraphs.
-- Added grid-based ASCII/Unicode flowchart routing for multi-root graphs, fan-out/fan-in branches,
-  self-loops, same-row back edges, and upstream-style simple subgraph boxes, with copied
-  `mermaid-ascii` fixture parity tracking.
-- Added Go-style grid path routing and junction merging for ASCII/Unicode LR flowcharts, improving
-  copied `mermaid-ascii` graph fixture parity for crossing ampersand routes and top backlink routes.
-- Added routed ASCII/Unicode edge-label lanes for duplicate LR edges, LR bidirectional labels, and
-  TD back-edge labels, raising copied graph fixture parity to 53 exact matches.
-- Added `mermaid-ascii`-compatible `paddingX=`/`paddingY=` handling for ASCII render entry points
-  and closed comment/order/padding graph fixture gaps, raising copied graph fixture parity to 60
-  exact matches.
-- Added multiline flowchart node labels and completed copied `mermaid-ascii` graph fixture parity,
-  including nested/external subgraphs and TD branch layouts, raising graph fixture parity to 75
-  exact matches with no named graph gaps.
-- Added sequence ASCII/Unicode rendering for open-arrow message types `A->B` and `A-->B` from typed
-  sequence models.
-- Added sequence ASCII/Unicode rendering for single-line typed notes.
-- Added sequence ASCII/Unicode rendering for typed sequence boxes around actor groups.
-- Added sequence ASCII/Unicode rendering for typed activation state.
-- Added sequence ASCII/Unicode rendering for typed actor create/destroy lifecycle markers.
-- Added sequence ASCII/Unicode rendering for wrapped message labels and wrapped notes.
-- Added the initial FFI surface for the merman C ABI, plus experimental Flutter/Dart, Android JNI,
-  Apple SwiftPM, and Python UniFFI packages.
-- Added the `playground/` web app for GitHub Pages, including the live editor, SVG preview/export
-  flow, bundled WASM loading, and a README link to the hosted playground.
-- Added Mermaid JS compare mode in the playground so users can render Merman and Mermaid side by
-  side when checking SVG output differences.
-- Added a local playground benchmark panel for comparing Merman WASM render timing with Mermaid JS,
-  including warmups, configurable iterations, and summarized results.
-- Added the `@merman/web` browser package surface for TypeScript/WASM integrations, including
-  configurable initialization and SVG element render helpers.
-- Added a single supported-theme surface across core, bindings, WASM, `@merman/web`, and the
-  playground, including the Mermaid `base` theme.
-- Added scoped Mermaid `themeCSS` handling for rendered SVG output, including namespace handling
-  for common nested CSS rules.
-- Added GitHub Pages CI for the playground and a built-dist WASM artifact check for deployment
-  safety.
-- Added web benchmark guidance for deciding when Merman-vs-Mermaid JS comparisons are meaningful
-  in browser contexts.
+- Added ASCII/Unicode rendering through `merman-ascii`, `merman::ascii`, and `merman-cli render --format ascii|unicode`.
+- Added a more Mermaid CLI-like `merman-cli render` surface, including markdown input handling, icon pack compatibility, and raster sizing flags.
+- Added the `@merman/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid JS compare mode, diagnostics, benchmark tools, mobile layout support, and a larger example gallery.
+- Added experimental platform bindings: C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI packages.
+- Added minimum support and parity tracking for additional Mermaid families including TreeView, Ishikawa, and Event Modeling, alongside Mermaid 11.15 updates for Class, XY Chart, Sankey, Pie, Flowchart, Sequence, C4, Timeline, Radar, Mindmap, Kanban, Gantt, and Block.
 
 ### Changed
 
-- Advanced the upstream parity and CLI compatibility target to Mermaid `11.15.0`, including updated
-  fixture/baseline expectations, official CLI compatibility notes, and playground compare behavior.
-- Reworked PNG/JPG rasterization to compute the requested pixmap size, effective scale, and safety
-  limits before allocating `tiny-skia` buffers. SVG output remains Mermaid-parity and does not
-  clamp the root `viewBox`.
-- Hardened the pre-release `merman-ascii` public API by making ASCII errors and narrow option enums
-  non-exhaustive, and moved `mermaid-ascii` padding directive handling out of the model-driven
-  `merman-ascii` options surface into the higher-level source render entry points.
-- Improved playground SVG preview interactions: panning no longer selects diagram text, preview
-  sizing fits the available pane more consistently, wheel zoom works directly inside the preview,
-  and zoomed SVGs render more sharply.
-- Expanded Mermaid-compatible default theme handling so `theme: default` now populates core
-  `themeVariables` before SVG rendering, including Mermaid's default class/block text color.
-- Centralized SVG theme-variable resolution for Class, Block, and Flowchart styles so renderers use
-  the same derived theme values.
-- Normalized playground theme selection, shared URLs, history, and Mermaid compare mode through the
-  `@merman/web` theme helpers.
+- Reworked theme handling to follow Mermaid 11.15 more closely, including supported theme metadata, `look` handling, `themeVariables`, scoped `themeCSS`, and SVG colors that remain readable inside host pages.
+- Reworked rasterization so PNG/JPG sizing is planned before allocating buffers. SVG output remains parity-oriented and does not clamp the root `viewBox`.
+- Reworked major internals around render dispatch, config/font/theme resolution, Architecture/FCoSE layout seams, Graphlib/Dagre compatibility, and parity tooling. These changes are mostly internal, but they make 11.15 support and future Mermaid upgrades more stable.
 
 ### Fixed
 
-- Fixed oversized Mermaid diagrams from forcing merman-owned PNG/JPG rasterization to allocate an
-  intrinsic full-size pixmap without an explicit budget.
-- Fixed JPG rasterization so the implicit default background remains opaque white after the raster
-  sizing refactor.
-- Aligned deeply nested State, Block, Mindmap, Treemap, C4, and Flowchart handling with Mermaid by
-  removing Merman's custom 256-level depth-limit error for valid inputs and using stack-safe
-  parser/layout traversals.
-- Kept Class diagrams stack-safe with a Class-specific namespace strategy: parent cycles still
-  return an explicit error, while valid deeply nested namespaces bound recursive cluster extraction
-  and fall back to compound graph layout instead of growing the call stack.
-- Fixed Class and Block diagram SVG labels so HTML and SVG text get diagram-scoped colors instead
-  of inheriting light text from dark host pages; labels remain visible in the playground and
-  exported SVG.
-- Fixed CSS hash colors in Mermaid directive-driven `themeCSS` so encoded `#...;` values are
-  restored before SVG style injection.
+- Fixed deeply nested valid diagrams that previously hit Merman-specific depth limits or stack-sensitive parser/layout paths.
+- Fixed many Mermaid 11.15 SVG parity gaps across Flowchart, Sequence, Class, Architecture, State, Block, Timeline, Pie, Radar, Treemap, Mindmap, ER, Journey, Requirement, Sankey, C4, and XY Chart.
+- Fixed dark-host and custom-theme visibility issues for diagram labels, notes, edges, clusters, and chart elements.
+- Fixed oversized raster exports and JPG background handling so image export is safer and more predictable.
 
 ## [0.6.0] - 2026-05-28
 
