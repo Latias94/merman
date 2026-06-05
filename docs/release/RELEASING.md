@@ -1,25 +1,28 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
-Merman releases are tag-driven. Push a `v*` tag whose version matches every package manifest that
-will publish in that release.
+Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
+source ref and version before any registry or GitHub Release publication. After preflight passes,
+push a `v*` tag whose version matches every package manifest that will publish in that release.
 
 ## Release Workflows
 
 | Workflow | Publishes | Channel |
 | --- | --- | --- |
+| `release-preflight.yml` | Nothing; dry-run/build verification only | GitHub Actions artifacts |
 | `release.yml` | `merman-cli` binary archives and installers | GitHub Release |
 | `release-crates.yml` | Rust workspace crates | crates.io |
-| `release-apple.yml` | `Merman.xcframework-<tag>.zip` and release-tag `Package.swift` patch | GitHub Release + SwiftPM |
+| `release-apple.yml` | `Merman.xcframework-<tag>.zip` and checksum | GitHub Release artifact upload |
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 
-All workflows can be run manually with `workflow_dispatch`, but they must be run from a `v*` tag.
-The crates.io workflow is idempotent for already-published crate versions, so a rerun can continue
-after a partial publish caused by registry propagation delays.
+The platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
+and `source_ref` inputs. This lets a fixed workflow on `main` build assets for an existing release
+tag without moving the tag. The crates.io workflow is idempotent for already-published crate
+versions, so a rerun can continue after a partial publish caused by registry propagation delays.
 
 ## Required Credentials
 
@@ -29,6 +32,9 @@ after a partial publish caused by registry propagation delays.
 | pub.dev | Trusted Publishing / OIDC configured for `merman` |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
+
+Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, and `github-release`).
+Configure required reviewers on those environments if publication should require explicit approval.
 
 Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
 publication metadata, but Central Portal credentials and signing secrets still need to be configured.
@@ -46,9 +52,19 @@ Before tagging, verify these versions match the intended release:
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 
-## Local Preflight
+## Release Preflight
 
-Run the normal Rust and platform gates before tagging:
+Before tagging or publishing, run:
+
+```bash
+gh workflow run release-preflight.yml -f version=0.7.0-alpha.1 -f source_ref=main
+```
+
+The preflight workflow verifies release versions, package file lists, Python wheels, Android AAR
+builds, Apple XCFramework builds, and Flutter `dart pub publish --dry-run`. It does not publish to
+any registry.
+
+For local spot checks, run the normal Rust and platform gates:
 
 ```bash
 cargo nextest run --cargo-quiet
@@ -91,11 +107,25 @@ git tag v0.7.0-alpha.1
 git push origin v0.7.0-alpha.1
 ```
 
-The Apple workflow patches `Package.swift` on the release tag so SwiftPM consumers can resolve the
-remote binary target checksum. It force-updates only the tag, not the branch.
+Do not move or force-update release tags after publication. Release tags are the immutable source
+anchor for crates, CLI artifacts, and platform assets.
 
-Multiple workflows attach assets to the same GitHub Release. The cargo-dist workflow is configured
-to upload to an existing release when another workflow creates it first.
+`release.yml` creates the primary GitHub Release and uploads CLI artifacts. Platform workflows
+upload additional assets to that existing release when it is present; otherwise they leave GitHub
+Actions artifacts for manual attachment.
+
+After the primary release exists, run platform publish workflows manually:
+
+```bash
+gh workflow run release-python.yml -f release_tag=v0.7.0-alpha.1 -f source_ref=v0.7.0-alpha.1 -f publish_to_pypi=true
+gh workflow run release-android.yml -f release_tag=v0.7.0-alpha.1 -f source_ref=v0.7.0-alpha.1
+gh workflow run release-apple.yml -f release_tag=v0.7.0-alpha.1 -f source_ref=v0.7.0-alpha.1
+gh workflow run release-flutter.yml -f release_tag=v0.7.0-alpha.1 -f source_ref=v0.7.0-alpha.1 -f publish_to_pub=true
+```
+
+For a workflow-only recovery after a release tag already exists, use `source_ref=main` only when the
+source code and manifest versions are unchanged and the new commits only fix CI/release workflow
+behavior.
 
 ## Follow-On Registry Work
 

@@ -1,10 +1,17 @@
 name: Release Apple (SwiftPM)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to upload the XCFramework to, for example v0.7.0-alpha.1"
+        required: true
+        type: string
+      source_ref:
+        description: "Git ref to build from"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: write
@@ -12,19 +19,22 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
+    environment: github-release
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          ref: ${{ inputs.source_ref }}
 
       - name: Read version from tag
         id: version
         run: |
-          if [[ "$GITHUB_REF_NAME" != v* ]]; then
-            echo "::error::Run this workflow from a v* tag."
+          RELEASE_TAG="${{ inputs.release_tag }}"
+          if [[ "$RELEASE_TAG" != v* ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must start with v."
             exit 1
           fi
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
@@ -56,52 +66,32 @@ jobs:
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
       - name: Package XCFramework
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           cd platforms/apple
-          ARCHIVE="Merman.xcframework-${GITHUB_REF_NAME}.zip"
+          ARCHIVE="Merman.xcframework-${RELEASE_TAG}.zip"
           ditto -c -k --sequesterRsrc --keepParent Merman.xcframework "$ARCHIVE"
           echo "APPLE_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
-          echo "CHECKSUM=$(swift package compute-checksum "$ARCHIVE")" >> "$GITHUB_ENV"
-          echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          CHECKSUM=$(swift package compute-checksum "$ARCHIVE")
+          echo "CHECKSUM=$CHECKSUM" >> "$GITHUB_ENV"
+          echo "$CHECKSUM  $ARCHIVE" > "$ARCHIVE.checksum"
 
-      - name: Patch Package.swift for release tag
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          tag = os.environ["TAG"]
-          checksum = os.environ["CHECKSUM"]
-          archive = os.environ["APPLE_ARCHIVE"]
-          repo = "${{ github.repository }}"
-          url = f"https://github.com/{repo}/releases/download/{tag}/{archive}"
-          path = Path("Package.swift")
-          src = path.read_text()
-          old = r'\.binaryTarget\(\s*name:\s*"MermanFFI",\s*path:\s*"platforms/apple/Merman\.xcframework"\s*\)'
-          new = (
-              '.binaryTarget(\n'
-              '            name: "MermanFFI",\n'
-              f'            url: "{url}",\n'
-              f'            checksum: "{checksum}"\n'
-              '        )'
-          )
-          patched, count = re.subn(old, new, src, flags=re.DOTALL)
-          if count != 1:
-              raise SystemExit("failed to patch Package.swift binaryTarget")
-          path.write_text(patched)
-          PY
-
-      - name: Commit patched Package.swift to release tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Package.swift
-          git commit -m "chore: update Package.swift for release ${TAG}"
-          git tag -f "${TAG}"
-          git push origin "refs/tags/${TAG}" --force
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload XCFramework artifact
+        uses: actions/upload-artifact@v6
         with:
-          files: platforms/apple/Merman.xcframework-*.zip
+          name: merman-apple-xcframework
+          path: |
+            platforms/apple/Merman.xcframework-*.zip
+            platforms/apple/Merman.xcframework-*.zip.checksum
+
+      - name: Upload XCFramework to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum --clobber
+          else
+            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; XCFramework artifact was uploaded for manual attachment."
+          fi

@@ -71,5 +71,5 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 The example lives in `platforms/apple/examples/smoke` and exercises SVG, ASCII, semantic JSON,
 layout JSON, validation, and metadata through the Swift wrapper.
 
-Release builds upload a zipped `Merman.xcframework` to GitHub Releases and patch the release-tag
-Swift package checksum for SwiftPM consumers.
+Release builds upload a zipped `Merman.xcframework` and checksum to GitHub Releases. Release
+workflows do not move or force-update release tags.

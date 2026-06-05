@@ -1,0 +1,295 @@
+name: Release Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the leading v, for example 0.7.0-alpha.1"
+        required: true
+        type: string
+      source_ref:
+        description: "Git ref to validate"
+        required: true
+        default: "main"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  versions-and-packages:
+    name: versions-and-packages
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify release versions
+        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Build package file lists
+        run: |
+          set -euo pipefail
+          mkdir -p target/package-lists
+          crates=(
+            dugong-graphlib
+            dugong
+            manatee
+            merman-core
+            merman-render
+            merman-ascii
+            merman
+            merman-rustdoc
+            merman-bindings-core
+            merman-ffi
+            merman-uniffi
+            merman-cli
+          )
+          for crate in "${crates[@]}"; do
+            cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
+          done
+
+      - name: Verify root publishable crates
+        run: |
+          cargo package -p dugong-graphlib
+          cargo package -p manatee
+          cargo package -p merman-core
+
+      - name: Upload package lists
+        uses: actions/upload-artifact@v6
+        with:
+          name: crate-package-lists
+          path: target/package-lists/*.txt
+
+  python-wheel:
+    name: python-wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-15
+          - windows-2025-vs2026
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify release versions
+        run: python scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build and smoke wheel
+        run: python scripts/build-python-uniffi-wheel.py --run-smoke
+
+      - name: Repair Linux wheel
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf
+          python -m pip install --upgrade auditwheel
+          mkdir -p target/python-wheels/repaired
+          python -m auditwheel repair target/python-wheels/merman-*.whl --wheel-dir target/python-wheels/repaired
+          rm target/python-wheels/merman-*.whl
+          mv target/python-wheels/repaired/merman-*.whl target/python-wheels/
+          rmdir target/python-wheels/repaired
+
+      - name: Check wheel metadata
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check target/python-wheels/merman-*.whl
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: preflight-python-wheel-${{ runner.os }}-${{ runner.arch }}
+          path: target/python-wheels/merman-*.whl
+
+  android-aar:
+    name: android-aar
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Verify release versions
+        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+
+      - name: Build Android native libraries
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+
+      - name: Build Android AAR
+        run: gradle -p platforms/android assembleRelease --stacktrace
+
+      - name: Verify Maven publication metadata
+        run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+
+  apple-xcframework:
+    name: apple-xcframework
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Verify release versions
+        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Apple XCFramework
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh
+
+      - name: Validate Swift package
+        run: |
+          swift package describe
+          swift build
+          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+
+  flutter-dry-run:
+    name: flutter-dry-run
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Verify release versions
+        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.87.0
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install desktop cross tools
+        run: |
+          if ! command -v zig >/dev/null 2>&1; then
+            brew install zig
+          fi
+          cargo install cargo-zigbuild --version 0.21.8 --locked
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+
+      - name: Build Android native libraries
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+
+      - name: Inject Android libraries into Flutter package
+        run: |
+          mkdir -p platforms/flutter/android/src/main/jniLibs
+          cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
+
+      - name: Build and inject iOS XCFramework
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+        run: bash platforms/flutter/build-ios.sh
+
+      - name: Build desktop native libraries
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+        run: bash platforms/flutter/build-desktop.sh --all
+
+      - name: Setup Dart with pub.dev OIDC credentials
+        uses: dart-lang/setup-dart@v1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.3"
+          channel: stable
+          cache: true
+
+      - name: Validate Flutter package
+        working-directory: platforms/flutter
+        run: |
+          flutter pub get
+          flutter analyze
+          dart format --set-exit-if-changed lib example
+          dart pub publish --dry-run

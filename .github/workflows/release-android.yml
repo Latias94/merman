@@ -1,10 +1,17 @@
 name: Release Android (AAR)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to upload the AAR to, for example v0.7.0-alpha.1"
+        required: true
+        type: string
+      source_ref:
+        description: "Git ref to build from"
+        required: true
+        default: "main"
+        type: string
 
 permissions:
   contents: write
@@ -12,17 +19,22 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-24.04
+    environment: github-release
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
 
       - name: Read version from tag
         id: version
         run: |
-          if [[ "$GITHUB_REF_NAME" != v* ]]; then
-            echo "::error::Run this workflow from a v* tag."
+          RELEASE_TAG="${{ inputs.release_tag }}"
+          if [[ "$RELEASE_TAG" != v* ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must start with v."
             exit 1
           fi
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
@@ -46,7 +58,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "9.2.0"
+          gradle-version: "9.4.1"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.87.0
@@ -74,9 +86,11 @@ jobs:
         run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
 
       - name: Prepare release asset
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: |
           mkdir -p target/release-assets
-          cp platforms/android/build/outputs/aar/*.aar "target/release-assets/merman-android-${GITHUB_REF_NAME}.aar"
+          cp platforms/android/build/outputs/aar/*.aar "target/release-assets/merman-android-${RELEASE_TAG}.aar"
 
       - name: Upload AAR artifact
         uses: actions/upload-artifact@v6
@@ -84,7 +98,13 @@ jobs:
           name: merman-android-aar
           path: target/release-assets/*.aar
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: target/release-assets/*.aar
+      - name: Upload AAR to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" target/release-assets/*.aar --clobber
+          else
+            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; AAR artifact was uploaded for manual attachment."
+          fi

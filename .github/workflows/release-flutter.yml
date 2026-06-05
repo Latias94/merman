@@ -1,10 +1,22 @@
 name: Release Flutter (pub.dev)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag/version to publish, for example v0.7.0-alpha.1"
+        required: true
+        type: string
+      source_ref:
+        description: "Git ref to build from"
+        required: true
+        default: "main"
+        type: string
+      publish_to_pub:
+        description: "Publish to pub.dev after dry-run passes"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -16,15 +28,19 @@ jobs:
     environment: pub.dev
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
 
       - name: Read version from tag
         id: version
         run: |
-          if [[ "$GITHUB_REF_NAME" != v* ]]; then
-            echo "::error::Run this workflow from a v* tag."
+          RELEASE_TAG="${{ inputs.release_tag }}"
+          if [[ "$RELEASE_TAG" != v* ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must start with v."
             exit 1
           fi
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
@@ -49,7 +65,7 @@ jobs:
           if ! command -v zig >/dev/null 2>&1; then
             brew install zig
           fi
-          cargo install cargo-zigbuild --locked
+          cargo install cargo-zigbuild --version 0.21.8 --locked
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -119,6 +135,37 @@ jobs:
           dart format --set-exit-if-changed lib example
           dart pub publish --dry-run
 
+      - name: Check pub.dev version
+        id: pubdev
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          version = os.environ["VERSION"]
+          exists = False
+          try:
+              with urllib.request.urlopen("https://pub.dev/api/packages/merman", timeout=30) as response:
+                  data = json.load(response)
+              exists = any(item.get("version") == version for item in data.get("versions", []))
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"exists={str(exists).lower()}\n")
+          print(f"pub.dev merman {version} exists: {exists}")
+          PY
+
       - name: Publish to pub.dev
+        if: ${{ inputs.publish_to_pub && steps.pubdev.outputs.exists != 'true' }}
         working-directory: platforms/flutter
         run: dart pub publish --force
+
+      - name: Skip existing pub.dev version
+        if: ${{ inputs.publish_to_pub && steps.pubdev.outputs.exists == 'true' }}
+        run: echo "merman ${{ steps.version.outputs.version }} is already published on pub.dev; skipping."
