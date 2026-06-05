@@ -433,10 +433,12 @@ pub(super) fn render_kanban_diagram_svg(
                 Some(t) if !t.is_empty() => {
                     if wrap_title && max_w > 0.0 {
                         let raw = measure_text_metrics_html(t, None);
+                        // Keep the title clip region at card content width. A narrow deterministic
+                        // glyph estimate can otherwise crop the browser-rendered HTML label.
                         if raw.width > max_w {
                             let wrapped = measure_text_metrics_html(t, Some(max_w));
                             (
-                                wrapped.width,
+                                max_w,
                                 wrapped.height,
                                 Some(format!(
                                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; width: {mw}px;",
@@ -445,7 +447,7 @@ pub(super) fn render_kanban_diagram_svg(
                             )
                         } else {
                             (
-                                raw.width,
+                                max_w,
                                 KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
                                 Some(format!(
                                     "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px;",
@@ -733,6 +735,77 @@ mod tests {
         assert!(
             !svg.contains(r#"data-look="classic""#),
             "configured kanban look must not leave classic section attributes: {svg}"
+        );
+    }
+
+    #[test]
+    fn kanban_item_title_foreign_object_uses_card_content_width() {
+        let layout = KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -300.0,
+                max_x: 220.0,
+                max_y: 80.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            sections: vec![KanbanSectionLayout {
+                id: "todo".to_string(),
+                label: "Todo".to_string(),
+                index: 1,
+                center_x: 100.0,
+                center_y: 0.0,
+                width: 200.0,
+                rect_y: -300.0,
+                rect_height: 120.0,
+                rx: 5.0,
+                ry: 5.0,
+                label_width: 40.0,
+                label_height: KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+            }],
+            items: vec![KanbanItemLayout {
+                id: "renderer".to_string(),
+                label: "Implement renderer".to_string(),
+                parent_id: "todo".to_string(),
+                center_x: 100.0,
+                center_y: -240.0,
+                width: 185.0,
+                height: 44.0,
+                rx: 5.0,
+                ry: 5.0,
+                ticket: None,
+                assigned: None,
+                priority: None,
+                icon: None,
+            }],
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("kb".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_kanban_diagram_svg(
+            &layout,
+            &serde_json::Value::Null,
+            &serde_json::json!({}),
+            &options,
+        )
+        .unwrap();
+
+        let title_end = svg
+            .find("<p>Implement renderer</p></span>")
+            .expect("expected kanban item title in SVG");
+        let title_prefix = &svg[..title_end];
+        let fo_start = title_prefix
+            .rfind("<foreignObject ")
+            .expect("expected title foreignObject before item title");
+        let title_fo = &title_prefix[fo_start..];
+
+        assert!(
+            title_fo.starts_with(r#"<foreignObject width="175" height="24">"#),
+            "expected title foreignObject to use the 175px card content width, got: {title_fo}"
         );
     }
 }
