@@ -4,7 +4,7 @@ use crate::model::{
     Bounds, IshikawaDiagramLayout, IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout,
     IshikawaTextLayout,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, round_to_1_64_px_ties_to_even};
 use merman_core::diagrams::ishikawa::{
     IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
 };
@@ -63,14 +63,9 @@ pub fn layout_ishikawa_diagram_typed(
         });
     };
 
-    let style = TextStyle {
-        font_size: cfg.font_size,
-        ..Default::default()
-    };
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
         measurer,
-        style,
         bounds: BoundsAcc::new(),
         head: None,
         lines: Vec::new(),
@@ -184,7 +179,6 @@ fn count_descendants(node: &IshikawaNode) -> usize {
 struct LayoutCtx<'a> {
     cfg: IshikawaConfig,
     measurer: &'a dyn TextMeasurer,
-    style: TextStyle,
     bounds: BoundsAcc,
     head: Option<IshikawaHeadLayout>,
     lines: Vec<IshikawaLineLayout>,
@@ -531,29 +525,21 @@ fn text_layout(
 ) -> IshikawaTextLayout {
     let lines = split_lines(text);
     let line_height = ctx.cfg.font_size * 1.05;
-    let width = lines
-        .iter()
-        .map(|line| {
-            ctx.measurer
-                .measure_svg_simple_text_bbox_width_px(line, &ctx.style)
-        })
-        .fold(0.0, f64::max);
-    let single_height = ctx
-        .measurer
-        .measure_svg_simple_text_bbox_height_px("Mg", &ctx.style)
-        .max(ctx.cfg.font_size);
+    let measure_style = ishikawa_text_measure_style(class_name, ctx.cfg.font_size);
+    let horizontal = ishikawa_text_bbox_x(ctx, &lines, &measure_style, class_name, anchor);
+    let width = horizontal.left + horizontal.right;
+    let single_height = ishikawa_text_bbox_height_px(class_name, ctx.cfg.font_size);
     let height = if lines.is_empty() {
         single_height
     } else {
-        (lines.len() as f64 * line_height).max(single_height)
+        (((lines.len() - 1) as f64 * line_height) + single_height).max(single_height)
     };
 
-    let min_x = match anchor {
-        TextAnchor::Middle => x - width / 2.0,
-        TextAnchor::End => x - width,
-    };
+    let min_x = x - horizontal.left;
     let min_y = match vertical_mode {
-        VerticalMode::Middle => y - height / 2.0,
+        VerticalMode::Middle => {
+            y - height / 2.0 - ishikawa_middle_bbox_y_offset_px(class_name, ctx.cfg.font_size)
+        }
         VerticalMode::Baseline => y - height,
         VerticalMode::Hanging => y,
     };
@@ -573,6 +559,107 @@ fn text_layout(
             max_x: min_x + width,
             max_y: min_y + height,
         },
+    }
+}
+
+fn ishikawa_text_measure_style(class_name: &str, font_size: f64) -> TextStyle {
+    if class_name == "ishikawa-head-label" {
+        TextStyle {
+            font_size: 14.0,
+            font_weight: Some("600".to_string()),
+            ..Default::default()
+        }
+    } else {
+        TextStyle {
+            font_size,
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TextHorizontalBounds {
+    left: f64,
+    right: f64,
+}
+
+fn ishikawa_text_bbox_x(
+    ctx: &LayoutCtx<'_>,
+    lines: &[String],
+    style: &TextStyle,
+    class_name: &str,
+    anchor: TextAnchor,
+) -> TextHorizontalBounds {
+    let mut out = TextHorizontalBounds {
+        left: 0.0,
+        right: 0.0,
+    };
+
+    for line in lines {
+        let line_bounds = if class_name == "ishikawa-head-label" {
+            let width = ctx.measurer.measure_svg_raw_text_bbox_width_px(line, style);
+            TextHorizontalBounds {
+                left: width / 2.0,
+                right: width / 2.0,
+            }
+        } else {
+            ishikawa_anchored_line_bbox_x(ctx, line, style, anchor)
+        };
+        out.left = out.left.max(line_bounds.left);
+        out.right = out.right.max(line_bounds.right);
+    }
+
+    out
+}
+
+fn ishikawa_anchored_line_bbox_x(
+    ctx: &LayoutCtx<'_>,
+    line: &str,
+    style: &TextStyle,
+    anchor: TextAnchor,
+) -> TextHorizontalBounds {
+    let computed = ctx
+        .measurer
+        .measure_svg_text_computed_length_px(line, style)
+        .max(0.0);
+    let measured_width = ctx.measurer.measure(line, style).width.max(0.0);
+    let anchored_advance = if (measured_width - computed).abs() <= 0.031_25 {
+        round_to_1_64_px_ties_to_even(measured_width.max(computed))
+    } else {
+        computed
+    };
+    let (center_left, center_right) = ctx
+        .measurer
+        .measure_svg_text_bbox_x_with_ascii_overhang(line, style);
+    let half = computed / 2.0;
+    let start_overhang = (center_left - half).max(0.0);
+    let end_overhang = (center_right - half).max(0.0);
+
+    match anchor {
+        TextAnchor::Middle => TextHorizontalBounds {
+            left: center_left.max(0.0),
+            right: center_right.max(0.0),
+        },
+        TextAnchor::End => TextHorizontalBounds {
+            left: anchored_advance + start_overhang,
+            right: end_overhang,
+        },
+    }
+}
+
+fn ishikawa_text_bbox_height_px(class_name: &str, font_size: f64) -> f64 {
+    if class_name == "ishikawa-head-label" {
+        16.0
+    } else {
+        (font_size.max(1.0) * 1.15).ceil()
+    }
+}
+
+fn ishikawa_middle_bbox_y_offset_px(class_name: &str, font_size: f64) -> f64 {
+    if class_name == "ishikawa-head-label" {
+        0.0
+    } else {
+        font_size.max(1.0) * (21.0 / 256.0)
     }
 }
 

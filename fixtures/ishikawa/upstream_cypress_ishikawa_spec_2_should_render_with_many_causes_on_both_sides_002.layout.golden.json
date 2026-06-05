@@ -3,24 +3,24 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -337.695,
-        "min_y": -38.556,
-        "max_x": 134.912,
-        "max_y": 540.178
+        "min_x": -337.683,
+        "min_y": -40.569,
+        "max_x": 121.448,
+        "max_y": 539.566
       },
-      "total_width": 472.607,
-      "total_height": 578.734,
-      "viewbox_x": -337.695,
-      "viewbox_y": -38.556,
+      "total_width": 459.131,
+      "total_height": 580.134,
+      "viewbox_x": -337.683,
+      "viewbox_y": -40.569,
       "padding": 20.0,
       "use_max_width": true,
       "font_size": 16.0,
       "head": {
         "x": 0.0,
         "y": 333.333,
-        "width": 95.76,
-        "height": 107.2,
-        "path_d": "M 0 -53.60000000000002 L 0 53.60000000000002 Q 229.82399999999998 0 0 -53.60000000000002 Z",
+        "width": 84.54,
+        "height": 105.6,
+        "path_d": "M 0 -52.80000000000001 L 0 52.80000000000001 Q 202.896 0 0 -52.80000000000001 Z",
         "label": {
           "text": "Manufacturing\nDefect",
           "lines": [
@@ -34,10 +34,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -2.88,
-            "min_y": 316.533,
-            "max_x": 86.88,
-            "max_y": 350.133
+            "min_x": 2.73,
+            "min_y": 316.933,
+            "max_x": 81.27,
+            "max_y": 349.733
           }
         }
       },
@@ -83,47 +83,47 @@
           "marker_start": true
         },
         {
-          "x1": -163.807,
+          "x1": -163.802,
           "y1": 333.333,
-          "x2": -210.198,
+          "x2": -210.193,
           "y2": 3.244,
           "class_name": "ishikawa-branch",
           "marker_start": true
         },
         {
-          "x1": -179.271,
+          "x1": -179.266,
           "y1": 223.304,
-          "x2": -209.271,
+          "x2": -209.266,
           "y2": 223.304,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -194.735,
+          "x1": -194.73,
           "y1": 113.274,
-          "x2": -224.735,
+          "x2": -224.73,
           "y2": 113.274,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -163.807,
+          "x1": -163.802,
           "y1": 333.333,
-          "x2": -187.003,
+          "x2": -186.998,
           "y2": 498.378,
           "class_name": "ishikawa-branch",
           "marker_start": true
         },
         {
-          "x1": -175.405,
+          "x1": -175.4,
           "y1": 415.856,
-          "x2": -205.405,
+          "x2": -205.4,
           "y2": 415.856,
           "class_name": "ishikawa-sub-branch",
           "marker_start": true
         },
         {
-          "x1": -317.695,
+          "x1": -317.683,
           "y1": 333.333,
           "x2": 0.0,
           "y2": 333.333,
@@ -145,9 +145,9 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -90.631,
-            "min_y": -16.556,
+            "min_y": -18.569,
             "max_x": -42.151,
-            "max_y": 1.044
+            "max_y": 0.431
           }
         },
         {
@@ -162,10 +162,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -136.664,
-            "min_y": 214.504,
+            "min_x": -136.667,
+            "min_y": 212.491,
             "max_x": -65.464,
-            "max_y": 232.104
+            "max_y": 231.491
           }
         },
         {
@@ -180,10 +180,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -163.807,
-            "min_y": 104.474,
+            "min_x": -163.802,
+            "min_y": 102.461,
             "max_x": -80.927,
-            "max_y": 122.074
+            "max_y": 121.461
           }
         },
         {
@@ -199,9 +199,9 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -65.196,
-            "min_y": 500.578,
+            "min_y": 498.566,
             "max_x": -21.196,
-            "max_y": 518.178
+            "max_y": 517.566
           }
         },
         {
@@ -216,10 +216,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -140.478,
-            "min_y": 407.056,
+            "min_x": -140.473,
+            "min_y": 405.043,
             "max_x": -61.598,
-            "max_y": 424.656
+            "max_y": 424.043
           }
         },
         {
@@ -228,16 +228,16 @@
             "Material"
           ],
           "class_name": "ishikawa-label cause",
-          "x": -210.198,
+          "x": -210.193,
           "y": -7.756,
           "anchor": "middle",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -236.678,
-            "min_y": -16.556,
-            "max_x": -183.718,
-            "max_y": 1.044
+            "min_x": -236.673,
+            "min_y": -18.569,
+            "max_x": -183.713,
+            "max_y": 0.431
           }
         },
         {
@@ -246,16 +246,16 @@
             "Wrong grade"
           ],
           "class_name": "ishikawa-label align",
-          "x": -209.271,
+          "x": -209.266,
           "y": 223.304,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -290.071,
-            "min_y": 214.504,
-            "max_x": -209.271,
-            "max_y": 232.104
+            "min_x": -290.063,
+            "min_y": 212.491,
+            "max_x": -209.266,
+            "max_y": 231.491
           }
         },
         {
@@ -264,16 +264,16 @@
             "Contamination"
           ],
           "class_name": "ishikawa-label align",
-          "x": -224.735,
+          "x": -224.73,
           "y": 113.274,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -317.695,
-            "min_y": 104.474,
-            "max_x": -224.735,
-            "max_y": 122.074
+            "min_x": -317.683,
+            "min_y": 102.461,
+            "max_x": -224.73,
+            "max_y": 121.461
           }
         },
         {
@@ -282,16 +282,16 @@
             "Manpower"
           ],
           "class_name": "ishikawa-label cause",
-          "x": -187.003,
+          "x": -186.998,
           "y": 509.378,
           "anchor": "middle",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -218.683,
-            "min_y": 500.578,
-            "max_x": -155.323,
-            "max_y": 518.178
+            "min_x": -218.678,
+            "min_y": 498.566,
+            "max_x": -155.318,
+            "max_y": 517.566
           }
         },
         {
@@ -301,43 +301,43 @@
             "training"
           ],
           "class_name": "ishikawa-label align",
-          "x": -205.405,
+          "x": -205.4,
           "y": 415.856,
           "anchor": "end",
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": -281.085,
-            "min_y": 399.056,
-            "max_x": -205.405,
-            "max_y": 432.656
+            "min_x": -281.088,
+            "min_y": 396.643,
+            "max_x": -205.4,
+            "max_y": 432.443
           }
         }
       ],
       "label_boxes": [
         {
           "x": -110.631,
-          "y": -18.556,
+          "y": -20.569,
           "width": 88.48,
-          "height": 21.6
+          "height": 23.0
         },
         {
           "x": -85.196,
-          "y": 498.578,
+          "y": 496.566,
           "width": 84.0,
-          "height": 21.6
+          "height": 23.0
         },
         {
-          "x": -256.678,
-          "y": -18.556,
+          "x": -256.673,
+          "y": -20.569,
           "width": 92.96,
-          "height": 21.6
+          "height": 23.0
         },
         {
-          "x": -238.683,
-          "y": 498.578,
+          "x": -238.678,
+          "y": 496.566,
           "width": 103.36,
-          "height": 21.6
+          "height": 23.0
         }
       ]
     }

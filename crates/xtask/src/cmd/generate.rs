@@ -733,8 +733,8 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
         | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
-        | "block" | "radar" | "quadrantchart" | "treemap" | "mindmap" | "treeView" | "ishikawa"
-        | "eventmodeling" | "architecture" => check_one(UpstreamSvgCheck {
+        | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap" | "treeView"
+        | "ishikawa" | "eventmodeling" | "architecture" => check_one(UpstreamSvgCheck {
             baseline_root: &baseline_root,
             out_root: &out_root,
             diagram: diagram.as_str(),
@@ -744,7 +744,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
         }),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, treeView, ishikawa, eventmodeling, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, treeView, ishikawa, eventmodeling, all)"
         ))),
     }
 }

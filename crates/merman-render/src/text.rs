@@ -33,8 +33,9 @@ pub use measure::TextMeasurer;
 pub(crate) use metrics::measure_flowchart_svg_like_precise_width_px;
 pub(crate) use metrics::{
     flowchart_default_bold_delta_em, flowchart_default_bold_kern_delta_em,
-    is_flowchart_default_font, measure_wrapped_markdown_with_flowchart_bold_deltas,
-    mermaid_markdown_to_wrapped_word_lines, style_requests_bold_font_weight,
+    flowchart_default_bold_svg_right_overhang_em, is_flowchart_default_font,
+    measure_wrapped_markdown_with_flowchart_bold_deltas, mermaid_markdown_to_wrapped_word_lines,
+    style_requests_bold_font_weight,
 };
 pub use metrics::{
     measure_html_with_flowchart_bold_deltas, measure_markdown_svg_like_precise_width_px,

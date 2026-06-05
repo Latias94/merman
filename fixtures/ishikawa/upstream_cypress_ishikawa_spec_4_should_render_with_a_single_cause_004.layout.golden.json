@@ -4,23 +4,23 @@
     "IshikawaDiagram": {
       "bounds": {
         "min_x": -92.959,
-        "min_y": 158.687,
-        "max_x": 92.096,
-        "max_y": 307.6
+        "min_y": 156.674,
+        "max_x": 92.0,
+        "max_y": 306.0
       },
-      "total_width": 185.055,
-      "total_height": 148.913,
+      "total_width": 184.959,
+      "total_height": 149.326,
       "viewbox_x": -92.959,
-      "viewbox_y": 158.687,
+      "viewbox_y": 156.674,
       "padding": 20.0,
       "use_max_width": true,
       "font_size": 16.0,
       "head": {
         "x": 0.0,
         "y": 250.0,
-        "width": 60.08,
-        "height": 75.2,
-        "path_d": "M 0 -37.60000000000002 L 0 37.60000000000002 Q 144.19199999999998 0 0 -37.60000000000002 Z",
+        "width": 60.0,
+        "height": 72.0,
+        "path_d": "M 0 -36 L 0 36 Q 144 0 0 -36 Z",
         "label": {
           "text": "Problem",
           "lines": [
@@ -33,10 +33,10 @@
           "line_height": 16.8,
           "font_size": 16.0,
           "bbox": {
-            "min_x": 14.96,
-            "min_y": 241.2,
-            "max_x": 69.04,
-            "max_y": 258.8
+            "min_x": 18.34,
+            "min_y": 242.0,
+            "max_x": 65.66,
+            "max_y": 258.0
           }
         }
       },
@@ -72,18 +72,18 @@
           "font_size": 16.0,
           "bbox": {
             "min_x": -52.959,
-            "min_y": 180.687,
+            "min_y": 178.674,
             "max_x": -0.959,
-            "max_y": 198.287
+            "max_y": 197.674
           }
         }
       ],
       "label_boxes": [
         {
           "x": -72.959,
-          "y": 178.687,
+          "y": 176.674,
           "width": 92.0,
-          "height": 21.6
+          "height": 23.0
         }
       ]
     }

@@ -116,6 +116,16 @@ pub(crate) fn flowchart_default_bold_delta_em(ch: char) -> f64 {
     }
 }
 
+pub(crate) fn flowchart_default_bold_svg_right_overhang_em(ch: char) -> f64 {
+    // Derived from Chromium SVG `getBBox()` with `font-weight: 600` on Mermaid's default font
+    // stack. Canvas advance deltas do not capture this terminal glyph outline overhang.
+    match ch {
+        'g' => 0.078_055_245_535_714_29,
+        'm' => 0.046_875,
+        _ => 0.0,
+    }
+}
+
 pub(crate) fn flowchart_default_bold_kern_delta_em(prev: char, next: char) -> f64 {
     // Approximates the kerning delta between `font-weight: bold` and regular text runs for the
     // default Mermaid flowchart font stack.
