@@ -1037,6 +1037,14 @@ Current repository reality to preserve:
     top-level service-position lattice row; `external_icons_005` is `group-cloud` owned with
     stable `40px` root padding and a `+0.5px` emitted group-rect width tail. Treat these as bounded
     diagnostics, not production formula targets.
+  - A follow-up HPD-050 panic-surface slice hardened Ishikawa deep-tree parsing/layout. Core
+    Ishikawa arena-to-render-model conversion, semantic node flattening, and root JSON projection
+    now use explicit heap-backed traversal instead of recursive tree walking. Render-side
+    descendant counting and label-entry flattening also use explicit stacks, and the odd-depth
+    parent-bone lookup degrades to the current branch bone instead of panicking if the traversal
+    invariant is violated. Focused regressions cover `1,500`-level core projection and a
+    `1,200`-level render layout through public paths. This did not change baselines, root overrides, or
+    Architecture residual formulas.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

@@ -1,6 +1,18 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+
+const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
+
+fn deep_ishikawa_source(depth: usize) -> String {
+    let mut source = String::from("ishikawa-beta\n Root\n");
+    for i in 0..depth {
+        source.push_str(&" ".repeat(i + 2));
+        source.push_str(&format!("Node {i}\n"));
+    }
+    source
+}
 
 #[test]
 fn ishikawa_typed_render_model_outputs_svg() {
@@ -57,4 +69,23 @@ ishikawa-beta
     assert!(svg.contains(r#"id="ishikawa-arrow-ishikawa-test""#));
     assert!(svg.contains(r#"font-size: 18px"#));
     assert!(svg.contains(r#"stroke: #008800"#));
+}
+
+#[test]
+fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
+    let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let LayoutDiagram::IshikawaDiagram(layout) = layout else {
+        panic!("expected Ishikawa layout");
+    };
+
+    assert!(layout.total_width.is_finite());
+    assert!(layout.total_height.is_finite());
+    assert!(layout.head.is_some());
+    assert!(layout.labels.len() >= DEEP_ISHIKAWA_RENDER_DEPTH);
 }

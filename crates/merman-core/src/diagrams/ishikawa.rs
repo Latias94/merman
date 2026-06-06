@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct IshikawaNodeRenderModel {
@@ -42,18 +42,30 @@ struct ArenaNode {
 pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_ishikawa_model_for_render(code, meta)?;
     let mut nodes = Vec::new();
-    if let Some(root) = &model.root {
+    let root = if let Some(root) = &model.root {
         flatten_nodes(root, 0, &mut nodes);
-    }
+        ishikawa_node_to_value(root)
+    } else {
+        Value::Null
+    };
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "root": model.root,
-        "nodes": nodes,
-    }))
+    let mut out = Map::new();
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert(
+        "title".to_string(),
+        model.title.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert(
+        "accTitle".to_string(),
+        model.acc_title.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert(
+        "accDescr".to_string(),
+        model.acc_descr.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert("root".to_string(), root);
+    out.insert("nodes".to_string(), Value::Array(nodes));
+    Ok(Value::Object(out))
 }
 
 pub fn parse_ishikawa_model_for_render(
@@ -174,25 +186,83 @@ fn nodes_to_render_model(nodes: Vec<FlatNode>) -> IshikawaDiagramRenderModel {
 }
 
 fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> IshikawaNodeRenderModel {
-    let node = &arena[idx];
-    IshikawaNodeRenderModel {
-        text: node.text.clone(),
-        children: node
-            .children
-            .iter()
-            .map(|&child| arena_node_to_render_model(arena, child))
-            .collect(),
+    if idx >= arena.len() {
+        return IshikawaNodeRenderModel::default();
     }
+
+    let mut stack = vec![(idx, false)];
+    let mut completed: Vec<Option<IshikawaNodeRenderModel>> =
+        (0..arena.len()).map(|_| None).collect();
+
+    while let Some((node_idx, visited)) = stack.pop() {
+        let Some(node) = arena.get(node_idx) else {
+            continue;
+        };
+
+        if visited {
+            let children = node
+                .children
+                .iter()
+                .filter_map(|&child_idx| completed.get_mut(child_idx).and_then(Option::take))
+                .collect();
+            completed[node_idx] = Some(IshikawaNodeRenderModel {
+                text: node.text.clone(),
+                children,
+            });
+        } else {
+            stack.push((node_idx, true));
+            for &child_idx in node.children.iter().rev() {
+                stack.push((child_idx, false));
+            }
+        }
+    }
+
+    completed
+        .get_mut(idx)
+        .and_then(Option::take)
+        .unwrap_or_default()
 }
 
 fn flatten_nodes(node: &IshikawaNodeRenderModel, depth: usize, out: &mut Vec<Value>) {
-    out.push(json!({
-        "text": node.text,
-        "depth": depth,
-    }));
-    for child in &node.children {
-        flatten_nodes(child, depth + 1, out);
+    let mut stack = vec![(node, depth)];
+    while let Some((node, depth)) = stack.pop() {
+        out.push(json!({
+            "text": node.text,
+            "depth": depth,
+        }));
+        for child in node.children.iter().rev() {
+            stack.push((child, depth + 1));
+        }
     }
+}
+
+fn ishikawa_node_to_value(node: &IshikawaNodeRenderModel) -> Value {
+    let mut stack = vec![(node, false)];
+    let mut completed: std::collections::HashMap<*const IshikawaNodeRenderModel, Value> =
+        std::collections::HashMap::new();
+
+    while let Some((node, visited)) = stack.pop() {
+        if visited {
+            let children = node
+                .children
+                .iter()
+                .filter_map(|child| completed.remove(&(child as *const IshikawaNodeRenderModel)))
+                .collect();
+            let mut obj = Map::new();
+            obj.insert("text".to_string(), Value::String(node.text.clone()));
+            obj.insert("children".to_string(), Value::Array(children));
+            completed.insert(node as *const IshikawaNodeRenderModel, Value::Object(obj));
+        } else {
+            stack.push((node, true));
+            for child in node.children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    completed
+        .remove(&(node as *const IshikawaNodeRenderModel))
+        .unwrap_or(Value::Null)
 }
 
 fn is_space_or_comment_line(line: &str) -> bool {
@@ -218,6 +288,8 @@ mod tests {
     use super::*;
     use crate::{MermaidConfig, ParseMetadata};
 
+    const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
+
     fn meta() -> ParseMetadata {
         ParseMetadata {
             diagram_type: "ishikawa".to_string(),
@@ -225,6 +297,15 @@ mod tests {
             effective_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    fn deep_ishikawa_source(depth: usize) -> String {
+        let mut source = String::from("ishikawa-beta\n  Root\n");
+        for i in 0..depth {
+            source.push_str(&" ".repeat((i + 2) * 2));
+            source.push_str(&format!("Node {i}\n"));
+        }
+        source
     }
 
     #[test]
@@ -279,5 +360,34 @@ Cause B
         let root = model.root.unwrap();
         assert_eq!(root.text, "Problem");
         assert_eq!(root.children[0].text, "Cause");
+    }
+
+    #[test]
+    fn parses_deep_hierarchy_without_recursive_stack_growth() {
+        let source = deep_ishikawa_source(DEEP_ISHIKAWA_DEPTH);
+        let model = parse_ishikawa_model_for_render(&source, &meta()).unwrap();
+        let root = model.root.as_ref().unwrap();
+
+        assert_eq!(root.text, "Root");
+        let mut node = root;
+        for i in 0..DEEP_ISHIKAWA_DEPTH {
+            node = &node.children[0];
+            assert_eq!(node.text, format!("Node {i}"));
+        }
+        assert!(node.children.is_empty());
+
+        let semantic = parse_ishikawa(&source, &meta()).unwrap();
+        assert_eq!(
+            semantic["nodes"].as_array().unwrap().len(),
+            DEEP_ISHIKAWA_DEPTH + 1
+        );
+        assert_eq!(
+            semantic["nodes"][DEEP_ISHIKAWA_DEPTH]["depth"].as_u64(),
+            Some(DEEP_ISHIKAWA_DEPTH as u64)
+        );
+        assert_eq!(
+            semantic["root"]["children"][0]["children"][0]["text"].as_str(),
+            Some("Node 1")
+        );
     }
 }

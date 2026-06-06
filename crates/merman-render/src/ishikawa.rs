@@ -170,10 +170,13 @@ fn side_stats<'a>(nodes: impl Iterator<Item = &'a IshikawaNode>) -> SideStats {
 }
 
 fn count_descendants(node: &IshikawaNode) -> usize {
-    node.children
-        .iter()
-        .map(|child| 1 + count_descendants(child))
-        .sum()
+    let mut count = 0usize;
+    let mut stack: Vec<&IshikawaNode> = node.children.iter().collect();
+    while let Some(child) = stack.pop() {
+        count += 1;
+        stack.extend(child.children.iter());
+    }
+    count
 }
 
 struct LayoutCtx<'a> {
@@ -354,9 +357,14 @@ fn draw_branch(
             );
             (bx0, y, bx1, text)
         } else {
-            let parent = bones
-                .get_mut(&entry.parent_index)
-                .expect("parent bone exists");
+            let parent = bones.entry(entry.parent_index).or_insert(BoneInfo {
+                x0: start_x,
+                y0: start_y,
+                x1: end_x,
+                y1: end_y,
+                child_count: children.len(),
+                children_drawn: 0,
+            });
             let k = parent.children_drawn;
             parent.children_drawn += 1;
             let bx0 = lerp(
@@ -420,38 +428,37 @@ struct LabelEntry {
 }
 
 fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
-    fn walk(
-        out: &mut FlattenedTree,
-        nodes: &[IshikawaNode],
+    enum Action<'a> {
+        Visit {
+            node: &'a IshikawaNode,
+            parent_index: isize,
+            depth: usize,
+        },
+        PushY(usize),
+    }
+
+    fn push_nodes<'a>(
+        stack: &mut Vec<Action<'a>>,
+        nodes: &'a [IshikawaNode],
         parent_index: isize,
         depth: usize,
         direction: f64,
     ) {
-        let iter: Box<dyn Iterator<Item = &IshikawaNode> + '_> = if direction < 0.0 {
-            Box::new(nodes.iter().rev())
+        if direction < 0.0 {
+            for node in nodes {
+                stack.push(Action::Visit {
+                    node,
+                    parent_index,
+                    depth,
+                });
+            }
         } else {
-            Box::new(nodes.iter())
-        };
-
-        for child in iter {
-            let idx = out.entries.len();
-            let child_count = child.children.len();
-            out.entries.push(LabelEntry {
-                text: wrap_text(&child.text, 15),
-                depth,
-                parent_index,
-                child_count,
-            });
-            if depth % 2 == 0 {
-                out.y_order.push(idx);
-                if child_count > 0 {
-                    walk(out, &child.children, idx as isize, depth + 1, direction);
-                }
-            } else {
-                if child_count > 0 {
-                    walk(out, &child.children, idx as isize, depth + 1, direction);
-                }
-                out.y_order.push(idx);
+            for node in nodes.iter().rev() {
+                stack.push(Action::Visit {
+                    node,
+                    parent_index,
+                    depth,
+                });
             }
         }
     }
@@ -460,7 +467,52 @@ fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
         entries: Vec::new(),
         y_order: Vec::new(),
     };
-    walk(&mut out, children, -1, 2, direction);
+    let mut stack = Vec::new();
+    push_nodes(&mut stack, children, -1, 2, direction);
+
+    while let Some(action) = stack.pop() {
+        match action {
+            Action::Visit {
+                node,
+                parent_index,
+                depth,
+            } => {
+                let idx = out.entries.len();
+                let child_count = node.children.len();
+                out.entries.push(LabelEntry {
+                    text: wrap_text(&node.text, 15),
+                    depth,
+                    parent_index,
+                    child_count,
+                });
+                if depth % 2 == 0 {
+                    out.y_order.push(idx);
+                    if child_count > 0 {
+                        push_nodes(
+                            &mut stack,
+                            &node.children,
+                            idx as isize,
+                            depth + 1,
+                            direction,
+                        );
+                    }
+                } else {
+                    stack.push(Action::PushY(idx));
+                    if child_count > 0 {
+                        push_nodes(
+                            &mut stack,
+                            &node.children,
+                            idx as isize,
+                            depth + 1,
+                            direction,
+                        );
+                    }
+                }
+            }
+            Action::PushY(idx) => out.y_order.push(idx),
+        }
+    }
+
     out
 }
 

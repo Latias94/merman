@@ -28,6 +28,9 @@ Library code should not panic on user-controlled input.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
+  - Ishikawa render-model construction and semantic JSON projection no longer recurse over the
+    user-authored tree. Deeply nested Ishikawa input now uses explicit heap-backed traversal for
+    arena-to-tree conversion, flattened node projection, and root JSON projection.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -35,6 +38,9 @@ Library code should not panic on user-controlled input.
   - State edge segment merging no longer unwraps the last accumulated point after a separate
     non-empty guard. Duplicate segment-boundary points are still skipped when present; an unexpected
     empty accumulator now falls through to normal point insertion.
+  - Ishikawa layout no longer recurses over user-authored cause/subcause trees while counting
+    descendants or flattening label entries. The odd-depth parent-bone lookup now degrades to the
+    current branch bone instead of panicking if the traversal invariant is ever violated.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -42,6 +48,10 @@ Library code should not panic on user-controlled input.
   - Verification: `cargo nextest run -p merman-render state` and
     `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the State edge segment cleanup.
+  - Verification: `cargo fmt --check -p merman-core -p merman-render`,
+    `cargo nextest run -p merman-core ishikawa`,
+    `cargo nextest run -p merman-render --test ishikawa_svg_test`, and `git diff --check` passed
+    for the Ishikawa deep-tree cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -66,6 +76,9 @@ The following patterns are intentionally tolerated for now but should be tracked
 - A small number of `unwrap/expect` in renderer internals:
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
+- Deep recursive tree walkers in newly supported parser/render families:
+  - Flowchart and Ishikawa now have explicit-stack coverage for representative deep inputs, but
+    similar tree-shaped families should be audited before release hardening is considered complete.
 
 ## Suggested workflow
 

@@ -6963,3 +6963,45 @@ Gate notes:
   next HPD-050 production-capable work should return to the source-shaped service child-label /
   final-bbox model for the larger direct rows, or to another fresh Architecture/Dagre/Graphlib
   seam with stronger source evidence.
+
+## HPD-050 - Ishikawa Deep-Tree Panic Surface
+
+Outcome:
+
+- Hardened a user-input-reachable panic surface outside Architecture root residual chasing:
+  deeply nested Ishikawa cause/subcause trees no longer depend on recursive Rust call-stack
+  traversal for semantic JSON projection, typed render-model construction, descendant counting, or
+  render-layout flattening.
+- `parse_ishikawa(...)` now projects the root node JSON through an explicit postorder stack instead
+  of serializing the nested tree through `json!`.
+- `arena_node_to_render_model(...)` and `flatten_nodes(...)` now use heap-backed stacks, preserving
+  the existing depth-first output order.
+- `count_descendants(...)` and render-side `flatten_tree(...)` now use explicit stacks. The
+  odd-depth parent-bone lookup also degrades to the current branch bone if the traversal invariant
+  is violated instead of panicking with `expect("parent bone exists")`.
+- Added public-path regressions:
+  - core parses and semantically projects a `1,500`-level Ishikawa hierarchy;
+  - render parses the typed model and layouts a `1,200`-level hierarchy through
+    `layout_parsed_render_layout_only(...)`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/ishikawa.rs`
+- `crates/merman-render/src/ishikawa.rs`
+- `crates/merman-render/tests/ishikawa_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-06-hpd-050-ishikawa-deep-tree-panic-surface.md`
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo nextest run -p merman-core ishikawa` - passed, `5` tests run.
+- `cargo nextest run -p merman-render --test ishikawa_svg_test` - passed, `2` tests run.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for panic-surface policy, not a claim that every recursive
+  tree-shaped renderer has been audited.
