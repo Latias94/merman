@@ -2021,6 +2021,7 @@ dependencies = [
 name = "merman"
 version = "0.7.0-alpha.1"
 dependencies = [
+ "chrono",
  "criterion",
  "image",
  "merman-ascii",
@@ -2049,6 +2050,7 @@ dependencies = [
 name = "merman-bindings-core"
 version = "0.7.0-alpha.1"
 dependencies = [
+ "chrono",
  "merman",
  "merman-render",
  "serde",

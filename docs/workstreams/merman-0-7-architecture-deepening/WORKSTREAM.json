@@ -76,6 +76,16 @@
     },
     {
       "kind": "task_evidence",
+      "path": "crates/merman-bindings-core/src/common.rs",
+      "note": "M07A-078 shared fixed-time options JSON validation."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman/src/render/mod.rs",
+      "note": "M07A-078 HeadlessRenderer fixed-time facade builders."
+    },
+    {
+      "kind": "task_evidence",
       "path": "crates/merman-core/src/family.rs",
       "note": "M07A-050 Diagram Family Facts projection."
     },
@@ -125,6 +135,6 @@
   "lane_slug": "merman-0-7-architecture-deepening",
   "continue_policy": {
     "default_action": "continue",
-    "notes": "M07A-C1 and M07A-C2 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, and M07A-077 Gantt CLI fixed-time controls are complete. Next planner action is to start M07A-080 for PresentationTheme deepening or split remaining headless boundary findings."
+    "notes": "M07A-C1 and M07A-C2 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, and M07A-078 shared binding fixed-time controls are complete. Next planner action is to start M07A-080 for PresentationTheme deepening or split remaining headless boundary findings."
   }
 }

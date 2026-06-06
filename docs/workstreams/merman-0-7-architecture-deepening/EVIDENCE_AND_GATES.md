@@ -5,12 +5,13 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-077:
+The latest completed implementation slice is M07A-078:
 
 ```bash
-cargo nextest run -p merman-core gantt
-cargo nextest run -p merman-cli fixed
-cargo nextest run -p merman-cli
+cargo nextest run -p merman-bindings-core
+cargo nextest run -p merman-bindings-core --features ascii
+cargo nextest run -p merman --features render headless_renderer_fixed_time_controls_semantic_parse
+cargo nextest run -p merman --features ascii headless_ascii_renderer_fixed_time_controls_semantic_parse
 cargo run -p xtask -- check-alignment
 ```
 
@@ -222,3 +223,22 @@ before marking a task, Codex goal, or lane complete.
   Broader `cargo nextest run --workspace` was not run because this slice touched core Gantt
   fixed-time handling plus CLI adapter exposure; the Gantt family suite and full `merman-cli`
   package gate cover the changed behavior.
+- 2026-06-06: M07A-078 exposed fixed local-time controls through the shared binding
+  `options_json` contract and Rust headless renderer facades. `HeadlessRenderer` and
+  `HeadlessAsciiRenderer` now have fixed today/offset builders; bindings-core parses top-level
+  `fixed_today` and `fixed_local_offset_minutes`, validates their ranges, and applies them to the
+  shared renderer construction used by stateless and cached render engines. This lets existing C,
+  UniFFI, WASM, Python, Android, Apple, Flutter, and Web paths inherit fixed-time controls without
+  ABI growth. Validation passed:
+  `cargo nextest run -p merman-bindings-core parse_json_accepts_fixed_time_options` first failed
+  as RED evidence before implementation;
+  `cargo nextest run -p merman-bindings-core`;
+  `cargo nextest run -p merman-bindings-core --features ascii`;
+  `cargo nextest run -p merman --features render headless_renderer_fixed_time_controls_semantic_parse`;
+  `cargo nextest run -p merman --features ascii headless_ascii_renderer_fixed_time_controls_semantic_parse`;
+  `npm run build:ts --prefix platforms/web`;
+  `cargo run -p xtask -- check-alignment`;
+  `cargo fmt --all --check`;
+  `git diff --check`;
+  `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl >/dev/null`;
+  `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json >/dev/null`.

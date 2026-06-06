@@ -29,3 +29,8 @@
 {"kind":"task_evidence","path":"crates/merman-cli/src/cli.rs","why":"M07A-077: CLI fixed today and fixed local offset argument definitions."}
 {"kind":"task_evidence","path":"crates/merman-cli/tests/cli_compat.rs","why":"M07A-077: CLI fixed Gantt parse/render determinism regressions."}
 {"kind":"task_evidence","path":"docs/alignment/CLI_COMPATIBILITY.md","why":"M07A-077: documents Rust-only fixed-time CLI options."}
+{"kind":"task_evidence","path":"crates/merman-bindings-core/src/common.rs","why":"M07A-078: shared binding fixed today/local offset options JSON parsing and validation."}
+{"kind":"task_evidence","path":"crates/merman-bindings-core/src/render.rs","why":"M07A-078: binding parse/layout/render fixed-time regression coverage."}
+{"kind":"task_evidence","path":"crates/merman/src/render/mod.rs","why":"M07A-078: HeadlessRenderer fixed-time builder surface."}
+{"kind":"task_evidence","path":"crates/merman/src/ascii.rs","why":"M07A-078: HeadlessAsciiRenderer fixed-time builder surface."}
+{"kind":"task_evidence","path":"docs/bindings/OPTIONS_JSON.md","why":"M07A-078: documents shared fixed-time binding options."}

@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-02
+Last updated: 2026-06-06
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -15,6 +15,8 @@ numeric values return binding errors instead of panicking.
 ```json
 {
   "version": 1,
+  "fixed_today": "2026-02-15",
+  "fixed_local_offset_minutes": 0,
   "site_config": {
     "theme": "base",
     "themeVariables": {
@@ -50,10 +52,23 @@ Every field is optional.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `version` | integer | ignored | Reserved for future options-schema versioning. |
+| `fixed_today` | string | system local date | Fixed local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. |
+| `fixed_local_offset_minutes` | integer | system local timezone | Fixed local timezone offset in minutes for deterministic local-time parsing and rendering. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
+
+## Fixed Time Options
+
+`fixed_today` and `fixed_local_offset_minutes` are host-level deterministic controls for diagrams
+whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
+and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
+ASCII render entry points that parse Mermaid source through the shared engine.
+
+`fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
+accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return
+`MERMAN_INVALID_ARGUMENT`.
 
 ## Site Config
 
@@ -193,6 +208,8 @@ Deterministic layout for tests:
 
 ```json
 {
+  "fixed_today": "2026-02-15",
+  "fixed_local_offset_minutes": 0,
   "layout": {
     "text_measurer": "deterministic",
     "viewport_width": 1024,

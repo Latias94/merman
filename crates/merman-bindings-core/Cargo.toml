@@ -21,6 +21,7 @@ ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
 raster = ["merman/raster"]
 
 [dependencies]
+chrono.workspace = true
 merman = { path = "../merman", version = "0.7.0-alpha.1", default-features = false }
 merman-render = { path = "../merman-render", version = "0.7.0-alpha.1", optional = true }
 serde.workspace = true

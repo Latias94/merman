@@ -1,5 +1,6 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_site_config, no_diagram_error, parse_options, source_text,
+    BindingError, BindingStatus, binding_fixed_local_offset_minutes, binding_fixed_today,
+    binding_site_config, no_diagram_error, parse_options, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -43,6 +44,8 @@ fn build_ascii_renderer(
     };
 
     let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
+        .with_fixed_today(binding_fixed_today(options)?)
+        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?)
         .with_parse_options(parse)
         .with_ascii_options(merman::ascii::AsciiRenderOptions::unicode());
     if let Some(site_config) = binding_site_config(options)? {
@@ -97,5 +100,17 @@ mod tests {
 
         assert!(text.contains("Hello"));
         assert!(text.contains("World"));
+    }
+
+    #[test]
+    fn render_ascii_rejects_invalid_fixed_time_options() {
+        let err = render_ascii(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "fixed_today": "2026/02/15" }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("fixed_today"), "{err:?}");
     }
 }

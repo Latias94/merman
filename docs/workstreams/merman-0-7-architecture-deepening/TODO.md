@@ -155,6 +155,25 @@ Last updated: 2026-06-06
   the CLI.
   State: TASKS.jsonl entry M07A-077 is done.
 
+- [x] M07A-078 [owner=codex] [deps=M07A-077] [scope=crates/merman/src/render/mod.rs,crates/merman/src/ascii.rs,crates/merman-bindings-core/src/common.rs,crates/merman-bindings-core/src/render.rs,crates/merman-bindings-core/src/ascii.rs,docs/bindings/OPTIONS_JSON.md,platforms/web/src/index.ts]
+  Goal: Expose the existing fixed Gantt/local-time controls through the shared bindings
+  `options_json` contract and Rust headless renderer facades.
+  Validation: `cargo nextest run -p merman-bindings-core`;
+  `cargo nextest run -p merman-bindings-core --features ascii`;
+  `cargo nextest run -p merman --features render headless_renderer_fixed_time_controls_semantic_parse`;
+  `cargo nextest run -p merman --features ascii headless_ascii_renderer_fixed_time_controls_semantic_parse`;
+  `npm run build:ts --prefix platforms/web`;
+  `cargo run -p xtask -- check-alignment`;
+  `cargo fmt --all --check`.
+  Review: Keep the low-level binding API JSON-based per ADR 0066; do not add per-platform typed
+  entry points in this slice.
+  Evidence: shared `fixed_today` / `fixed_local_offset_minutes` schema fields, renderer facade
+  builders, bindings-core parse/render regressions, and Web TypeScript option types.
+  Context: this workstream context manifest plus ADR 0004, 0065, and 0066.
+  Handoff: DONE on 2026-06-06. C, UniFFI, WASM, Python, Android, Apple, Flutter, and Web entry
+  points that already pass `options_json` now share fixed-time controls without growing their ABI.
+  State: TASKS.jsonl entry M07A-078 is done.
+
 - [ ] M07A-080 [owner=unassigned] [deps=M07A-010] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/config.rs,crates/merman-render/src/xychart.rs,crates/merman-render/src/quadrantchart.rs,crates/merman-render/src/svg/parity]
   Goal: Continue ADR 0068 by migrating repeated raw `themeVariables` fallback chains into
   renderer-facing `PresentationTheme` roles.
@@ -199,7 +218,7 @@ Last updated: 2026-06-06
 
 ## M5 — Final Verification And Closeout
 
-- [ ] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-077,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
+- [ ] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-077,M07A-078,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
   Goal: Run final gates, reconcile TODO.md/TASKS.jsonl/CAMPAIGNS.jsonl, close or split remaining
   architecture follow-ons, and prepare 0.7.0-facing release notes.
   Validation: `cargo fmt --all --check`; `cargo nextest run --workspace`; `cargo run -p xtask -- check-alignment`; full or justified narrowed SVG parity gate.

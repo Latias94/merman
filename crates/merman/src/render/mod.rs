@@ -339,8 +339,17 @@ pub async fn render_svg_resvg_safe(
 #[cfg(test)]
 mod svg_pipeline_tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::borrow::Cow;
+
+    fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
+        model["tasks"]
+            .as_array()
+            .expect("Gantt tasks should be an array")
+            .iter()
+            .find(|task| task["id"].as_str() == Some(id))
+            .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
+    }
 
     #[test]
     fn readable_helper_routes_through_readable_pipeline() {
@@ -520,6 +529,35 @@ flowchart TD
             svg.contains("#external-unknown .labelBkg{background-color:rgba(232, 232, 232, 0.5);}")
         );
     }
+
+    #[test]
+    fn headless_renderer_fixed_time_controls_semantic_parse() {
+        let renderer = HeadlessRenderer::new()
+            .with_fixed_today(Some(
+                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
+            ))
+            .with_fixed_local_offset_minutes(Some(0));
+        let parsed = renderer
+            .parse_diagram_sync(
+                r#"gantt
+dateFormat MM-DD
+section Demo
+Missing year: id1,03-01,1d
+Missing ref: id2,after missing,1d
+"#,
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            task_by_id(&parsed.model, "id1")["startTime"].as_i64(),
+            Some(1_772_323_200_000)
+        );
+        assert_eq!(
+            task_by_id(&parsed.model, "id2")["startTime"].as_i64(),
+            Some(1_771_113_600_000)
+        );
+    }
 }
 
 /// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.
@@ -552,6 +590,16 @@ impl HeadlessRenderer {
 
     pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
         self.engine = self.engine.with_site_config(site_config);
+        self
+    }
+
+    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
+        self.engine = self.engine.with_fixed_today(today);
+        self
+    }
+
+    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
+        self.engine = self.engine.with_fixed_local_offset_minutes(offset_minutes);
         self
     }
 

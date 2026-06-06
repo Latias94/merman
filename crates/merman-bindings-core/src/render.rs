@@ -1,7 +1,8 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, binding_site_config, css_declaration_value,
-    finite_positive, internal_json_error, no_diagram_error, normalize_option, parse_options,
-    source_text, validation_payload_json,
+    BindingError, BindingOptions, BindingStatus, binding_fixed_local_offset_minutes,
+    binding_fixed_today, binding_site_config, css_declaration_value, finite_positive,
+    internal_json_error, no_diagram_error, normalize_option, parse_options, source_text,
+    validation_payload_json,
 };
 use merman::render::{
     DeterministicTextMeasurer, HeadlessRenderer, LayoutOptions, VendoredFontMetricsTextMeasurer,
@@ -177,7 +178,9 @@ impl CachedRenderEngine {
 fn build_renderer(
     options: &BindingOptions,
 ) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
-    let mut renderer = HeadlessRenderer::new();
+    let mut renderer = HeadlessRenderer::new()
+        .with_fixed_today(binding_fixed_today(options)?)
+        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?);
 
     if options
         .parse
@@ -314,6 +317,15 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
+        model["tasks"]
+            .as_array()
+            .expect("Gantt tasks should be an array")
+            .iter()
+            .find(|task| task["id"].as_str() == Some(id))
+            .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
+    }
 
     #[test]
     fn render_svg_returns_svg_for_flowchart() {
@@ -551,6 +563,82 @@ mod tests {
         );
         assert!(json.get("nodes").and_then(Value::as_array).is_some());
         assert!(json.get("edges").and_then(Value::as_array).is_some());
+    }
+
+    #[test]
+    fn parse_json_accepts_fixed_time_options() {
+        let source = br#"gantt
+dateFormat MM-DD
+section Demo
+Missing year: id1,03-01,1d
+Missing ref: id2,after missing,1d
+"#;
+        let options = br#"{
+            "fixed_today": "2026-02-15",
+            "fixed_local_offset_minutes": 0
+        }"#;
+        let json: Value = serde_json::from_slice(&parse_json(source, options).unwrap()).unwrap();
+
+        assert_eq!(
+            task_by_id(&json, "id1")["startTime"].as_i64(),
+            Some(1_772_323_200_000)
+        );
+        assert_eq!(
+            task_by_id(&json, "id2")["startTime"].as_i64(),
+            Some(1_771_113_600_000)
+        );
+    }
+
+    #[test]
+    fn render_svg_accepts_fixed_time_options() {
+        let source = br#"gantt
+dateFormat YYYY-MM-DD
+section Demo
+Anchor: id1,2026-01-01,1d
+Missing ref: id2,after missing,1d
+"#;
+        let first = render_svg(
+            source,
+            br#"{
+                "fixed_today": "2026-02-15",
+                "fixed_local_offset_minutes": 0,
+                "svg": { "diagram_id": "bindings-fixed-gantt" }
+            }"#,
+        )
+        .unwrap();
+        let second = render_svg(
+            source,
+            br#"{
+                "fixed_today": "2026-03-15",
+                "fixed_local_offset_minutes": 0,
+                "svg": { "diagram_id": "bindings-fixed-gantt" }
+            }"#,
+        )
+        .unwrap();
+
+        assert_ne!(
+            first, second,
+            "Gantt SVG output should reflect binding fixed-time options"
+        );
+    }
+
+    #[test]
+    fn invalid_fixed_time_options_return_invalid_argument() {
+        for (options, expected) in [
+            (
+                br#"{ "fixed_today": "2026/02/15" }"#.as_slice(),
+                "fixed_today",
+            ),
+            (
+                br#"{ "fixed_local_offset_minutes": 1440 }"#.as_slice(),
+                "fixed_local_offset_minutes",
+            ),
+        ] {
+            let err = parse_json(b"flowchart TD\nA[Hello]", options).unwrap_err();
+
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(expected), "{err:?}");
+        }
     }
 
     #[test]

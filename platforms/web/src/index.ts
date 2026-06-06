@@ -22,6 +22,8 @@ export type MermaidSiteConfig = Record<string, unknown>;
 
 export interface CommonBindingOptions {
   version?: number;
+  fixed_today?: string;
+  fixed_local_offset_minutes?: number;
   site_config?: MermaidSiteConfig;
   parse?: ParseOptions;
 }

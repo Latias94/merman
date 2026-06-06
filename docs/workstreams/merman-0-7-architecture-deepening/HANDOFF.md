@@ -20,7 +20,10 @@ split raw SVG raster/PDF input from Mermaid-generated SVG postprocessing: raw SV
 `resvg_safe` boundary before CLI background/CSS postprocessors and is documented as trusted input.
 M07A-077 exposed fixed local-time controls through the CLI and fixed the typed render-model parse
 path so Gantt render output uses the same `Engine::with_fixed_today` and
-`Engine::with_fixed_local_offset_minutes` context as semantic JSON parsing.
+`Engine::with_fixed_local_offset_minutes` context as semantic JSON parsing. M07A-078 exposed the
+same fixed-time controls through Rust headless renderer facades and the shared binding
+`options_json` contract, so existing C, UniFFI, WASM, Python, Android, Apple, Flutter, and Web paths
+inherit the capability without ABI growth.
 
 ## Read First
 
@@ -56,8 +59,8 @@ Next planner action is to continue M07A-C3 with M07A-080:
   host-side trust decisions.
 - PDF size limits now cover intrinsic SVG dimensions before vector conversion; this does not address
   every possible SVG parser complexity risk.
-- CLI Gantt parse/render determinism now has fixed today/offset controls, but bindings and other
-  host adapters still need their own public option surface if they want to expose this capability.
+- CLI and shared binding Gantt parse/render determinism now have fixed today/offset controls. Typed
+  per-platform option builders remain a follow-on convenience, not a low-level ABI requirement.
 - JSON fallback cleanup is intentionally late and must wait for diagram admission evidence.
 
 ## Working Tree Notes

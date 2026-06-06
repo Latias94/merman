@@ -83,6 +83,8 @@ struct ValidationPayload<'a> {
 pub(crate) struct BindingOptions {
     #[allow(dead_code)]
     pub(crate) version: Option<u32>,
+    pub(crate) fixed_today: Option<String>,
+    pub(crate) fixed_local_offset_minutes: Option<i32>,
     pub(crate) site_config: Option<serde_json::Value>,
     pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "render")]
@@ -202,6 +204,43 @@ pub(crate) fn binding_site_config(
         ));
     }
     Ok(Some(merman::MermaidConfig::from_value(site_config.clone())))
+}
+
+#[cfg(any(feature = "render", feature = "ascii"))]
+pub(crate) fn binding_fixed_today(
+    options: &BindingOptions,
+) -> Result<Option<chrono::NaiveDate>, BindingError> {
+    let Some(today) = options.fixed_today.as_deref() else {
+        return Ok(None);
+    };
+    chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
+        .map(Some)
+        .map_err(|_| {
+            BindingError::new(
+                BindingStatus::InvalidArgument,
+                "fixed_today must be a date in YYYY-MM-DD format",
+            )
+        })
+}
+
+#[cfg(any(feature = "render", feature = "ascii"))]
+pub(crate) fn binding_fixed_local_offset_minutes(
+    options: &BindingOptions,
+) -> Result<Option<i32>, BindingError> {
+    let Some(offset_minutes) = options.fixed_local_offset_minutes else {
+        return Ok(None);
+    };
+    let valid = offset_minutes
+        .checked_mul(60)
+        .and_then(chrono::FixedOffset::east_opt)
+        .is_some();
+    if !valid {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "fixed_local_offset_minutes must be between -1439 and 1439",
+        ));
+    }
+    Ok(Some(offset_minutes))
 }
 
 #[cfg(any(feature = "render", feature = "ascii"))]

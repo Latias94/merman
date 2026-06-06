@@ -37,6 +37,7 @@ raster = [
 ]
 
 [dependencies]
+chrono.workspace = true
 merman-core.workspace = true
 merman-ascii = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }

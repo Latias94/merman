@@ -79,6 +79,16 @@ impl HeadlessAsciiRenderer {
         self
     }
 
+    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
+        self.engine = self.engine.with_fixed_today(today);
+        self
+    }
+
+    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
+        self.engine = self.engine.with_fixed_local_offset_minutes(offset_minutes);
+        self
+    }
+
     pub fn with_parse_options(mut self, parse: merman_core::ParseOptions) -> Self {
         self.parse = parse;
         self
@@ -164,6 +174,50 @@ fn apply_mermaid_ascii_directives<'a>(
         (options, Cow::Owned(output))
     } else {
         (options, Cow::Borrowed(source))
+    }
+}
+
+#[cfg(test)]
+mod headless_ascii_renderer_tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
+        model["tasks"]
+            .as_array()
+            .expect("Gantt tasks should be an array")
+            .iter()
+            .find(|task| task["id"].as_str() == Some(id))
+            .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
+    }
+
+    #[test]
+    fn headless_ascii_renderer_fixed_time_controls_semantic_parse() {
+        let renderer = HeadlessAsciiRenderer::new()
+            .with_fixed_today(Some(
+                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
+            ))
+            .with_fixed_local_offset_minutes(Some(0));
+        let parsed = renderer
+            .parse_diagram_sync(
+                r#"gantt
+dateFormat MM-DD
+section Demo
+Missing year: id1,03-01,1d
+Missing ref: id2,after missing,1d
+"#,
+            )
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            task_by_id(&parsed.model, "id1")["startTime"].as_i64(),
+            Some(1_772_323_200_000)
+        );
+        assert_eq!(
+            task_by_id(&parsed.model, "id2")["startTime"].as_i64(),
+            Some(1_771_113_600_000)
+        );
     }
 }
 
