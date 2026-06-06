@@ -1,6 +1,6 @@
 # Merman 0.7 Architecture Deepening — Handoff
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-06
 
 ## Current State
@@ -34,7 +34,9 @@ render-model parsing around one internal `FlowchartSemanticSource` while preserv
 traces such as `vertexCalls`. M07A-110 fenced `RenderSemanticModel::Json` to the built-in `error`
 diagram and custom render-model adapters, while registry coverage now requires every pinned
 non-error built-in semantic parser to have a typed render parser. The admission alignment gate also
-no longer depends on ignored local `fixtures/_deferred` investigation directories.
+no longer depends on ignored local `fixtures/_deferred` investigation directories. M07A-120 closed
+the lane after fresh workspace, alignment, structural SVG parity, selected root SVG, override
+no-growth, JSON ledger, formatting, and documentation gates.
 
 ## Read First
 
@@ -47,12 +49,14 @@ no longer depends on ignored local `fixtures/_deferred` investigation directorie
 
 ## Next Action
 
-Next planner action is M07A-120 final verification and closeout:
+No next action remains in this workstream. Use these follow-ons instead:
 
-- run the final gate set from `EVIDENCE_AND_GATES.md`, broadening to workspace gates only if the
-  current machine budget allows it;
-- reconcile TODO.md, TASKS.jsonl, CAMPAIGNS.jsonl, and this handoff before closing or splitting
-  residual follow-ons.
+- Continue root/viewBox/max-width residual investigation in
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals`.
+- Continue functional rendering/theme/renderability work in
+  `docs/workstreams/headless-parity-deepening`.
+- For any new built-in diagram family, update Diagram Family Facts, typed render parser coverage,
+  admission inventory, and binding metadata decisions together.
 
 ## Known Risks
 
@@ -65,6 +69,9 @@ Next planner action is M07A-120 final verification and closeout:
 - Root viewport planning is shared, but only `treeView` has migrated to the canonical plan in
   M07A-070. Other families still use their existing root emitters and should migrate in separate
   family-scoped slices.
+- Full `compare-all-svgs --dom-mode parity-root` is not claimed green by this closeout. It remains
+  a diagnostic/root residual surface owned by
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals`.
 - Raw external SVG input is still routed through the SVG postprocess/raster/PDF path and has not
   been upgraded into a general-purpose untrusted-SVG sanitizer in this lane. M07A-076 narrowed the
   CLI raster boundary and documented trusted-input semantics, but arbitrary uploaded SVG still needs

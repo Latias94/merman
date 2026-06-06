@@ -1,6 +1,6 @@
 # Merman 0.7 Architecture Deepening — TODO
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-06
 
 ## M0 — Scope And Evidence Freeze
@@ -235,12 +235,15 @@ Last updated: 2026-06-06
 
 ## M5 — Final Verification And Closeout
 
-- [ ] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-077,M07A-078,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
+- [x] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-077,M07A-078,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
   Goal: Run final gates, reconcile TODO.md/TASKS.jsonl/CAMPAIGNS.jsonl, close or split remaining
   architecture follow-ons, and prepare 0.7.0-facing release notes.
   Validation: `cargo fmt --all --check`; `cargo nextest run --workspace`; `cargo run -p xtask -- check-alignment`; full or justified narrowed SVG parity gate.
   Review: `review-workstream` and `verify-rust-workstream` before closing.
   Evidence: final command evidence in `EVIDENCE_AND_GATES.md`.
   Context: this workstream context manifest.
-  Handoff: Do not close with speculative JSON fallback or public surface risks unrecorded.
-  State: TASKS.jsonl entry M07A-120 is draft.
+  Handoff: DONE on 2026-06-06. Final workspace, alignment, structural SVG parity, selected root
+  SVG, override no-growth, JSON ledger, and documentation gates passed. Full `parity-root` remains
+  a root-only residual surface owned by `docs/workstreams/mermaid-11-15-root-viewport-residuals`,
+  not by this architecture-deepening closeout.
+  State: TASKS.jsonl entry M07A-120 is done.

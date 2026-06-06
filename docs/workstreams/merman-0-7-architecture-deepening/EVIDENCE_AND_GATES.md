@@ -1,18 +1,18 @@
 # Merman 0.7 Architecture Deepening — Evidence And Gates
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-100:
+The latest completed slice is M07A-120 closeout:
 
 ```bash
-cargo nextest run -p merman-core flowchart
-cargo nextest run -p merman-core
-cargo nextest run -p merman-render flowchart
-cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter basic
 cargo fmt --all --check
+cargo nextest run --workspace
+cargo run -p xtask -- check-alignment
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- report-overrides --check-no-growth
 git diff --check
 ```
 
@@ -331,3 +331,24 @@ before marking a task, Codex goal, or lane complete.
   `cargo fmt --all --check`;
   `cargo run -p xtask -- check-alignment`;
   `git diff --check`.
+- 2026-06-06: M07A-120 closed the architecture-deepening lane after review and fresh verification.
+  Closeout review found no blocking workstream-compliance or code-quality findings. The only
+  residual is full `parity-root`, which remains an existing root-only diagnostic lane under
+  `docs/workstreams/mermaid-11-15-root-viewport-residuals`, not an unclosed M07A architecture
+  target. Root viewport no-growth was synchronized to the current `308` inventory entries after
+  verifying the 9 EventModeling root guards are live: family-local EventModeling `parity-root`
+  passes with root overrides enabled and reproduces the corresponding 9 root-only max-width
+  mismatches with `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`. Validation passed:
+  `cargo fmt --all --check`;
+  `cargo nextest run -p xtask overrides::report`;
+  `cargo run -p xtask -- report-overrides --check-no-growth`;
+  `cargo nextest run --workspace`;
+  `cargo run -p xtask -- check-alignment`;
+  `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`;
+  `cargo run -p xtask -- compare-all-svgs --diagram treeView --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter basic`;
+  `git diff --check -- CONTEXT.md docs/workstreams/merman-0-7-architecture-deepening`;
+  PowerShell JSON parsing for `WORKSTREAM.json`, `TASKS.jsonl`, and `CAMPAIGNS.jsonl`.
+  Broader full `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` was
+  attempted and remains an expected failure on existing root viewport residuals; it is routed to
+  the active root residual workstream instead of being hidden by tolerance or new root pins.

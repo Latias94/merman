@@ -5,7 +5,7 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
-## Snapshot: 2026-05-18
+## Snapshot: 2026-06-06
 
 Command:
 
@@ -402,21 +402,29 @@ a classification and evidence pass, not a new exact-parity push.
 
 ### Root Viewport Overrides
 
-Total entries reported by `xtask`: `286`.
+Total entries reported by `xtask`: `308`.
 
 | file | entries |
 | --- | ---: |
-| `architecture_root_overrides_11_12_2.rs` | 31 |
+| `architecture_root_overrides_11_12_2.rs` | 0 |
 | `c4_root_overrides_11_12_2.rs` | 35 |
 | `er_root_overrides_11_12_2.rs` | 6 |
-| `flowchart_root_overrides_11_12_2.rs` | 43 |
+| `eventmodeling_root_overrides_11_15_0.rs` | 9 |
+| `flowchart_root_overrides_11_12_2.rs` | 38 |
 | `gitgraph_root_overrides_11_12_2.rs` | 23 |
 | `mindmap_root_overrides_11_12_2.rs` | 39 |
+| `pie_root_overrides_11_12_2.rs` | 58 |
 | `requirement_root_overrides_11_12_2.rs` | 7 |
 | `sankey_root_overrides_11_12_2.rs` | 3 |
-| `sequence_root_overrides_11_12_2.rs` | 58 |
+| `sequence_root_overrides_11_12_2.rs` | 49 |
 | `state_root_overrides_11_12_2.rs` | 33 |
 | `timeline_root_overrides_11_12_2.rs` | 8 |
+
+EventModeling note: EventModeling admission added 9 root viewport entries after the old 299-entry
+budget snapshot. A current check passes with the table enabled:
+`cargo run -p xtask -- compare-eventmodeling-svgs --check-dom --dom-mode parity-root --dom-decimals 3`.
+With `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1`, the same command reports the corresponding 9
+root-only `max-width` mismatches, so these entries are intentional guards rather than stale debt.
 
 Sankey note: the remaining 3 root viewport entries were rechecked by disabling the Sankey root
 lookup and running `compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`.

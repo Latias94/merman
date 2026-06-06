@@ -1,6 +1,6 @@
 # Merman 0.7 Architecture Deepening — Milestones
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-06
 
 ## M0 — Workstream Opened
@@ -45,8 +45,8 @@ Exit criteria:
 - At least the highest-duplication theme/config surfaces consume `PresentationTheme` roles.
 - SVG/root/theme changes have targeted compare evidence.
 
-Status: In progress. M07A-070 completed the shared root viewport proof with `treeView`; M07A-080
-still owns PresentationTheme migration.
+Status: Complete on 2026-06-06. M07A-070 completed the shared root viewport proof with `treeView`;
+M07A-080 migrated XyChart and QuadrantChart visible role bundles to `PresentationTheme`.
 
 Adapter determinism side-slice: M07A-077 exposed fixed Gantt/local-time controls through the CLI and
 aligned typed render-model parsing with semantic JSON fixed-time behavior. M07A-078 exposed the
@@ -63,9 +63,9 @@ Exit criteria:
 - Flowchart has one semantic source, or the remaining split has a load-bearing documented reason.
 - JSON fallback is fenced as an adapter or preserved with explicit admission evidence.
 
-Status: In progress. M07A-090 moved typed common DB sanitization ownership to families, and
-M07A-100 collapsed Flowchart JSON plus typed render parsing around one internal semantic source.
-M07A-110 still owns the JSON fallback fencing/admission decision.
+Status: Complete on 2026-06-06. M07A-090 moved typed common DB sanitization ownership to families,
+M07A-100 collapsed Flowchart JSON plus typed render parsing around one internal semantic source,
+and M07A-110 fenced JSON render fallback to the built-in `error` diagram plus custom adapters.
 
 ## M6 — Closeout
 
@@ -77,3 +77,8 @@ Exit criteria:
 - SVG parity gate is either full green or narrowed with documented reason matching touched surface.
 - Remaining architecture risks are split into follow-on workstreams or documented as accepted
   residuals.
+
+Status: Complete on 2026-06-06 via M07A-120. Workspace tests, alignment, structural SVG parity,
+selected root SVG parity, override no-growth, JSON ledger parsing, formatting, and documentation
+whitespace gates passed. Full `parity-root` is still a root-only residual diagnostic surface and is
+owned by `docs/workstreams/mermaid-11-15-root-viewport-residuals`.

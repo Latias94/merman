@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "merman-0-7-architecture-deepening",
   "title": "Merman 0.7 Architecture Deepening",
-  "status": "active",
+  "status": "closed",
   "updated": "2026-06-06",
   "scope_kind": "architecture_lane",
   "problem": "Release-facing seams for rendering, diagram family facts, SVG parity, theme access, and typed semantics are too shallow before 0.7.0.",
@@ -44,6 +44,26 @@
     "cargo run -p xtask -- check-alignment"
   ],
   "evidence": [
+    {
+      "kind": "task_evidence",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/JOURNAL/2026-06-06-m07a-120-closeout.md",
+      "note": "M07A-120 final verification, review result, residual split, and closeout gates."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md",
+      "note": "M07A-120 fresh command evidence and closeout decision."
+    },
+    {
+      "kind": "follow_on",
+      "path": "docs/workstreams/mermaid-11-15-root-viewport-residuals/WORKSTREAM.json",
+      "note": "Existing owner for full parity-root root-only residuals after this lane closes."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/xtask/src/cmd/overrides/report.rs",
+      "note": "M07A-120 synchronized root viewport override no-growth budget to the current 308-entry inventory."
+    },
     {
       "kind": "task_evidence",
       "path": "crates/merman-core/src/lib.rs",
@@ -206,7 +226,7 @@
   ],
   "lane_slug": "merman-0-7-architecture-deepening",
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "M07A-C1, M07A-C2, M07A-C3, and M07A-C4 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, M07A-078 shared binding fixed-time controls, M07A-079 Flowchart zero spacing parity, M07A-080 PresentationTheme migration continuation, M07A-090 family-owned typed semantic sanitization, M07A-100 Flowchart single semantic source, and M07A-110 JSON render fallback fencing are complete. Next planner action is M07A-120 final verification and closeout."
+    "default_action": "closed",
+    "notes": "Closed on 2026-06-06 after M07A-120 final verification. M07A-C1 through M07A-C5 are complete. Continue root/viewBox/max-width residual work in docs/workstreams/mermaid-11-15-root-viewport-residuals, and continue broad renderability/theme work in docs/workstreams/headless-parity-deepening as needed."
   }
 }

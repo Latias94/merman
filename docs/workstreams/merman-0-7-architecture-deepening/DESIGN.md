@@ -1,6 +1,6 @@
 # Merman 0.7 Architecture Deepening
 
-Status: Active
+Status: Closed
 Last updated: 2026-06-06
 
 ## Why This Lane Exists
@@ -165,3 +165,8 @@ This lane can close when:
 - redundant public convenience, helper, and duplicate fallback paths are deleted where justified;
 - final gates in `EVIDENCE_AND_GATES.md` pass or any residual risks are explicitly split into
   follow-on workstreams.
+
+Status: Closed on 2026-06-06 via M07A-120. Final workspace, alignment, structural SVG parity,
+selected root SVG parity, override no-growth, JSON ledger, formatting, and documentation gates
+passed. Full `parity-root` remains an existing root-only residual surface owned by
+`docs/workstreams/mermaid-11-15-root-viewport-residuals`.
