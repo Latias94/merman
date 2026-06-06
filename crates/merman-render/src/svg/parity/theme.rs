@@ -144,6 +144,14 @@ pub(crate) struct QuadrantChartTheme {
     pub(crate) quadrant_external_border_stroke_fill: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TreeViewTheme {
+    pub(crate) label_font_size: f64,
+    pub(crate) label_font_size_css: String,
+    pub(crate) label_color: String,
+    pub(crate) line_color: String,
+}
+
 pub(crate) struct PresentationTheme<'a> {
     raw: SvgTheme<'a>,
     common: CommonCssTheme,
@@ -320,6 +328,28 @@ impl<'a> PresentationTheme<'a> {
         );
 
         theme
+    }
+
+    pub(crate) fn tree_view(&self) -> TreeViewTheme {
+        TreeViewTheme {
+            label_font_size: self
+                .raw
+                .optional_nested_css_px("treeView", "labelFontSize")
+                .unwrap_or(16.0)
+                .max(1.0),
+            label_font_size_css: self
+                .raw
+                .optional_nested_css_value("treeView", "labelFontSize")
+                .unwrap_or_else(|| "16px".to_string()),
+            label_color: self
+                .raw
+                .optional_nested_color("treeView", "labelColor")
+                .unwrap_or_else(|| "black".to_string()),
+            line_color: self
+                .raw
+                .optional_nested_color("treeView", "lineColor")
+                .unwrap_or_else(|| "black".to_string()),
+        }
     }
 
     pub(super) fn common(&self) -> &CommonCssTheme {
@@ -819,5 +849,37 @@ mod tests {
         assert_eq!(quadrant.quadrant_title_fill, "#f43f5e");
         assert_eq!(quadrant.quadrant_internal_border_stroke_fill, "#aabbcc");
         assert_eq!(quadrant.quadrant_external_border_stroke_fill, "#ddeeff");
+    }
+
+    #[test]
+    fn presentation_theme_tree_view_resolves_tree_view_roles() {
+        let cfg = json!({
+            "themeVariables": {
+                "treeView": {
+                    "labelFontSize": "20px",
+                    "labelColor": "#FF0000",
+                    "lineColor": "#00FF00"
+                }
+            }
+        });
+
+        let tree_view = PresentationTheme::new(&cfg).tree_view();
+
+        assert_eq!(tree_view.label_font_size, 20.0);
+        assert_eq!(tree_view.label_font_size_css, "20px");
+        assert_eq!(tree_view.label_color, "#FF0000");
+        assert_eq!(tree_view.line_color, "#00FF00");
+    }
+
+    #[test]
+    fn presentation_theme_tree_view_uses_default_tree_view_roles() {
+        let cfg = json!({});
+
+        let tree_view = PresentationTheme::new(&cfg).tree_view();
+
+        assert_eq!(tree_view.label_font_size, 16.0);
+        assert_eq!(tree_view.label_font_size_css, "16px");
+        assert_eq!(tree_view.label_color, "black");
+        assert_eq!(tree_view.line_color, "black");
     }
 }

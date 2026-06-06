@@ -1,6 +1,7 @@
-use crate::config::{config_bool, config_f64, config_f64_css_px};
+use crate::config::{config_bool, config_f64};
 use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNodeLayout};
 use crate::text::{TextMeasurer, TextStyle};
+use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use merman_core::diagrams::tree_view::{
@@ -155,6 +156,7 @@ fn layout_node(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> Re
 }
 
 fn tree_view_config(effective_config: &Value) -> TreeViewConfig {
+    let theme = PresentationTheme::new(effective_config).tree_view();
     TreeViewConfig {
         row_indent: config_f64(effective_config, &["treeView", "rowIndent"])
             .unwrap_or(10.0)
@@ -169,12 +171,7 @@ fn tree_view_config(effective_config: &Value) -> TreeViewConfig {
             .unwrap_or(1.0)
             .max(0.0),
         use_max_width: config_bool(effective_config, &["treeView", "useMaxWidth"]).unwrap_or(true),
-        label_font_size: config_f64_css_px(
-            effective_config,
-            &["themeVariables", "treeView", "labelFontSize"],
-        )
-        .unwrap_or(16.0)
-        .max(1.0),
+        label_font_size: theme.label_font_size,
     }
 }
 

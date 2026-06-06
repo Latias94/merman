@@ -67,6 +67,20 @@ impl<'a> SvgTheme<'a> {
         config_string(self.effective_config, &["themeVariables", diagram_key, key])
     }
 
+    pub(super) fn optional_nested_css_value(&self, diagram_key: &str, key: &str) -> Option<String> {
+        crate::config::config_css_number_or_string(
+            self.effective_config,
+            &["themeVariables", diagram_key, key],
+        )
+    }
+
+    pub(super) fn optional_nested_css_px(&self, diagram_key: &str, key: &str) -> Option<f64> {
+        crate::config::config_f64_css_px(
+            self.effective_config,
+            &["themeVariables", diagram_key, key],
+        )
+    }
+
     pub(super) fn optional_value(&self, key: &str) -> Option<String> {
         crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
     }

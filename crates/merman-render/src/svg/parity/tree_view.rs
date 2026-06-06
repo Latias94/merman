@@ -105,23 +105,10 @@ pub(super) fn render_tree_view_diagram_svg_model(
 }
 
 fn tree_view_css(effective_config: &serde_json::Value) -> String {
-    let label_font_size = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "treeView", "labelFontSize"],
-    )
-    .unwrap_or_else(|| "16px".to_string());
-    let label_color = config_string(
-        effective_config,
-        &["themeVariables", "treeView", "labelColor"],
-    )
-    .unwrap_or_else(|| "black".to_string());
-    let line_color = config_string(
-        effective_config,
-        &["themeVariables", "treeView", "lineColor"],
-    )
-    .unwrap_or_else(|| "black".to_string());
+    let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(
-        ".treeView-node-label {{ font-size: {label_font_size}; fill: {label_color}; }} .treeView-node-line {{ stroke: {line_color}; }}"
+        ".treeView-node-label {{ font-size: {}; fill: {}; }} .treeView-node-line {{ stroke: {}; }}",
+        theme.label_font_size_css, theme.label_color, theme.line_color
     )
 }
