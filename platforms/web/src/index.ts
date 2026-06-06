@@ -153,7 +153,7 @@ export interface MermanWasmModule {
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   supportedDiagrams: () => string[];
-  themes: () => string[];
+  supportedThemes: () => string[];
 }
 
 export type MermanWasmLoader = () => Promise<MermanWasmModule>;
@@ -169,7 +169,7 @@ let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
 let asciiSupportedDiagramsCache: DiagramType[] | null = null;
-let themesCache: ThemeName[] | null = null;
+let supportedThemesCache: ThemeName[] | null = null;
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
   if (wasmModule) {
@@ -281,9 +281,9 @@ export function asciiSupportedDiagrams(): DiagramType[] {
   return [...asciiSupportedDiagramsCache];
 }
 
-export function themes(): ThemeName[] {
-  themesCache ??= getMerman().themes().map(assertThemeName);
-  return [...themesCache];
+export function supportedThemes(): ThemeName[] {
+  supportedThemesCache ??= getMerman().supportedThemes().map(assertThemeName);
+  return [...supportedThemesCache];
 }
 
 export function abiVersion(): number {

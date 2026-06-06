@@ -120,7 +120,7 @@ export function useMerman() {
     if (!ready || !wasmRef.current) {
       return [...SUPPORTED_THEMES];
     }
-    return wasmRef.current.get_themes();
+    return wasmRef.current.get_supported_themes();
   }, [ready]);
 
   const getSupportedDiagrams = useCallback((): string[] => {

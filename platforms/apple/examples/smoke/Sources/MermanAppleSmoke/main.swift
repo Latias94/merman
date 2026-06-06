@@ -40,7 +40,7 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("ASCII supported diagrams smoke failed")
         }
 
-        guard try engine.themes().contains("default") else {
+        guard try engine.supportedThemes().contains("default") else {
             throw SmokeError.failed("themes smoke failed")
         }
 

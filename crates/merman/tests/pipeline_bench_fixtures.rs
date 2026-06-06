@@ -66,7 +66,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             .unwrap_or_else(|| panic!("{name}: metadata parser returned no diagram"));
 
         engine
-            .parse_diagram_as_sync(&metadata.diagram_type, &input, parse_options)
+            .parse_diagram_with_type_sync(&metadata.diagram_type, &input, parse_options)
             .unwrap_or_else(|err| {
                 panic!(
                     "{name}: known-type parse failed for {}: {err}",

@@ -286,7 +286,7 @@ If the native library is built without the `render` feature, this function still
 ```c
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
-MermanResult merman_themes_json(void);
+MermanResult merman_supported_themes_json(void);
 ```
 
 Each function returns a UTF-8 JSON string array. The same buffer ownership rules apply.

@@ -81,8 +81,8 @@ pub fn supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-#[wasm_bindgen]
-pub fn themes() -> Result<JsValue, JsValue> {
+#[wasm_bindgen(js_name = supportedThemes)]
+pub fn supported_themes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }

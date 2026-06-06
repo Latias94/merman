@@ -57,7 +57,7 @@ assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
 assert.match(api.encodeOptions(options), /deterministic/);
 assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 
-assert.deepEqual(api.themes(), [...api.SUPPORTED_THEMES]);
+assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
 assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
 
 const asciiDiagrams = api.asciiSupportedDiagrams();

@@ -298,10 +298,10 @@ class Merman {
   }
 
   /// Returns built-in Mermaid theme names.
-  List<String> themes() {
+  List<String> supportedThemes() {
     return _themesCache ??= List.unmodifiable(
       _decodeJsonStringList(
-        _decodeText(_bindings.metadata(_bindings.themesJson)),
+        _decodeText(_bindings.metadata(_bindings.supportedThemesJson)),
       ),
     );
   }
@@ -373,9 +373,9 @@ class _MermanBindings {
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_ascii_supported_diagrams_json',
         ),
-        themesJson =
+        supportedThemesJson =
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
-          'merman_themes_json',
+          'merman_supported_themes_json',
         ),
         _bufferFree = library.lookupFunction<_BufferFreeC, _BufferFreeDart>(
           'merman_buffer_free',
@@ -393,7 +393,7 @@ class _MermanBindings {
   final _MermanCallDart validateJson;
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiSupportedDiagramsJson;
-  final _MermanMetadataDart themesJson;
+  final _MermanMetadataDart supportedThemesJson;
 
   void checkAbi() {
     final abiVersion = _abiVersion();

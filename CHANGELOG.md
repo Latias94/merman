@@ -6,6 +6,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Removed the deprecated Mermaid-versioned registry constructors that still carried the stale `11_12_2` name. Migration: replace `DiagramRegistry::default_mermaid_11_12_2()` and `RenderDiagramRegistry::default_mermaid_11_12_2()` with `for_pinned_mermaid_baseline()`. Replace `DetectorRegistry::default_mermaid_11_12_2()` with `DetectorRegistry::for_pinned_mermaid_baseline()`, or use `pinned_mermaid_baseline_full()` / `pinned_mermaid_baseline_tiny()` when the feature profile must be explicit.
+- Renamed known-type parser entry points from `*_as*` to `*_with_type*` so the public Rust API says what the supplied argument means. Migration: `parse_metadata_as_sync` -> `parse_metadata_with_type_sync`, `parse_metadata_as` -> `parse_metadata_with_type`, `parse_diagram_as_sync` -> `parse_diagram_with_type_sync`, `parse_diagram_as` -> `parse_diagram_with_type`, `parse_diagram_for_render_model_as_sync` -> `parse_diagram_for_render_model_with_type_sync`, and `parse_diagram_for_render_model_as` -> `parse_diagram_for_render_model_with_type`.
+- Renamed theme metadata entry points to use the same `supported_*` naming as diagram metadata. Migration: `@merman/web` callers should use `supportedThemes()` instead of `themes()`, wasm-bindgen exports `supportedThemes`, UniFFI uses `supported_themes()`, the C ABI uses `merman_supported_themes_json()` instead of `merman_themes_json()`, Android uses `supportedThemesJson()`, and Swift/Dart wrappers use `supportedThemes()`.
+
 ## [0.7.0-alpha.1] - 2026-06-05
 
 Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility and adds new public surfaces for [native FFI](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [ASCII/Unicode rendering](https://github.com/Latias94/merman/tree/main/crates/merman-ascii), and [rustdoc Mermaid rendering](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc). It also makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.

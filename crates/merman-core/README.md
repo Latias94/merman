@@ -41,7 +41,7 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Skip Detection When The Type Is Known
 
-Markdown renderers often know the diagram type from the fence info string. Use the `*_as_sync` APIs to skip the detection pass.
+Markdown renderers often know the diagram type from the fence info string. Use the `*_with_type_sync` APIs to skip the detection pass.
 
 ```rust
 use merman_core::{Engine, ParseOptions};
@@ -49,7 +49,7 @@ use merman_core::{Engine, ParseOptions};
 fn main() -> Result<(), merman_core::Error> {
     let engine = Engine::new();
     let parsed = engine
-        .parse_diagram_as_sync(
+        .parse_diagram_with_type_sync(
             "sequence",
             "sequenceDiagram\nAlice->>Bob: Hello",
             ParseOptions::strict(),

@@ -579,7 +579,7 @@ mod tests {
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
         let parsed = Engine::new()
-            .parse_diagram_for_render_model_as_sync(
+            .parse_diagram_for_render_model_with_type_sync(
                 "flowchart-elk",
                 "flowchart-elk TD\nA-->B;",
                 ParseOptions::strict(),

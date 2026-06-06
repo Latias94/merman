@@ -29,7 +29,7 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanEngine.validateJson(source, optionsJson = null)`
 - `MermanEngine.supportedDiagramsJson()`
 - `MermanEngine.asciiSupportedDiagramsJson()`
-- `MermanEngine.themesJson()`
+- `MermanEngine.supportedThemesJson()`
 - `MermanEngine.packageVersion`
 - `MermanException`
 

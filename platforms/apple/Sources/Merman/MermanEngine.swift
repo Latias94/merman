@@ -95,11 +95,11 @@ public final class MermanEngine {
         return values
     }
 
-    public func themes() throws -> [String] {
+    public func supportedThemes() throws -> [String] {
         if let themesCache {
             return themesCache
         }
-        let values = try metadata(merman_themes_json)
+        let values = try metadata(merman_supported_themes_json)
         themesCache = values
         return values
     }

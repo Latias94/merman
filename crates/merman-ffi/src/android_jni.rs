@@ -133,7 +133,7 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeAsciiSupportedDiagramsJ
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_io_merman_MermanEngine_nativeThemesJson(
+pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedThemesJson(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {

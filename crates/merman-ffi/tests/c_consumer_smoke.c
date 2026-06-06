@@ -30,7 +30,7 @@ typedef struct MermanApi {
     MermanCall validate_json;
     MermanResult (*supported_diagrams_json)(void);
     MermanResult (*ascii_supported_diagrams_json)(void);
-    MermanResult (*themes_json)(void);
+    MermanResult (*supported_themes_json)(void);
     MermanFree buffer_free;
 } MermanApi;
 
@@ -114,7 +114,7 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.validate_json == NULL ||
         api.supported_diagrams_json == NULL ||
         api.ascii_supported_diagrams_json == NULL ||
-        api.themes_json == NULL ||
+        api.supported_themes_json == NULL ||
         api.buffer_free == NULL
     ) {
         return 1;
@@ -223,7 +223,7 @@ int merman_c_consumer_smoke(MermanApi api) {
         return rc;
     }
 
-    rc = expect_ok_with(api.themes_json(), api.buffer_free, "default");
+    rc = expect_ok_with(api.supported_themes_json(), api.buffer_free, "default");
     if (rc != 0) {
         return rc;
     }

@@ -25,7 +25,7 @@ semantic_json = engine.parse_json(source, None)
 layout_json = engine.layout_json(source, None)
 validation = engine.validate(source, None)
 diagrams = engine.supported_diagrams()
-themes = engine.themes()
+themes = engine.supported_themes()
 
 try:
     engine.render_svg(source, "{")

@@ -209,7 +209,7 @@ MermanResult merman_validate_json(
  */
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
-MermanResult merman_themes_json(void);
+MermanResult merman_supported_themes_json(void);
 
 /*
  * Free a buffer returned by merman.

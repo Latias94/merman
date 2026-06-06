@@ -19,8 +19,8 @@ object MermanEngine {
         nativeAsciiSupportedDiagramsJson()
     }
 
-    private val themesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeThemesJson()
+    private val supportedThemesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeSupportedThemesJson()
     }
 
     @JvmStatic
@@ -52,8 +52,8 @@ object MermanEngine {
         asciiSupportedDiagramsJsonCache
 
     @JvmStatic
-    fun themesJson(): String =
-        themesJsonCache
+    fun supportedThemesJson(): String =
+        supportedThemesJsonCache
 
     private fun checkNativeAbi() {
         val nativeAbi = nativeAbiVersion()
@@ -99,5 +99,5 @@ object MermanEngine {
     private external fun nativeAsciiSupportedDiagramsJson(): String
 
     @JvmStatic
-    private external fun nativeThemesJson(): String
+    private external fun nativeSupportedThemesJson(): String
 }

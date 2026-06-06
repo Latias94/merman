@@ -312,7 +312,7 @@ pub extern "C" fn merman_ascii_supported_diagrams_json() -> MermanResult {
 
 /// Return supported theme metadata as a JSON string array.
 #[unsafe(no_mangle)]
-pub extern "C" fn merman_themes_json() -> MermanResult {
+pub extern "C" fn merman_supported_themes_json() -> MermanResult {
     ffi_result(merman_bindings_core::supported_themes_json)
 }
 
@@ -726,7 +726,7 @@ mod tests {
     fn metadata_entry_points_return_json_arrays() {
         let diagrams = merman_supported_diagrams_json();
         let ascii_diagrams = merman_ascii_supported_diagrams_json();
-        let themes = merman_themes_json();
+        let themes = merman_supported_themes_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
         assert_eq!(ascii_diagrams.code, BindingStatus::Ok.code());

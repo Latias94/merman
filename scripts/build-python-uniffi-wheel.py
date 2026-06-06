@@ -126,7 +126,7 @@ def main() -> int:
             [
                 str(python),
                 "-c",
-                "import merman; e = merman.MermanEngine(); s = 'flowchart TD\\nA[Hello] --> B[World]'; assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert 'flowchart-v2' in e.parse_json(s, None); assert 'layout' in e.layout_json(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'sequence' in e.ascii_supported_diagrams(); assert 'default' in e.themes()",
+                "import merman; e = merman.MermanEngine(); s = 'flowchart TD\\nA[Hello] --> B[World]'; assert e.abi_version() == 1; assert e.package_version(); assert e.render_svg(s, None).startswith('<svg'); assert 'Hello' in e.render_ascii(s, None); assert 'flowchart-v2' in e.parse_json(s, None); assert 'layout' in e.layout_json(s, None); assert e.validate(s, None).valid; assert 'flowchart' in e.supported_diagrams(); assert 'sequence' in e.ascii_supported_diagrams(); assert 'default' in e.supported_themes()",
             ]
         )
 

@@ -234,7 +234,7 @@ If you prefer a bundled "pipeline" instead of passing multiple option structs pe
 `merman::render::HeadlessRenderer`.
 
 If you already know the diagram type (e.g. from a Markdown fence info string), prefer
-`Engine::parse_diagram_as_sync(...)` to skip type detection.
+`Engine::parse_diagram_with_type_sync(...)` to skip type detection.
 
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
 prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use

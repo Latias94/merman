@@ -41,7 +41,7 @@ int merman_header_smoke(void) {
     MermanResult (*validate_json)(const uint8_t*, size_t, const uint8_t*, size_t) = &merman_validate_json;
     MermanResult (*supported_diagrams_json)(void) = &merman_supported_diagrams_json;
     MermanResult (*ascii_supported_diagrams_json)(void) = &merman_ascii_supported_diagrams_json;
-    MermanResult (*themes_json)(void) = &merman_themes_json;
+    MermanResult (*supported_themes_json)(void) = &merman_supported_themes_json;
     void (*free_buffer)(MermanBuffer) = &merman_buffer_free;
     (void)abi_version;
     (void)package_version;
@@ -62,7 +62,7 @@ int merman_header_smoke(void) {
     (void)validate_json;
     (void)supported_diagrams_json;
     (void)ascii_supported_diagrams_json;
-    (void)themes_json;
+    (void)supported_themes_json;
     (void)free_buffer;
     return result.code + engine_result.code + (int)result.data.len;
 }

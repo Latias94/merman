@@ -46,7 +46,7 @@ git worktree remove --force E:\Rust\merman-kanban-json-baseline
 - `parse/kanban_medium` measures `parse_diagram_for_render_model_sync`, so it captures the intended
   render-only migration from semantic JSON fallback to `KanbanDiagramRenderModel`.
 - `parse_known_type/kanban_medium` still measures the stable semantic JSON API
-  (`parse_diagram_as_sync`), so it is not expected to improve.
+  (`parse_diagram_with_type_sync`), so it is not expected to improve.
 - `layout/kanban_medium` improves because render-layout dispatch no longer deserializes the kanban
   layout input from semantic JSON.
 - `render/kanban_medium` is effectively unchanged. Kanban SVG rendering already consumes layout and

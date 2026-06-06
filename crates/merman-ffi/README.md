@@ -127,7 +127,7 @@ same command.
 - `merman_validate_json`
 - `merman_supported_diagrams_json`
 - `merman_ascii_supported_diagrams_json`
-- `merman_themes_json`
+- `merman_supported_themes_json`
 - `merman_buffer_free`
 
 See

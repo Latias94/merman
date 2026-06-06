@@ -111,7 +111,7 @@ gantt
 }
 
 #[test]
-fn parse_diagram_as_sync_matches_auto_detect_for_flowchart_v2() {
+fn parse_diagram_with_type_sync_matches_auto_detect_for_flowchart_v2() {
     let engine = Engine::new();
     let input = "flowchart TD; A[Start]-->B[End];";
 
@@ -122,7 +122,7 @@ fn parse_diagram_as_sync_matches_auto_detect_for_flowchart_v2() {
     assert_eq!(auto.meta.diagram_type, "flowchart-v2");
 
     let known = engine
-        .parse_diagram_as_sync("flowchart-v2", input, ParseOptions::strict())
+        .parse_diagram_with_type_sync("flowchart-v2", input, ParseOptions::strict())
         .unwrap()
         .unwrap();
 
@@ -131,12 +131,12 @@ fn parse_diagram_as_sync_matches_auto_detect_for_flowchart_v2() {
 }
 
 #[test]
-fn parse_metadata_as_sync_moves_init_config_without_detection() {
+fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
     let engine = Engine::new();
     let input = "%%{init: {\"config\": {\"htmlLabels\": true}}}%%\nflowchart TD; A-->B;";
 
     let meta = engine
-        .parse_metadata_as_sync("flowchart-v2", input, ParseOptions::strict())
+        .parse_metadata_with_type_sync("flowchart-v2", input, ParseOptions::strict())
         .unwrap()
         .unwrap();
 
@@ -145,12 +145,12 @@ fn parse_metadata_as_sync_moves_init_config_without_detection() {
 }
 
 #[test]
-fn parse_metadata_as_sync_preserves_flowchart_elk_layout_side_effect() {
+fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
     let engine = Engine::new();
     let input = "flowchart-elk TD\nA-->B;";
 
     let meta = engine
-        .parse_metadata_as_sync("flowchart-elk", input, ParseOptions::strict())
+        .parse_metadata_with_type_sync("flowchart-elk", input, ParseOptions::strict())
         .unwrap()
         .unwrap();
     assert_eq!(meta.effective_config.get_str("layout"), Some("elk"));
@@ -306,7 +306,7 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     assert_suppressed_error_diagram(&parsed);
 
     let parsed = engine
-        .parse_diagram_as_sync("flowchart-v2", input, options)
+        .parse_diagram_with_type_sync("flowchart-v2", input, options)
         .unwrap()
         .unwrap();
     assert_suppressed_error_diagram(&parsed);
@@ -318,7 +318,7 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     assert_suppressed_error_render_diagram(&parsed);
 
     let parsed = engine
-        .parse_diagram_for_render_model_as_sync("flowchart-v2", input, options)
+        .parse_diagram_for_render_model_with_type_sync("flowchart-v2", input, options)
         .unwrap()
         .unwrap();
     assert_suppressed_error_render_diagram(&parsed);
@@ -385,7 +385,7 @@ fn render_parser_registry_drives_typed_alias_parse() {
     );
 
     let parsed = engine
-        .parse_diagram_for_render_model_as_sync(
+        .parse_diagram_for_render_model_with_type_sync(
             "flowchart-elk",
             "flowchart-elk TD\nA-->B;",
             ParseOptions::strict(),
@@ -406,7 +406,7 @@ fn render_parser_registry_falls_back_to_json_registry_for_custom_diagrams() {
         .insert("customDiagram", custom_json_parser);
 
     let parsed = engine
-        .parse_diagram_for_render_model_as_sync(
+        .parse_diagram_for_render_model_with_type_sync(
             "customDiagram",
             "customDiagram\npayload",
             ParseOptions::strict(),

@@ -7,7 +7,7 @@ import {
   renderAscii,
   renderSvg,
   supportedDiagrams,
-  themes,
+  supportedThemes,
   validate as validateDiagram,
   type MermanWasmModule,
 } from "@merman/web";
@@ -38,7 +38,7 @@ export interface MermanWasm {
   parse_json(code: string, theme?: string, configJson?: string): string;
   layout_json(code: string, theme?: string, configJson?: string): string;
   get_supported_diagrams(): string[];
-  get_themes(): string[];
+  get_supported_themes(): string[];
   get_ascii_supported_diagrams(): string[];
   validate(code: string): ValidationResult;
 }
@@ -205,8 +205,8 @@ function createWasmAdapter(): MermanWasm {
       return supportedDiagrams();
     },
 
-    get_themes(): string[] {
-      return themes();
+    get_supported_themes(): string[] {
+      return supportedThemes();
     },
 
     get_ascii_supported_diagrams(): string[] {

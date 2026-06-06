@@ -34,14 +34,18 @@ pub use diagram::{
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
+/// Maximum nested diagram/include depth accepted by recursive parsers.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
 
+/// Returns Mermaid theme names supported by the pinned baseline.
 pub fn supported_themes() -> &'static [&'static str] {
     theme::SUPPORTED_THEME_NAMES
 }
 
+/// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
+    /// Return an `error` diagram model instead of an error when diagram parsing fails.
     pub suppress_errors: bool,
 }
 
@@ -61,17 +65,24 @@ impl ParseOptions {
     }
 }
 
+/// Metadata extracted before semantic diagram parsing.
 #[derive(Debug, Clone)]
 pub struct ParseMetadata {
+    /// Mermaid diagram type id selected by detection or supplied by a known-type parse entrypoint.
     pub diagram_type: String,
     /// Parsed config overrides extracted from front-matter and directives.
     /// This mirrors Mermaid's `mermaidAPI.parse()` return shape.
     pub config: MermaidConfig,
     /// The effective config used for detection/parsing after applying site defaults.
     pub effective_config: MermaidConfig,
+    /// Sanitized Mermaid title from front-matter/directives, when present.
     pub title: Option<String>,
 }
 
+/// Headless Mermaid parser engine.
+///
+/// An engine owns detector/parser registries and a site-level Mermaid configuration. It is cheap
+/// to clone when callers need per-request option variants.
 #[derive(Debug, Clone)]
 pub struct Engine {
     registry: DetectorRegistry,
@@ -108,6 +119,7 @@ impl Engine {
         })
     }
 
+    /// Creates an engine using the pinned Mermaid baseline registries and default site config.
     pub fn new() -> Self {
         Self::default()
     }
@@ -131,6 +143,7 @@ impl Engine {
         self
     }
 
+    /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, mut site_config: MermaidConfig) -> Self {
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
         config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
@@ -138,26 +151,32 @@ impl Engine {
         self
     }
 
+    /// Returns the detector registry used for automatic diagram type detection.
     pub fn registry(&self) -> &DetectorRegistry {
         &self.registry
     }
 
+    /// Returns a mutable detector registry for custom diagram detection.
     pub fn registry_mut(&mut self) -> &mut DetectorRegistry {
         &mut self.registry
     }
 
+    /// Returns the semantic JSON parser registry.
     pub fn diagram_registry(&self) -> &DiagramRegistry {
         &self.diagram_registry
     }
 
+    /// Returns a mutable semantic JSON parser registry for custom diagram adapters.
     pub fn diagram_registry_mut(&mut self) -> &mut DiagramRegistry {
         &mut self.diagram_registry
     }
 
+    /// Returns the typed render-model parser registry.
     pub fn render_diagram_registry(&self) -> &RenderDiagramRegistry {
         &self.render_diagram_registry
     }
 
+    /// Returns a mutable typed render-model parser registry.
     pub fn render_diagram_registry_mut(&mut self) -> &mut RenderDiagramRegistry {
         &mut self.render_diagram_registry
     }
@@ -205,11 +224,11 @@ impl Engine {
     /// };
     ///
     /// let meta = engine
-    ///     .parse_metadata_as_sync(diagram_type, diagram, ParseOptions::strict())?
+    ///     .parse_metadata_with_type_sync(diagram_type, diagram, ParseOptions::strict())?
     ///     .expect("diagram detected");
     /// # Ok::<(), merman_core::Error>(())
     /// ```
-    pub fn parse_metadata_as_sync(
+    pub fn parse_metadata_with_type_sync(
         &self,
         diagram_type: &str,
         text: &str,
@@ -221,6 +240,10 @@ impl Engine {
         Ok(Some(meta))
     }
 
+    /// Async facade for [`Engine::parse_metadata_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously; this method exists for callers that
+    /// prefer an async-shaped API.
     pub async fn parse_metadata(
         &self,
         text: &str,
@@ -229,13 +252,16 @@ impl Engine {
         self.parse_metadata_sync(text, options)
     }
 
-    pub async fn parse_metadata_as(
+    /// Async facade for [`Engine::parse_metadata_with_type_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously.
+    pub async fn parse_metadata_with_type(
         &self,
         diagram_type: &str,
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParseMetadata>> {
-        self.parse_metadata_as_sync(diagram_type, text, options)
+        self.parse_metadata_with_type_sync(diagram_type, text, options)
     }
 
     /// Synchronous variant of [`Engine::parse_diagram`].
@@ -311,6 +337,9 @@ impl Engine {
         Ok(Some(ParsedDiagram { meta, model }))
     }
 
+    /// Async facade for [`Engine::parse_diagram_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously.
     pub async fn parse_diagram(
         &self,
         text: &str,
@@ -337,6 +366,9 @@ impl Engine {
         })
     }
 
+    /// Async facade for [`Engine::parse_diagram_for_render_model_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously.
     pub async fn parse_diagram_for_render_model(
         &self,
         text: &str,
@@ -351,7 +383,7 @@ impl Engine {
     /// This is the preferred entrypoint for Markdown renderers and editors that already know the
     /// diagram type from the code fence info string. It avoids the detection pass and can reduce a
     /// small fixed overhead in tight render loops.
-    pub fn parse_diagram_for_render_model_as_sync(
+    pub fn parse_diagram_for_render_model_with_type_sync(
         &self,
         diagram_type: &str,
         text: &str,
@@ -653,13 +685,16 @@ impl Engine {
         }
     }
 
-    pub async fn parse_diagram_for_render_model_as(
+    /// Async facade for [`Engine::parse_diagram_for_render_model_with_type_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously.
+    pub async fn parse_diagram_for_render_model_with_type(
         &self,
         diagram_type: &str,
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
-        self.parse_diagram_for_render_model_as_sync(diagram_type, text, options)
+        self.parse_diagram_for_render_model_with_type_sync(diagram_type, text, options)
     }
 
     /// Parses a diagram when the diagram type is already known (skips type detection).
@@ -677,13 +712,13 @@ impl Engine {
     /// let input = "flowchart TD; A-->B;";
     ///
     /// let parsed = engine
-    ///     .parse_diagram_as_sync("flowchart-v2", input, ParseOptions::strict())?
+    ///     .parse_diagram_with_type_sync("flowchart-v2", input, ParseOptions::strict())?
     ///     .expect("diagram detected");
     ///
     /// assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
     /// # Ok::<(), merman_core::Error>(())
     /// ```
-    pub fn parse_diagram_as_sync(
+    pub fn parse_diagram_with_type_sync(
         &self,
         diagram_type: &str,
         text: &str,
@@ -721,15 +756,19 @@ impl Engine {
         Ok(Some(ParsedDiagram { meta, model }))
     }
 
-    pub async fn parse_diagram_as(
+    /// Async facade for [`Engine::parse_diagram_with_type_sync`].
+    ///
+    /// The work is CPU-bound and executes synchronously.
+    pub async fn parse_diagram_with_type(
         &self,
         diagram_type: &str,
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
-        self.parse_diagram_as_sync(diagram_type, text, options)
+        self.parse_diagram_with_type_sync(diagram_type, text, options)
     }
 
+    /// Backward-compatible shorthand for [`Engine::parse_metadata`].
     pub async fn parse(&self, text: &str, options: ParseOptions) -> Result<Option<ParseMetadata>> {
         self.parse_metadata(text, options).await
     }

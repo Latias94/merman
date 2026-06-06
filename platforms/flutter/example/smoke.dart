@@ -37,7 +37,7 @@ void main(List<String> args) {
   if (!merman.asciiSupportedDiagrams().contains('sequence')) {
     throw StateError('asciiSupportedDiagrams smoke failed');
   }
-  if (!merman.themes().contains('default')) {
+  if (!merman.supportedThemes().contains('default')) {
     throw StateError('themes smoke failed');
   }
 

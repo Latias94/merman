@@ -197,7 +197,7 @@ Legend:
    - Why: many integrations know the diagram type (Markdown fences).
    - Change:
      - Maintain and benchmark `parse_known_type/*` alongside `parse/*`.
-     - If regressions appear, consider API layering changes so `parse_diagram_as_sync` avoids any
+     - If regressions appear, consider API layering changes so `parse_diagram_with_type_sync` avoids any
        detection-only setup work.
    - Impact: medium (integration-dependent).
    - Effort: low.

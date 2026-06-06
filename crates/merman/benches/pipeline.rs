@@ -245,17 +245,19 @@ fn bench_parse_known_type(c: &mut Criterion) {
 
         // Pre-check that the known-type parse succeeds.
         if engine
-            .parse_diagram_as_sync(&diagram_type, input, parse_opts)
+            .parse_diagram_with_type_sync(&diagram_type, input, parse_opts)
             .is_err()
         {
-            eprintln!("[bench][skip][parse_known_type] {name}: parse_as({diagram_type}) error");
+            eprintln!(
+                "[bench][skip][parse_known_type] {name}: parse_with_type({diagram_type}) error"
+            );
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
                 let parsed =
-                    engine.parse_diagram_as_sync(&diagram_type, black_box(data), parse_opts);
+                    engine.parse_diagram_with_type_sync(&diagram_type, black_box(data), parse_opts);
                 let parsed = match parsed {
                     Ok(v) => v,
                     Err(_) => return,

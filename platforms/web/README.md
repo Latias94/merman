@@ -141,11 +141,11 @@ initialization is usually simpler.
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutObject()`
 - `validate()`
-- `supportedDiagrams()`, `asciiSupportedDiagrams()`, `themes()`
+- `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.
-`supportedDiagrams()`, `asciiSupportedDiagrams()`, and `themes()` return typed metadata and fail
+`supportedDiagrams()`, `asciiSupportedDiagrams()`, and `supportedThemes()` return typed metadata and fail
 fast if the generated WebAssembly metadata drifts from the TypeScript surface.
 
 ## Benchmarking against Mermaid JS

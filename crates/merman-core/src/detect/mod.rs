@@ -15,17 +15,26 @@ macro_rules! cached_regex {
 #[derive(Debug, thiserror::Error)]
 #[error("No diagram type detected matching given configuration for text: {text}")]
 pub struct DetectTypeError {
+    /// Input after front-matter, directives, and Mermaid comments have been removed.
     pub text: String,
 }
 
+/// Predicate used by [`DetectorRegistry`] to recognize one Mermaid diagram family.
 pub type DetectorFn = fn(text: &str, config: &mut MermaidConfig) -> bool;
 
+/// One diagram detector entry.
 #[derive(Debug, Clone)]
 pub struct Detector {
+    /// Mermaid diagram type id returned when the detector matches.
     pub id: &'static str,
+    /// Detection predicate. It may read and update Mermaid config, matching upstream behavior.
     pub detector: DetectorFn,
 }
 
+/// Ordered registry that detects Mermaid diagram types.
+///
+/// Detector order is semantically significant because Mermaid registers overlapping diagram
+/// syntaxes in a fixed order.
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
     detectors: Vec<Detector>,
@@ -34,6 +43,7 @@ pub struct DetectorRegistry {
 }
 
 impl DetectorRegistry {
+    /// Creates an empty detector registry.
     pub fn new() -> Self {
         Self {
             detectors: Vec::new(),
@@ -46,14 +56,17 @@ impl DetectorRegistry {
         }
     }
 
+    /// Adds a detector entry to the end of the ordered registry.
     pub fn add(&mut self, detector: Detector) {
         self.detectors.push(detector);
     }
 
+    /// Adds a detector function to the end of the ordered registry.
     pub fn add_fn(&mut self, id: &'static str, detector: DetectorFn) {
         self.add(Detector { id, detector });
     }
 
+    /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
         let no_frontmatter = self.frontmatter_re.replace(text, "");
         let no_directives = remove_directives(no_frontmatter.as_ref());
@@ -100,6 +113,9 @@ impl DetectorRegistry {
         .into())
     }
 
+    /// Builds the full detector registry for the pinned Mermaid baseline.
+    ///
+    /// This matches Mermaid's `includeLargeFeatures=true` registration profile.
     pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::new();
 
@@ -145,6 +161,9 @@ impl DetectorRegistry {
         reg
     }
 
+    /// Builds the small detector registry for the pinned Mermaid baseline.
+    ///
+    /// This matches the base Mermaid registration profile without large feature diagrams.
     pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::new();
 
@@ -185,29 +204,16 @@ impl DetectorRegistry {
         reg
     }
 
+    /// Builds the detector registry selected by this crate's feature flags.
     #[cfg(feature = "large-features")]
     pub fn for_pinned_mermaid_baseline() -> Self {
         Self::pinned_mermaid_baseline_full()
     }
 
+    /// Builds the detector registry selected by this crate's feature flags.
     #[cfg(not(feature = "large-features"))]
     pub fn for_pinned_mermaid_baseline() -> Self {
         Self::pinned_mermaid_baseline_tiny()
-    }
-
-    #[deprecated(note = "use for_pinned_mermaid_baseline or pinned_mermaid_baseline_*")]
-    pub fn default_mermaid_11_12_2_full() -> Self {
-        Self::pinned_mermaid_baseline_full()
-    }
-
-    #[deprecated(note = "use for_pinned_mermaid_baseline or pinned_mermaid_baseline_*")]
-    pub fn default_mermaid_11_12_2_tiny() -> Self {
-        Self::pinned_mermaid_baseline_tiny()
-    }
-
-    #[deprecated(note = "use for_pinned_mermaid_baseline")]
-    pub fn default_mermaid_11_12_2() -> Self {
-        Self::for_pinned_mermaid_baseline()
     }
 }
 

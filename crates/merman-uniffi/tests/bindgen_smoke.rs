@@ -169,7 +169,7 @@ assert "no Mermaid diagram" in invalid.error
 
 assert "flowchart" in engine.supported_diagrams()
 assert "sequence" in engine.ascii_supported_diagrams()
-assert "default" in engine.themes()
+assert "default" in engine.supported_themes()
 
 try:
     engine.render_svg(source, "{")

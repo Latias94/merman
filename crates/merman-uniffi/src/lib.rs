@@ -140,7 +140,7 @@ impl MermanEngine {
         )
     }
 
-    pub fn themes(&self) -> Vec<String> {
+    pub fn supported_themes(&self) -> Vec<String> {
         cached_string_vec(&SUPPORTED_THEMES, merman_bindings_core::supported_themes)
     }
 }
@@ -316,7 +316,7 @@ mod tests {
                 .ascii_supported_diagrams()
                 .contains(&"sequence".to_string())
         );
-        assert!(engine.themes().contains(&"default".to_string()));
+        assert!(engine.supported_themes().contains(&"default".to_string()));
     }
 
     #[test]

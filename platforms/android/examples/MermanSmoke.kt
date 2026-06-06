@@ -36,7 +36,7 @@ fun runMermanSmoke() {
     check(MermanEngine.asciiSupportedDiagramsJson().contains("sequence")) {
         "ASCII supported diagrams smoke failed"
     }
-    check(MermanEngine.themesJson().contains("default")) {
+    check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }
 }

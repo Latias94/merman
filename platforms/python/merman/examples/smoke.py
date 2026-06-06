@@ -38,7 +38,7 @@ def main() -> None:
         raise RuntimeError("supported diagrams smoke failed")
     if "sequence" not in engine.ascii_supported_diagrams():
         raise RuntimeError("ASCII supported diagrams smoke failed")
-    if "default" not in engine.themes():
+    if "default" not in engine.supported_themes():
         raise RuntimeError("themes smoke failed")
 
     print("merman Python UniFFI smoke passed")
