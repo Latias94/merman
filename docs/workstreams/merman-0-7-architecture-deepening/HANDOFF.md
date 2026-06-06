@@ -15,7 +15,9 @@ admission inventory projections consumed by `compare-all-svgs` and `check-alignm
 added shared root viewport planning and migrated `treeView` as the proof family for canonical root
 `viewBox` / `width` / `height` / responsive `style` emission. M07A-075 closed the PDF output
 size-budget gap so vector PDF conversion validates intrinsic SVG size limits before fit/page
-wrapping and only allows oversized trusted exports through explicit unbounded options.
+wrapping and only allows oversized trusted exports through explicit unbounded options. M07A-076
+split raw SVG raster/PDF input from Mermaid-generated SVG postprocessing: raw SVG now starts from a
+`resvg_safe` boundary before CLI background/CSS postprocessors and is documented as trusted input.
 
 ## Read First
 
@@ -46,7 +48,9 @@ Next planner action is to continue M07A-C3 with M07A-080:
   M07A-070. Other families still use their existing root emitters and should migrate in separate
   family-scoped slices.
 - Raw external SVG input is still routed through the SVG postprocess/raster/PDF path and has not
-  been upgraded into a dedicated untrusted-SVG sanitizer/budget boundary in this lane.
+  been upgraded into a general-purpose untrusted-SVG sanitizer in this lane. M07A-076 narrowed the
+  CLI raster boundary and documented trusted-input semantics, but arbitrary uploaded SVG still needs
+  host-side trust decisions.
 - PDF size limits now cover intrinsic SVG dimensions before vector conversion; this does not address
   every possible SVG parser complexity risk.
 - JSON fallback cleanup is intentionally late and must wait for diagram admission evidence.

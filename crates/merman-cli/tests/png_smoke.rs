@@ -80,6 +80,44 @@ fn cli_rasterizes_svg_input_to_png() {
 }
 
 #[test]
+fn cli_rasterizes_raw_svg_after_resvg_safe_boundary() {
+    let root = repo_root();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let svg_in = tmp.path().join("in.svg");
+    let css = tmp.path().join("host.css");
+    let out = tmp.path().join("out.png");
+
+    fs::write(
+        &svg_in,
+        r##"<svg id="raw-boundary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 40"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="60" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" x="5" y="5" width="20px" height="20px" fill="#000"/></svg>"##,
+    )
+    .expect("write svg");
+    fs::write(&css, ".node { stroke: #ef4444; }").expect("write css");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .current_dir(&root)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--backgroundColor",
+            "#f8fafc",
+            "--cssFile",
+            css.to_string_lossy().as_ref(),
+            "--out",
+            out.to_string_lossy().as_ref(),
+            svg_in.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read png");
+    assert_eq!(png_dimensions(&bytes), (80, 40));
+}
+
+#[test]
 fn cli_rasterizes_svg_input_to_png_with_fit_width_and_scale() {
     let root = repo_root();
 

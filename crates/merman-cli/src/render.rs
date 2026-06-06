@@ -311,7 +311,7 @@ impl<'a> RenderRequest<'a> {
         }
 
         if text.trim_start().starts_with("<svg") && self.plan.format.is_raster() {
-            let svg = self.postprocess_svg(text)?;
+            let svg = self.postprocess_raw_svg_for_raster(text)?;
             return self.rasterize_svg(&svg);
         }
 
@@ -336,18 +336,23 @@ impl<'a> RenderRequest<'a> {
     }
 
     fn postprocess_pipeline(&self) -> SvgPipeline {
-        let mut pipeline = SvgPipeline::parity();
-        if let Some(background) = self.plan.background.as_deref() {
-            pipeline.push_postprocessor(RootBackgroundPostprocessor::new(background));
-        }
-        if let Some(css) = self.plan.css.as_deref() {
-            pipeline.push_postprocessor(ScopedCssPostprocessor::new(css));
-        }
-        pipeline
+        svg_postprocess_pipeline(
+            SvgPipeline::parity(),
+            self.plan.background.as_deref(),
+            self.plan.css.as_deref(),
+        )
     }
 
-    fn postprocess_svg(&self, svg: &str) -> Result<String, CliError> {
-        let pipeline = self.postprocess_pipeline();
+    fn raw_svg_raster_pipeline(&self) -> SvgPipeline {
+        svg_postprocess_pipeline(
+            SvgPipeline::resvg_safe(),
+            self.plan.background.as_deref(),
+            self.plan.css.as_deref(),
+        )
+    }
+
+    fn postprocess_raw_svg_for_raster(&self, svg: &str) -> Result<String, CliError> {
+        let pipeline = self.raw_svg_raster_pipeline();
         Ok(merman::render::apply_svg_pipeline(svg, &pipeline)?)
     }
 
@@ -424,6 +429,20 @@ impl<'a> RenderRequest<'a> {
             Cow::Borrowed(svg)
         }
     }
+}
+
+fn svg_postprocess_pipeline(
+    mut pipeline: SvgPipeline,
+    background: Option<&str>,
+    css: Option<&str>,
+) -> SvgPipeline {
+    if let Some(background) = background {
+        pipeline.push_postprocessor(RootBackgroundPostprocessor::new(background));
+    }
+    if let Some(css) = css {
+        pipeline.push_postprocessor(ScopedCssPostprocessor::new(css));
+    }
+    pipeline
 }
 
 impl RenderPlan {
@@ -879,5 +898,29 @@ fn warn_for_accepted_compat_options(plan: &RenderPlan) {
     }
     if matches!(plan.mode, RenderMode::MmdcCompat) {
         // Kept intentionally quiet for no-op options that are only meaningful in a browser.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_svg_raster_pipeline_sanitizes_before_cli_postprocessors() {
+        let pipeline = svg_postprocess_pipeline(
+            SvgPipeline::resvg_safe(),
+            Some("#f8fafc"),
+            Some(".node { fill: red; }"),
+        );
+        let svg = r#"<svg id="raw" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
+
+        let out = pipeline.process_to_string(svg).unwrap();
+
+        assert!(!out.contains("<foreignObject"));
+        assert!(!out.contains("@keyframes bad"));
+        assert!(!out.contains("animation: bad"));
+        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert!(out.contains(r#"data-merman-postprocess="scoped-css""#));
+        assert!(out.contains("#raw .node { fill: red; }"));
     }
 }

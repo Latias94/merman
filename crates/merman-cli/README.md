@@ -205,20 +205,24 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 ## SVG Input Rasterization
 
 `merman-cli render --format png|jpg|pdf` can rasterize existing SVG input when the input starts with
-`<svg`.
+`<svg`. Treat raw SVG files as trusted input: this mode is for converting SVGs you already chose to
+process, not for accepting arbitrary uploaded SVG from untrusted users.
 
 ```sh
 merman-cli render --format png --out diagram.png diagram.svg
 ```
 
-The raster path applies merman's `resvg`-safe SVG cleanup before conversion.
+Raw SVG input uses a separate raster boundary from Mermaid source rendering. The CLI applies
+merman's `resvg`-safe SVG cleanup before CLI background/CSS postprocessing, then the raster/PDF
+converter applies its normal safety cleanup and size limits before conversion.
 
 Large Mermaid SVGs can be valid and still unsafe to rasterize at their intrinsic viewBox size.
 Browsers usually paint the vector SVG inside a visible container; they do not have to allocate one
 full-size pixmap up front. For preview-like PNG/JPG output, pass `--raster-fit-width` and/or
 `--raster-fit-height` plus `--scale` for device-pixel ratio. For export-like output, the default
-pixmap budget prevents accidental oversized allocations; use `--raster-unbounded` only when that
-memory cost is intentional.
+pixmap budget prevents accidental oversized allocations. PDF export uses the same intrinsic SVG
+size budget before vector conversion. Use `--raster-unbounded` only when that memory or conversion
+cost is intentional.
 
 ## Compatibility Notes
 

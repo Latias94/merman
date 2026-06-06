@@ -5,11 +5,13 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-075:
+The latest completed implementation slice is M07A-076:
 
 ```bash
-cargo nextest run -p merman --features raster svg_to_pdf
+cargo nextest run -p merman-cli raw_svg
+cargo nextest run -p merman-cli png
 cargo nextest run -p merman-cli pdf
+cargo run -p xtask -- check-alignment
 ```
 
 ## Gate Set
@@ -193,3 +195,14 @@ before marking a task, Codex goal, or lane complete.
   Broader `cargo nextest run --workspace` was not run because this closeout is for scoped M07A-070
   and M07A-075 slices, and the touched behavior is covered by targeted package, adapter, and parity
   gates above.
+- 2026-06-06: M07A-076 split raw SVG raster/PDF input from Mermaid-generated SVG postprocessing.
+  Raw SVG input now starts from `SvgPipeline::resvg_safe()` before CLI background/CSS
+  postprocessors, while Mermaid source rendering keeps the parity pipeline and the final
+  raster/PDF conversion still applies the normal resvg-safe cleanup and size limits. The CLI README
+  now documents raw SVG as trusted input rather than a general-purpose untrusted-SVG sanitizer.
+  Validation passed:
+  `cargo nextest run -p merman-cli raw_svg`;
+  `cargo nextest run -p merman-cli png`;
+  `cargo nextest run -p merman-cli pdf`;
+  `cargo run -p xtask -- check-alignment`;
+  `cargo fmt --all --check`.

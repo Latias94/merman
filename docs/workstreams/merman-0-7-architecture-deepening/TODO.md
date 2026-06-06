@@ -120,6 +120,23 @@ Last updated: 2026-06-06
   trusted unbounded callers.
   State: TASKS.jsonl entry M07A-075 is done.
 
+- [x] M07A-076 [owner=codex] [deps=M07A-075] [scope=crates/merman-cli/src/render.rs,crates/merman-cli/tests/png_smoke.rs,crates/merman-cli/README.md]
+  Goal: Split raw SVG raster/PDF input from Mermaid-generated SVG postprocessing so external SVG
+  does not enter through the parity postprocess path.
+  Validation: `cargo nextest run -p merman-cli raw_svg`;
+  `cargo nextest run -p merman-cli png`;
+  `cargo nextest run -p merman-cli pdf`;
+  `cargo run -p xtask -- check-alignment`;
+  `cargo fmt --all --check`.
+  Review: Keep this as a boundary hardening slice, not a full SVG sanitizer rewrite.
+  Evidence: raw SVG raster pipeline helper; CLI smoke for foreignObject/style hazard SVG input;
+  README trusted-input note.
+  Context: ADR 0059, 0063, 0064, this workstream context manifest.
+  Handoff: DONE on 2026-06-06. Raw SVG raster/PDF input now starts from a `resvg_safe` pipeline
+  before CLI background/CSS postprocessors, and conversion still applies normal resvg-safe cleanup
+  and size limits.
+  State: TASKS.jsonl entry M07A-076 is done.
+
 - [ ] M07A-080 [owner=unassigned] [deps=M07A-010] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/config.rs,crates/merman-render/src/xychart.rs,crates/merman-render/src/quadrantchart.rs,crates/merman-render/src/svg/parity]
   Goal: Continue ADR 0068 by migrating repeated raw `themeVariables` fallback chains into
   renderer-facing `PresentationTheme` roles.
