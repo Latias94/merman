@@ -7,17 +7,16 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
     let id = escape_xml(diagram_id);
     let default_font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let theme = SvgTheme::new(effective_config);
 
-    fn radar_style_string(cfg: &serde_json::Value, key: &str, fallback: &str) -> String {
-        config_string(cfg, &["radar", key])
-            .or_else(|| config_string(cfg, &["themeVariables", "radar", key]))
+    fn radar_style_string(theme: &SvgTheme<'_>, key: &str, fallback: &str) -> String {
+        theme
+            .optional_scoped_string("radar", key)
             .unwrap_or_else(|| fallback.to_string())
     }
 
-    fn radar_style_f64(cfg: &serde_json::Value, key: &str, fallback: f64) -> f64 {
-        config_f64(cfg, &["radar", key])
-            .or_else(|| config_f64(cfg, &["themeVariables", "radar", key]))
-            .unwrap_or(fallback)
+    fn radar_style_f64(theme: &SvgTheme<'_>, key: &str, fallback: f64) -> f64 {
+        theme.optional_scoped_f64("radar", key).unwrap_or(fallback)
     }
 
     fn default_c_scale(i: usize) -> &'static str {
@@ -53,18 +52,18 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let title_font_size = base_font_size.clone();
     let title_color = theme_color(effective_config, "titleColor", "#333");
 
-    let axis_color = radar_style_string(effective_config, "axisColor", "#333333");
-    let axis_stroke_width = radar_style_f64(effective_config, "axisStrokeWidth", 2.0);
-    let axis_label_font_size = radar_style_f64(effective_config, "axisLabelFontSize", 12.0);
+    let axis_color = radar_style_string(&theme, "axisColor", "#333333");
+    let axis_stroke_width = radar_style_f64(&theme, "axisStrokeWidth", 2.0);
+    let axis_label_font_size = radar_style_f64(&theme, "axisLabelFontSize", 12.0);
 
-    let graticule_color = radar_style_string(effective_config, "graticuleColor", "#DEDEDE");
-    let graticule_opacity = radar_style_f64(effective_config, "graticuleOpacity", 0.3);
-    let graticule_stroke_width = radar_style_f64(effective_config, "graticuleStrokeWidth", 1.0);
+    let graticule_color = radar_style_string(&theme, "graticuleColor", "#DEDEDE");
+    let graticule_opacity = radar_style_f64(&theme, "graticuleOpacity", 0.3);
+    let graticule_stroke_width = radar_style_f64(&theme, "graticuleStrokeWidth", 1.0);
 
-    let legend_font_size = radar_style_f64(effective_config, "legendFontSize", 12.0);
+    let legend_font_size = radar_style_f64(&theme, "legendFontSize", 12.0);
 
-    let curve_opacity = radar_style_f64(effective_config, "curveOpacity", 0.5);
-    let curve_stroke_width = radar_style_f64(effective_config, "curveStrokeWidth", 2.0);
+    let curve_opacity = radar_style_f64(&theme, "curveOpacity", 0.5);
+    let curve_stroke_width = radar_style_f64(&theme, "curveStrokeWidth", 2.0);
 
     let mut out = String::new();
     let _ = write!(
@@ -406,6 +405,46 @@ mod tests {
         ));
         assert!(css.contains(
             r#"#radar .radarCurve-0{color:#303030;fill:#303030;fill-opacity:0.9;stroke:#303030;stroke-width:6;}"#
+        ));
+    }
+
+    #[test]
+    fn radar_css_uses_scoped_theme_variables_when_top_level_is_missing() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "fontSize": "18px",
+                "textColor": "#101010",
+                "titleColor": "#202020",
+                "cScale0": "#303030",
+                "radar": {
+                    "axisColor": "#404040",
+                    "axisStrokeWidth": 2,
+                    "axisLabelFontSize": 12,
+                    "graticuleColor": "#505050",
+                    "graticuleOpacity": 0.3,
+                    "graticuleStrokeWidth": 1,
+                    "legendFontSize": 12,
+                    "curveOpacity": 0.5,
+                    "curveStrokeWidth": 2
+                }
+            }
+        });
+
+        let css = radar_css("radar", &cfg);
+
+        assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
+        assert!(css.contains(
+            r#"#radar .radarAxisLabel{dominant-baseline:middle;text-anchor:middle;font-size:12px;color:#404040;}"#
+        ));
+        assert!(css.contains(
+            r#"#radar .radarGraticule{fill:#505050;fill-opacity:0.3;stroke:#505050;stroke-width:1;}"#
+        ));
+        assert!(css.contains(
+            r#"#radar .radarLegendText{text-anchor:start;font-size:12px;dominant-baseline:hanging;}"#
+        ));
+        assert!(css.contains(
+            r#"#radar .radarCurve-0{color:#303030;fill:#303030;fill-opacity:0.5;stroke:#303030;stroke-width:2;}"#
         ));
     }
 
