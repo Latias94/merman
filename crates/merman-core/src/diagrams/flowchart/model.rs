@@ -24,6 +24,13 @@ pub struct FlowchartV2Model {
     pub tooltips: FxHashMap<String, String>,
 }
 
+impl FlowchartV2Model {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowEdgeDefaults {
     #[serde(default)]

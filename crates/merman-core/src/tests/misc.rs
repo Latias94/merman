@@ -1216,3 +1216,71 @@ Alice->Bob:Hello"#;
     assert_eq!(res.model["accTitle"], json!("<b>a</b>"));
     assert_eq!(res.model["accDescr"], json!("<b>d</b>"));
 }
+
+#[test]
+fn parse_render_model_sanitizes_common_db_fields_for_typed_families() {
+    let engine = Engine::new();
+    let flowchart = r#"flowchart TD
+accTitle: <script>alert(1)</script><b>a</b>
+accDescr { <script>alert(1)</script>line1
+    line2
+}
+A[Start] --> B[End]
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(flowchart, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Flowchart(model) => {
+            assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
+            assert_eq!(model.acc_descr.as_deref(), Some("line1\nline2"));
+        }
+        other => panic!("flowchart render parse should return typed model, got {other:?}"),
+    }
+
+    let sequence = r#"sequenceDiagram
+title: <script>alert(1)</script><b>t</b>
+accTitle: <script>alert(1)</script><b>a</b>
+accDescr { <script>alert(1)</script>line1
+    line2
+}
+Alice->Bob:Hello"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(sequence, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Sequence(model) => {
+            assert_eq!(model.title.as_deref(), Some("<b>t</b>"));
+            assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
+            assert_eq!(model.acc_descr.as_deref(), Some("line1\nline2"));
+        }
+        other => panic!("sequence render parse should return typed model, got {other:?}"),
+    }
+
+    let treemap = r#"treemap
+title <script>alert(1)</script><b>t</b>
+accTitle: <script>alert(1)</script><b>a</b>
+accDescr: <script>alert(1)</script><b>d</b>
+"Root": 1
+"#;
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(treemap, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    match parsed.model {
+        RenderSemanticModel::Treemap(model) => {
+            assert_eq!(model.title.as_deref(), Some("<b>t</b>"));
+            assert_eq!(model.acc_title.as_deref(), Some("<b>a</b>"));
+            assert_eq!(model.acc_descr.as_deref(), Some("<b>d</b>"));
+        }
+        other => panic!("treemap render parse should return typed model, got {other:?}"),
+    }
+}

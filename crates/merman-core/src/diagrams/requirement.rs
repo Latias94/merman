@@ -75,6 +75,13 @@ pub struct RequirementDiagramRenderModel {
     pub classes: BTreeMap<String, RequirementRenderClass>,
 }
 
+impl RequirementDiagramRenderModel {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RequirementBuilder {
     requirement_id: String,

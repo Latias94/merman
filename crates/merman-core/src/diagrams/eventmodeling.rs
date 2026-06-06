@@ -40,6 +40,14 @@ pub struct EventModelingDiagramRenderModel {
     pub data_entities: Vec<EventModelingDataEntityRenderModel>,
 }
 
+impl EventModelingDiagramRenderModel {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_title(&mut self.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 pub fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_eventmodeling_model_for_render(code, meta)?;
     Ok(json!({

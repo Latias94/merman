@@ -25,7 +25,11 @@ same fixed-time controls through Rust headless renderer facades and the shared b
 `options_json` contract, so existing C, UniFFI, WASM, Python, Android, Apple, Flutter, and Web paths
 inherit the capability without ABI growth. M07A-079 aligned Flowchart `nodeSpacing=0` and
 `rankSpacing=0` with Mermaid's dagre source semantics (`|| 50`) while preserving
-`diagramPadding=0` through the SVG viewBox path (`?? 8`).
+`diagramPadding=0` through the SVG viewBox path (`?? 8`). M07A-080 migrated XyChart and
+QuadrantChart visible theme role resolution into renderer-facing `PresentationTheme` roles.
+M07A-090 moved typed render-model common DB sanitization out of `Engine` and into
+`RenderSemanticModel` plus family-owned model methods, closing typed path gaps for Flowchart
+`accTitle` / `accDescr` and Treemap `title`.
 
 ## Read First
 
@@ -33,17 +37,19 @@ inherit the capability without ABI growth. M07A-079 aligned Flowchart `nodeSpaci
 - `docs/workstreams/merman-0-7-architecture-deepening/TODO.md`
 - `docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md`
 - `CONTEXT.md`
-- ADR 0004, 0006, 0012, 0014, 0050, 0057, 0062, 0063, 0064, 0066 for completed
-  C1/C2 and M07A-070 context
+- ADR 0004, 0006, 0010, 0011, 0012, 0014, 0020, 0050, 0057, 0062, 0063, 0064, 0066,
+  0068 for completed C1/C2/C3 and typed semantic ownership context
 
 ## Next Action
 
-Next planner action is to continue M07A-C3 with M07A-080:
+Next planner action is to review/verify M07A-090, then continue M07A-C4:
 
-- migrate one `PresentationTheme` surface before broad adoption;
-- keep renderer roles Mermaid-compatible and avoid host styling policy;
-- keep `treeView` as the current root viewport proof family unless a later task explicitly expands
-  root viewport migration to more diagram families.
+- M07A-100 is the next executable implementation slice: collapse Flowchart JSON and typed render
+  projections around one semantic source while preserving FlowDB ordering traces such as
+  `vertexCalls`;
+- M07A-110 is a planner/review slice for fencing `RenderSemanticModel::Json` as a compatibility
+  adapter after admission and typed ownership evidence are accepted;
+- keep compatibility JSON output stable unless an ADR explicitly changes it.
 
 ## Known Risks
 
@@ -63,7 +69,11 @@ Next planner action is to continue M07A-C3 with M07A-080:
   every possible SVG parser complexity risk.
 - CLI and shared binding Gantt parse/render determinism now have fixed today/offset controls. Typed
   per-platform option builders remain a follow-on convenience, not a low-level ABI requirement.
-- JSON fallback cleanup is intentionally late and must wait for diagram admission evidence.
+- New typed render models that expose top-level `title`, `accTitle`, or `accDescr` must add a
+  family-owned `sanitize_common_db_fields` method; `Engine` should remain orchestration-only.
+- Flowchart typed/JSON convergence is high-risk because FlowDB ordering traces and SVG parity depend
+  on current insertion/order evidence.
+- JSON fallback cleanup is intentionally late and must wait for M07A-100/M07A-110 review evidence.
 
 ## Working Tree Notes
 

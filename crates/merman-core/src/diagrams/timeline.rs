@@ -26,6 +26,14 @@ pub struct TimelineDiagramRenderModel {
     pub tasks: Vec<TimelineRenderTask>,
 }
 
+impl TimelineDiagramRenderModel {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_title(&mut self.title, config);
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 #[derive(Debug, Default)]
 struct TimelineDb {
     title: String,

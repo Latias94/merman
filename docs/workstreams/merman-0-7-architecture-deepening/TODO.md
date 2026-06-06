@@ -174,27 +174,30 @@ Last updated: 2026-06-06
   points that already pass `options_json` now share fixed-time controls without growing their ABI.
   State: TASKS.jsonl entry M07A-078 is done.
 
-- [ ] M07A-080 [owner=unassigned] [deps=M07A-010] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/config.rs,crates/merman-render/src/xychart.rs,crates/merman-render/src/quadrantchart.rs,crates/merman-render/src/svg/parity]
+- [x] M07A-080 [owner=codex] [deps=M07A-010] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/config.rs,crates/merman-render/src/xychart.rs,crates/merman-render/src/quadrantchart.rs,crates/merman-render/src/svg/parity]
   Goal: Continue ADR 0068 by migrating repeated raw `themeVariables` fallback chains into
   renderer-facing `PresentationTheme` roles.
   Validation: targeted theme tests; `cargo nextest run -p merman-render theme`; targeted SVG compare for migrated families.
   Review: Keep Mermaid-compatible core config ownership in `merman-core`; renderer roles must not become host styling policy.
   Evidence: theme role tests and family compare evidence.
   Context: ADR 0068, 0063, 0064, this workstream context manifest.
-  Handoff: Prefer chart and shared CSS surfaces before rare family-local constants.
-  State: TASKS.jsonl entry M07A-080 is draft.
+  Handoff: DONE on 2026-06-06. PresentationTheme now covers XyChart and QuadrantChart visible role
+  bundles; remaining raw theme reads are documented follow-ons outside this bounded slice.
+  State: TASKS.jsonl entry M07A-080 is done.
 
 ## M4 — Typed Semantic Ownership And JSON Fallback
 
-- [ ] M07A-090 [owner=unassigned] [deps=M07A-010] [scope=crates/merman-core/src/lib.rs,crates/merman-core/src/diagram,crates/merman-core/src/diagrams]
+- [x] M07A-090 [owner=codex] [deps=M07A-010] [scope=crates/merman-core/src/lib.rs,crates/merman-core/src/diagram,crates/merman-core/src/diagrams]
   Goal: Move typed semantic sanitization field knowledge out of Engine and into family-owned
   semantic construction/projection paths.
   Validation: `cargo nextest run -p merman-core sanitize`; targeted family semantic tests.
   Review: Engine should orchestrate stages, not know every family field that needs sanitization.
   Evidence: tests for title, accTitle, accDescr sanitization through family interfaces.
   Context: ADR 0010, 0011, 0020, this workstream context manifest.
-  Handoff: Start with one high-coverage family before broad adoption.
-  State: TASKS.jsonl entry M07A-090 is draft.
+  Handoff: DONE on 2026-06-06. Typed render-model common DB sanitization now lives on
+  `RenderSemanticModel` plus family-owned model methods instead of `Engine`; the behavior test
+  covers Flowchart acc fields, Sequence title/acc fields, and Treemap title/acc fields.
+  State: TASKS.jsonl entry M07A-090 is done.
 
 - [ ] M07A-100 [owner=unassigned] [deps=M07A-090] [scope=crates/merman-core/src/diagrams/flowchart.rs,crates/merman-core/src/diagrams/flowchart]
   Goal: Collapse Flowchart JSON and typed render projections around one semantic source while

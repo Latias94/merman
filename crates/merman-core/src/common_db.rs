@@ -51,3 +51,21 @@ pub(crate) fn sanitize_acc_title(s: &str, config: &MermaidConfig) -> String {
 pub(crate) fn sanitize_acc_descr(s: &str, config: &MermaidConfig) -> String {
     collapse_newline_whitespace(&sanitize_text(s, config))
 }
+
+pub(crate) fn sanitize_optional_title(value: &mut Option<String>, config: &MermaidConfig) {
+    if let Some(s) = value.as_deref() {
+        *value = Some(sanitize_text(s, config));
+    }
+}
+
+pub(crate) fn sanitize_optional_acc_title(value: &mut Option<String>, config: &MermaidConfig) {
+    if let Some(s) = value.as_deref() {
+        *value = Some(sanitize_acc_title(s, config));
+    }
+}
+
+pub(crate) fn sanitize_optional_acc_descr(value: &mut Option<String>, config: &MermaidConfig) {
+    if let Some(s) = value.as_deref() {
+        *value = Some(sanitize_acc_descr(s, config));
+    }
+}

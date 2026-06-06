@@ -1,4 +1,4 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::Value;
 
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
@@ -90,6 +90,39 @@ pub enum RenderSemanticModel {
 }
 
 impl RenderSemanticModel {
+    /// Applies Mermaid common DB sanitization to family-owned typed fields.
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &MermaidConfig) {
+        match self {
+            Self::Json(v) => crate::common_db::apply_common_db_sanitization(v, config),
+            Self::Mindmap(_) => {}
+            Self::State(v) => v.sanitize_common_db_fields(config),
+            Self::Sequence(v) => v.sanitize_common_db_fields(config),
+            Self::Flowchart(v) => v.sanitize_common_db_fields(config),
+            Self::Architecture(v) => v.sanitize_common_db_fields(config),
+            Self::Class(v) => v.sanitize_common_db_fields(config),
+            Self::C4(v) => v.sanitize_common_db_fields(config),
+            Self::Kanban(_) => {}
+            Self::Gantt(v) => v.sanitize_common_db_fields(config),
+            Self::Pie(v) => v.sanitize_common_db_fields(config),
+            Self::Packet(v) => v.sanitize_common_db_fields(config),
+            Self::Timeline(v) => v.sanitize_common_db_fields(config),
+            Self::Journey(v) => v.sanitize_common_db_fields(config),
+            Self::Requirement(v) => v.sanitize_common_db_fields(config),
+            Self::Sankey(_) => {}
+            Self::Radar(v) => v.sanitize_common_db_fields(config),
+            Self::Info(_) => {}
+            Self::Treemap(v) => v.sanitize_common_db_fields(config),
+            Self::Block(_) => {}
+            Self::Er(v) => v.sanitize_common_db_fields(config),
+            Self::QuadrantChart(v) => v.sanitize_common_db_fields(config),
+            Self::XyChart(v) => v.sanitize_common_db_fields(config),
+            Self::GitGraph(v) => v.sanitize_common_db_fields(config),
+            Self::TreeView(v) => v.sanitize_common_db_fields(config),
+            Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
+            Self::EventModeling(v) => v.sanitize_common_db_fields(config),
+        }
+    }
+
     /// Returns a stable family label for diagnostics and timing output.
     pub fn kind(&self) -> &'static str {
         match self {

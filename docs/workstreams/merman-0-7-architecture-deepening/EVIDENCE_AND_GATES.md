@@ -5,12 +5,13 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-079:
+The latest completed implementation slice is M07A-090:
 
 ```bash
-cargo nextest run -p merman-render flowchart_node_spacing_zero_falls_back_to_mermaid_default flowchart_rank_spacing_zero_falls_back_to_mermaid_default flowchart_diagram_padding_zero_is_preserved
-cargo nextest run -p merman-render --test flowchart_layout_test --test flowchart_svg_test
+cargo nextest run -p merman-core sanitize
+cargo nextest run -p merman-core
 cargo fmt --all --check
+git diff --check
 ```
 
 ## Gate Set
@@ -277,3 +278,17 @@ before marking a task, Codex goal, or lane complete.
   `cargo nextest run -p merman-render xychart`;
   `cargo nextest run -p merman-render quadrantchart`;
   `git diff --check`.
+- 2026-06-06: M07A-090 moved typed render-model common DB sanitization field knowledge out of
+  `Engine`. `RenderSemanticModel::sanitize_common_db_fields` now owns the typed dispatch and
+  delegates to family-owned model methods for typed families that expose `title`, `accTitle`, and/or
+  `accDescr`; JSON fallback models still use `common_db::apply_common_db_sanitization`. This also
+  closes typed path gaps where Flowchart `accTitle` / `accDescr` and Treemap `title` were not
+  sanitized consistently with the JSON common DB path. Validation passed:
+  `cargo nextest run -p merman-core sanitize`;
+  `cargo nextest run -p merman-core`;
+  `cargo fmt --all --check`;
+  `git diff --check`.
+  Attempted `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl` and
+  `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json`, but this Windows
+  shell does not have `jq` installed; replacement PowerShell JSON parsing was run after the docs
+  update.

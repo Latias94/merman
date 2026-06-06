@@ -23,6 +23,13 @@ pub struct ErDiagramRenderModel {
     pub relationships: Vec<ErRelationshipRenderModel>,
 }
 
+impl ErDiagramRenderModel {
+    pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
+        crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
+    }
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ErAttributeRenderModel {
     #[serde(rename = "type")]
