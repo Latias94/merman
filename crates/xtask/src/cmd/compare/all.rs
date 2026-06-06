@@ -10,8 +10,6 @@ use super::{
     RootDeltaReportLimit, diagram_supports_root_delta_report, parse_root_delta_report_limit,
 };
 
-const ROOT_VIEWPORT_DEFERRED_DIAGRAMS: &[&str] = &["treeView", "ishikawa", "eventmodeling"];
-
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -76,34 +74,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let mut diagrams: Vec<&str> = vec![
-        "er",
-        "flowchart",
-        "state",
-        "class",
-        "sequence",
-        "info",
-        "pie",
-        "sankey",
-        "packet",
-        "timeline",
-        "journey",
-        "kanban",
-        "gitgraph",
-        "gantt",
-        "c4",
-        "block",
-        "radar",
-        "requirement",
-        "mindmap",
-        "architecture",
-        "quadrantchart",
-        "treemap",
-        "xychart",
-        "treeView",
-        "ishikawa",
-        "eventmodeling",
-    ];
+    let mut diagrams: Vec<&str> = crate::cmd::primary_svg_matrix_diagrams().collect();
 
     if !only_diagrams.is_empty() {
         let only: Vec<String> = only_diagrams
@@ -157,12 +128,13 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let global_root_parity_sweep = root_parity_policy_enabled && only_diagrams.is_empty();
 
     if global_root_parity_sweep {
+        let root_deferred: BTreeSet<&str> = crate::cmd::root_viewport_deferred_diagrams().collect();
         let skipped: Vec<&str> = diagrams
             .iter()
             .copied()
-            .filter(|d| ROOT_VIEWPORT_DEFERRED_DIAGRAMS.contains(d))
+            .filter(|d| root_deferred.contains(d))
             .collect();
-        diagrams.retain(|d| !ROOT_VIEWPORT_DEFERRED_DIAGRAMS.contains(d));
+        diagrams.retain(|d| !root_deferred.contains(d));
         if !skipped.is_empty() {
             println!(
                 "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",

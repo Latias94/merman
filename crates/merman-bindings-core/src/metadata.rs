@@ -5,33 +5,6 @@ static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
-pub const SUPPORTED_DIAGRAMS: &[&str] = &[
-    "architecture",
-    "block",
-    "c4",
-    "class",
-    "er",
-    "flowchart",
-    "gantt",
-    "gitgraph",
-    "info",
-    "journey",
-    "kanban",
-    "mindmap",
-    "packet",
-    "pie",
-    "quadrantchart",
-    "radar",
-    "requirement",
-    "sankey",
-    "sequence",
-    "state",
-    "timeline",
-    "treemap",
-    "xychart",
-    "zenuml",
-];
-
 #[cfg(feature = "ascii")]
 pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
 
@@ -40,7 +13,7 @@ pub fn supported_themes() -> &'static [&'static str] {
 }
 
 pub fn supported_diagrams() -> &'static [&'static str] {
-    SUPPORTED_DIAGRAMS
+    merman::supported_diagrams()
 }
 
 pub fn ascii_supported_diagrams() -> &'static [&'static str] {
@@ -106,6 +79,7 @@ mod tests {
 
     #[test]
     fn supported_diagrams_exposes_binding_surface() {
+        assert_eq!(supported_diagrams(), merman::supported_diagrams());
         assert!(supported_diagrams().contains(&"flowchart"));
         assert!(supported_diagrams().contains(&"sequence"));
         assert!(supported_diagrams().contains(&"requirement"));

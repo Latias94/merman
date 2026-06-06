@@ -1,7 +1,8 @@
-use crate::Result;
 use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNodeLayout};
 use crate::text::{TextMeasurer, TextStyle};
+use crate::{Error, Result};
+use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use merman_core::diagrams::tree_view::{
     TreeViewDiagramRenderModel, TreeViewNodeRenderModel as TreeViewNode,
 };
@@ -32,6 +33,7 @@ pub fn layout_tree_view_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
     let cfg = tree_view_config(effective_config);
+    validate_tree_view_render_depth(&model.root)?;
     let style = TextStyle {
         font_size: cfg.label_font_size,
         ..Default::default()
@@ -69,6 +71,21 @@ pub fn layout_tree_view_diagram_typed(
         nodes: ctx.nodes,
         lines: ctx.lines,
     })
+}
+
+fn validate_tree_view_render_depth(root: &TreeViewNode) -> Result<()> {
+    let mut stack = vec![(root, 0usize)];
+    while let Some((node, depth)) = stack.pop() {
+        if depth > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(Error::InvalidModel {
+                message: format!("treeView nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"),
+            });
+        }
+        for child in &node.children {
+            stack.push((child, depth.saturating_add(1)));
+        }
+    }
+    Ok(())
 }
 
 struct LayoutCtx<'a> {

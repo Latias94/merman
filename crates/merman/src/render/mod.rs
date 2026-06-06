@@ -17,6 +17,8 @@ pub use merman_render::{
     Error as RenderError, LayoutOptions, Result as RenderResult, layout_parsed,
 };
 
+mod operation;
+
 #[cfg(feature = "raster")]
 pub mod raster;
 
@@ -191,21 +193,14 @@ pub fn render_svg_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<String>> {
-    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
-        return Ok(None);
-    };
-
-    let layout = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
-    let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    operation::HeadlessRenderOperation::new(
+        engine,
+        text,
+        parse_options,
+        layout_options,
         svg_options,
-    )?;
-
-    Ok(Some(svg))
+    )
+    .render_svg()
 }
 
 pub fn apply_svg_pipeline(svg: &str, pipeline: &SvgPipeline) -> Result<String> {
@@ -236,26 +231,14 @@ pub fn render_svg_with_pipeline_sync(
     svg_options: &SvgRenderOptions,
     pipeline: &SvgPipeline,
 ) -> Result<Option<String>> {
-    let Some(parsed) = engine.parse_diagram_for_render_model_sync(text, parse_options)? else {
-        return Ok(None);
-    };
-
-    let layout = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
-    let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    operation::HeadlessRenderOperation::new(
+        engine,
+        text,
+        parse_options,
+        layout_options,
         svg_options,
-    )?;
-    let metadata = SvgPostprocessMetadata::from_svg(&svg)
-        .with_diagram_type(parsed.meta.diagram_type)
-        .with_optional_diagram_title(parsed.meta.title);
-
-    Ok(Some(apply_svg_pipeline_with_metadata(
-        &svg, pipeline, &metadata,
-    )?))
+    )
+    .render_svg_with_pipeline(pipeline)
 }
 
 /// Synchronous SVG render helper that applies a best-effort readability fallback for
@@ -683,68 +666,6 @@ impl HeadlessRenderer {
         self.render_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
     }
 
-    pub fn render_svg_readable_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-    ) -> Result<Option<String>> {
-        self.render_svg_with_pipeline_sync_with_diagram_id(
-            text,
-            diagram_id,
-            &SvgPipeline::readable(),
-        )
-    }
-
-    pub fn render_svg_resvg_safe_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-    ) -> Result<Option<String>> {
-        self.render_svg_with_pipeline_sync_with_diagram_id(
-            text,
-            diagram_id,
-            &SvgPipeline::resvg_safe(),
-        )
-    }
-
-    pub fn render_svg_sync_with(
-        &self,
-        text: &str,
-        svg: &SvgRenderOptions,
-    ) -> Result<Option<String>> {
-        render_svg_sync(&self.engine, text, self.parse, &self.layout, svg)
-    }
-
-    pub fn render_svg_with_pipeline_sync_with(
-        &self,
-        text: &str,
-        svg: &SvgRenderOptions,
-        pipeline: &SvgPipeline,
-    ) -> Result<Option<String>> {
-        render_svg_with_pipeline_sync(&self.engine, text, self.parse, &self.layout, svg, pipeline)
-    }
-
-    pub fn render_svg_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-    ) -> Result<Option<String>> {
-        let mut svg = self.svg.clone();
-        svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        self.render_svg_sync_with(text, &svg)
-    }
-
-    pub fn render_svg_with_pipeline_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-        pipeline: &SvgPipeline,
-    ) -> Result<Option<String>> {
-        let mut svg = self.svg.clone();
-        svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        self.render_svg_with_pipeline_sync_with(text, &svg, pipeline)
-    }
-
     #[cfg(feature = "raster")]
     pub fn render_png_sync(
         &self,
@@ -759,18 +680,6 @@ impl HeadlessRenderer {
             &self.svg,
             raster,
         )
-    }
-
-    #[cfg(feature = "raster")]
-    pub fn render_png_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-        raster: &raster::RasterOptions,
-    ) -> raster::Result<Option<Vec<u8>>> {
-        let mut svg = self.svg.clone();
-        svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        raster::render_png_sync(&self.engine, text, self.parse, &self.layout, &svg, raster)
     }
 
     #[cfg(feature = "raster")]
@@ -790,30 +699,7 @@ impl HeadlessRenderer {
     }
 
     #[cfg(feature = "raster")]
-    pub fn render_jpeg_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-        raster: &raster::RasterOptions,
-    ) -> raster::Result<Option<Vec<u8>>> {
-        let mut svg = self.svg.clone();
-        svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        raster::render_jpeg_sync(&self.engine, text, self.parse, &self.layout, &svg, raster)
-    }
-
-    #[cfg(feature = "raster")]
     pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
         raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
-    }
-
-    #[cfg(feature = "raster")]
-    pub fn render_pdf_sync_with_diagram_id(
-        &self,
-        text: &str,
-        diagram_id: &str,
-    ) -> raster::Result<Option<Vec<u8>>> {
-        let mut svg = self.svg.clone();
-        svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &svg)
     }
 }

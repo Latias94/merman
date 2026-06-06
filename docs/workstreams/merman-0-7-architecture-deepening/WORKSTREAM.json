@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "slug": "merman-0-7-architecture-deepening",
+  "title": "Merman 0.7 Architecture Deepening",
+  "status": "active",
+  "updated": "2026-06-06",
+  "scope_kind": "architecture_lane",
+  "problem": "Release-facing seams for rendering, diagram family facts, SVG parity, theme access, and typed semantics are too shallow before 0.7.0.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/TODO.md"
+    },
+    {
+      "role": "task_state",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl"
+    },
+    {
+      "role": "campaign_state",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/CAMPAIGNS.jsonl"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md"
+    },
+    {
+      "role": "context_manifest",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/CONTEXT.jsonl"
+    }
+  ],
+  "context_manifest": "docs/workstreams/merman-0-7-architecture-deepening/CONTEXT.jsonl",
+  "current_task": null,
+  "gates": [
+    "git diff --check -- CONTEXT.md docs/workstreams/merman-0-7-architecture-deepening",
+    "cargo test -p merman --no-run",
+    "cargo nextest run -p merman-bindings-core render_svg",
+    "cargo nextest run -p merman-cli render",
+    "cargo nextest run -p merman --features raster raster",
+    "cargo nextest run -p merman-ffi render_svg",
+    "cargo run -p xtask -- check-alignment"
+  ],
+  "evidence": [
+    {
+      "kind": "task_evidence",
+      "path": "crates/xtask/src/cmd/admission.rs",
+      "note": "M07A-060 admission inventory projection."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-render/src/svg/parity/root_svg.rs",
+      "note": "M07A-070 shared root viewport plan proof."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman/src/render/raster.rs",
+      "note": "M07A-075 PDF intrinsic size-limit validation."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-core/src/family.rs",
+      "note": "M07A-050 Diagram Family Facts projection."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman/src/render/mod.rs",
+      "note": "M07A-040 public adapter surface slimming."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-cli/src/render.rs",
+      "note": "M07A-030 CLI adapter adoption of operation-backed pipeline rendering."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman/src/render/operation.rs",
+      "note": "M07A-020 canonical Headless Render Operation proof."
+    },
+    {
+      "kind": "architecture_review",
+      "path": "docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md",
+      "note": "Read-only 2026-06-06 architecture review findings promoted into the workstream design."
+    }
+  ],
+  "adr_refs": [
+    "docs/adr/0004-public-api-and-headless-output.md",
+    "docs/adr/0010-semantic-model-boundary.md",
+    "docs/adr/0014-upstream-parity-policy.md",
+    "docs/adr/0063-extensible-svg-output-pipeline.md",
+    "docs/adr/0066-ffi-binding-strategy.md",
+    "docs/adr/0068-render-side-presentation-theme-view.md"
+  ],
+  "architecture_refs": [
+    "CONTEXT.md",
+    "docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md",
+    "docs/alignment/PARITY_HARDENING_PLAN.md"
+  ],
+  "capability_tags": [
+    "headless-render-operation",
+    "diagram-family-facts",
+    "admission-inventory",
+    "svg-parity-root",
+    "presentation-theme",
+    "typed-semantic-model",
+    "public-adapters"
+  ],
+  "lane_slug": "merman-0-7-architecture-deepening",
+  "continue_policy": {
+    "default_action": "continue",
+    "notes": "M07A-C1 and M07A-C2 are complete. M07A-070 root viewport proof and M07A-075 PDF size hardening are complete. Next planner action is to start M07A-080 for PresentationTheme deepening or split remaining headless boundary findings."
+  }
+}

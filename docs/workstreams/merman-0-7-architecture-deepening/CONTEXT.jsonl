@@ -1,0 +1,26 @@
+{"kind":"project_context","path":"CONTEXT.md","why":"Current baseline, architecture boundaries, and active domain terms for the repo."}
+{"kind":"agent_instructions","path":"AGENTS.md","why":"Repository-specific workflow, language, Rust validation, and Mermaid parity instructions."}
+{"kind":"adr","path":"docs/adr/0001-upstream-baseline.md","why":"Pinned Mermaid baseline authority."}
+{"kind":"adr","path":"docs/adr/0004-public-api-and-headless-output.md","why":"Public headless output and compatibility JSON surface."}
+{"kind":"adr","path":"docs/adr/0006-feature-flags-tiny-vs-full.md","why":"Tiny/full diagram feature profile constraints."}
+{"kind":"adr","path":"docs/adr/0010-semantic-model-boundary.md","why":"Semantic model ownership and AST vs DB-like model decision."}
+{"kind":"adr","path":"docs/adr/0011-semantic-model-versioning.md","why":"Semantic model versioning constraints for projection and public output."}
+{"kind":"adr","path":"docs/adr/0014-upstream-parity-policy.md","why":"Mermaid upstream is the spec and parity-driven testing policy."}
+{"kind":"adr","path":"docs/adr/0020-sanitization-and-security-level.md","why":"Sanitization semantics that typed semantic ownership must preserve."}
+{"kind":"adr","path":"docs/adr/0050-svg-viewbox-parity.md","why":"Root viewBox and SVG parity decision."}
+{"kind":"adr","path":"docs/adr/0052-normalized-upstream-fixtures.md","why":"Fixture normalization and parity corpus policy."}
+{"kind":"adr","path":"docs/adr/0057-headless-svg-text-bbox.md","why":"Headless text bbox constraints for SVG parity."}
+{"kind":"adr","path":"docs/adr/0059-raster-output-strategy.md","why":"Raster source preparation and output strategy."}
+{"kind":"adr","path":"docs/adr/0062-fixture-derived-overrides.md","why":"Override policy for pinned-baseline residuals."}
+{"kind":"adr","path":"docs/adr/0063-extensible-svg-output-pipeline.md","why":"SVG pipeline interface and postprocessor ordering."}
+{"kind":"adr","path":"docs/adr/0064-host-styling-svg-postprocessors.md","why":"Host styling belongs in postprocessors, not default parity renderer."}
+{"kind":"adr","path":"docs/adr/0065-ascii-output-boundary.md","why":"ASCII adapter boundary when public operations are adjusted."}
+{"kind":"adr","path":"docs/adr/0066-ffi-binding-strategy.md","why":"FFI/bindings can still be shaped before publication."}
+{"kind":"adr","path":"docs/adr/0068-render-side-presentation-theme-view.md","why":"Accepted render-side theme deepening direction."}
+{"kind":"audit","path":"docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md","why":"Prior architecture issue ledger and source-backed findings."}
+{"kind":"alignment","path":"docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md","why":"Admission inventory policy and family support claims."}
+{"kind":"alignment","path":"docs/alignment/PARITY_HARDENING_PLAN.md","why":"Current parity hardening priorities and gate expectations."}
+{"kind":"performance","path":"docs/performance/FEARLESS_REFACTORING.md","why":"Correctness-first refactor guardrails and validation defaults."}
+{"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md","why":"Authoritative target state and scope for this lane."}
+{"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/TODO.md","why":"Human task ledger for this lane."}
+{"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md","why":"Fresh verification commands and evidence anchors."}

@@ -1,3 +1,4 @@
+pub(crate) mod admission;
 pub(crate) mod audit;
 pub(crate) mod compare;
 pub(crate) mod debug;
@@ -12,6 +13,7 @@ pub(crate) mod snapshots;
 pub(crate) mod upstream_svg_policy;
 pub(crate) mod verify;
 
+pub(crate) use admission::*;
 pub(crate) use audit::*;
 pub(crate) use compare::*;
 pub(crate) use debug::*;

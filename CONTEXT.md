@@ -45,6 +45,16 @@ current-facing document explicitly says otherwise. New code should prefer
 
 Current direction:
 
+- The canonical headless render flow should be named the **Headless Render Operation**: parse,
+  typed render model construction, layout, SVG emission, postprocess metadata, and pipeline
+  ordering behind one behavior-bearing module. Public adapters choose input/output shape; they do
+  not rebuild that flow independently.
+- **Diagram Family Facts** are the pinned-baseline facts for one Mermaid family: ids, aliases,
+  feature profile, detector order, parser adapters, typed render adapters, known-type side effects,
+  public metadata, and admission status. Call sites should consume projections from those facts
+  instead of duplicating hand-maintained lists.
+- **Admission Inventory** records which fixture/family surfaces are parser-only, layout-covered,
+  SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why.
 - Diagram detection and parser registration should derive from pinned-baseline
   registry facts instead of scattering diagram ids across call sites.
 - Each diagram family should own semantic construction, compatibility JSON

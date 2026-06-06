@@ -1,4 +1,4 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -74,7 +74,7 @@ pub fn parse_tree_view_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<TreeViewDiagramRenderModel> {
     let parsed = parse_tree_view_input(code, meta)?;
-    Ok(tree_view_input_to_render_model(parsed))
+    tree_view_input_to_render_model(parsed, meta)
 }
 
 fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> Result<ParsedTreeViewInput> {
@@ -137,7 +137,10 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> Result<ParsedTreeV
     })
 }
 
-fn tree_view_input_to_render_model(parsed: ParsedTreeViewInput) -> TreeViewDiagramRenderModel {
+fn tree_view_input_to_render_model(
+    parsed: ParsedTreeViewInput,
+    meta: &ParseMetadata,
+) -> Result<TreeViewDiagramRenderModel> {
     let mut arena = vec![ArenaNode {
         id: 0,
         level: -1,
@@ -167,14 +170,20 @@ fn tree_view_input_to_render_model(parsed: ParsedTreeViewInput) -> TreeViewDiagr
         next_id += 1;
         arena[parent].children.push(idx);
         stack.push(idx);
+        if stack.len().saturating_sub(1) > MAX_DIAGRAM_NESTING_DEPTH {
+            return Err(parse_error(
+                meta,
+                format!("treeView nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"),
+            ));
+        }
     }
 
-    TreeViewDiagramRenderModel {
+    Ok(TreeViewDiagramRenderModel {
         title: parsed.title,
         acc_title: parsed.acc_title,
         acc_descr: parsed.acc_descr,
         root: arena_node_to_render_model(&arena, 0),
-    }
+    })
 }
 
 fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> TreeViewNodeRenderModel {
@@ -343,5 +352,22 @@ accDescr: Accessible Description
         assert_eq!(model.title.as_deref(), Some("My Tree"));
         assert_eq!(model.acc_title.as_deref(), Some("Accessible Title"));
         assert_eq!(model.acc_descr.as_deref(), Some("Accessible Description"));
+    }
+
+    #[test]
+    fn rejects_tree_view_input_beyond_nesting_limit() {
+        let mut input = String::from("treeView-beta\n");
+        for depth in 0..=crate::MAX_DIAGRAM_NESTING_DEPTH {
+            input.push_str(&" ".repeat(depth));
+            input.push('"');
+            input.push_str(&format!("n{depth}"));
+            input.push_str("\"\n");
+        }
+
+        let err = parse_tree_view_model_for_render(&input, &meta()).unwrap_err();
+        assert!(
+            err.to_string().contains("treeView nesting depth exceeds"),
+            "{err}"
+        );
     }
 }

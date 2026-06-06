@@ -111,6 +111,10 @@ Admission policy and priority order are now tracked in
 `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That rubric uses the locked Mermaid commit
 from `tools/upstreams/REPOS.lock.json` as source authority, not the current `repo-ref/mermaid`
 working tree if it has moved beyond the pinned baseline.
+The machine-readable admission projection is tracked in
+`docs/alignment/ADMISSION_INVENTORY.md` and implemented in `crates/xtask/src/cmd/admission.rs`;
+`compare-all-svgs` and `check-alignment` consume that projection instead of maintaining a separate
+main-matrix list.
 Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracked in
 `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 

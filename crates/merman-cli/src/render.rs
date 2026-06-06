@@ -315,17 +315,18 @@ impl<'a> RenderRequest<'a> {
             return self.rasterize_svg(&svg);
         }
 
-        let Some(svg) = merman::render::render_svg_sync(
+        let pipeline = self.postprocess_pipeline();
+        let Some(svg) = merman::render::render_svg_with_pipeline_sync(
             self.engine,
             text,
             self.parse_options,
             &self.layout_options(),
             &self.svg_options(),
+            &pipeline,
         )?
         else {
             return Err(CliError::NoDiagram);
         };
-        let svg = self.postprocess_svg(&svg)?;
 
         match self.plan.format {
             RenderFormat::Svg => Ok(RenderedArtifact::from_svg(svg)),
@@ -334,7 +335,7 @@ impl<'a> RenderRequest<'a> {
         }
     }
 
-    fn postprocess_svg(&self, svg: &str) -> Result<String, CliError> {
+    fn postprocess_pipeline(&self) -> SvgPipeline {
         let mut pipeline = SvgPipeline::parity();
         if let Some(background) = self.plan.background.as_deref() {
             pipeline.push_postprocessor(RootBackgroundPostprocessor::new(background));
@@ -342,6 +343,11 @@ impl<'a> RenderRequest<'a> {
         if let Some(css) = self.plan.css.as_deref() {
             pipeline.push_postprocessor(ScopedCssPostprocessor::new(css));
         }
+        pipeline
+    }
+
+    fn postprocess_svg(&self, svg: &str) -> Result<String, CliError> {
+        let pipeline = self.postprocess_pipeline();
         Ok(merman::render::apply_svg_pipeline(svg, &pipeline)?)
     }
 
@@ -358,8 +364,9 @@ impl<'a> RenderRequest<'a> {
             RenderFormat::Png => merman::render::raster::svg_to_png(&svg, &options)?,
             RenderFormat::Jpeg => merman::render::raster::svg_to_jpeg(&svg, &options)?,
             RenderFormat::Pdf => {
+                merman::render::raster::validate_svg_pdf_size(&svg, &options)?;
                 let pdf_svg = self.pdf_svg_source(&svg);
-                merman::render::raster::svg_to_pdf(pdf_svg.as_ref())?
+                merman::render::raster::svg_to_pdf_with_options(pdf_svg.as_ref(), &options)?
             }
         };
         Ok(RenderedArtifact {

@@ -15,6 +15,7 @@ pub mod diagram;
 pub mod diagrams;
 pub mod entities;
 pub mod error;
+mod family;
 pub mod generated;
 pub mod geom;
 pub mod models;
@@ -40,6 +41,11 @@ pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
 /// Returns Mermaid theme names supported by the pinned baseline.
 pub fn supported_themes() -> &'static [&'static str] {
     theme::SUPPORTED_THEME_NAMES
+}
+
+/// Returns supported diagram metadata names for binding and host capability discovery.
+pub fn supported_diagrams() -> &'static [&'static str] {
+    family::supported_diagram_metadata_ids()
 }
 
 /// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
@@ -830,7 +836,7 @@ impl Engine {
 
         let mut effective_config = self.site_config.clone();
         effective_config.deep_merge(pre.config.as_value());
-        apply_detector_side_effects_for_known_type(diagram_type, &mut effective_config);
+        family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
         theme::apply_theme_defaults(&mut effective_config);
 
         let title = pre
@@ -848,25 +854,6 @@ impl Engine {
                 title,
             },
         )))
-    }
-}
-
-fn apply_detector_side_effects_for_known_type(
-    diagram_type: &str,
-    effective_config: &mut MermaidConfig,
-) {
-    // Some Mermaid detectors have side effects on config (e.g. selecting ELK layout).
-    // When the diagram type is known ahead of time, we must preserve these side effects so the
-    // downstream layout/render pipeline behaves like the auto-detect path.
-    if diagram_type == "flowchart-elk" {
-        effective_config.set_value("layout", serde_json::Value::String("elk".to_string()));
-        return;
-    }
-
-    if matches!(diagram_type, "flowchart-v2" | "flowchart")
-        && effective_config.get_str("flowchart.defaultRenderer") == Some("elk")
-    {
-        effective_config.set_value("layout", serde_json::Value::String("elk".to_string()));
     }
 }
 

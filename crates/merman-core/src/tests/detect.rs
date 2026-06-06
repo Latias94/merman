@@ -43,7 +43,7 @@ fn tiny_build_flowchart_elk_falls_back_to_flowchart_v2() {
         .unwrap()
         .unwrap();
     assert_eq!(res.diagram_type, "flowchart-v2");
-    assert_eq!(res.effective_config.get_str("layout"), None);
+    assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
 }
 
 #[test]

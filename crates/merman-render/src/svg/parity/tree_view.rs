@@ -31,49 +31,34 @@ pub(super) fn render_tree_view_diagram_svg_model(
         .filter(|d| !d.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let min_x = -layout.line_thickness / 2.0;
-    let viewbox_width = layout.total_width.max(1.0);
-    let viewbox_height = layout.total_height.max(1.0);
-    let viewbox_attr = format!(
-        "{} 0 {} {}",
-        fmt(min_x),
-        fmt(viewbox_width),
-        fmt(viewbox_height)
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        -layout.line_thickness / 2.0,
+        0.0,
+        layout.total_width,
+        layout.total_height,
     );
-    let max_width = fmt_string(viewbox_width);
-    let style_attr = format!("max-width: {max_width}px; background-color: white;");
-    let fixed_width = fmt_string(viewbox_width);
-    let fixed_height = fmt_string(viewbox_height);
+    let root_overrides = if options.apply_root_overrides {
+        root_svg::resolve_root_overrides(None, None)
+    } else {
+        None
+    };
+    let viewport_plan = root_svg::build_root_viewport_plan(
+        root_bounds,
+        root_overrides.as_ref(),
+        layout.use_max_width,
+    );
 
     let mut out = String::new();
-    if layout.use_max_width {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
-            },
-        );
-    } else {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(fixed_width.as_str()),
-                height_attr: Some(fixed_height.as_str()),
-                style_attr: Some("background-color: white;"),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
-            },
-        );
-    }
+    root_svg::push_svg_root_open_with_viewport_plan(
+        &mut out,
+        root_svg::SvgRootAttrs {
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            trailing_newline: false,
+            ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
+        },
+        &viewport_plan,
+    );
 
     let css = tree_view_css(effective_config);
     if let Some(title) = acc_title {

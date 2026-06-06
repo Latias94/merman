@@ -5,5 +5,6 @@ mod flowchart;
 mod info;
 mod misc;
 mod pie;
+mod registry;
 mod sequence;
 mod state;

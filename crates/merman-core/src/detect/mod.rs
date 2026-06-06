@@ -1,3 +1,4 @@
+use crate::baseline::BaselineRegistryProfile;
 use crate::{MermaidConfig, Result};
 use regex::Regex;
 use std::borrow::Cow;
@@ -40,11 +41,16 @@ pub struct DetectorRegistry {
     detectors: Vec<Detector>,
     frontmatter_re: Regex,
     any_comment_re: Regex,
+    profile: BaselineRegistryProfile,
 }
 
 impl DetectorRegistry {
     /// Creates an empty detector registry.
     pub fn new() -> Self {
+        Self::with_profile(BaselineRegistryProfile::Full)
+    }
+
+    fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
             detectors: Vec::new(),
             // Mermaid accepts frontmatter even when the source is indented (common in JS template
@@ -53,6 +59,7 @@ impl DetectorRegistry {
             frontmatter_re: Regex::new(r"(?s)^\s*-{3}\s*[\n\r](.*?)[\n\r]\s*-{3}\s*[\n\r]+")
                 .unwrap(),
             any_comment_re: Regex::new(r"(?m)\s*%%.*\n").unwrap(),
+            profile,
         }
     }
 
@@ -74,7 +81,9 @@ impl DetectorRegistry {
             .any_comment_re
             .replace_all(no_directives.as_ref(), "\n");
 
-        if let Some(id) = fast_detect_by_leading_keyword(cleaned.as_ref()) {
+        if let Some(id) =
+            crate::family::fast_detect_by_leading_keyword(cleaned.as_ref(), self.profile)
+        {
             return Ok(id);
         }
 
@@ -97,7 +106,7 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
-        if let Some(id) = fast_detect_by_leading_keyword(text) {
+        if let Some(id) = crate::family::fast_detect_by_leading_keyword(text, self.profile) {
             return Ok(id);
         }
 
@@ -117,46 +126,10 @@ impl DetectorRegistry {
     ///
     /// This matches Mermaid's `includeLargeFeatures=true` registration profile.
     pub fn pinned_mermaid_baseline_full() -> Self {
-        let mut reg = Self::new();
-
-        // The detector order is significant and mirrors Mermaid's registration order.
-        reg.add_fn("error", detector_error);
-        reg.add_fn("---", detector_frontmatter_unparsed);
-
-        // Mermaid's injected.includeLargeFeatures=true ordering.
-        reg.add_fn("flowchart-elk", detector_flowchart_elk);
-        reg.add_fn("mindmap", detector_mindmap);
-        reg.add_fn("architecture", detector_architecture);
-        reg.add_fn("zenuml", detector_zenuml);
-
-        // Mermaid's base registration order.
-        reg.add_fn("c4", detector_c4);
-        reg.add_fn("kanban", detector_kanban);
-        reg.add_fn("classDiagram", detector_class_v2);
-        reg.add_fn("class", detector_class_dagre_d3);
-        reg.add_fn("er", detector_er);
-        reg.add_fn("gantt", detector_gantt);
-        reg.add_fn("info", detector_info);
-        reg.add_fn("pie", detector_pie);
-        reg.add_fn("requirement", detector_requirement);
-        reg.add_fn("sequence", detector_sequence);
-        reg.add_fn("flowchart-v2", detector_flowchart_v2);
-        reg.add_fn("flowchart", detector_flowchart_dagre_d3_graph);
-        reg.add_fn("timeline", detector_timeline);
-        reg.add_fn("gitGraph", detector_git_graph);
-        reg.add_fn("stateDiagram", detector_state_v2);
-        reg.add_fn("state", detector_state_dagre_d3);
-        reg.add_fn("journey", detector_journey);
-        reg.add_fn("quadrantChart", detector_quadrant);
-        reg.add_fn("sankey", detector_sankey);
-        reg.add_fn("packet", detector_packet);
-        reg.add_fn("xychart", detector_xychart);
-        reg.add_fn("block", detector_block);
-        reg.add_fn("treeView", detector_tree_view);
-        reg.add_fn("ishikawa", detector_ishikawa);
-        reg.add_fn("eventmodeling", detector_eventmodeling);
-        reg.add_fn("radar", detector_radar);
-        reg.add_fn("treemap", detector_treemap);
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
+        for fact in crate::family::detector_facts(BaselineRegistryProfile::Full) {
+            reg.add_fn(fact.id, fact.detector);
+        }
 
         reg
     }
@@ -165,41 +138,10 @@ impl DetectorRegistry {
     ///
     /// This matches the base Mermaid registration profile without large feature diagrams.
     pub fn pinned_mermaid_baseline_tiny() -> Self {
-        let mut reg = Self::new();
-
-        // The detector order is significant and mirrors Mermaid's registration order.
-        reg.add_fn("error", detector_error);
-        reg.add_fn("---", detector_frontmatter_unparsed);
-
-        // Mermaid's base registration order.
-        reg.add_fn("zenuml", detector_zenuml);
-        reg.add_fn("c4", detector_c4);
-        reg.add_fn("kanban", detector_kanban);
-        reg.add_fn("classDiagram", detector_class_v2);
-        reg.add_fn("class", detector_class_dagre_d3);
-        reg.add_fn("er", detector_er);
-        reg.add_fn("gantt", detector_gantt);
-        reg.add_fn("info", detector_info);
-        reg.add_fn("pie", detector_pie);
-        reg.add_fn("requirement", detector_requirement);
-        reg.add_fn("sequence", detector_sequence);
-        reg.add_fn("flowchart-v2", detector_flowchart_v2);
-        reg.add_fn("flowchart", detector_flowchart_dagre_d3_graph);
-        reg.add_fn("timeline", detector_timeline);
-        reg.add_fn("gitGraph", detector_git_graph);
-        reg.add_fn("stateDiagram", detector_state_v2);
-        reg.add_fn("state", detector_state_dagre_d3);
-        reg.add_fn("journey", detector_journey);
-        reg.add_fn("quadrantChart", detector_quadrant);
-        reg.add_fn("sankey", detector_sankey);
-        reg.add_fn("packet", detector_packet);
-        reg.add_fn("xychart", detector_xychart);
-        reg.add_fn("block", detector_block);
-        reg.add_fn("treeView", detector_tree_view);
-        reg.add_fn("ishikawa", detector_ishikawa);
-        reg.add_fn("eventmodeling", detector_eventmodeling);
-        reg.add_fn("radar", detector_radar);
-        reg.add_fn("treemap", detector_treemap);
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
+        for fact in crate::family::detector_facts(BaselineRegistryProfile::Tiny) {
+            reg.add_fn(fact.id, fact.detector);
+        }
 
         reg
     }
@@ -215,74 +157,11 @@ impl DetectorRegistry {
     pub fn for_pinned_mermaid_baseline() -> Self {
         Self::pinned_mermaid_baseline_tiny()
     }
-}
 
-fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
-    fn has_boundary(rest: &str) -> bool {
-        rest.is_empty()
-            || rest
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_whitespace() || c == ';')
+    #[cfg(test)]
+    pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.detectors.iter().map(|detector| detector.id)
     }
-
-    let t = text.trim_start();
-
-    // Prefer a fast string-prefix check for common "keyword header" diagrams.
-    // This avoids running dozens of regex detectors for tiny fixtures.
-    if let Some(rest) = t.strip_prefix("sequenceDiagram") {
-        return has_boundary(rest).then_some("sequence");
-    }
-    if let Some(rest) = t.strip_prefix("classDiagram") {
-        return has_boundary(rest).then_some("classDiagram");
-    }
-    if let Some(rest) = t.strip_prefix("stateDiagram") {
-        return has_boundary(rest).then_some("stateDiagram");
-    }
-    if let Some(rest) = t.strip_prefix("mindmap") {
-        return has_boundary(rest).then_some("mindmap");
-    }
-    if let Some(rest) = t.strip_prefix("architecture") {
-        return has_boundary(rest).then_some("architecture");
-    }
-    if let Some(rest) = t.strip_prefix("erDiagram") {
-        return has_boundary(rest).then_some("er");
-    }
-    if let Some(rest) = t.strip_prefix("gantt") {
-        return has_boundary(rest).then_some("gantt");
-    }
-    if let Some(rest) = t.strip_prefix("timeline") {
-        return has_boundary(rest).then_some("timeline");
-    }
-    if let Some(rest) = t.strip_prefix("journey") {
-        return has_boundary(rest).then_some("journey");
-    }
-    if let Some(rest) = t.strip_prefix("gitGraph") {
-        return has_boundary(rest).then_some("gitGraph");
-    }
-    if let Some(rest) = t.strip_prefix("quadrantChart") {
-        return has_boundary(rest).then_some("quadrantChart");
-    }
-    if let Some(rest) = t.strip_prefix("packet-beta") {
-        return has_boundary(rest).then_some("packet");
-    }
-    if let Some(rest) = t.strip_prefix("xychart-beta") {
-        return has_boundary(rest).then_some("xychart");
-    }
-    if let Some(rest) = t.strip_prefix("treeView-beta") {
-        return has_boundary(rest).then_some("treeView");
-    }
-    if let Some(rest) = t.strip_prefix("ishikawa-beta") {
-        return has_boundary(rest).then_some("ishikawa");
-    }
-    if let Some(rest) = t.strip_prefix("ishikawa") {
-        return has_boundary(rest).then_some("ishikawa");
-    }
-    if let Some(rest) = t.strip_prefix("eventmodeling") {
-        return has_boundary(rest).then_some("eventmodeling");
-    }
-
-    None
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {
@@ -318,31 +197,31 @@ impl Default for DetectorRegistry {
     }
 }
 
-fn detector_frontmatter_unparsed(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_frontmatter_unparsed(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("---")
 }
 
-fn detector_error(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_error(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim().eq_ignore_ascii_case("error")
 }
 
-fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
     // Matches Mermaid's upstream regex exactly (note the missing grouping in JS).
     re_c4().is_match(txt)
 }
 
-fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("kanban")
 }
 
-fn detector_class_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_class_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("class.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }
     txt.trim_start().starts_with("classDiagram")
 }
 
-fn detector_class_v2(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_class_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     if txt.trim_start().starts_with("classDiagram")
         && config.get_str("class.defaultRenderer") == Some("dagre-wrapper")
     {
@@ -351,31 +230,31 @@ fn detector_class_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("classDiagram-v2")
 }
 
-fn detector_er(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_er(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("erDiagram")
 }
 
-fn detector_gantt(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_gantt(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("gantt")
 }
 
-fn detector_info(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_info(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("info")
 }
 
-fn detector_pie(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_pie(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("pie")
 }
 
-fn detector_requirement(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_requirement(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("requirement")
 }
 
-fn detector_sequence(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_sequence(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("sequenceDiagram")
 }
 
-fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
     let trimmed = txt.trim_start();
     if trimmed.starts_with("flowchart-elk")
         || ((trimmed.starts_with("flowchart") || trimmed.starts_with("graph"))
@@ -387,7 +266,7 @@ fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
     false
 }
 
-fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("flowchart.defaultRenderer") == Some("dagre-d3") {
         return false;
     }
@@ -403,7 +282,7 @@ fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("flowchart")
 }
 
-fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> bool {
     if matches!(
         config.get_str("flowchart.defaultRenderer"),
         Some("dagre-wrapper" | "elk")
@@ -413,22 +292,22 @@ fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> b
     txt.trim_start().starts_with("graph")
 }
 
-fn detector_timeline(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_timeline(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("timeline")
 }
 
-fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("gitGraph")
 }
 
-fn detector_state_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_state_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("state.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }
     txt.trim_start().starts_with("stateDiagram")
 }
 
-fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     let trimmed = txt.trim_start();
     if trimmed.starts_with("stateDiagram-v2") {
         return true;
@@ -437,41 +316,41 @@ fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
         && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
 }
 
-fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("journey")
 }
 
-fn detector_quadrant(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_quadrant(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("quadrantChart")
 }
 
-fn detector_sankey(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_sankey(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("sankey")
 }
 
-fn detector_packet(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_packet(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("packet")
 }
 
-fn detector_xychart(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_xychart(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("xychart")
 }
 
-fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("block")
 }
 
-fn detector_tree_view(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_tree_view(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("treeView-beta")
 }
 
-fn detector_ishikawa(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_ishikawa(txt: &str, _config: &mut MermaidConfig) -> bool {
     let t = txt.trim_start();
     starts_with_header_case_insensitive(t, "ishikawa-beta")
         || starts_with_header_case_insensitive(t, "ishikawa")
 }
 
-fn detector_eventmodeling(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_eventmodeling(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("eventmodeling")
 }
 
@@ -488,23 +367,23 @@ fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {
         .map_or(true, |c| c.is_whitespace() || c == ';')
 }
 
-fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("radar-beta")
 }
 
-fn detector_treemap(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_treemap(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("treemap")
 }
 
-fn detector_mindmap(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_mindmap(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("mindmap")
 }
 
-fn detector_architecture(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_architecture(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("architecture")
 }
 
-fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
+pub(crate) fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("zenuml")
 }
 

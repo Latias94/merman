@@ -1,0 +1,195 @@
+# Merman 0.7 Architecture Deepening — Evidence And Gates
+
+Status: Active
+Last updated: 2026-06-06
+
+## Smallest Current Repro
+
+The latest completed implementation slice is M07A-075:
+
+```bash
+cargo nextest run -p merman --features raster svg_to_pdf
+cargo nextest run -p merman-cli pdf
+```
+
+## Gate Set
+
+### Documentation Gate
+
+```bash
+git diff --check -- CONTEXT.md docs/workstreams/merman-0-7-architecture-deepening
+```
+
+Proves the workstream docs and root context update have no whitespace errors.
+
+### Render Operation Iteration Gate
+
+```bash
+cargo test -p merman --no-run
+cargo nextest run -p merman-bindings-core render_svg
+cargo nextest run -p merman-ffi render_svg
+```
+
+Proves the public Rust facade still compiles and downstream render adapters preserve current
+SVG/pipeline behavior after canonical operation refactors. `merman` currently has no nextest-run
+unit tests, so `cargo test -p merman --no-run` is the direct facade compilation gate for M07A-020.
+
+### Adapter Gate
+
+```bash
+cargo nextest run -p merman-bindings-core render_svg
+cargo nextest run -p merman-cli render
+cargo nextest run -p merman --features raster raster
+cargo nextest run -p merman-ffi
+```
+
+Proves adapters still preserve protocol, error, and option behavior when migrated.
+
+### Headless Output Size Gate
+
+```bash
+cargo nextest run -p merman --features raster svg_to_pdf
+cargo nextest run -p merman-cli pdf
+```
+
+Proves PNG/JPG/PDF-facing conversion paths keep explicit size-budget behavior and do not let PDF
+fit/page options bypass intrinsic SVG complexity limits.
+
+### Core Facts Gate
+
+```bash
+cargo nextest run -p merman-core detect
+cargo nextest run -p merman-core registry
+cargo nextest run -p merman-bindings-core metadata
+cargo run -p xtask -- check-alignment
+```
+
+Proves detector, parser registry, supported diagram metadata, and alignment projections agree.
+
+### SVG Parity Gate
+
+Use targeted family gates during development:
+
+```bash
+cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter <fixture>
+cargo run -p xtask -- compare-class-svgs --check-dom --dom-decimals 3 --filter <fixture>
+```
+
+Use the root gate when root SVG, viewport, emitted bounds, or overrides change:
+
+```bash
+cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+```
+
+Proves renderer changes do not hide semantic drift behind broad normalization.
+
+### Semantic Ownership Gate
+
+```bash
+cargo nextest run -p merman-core sanitize
+cargo nextest run -p merman-core flowchart
+cargo nextest run -p merman-render
+```
+
+Proves family-owned sanitization and typed/JSON projection changes preserve semantic and render
+behavior.
+
+### Closeout Gate
+
+```bash
+cargo fmt --all --check
+cargo nextest run --workspace
+cargo run -p xtask -- check-alignment
+```
+
+Add the SVG parity gate that matches the touched surface. If the full gate is too expensive for a
+task closeout, record the narrowed gate and why it is sufficient. Fresh verification is required
+before marking a task, Codex goal, or lane complete.
+
+## Evidence Anchors
+
+- `docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md`
+- `docs/workstreams/merman-0-7-architecture-deepening/TODO.md`
+- `docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl`
+- `docs/workstreams/merman-0-7-architecture-deepening/CAMPAIGNS.jsonl`
+- `docs/workstreams/merman-0-7-architecture-deepening/MILESTONES.md`
+- `docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json`
+- `CONTEXT.md`
+- implementation tests and parity compare outputs recorded in this file as tasks land
+
+## Current Evidence
+
+- 2026-06-06: Workstream opened from the read-only architecture review. No Rust code changed yet.
+- 2026-06-06: M07A-020 introduced `crates/merman/src/render/operation.rs` and routed
+  `render_svg_sync` / `render_svg_with_pipeline_sync` through it. Validation passed:
+  `cargo test -p merman --no-run`; `cargo nextest run -p merman-bindings-core render_svg`;
+  `cargo nextest run -p merman-ffi render_svg`; `cargo fmt --all --check`.
+  Attempted `cargo nextest run -p merman render_svg` and
+  `cargo nextest run -p merman render::svg_pipeline_tests`, but both matched zero tests and are not
+  counted as pass evidence.
+- 2026-06-06: M07A-030 migrated CLI Mermaid input rendering to call
+  `render_svg_with_pipeline_sync` with the CLI-owned postprocess pipeline. Existing SVG input keeps
+  CLI-owned postprocessing because it is a format Adapter path, not Mermaid render flow. Bindings-core
+  and raster already used operation-backed facade helpers after M07A-020. Validation passed:
+  `cargo nextest run -p merman-bindings-core render_svg`; `cargo nextest run -p merman-cli render`;
+  `cargo nextest run -p merman --features raster raster`; `cargo fmt --all --check`.
+- 2026-06-06: M07A-040 removed shallow `HeadlessRenderer` convenience methods that only cloned
+  `SvgRenderOptions` to override `diagram_id` or passed one-shot `SvgRenderOptions` through
+  existing helpers. Repo/docs search found no callers and no README/bindings docs commitments for
+  the removed methods. Kept documented readable/resvg-safe preset helpers. Validation passed:
+  `cargo test -p merman --no-run`; `cargo nextest run -p merman-bindings-core`;
+  `cargo nextest run -p merman-ffi`; `cargo fmt --all --check`.
+  `cargo nextest run -p merman` still matched zero tests and is not counted as pass evidence.
+- 2026-06-06: M07A-050 introduced `crates/merman-core/src/family.rs` as the core Diagram Family
+  Facts projection source. Detector order, fast detect profile behavior, semantic parser registry,
+  typed render parser registry, known-type detector side effects, `RenderSemanticModel` alias
+  support, and bindings supported diagram metadata now project from those facts. Validation passed:
+  `cargo nextest run -p merman-core detect`; `cargo nextest run -p merman-core registry`;
+  `cargo nextest run -p merman-bindings-core metadata`;
+  `cargo nextest run -p merman-core --no-default-features detect`; `cargo fmt --all --check`.
+- 2026-06-06: M07A-060 introduced `crates/xtask/src/cmd/admission.rs` and
+  `docs/alignment/ADMISSION_INVENTORY.md`. The inventory records admission state, fixture corpus
+  state, semantic/layout/SVG/root coverage, compare-command ownership, owner docs, and defer
+  reasons. `compare-all-svgs` now reads its primary matrix and root-deferred diagram projection
+  from the inventory; `check-alignment` validates inventory paths and evidence. Validation passed:
+  `cargo run -p xtask -- check-alignment`;
+  `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-all-svgs --diagram treeView --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo fmt --all --check`.
+- 2026-06-06: M07A-070 introduced shared root viewport planning in
+  `crates/merman-render/src/svg/parity/root_svg.rs`. `RootViewportPlan` now owns the canonical
+  root `viewBox`, `width`/`height`, and responsive `style` emission rules for the proof slice, with
+  root override precedence covered by unit tests. `treeView` now emits root SVG viewport attrs
+  through that plan while retaining its family-owned layout bounds and theme CSS. Validation passed:
+  `cargo nextest run -p merman-render root_viewport_plan`;
+  `cargo nextest run -p merman-render tree_view`;
+  `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-all-svgs --diagram treeView --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo fmt --all --check`.
+- 2026-06-06: M07A-075 closed a PDF output size-budget gap found during headless boundary audit.
+  `svg_to_pdf` now validates default intrinsic SVG size limits, `svg_to_pdf_with_options` shares the
+  same validation, and the CLI PDF branch validates the original SVG before any PDF wrapper page is
+  applied. `--pdfFit`, scale, and page wrapping are not treated as complexity reducers; trusted
+  oversized export must use explicit unbounded raster options. Validation passed:
+  `cargo nextest run -p merman --features raster svg_to_pdf`;
+  `cargo nextest run -p merman-cli pdf`;
+  `cargo fmt --all --check`.
+- 2026-06-06: Verification refresh after adding CLI PDF regression coverage and reconciling
+  workstream docs. Validation passed:
+  `cargo nextest run -p merman --features raster svg_to_pdf`;
+  `cargo nextest run -p merman-cli pdf`;
+  `cargo nextest run -p merman-render root_viewport_plan`;
+  `cargo nextest run -p merman-render tree_view`;
+  `cargo nextest run -p merman-core tree_view`;
+  `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo run -p xtask -- compare-all-svgs --diagram treeView --check-dom --dom-mode parity-root --dom-decimals 3 --filter upstream_docs_treeview_basic`;
+  `cargo fmt --all --check`;
+  `git diff --check -- CONTEXT.md docs/workstreams/merman-0-7-architecture-deepening crates/merman-cli/tests/pdf_smoke.rs crates/merman-cli/src/render.rs crates/merman/src/render/raster.rs crates/merman-core/src/diagrams/tree_view.rs crates/merman-render`;
+  `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl`;
+  `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json`;
+  `cargo run -p xtask -- check-alignment`.
+  Broader `cargo nextest run --workspace` was not run because this closeout is for scoped M07A-070
+  and M07A-075 slices, and the touched behavior is covered by targeted package, adapter, and parity
+  gates above.

@@ -294,6 +294,29 @@ pub fn svg_raster_plan(svg: &str, options: &RasterOptions) -> Result<RasterPlan>
 }
 
 pub fn svg_to_pdf(svg: &str) -> Result<Vec<u8>> {
+    svg_to_pdf_with_options(svg, &RasterOptions::default())
+}
+
+pub fn svg_to_pdf_with_options(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {
+    validate_svg_pdf_size(svg, options)?;
+    svg_to_pdf_unchecked(svg)
+}
+
+pub fn validate_svg_pdf_size(svg: &str, options: &RasterOptions) -> Result<RasterPlan> {
+    let mut pdf_options = options.clone();
+    pdf_options.scale = 1.0;
+    pdf_options.fit_to = None;
+
+    let plan = svg_raster_plan(svg, &pdf_options)?;
+    if plan.limited {
+        return Err(RasterError::InvalidSizing(
+            "PDF output exceeds configured size_limit",
+        ));
+    }
+    Ok(plan)
+}
+
+fn svg_to_pdf_unchecked(svg: &str) -> Result<Vec<u8>> {
     let mut opt = svg2pdf::usvg::Options::default();
     configure_usvg_options_for_pdf(&mut opt);
 
@@ -839,6 +862,27 @@ mod tests {
     fn svg_to_pdf_produces_pdf_signature() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let bytes = svg_to_pdf(svg).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn svg_to_pdf_rejects_large_intrinsic_svg_by_default() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 9000"><rect width="9000" height="9000" fill="black"/></svg>"#;
+        let err = svg_to_pdf(svg).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("PDF output exceeds configured size_limit"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn svg_to_pdf_with_unbounded_size_allows_large_intrinsic_svg() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9000 9000"><rect width="9000" height="9000" fill="black"/></svg>"#;
+        let options = RasterOptions::default().with_unbounded_size();
+        let bytes = svg_to_pdf_with_options(svg, &options).unwrap();
+
         assert!(bytes.starts_with(b"%PDF-"));
     }
 

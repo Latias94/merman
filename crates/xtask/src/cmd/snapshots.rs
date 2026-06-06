@@ -281,6 +281,9 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     let fixtures_root = crate::cmd::fixtures_root();
 
     let mut failures: Vec<String> = Vec::new();
+    failures.extend(crate::cmd::admission_inventory_alignment_failures(
+        &fixtures_root,
+    ));
 
     // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
     let mut minimum_docs: Vec<PathBuf> = Vec::new();
