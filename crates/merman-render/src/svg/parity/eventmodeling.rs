@@ -1,3 +1,4 @@
+use super::theme::EventModelingTheme;
 use super::*;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
@@ -9,6 +10,7 @@ pub(super) fn render_eventmodeling_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
+    let theme = PresentationTheme::new(effective_config).eventmodeling();
     let mut viewbox_attr = format!(
         "{} {} {} {}",
         fmt(layout.viewbox_x),
@@ -57,7 +59,7 @@ pub(super) fn render_eventmodeling_diagram_svg(
         );
     }
 
-    let css = eventmodeling_css(effective_config);
+    let css = eventmodeling_css(&theme);
     let marker_id = format!("em-arrowhead-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
     out.push_str("<g/>");
@@ -70,8 +72,8 @@ pub(super) fn render_eventmodeling_diagram_svg(
             fmt(swimlane.y),
             fmt(swimlane.width),
             fmt(swimlane.height),
-            escape_attr_display(&swimlane_fill(effective_config)),
-            escape_attr_display(&swimlane_stroke(effective_config)),
+            escape_attr_display(&theme.swimlane_background_fill),
+            escape_attr_display(&theme.swimlane_background_stroke),
             fmt(swimlane.x + 30.0),
             fmt(swimlane.y + 30.0)
         );
@@ -111,13 +113,13 @@ pub(super) fn render_eventmodeling_diagram_svg(
         );
     }
 
-    let marker_fill = eventmodeling_arrow_fill(effective_config);
+    let marker_fill = &theme.arrowhead_fill;
     let _ = write!(&mut out, r#"<defs><marker id=""#);
     escape_xml_into(&mut out, &marker_id);
     out.push_str(
         r#"" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill=""#,
     );
-    escape_xml_into(&mut out, &marker_fill);
+    escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
     Ok(out)
@@ -154,45 +156,10 @@ fn normalize_eventmodeling_code_text(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn eventmodeling_css(effective_config: &serde_json::Value) -> String {
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .map(|s| normalize_css_font_family(&s))
-        .unwrap_or_else(|| "trebuchet ms, verdana, arial, sans-serif".to_string());
-    let text_color = config_string(effective_config, &["themeVariables", "textColor"])
-        .unwrap_or_else(|| "#333".to_string());
-
+fn eventmodeling_css(theme: &EventModelingTheme) -> String {
     format!(
-        ".em-swimlane text,.em-box span {{ font-family: {font_family}; color: {text_color}; }}\
-.em-relation {{ fill: none; }}"
+        ".em-swimlane text,.em-box span {{ font-family: {}; color: {}; }}\
+.em-relation {{ fill: none; }}",
+        theme.font_family_css, theme.text_color
     )
-}
-
-fn swimlane_fill(effective_config: &serde_json::Value) -> String {
-    config_string(
-        effective_config,
-        &["themeVariables", "emSwimlaneBackgroundOdd"],
-    )
-    .or_else(|| {
-        config_string(
-            effective_config,
-            &["themeVariables", "emSwimlaneBackground"],
-        )
-    })
-    .unwrap_or_else(|| "rgb(250,250,250)".to_string())
-}
-
-fn swimlane_stroke(effective_config: &serde_json::Value) -> String {
-    config_string(
-        effective_config,
-        &["themeVariables", "emSwimlaneBackgroundStroke"],
-    )
-    .or_else(|| config_string(effective_config, &["themeVariables", "emSwimlaneBorder"]))
-    .unwrap_or_else(|| "rgb(240,240,240)".to_string())
-}
-
-fn eventmodeling_arrow_fill(effective_config: &serde_json::Value) -> String {
-    config_string(effective_config, &["themeVariables", "emArrowhead"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "emRelationStroke"]))
-        .unwrap_or_else(|| "#333333".to_string())
 }

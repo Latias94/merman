@@ -152,6 +152,26 @@ pub(crate) struct TreeViewTheme {
     pub(crate) line_color: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct EventModelingTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) text_color: String,
+    pub(crate) ui_fill: String,
+    pub(crate) ui_stroke: String,
+    pub(crate) processor_fill: String,
+    pub(crate) processor_stroke: String,
+    pub(crate) read_model_fill: String,
+    pub(crate) read_model_stroke: String,
+    pub(crate) command_fill: String,
+    pub(crate) command_stroke: String,
+    pub(crate) event_fill: String,
+    pub(crate) event_stroke: String,
+    pub(crate) swimlane_background_fill: String,
+    pub(crate) swimlane_background_stroke: String,
+    pub(crate) relation_stroke: String,
+    pub(crate) arrowhead_fill: String,
+}
+
 pub(crate) struct PresentationTheme<'a> {
     raw: SvgTheme<'a>,
     common: CommonCssTheme,
@@ -349,6 +369,35 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("treeView", "lineColor")
                 .unwrap_or_else(|| "black".to_string()),
+        }
+    }
+
+    pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
+        EventModelingTheme {
+            font_family_css: self.raw.font_family_css_root_first(),
+            text_color: self.raw.color("textColor", "#333"),
+            ui_fill: self.raw.color("emUiFill", "white"),
+            ui_stroke: self.raw.color("emUiStroke", "#dbdada"),
+            processor_fill: self.raw.color("emProcessorFill", "#edb3f6"),
+            processor_stroke: self.raw.color("emProcessorStroke", "#b88cbf"),
+            read_model_fill: self.raw.color("emReadModelFill", "#d3f1a2"),
+            read_model_stroke: self.raw.color("emReadModelStroke", "#a3b732"),
+            command_fill: self.raw.color("emCommandFill", "#bcd6fe"),
+            command_stroke: self.raw.color("emCommandStroke", "#679ac3"),
+            event_fill: self.raw.color("emEventFill", "#ffb778"),
+            event_stroke: self.raw.color("emEventStroke", "#c19a0f"),
+            swimlane_background_fill: self
+                .raw
+                .optional_color("emSwimlaneBackgroundOdd")
+                .or_else(|| self.raw.optional_color("emSwimlaneBackground"))
+                .unwrap_or_else(|| "rgb(250,250,250)".to_string()),
+            swimlane_background_stroke: self
+                .raw
+                .optional_color("emSwimlaneBackgroundStroke")
+                .or_else(|| self.raw.optional_color("emSwimlaneBorder"))
+                .unwrap_or_else(|| "rgb(240,240,240)".to_string()),
+            relation_stroke: self.raw.color("emRelationStroke", "#000"),
+            arrowhead_fill: self.raw.color("emArrowhead", "#000000"),
         }
     }
 
@@ -881,5 +930,55 @@ mod tests {
         assert_eq!(tree_view.label_font_size_css, "16px");
         assert_eq!(tree_view.label_color, "black");
         assert_eq!(tree_view.line_color, "black");
+    }
+
+    #[test]
+    fn presentation_theme_eventmodeling_resolves_eventmodeling_roles() {
+        let cfg = json!({
+            "fontFamily": "Inter, sans-serif",
+            "themeVariables": {
+                "textColor": "#111111",
+                "emUiFill": "#fefefe",
+                "emUiStroke": "#222222",
+                "emCommandFill": "#DDEEFF",
+                "emCommandStroke": "#336699",
+                "emSwimlaneBackgroundOdd": "#fafafa",
+                "emSwimlaneBackgroundStroke": "#efefef",
+                "emRelationStroke": "#135790",
+                "emArrowhead": "#02468a"
+            }
+        });
+
+        let eventmodeling = PresentationTheme::new(&cfg).eventmodeling();
+
+        assert_eq!(eventmodeling.font_family_css, "Inter,sans-serif");
+        assert_eq!(eventmodeling.text_color, "#111111");
+        assert_eq!(eventmodeling.ui_fill, "#fefefe");
+        assert_eq!(eventmodeling.ui_stroke, "#222222");
+        assert_eq!(eventmodeling.command_fill, "#DDEEFF");
+        assert_eq!(eventmodeling.command_stroke, "#336699");
+        assert_eq!(eventmodeling.swimlane_background_fill, "#fafafa");
+        assert_eq!(eventmodeling.swimlane_background_stroke, "#efefef");
+        assert_eq!(eventmodeling.relation_stroke, "#135790");
+        assert_eq!(eventmodeling.arrowhead_fill, "#02468a");
+    }
+
+    #[test]
+    fn presentation_theme_eventmodeling_uses_default_eventmodeling_roles() {
+        let cfg = json!({});
+
+        let eventmodeling = PresentationTheme::new(&cfg).eventmodeling();
+
+        assert_eq!(
+            eventmodeling.font_family_css,
+            "\"trebuchet ms\",verdana,arial,sans-serif"
+        );
+        assert_eq!(eventmodeling.text_color, "#333");
+        assert_eq!(eventmodeling.ui_fill, "white");
+        assert_eq!(eventmodeling.ui_stroke, "#dbdada");
+        assert_eq!(eventmodeling.swimlane_background_fill, "rgb(250,250,250)");
+        assert_eq!(eventmodeling.swimlane_background_stroke, "rgb(240,240,240)");
+        assert_eq!(eventmodeling.relation_stroke, "#000");
+        assert_eq!(eventmodeling.arrowhead_fill, "#000000");
     }
 }

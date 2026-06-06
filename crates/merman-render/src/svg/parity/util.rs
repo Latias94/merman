@@ -108,6 +108,13 @@ impl<'a> SvgTheme<'a> {
         crate::config::config_font_family_css(self.effective_config)
     }
 
+    pub(super) fn font_family_css_root_first(&self) -> String {
+        let font_family = config_string(self.effective_config, &["fontFamily"])
+            .or_else(|| config_string(self.effective_config, &["themeVariables", "fontFamily"]))
+            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+        normalize_css_font_family(font_family.as_str())
+    }
+
     pub(super) fn font_size_px(&self) -> f64 {
         crate::config::config_theme_font_size_css_or_root_number_px(self.effective_config, 16.0)
             .max(1.0)

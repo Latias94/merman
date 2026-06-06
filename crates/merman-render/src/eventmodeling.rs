@@ -1,10 +1,12 @@
 use crate::Result;
-use crate::config::{config_bool, config_f64, config_string};
+use crate::config::{config_bool, config_f64};
 use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
 };
+use crate::svg::render_theme::EventModelingTheme;
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
+use crate::theme::PresentationTheme;
 use merman_core::diagrams::eventmodeling::{
     EventModelingDataEntityRenderModel, EventModelingDiagramRenderModel,
     EventModelingFrameRenderModel,
@@ -50,6 +52,7 @@ pub fn layout_eventmodeling_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<EventModelingDiagramLayout> {
     let cfg = eventmodeling_config(effective_config);
+    let theme = PresentationTheme::new(effective_config).eventmodeling();
     let data_entities: HashMap<&str, &EventModelingDataEntityRenderModel> = model
         .data_entities
         .iter()
@@ -90,7 +93,7 @@ pub fn layout_eventmodeling_diagram_typed(
         swimlane.height = swimlane.max_height.max(SWIMLANE_MIN_HEIGHT) + 2.0 * SWIMLANE_PADDING;
         max_r = max_r.max(swimlane.r).max(r);
 
-        let visual = entity_visual_props(effective_config, &frame.model_entity_type);
+        let visual = entity_visual_props(&theme, &frame.model_entity_type);
         let box_state = BoxState {
             index,
             frame_name: frame.name.clone(),
@@ -167,8 +170,7 @@ pub fn layout_eventmodeling_diagram_typed(
         })
         .collect();
 
-    let relation_stroke = config_string(effective_config, &["themeVariables", "emRelationStroke"])
-        .unwrap_or_else(|| "#000".to_string());
+    let relation_stroke = theme.relation_stroke.clone();
     let relation_layouts: Vec<_> = relation_specs
         .into_iter()
         .map(|(source_idx, target_idx)| {
@@ -593,37 +595,27 @@ fn normalize_eventmodeling_data_for_measurement(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn entity_visual_props(effective_config: &Value, entity_type: &str) -> VisualProps {
+fn entity_visual_props(theme: &EventModelingTheme, entity_type: &str) -> VisualProps {
     match entity_type {
         "ui" => VisualProps {
-            fill: config_string(effective_config, &["themeVariables", "emUiFill"])
-                .unwrap_or_else(|| "white".to_string()),
-            stroke: config_string(effective_config, &["themeVariables", "emUiStroke"])
-                .unwrap_or_else(|| "#dbdada".to_string()),
+            fill: theme.ui_fill.clone(),
+            stroke: theme.ui_stroke.clone(),
         },
         "pcr" | "processor" => VisualProps {
-            fill: config_string(effective_config, &["themeVariables", "emProcessorFill"])
-                .unwrap_or_else(|| "#edb3f6".to_string()),
-            stroke: config_string(effective_config, &["themeVariables", "emProcessorStroke"])
-                .unwrap_or_else(|| "#b88cbf".to_string()),
+            fill: theme.processor_fill.clone(),
+            stroke: theme.processor_stroke.clone(),
         },
         "rmo" | "readmodel" => VisualProps {
-            fill: config_string(effective_config, &["themeVariables", "emReadModelFill"])
-                .unwrap_or_else(|| "#d3f1a2".to_string()),
-            stroke: config_string(effective_config, &["themeVariables", "emReadModelStroke"])
-                .unwrap_or_else(|| "#a3b732".to_string()),
+            fill: theme.read_model_fill.clone(),
+            stroke: theme.read_model_stroke.clone(),
         },
         "cmd" | "command" => VisualProps {
-            fill: config_string(effective_config, &["themeVariables", "emCommandFill"])
-                .unwrap_or_else(|| "#bcd6fe".to_string()),
-            stroke: config_string(effective_config, &["themeVariables", "emCommandStroke"])
-                .unwrap_or_else(|| "#679ac3".to_string()),
+            fill: theme.command_fill.clone(),
+            stroke: theme.command_stroke.clone(),
         },
         "evt" | "event" => VisualProps {
-            fill: config_string(effective_config, &["themeVariables", "emEventFill"])
-                .unwrap_or_else(|| "#ffb778".to_string()),
-            stroke: config_string(effective_config, &["themeVariables", "emEventStroke"])
-                .unwrap_or_else(|| "#c19a0f".to_string()),
+            fill: theme.event_fill.clone(),
+            stroke: theme.event_stroke.clone(),
         },
         _ => VisualProps {
             fill: "red".to_string(),

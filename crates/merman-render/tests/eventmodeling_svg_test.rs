@@ -57,6 +57,8 @@ data ItemAddedData {
     assert!(svg.contains(r#"class="em-relation""#));
     assert!(svg.contains(r#"class="em-box""#));
     assert!(svg.contains(r#"id="em-arrowhead-eventmodeling-test""#));
+    assert!(svg.contains(r#"font-family: "trebuchet ms",verdana,arial,sans-serif;"#));
+    assert!(svg.contains(r#"color: #111111;"#));
     assert!(svg.contains(r##"stroke="#135790""##));
     assert!(svg.contains(r##"fill="#DDEEFF""##));
 }
