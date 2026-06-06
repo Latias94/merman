@@ -251,6 +251,13 @@ Last updated: 2026-06-04
   `unicode/i` is `metrics left dx=-3.5` plus `store right dx=-2.5` for `edge dw=+1`. The top/bottom
   split is stable at `+1/-1`, giving child-union `edge dh=-2` before final group expansion cancels
   it. Continue from boundary service child-contribution modeling, not aggregate group width.
+  A follow-up top-service icon/root-bounds audit regenerated actual Mermaid render-path probes for
+  the fallback/default/external icon rows and joined them with local root-edge attribution. The
+  single-service fallback/default rows are root-padding/text-bbox lattice tails with unchanged
+  service body owners; `external_icons_demo_012` is a uniform top-level service-position lattice
+  row; and `external_icons_005` is group-owned by `group-cloud` with stable `40px` root padding and
+  a `+0.5px` emitted group-rect width tail. Do not add root-padding, service-body, icon-size, or
+  group-rect constants for these rows.
   A follow-up source audit confirmed the exact upstream phase split in Mermaid `11.15.0` and
   Cytoscape `3.33.4`: compound sizing uses `children.boundingBox({ includeLabels: true,
   includeOverlays: false, useCache: false })`, which unions stored body bounds and label bounds;

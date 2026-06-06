@@ -6901,3 +6901,65 @@ Gate notes:
 - The next production candidate must handle service child-label contribution, final group
   expansion, and root SVG consumption together across both axes. Improving only `076` / `041` /
   `019` width remains insufficient.
+
+## HPD-050 - Architecture Top-Service Icon Root-Bounds Audit
+
+Outcome:
+
+- Revalidated the current Architecture `parity-root` queue on current `main`; the gate remains an
+  expected diagnostic failure with `20` root/style mismatch rows.
+- Regenerated actual `mermaid.render(...)` render-path probes for the remaining top-level
+  service/icon rows:
+  - `stress_architecture_external_icons_005`;
+  - `upstream_architecture_cypress_fallback_icon`;
+  - `upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004`;
+  - `upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003`;
+  - `upstream_html_demos_architecture_external_icons_demo_012`.
+- All five render-path probes reported `facts match: true`, so the probe facts match the stored
+  upstream SVGs.
+- Joined those render-path facts with local SVG deltas using the root-edge attribution table.
+- The three fallback/default single-service icon rows are not layout-width defects:
+  - the root X owners are `service-unknown@0` and `service-unknown@80` on both sides;
+  - owner X deltas are `0`;
+  - the `-0.273438px` width residual comes from asymmetric root padding / text-bbox lattice
+    differences (`49.851562/50.101562` upstream vs. `49.839844/49.839844` local).
+- `upstream_html_demos_architecture_external_icons_demo_012` is a no-group service-position
+  lattice row:
+  - all four service SVG positions are shifted by `dx=-0.5`, `dy=-1.0`;
+  - root X owners remain `service-fa` and `service-s3`;
+  - the remaining `+0.523438px` width residual is root-padding lattice on top of that uniform
+    service shift, while viewBox height is exact.
+- `stress_architecture_external_icons_005` is group-owned rather than top-level-service owned:
+  - both root X edges are owned by `group-cloud`;
+  - the root padding is stable at `40px`;
+  - the remaining `+0.5px` width residual is exactly the emitted `group-cloud` SVG rect width
+    delta, not a root-padding or service-body-width issue.
+
+Evidence:
+
+- `target/compare/architecture-report-parity-root-top-service-icon-audit-hpd050.md`
+- `target/compare/architecture-render-path-top-service-icon-hpd050`
+- `target/compare/architecture-delta-top-service-icon-render-path-hpd050`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-06-hpd-050-architecture-top-service-icon-root-bounds.md`
+
+Focused verification:
+
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --out target\compare\architecture-report-parity-root-top-service-icon-audit-hpd050.md` -
+  expected-failed with the active `20` Architecture root/style mismatch rows.
+- `cargo run -p xtask -- debug-architecture-render-path-probe --fixture stress_architecture_external_icons_005 --fixture upstream_architecture_cypress_fallback_icon --fixture upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004 --fixture upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003 --fixture upstream_html_demos_architecture_external_icons_demo_012 --browser-exe "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --out target\compare\architecture-render-path-top-service-icon-hpd050` -
+  passed; all five fixtures reported `facts match: true`.
+- `cargo run -p xtask -- debug-architecture-delta --fixture stress_architecture_external_icons_005 --fixture upstream_architecture_cypress_fallback_icon --fixture upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004 --fixture upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003 --fixture upstream_html_demos_architecture_external_icons_demo_012 --render-probe-dir target\compare\architecture-render-path-top-service-icon-hpd050 --out target\compare\architecture-delta-top-service-icon-render-path-hpd050` -
+  passed and wrote the joined current-HEAD reports.
+- `cargo run -p xtask -- report-overrides --check-no-growth` - passed; Architecture root
+  overrides remain at `0`.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No renderer, layout, fixture, baseline, or root override behavior changed in this pass.
+- These five rows are now classified as bounded service/group root-bounds lattice diagnostics, not
+  release-blocking production formula candidates.
+- Do not add a root-padding, service-body, icon-size, or group-rect constant for these rows. The
+  next HPD-050 production-capable work should return to the source-shaped service child-label /
+  final-bbox model for the larger direct rows, or to another fresh Architecture/Dagre/Graphlib
+  seam with stronger source evidence.

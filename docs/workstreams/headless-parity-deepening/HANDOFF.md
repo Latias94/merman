@@ -1030,6 +1030,13 @@ Current repository reality to preserve:
     attribution keeps the content component owned by service label/content edges, while the prior
     exact `labelWidth` lookup experiment remains rejected because it only reduced focused rows to
     `+2px`, raised the full Architecture root queue, and regressed `093`.
+  - A follow-up HPD-050 top-service icon/root-bounds audit regenerated render-path probes for the
+    remaining fallback/default/external icon rows. All five probes matched stored upstream facts.
+    The three single-service fallback/default rows are root-padding/text-bbox lattice tails with
+    unchanged service body owners; `external_icons_demo_012` is a uniform `dx=-0.5` / `dy=-1`
+    top-level service-position lattice row; `external_icons_005` is `group-cloud` owned with
+    stable `40px` root padding and a `+0.5px` emitted group-rect width tail. Treat these as bounded
+    diagnostics, not production formula targets.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
