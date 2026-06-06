@@ -5,11 +5,13 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-090:
+The latest completed implementation slice is M07A-100:
 
 ```bash
-cargo nextest run -p merman-core sanitize
+cargo nextest run -p merman-core flowchart
 cargo nextest run -p merman-core
+cargo nextest run -p merman-render flowchart
+cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter basic
 cargo fmt --all --check
 git diff --check
 ```
@@ -292,3 +294,26 @@ before marking a task, Codex goal, or lane complete.
   `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json`, but this Windows
   shell does not have `jq` installed; replacement PowerShell JSON parsing was run after the docs
   update.
+- 2026-06-06: M07A-100 collapsed Flowchart semantic JSON and typed render-model parsing around one
+  internal `FlowchartSemanticSource`. The shared source now owns parse/build/subgraph/semantic
+  application once, then projects into compatibility JSON or `FlowchartV2Model`, preserving FlowDB
+  ordering traces such as `vertexCalls`. A public API regression proves the JSON and typed render
+  paths agree for shared fields including accessibility metadata, class defs, tooltips, edge
+  defaults, vertex calls, nodes, edges, and subgraphs. No LALRPOP/lexer strategy or public
+  compatibility JSON contract was changed. Validation passed:
+  `cargo nextest run -p merman-core parse_flowchart_json_and_typed_render_model_share_semantic_source`;
+  `cargo nextest run -p merman-core flowchart`;
+  `cargo nextest run -p merman-core`;
+  `cargo nextest run -p merman-render flowchart`;
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter basic`;
+  `cargo fmt --all --check`.
+  `cargo run -p xtask -- check-alignment` was also attempted after this slice and failed on a
+  pre-existing admission-inventory fixture-state issue: `state`, `block`, and `ishikawa` are marked
+  `NormalizedWithDeferred`, but the ignored local directories `fixtures/_deferred/state`,
+  `fixtures/_deferred/block`, and `fixtures/_deferred/ishikawa` are absent from this working tree.
+  This task did not touch admission inventory or fixture state, so that failure is recorded as a
+  follow-on M07A-110/M07A-120 planner concern rather than as Flowchart projection evidence.
+  The narrowed SVG compare is sufficient for this task because the implementation changes only the
+  core semantic projection source and leaves the renderer, layout, fixtures, baselines, root
+  overrides, and comparator normalization unchanged; the selected Flowchart DOM gate still proves
+  the typed render path reaches SVG parity for the touched family.

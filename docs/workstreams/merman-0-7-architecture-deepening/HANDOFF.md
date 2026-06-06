@@ -29,7 +29,9 @@ inherit the capability without ABI growth. M07A-079 aligned Flowchart `nodeSpaci
 QuadrantChart visible theme role resolution into renderer-facing `PresentationTheme` roles.
 M07A-090 moved typed render-model common DB sanitization out of `Engine` and into
 `RenderSemanticModel` plus family-owned model methods, closing typed path gaps for Flowchart
-`accTitle` / `accDescr` and Treemap `title`.
+`accTitle` / `accDescr` and Treemap `title`. M07A-100 collapsed Flowchart semantic JSON and typed
+render-model parsing around one internal `FlowchartSemanticSource` while preserving FlowDB ordering
+traces such as `vertexCalls`.
 
 ## Read First
 
@@ -42,11 +44,8 @@ M07A-090 moved typed render-model common DB sanitization out of `Engine` and int
 
 ## Next Action
 
-Next planner action is to review/verify M07A-090, then continue M07A-C4:
+Next planner action is to review/verify M07A-100, then continue M07A-C4:
 
-- M07A-100 is the next executable implementation slice: collapse Flowchart JSON and typed render
-  projections around one semantic source while preserving FlowDB ordering traces such as
-  `vertexCalls`;
 - M07A-110 is a planner/review slice for fencing `RenderSemanticModel::Json` as a compatibility
   adapter after admission and typed ownership evidence are accepted;
 - keep compatibility JSON output stable unless an ADR explicitly changes it.
@@ -71,9 +70,11 @@ Next planner action is to review/verify M07A-090, then continue M07A-C4:
   per-platform option builders remain a follow-on convenience, not a low-level ABI requirement.
 - New typed render models that expose top-level `title`, `accTitle`, or `accDescr` must add a
   family-owned `sanitize_common_db_fields` method; `Engine` should remain orchestration-only.
-- Flowchart typed/JSON convergence is high-risk because FlowDB ordering traces and SVG parity depend
-  on current insertion/order evidence.
-- JSON fallback cleanup is intentionally late and must wait for M07A-100/M07A-110 review evidence.
+- Flowchart typed/JSON convergence now has one internal semantic source, but any future Flowchart
+  parser changes still need to preserve FlowDB ordering traces and SVG parity evidence.
+- JSON fallback cleanup is intentionally late; after M07A-100, the remaining decision is M07A-110
+  review evidence for whether `RenderSemanticModel::Json` should be fenced as a compatibility
+  adapter or further narrowed.
 
 ## Working Tree Notes
 

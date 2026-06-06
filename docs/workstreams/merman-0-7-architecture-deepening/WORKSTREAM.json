@@ -46,6 +46,21 @@
   "evidence": [
     {
       "kind": "task_evidence",
+      "path": "crates/merman-core/src/diagrams/flowchart.rs",
+      "note": "M07A-100 Flowchart JSON and typed render parsers share one internal semantic source."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-core/src/tests/misc.rs",
+      "note": "M07A-100 public API test proving Flowchart JSON and typed render shared fields stay aligned."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "target/compare/flowchart_report.md",
+      "note": "M07A-100 selected Flowchart SVG DOM compare evidence for the basic fixture."
+    },
+    {
+      "kind": "task_evidence",
       "path": "crates/merman-core/src/diagram/mod.rs",
       "note": "M07A-090 typed common DB sanitization dispatch owned by RenderSemanticModel."
     },
@@ -172,6 +187,6 @@
   "lane_slug": "merman-0-7-architecture-deepening",
   "continue_policy": {
     "default_action": "continue",
-    "notes": "M07A-C1, M07A-C2, and M07A-C3 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, M07A-078 shared binding fixed-time controls, M07A-079 Flowchart zero spacing parity, M07A-080 PresentationTheme migration continuation, and M07A-090 family-owned typed semantic sanitization are complete. Next planner action is to review/verify M07A-090, then continue M07A-C4 with M07A-100 or plan M07A-110."
+    "notes": "M07A-C1, M07A-C2, and M07A-C3 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, M07A-078 shared binding fixed-time controls, M07A-079 Flowchart zero spacing parity, M07A-080 PresentationTheme migration continuation, M07A-090 family-owned typed semantic sanitization, and M07A-100 Flowchart single semantic source are complete. Next planner action is to review/verify M07A-100, then continue M07A-C4 with M07A-110."
   }
 }

@@ -63,6 +63,10 @@ Exit criteria:
 - Flowchart has one semantic source, or the remaining split has a load-bearing documented reason.
 - JSON fallback is fenced as an adapter or preserved with explicit admission evidence.
 
+Status: In progress. M07A-090 moved typed common DB sanitization ownership to families, and
+M07A-100 collapsed Flowchart JSON plus typed render parsing around one internal semantic source.
+M07A-110 still owns the JSON fallback fencing/admission decision.
+
 ## M6 — Closeout
 
 Exit criteria:

@@ -434,6 +434,123 @@ fn render_model_for(input: &str) -> RenderSemanticModel {
 }
 
 #[test]
+fn parse_flowchart_json_and_typed_render_model_share_semantic_source() {
+    let engine = Engine::new();
+    let input = r#"%%{init: {"securityLevel":"strict","flowchart":{"inheritDir":true}}}%%
+flowchart LR
+accTitle: Flowchart <b>access title</b>
+accDescr { Flowchart <b>access description</b>
+    second line
+}
+subgraph Cluster["Cluster <b>One</b>"]
+  A["<b>Start</b>"]:::hot e1@-->|"<i>Edge</i>"| B@{ shape: rounded, label: "End" }
+end
+classDef hot fill:#fff,stroke:#333
+class B hot
+style Cluster stroke:#f66
+linkStyle 0 stroke:#111,stroke-width:2px
+click A href "https://example.test" "tip <b>safe</b>" _blank
+"#;
+
+    let typed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let model = match typed.model {
+        RenderSemanticModel::Flowchart(model) => model,
+        other => panic!("flowchart render parse should return typed model, got {other:?}"),
+    };
+    let typed_json = serde_json::to_value(&model).unwrap();
+
+    let parsed_json = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .model;
+
+    for key in [
+        "accTitle",
+        "accDescr",
+        "classDefs",
+        "direction",
+        "edgeDefaults",
+        "vertexCalls",
+        "tooltips",
+    ] {
+        assert_eq!(typed_json[key], parsed_json[key], "shared key {key}");
+    }
+
+    let typed_nodes = typed_json["nodes"].as_array().unwrap();
+    let json_nodes = parsed_json["nodes"].as_array().unwrap();
+    assert_eq!(typed_nodes.len(), json_nodes.len());
+    for (typed_node, json_node) in typed_nodes.iter().zip(json_nodes) {
+        for key in [
+            "id",
+            "label",
+            "labelType",
+            "layoutShape",
+            "icon",
+            "form",
+            "pos",
+            "img",
+            "constraint",
+            "assetWidth",
+            "assetHeight",
+            "styles",
+            "classes",
+            "link",
+            "linkTarget",
+            "haveCallback",
+        ] {
+            assert_eq!(typed_node[key], json_node[key], "node key {key}");
+        }
+    }
+
+    let typed_edges = typed_json["edges"].as_array().unwrap();
+    let json_edges = parsed_json["edges"].as_array().unwrap();
+    assert_eq!(typed_edges.len(), json_edges.len());
+    for (typed_edge, json_edge) in typed_edges.iter().zip(json_edges) {
+        for key in [
+            "id",
+            "from",
+            "to",
+            "label",
+            "labelType",
+            "type",
+            "stroke",
+            "length",
+            "style",
+            "classes",
+            "interpolate",
+            "animate",
+            "animation",
+        ] {
+            assert_eq!(typed_edge[key], json_edge[key], "edge key {key}");
+        }
+    }
+
+    let typed_subgraphs = typed_json["subgraphs"].as_array().unwrap();
+    let json_subgraphs = parsed_json["subgraphs"].as_array().unwrap();
+    assert_eq!(typed_subgraphs.len(), json_subgraphs.len());
+    for (typed_subgraph, json_subgraph) in typed_subgraphs.iter().zip(json_subgraphs) {
+        for key in [
+            "id",
+            "nodes",
+            "title",
+            "classes",
+            "styles",
+            "dir",
+            "labelType",
+        ] {
+            assert_eq!(
+                typed_subgraph[key], json_subgraph[key],
+                "subgraph key {key}"
+            );
+        }
+    }
+}
+
+#[test]
 fn parse_sequence_render_model_uses_typed_variant_without_changing_json_parse() {
     let engine = Engine::new();
     let input = r#"sequenceDiagram

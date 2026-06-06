@@ -199,15 +199,23 @@ Last updated: 2026-06-06
   covers Flowchart acc fields, Sequence title/acc fields, and Treemap title/acc fields.
   State: TASKS.jsonl entry M07A-090 is done.
 
-- [ ] M07A-100 [owner=unassigned] [deps=M07A-090] [scope=crates/merman-core/src/diagrams/flowchart.rs,crates/merman-core/src/diagrams/flowchart]
+- [x] M07A-100 [owner=codex] [deps=M07A-090] [scope=crates/merman-core/src/diagrams/flowchart.rs,crates/merman-core/src/diagrams/flowchart]
   Goal: Collapse Flowchart JSON and typed render projections around one semantic source while
   preserving Mermaid FlowDB ordering traces.
-  Validation: `cargo nextest run -p merman-core flowchart`; targeted flowchart SVG compare.
+  Validation: `cargo nextest run -p merman-core flowchart`;
+  `cargo nextest run -p merman-core`;
+  `cargo nextest run -p merman-render flowchart`;
+  `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3 --filter basic`;
+  `cargo fmt --all --check`.
   Review: Do not change LALRPOP/lexer strategy or delete `vertexCalls`-style ordering evidence.
   Evidence: semantic JSON parity tests, typed render tests, and selected SVG compare output.
   Context: ADR 0010, 0013, 0014, this workstream context manifest.
-  Handoff: Requires careful review because Flowchart is the largest parity-risk family.
-  State: TASKS.jsonl entry M07A-100 is draft.
+  Handoff: DONE on 2026-06-06. `parse_flowchart` and
+  `parse_flowchart_model_for_render` now share one internal `FlowchartSemanticSource`, with
+  JSON and typed render projections preserving `vertexCalls`, labels, classes, links, edge
+  defaults, edges, and subgraphs. No LALRPOP/lexer strategy or public compatibility JSON contract
+  was changed.
+  State: TASKS.jsonl entry M07A-100 is done.
 
 - [ ] M07A-110 [owner=planner] [deps=M07A-050,M07A-060,M07A-090] [scope=crates/merman-core/src/diagram,crates/merman-render/src/lib.rs,crates/merman-render/src/svg/parity.rs,docs/adr]
   Goal: Fence `RenderSemanticModel::Json` as a compatibility adapter or delete paths proven
