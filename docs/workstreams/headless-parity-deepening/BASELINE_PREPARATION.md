@@ -376,6 +376,9 @@ Completed scope:
 - Existing-fixture missing layout goldens were added for affected families.
 - No broad or narrow stale stored-SVG set remains known after closeout.
 - No broad official fixture import is indicated by the current inventory.
+- A later test-only hygiene follow-up aligned the HPD-080 raster missing-font regression's
+  synthetic version text with `PINNED_MERMAID_BASELINE_VERSION`. That did not change runtime SVG,
+  raster output, fixtures, baselines, or HPD-090 closeout scope.
 
 Closeout revalidation:
 
@@ -464,6 +467,8 @@ expected diagnostics:
 - Filtered raster `resvg_safe` audits are not a HPD-090 closeout blocker because the final slices
   changed stored SVG/layout baselines rather than public raster behavior; HPD-080 keeps the
   raster/renderability audit lane active for fresh visible-output signals.
+- Raster regression tests that need visible version-like text should use the pinned baseline
+  registry constant instead of embedding historical `11.12` strings.
 
 ## Next Actions
 

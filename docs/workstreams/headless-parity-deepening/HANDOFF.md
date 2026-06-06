@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Handoff
 
 Status: Active
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 This workstream opens the post-11.15 structural-parity phase.
 
@@ -23,6 +23,9 @@ Immediate next task:
   the broad stale families plus the narrow Class, Timeline, and Flowchart HTML demo KaTeX sets.
   No broad or narrow stale stored-SVG set remains, and no broad official fixture import is
   indicated unless a fresh inventory changes that conclusion.
+- A 2026-06-06 HPD-090 follow-up is test hygiene only: the raster missing-font regression's
+  synthetic visible version text now uses `PINNED_MERMAID_BASELINE_VERSION` instead of hardcoded
+  `v11.12.2`. Do not treat that as a runtime render fix, baseline refresh, or root residual change.
 - Closeout revalidation is green: `cargo fmt --check`, the layout snapshot gate, boundary
   renderability smoke, and full implemented-matrix `compare-all-svgs --check-dom --dom-mode parity
   --dom-decimals 3`.

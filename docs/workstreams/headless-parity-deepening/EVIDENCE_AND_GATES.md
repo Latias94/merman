@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
 
@@ -101,6 +101,10 @@ Outcome:
     matrix;
   - future work should continue through HPD-080 for fresh visible renderability defects or HPD-050
     for source-backed Architecture/Dagre/Graphlib audits.
+- Follow-up test hygiene aligned the HPD-080 raster missing-font regression's synthetic visible
+  version text with `PINNED_MERMAID_BASELINE_VERSION`. This removed a stale `v11.12.2` literal from
+  current tests without changing renderer behavior, fixtures, stored SVG baselines, or HPD-090
+  closeout scope.
 - The first attempt to regenerate Info upstream SVGs failed because Puppeteer could not find its
   cached Chrome. The successful run set `PUPPETEER_EXECUTABLE_PATH` to local Microsoft Edge.
 
@@ -128,6 +132,8 @@ Touched surfaces:
 - `crates/merman/tests/theme_renderability_smoke.rs`
 - `crates/xtask/src/cmd/audit.rs`
 - `crates/xtask/src/cmd/import/{cypress,docs,examples}.rs`
+- `crates/merman/src/render/raster.rs`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-06-hpd-090-raster-baseline-test-hygiene.md`
 - `fixtures/info/*.layout.golden.json`
 - `fixtures/block/*.layout.golden.json`
 - `fixtures/class/stress_class_svg_font_size_px_string_precedence_026.layout.golden.json`
@@ -248,14 +254,19 @@ Focused verification:
 - `git diff --check` - passed; Git only reported the existing JSONL CRLF conversion warnings.
 - Per-family and Flowchart-prefix `check-upstream-svgs --check-dom --dom-mode structure` runs wrote
   the inventory logs under `target/hpd090-baseline-check/`.
+- Follow-up raster baseline test hygiene verification:
+  - `cargo fmt --check -p merman` - passed.
+  - `cargo nextest run -p merman --features raster render::raster::tests::svg_to_png_keeps_text_visible_when_requested_font_is_missing` -
+    passed, `1` test run and `54` skipped.
 
 Residual note:
 
 - HPD-090 is closed. This slice prepared the baseline corpus; it does not claim broad
   `parity-root` residual closure. The broad stale family set plus the Class, Timeline, and
   Flowchart narrow stale sets are handled. Do not refresh all baselines or run a broad official
-  fixture import unless a fresh inventory changes the decision. Continue with HPD-080 only for
-  fresh visible renderability defects; otherwise return to HPD-050 source-backed audits.
+  fixture import unless a fresh inventory changes the decision. The raster test hygiene follow-up
+  is not a baseline refresh or root residual fix. Continue with HPD-080 only for fresh visible
+  renderability defects; otherwise return to HPD-050 source-backed audits.
 
 ## HPD-050 - Architecture Root Revalidation After HPD-090
 
@@ -3243,6 +3254,9 @@ Outcome:
 - No-`viewBox` SVGs with `max-width: Npx` now parse with a matching default viewport width, reducing
   platform-specific clipping/bounds behavior for Mermaid's `configureSvgSize(..., true)` output.
 - Added a regression test proving a missing requested font family still rasterizes visible text.
+- The later HPD-090 test-hygiene follow-up changed only that regression test's synthetic visible
+  version text from a stale hardcoded `v11.12.2` to `PINNED_MERMAID_BASELINE_VERSION`; the raster
+  fallback behavior and assertion stayed unchanged.
 
 Source evidence:
 

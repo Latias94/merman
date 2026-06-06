@@ -903,8 +903,11 @@ mod tests {
 
     #[test]
     fn svg_to_png_keeps_text_visible_when_requested_font_is_missing() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v11.12.2</text></svg>"##;
-        let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 400px; background-color: white;"><text x="100" y="40" fill="#333333" font-size="32" style="font-family: '__merman_missing_font__'; text-anchor: middle;">v{}</text></svg>"##,
+            merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
+        );
+        let bytes = svg_to_png(&svg, &RasterOptions::default()).unwrap();
         assert_png_has_visible_non_background_ink(&bytes);
     }
 
