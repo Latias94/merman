@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+from email.parser import Parser
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -76,6 +78,38 @@ def require_platform_wheel(wheel: Path) -> None:
         )
 
 
+def require_native_platlib_layout(wheel: Path) -> None:
+    native_suffixes = (".dll", ".dylib", ".so")
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+        wheel_metadata_path = next(
+            (name for name in names if name.endswith(".dist-info/WHEEL")), None
+        )
+        if wheel_metadata_path is None:
+            raise RuntimeError(f"{wheel.name} does not contain WHEEL metadata")
+
+        metadata = Parser().parsestr(archive.read(wheel_metadata_path).decode("utf-8"))
+        if metadata.get("Root-Is-Purelib") != "false":
+            raise RuntimeError(
+                f"{wheel.name} must set Root-Is-Purelib: false for bundled native libraries"
+            )
+
+        native_members = [
+            name for name in names if name.lower().endswith(native_suffixes)
+        ]
+        if not native_members:
+            raise RuntimeError(f"{wheel.name} does not contain a bundled native library")
+
+        purelib_native_members = [
+            name for name in native_members if ".data/purelib/" in name
+        ]
+        if purelib_native_members:
+            joined = ", ".join(purelib_native_members)
+            raise RuntimeError(
+                f"{wheel.name} stores native libraries under purelib: {joined}"
+            )
+
+
 def main() -> int:
     args = parse_args()
     package_dir = Path(args.package_dir).expanduser().resolve()
@@ -114,6 +148,7 @@ def main() -> int:
     )
     wheel = newest_wheel(wheel_dir)
     require_platform_wheel(wheel)
+    require_native_platlib_layout(wheel)
 
     if args.run_smoke:
         venv_dir = REPO_ROOT / "target" / "python-wheel-smoke"
