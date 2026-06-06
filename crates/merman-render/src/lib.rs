@@ -40,6 +40,7 @@ pub mod sequence;
 pub mod state;
 pub mod svg;
 pub mod text;
+mod theme;
 pub mod timeline;
 pub mod tree_view;
 pub mod treemap;

@@ -12,6 +12,8 @@ mod icon_registry;
 mod parity;
 mod pipeline;
 
+pub(crate) use parity::theme as render_theme;
+
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};
 pub use parity::*;

@@ -45,7 +45,7 @@ mod sankey;
 mod sequence;
 mod state;
 mod style;
-mod theme;
+pub(crate) mod theme;
 mod timeline;
 mod timing;
 mod tree_view;

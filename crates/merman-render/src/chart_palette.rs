@@ -1,14 +1,11 @@
-use crate::config::config_string;
-use serde_json::Value;
-
 const CHART_ACCENT_FALLBACK: &str = "#3b82f6";
 
-fn theme_xychart_color(effective_config: &Value, key: &str) -> Option<String> {
-    config_string(effective_config, &["themeVariables", "xyChart", key])
-}
-
-fn theme_color(effective_config: &Value, key: &str) -> Option<String> {
-    config_string(effective_config, &["themeVariables", key])
+#[derive(Debug, Clone)]
+pub(crate) struct XyChartPaletteConfig {
+    pub(crate) theme_name: String,
+    pub(crate) plot_color_palette: Option<String>,
+    pub(crate) accent_color: Option<String>,
+    pub(crate) background_color: Option<String>,
 }
 
 fn default_plot_color_palette() -> Vec<String> {
@@ -131,25 +128,22 @@ fn series_color(index: usize, accent_color: &str, bg_color: Option<&str>) -> Str
     hsl_to_hex(h + h_shift, chart_s, l)
 }
 
-pub(crate) fn resolve_xychart_plot_palette(effective_config: &Value) -> Vec<String> {
-    if let Some(raw) = theme_xychart_color(effective_config, "plotColorPalette") {
+pub(crate) fn resolve_xychart_plot_palette(config: XyChartPaletteConfig) -> Vec<String> {
+    if let Some(raw) = config.plot_color_palette {
         let palette = parse_palette_list(&raw);
         if !palette.is_empty() {
             return palette;
         }
     }
 
-    let theme_name =
-        config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string());
-    if theme_name == "default" {
+    if config.theme_name == "default" {
         return default_plot_color_palette();
     }
 
-    let accent = theme_xychart_color(effective_config, "accentColor")
-        .or_else(|| theme_color(effective_config, "primaryColor"))
+    let accent = config
+        .accent_color
         .unwrap_or_else(|| CHART_ACCENT_FALLBACK.to_string());
-    let background = theme_xychart_color(effective_config, "backgroundColor")
-        .or_else(|| theme_color(effective_config, "background"));
+    let background = config.background_color;
 
     (0..10)
         .map(|i| series_color(i, accent.as_str(), background.as_deref()))
@@ -171,14 +165,15 @@ pub(crate) fn plot_color_from_palette(palette: &[String], plot_index: usize) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn default_theme_keeps_the_legacy_palette_shape() {
-        let palette = resolve_xychart_plot_palette(&json!({
-            "theme": "default",
-            "themeVariables": {}
-        }));
+        let palette = resolve_xychart_plot_palette(XyChartPaletteConfig {
+            theme_name: "default".to_string(),
+            plot_color_palette: None,
+            accent_color: None,
+            background_color: None,
+        });
 
         assert_eq!(palette.len(), 10);
         assert_eq!(palette[0], "#ECECFF");
@@ -187,13 +182,12 @@ mod tests {
 
     #[test]
     fn non_default_theme_derives_from_primary_color() {
-        let palette = resolve_xychart_plot_palette(&json!({
-            "theme": "neo",
-            "themeVariables": {
-                "primaryColor": "#123456",
-                "background": "#ffffff"
-            }
-        }));
+        let palette = resolve_xychart_plot_palette(XyChartPaletteConfig {
+            theme_name: "neo".to_string(),
+            plot_color_palette: None,
+            accent_color: Some("#123456".to_string()),
+            background_color: Some("#ffffff".to_string()),
+        });
 
         assert_eq!(palette.len(), 10);
         assert_eq!(palette[0], "#123456");
@@ -202,15 +196,12 @@ mod tests {
 
     #[test]
     fn explicit_plot_palette_wins_over_derivation() {
-        let palette = resolve_xychart_plot_palette(&json!({
-            "theme": "neo",
-            "themeVariables": {
-                "primaryColor": "#123456",
-                "xyChart": {
-                    "plotColorPalette": "#001122, #334455"
-                }
-            }
-        }));
+        let palette = resolve_xychart_plot_palette(XyChartPaletteConfig {
+            theme_name: "neo".to_string(),
+            plot_color_palette: Some("#001122, #334455".to_string()),
+            accent_color: Some("#123456".to_string()),
+            background_color: None,
+        });
 
         assert_eq!(palette, vec!["#001122".to_string(), "#334455".to_string()]);
     }

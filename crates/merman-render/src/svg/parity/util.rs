@@ -63,6 +63,10 @@ impl<'a> SvgTheme<'a> {
         config_string(self.effective_config, &["themeVariables", key])
     }
 
+    pub(super) fn optional_nested_color(&self, diagram_key: &str, key: &str) -> Option<String> {
+        config_string(self.effective_config, &["themeVariables", diagram_key, key])
+    }
+
     pub(super) fn optional_value(&self, key: &str) -> Option<String> {
         crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
     }

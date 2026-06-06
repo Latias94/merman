@@ -1,4 +1,5 @@
 use super::util::SvgTheme;
+use crate::chart_palette::{XyChartPaletteConfig, resolve_xychart_plot_palette};
 use serde_json::Value;
 
 #[derive(Debug, Clone)]
@@ -109,13 +110,47 @@ pub(super) struct StateDiagramTheme {
     pub(super) drop_shadow: String,
 }
 
-pub(super) struct PresentationTheme<'a> {
+#[derive(Debug, Clone)]
+pub(crate) struct XyChartTheme {
+    pub(crate) background_color: String,
+    pub(crate) title_color: String,
+    pub(crate) x_axis_title_color: String,
+    pub(crate) x_axis_label_color: String,
+    pub(crate) x_axis_tick_color: String,
+    pub(crate) x_axis_line_color: String,
+    pub(crate) y_axis_title_color: String,
+    pub(crate) y_axis_label_color: String,
+    pub(crate) y_axis_tick_color: String,
+    pub(crate) y_axis_line_color: String,
+    pub(crate) plot_color_palette: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct QuadrantChartTheme {
+    pub(crate) quadrant1_fill: String,
+    pub(crate) quadrant2_fill: String,
+    pub(crate) quadrant3_fill: String,
+    pub(crate) quadrant4_fill: String,
+    pub(crate) quadrant1_text_fill: String,
+    pub(crate) quadrant2_text_fill: String,
+    pub(crate) quadrant3_text_fill: String,
+    pub(crate) quadrant4_text_fill: String,
+    pub(crate) quadrant_point_fill: String,
+    pub(crate) quadrant_point_text_fill: String,
+    pub(crate) quadrant_x_axis_text_fill: String,
+    pub(crate) quadrant_y_axis_text_fill: String,
+    pub(crate) quadrant_title_fill: String,
+    pub(crate) quadrant_internal_border_stroke_fill: String,
+    pub(crate) quadrant_external_border_stroke_fill: String,
+}
+
+pub(crate) struct PresentationTheme<'a> {
     raw: SvgTheme<'a>,
     common: CommonCssTheme,
 }
 
 impl<'a> PresentationTheme<'a> {
-    pub(super) fn new(effective_config: &'a Value) -> Self {
+    pub(crate) fn new(effective_config: &'a Value) -> Self {
         let raw = SvgTheme::new(effective_config);
         let common = CommonCssTheme {
             theme_name: raw.theme_name(),
@@ -129,6 +164,162 @@ impl<'a> PresentationTheme<'a> {
         };
 
         Self { raw, common }
+    }
+
+    pub(crate) fn xychart(&self) -> XyChartTheme {
+        let background = self
+            .raw
+            .optional_nested_color("xyChart", "backgroundColor")
+            .or_else(|| self.raw.optional_color("background"))
+            .unwrap_or_else(|| "white".to_string());
+        let primary_color = self
+            .raw
+            .optional_color("primaryColor")
+            .unwrap_or_else(|| "#ECECFF".to_string());
+        let primary_text = self
+            .raw
+            .optional_color("primaryTextColor")
+            .or_else(|| invert_hex_color(&primary_color))
+            .unwrap_or_else(|| "#333".to_string());
+
+        XyChartTheme {
+            background_color: background.clone(),
+            title_color: self
+                .raw
+                .optional_nested_color("xyChart", "titleColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            x_axis_title_color: self
+                .raw
+                .optional_nested_color("xyChart", "xAxisTitleColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            x_axis_label_color: self
+                .raw
+                .optional_nested_color("xyChart", "xAxisLabelColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            x_axis_tick_color: self
+                .raw
+                .optional_nested_color("xyChart", "xAxisTickColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            x_axis_line_color: self
+                .raw
+                .optional_nested_color("xyChart", "xAxisLineColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            y_axis_title_color: self
+                .raw
+                .optional_nested_color("xyChart", "yAxisTitleColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            y_axis_label_color: self
+                .raw
+                .optional_nested_color("xyChart", "yAxisLabelColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            y_axis_tick_color: self
+                .raw
+                .optional_nested_color("xyChart", "yAxisTickColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            y_axis_line_color: self
+                .raw
+                .optional_nested_color("xyChart", "yAxisLineColor")
+                .unwrap_or_else(|| primary_text.clone()),
+            plot_color_palette: resolve_xychart_plot_palette(XyChartPaletteConfig {
+                theme_name: self.common.theme_name.clone(),
+                plot_color_palette: self
+                    .raw
+                    .optional_nested_color("xyChart", "plotColorPalette"),
+                accent_color: self
+                    .raw
+                    .optional_nested_color("xyChart", "accentColor")
+                    .or_else(|| self.raw.optional_color("primaryColor")),
+                background_color: Some(background),
+            }),
+        }
+    }
+
+    pub(crate) fn quadrantchart(&self) -> QuadrantChartTheme {
+        let quadrant1_fill = self
+            .raw
+            .optional_color("primaryColor")
+            .unwrap_or_else(|| "#ECECFF".to_string());
+        let primary_text = self
+            .raw
+            .optional_color("primaryTextColor")
+            .or_else(|| invert_hex_color(&quadrant1_fill))
+            .unwrap_or_else(|| "#131300".to_string());
+        let border_stroke = self
+            .raw
+            .optional_color("primaryBorderColor")
+            .and_then(|v| css_color_to_rgb_string(&v))
+            .unwrap_or_else(|| "rgb(199, 199, 241)".to_string());
+        let quadrant_point_fill = derive_quadrant_point_fill(&quadrant1_fill, &border_stroke);
+
+        let mut theme = QuadrantChartTheme {
+            quadrant1_fill: quadrant1_fill.clone(),
+            quadrant2_fill: adjust_hex_rgb(&quadrant1_fill, 5)
+                .unwrap_or_else(|| "#f1f1ff".to_string()),
+            quadrant3_fill: adjust_hex_rgb(&quadrant1_fill, 10)
+                .unwrap_or_else(|| "#f6f6ff".to_string()),
+            quadrant4_fill: adjust_hex_rgb(&quadrant1_fill, 15)
+                .unwrap_or_else(|| "#fbfbff".to_string()),
+            quadrant1_text_fill: primary_text.clone(),
+            quadrant2_text_fill: adjust_hex_rgb(&primary_text, -5)
+                .unwrap_or_else(|| "#0e0e00".to_string()),
+            quadrant3_text_fill: adjust_hex_rgb(&primary_text, -10)
+                .unwrap_or_else(|| "#090900".to_string()),
+            quadrant4_text_fill: adjust_hex_rgb(&primary_text, -15)
+                .unwrap_or_else(|| "#040400".to_string()),
+            quadrant_point_fill,
+            quadrant_point_text_fill: primary_text.clone(),
+            quadrant_x_axis_text_fill: primary_text.clone(),
+            quadrant_y_axis_text_fill: primary_text.clone(),
+            quadrant_title_fill: primary_text,
+            quadrant_internal_border_stroke_fill: border_stroke.clone(),
+            quadrant_external_border_stroke_fill: border_stroke,
+        };
+
+        // Mermaid applies quadrant-specific theme variables as raw CSS tokens.
+        // Preserve that verbatim behavior for explicit overrides, but keep the
+        // headless defaults derived and valid.
+        let set = |field: &mut String, key: &str| {
+            if let Some(v) = self.raw.optional_color(key) {
+                *field = v;
+            }
+        };
+
+        set(&mut theme.quadrant1_fill, "quadrant1Fill");
+        set(&mut theme.quadrant2_fill, "quadrant2Fill");
+        set(&mut theme.quadrant3_fill, "quadrant3Fill");
+        set(&mut theme.quadrant4_fill, "quadrant4Fill");
+
+        set(&mut theme.quadrant1_text_fill, "quadrant1TextFill");
+        set(&mut theme.quadrant2_text_fill, "quadrant2TextFill");
+        set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
+        set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
+
+        if let Some(v) = self.raw.optional_color("quadrantPointFill") {
+            if !is_invalid_css_token(&v) {
+                theme.quadrant_point_fill = v;
+            }
+        }
+        set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
+        set(
+            &mut theme.quadrant_x_axis_text_fill,
+            "quadrantXAxisTextFill",
+        );
+        set(
+            &mut theme.quadrant_y_axis_text_fill,
+            "quadrantYAxisTextFill",
+        );
+        set(&mut theme.quadrant_title_fill, "quadrantTitleFill");
+
+        set(
+            &mut theme.quadrant_internal_border_stroke_fill,
+            "quadrantInternalBorderStrokeFill",
+        );
+        set(
+            &mut theme.quadrant_external_border_stroke_fill,
+            "quadrantExternalBorderStrokeFill",
+        );
+
+        theme
     }
 
     pub(super) fn common(&self) -> &CommonCssTheme {
@@ -321,6 +512,211 @@ impl<'a> PresentationTheme<'a> {
     }
 }
 
+fn invert_hex_color(s: &str) -> Option<String> {
+    let s = s.trim();
+    let hex = s.strip_prefix('#')?;
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b))
+}
+
+fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let t = s.trim().strip_prefix('#').unwrap_or(s.trim());
+    if t.len() != 6 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let r = u8::from_str_radix(&t[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&t[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&t[4..6], 16).ok()?;
+    Some((r, g, b))
+}
+
+fn adjust_hex_rgb(hex: &str, delta: i16) -> Option<String> {
+    let (r, g, b) = parse_hex_rgb(hex)?;
+    let adj = |c: u8| -> u8 {
+        let v = c as i16 + delta;
+        v.clamp(0, 255) as u8
+    };
+    Some(format!("#{:02x}{:02x}{:02x}", adj(r), adj(g), adj(b)))
+}
+
+fn fmt_rgb(r: u8, g: u8, b: u8) -> String {
+    format!("rgb({r}, {g}, {b})")
+}
+
+fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
+    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let parse_channel = |part: &str| -> Option<u8> {
+        let value = part.parse::<f64>().ok()?;
+        if !value.is_finite() {
+            return None;
+        }
+        Some(value.round().clamp(0.0, 255.0) as u8)
+    };
+    let r = parse_channel(parts.next()?)?;
+    let g = parse_channel(parts.next()?)?;
+    let b = parse_channel(parts.next()?)?;
+    Some((r, g, b))
+}
+
+fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
+    let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+    let mut parts = inner.split(',').map(|p| p.trim());
+    let h = parts.next()?.parse::<f64>().ok()?;
+    let s = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    let l = parts
+        .next()?
+        .strip_suffix('%')
+        .unwrap_or_default()
+        .parse::<f64>()
+        .ok()?;
+    Some((h, s, l))
+}
+
+fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
+    if !(h_deg.is_finite() && s_pct.is_finite() && l_pct.is_finite()) {
+        return None;
+    }
+
+    let h = (h_deg / 360.0).rem_euclid(1.0);
+    let s = (s_pct / 100.0).clamp(0.0, 1.0);
+    let l = (l_pct / 100.0).clamp(0.0, 1.0);
+
+    if s == 0.0 {
+        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
+        return Some((v, v, v));
+    }
+
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
+
+    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 1.0 / 2.0 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
+        p
+    }
+
+    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+    let g = hue_to_rgb(p, q, h);
+    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+
+    let to_u8 = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    Some((to_u8(r), to_u8(g), to_u8(b)))
+}
+
+fn css_color_to_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let t = s.trim();
+    if let Some(rgb) = parse_rgb_css(t) {
+        return Some(rgb);
+    }
+    if let Some(rgb) = parse_hex_rgb(t) {
+        return Some(rgb);
+    }
+    if let Some((h, s, l)) = parse_hsl_css(t) {
+        return hsl_to_rgb_u8(h, s, l);
+    }
+    None
+}
+
+fn css_color_to_rgb_string(s: &str) -> Option<String> {
+    let (r, g, b) = css_color_to_rgb(s)?;
+    Some(fmt_rgb(r, g, b))
+}
+
+fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
+    fn to_linear(channel: u8) -> f64 {
+        let v = channel as f64 / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    0.2126 * to_linear(r) + 0.7152 * to_linear(g) + 0.0722 * to_linear(b)
+}
+
+fn rgb_to_hsl_pct(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let r = r as f64 / 255.0;
+    let g = g as f64 / 255.0;
+    let b = b as f64 / 255.0;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+
+    if (max - min).abs() < f64::EPSILON {
+        return (0.0, 0.0, l * 100.0);
+    }
+
+    let d = max - min;
+    let s = if l > 0.5 {
+        d / (2.0 - max - min)
+    } else {
+        d / (max + min)
+    };
+    let h = if (max - r).abs() < f64::EPSILON {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if (max - g).abs() < f64::EPSILON {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    } / 6.0;
+
+    (h * 360.0, s * 100.0, l * 100.0)
+}
+
+fn derive_quadrant_point_fill(quadrant1_fill: &str, fallback: &str) -> String {
+    let Some((r, g, b)) = css_color_to_rgb(quadrant1_fill) else {
+        return fallback.to_string();
+    };
+    let (h, s, l) = rgb_to_hsl_pct(r, g, b);
+    let delta = if relative_luminance(r, g, b) < 0.5 {
+        10.0
+    } else {
+        -10.0
+    };
+    let adjusted_l = (l + delta).clamp(0.0, 100.0);
+    let Some((r, g, b)) = hsl_to_rgb_u8(h, s, adjusted_l) else {
+        return fallback.to_string();
+    };
+    fmt_rgb(r, g, b)
+}
+
+fn is_invalid_css_token(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+    lower.is_empty()
+        || lower.contains("nan")
+        || lower.contains("undefined")
+        || lower.contains("infinity")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,5 +753,71 @@ mod tests {
             sequence.label_box_filter,
             "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
         );
+    }
+
+    #[test]
+    fn presentation_theme_xychart_resolves_chart_roles() {
+        let cfg = json!({
+            "theme": "neo",
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "primaryTextColor": "#f8fafc",
+                "background": "#010203",
+                "xyChart": {
+                    "backgroundColor": "#0f172a",
+                    "titleColor": "#f43f5e",
+                    "xAxisLabelColor": "#22c55e",
+                    "plotColorPalette": "#001122, #334455"
+                }
+            }
+        });
+
+        let xychart = PresentationTheme::new(&cfg).xychart();
+
+        assert_eq!(xychart.background_color, "#0f172a");
+        assert_eq!(xychart.title_color, "#f43f5e");
+        assert_eq!(xychart.x_axis_title_color, "#f8fafc");
+        assert_eq!(xychart.x_axis_label_color, "#22c55e");
+        assert_eq!(xychart.y_axis_line_color, "#f8fafc");
+        assert_eq!(
+            xychart.plot_color_palette,
+            vec!["#001122".to_string(), "#334455".to_string()]
+        );
+    }
+
+    #[test]
+    fn presentation_theme_quadrantchart_resolves_chart_roles() {
+        let cfg = json!({
+            "theme": "redux-dark",
+            "themeVariables": {
+                "primaryColor": "#123456",
+                "primaryTextColor": "#f8fafc",
+                "primaryBorderColor": "#445566",
+                "quadrant1Fill": "#010203",
+                "quadrant2Fill": "#020304",
+                "quadrant3Fill": "#030405",
+                "quadrant4Fill": "#040506",
+                "quadrantPointFill": "#facc15",
+                "quadrantPointTextFill": "#111827",
+                "quadrantXAxisTextFill": "#22c55e",
+                "quadrantYAxisTextFill": "#38bdf8",
+                "quadrantTitleFill": "#f43f5e",
+                "quadrantInternalBorderStrokeFill": "#aabbcc",
+                "quadrantExternalBorderStrokeFill": "#ddeeff"
+            }
+        });
+
+        let quadrant = PresentationTheme::new(&cfg).quadrantchart();
+
+        assert_eq!(quadrant.quadrant1_fill, "#010203");
+        assert_eq!(quadrant.quadrant2_fill, "#020304");
+        assert_eq!(quadrant.quadrant1_text_fill, "#f8fafc");
+        assert_eq!(quadrant.quadrant_point_fill, "#facc15");
+        assert_eq!(quadrant.quadrant_point_text_fill, "#111827");
+        assert_eq!(quadrant.quadrant_x_axis_text_fill, "#22c55e");
+        assert_eq!(quadrant.quadrant_y_axis_text_fill, "#38bdf8");
+        assert_eq!(quadrant.quadrant_title_fill, "#f43f5e");
+        assert_eq!(quadrant.quadrant_internal_border_stroke_fill, "#aabbcc");
+        assert_eq!(quadrant.quadrant_external_border_stroke_fill, "#ddeeff");
     }
 }

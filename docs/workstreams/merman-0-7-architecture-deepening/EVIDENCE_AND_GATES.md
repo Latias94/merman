@@ -254,3 +254,26 @@ before marking a task, Codex goal, or lane complete.
   `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl >/dev/null`;
   `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json >/dev/null`;
   `cargo run -p xtask -- check-alignment`.
+- 2026-06-06: M07A-080 completed the render-side `PresentationTheme` migration slice for XyChart by moving visible role resolution into the crate-level theme view. `crates/merman-render/src/theme.rs`
+  now exposes the renderer-facing theme entry point, `svg::parity::theme::PresentationTheme`
+  computes the XyChart role bundle, and `chart_palette` only owns palette parsing/derivation.
+  XyChart layout tests still pass with explicit theme overrides, and the family now consumes the
+  shared role surface instead of repeating its own raw `themeVariables` fallback chain. Validation
+  passed:
+  `cargo fmt --all --check`;
+  `cargo nextest run -p merman-render presentation_theme`;
+  `cargo nextest run -p merman-render chart_palette`;
+  `cargo nextest run -p merman-render xychart`;
+  `cargo nextest run -p merman-render theme`;
+  `cargo nextest run -p merman-render quadrantchart`;
+  `git diff --check`.
+- 2026-06-06: M07A-080 completed the render-side `PresentationTheme` migration for QuadrantChart.
+  `PresentationTheme::quadrantchart()` now owns the quadrant default derivation and explicit
+  override handling, while `quadrantchart.rs` consumes the shared role bundle instead of repeating
+  the raw `themeVariables` fallback chain. Validation passed:
+  `cargo fmt --all --check`;
+  `cargo nextest run -p merman-render chart_palette`;
+  `cargo nextest run -p merman-render theme`;
+  `cargo nextest run -p merman-render xychart`;
+  `cargo nextest run -p merman-render quadrantchart`;
+  `git diff --check`.

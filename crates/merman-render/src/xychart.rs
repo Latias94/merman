@@ -1,29 +1,15 @@
-use crate::chart_palette::{plot_color_from_palette, resolve_xychart_plot_palette};
-use crate::config::{config_bool, config_f64_css_px as config_f64, config_string};
+use crate::chart_palette::plot_color_from_palette;
+use crate::config::{config_bool, config_f64_css_px as config_f64};
 use crate::model::{
     XyChartDiagramLayout, XyChartDrawableElem, XyChartPathData, XyChartRectData, XyChartTextData,
 };
 use crate::text::{TextMeasurer, TextStyle};
+use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::diagrams::xychart::{
     XyChartAxisRenderModel, XyChartDiagramRenderModel, XyChartPlotType,
 };
 use serde_json::Value;
-
-#[derive(Debug, Clone)]
-struct ChartThemeConfig {
-    background_color: String,
-    title_color: String,
-    x_axis_title_color: String,
-    x_axis_label_color: String,
-    x_axis_tick_color: String,
-    x_axis_line_color: String,
-    y_axis_title_color: String,
-    y_axis_label_color: String,
-    y_axis_tick_color: String,
-    y_axis_line_color: String,
-    plot_color_palette: Vec<String>,
-}
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -149,60 +135,6 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
             .unwrap_or(base.show_axis_line),
         axis_line_width: config_f64(effective_config, &["xyChart", axis_key, "axisLineWidth"])
             .unwrap_or(base.axis_line_width),
-    }
-}
-
-fn theme_xychart_color(effective_config: &Value, key: &str) -> Option<String> {
-    config_string(effective_config, &["themeVariables", "xyChart", key])
-}
-
-fn theme_color(effective_config: &Value, key: &str) -> Option<String> {
-    config_string(effective_config, &["themeVariables", key])
-}
-
-fn invert_hex_color(s: &str) -> Option<String> {
-    let s = s.trim();
-    let hex = s.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b))
-}
-
-fn parse_theme_config(effective_config: &Value) -> ChartThemeConfig {
-    let background = theme_xychart_color(effective_config, "backgroundColor")
-        .or_else(|| theme_color(effective_config, "background"))
-        .unwrap_or_else(|| "white".to_string());
-    let primary_color =
-        theme_color(effective_config, "primaryColor").unwrap_or_else(|| "#ECECFF".to_string());
-    let primary_text = theme_color(effective_config, "primaryTextColor")
-        .or_else(|| invert_hex_color(&primary_color))
-        .unwrap_or_else(|| "#333".to_string());
-
-    ChartThemeConfig {
-        background_color: background,
-        title_color: theme_xychart_color(effective_config, "titleColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        x_axis_title_color: theme_xychart_color(effective_config, "xAxisTitleColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        x_axis_label_color: theme_xychart_color(effective_config, "xAxisLabelColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        x_axis_tick_color: theme_xychart_color(effective_config, "xAxisTickColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        x_axis_line_color: theme_xychart_color(effective_config, "xAxisLineColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        y_axis_title_color: theme_xychart_color(effective_config, "yAxisTitleColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        y_axis_label_color: theme_xychart_color(effective_config, "yAxisLabelColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        y_axis_tick_color: theme_xychart_color(effective_config, "yAxisTickColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        y_axis_line_color: theme_xychart_color(effective_config, "yAxisLineColor")
-            .unwrap_or_else(|| primary_text.clone()),
-        plot_color_palette: resolve_xychart_plot_palette(effective_config),
     }
 }
 
@@ -961,7 +893,7 @@ pub(crate) fn layout_xychart_diagram_typed(
     }
 
     let chart_cfg = parse_chart_config(effective_config, model);
-    let theme_cfg = parse_theme_config(effective_config);
+    let theme_cfg = PresentationTheme::new(effective_config).xychart();
 
     let title = model.title.clone().unwrap_or_default();
     let title_dim = max_text_dimension(
