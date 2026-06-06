@@ -902,11 +902,12 @@ fn merge_edge_segments(mut segments: Vec<EdgeSegment>) -> Vec<LayoutEdge> {
                     points.push(p.clone());
                     continue;
                 }
-                if idx == 0 {
-                    let last = points.last().unwrap();
-                    if (last.x - p.x).abs() < 1e-9 && (last.y - p.y).abs() < 1e-9 {
-                        continue;
-                    }
+                if idx == 0
+                    && points.last().is_some_and(|last| {
+                        (last.x - p.x).abs() < 1e-9 && (last.y - p.y).abs() < 1e-9
+                    })
+                {
+                    continue;
                 }
                 points.push(p.clone());
             }

@@ -410,13 +410,14 @@ fn bucket_class_namespace_edges<'a>(
             }
         }
 
-        if from_root.is_some() && from_root == to_root {
-            edges_by_root
-                .entry(from_root.unwrap())
-                .or_default()
-                .push(edge.clone());
-        } else {
-            outer_edges.push(edge.clone());
+        match (from_root, to_root) {
+            (Some(from_root), Some(to_root)) if from_root == to_root => {
+                edges_by_root
+                    .entry(from_root)
+                    .or_default()
+                    .push(edge.clone());
+            }
+            _ => outer_edges.push(edge.clone()),
         }
     }
 

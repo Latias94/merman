@@ -3814,30 +3814,22 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         .map(|g| y[*g.first().unwrap_or(&0)])
         .collect();
 
-    fn ensure_key(map: &mut IndexMap<usize, Vec<Neighbor>>, key: usize) {
-        if !map.contains_key(&key) {
-            map.insert(key, Vec::new());
-        }
-    }
-
     let mut dag_h: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
     let mut dag_v: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
     for r in &c.relative {
         if let (Some(left), Some(right)) = (r.left, r.right) {
             let src = node_to_dummy_for_vertical_alignment[left].unwrap_or(left);
             let dst = node_to_dummy_for_vertical_alignment[right].unwrap_or(right);
-            ensure_key(&mut dag_h, src);
-            ensure_key(&mut dag_h, dst);
-            dag_h.get_mut(&src).unwrap().push(Neighbor {
+            dag_h.entry(dst).or_default();
+            dag_h.entry(src).or_default().push(Neighbor {
                 id: dst,
                 gap: r.gap,
             });
         } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
             let src = node_to_dummy_for_horizontal_alignment[top].unwrap_or(top);
             let dst = node_to_dummy_for_horizontal_alignment[bottom].unwrap_or(bottom);
-            ensure_key(&mut dag_v, src);
-            ensure_key(&mut dag_v, dst);
-            dag_v.get_mut(&src).unwrap().push(Neighbor {
+            dag_v.entry(dst).or_default();
+            dag_v.entry(src).or_default().push(Neighbor {
                 id: dst,
                 gap: r.gap,
             });
@@ -3851,9 +3843,9 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         }
         for (&k, neigh) in dag.iter() {
             for n in neigh {
-                u.get_mut(&k).unwrap().push(*n);
-                u.get_mut(&n.id)
-                    .unwrap()
+                u.entry(k).or_default().push(*n);
+                u.entry(n.id)
+                    .or_default()
                     .push(Neighbor { id: k, gap: n.gap });
             }
         }
@@ -3867,8 +3859,8 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         }
         for (&k, neigh) in dag.iter() {
             for n in neigh {
-                r.get_mut(&n.id)
-                    .unwrap()
+                r.entry(n.id)
+                    .or_default()
                     .push(Neighbor { id: k, gap: n.gap });
             }
         }
@@ -3947,7 +3939,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         }
         for (&_k, neigh) in dag.iter() {
             for n2 in neigh {
-                *in_deg.get_mut(&n2.id).unwrap() += 1;
+                *in_deg.entry(n2.id).or_default() += 1;
             }
         }
 
@@ -3985,7 +3977,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
                 if position[&neigh.id] < want {
                     position.insert(neigh.id, want);
                 }
-                let deg = in_deg.get_mut(&neigh.id).unwrap();
+                let deg = in_deg.entry(neigh.id).or_default();
                 *deg = deg.saturating_sub(1);
                 if *deg == 0 {
                     q.push_back(neigh.id);
