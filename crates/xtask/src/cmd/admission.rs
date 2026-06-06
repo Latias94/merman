@@ -157,16 +157,9 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
             }
         }
 
-        if let Some(dir) = record.deferred_fixture_dir {
-            let path = fixtures_root.join("_deferred").join(dir);
-            if !path.is_dir() {
-                failures.push(format!(
-                    "admission inventory: deferred fixture dir for `{}` does not exist: {}",
-                    record.diagram,
-                    path.display()
-                ));
-            }
-        }
+        // `fixtures/_deferred` is intentionally ignored and used as a local investigation corpus.
+        // Keep `NormalizedWithDeferred` as inventory metadata, but do not make the release
+        // alignment gate depend on those local directories existing in every checkout.
 
         if record.svg == CoverageStatus::Covered {
             let upstream_dir = fixtures_root.join("upstream-svgs").join(record.diagram);

@@ -317,3 +317,17 @@ before marking a task, Codex goal, or lane complete.
   core semantic projection source and leaves the renderer, layout, fixtures, baselines, root
   overrides, and comparator normalization unchanged; the selected Flowchart DOM gate still proves
   the typed render path reaches SVG parity for the touched family.
+- 2026-06-06: M07A-110 fenced the render-model JSON semantic fallback. `Engine` now refuses
+  `RenderSemanticModel::Json` fallback for built-in non-error Mermaid families when a typed render
+  parser is missing, while preserving JSON fallback for the built-in `error` diagram and custom
+  diagram adapters. Family-fact registry coverage proves every pinned non-error semantic parser has
+  a typed render parser. Public compatibility JSON parsing/output remains unchanged because the
+  fence is only on the render-model path after typed parser lookup. The admission inventory
+  alignment gate now treats `fixtures/_deferred` as an ignored local investigation corpus: it keeps
+  `NormalizedWithDeferred` metadata but no longer requires those directories to exist in every
+  checkout. Validation passed:
+  `cargo nextest run -p merman-core`;
+  `cargo nextest run -p merman-render`;
+  `cargo fmt --all --check`;
+  `cargo run -p xtask -- check-alignment`;
+  `git diff --check`.

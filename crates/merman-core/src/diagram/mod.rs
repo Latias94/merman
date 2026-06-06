@@ -189,6 +189,11 @@ impl RenderDiagramRegistry {
         self.parsers.get(diagram_type).copied()
     }
 
+    #[cfg(test)]
+    pub(crate) fn remove(&mut self, diagram_type: &str) -> Option<RenderSemanticParser> {
+        self.parsers.remove(diagram_type)
+    }
+
     /// Builds the typed render parser registry for the repository's pinned Mermaid baseline.
     pub fn for_pinned_mermaid_baseline() -> Self {
         let mut reg = Self::new();

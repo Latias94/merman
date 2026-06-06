@@ -110,6 +110,27 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
     }
 }
 
+#[test]
+fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
+    let render_ids = sorted_set(
+        crate::family::render_parser_facts()
+            .iter()
+            .map(|fact| fact.id),
+    );
+
+    for fact in crate::family::semantic_parser_facts() {
+        if fact.id == "error" {
+            continue;
+        }
+
+        assert!(
+            render_ids.contains(fact.id),
+            "built-in semantic parser {} must not rely on JSON render fallback",
+            fact.id
+        );
+    }
+}
+
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     ids.into_iter().collect()
 }

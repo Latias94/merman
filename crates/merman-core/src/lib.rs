@@ -475,6 +475,16 @@ impl Engine {
             return parser(code, meta);
         }
 
+        if !family::permits_json_render_fallback(&meta.diagram_type) {
+            return Err(Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: format!(
+                    "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
+                    meta.diagram_type
+                ),
+            });
+        }
+
         diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, code, meta)
             .map(RenderSemanticModel::Json)
     }

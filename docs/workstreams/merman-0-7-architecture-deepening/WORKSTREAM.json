@@ -46,6 +46,26 @@
   "evidence": [
     {
       "kind": "task_evidence",
+      "path": "crates/merman-core/src/lib.rs",
+      "note": "M07A-110 render-model JSON fallback fencing."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-core/src/family.rs",
+      "note": "M07A-110 family-fact decision for built-in vs custom JSON render fallback."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-core/src/tests/registry.rs",
+      "note": "M07A-110 pinned non-error semantic parser typed render coverage."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/xtask/src/cmd/admission.rs",
+      "note": "M07A-110 admission alignment no longer requires ignored local fixtures/_deferred directories."
+    },
+    {
+      "kind": "task_evidence",
       "path": "crates/merman-core/src/diagrams/flowchart.rs",
       "note": "M07A-100 Flowchart JSON and typed render parsers share one internal semantic source."
     },
@@ -187,6 +207,6 @@
   "lane_slug": "merman-0-7-architecture-deepening",
   "continue_policy": {
     "default_action": "continue",
-    "notes": "M07A-C1, M07A-C2, and M07A-C3 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, M07A-078 shared binding fixed-time controls, M07A-079 Flowchart zero spacing parity, M07A-080 PresentationTheme migration continuation, M07A-090 family-owned typed semantic sanitization, and M07A-100 Flowchart single semantic source are complete. Next planner action is to review/verify M07A-100, then continue M07A-C4 with M07A-110."
+    "notes": "M07A-C1, M07A-C2, M07A-C3, and M07A-C4 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, M07A-077 Gantt CLI fixed-time controls, M07A-078 shared binding fixed-time controls, M07A-079 Flowchart zero spacing parity, M07A-080 PresentationTheme migration continuation, M07A-090 family-owned typed semantic sanitization, M07A-100 Flowchart single semantic source, and M07A-110 JSON render fallback fencing are complete. Next planner action is M07A-120 final verification and closeout."
   }
 }

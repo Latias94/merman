@@ -421,6 +421,29 @@ fn render_parser_registry_falls_back_to_json_registry_for_custom_diagrams() {
     }
 }
 
+#[test]
+fn render_parser_registry_rejects_builtin_json_fallback_without_typed_parser() {
+    let mut engine = Engine::new();
+    assert!(
+        engine
+            .render_diagram_registry_mut()
+            .remove("flowchart-v2")
+            .is_some()
+    );
+
+    let err = engine
+        .parse_diagram_for_render_model_with_type_sync(
+            "flowchart-v2",
+            "flowchart TD\nA-->B",
+            ParseOptions::strict(),
+        )
+        .unwrap_err();
+    let message = err.to_string();
+
+    assert!(message.contains("missing a typed render parser"));
+    assert!(message.contains("JSON render fallback is reserved"));
+}
+
 fn custom_json_parser(_code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
     Ok(json!({ "type": "customDiagram" }))
 }

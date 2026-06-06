@@ -107,6 +107,13 @@ pub(crate) fn render_model_kind_supports_diagram_type(
         .any(|fact| fact.model_kind == model_kind && fact.id == diagram_type)
 }
 
+pub(crate) fn permits_json_render_fallback(diagram_type: &str) -> bool {
+    diagram_type == "error"
+        || !SEMANTIC_PARSER_FACTS
+            .iter()
+            .any(|fact| fact.id == diagram_type)
+}
+
 pub(crate) fn apply_known_type_detector_side_effects(
     diagram_type: &str,
     effective_config: &mut MermaidConfig,

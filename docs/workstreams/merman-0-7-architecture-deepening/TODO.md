@@ -217,15 +217,21 @@ Last updated: 2026-06-06
   was changed.
   State: TASKS.jsonl entry M07A-100 is done.
 
-- [ ] M07A-110 [owner=planner] [deps=M07A-050,M07A-060,M07A-090] [scope=crates/merman-core/src/diagram,crates/merman-render/src/lib.rs,crates/merman-render/src/svg/parity.rs,docs/adr]
+- [x] M07A-110 [owner=codex] [deps=M07A-050,M07A-060,M07A-090] [scope=crates/merman-core/src/diagram,crates/merman-core/src/family.rs,crates/merman-core/src/lib.rs,crates/xtask/src/cmd/admission.rs]
   Goal: Fence `RenderSemanticModel::Json` as a compatibility adapter or delete paths proven
   unnecessary by admission evidence, while preserving compatibility JSON public output.
-  Validation: `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`; relevant compare-all gate.
+  Validation: `cargo nextest run -p merman-core`; `cargo nextest run -p merman-render`;
+  `cargo run -p xtask -- check-alignment`; `cargo fmt --all --check`.
   Review: Any change to public JSON output requires ADR review; renderer input cleanup alone should not.
-  Evidence: admission inventory proof, renderer dispatch tests, optional ADR.
+  Evidence: registry/fallback tests, admission alignment proof, public JSON compatibility preserved.
   Context: ADR 0004, 0010, 0011, this workstream context manifest.
-  Handoff: Speculative until M07A-050/M07A-060 prove the release surface.
-  State: TASKS.jsonl entry M07A-110 is draft.
+  Handoff: DONE on 2026-06-06. `RenderSemanticModel::Json` is now reserved for the
+  built-in `error` diagram and custom diagram adapters on the render-model path. Built-in
+  non-error Mermaid families must have typed render parsers, with registry coverage proving the
+  pinned family facts stay aligned. The admission alignment gate keeps `NormalizedWithDeferred`
+  metadata but no longer requires ignored local `fixtures/_deferred` investigation directories.
+  No public compatibility JSON output or renderer SVG dispatch contract changed.
+  State: TASKS.jsonl entry M07A-110 is done.
 
 ## M5 — Final Verification And Closeout
 

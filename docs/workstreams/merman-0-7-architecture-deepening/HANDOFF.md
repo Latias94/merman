@@ -31,7 +31,10 @@ M07A-090 moved typed render-model common DB sanitization out of `Engine` and int
 `RenderSemanticModel` plus family-owned model methods, closing typed path gaps for Flowchart
 `accTitle` / `accDescr` and Treemap `title`. M07A-100 collapsed Flowchart semantic JSON and typed
 render-model parsing around one internal `FlowchartSemanticSource` while preserving FlowDB ordering
-traces such as `vertexCalls`.
+traces such as `vertexCalls`. M07A-110 fenced `RenderSemanticModel::Json` to the built-in `error`
+diagram and custom render-model adapters, while registry coverage now requires every pinned
+non-error built-in semantic parser to have a typed render parser. The admission alignment gate also
+no longer depends on ignored local `fixtures/_deferred` investigation directories.
 
 ## Read First
 
@@ -44,18 +47,20 @@ traces such as `vertexCalls`.
 
 ## Next Action
 
-Next planner action is to review/verify M07A-100, then continue M07A-C4:
+Next planner action is M07A-120 final verification and closeout:
 
-- M07A-110 is a planner/review slice for fencing `RenderSemanticModel::Json` as a compatibility
-  adapter after admission and typed ownership evidence are accepted;
-- keep compatibility JSON output stable unless an ADR explicitly changes it.
+- run the final gate set from `EVIDENCE_AND_GATES.md`, broadening to workspace gates only if the
+  current machine budget allows it;
+- reconcile TODO.md, TASKS.jsonl, CAMPAIGNS.jsonl, and this handoff before closing or splitting
+  residual follow-ons.
 
 ## Known Risks
 
 - Diagram Family Facts intentionally preserve the existing bindings supported-diagram metadata
   surface; treeView/ishikawa/eventmodeling admission is recorded in xtask inventory, not newly
   published as binding metadata.
-- Admission inventory currently owns primary SVG matrix and root-deferred projections, but per-family
+- Admission inventory currently owns primary SVG matrix and root-deferred projections. It no longer
+  requires ignored local `fixtures/_deferred` directories for `check-alignment`, but per-family
   compare command dispatch still remains explicit in `compare-all-svgs`.
 - Root viewport planning is shared, but only `treeView` has migrated to the canonical plan in
   M07A-070. Other families still use their existing root emitters and should migrate in separate
@@ -72,9 +77,9 @@ Next planner action is to review/verify M07A-100, then continue M07A-C4:
   family-owned `sanitize_common_db_fields` method; `Engine` should remain orchestration-only.
 - Flowchart typed/JSON convergence now has one internal semantic source, but any future Flowchart
   parser changes still need to preserve FlowDB ordering traces and SVG parity evidence.
-- JSON fallback cleanup is intentionally late; after M07A-100, the remaining decision is M07A-110
-  review evidence for whether `RenderSemanticModel::Json` should be fenced as a compatibility
-  adapter or further narrowed.
+- JSON render-model fallback is now intentionally narrow: built-in non-error families must stay on
+  typed render parsers, while `error` and custom adapters may still use JSON. Future built-in family
+  additions must update family facts and typed render parser coverage together.
 
 ## Working Tree Notes
 
