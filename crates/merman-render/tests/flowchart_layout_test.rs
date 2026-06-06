@@ -1,5 +1,6 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::Error;
+use merman_render::model::{FlowchartV2Layout, LayoutDiagram};
 use merman_render::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
@@ -13,6 +14,31 @@ fn workspace_root() -> PathBuf {
 
 fn approx_gt(a: f64, b: f64) -> bool {
     a > b + 1e-6
+}
+
+fn approx_eq(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-6
+}
+
+fn layout_flowchart(text: &str) -> Box<FlowchartV2Layout> {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+    layout
+}
+
+fn flowchart_node_center(layout: &FlowchartV2Layout, id: &str) -> (f64, f64) {
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == id)
+        .unwrap_or_else(|| panic!("node {id}"));
+    (node.x, node.y)
 }
 
 fn rect_from_cluster(c: &merman_render::model::LayoutCluster) -> (f64, f64, f64, f64) {
@@ -42,6 +68,101 @@ fn rects_overlap(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), eps: f64) -> 
     let sep_x = amax_x <= bmin_x + eps || bmax_x <= amin_x + eps;
     let sep_y = amax_y <= bmin_y + eps || bmax_y <= amin_y + eps;
     !(sep_x || sep_y)
+}
+
+#[test]
+fn flowchart_node_spacing_zero_falls_back_to_mermaid_default() {
+    let default = layout_flowchart(
+        r#"flowchart TB
+A --> B
+A --> C
+"#,
+    );
+    let zero = layout_flowchart(
+        r#"%%{init: {"flowchart": {"nodeSpacing": 0}}}%%
+flowchart TB
+A --> B
+A --> C
+"#,
+    );
+    let roomy = layout_flowchart(
+        r#"%%{init: {"flowchart": {"nodeSpacing": 100}}}%%
+flowchart TB
+A --> B
+A --> C
+"#,
+    );
+
+    let default_dx = {
+        let (bx, _) = flowchart_node_center(&default, "B");
+        let (cx, _) = flowchart_node_center(&default, "C");
+        (cx - bx).abs()
+    };
+    let zero_dx = {
+        let (bx, _) = flowchart_node_center(&zero, "B");
+        let (cx, _) = flowchart_node_center(&zero, "C");
+        (cx - bx).abs()
+    };
+    let roomy_dx = {
+        let (bx, _) = flowchart_node_center(&roomy, "B");
+        let (cx, _) = flowchart_node_center(&roomy, "C");
+        (cx - bx).abs()
+    };
+
+    assert!(
+        approx_eq(zero_dx, default_dx),
+        "Mermaid treats flowchart.nodeSpacing=0 as falsy and falls back to 50; default={default_dx}, zero={zero_dx}"
+    );
+    assert!(
+        roomy_dx > default_dx + 25.0,
+        "configured positive nodeSpacing should still affect layout; default={default_dx}, roomy={roomy_dx}"
+    );
+}
+
+#[test]
+fn flowchart_rank_spacing_zero_falls_back_to_mermaid_default() {
+    let default = layout_flowchart(
+        r#"flowchart TB
+A --> B
+"#,
+    );
+    let zero = layout_flowchart(
+        r#"%%{init: {"flowchart": {"rankSpacing": 0}}}%%
+flowchart TB
+A --> B
+"#,
+    );
+    let roomy = layout_flowchart(
+        r#"%%{init: {"flowchart": {"rankSpacing": 100}}}%%
+flowchart TB
+A --> B
+"#,
+    );
+
+    let default_dy = {
+        let (_, ay) = flowchart_node_center(&default, "A");
+        let (_, by) = flowchart_node_center(&default, "B");
+        by - ay
+    };
+    let zero_dy = {
+        let (_, ay) = flowchart_node_center(&zero, "A");
+        let (_, by) = flowchart_node_center(&zero, "B");
+        by - ay
+    };
+    let roomy_dy = {
+        let (_, ay) = flowchart_node_center(&roomy, "A");
+        let (_, by) = flowchart_node_center(&roomy, "B");
+        by - ay
+    };
+
+    assert!(
+        approx_eq(zero_dy, default_dy),
+        "Mermaid treats flowchart.rankSpacing=0 as falsy and falls back to 50; default={default_dy}, zero={zero_dy}"
+    );
+    assert!(
+        roomy_dy > default_dy + 25.0,
+        "configured positive rankSpacing should still affect layout; default={default_dy}, roomy={roomy_dy}"
+    );
 }
 
 #[test]

@@ -52,6 +52,9 @@ Adapter determinism side-slice: M07A-077 exposed fixed Gantt/local-time controls
 aligned typed render-model parsing with semantic JSON fixed-time behavior. M07A-078 exposed the
 same controls through Rust headless renderer facades and shared binding `options_json`.
 
+Flowchart parity side-slice: M07A-079 aligned `nodeSpacing=0` and `rankSpacing=0` with Mermaid's
+`|| 50` dagre source behavior while preserving `diagramPadding=0` as a valid explicit value.
+
 ## M5 — Typed Semantic Ownership
 
 Exit criteria:

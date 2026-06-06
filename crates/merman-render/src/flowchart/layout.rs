@@ -48,6 +48,26 @@ fn rank_dir_from_flow(direction: &str) -> RankDir {
     }
 }
 
+fn flowchart_dagre_spacing_or_default(config: &Value, key: &str, default: f64) -> f64 {
+    let Some(raw) = config
+        .get("flowchart")
+        .and_then(|flowchart| flowchart.get(key))
+    else {
+        return default;
+    };
+
+    // Mermaid Flowchart assigns `conf?.nodeSpacing || 50` and `conf?.rankSpacing || 50`,
+    // so numeric zero falls back to the default instead of becoming a real Dagre separation.
+    if raw.is_number() {
+        return raw
+            .as_f64()
+            .filter(|value| *value != 0.0)
+            .unwrap_or(default);
+    }
+
+    config_f64(config, &["flowchart", key]).unwrap_or(default)
+}
+
 fn normalize_dir(s: &str) -> String {
     s.trim().to_uppercase()
 }
@@ -811,8 +831,8 @@ fn layout_flowchart_v2_with_model(
 
     let build_graph_start = timing_enabled.then(web_time::Instant::now);
 
-    let nodesep = config_f64(effective_config_value, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
-    let ranksep = config_f64(effective_config_value, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
+    let nodesep = flowchart_dagre_spacing_or_default(effective_config_value, "nodeSpacing", 50.0);
+    let ranksep = flowchart_dagre_spacing_or_default(effective_config_value, "rankSpacing", 50.0);
     // Mermaid's default config sets `flowchart.padding` to 15.
     let node_padding =
         config_f64(effective_config_value, &["flowchart", "padding"]).unwrap_or(15.0);

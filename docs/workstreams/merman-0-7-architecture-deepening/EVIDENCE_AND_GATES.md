@@ -5,14 +5,12 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-078:
+The latest completed implementation slice is M07A-079:
 
 ```bash
-cargo nextest run -p merman-bindings-core
-cargo nextest run -p merman-bindings-core --features ascii
-cargo nextest run -p merman --features render headless_renderer_fixed_time_controls_semantic_parse
-cargo nextest run -p merman --features ascii headless_ascii_renderer_fixed_time_controls_semantic_parse
-cargo run -p xtask -- check-alignment
+cargo nextest run -p merman-render flowchart_node_spacing_zero_falls_back_to_mermaid_default flowchart_rank_spacing_zero_falls_back_to_mermaid_default flowchart_diagram_padding_zero_is_preserved
+cargo nextest run -p merman-render --test flowchart_layout_test --test flowchart_svg_test
+cargo fmt --all --check
 ```
 
 ## Gate Set
@@ -242,3 +240,17 @@ before marking a task, Codex goal, or lane complete.
   `git diff --check`;
   `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl >/dev/null`;
   `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json >/dev/null`.
+- 2026-06-06: M07A-079 aligned Flowchart numeric zero spacing with pinned Mermaid source.
+  `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowRenderer-v3-unified.ts` sets
+  `data4Layout.nodeSpacing = conf?.nodeSpacing || 50` and
+  `data4Layout.rankSpacing = conf?.rankSpacing || 50`, so JSON numeric `0` falls back to the
+  default spacing. The same source keeps `diagramPadding` on `?? 8`, so explicit
+  `diagramPadding=0` must remain valid. Validation passed:
+  `cargo nextest run -p merman-render flowchart_node_spacing_zero_falls_back_to_mermaid_default flowchart_rank_spacing_zero_falls_back_to_mermaid_default flowchart_diagram_padding_zero_is_preserved`
+  after first failing the two spacing tests as RED evidence;
+  `cargo nextest run -p merman-render --test flowchart_layout_test --test flowchart_svg_test`;
+  `cargo fmt --all --check`;
+  `git diff --check`;
+  `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl >/dev/null`;
+  `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json >/dev/null`;
+  `cargo run -p xtask -- check-alignment`.

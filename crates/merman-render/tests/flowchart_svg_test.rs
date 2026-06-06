@@ -56,6 +56,45 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
     .expect("render svg")
 }
 
+fn flowchart_svg_viewbox_values(svg: &str) -> [f64; 4] {
+    let viewbox_start = svg.find(r#"viewBox=""#).expect("viewBox") + r#"viewBox=""#.len();
+    let viewbox_end = svg[viewbox_start..].find('"').expect("viewBox end") + viewbox_start;
+    let viewbox = &svg[viewbox_start..viewbox_end];
+    let values = viewbox
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("viewBox number"))
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 4, "expected four viewBox values: {viewbox}");
+    [values[0], values[1], values[2], values[3]]
+}
+
+#[test]
+fn flowchart_diagram_padding_zero_is_preserved() {
+    let default = render_flowchart_svg_from_text(
+        r#"flowchart TB
+A
+"#,
+    );
+    let zero = render_flowchart_svg_from_text(
+        r#"%%{init: {"flowchart": {"diagramPadding": 0}}}%%
+flowchart TB
+A
+"#,
+    );
+
+    let default_viewbox = flowchart_svg_viewbox_values(&default);
+    let zero_viewbox = flowchart_svg_viewbox_values(&zero);
+
+    assert!(
+        (default_viewbox[2] - zero_viewbox[2] - 16.0).abs() < 1e-6,
+        "default diagramPadding=8 should add 16px width over diagramPadding=0; default={default_viewbox:?}, zero={zero_viewbox:?}"
+    );
+    assert!(
+        (default_viewbox[3] - zero_viewbox[3] - 16.0).abs() < 1e-6,
+        "default diagramPadding=8 should add 16px height over diagramPadding=0; default={default_viewbox:?}, zero={zero_viewbox:?}"
+    );
+}
+
 #[test]
 fn flowchart_svg_uses_configured_look_for_subgraph_clusters() {
     let svg = render_flowchart_svg_from_text(

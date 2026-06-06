@@ -23,7 +23,9 @@ path so Gantt render output uses the same `Engine::with_fixed_today` and
 `Engine::with_fixed_local_offset_minutes` context as semantic JSON parsing. M07A-078 exposed the
 same fixed-time controls through Rust headless renderer facades and the shared binding
 `options_json` contract, so existing C, UniFFI, WASM, Python, Android, Apple, Flutter, and Web paths
-inherit the capability without ABI growth.
+inherit the capability without ABI growth. M07A-079 aligned Flowchart `nodeSpacing=0` and
+`rankSpacing=0` with Mermaid's dagre source semantics (`|| 50`) while preserving
+`diagramPadding=0` through the SVG viewBox path (`?? 8`).
 
 ## Read First
 
