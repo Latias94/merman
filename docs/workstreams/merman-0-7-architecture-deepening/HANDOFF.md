@@ -18,6 +18,9 @@ size-budget gap so vector PDF conversion validates intrinsic SVG size limits bef
 wrapping and only allows oversized trusted exports through explicit unbounded options. M07A-076
 split raw SVG raster/PDF input from Mermaid-generated SVG postprocessing: raw SVG now starts from a
 `resvg_safe` boundary before CLI background/CSS postprocessors and is documented as trusted input.
+M07A-077 exposed fixed local-time controls through the CLI and fixed the typed render-model parse
+path so Gantt render output uses the same `Engine::with_fixed_today` and
+`Engine::with_fixed_local_offset_minutes` context as semantic JSON parsing.
 
 ## Read First
 
@@ -53,6 +56,8 @@ Next planner action is to continue M07A-C3 with M07A-080:
   host-side trust decisions.
 - PDF size limits now cover intrinsic SVG dimensions before vector conversion; this does not address
   every possible SVG parser complexity risk.
+- CLI Gantt parse/render determinism now has fixed today/offset controls, but bindings and other
+  host adapters still need their own public option surface if they want to expose this capability.
 - JSON fallback cleanup is intentionally late and must wait for diagram admission evidence.
 
 ## Working Tree Notes

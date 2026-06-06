@@ -4,7 +4,7 @@
 **Baseline**: `@mermaid-js/mermaid-cli` `11.15.0`
 **Reference source**: `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js`
 **Created**: 2026-06-04
-**Last updated**: 2026-06-04
+**Last updated**: 2026-06-06
 
 This document is the source of truth for making `merman-cli` behave like the official Mermaid CLI
 where a pure-Rust implementation can reasonably do so. It tracks both the public command surface and
@@ -110,6 +110,13 @@ costs, makes Rust renderers irrelevant for CLI output.
 | `--iconPacksNamesAndUrls <prefix#url...>` | Registers explicit Iconify JSON URL loaders. | Implemented | Supports HTTP(S), `file://`, and local path Iconify JSON sources; prefix before `#` overrides the JSON prefix like upstream loader registration. |
 | `--help`, `-h` | Print help and exit 0. | Implemented | Covered by CLI tests. |
 | `--version` | Print version and exit 0. | Implemented | Covered by CLI tests. |
+
+## Rust Extension Option Matrix
+
+| Rust extension option | Local behavior | Status | Notes |
+|---|---|---|---|
+| `--fixed-today <YYYY-MM-DD>` | Overrides the local "today" date used by time-dependent diagrams. | Implemented | Primarily stabilizes Gantt parse/render output for snapshots and headless automation. |
+| `--fixed-local-offset-minutes <minutes>` | Overrides local timezone semantics with a fixed offset in minutes. | Implemented | Validated to offsets accepted by `chrono::FixedOffset`; useful for cross-runner Gantt determinism. |
 
 ## Observable Behavior Matrix
 

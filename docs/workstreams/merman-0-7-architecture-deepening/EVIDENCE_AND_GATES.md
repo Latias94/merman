@@ -5,12 +5,12 @@ Last updated: 2026-06-06
 
 ## Smallest Current Repro
 
-The latest completed implementation slice is M07A-076:
+The latest completed implementation slice is M07A-077:
 
 ```bash
-cargo nextest run -p merman-cli raw_svg
-cargo nextest run -p merman-cli png
-cargo nextest run -p merman-cli pdf
+cargo nextest run -p merman-core gantt
+cargo nextest run -p merman-cli fixed
+cargo nextest run -p merman-cli
 cargo run -p xtask -- check-alignment
 ```
 
@@ -206,3 +206,19 @@ before marking a task, Codex goal, or lane complete.
   `cargo nextest run -p merman-cli pdf`;
   `cargo run -p xtask -- check-alignment`;
   `cargo fmt --all --check`.
+- 2026-06-06: M07A-077 exposed fixed local-time controls through the CLI and aligned typed
+  render-model parsing with semantic JSON parsing. CLI parse/render/top-level modes now accept
+  `--fixed-today` and `--fixed-local-offset-minutes`; `Engine::parse_diagram_for_render_model_sync`
+  now applies `Engine::with_fixed_today` and `Engine::with_fixed_local_offset_minutes` while
+  parsing typed render models, closing the Gantt SVG/render determinism gap. Validation passed:
+  `cargo nextest run -p merman-core gantt`;
+  `cargo nextest run -p merman-cli fixed`;
+  `cargo nextest run -p merman-cli`;
+  `cargo fmt --all --check`;
+  `cargo run -p xtask -- check-alignment`;
+  `git diff --check`;
+  `jq -c . docs/workstreams/merman-0-7-architecture-deepening/TASKS.jsonl >/dev/null`;
+  `jq -e . docs/workstreams/merman-0-7-architecture-deepening/WORKSTREAM.json >/dev/null`.
+  Broader `cargo nextest run --workspace` was not run because this slice touched core Gantt
+  fixed-time handling plus CLI adapter exposure; the Gantt family suite and full `merman-cli`
+  package gate cover the changed behavior.

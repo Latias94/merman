@@ -66,6 +66,16 @@
     },
     {
       "kind": "task_evidence",
+      "path": "crates/merman-core/src/lib.rs",
+      "note": "M07A-077 fixed local-time context for typed render-model parsing."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-cli/src/cli.rs",
+      "note": "M07A-077 CLI fixed today and local offset controls."
+    },
+    {
+      "kind": "task_evidence",
       "path": "crates/merman-core/src/family.rs",
       "note": "M07A-050 Diagram Family Facts projection."
     },
@@ -115,6 +125,6 @@
   "lane_slug": "merman-0-7-architecture-deepening",
   "continue_policy": {
     "default_action": "continue",
-    "notes": "M07A-C1 and M07A-C2 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, and M07A-076 raw SVG raster boundary hardening are complete. Next planner action is to start M07A-080 for PresentationTheme deepening or split remaining headless boundary findings."
+    "notes": "M07A-C1 and M07A-C2 are complete. M07A-070 root viewport proof, M07A-075 PDF size hardening, M07A-076 raw SVG raster boundary hardening, and M07A-077 Gantt CLI fixed-time controls are complete. Next planner action is to start M07A-080 for PresentationTheme deepening or split remaining headless boundary findings."
   }
 }

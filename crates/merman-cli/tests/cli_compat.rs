@@ -1,4 +1,5 @@
 use assert_cmd::prelude::*;
+use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -73,6 +74,15 @@ fn serve_icon_json_once(body: &'static str) -> String {
         let _ = stream.write_all(response.as_bytes());
     });
     format!("http://{addr}/icons.json")
+}
+
+fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
+    model["tasks"]
+        .as_array()
+        .expect("gantt tasks should be an array")
+        .iter()
+        .find(|task| task["id"].as_str() == Some(id))
+        .unwrap_or_else(|| panic!("missing Gantt task {id} in {model}"))
 }
 
 #[test]
@@ -150,6 +160,151 @@ fn cli_rejects_non_positive_jobs() {
     assert!(
         stderr.contains("expected a positive integer"),
         "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn cli_rejects_invalid_fixed_time_options() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+
+    for (flag, value, expected) in [
+        (
+            "--fixed-today",
+            "2026/02/15",
+            "expected a date in YYYY-MM-DD format",
+        ),
+        (
+            "--fixed-local-offset-minutes",
+            "1440",
+            "expected a timezone offset in minutes between -1439 and 1439",
+        ),
+    ] {
+        let output = Command::new(&exe)
+            .args(["parse", flag, value, "-"])
+            .output()
+            .expect("run cli");
+
+        assert!(
+            !output.status.success(),
+            "expected {flag} {value} to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(expected),
+            "unexpected stderr for {flag} {value}:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn cli_parse_gantt_fixed_today_makes_missing_year_dates_deterministic() {
+    let output = run_with_stdin(
+        &[
+            "parse",
+            "--fixed-today",
+            "2026-02-15",
+            "--fixed-local-offset-minutes",
+            "0",
+            "-",
+        ],
+        r#"gantt
+dateFormat MM-DD
+section Demo
+Missing year: id1,03-01,1d
+Missing ref: id2,after missing,1d
+"#,
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let model: Value = serde_json::from_slice(&output.stdout).expect("parse stdout should be JSON");
+
+    assert_eq!(
+        task_by_id(&model, "id1")["startTime"].as_i64(),
+        Some(1_772_323_200_000),
+        "MM-DD dates should use the fixed local year"
+    );
+    assert_eq!(
+        task_by_id(&model, "id2")["startTime"].as_i64(),
+        Some(1_771_113_600_000),
+        "missing relative IDs should fall back to fixed local today"
+    );
+}
+
+#[test]
+fn cli_parse_gantt_fixed_local_offset_controls_local_midnight() {
+    let output = run_with_stdin(
+        &["parse", "--fixed-local-offset-minutes", "120", "-"],
+        r#"gantt
+dateFormat YYYY-MM-DD
+section Demo
+Shifted midnight: id1,2013-01-01,1d
+"#,
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let model: Value = serde_json::from_slice(&output.stdout).expect("parse stdout should be JSON");
+
+    assert_eq!(
+        task_by_id(&model, "id1")["startTime"].as_i64(),
+        Some(1_356_991_200_000),
+        "UTC timestamp should reflect 2013-01-01T00:00 at +02:00"
+    );
+}
+
+#[test]
+fn top_level_gantt_fixed_today_is_carried_through_export_args() {
+    let diagram = r#"gantt
+dateFormat YYYY-MM-DD
+section Demo
+Anchor: id1,2026-01-01,1d
+Missing ref: id2,after missing,1d
+"#;
+    let first = run_with_stdin(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--svgId",
+            "fixed-gantt",
+            "--fixed-today",
+            "2026-02-15",
+            "--fixed-local-offset-minutes",
+            "0",
+        ],
+        diagram,
+    );
+    let second = run_with_stdin(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "--svgId",
+            "fixed-gantt",
+            "--fixed-today",
+            "2026-03-15",
+            "--fixed-local-offset-minutes",
+            "0",
+        ],
+        diagram,
+    );
+
+    assert!(first.status.success(), "stderr: {:?}", first.stderr);
+    assert!(second.status.success(), "stderr: {:?}", second.stderr);
+    assert!(
+        String::from_utf8_lossy(&first.stdout)
+            .trim_start()
+            .starts_with("<svg")
+    );
+    assert!(
+        String::from_utf8_lossy(&second.stdout)
+            .trim_start()
+            .starts_with("<svg")
+    );
+    assert_ne!(
+        first.stdout, second.stdout,
+        "top-level render must carry fixed Gantt time options through ExportArgs"
     );
 }
 

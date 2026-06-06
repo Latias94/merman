@@ -200,6 +200,10 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 - `--text-measurer deterministic|vendored` controls text measurement.
 - `--math-renderer none|ratex` controls math label rendering.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.
+- `--fixed-today <YYYY-MM-DD>` fixes the local "today" date for time-dependent diagrams such as
+  Gantt.
+- `--fixed-local-offset-minutes <minutes>` fixes the local timezone offset for deterministic
+  local-time parsing and rendering.
 - `--hand-drawn-seed <n>` stabilizes rough/hand-drawn rendering where supported.
 
 ## SVG Input Rasterization

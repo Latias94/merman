@@ -11,7 +11,10 @@ use std::sync::Arc;
 
 pub(crate) fn engine_for(parse: &ParseCliArgs, render: &RenderCliArgs) -> Result<Engine, CliError> {
     let site_config = site_config_for(parse, render)?;
-    Ok(Engine::new().with_site_config(site_config))
+    Ok(Engine::new()
+        .with_fixed_today(parse.fixed_today)
+        .with_fixed_local_offset_minutes(parse.fixed_local_offset_minutes)
+        .with_site_config(site_config))
 }
 
 fn site_config_for(

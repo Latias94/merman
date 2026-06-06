@@ -21,6 +21,7 @@ ratex-math = ["merman/ratex-math"]
 
 [dependencies]
 clap.workspace = true
+chrono.workspace = true
 merman = { workspace = true, features = ["raster"] }
 rayon.workspace = true
 regex.workspace = true

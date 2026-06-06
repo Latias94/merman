@@ -101,6 +101,14 @@ pub(crate) struct ParseCliArgs {
     /// Mermaid theme override.
     #[arg(short = 't', long)]
     pub(crate) theme: Option<String>,
+
+    /// Override the local "today" date for time-dependent diagrams.
+    #[arg(long = "fixed-today", value_parser = parse_naive_date)]
+    pub(crate) fixed_today: Option<chrono::NaiveDate>,
+
+    /// Override the local timezone offset in minutes for time-dependent diagrams.
+    #[arg(long = "fixed-local-offset-minutes", value_parser = parse_fixed_local_offset_minutes)]
+    pub(crate) fixed_local_offset_minutes: Option<i32>,
 }
 
 #[derive(Debug, Clone, ClapArgs)]
@@ -268,6 +276,14 @@ pub(crate) struct ExportArgs {
     #[arg(long = "suppress-errors")]
     pub(crate) suppress_errors: bool,
 
+    /// Override the local "today" date for time-dependent diagrams.
+    #[arg(long = "fixed-today", value_parser = parse_naive_date)]
+    pub(crate) fixed_today: Option<chrono::NaiveDate>,
+
+    /// Override the local timezone offset in minutes for time-dependent diagrams.
+    #[arg(long = "fixed-local-offset-minutes", value_parser = parse_fixed_local_offset_minutes)]
+    pub(crate) fixed_local_offset_minutes: Option<i32>,
+
     /// Mirror sequence participants below lifelines for ASCII/Unicode output.
     #[arg(long = "sequence-mirror-actors")]
     pub(crate) sequence_mirror_actors: bool,
@@ -372,6 +388,24 @@ fn parse_positive_f64(value: &str) -> Result<f64, String> {
         .map_err(|_| "expected a positive number".to_string())?;
     if !(parsed.is_finite() && parsed > 0.0) {
         return Err("expected a positive number".to_string());
+    }
+    Ok(parsed)
+}
+
+fn parse_naive_date(value: &str) -> Result<chrono::NaiveDate, String> {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| "expected a date in YYYY-MM-DD format".to_string())
+}
+
+fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
+    let parsed = value
+        .parse::<i32>()
+        .map_err(|_| "expected a timezone offset in minutes".to_string())?;
+    let Some(seconds) = parsed.checked_mul(60) else {
+        return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
+    };
+    if chrono::FixedOffset::east_opt(seconds).is_none() {
+        return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
     }
     Ok(parsed)
 }

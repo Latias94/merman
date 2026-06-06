@@ -416,7 +416,11 @@ impl Engine {
         let preprocess = preprocess_start.map(|s| s.elapsed());
 
         let parse_start = timing_enabled.then(web_time::Instant::now);
-        let parse_res = self.parse_render_semantic_model(&code, &meta);
+        let parse_res = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
+            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
+                self.parse_render_semantic_model(&code, &meta)
+            })
+        });
         let parse = parse_start.map(|s| s.elapsed());
 
         let mut model = match parse_res {

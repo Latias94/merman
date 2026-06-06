@@ -24,3 +24,8 @@
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/DESIGN.md","why":"Authoritative target state and scope for this lane."}
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/TODO.md","why":"Human task ledger for this lane."}
 {"kind":"workstream","path":"docs/workstreams/merman-0-7-architecture-deepening/EVIDENCE_AND_GATES.md","why":"Fresh verification commands and evidence anchors."}
+{"kind":"task_evidence","path":"crates/merman-core/src/lib.rs","why":"M07A-077: typed render-model parsing now applies Engine fixed today/local offset context."}
+{"kind":"task_evidence","path":"crates/merman-core/src/diagrams/gantt/tests.rs","why":"M07A-077: core Gantt render-model fixed-time regression."}
+{"kind":"task_evidence","path":"crates/merman-cli/src/cli.rs","why":"M07A-077: CLI fixed today and fixed local offset argument definitions."}
+{"kind":"task_evidence","path":"crates/merman-cli/tests/cli_compat.rs","why":"M07A-077: CLI fixed Gantt parse/render determinism regressions."}
+{"kind":"task_evidence","path":"docs/alignment/CLI_COMPATIBILITY.md","why":"M07A-077: documents Rust-only fixed-time CLI options."}

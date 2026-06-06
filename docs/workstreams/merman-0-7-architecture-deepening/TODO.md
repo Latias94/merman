@@ -137,6 +137,24 @@ Last updated: 2026-06-06
   and size limits.
   State: TASKS.jsonl entry M07A-076 is done.
 
+- [x] M07A-077 [owner=codex] [deps=M07A-030,M07A-076] [scope=crates/merman-core/src/lib.rs,crates/merman-core/src/diagrams/gantt/tests.rs,crates/merman-cli/src/cli.rs,crates/merman-cli/src/config.rs,crates/merman-cli/src/render.rs,crates/merman-cli/tests/cli_compat.rs,crates/merman-cli/README.md,docs/alignment/CLI_COMPATIBILITY.md]
+  Goal: Expose fixed Gantt/local-time controls through CLI parse/render entry points and ensure
+  typed render-model parsing uses the same fixed-time context as semantic JSON parsing.
+  Validation: `cargo nextest run -p merman-core gantt_render_model_uses_fixed_today_for_missing_year_dates`;
+  `cargo nextest run -p merman-cli fixed`;
+  `cargo nextest run -p merman-cli top_level_gantt_fixed_today_is_carried_through_export_args`;
+  `cargo fmt --all --check`.
+  Review: Keep this as a deterministic headless adapter slice; do not rewrite Gantt parser,
+  layout, theme, or SVG parity behavior.
+  Evidence: CLI fixed time flags, Engine construction, render-model fixed-time wrapper, and CLI/core
+  Gantt regressions.
+  Context: this workstream context manifest plus ADR 0004 and 0014.
+  Handoff: DONE on 2026-06-06. CLI now accepts `--fixed-today` and
+  `--fixed-local-offset-minutes`; semantic JSON and typed render-model paths both honor those
+  fixed local-time controls, so Gantt parse and SVG render outputs can be made reproducible from
+  the CLI.
+  State: TASKS.jsonl entry M07A-077 is done.
+
 - [ ] M07A-080 [owner=unassigned] [deps=M07A-010] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/config.rs,crates/merman-render/src/xychart.rs,crates/merman-render/src/quadrantchart.rs,crates/merman-render/src/svg/parity]
   Goal: Continue ADR 0068 by migrating repeated raw `themeVariables` fallback chains into
   renderer-facing `PresentationTheme` roles.
@@ -181,7 +199,7 @@ Last updated: 2026-06-06
 
 ## M5 — Final Verification And Closeout
 
-- [ ] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
+- [ ] M07A-120 [owner=planner] [deps=M07A-040,M07A-060,M07A-070,M07A-077,M07A-080,M07A-100,M07A-110] [scope=docs/workstreams/merman-0-7-architecture-deepening,CONTEXT.md,docs/alignment]
   Goal: Run final gates, reconcile TODO.md/TASKS.jsonl/CAMPAIGNS.jsonl, close or split remaining
   architecture follow-ons, and prepare 0.7.0-facing release notes.
   Validation: `cargo fmt --all --check`; `cargo nextest run --workspace`; `cargo run -p xtask -- check-alignment`; full or justified narrowed SVG parity gate.

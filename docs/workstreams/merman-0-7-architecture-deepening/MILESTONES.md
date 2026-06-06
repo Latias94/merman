@@ -48,6 +48,9 @@ Exit criteria:
 Status: In progress. M07A-070 completed the shared root viewport proof with `treeView`; M07A-080
 still owns PresentationTheme migration.
 
+Adapter determinism side-slice: M07A-077 exposed fixed Gantt/local-time controls through the CLI and
+aligned typed render-model parsing with semantic JSON fixed-time behavior.
+
 ## M5 — Typed Semantic Ownership
 
 Exit criteria:

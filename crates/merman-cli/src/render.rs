@@ -90,6 +90,8 @@ pub(crate) fn render_plan_for_mmdc(
         suppress_errors: export.suppress_errors,
         config_file: export.config_file.clone(),
         theme: export.theme.clone(),
+        fixed_today: export.fixed_today,
+        fixed_local_offset_minutes: export.fixed_local_offset_minutes,
     };
     let mut render = RenderCliArgs {
         text_measurer: export.text_measurer,
@@ -147,6 +149,8 @@ pub(crate) fn render_plan_for_subcommand(args: RenderArgs) -> Result<RenderPlan,
             suppress_errors: args.export.suppress_errors,
             config_file: args.export.config_file.clone(),
             theme: args.export.theme.clone(),
+            fixed_today: args.export.fixed_today,
+            fixed_local_offset_minutes: args.export.fixed_local_offset_minutes,
         },
         render: RenderCliArgs {
             text_measurer: args.export.text_measurer,

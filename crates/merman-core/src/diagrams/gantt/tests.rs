@@ -1,6 +1,6 @@
 use super::*;
-use crate::{Engine, ParseOptions};
-use chrono::{Local, TimeZone};
+use crate::{Engine, ParseOptions, RenderSemanticModel};
+use chrono::{Local, NaiveDate, TimeZone};
 use futures::executor::block_on;
 
 fn parse(text: &str) -> Value {
@@ -19,6 +19,40 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
         .or_else(|| Local.with_ymd_and_hms(y, m, d, h, min, s).earliest())
         .unwrap();
     local.fixed_offset().timestamp_millis()
+}
+
+#[test]
+fn gantt_render_model_uses_fixed_today_for_missing_year_dates() {
+    let engine = Engine::new()
+        .with_fixed_today(Some(
+            NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
+        ))
+        .with_fixed_local_offset_minutes(Some(0));
+    let parsed = block_on(engine.parse_diagram_for_render_model(
+        r#"
+gantt
+dateFormat MM-DD
+section Demo
+Missing year: id1,03-01,1d
+Missing ref: id2,after missing,1d
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+    let RenderSemanticModel::Gantt(model) = parsed.model else {
+        panic!("expected Gantt render model");
+    };
+    let task = |id: &str| {
+        model
+            .tasks
+            .iter()
+            .find(|task| task.id == id)
+            .unwrap_or_else(|| panic!("missing Gantt task {id}"))
+    };
+
+    assert_eq!(task("id1").start_ms, 1_772_323_200_000);
+    assert_eq!(task("id2").start_ms, 1_771_113_600_000);
 }
 
 #[test]
