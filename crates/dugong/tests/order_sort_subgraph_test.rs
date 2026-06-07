@@ -175,6 +175,40 @@ fn sort_subgraph_can_sort_a_nested_subgraph_with_a_barycenter() {
 }
 
 #[test]
+fn sort_subgraph_handles_deep_compound_chains_with_small_stack() {
+    const DEPTH: usize = 2048;
+    let handle = std::thread::Builder::new()
+        .name("dugong-sort-subgraph-deep-chain".to_string())
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let mut g = new_graph_compound();
+            g.ensure_node("root");
+            for i in 0..DEPTH {
+                let id = format!("n{i}");
+                g.ensure_node(id.as_str());
+                let parent = if i == 0 {
+                    "root".to_string()
+                } else {
+                    format!("n{}", i - 1)
+                };
+                g.set_parent(id, parent);
+            }
+            let leaf = "leaf";
+            g.ensure_node(leaf);
+            g.set_parent(leaf, format!("n{}", DEPTH - 1));
+
+            let cg: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+            let result = sort_subgraph(&g, "root", &cg, false);
+
+            assert_eq!(result.vs, vec![leaf.to_string()]);
+        })
+        .expect("spawn dugong sort-subgraph deep chain test");
+    handle
+        .join()
+        .expect("dugong sort-subgraph deep chain should finish without stack overflow");
+}
+
+#[test]
 fn sort_subgraph_can_sort_a_nested_subgraph_with_no_in_edges() {
     let mut g = new_graph_compound();
     seed_order_nodes(&mut g);

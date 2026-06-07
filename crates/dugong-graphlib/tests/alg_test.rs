@@ -254,3 +254,32 @@ fn postorder_panics_if_root_is_not_in_the_graph() {
 
     let _ = alg::postorder(&g, &["b"]);
 }
+
+#[test]
+fn preorder_and_postorder_handle_deep_successor_chains_with_small_stack() {
+    const DEPTH: usize = 2048;
+    let handle = std::thread::Builder::new()
+        .name("graphlib-deep-alg-traversal".to_string())
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+            for i in 0..DEPTH {
+                g.set_edge(format!("n{i}"), format!("n{}", i + 1));
+            }
+
+            let leaf = format!("n{DEPTH}");
+            let preorder = alg::preorder(&g, &["n0"]);
+            assert_eq!(preorder.len(), DEPTH + 1);
+            assert_eq!(preorder.first().map(String::as_str), Some("n0"));
+            assert_eq!(preorder.last().map(String::as_str), Some(leaf.as_str()));
+
+            let postorder = alg::postorder(&g, &["n0"]);
+            assert_eq!(postorder.len(), DEPTH + 1);
+            assert_eq!(postorder.first().map(String::as_str), Some(leaf.as_str()));
+            assert_eq!(postorder.last().map(String::as_str), Some("n0"));
+        })
+        .expect("spawn graphlib deep traversal test");
+    handle
+        .join()
+        .expect("graphlib deep traversal should finish without stack overflow");
+}

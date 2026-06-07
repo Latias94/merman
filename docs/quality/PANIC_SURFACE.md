@@ -25,6 +25,12 @@ Library code should not panic on user-controlled input.
     - empty graphs
     - disconnected graphs (build a forest instead of panicking)
     - missing node/rank metadata (treat as defaults where possible)
+  - `rank::util::longest_path(...)`, `order::sort_subgraph(...)`, and
+    `order::sort_subgraph_ix(...)` no longer recurse over user-controlled graph depth. Deep edge
+    chains and compound subgraph chains now use explicit heap-backed traversal.
+- `dugong-graphlib`:
+  - `alg::preorder(...)` and `alg::postorder(...)` no longer recurse over successor depth. Deep
+    Graphlib successor chains now preserve traversal order through explicit stacks.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
@@ -51,6 +57,9 @@ Library code should not panic on user-controlled input.
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
     depending on that invariant staying panic-safe.
+  - Class namespace rendering no longer recursively emits nested namespace root groups. Deep public
+    `classDiagram` `namespace` chains now parse, layout, and render SVG through explicit frame
+    traversal while preserving the existing root/group/node/edge output order.
   - State edge segment merging no longer unwraps the last accumulated point after a separate
     non-empty guard. Duplicate segment-boundary points are still skipped when present; an unexpected
     empty accumulator now falls through to normal point insertion.
@@ -123,6 +132,13 @@ Library code should not panic on user-controlled input.
     and `git diff --check` passed for the Flowchart deep-subgraph cleanup. The new `1,200`-level
     Flowchart regression reproduced stack overflow in the public layout path before the
     non-recursive layout placement/cluster-rect changes.
+  - Verification: `cargo fmt --check -p dugong -p dugong-graphlib -p merman-render`,
+    `cargo nextest run -p dugong-graphlib --test alg_test`,
+    `cargo nextest run -p dugong --test rank_util_test`,
+    `cargo nextest run -p dugong --test order_sort_subgraph_test`,
+    `cargo nextest run -p merman-render --test class_svg_test`,
+    `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+    and `git diff --check` passed for the Class namespace / dugong deep traversal cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -148,9 +164,10 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart, Ishikawa, TreeView, Treemap, Mindmap, Block, and C4 now have explicit-stack coverage
-    for representative deep or maximum-accepted inputs, but similar tree-shaped families should be
-    audited before release hardening is considered complete.
+  - Flowchart, Class namespaces, Ishikawa, TreeView, Treemap, Mindmap, Block, C4, and
+    dugong/graphlib graph traversals now have explicit-stack coverage for representative deep or
+    maximum-accepted inputs, but similar tree-shaped families should be audited before release
+    hardening is considered complete.
 
 ## Suggested workflow
 

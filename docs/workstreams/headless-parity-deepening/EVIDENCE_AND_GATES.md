@@ -7360,3 +7360,62 @@ Gate notes:
 - This is release-boundary hardening for Flowchart's accepted deep subgraph path. It does not
   introduce a new Flowchart depth limit or claim closure of known Flowchart max-width/root
   residuals.
+
+## HPD-050 - Class Namespace And Dugong Deep Traversal Panic Surface
+
+Outcome:
+
+- Hardened Class's public nested `namespace` path after the Flowchart cleanup. A deep
+  `classDiagram` namespace chain was publicly parseable; parse-only stayed green, but layout first
+  exposed recursive traversal in dugong/graphlib and SVG output then exposed recursive namespace
+  root rendering.
+- `dugong::rank::util::longest_path(...)` now computes ranks with an explicit frame stack instead
+  of recursive DFS, preserving `minlen` rank propagation across deep edge chains.
+- `dugong_graphlib::alg::{preorder, postorder}` now traverse successors iteratively while
+  preserving the upstream-compatible root/successor order and missing-root panic behavior.
+- `dugong::order::sort_subgraph_ix(...)`, timed sort-subgraph traversal, and the public
+  `dugong::order::sort_subgraph(...)` API now use explicit enter/exit frames for deep compound
+  subgraph chains.
+- Class namespace SVG root output now uses explicit render frames instead of recursively calling
+  `render_class_namespace_root(...)`, preserving the existing DOM ordering:
+  namespace root open, clusters, edge labels, node group, child roots, edge paths, and close.
+- Added public-path and cheap lower-level regressions:
+  - Class parse, layout, and SVG output cover a `128`-level namespace chain on a small thread
+    stack;
+  - Graphlib preorder/postorder cover a `2,048`-edge successor chain on a `64KB` stack;
+  - dugong longest-path covers a `2,048`-edge rank chain on a `64KB` stack;
+  - public `sort_subgraph(...)` covers a `2,048`-level compound chain on a `64KB` stack.
+
+Evidence:
+
+- `crates/dugong-graphlib/src/graph/alg.rs`
+- `crates/dugong-graphlib/tests/alg_test.rs`
+- `crates/dugong/src/order/barycenter.rs`
+- `crates/dugong/src/rank/util.rs`
+- `crates/dugong/tests/order_sort_subgraph_test.rs`
+- `crates/dugong/tests/rank_util_test.rs`
+- `crates/merman-render/src/svg/parity/class/nodes.rs`
+- `crates/merman-render/tests/class_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-class-namespace-dugong-deep-traversal.md`
+
+Focused verification:
+
+- `cargo fmt --check -p dugong -p dugong-graphlib -p merman-render` - passed.
+- `cargo nextest run -p dugong-graphlib --test alg_test` - passed.
+- `cargo nextest run -p dugong --test rank_util_test` - passed.
+- `cargo nextest run -p dugong --test order_sort_subgraph_test` - passed.
+- `cargo nextest run -p merman-render --test class_svg_test` - passed.
+- `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- The public Class regression is intentionally `128` levels because deeper public layout chains are
+  slow enough to behave like a performance stress test on Windows. Deeper stack-safety coverage is
+  carried by cheap dugong/graphlib unit regressions.
+- This is release-boundary hardening for Class namespace layout/SVG and dugong-adjacent traversal,
+  not a claim that Class root residuals or Architecture solver diagnostics are closed.

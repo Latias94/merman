@@ -483,118 +483,134 @@ fn render_class_namespace_root(
     edges_by_root: &HashMap<&str, Vec<LayoutEdge>>,
     ns_id: &str,
 ) {
-    let Some(root_cluster) = clusters_by_id.get(ns_id).copied() else {
-        return;
-    };
-    let (root_dx, root_dy) = class_namespace_root_offset(root_cluster);
-    let _ = write!(
-        out,
-        r#"<g class="root" transform="translate({}, {})">"#,
-        fmt(root_dx),
-        fmt(root_dy)
-    );
-
-    let flatten_descendants = plan.direct_node_counts.get(ns_id).copied().unwrap_or(0) > 0;
-    let cluster_ids = if flatten_descendants {
-        plan.namespace_order
-            .iter()
-            .copied()
-            .filter(|candidate| class_namespace_is_descendant_or_self(candidate, ns_id, ctx.model))
-            .collect::<Vec<_>>()
-    } else {
-        vec![ns_id]
-    };
-    render_class_namespace_clusters_in_root(
-        out,
-        content_bounds,
-        clusters_by_id,
-        &cluster_ids,
-        super::namespace::ClassNamespaceClusterGroupContext {
-            diagram_id: ctx.diagram_id,
-            content_tx: ctx.content_tx,
-            content_ty: ctx.content_ty,
-            bounds_dx: 0.0,
-            bounds_dy: 0.0,
-            look: ctx.settings.look.as_str(),
-            timing_enabled: ctx.timing_enabled,
-        },
-        ns_id,
-        root_dx,
-        root_dy,
-    );
-
-    let empty_edges = Vec::new();
-    let edges = edges_by_root
-        .get(ns_id)
-        .map(|edges| edges.as_slice())
-        .unwrap_or(empty_edges.as_slice());
-    let has_edges = !edges.is_empty();
-    let split = render_class_split_edges_for_namespace(
-        out,
-        content_bounds,
-        detail,
-        edge_ctx,
-        edges,
-        root_dx,
-        root_dy,
-        true,
-    );
-    out.push_str(&split.edge_labels);
-    if !has_edges {
-        out.push_str(&split.edge_paths);
+    enum NamespaceRootFrame<'a> {
+        Enter(&'a str),
+        Close { has_edges: bool, edge_paths: String },
     }
 
-    out.push_str(r#"<g class="nodes">"#);
-    if flatten_descendants {
-        for id in ordered_ids {
-            if plan.root_by_node_id.get(id).copied().flatten() != Some(ns_id) {
-                continue;
-            }
-            render_class_node_id(
-                ClassNodesRenderState {
+    let mut stack = vec![NamespaceRootFrame::Enter(ns_id)];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            NamespaceRootFrame::Enter(ns_id) => {
+                let Some(root_cluster) = clusters_by_id.get(ns_id).copied() else {
+                    continue;
+                };
+                let (root_dx, root_dy) = class_namespace_root_offset(root_cluster);
+                let _ = write!(
+                    out,
+                    r#"<g class="root" transform="translate({}, {})">"#,
+                    fmt(root_dx),
+                    fmt(root_dy)
+                );
+
+                let flatten_descendants =
+                    plan.direct_node_counts.get(ns_id).copied().unwrap_or(0) > 0;
+                let cluster_ids = if flatten_descendants {
+                    plan.namespace_order
+                        .iter()
+                        .copied()
+                        .filter(|candidate| {
+                            class_namespace_is_descendant_or_self(candidate, ns_id, ctx.model)
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![ns_id]
+                };
+                render_class_namespace_clusters_in_root(
+                    out,
+                    content_bounds,
+                    clusters_by_id,
+                    &cluster_ids,
+                    super::namespace::ClassNamespaceClusterGroupContext {
+                        diagram_id: ctx.diagram_id,
+                        content_tx: ctx.content_tx,
+                        content_ty: ctx.content_ty,
+                        bounds_dx: 0.0,
+                        bounds_dy: 0.0,
+                        look: ctx.settings.look.as_str(),
+                        timing_enabled: ctx.timing_enabled,
+                    },
+                    ns_id,
+                    root_dx,
+                    root_dy,
+                );
+
+                let edges = edges_by_root
+                    .get(ns_id)
+                    .map(|edges| edges.as_slice())
+                    .unwrap_or(&[]);
+                let has_edges = !edges.is_empty();
+                let split = render_class_split_edges_for_namespace(
                     out,
                     content_bounds,
                     detail,
-                    sanitize_config,
-                    borrowed_sanitize_config,
-                },
-                ctx,
-                layout_nodes_by_id,
-                id,
-                ClassNodeRootOffsets {
-                    nodes_root_dx: 0.0,
-                    nodes_root_dy: 0.0,
-                    namespace_root_dx: root_dx,
-                    namespace_root_dy: root_dy,
-                    in_namespace_root: true,
-                },
-            );
-        }
-    } else if let Some(children) = plan.children_by_ns.get(ns_id) {
-        for child in children {
-            render_class_namespace_root(
-                out,
-                content_bounds,
-                detail,
-                sanitize_config,
-                borrowed_sanitize_config,
-                ctx,
-                edge_ctx,
-                layout_nodes_by_id,
-                ordered_ids,
-                clusters_by_id,
-                plan,
-                edges_by_root,
-                child,
-            );
-        }
-    }
-    out.push_str("</g>");
+                    edge_ctx,
+                    edges,
+                    root_dx,
+                    root_dy,
+                    true,
+                );
+                out.push_str(&split.edge_labels);
+                if !has_edges {
+                    out.push_str(&split.edge_paths);
+                }
 
-    if has_edges {
-        out.push_str(&split.edge_paths);
+                out.push_str(r#"<g class="nodes">"#);
+                if flatten_descendants {
+                    for id in ordered_ids {
+                        if plan.root_by_node_id.get(id).copied().flatten() != Some(ns_id) {
+                            continue;
+                        }
+                        render_class_node_id(
+                            ClassNodesRenderState {
+                                out,
+                                content_bounds,
+                                detail,
+                                sanitize_config,
+                                borrowed_sanitize_config,
+                            },
+                            ctx,
+                            layout_nodes_by_id,
+                            id,
+                            ClassNodeRootOffsets {
+                                nodes_root_dx: 0.0,
+                                nodes_root_dy: 0.0,
+                                namespace_root_dx: root_dx,
+                                namespace_root_dy: root_dy,
+                                in_namespace_root: true,
+                            },
+                        );
+                    }
+                    out.push_str("</g>");
+                    if has_edges {
+                        out.push_str(&split.edge_paths);
+                    }
+                    out.push_str("</g>");
+                    continue;
+                }
+
+                stack.push(NamespaceRootFrame::Close {
+                    has_edges,
+                    edge_paths: split.edge_paths,
+                });
+                if let Some(children) = plan.children_by_ns.get(ns_id) {
+                    for child in children.iter().rev() {
+                        stack.push(NamespaceRootFrame::Enter(child));
+                    }
+                }
+            }
+            NamespaceRootFrame::Close {
+                has_edges,
+                edge_paths,
+            } => {
+                out.push_str("</g>");
+                if has_edges {
+                    out.push_str(&edge_paths);
+                }
+                out.push_str("</g>");
+            }
+        }
     }
-    out.push_str("</g>");
 }
 
 fn render_class_node_id(

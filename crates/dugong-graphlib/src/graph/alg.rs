@@ -9,30 +9,21 @@ where
     E: Default + 'static,
     G: Default,
 {
-    fn dfs<N, E, G>(
-        g: &Graph<N, E, G>,
-        v: &str,
-        visited: &mut BTreeSet<String>,
-        out: &mut Vec<String>,
-    ) where
-        N: Default + 'static,
-        E: Default + 'static,
-        G: Default,
-    {
-        if !visited.insert(v.to_string()) {
-            return;
-        }
-        out.push(v.to_string());
-        for w in g.successors(v) {
-            dfs(g, w, visited, out);
-        }
-    }
-
     let mut visited: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<String> = Vec::new();
     for r in roots {
         assert!(g.has_node(r), "preorder root is not in the graph: {r}");
-        dfs(g, r, &mut visited, &mut out);
+        let mut stack = vec![r.to_string()];
+        while let Some(v) = stack.pop() {
+            if !visited.insert(v.clone()) {
+                continue;
+            }
+            out.push(v.clone());
+            let successors = g.successors(&v);
+            for w in successors.into_iter().rev() {
+                stack.push(w.to_string());
+            }
+        }
     }
     out
 }
@@ -43,30 +34,25 @@ where
     E: Default + 'static,
     G: Default,
 {
-    fn dfs<N, E, G>(
-        g: &Graph<N, E, G>,
-        v: &str,
-        visited: &mut BTreeSet<String>,
-        out: &mut Vec<String>,
-    ) where
-        N: Default + 'static,
-        E: Default + 'static,
-        G: Default,
-    {
-        if !visited.insert(v.to_string()) {
-            return;
-        }
-        for w in g.successors(v) {
-            dfs(g, w, visited, out);
-        }
-        out.push(v.to_string());
-    }
-
     let mut visited: BTreeSet<String> = BTreeSet::new();
     let mut out: Vec<String> = Vec::new();
     for r in roots {
         assert!(g.has_node(r), "postorder root is not in the graph: {r}");
-        dfs(g, r, &mut visited, &mut out);
+        let mut stack = vec![(r.to_string(), false)];
+        while let Some((v, expanded)) = stack.pop() {
+            if expanded {
+                out.push(v);
+                continue;
+            }
+            if !visited.insert(v.clone()) {
+                continue;
+            }
+            stack.push((v.clone(), true));
+            let successors = g.successors(&v);
+            for w in successors.into_iter().rev() {
+                stack.push((w.to_string(), false));
+            }
+        }
     }
     out
 }

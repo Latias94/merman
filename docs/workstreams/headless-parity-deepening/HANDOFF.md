@@ -1093,6 +1093,12 @@ Current repository reality to preserve:
     parse-for-render-model stayed green. Flowchart extracted cluster placement, fallback subtree
     rect collection, final cluster rect postorder computation, and nested SVG root rendering now
     use explicit heap-backed frames. Focused Flowchart tests and DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened Class namespace layout/SVG after a public
+    nested `classDiagram` `namespace` chain exposed deep traversal risk in dugong/graphlib layout
+    and then in Class namespace root rendering. `dugong` longest-path and compound sort-subgraph,
+    `dugong-graphlib` preorder/postorder, and Class namespace SVG root output now use explicit
+    frame stacks. Public Class regressions cover a `128`-level namespace chain, while cheaper
+    dugong/graphlib regressions cover `2,048`-level deep graph chains on a `64KB` stack.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

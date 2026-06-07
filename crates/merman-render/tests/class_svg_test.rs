@@ -35,6 +35,65 @@ fn render_class_svg_from_text(text: &str) -> String {
     .expect("svg render ok")
 }
 
+fn deep_class_namespace_text(depth: usize) -> String {
+    let mut lines = vec!["classDiagram".to_string()];
+    for i in 0..depth {
+        lines.push(format!("{}namespace N{i} {{", "  ".repeat(i)));
+    }
+    lines.push(format!("{}class Leaf", "  ".repeat(depth)));
+    for i in (0..depth).rev() {
+        lines.push(format!("{}}}", "  ".repeat(i)));
+    }
+    lines.join("\n")
+}
+
+#[test]
+fn class_parse_for_render_model_handles_deep_namespace_chain() {
+    const DEPTH: usize = 128;
+    let source = deep_class_namespace_text(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("class-deep-namespace-parse".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let engine = Engine::new();
+            futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::default()))
+                .expect("parse ok")
+                .expect("diagram detected");
+        })
+        .expect("spawn deep namespace parse test");
+    handle
+        .join()
+        .expect("deep namespace parse should finish without stack overflow");
+}
+
+#[test]
+fn class_layout_handles_deep_namespace_chain() {
+    const DEPTH: usize = 128;
+    let source = deep_class_namespace_text(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("class-deep-namespace-layout".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let engine = Engine::new();
+            let parsed =
+                futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::default()))
+                    .expect("parse ok")
+                    .expect("diagram detected");
+            let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+            let LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+                panic!("expected ClassDiagramV2 layout");
+            };
+            assert!(
+                layout.nodes.iter().any(|node| node.id == "Leaf"),
+                "expected deeply nested class member to remain in the layout"
+            );
+        })
+        .expect("spawn deep namespace layout test");
+    handle
+        .join()
+        .expect("deep namespace layout should finish without stack overflow");
+}
+
 #[test]
 fn class_svg_dotted_namespace_titles_use_hierarchical_segment_labels() {
     let svg = render_class_svg_from_text(
@@ -421,6 +480,33 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
     assert!(
         svg.contains("<p>Root.A.A1</p>") && svg.contains("<p>Root.B.B1.B1a</p>"),
         "expected qualified relation facade class labels to remain visible"
+    );
+}
+
+#[test]
+fn class_svg_handles_deep_namespace_subgraph_chain() {
+    const DEPTH: usize = 128;
+    let source = deep_class_namespace_text(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("class-deep-namespace-svg".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || render_class_svg_from_text(&source))
+        .expect("spawn deep namespace SVG test");
+    let svg = handle
+        .join()
+        .expect("deep namespace SVG render should finish without stack overflow");
+
+    assert!(
+        svg.contains("Leaf"),
+        "expected deeply nested class member to remain visible"
+    );
+    assert!(
+        svg.contains(r#"id="merman-N0""#),
+        "expected outer namespace cluster to be rendered"
+    );
+    assert!(
+        svg.contains("N127"),
+        "expected deepest namespace cluster to be rendered"
     );
 }
 

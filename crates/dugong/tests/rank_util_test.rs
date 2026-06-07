@@ -85,3 +85,31 @@ fn longest_path_uses_the_minlen_attribute_on_the_edge() {
     assert_eq!(g.node("c").unwrap().rank, Some(1));
     assert_eq!(g.node("d").unwrap().rank, Some(3));
 }
+
+#[test]
+fn longest_path_handles_deep_edge_chains_with_small_stack() {
+    const DEPTH: usize = 2048;
+    let handle = std::thread::Builder::new()
+        .name("dugong-longest-path-deep-chain".to_string())
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let mut g = new_graph();
+            for i in 0..DEPTH {
+                g.set_edge(format!("n{i}"), format!("n{}", i + 1));
+            }
+
+            rank::util::longest_path(&mut g);
+            util::normalize_ranks(&mut g);
+
+            let leaf = format!("n{DEPTH}");
+            assert_eq!(g.node("n0").and_then(|n| n.rank), Some(0));
+            assert_eq!(
+                g.node(leaf.as_str()).and_then(|n| n.rank),
+                Some(DEPTH as i32)
+            );
+        })
+        .expect("spawn dugong longest-path deep chain test");
+    handle
+        .join()
+        .expect("dugong longest-path deep chain should finish without stack overflow");
+}
