@@ -72,6 +72,11 @@ Library code should not panic on user-controlled input.
   - C4 layout no longer recurses over user-authored boundary/deployment-node nesting. The layout
     pass now uses an explicit heap-backed frame stack while preserving the existing parent-bounds
     accumulation semantics for sibling rows, shapes, child boundaries, and root bounds.
+  - State composite hierarchies no longer depend on recursive Rust stack traversal for public
+    semantic JSON projection, typed render-model parsing, cluster extraction/preparation, nested
+    prepared-graph layout, or prepared-graph/AST cleanup. Deep semantic `doc` values are assembled
+    with hand-built `Map` output so they are moved into the result instead of recursively wrapped
+    through `json!`.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.

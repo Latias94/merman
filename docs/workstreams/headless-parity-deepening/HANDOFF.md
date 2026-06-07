@@ -1081,6 +1081,13 @@ Current repository reality to preserve:
     `layout_inside_boundary(...)` calls with explicit heap-backed frames, preserving parent-bounds
     accumulation for sibling rows, shapes, child boundaries, and root bounds. Focused C4 tests and
     DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened State's deep composite-state path after a
+    `1,500`-level `stateDiagram-v2` composite regression reproduced stack overflow in public
+    render-model parsing, and parse-only remained red after the first render-side cluster-copy
+    change. State DB extraction no longer clones deep AST/doc subtrees, semantic `doc` JSON is
+    projected with explicit heap-backed traversal and hand-built maps, AST/prepared-graph cleanup
+    is non-recursive, and render cluster extraction/preparation/layout now uses explicit stacks.
+    Focused State core/render tests and DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

@@ -7250,3 +7250,61 @@ Gate notes:
   changed.
 - This is release-boundary hardening for C4's accepted deep boundary path. It does not introduce a
   new C4 depth limit.
+
+## HPD-050 - State Deep-Composite Panic Surface
+
+Outcome:
+
+- Hardened State's user-authored composite-state hierarchy path after the C4 cleanup. A
+  `1,500`-level nested `stateDiagram-v2` composite input reproduced stack overflow in the public
+  render-model parse path before the core fix, and the first render-only cluster-extraction fix
+  was insufficient because parse-only still overflowed.
+- `StateDb::extract(...)` now traverses the parsed root document by reference instead of cloning
+  the deep AST, and `StateRecord` no longer stores recursively cloned composite `doc` subtrees.
+- State semantic JSON now projects top-level composite `doc` compatibility values through explicit
+  heap-backed traversal and hand-built `serde_json::Map` output, avoiding recursive `json!`
+  wrapping of already deep `Value` trees.
+- `StateDb` now drops the parsed AST through an explicit stack so successful parse/render-model
+  paths do not overflow while cleaning up a deep public input.
+- State render cluster extraction, cluster preparation, nested prepared-graph layout, and
+  prepared-graph cleanup now use explicit heap-backed stacks. The old `prepare_graph(...)`
+  10-level recursion bailout was removed, so deep no-edge composite chains no longer fall through
+  into a huge unextracted compound Dagre graph.
+- Added public-path regressions:
+  - core parses and semantically projects a `1,200`-level State composite chain;
+  - core builds the typed State render model for the same chain;
+  - render parses a `1,500`-level State composite chain through
+    `parse_diagram_for_render_model_sync(...)`;
+  - render layouts a `512`-level State composite chain through `layout_parsed(...)`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/state/db.rs`
+- `crates/merman-core/src/tests/state.rs`
+- `crates/merman-render/src/state/layout.rs`
+- `crates/merman-render/tests/state_layout_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-state-deep-composite-panic-surface.md`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render --test state_layout_test state_parse_for_render_model_handles_deep_composite_chain` -
+  first run failed before the core fix with stack overflow; passed after the non-recursive State DB
+  extraction/projection/drop changes.
+- `cargo nextest run -p merman-core state_deep_composite_chain_semantic_and_render_model_use_heap_traversal` -
+  first run failed before replacing the final semantic `json!` wrapper; passed after hand-built
+  semantic root assembly.
+- `cargo nextest run -p merman-render --test state_layout_test state_layout_handles_deep_composite_chain` -
+  passed after the explicit-stack cluster preparation and layout traversal.
+- `cargo nextest run -p merman-core state` - passed, `39` tests run.
+- `cargo nextest run -p merman-render state` - passed, `17` tests run.
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for State's accepted deep composite path. It does not
+  introduce a new State depth limit.

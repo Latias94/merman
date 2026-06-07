@@ -380,3 +380,41 @@ note right of A : note text"#,
     assert_eq!(note_node["padding"], json!(15));
     assert_eq!(note_node["parentId"], json!("A----parent"));
 }
+
+fn deep_state_composite_chain(depth: usize) -> String {
+    let mut input = String::from("stateDiagram-v2\n");
+    for level in 0..depth {
+        input.push_str(&format!("state S{level} {{\n"));
+    }
+    input.push_str("Leaf\n");
+    for _ in 0..depth {
+        input.push_str("}\n");
+    }
+    input
+}
+
+#[test]
+fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
+    const DEPTH: usize = 1200;
+    let input = deep_state_composite_chain(DEPTH);
+    let engine = Engine::new();
+
+    let parsed = block_on(engine.parse_diagram(&input, ParseOptions::strict()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+    assert!(parsed.model["states"]["S0"]["doc"].is_array());
+    assert!(
+        parsed.model["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .any(|node| node["id"] == json!("Leaf"))
+    );
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+        .expect("render model parse ok")
+        .expect("diagram detected");
+    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+}

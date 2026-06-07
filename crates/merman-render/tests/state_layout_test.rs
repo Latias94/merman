@@ -29,6 +29,51 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
         && imax_y <= omax_y + eps
 }
 
+fn deep_state_composite_chain(depth: usize) -> String {
+    let mut input = String::from("stateDiagram-v2\n");
+    for level in 0..depth {
+        input.push_str(&format!("state S{level} {{\n"));
+    }
+    input.push_str("Leaf\n");
+    for _ in 0..depth {
+        input.push_str("}\n");
+    }
+    input
+}
+
+#[test]
+fn state_parse_for_render_model_handles_deep_composite_chain() {
+    const DEPTH: usize = 1500;
+    let text = deep_state_composite_chain(DEPTH);
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&text, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+}
+
+#[test]
+fn state_layout_handles_deep_composite_chain() {
+    const DEPTH: usize = 512;
+    let text = deep_state_composite_chain(DEPTH);
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default())
+        .expect("layout should not depend on recursive cluster extraction");
+    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
+        panic!("expected StateDiagramV2 layout");
+    };
+
+    assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
+    assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
+}
+
 #[test]
 fn state_layout_produces_positions_and_routes() {
     let path = workspace_root()

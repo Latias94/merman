@@ -23,6 +23,17 @@ struct PreparedGraph {
     root_cluster_id: Option<String>,
 }
 
+impl Drop for PreparedGraph {
+    fn drop(&mut self) {
+        let extracted = std::mem::take(&mut self.extracted);
+        let mut stack: Vec<PreparedGraph> = extracted.into_values().collect();
+        while let Some(mut graph) = stack.pop() {
+            let children = std::mem::take(&mut graph.extracted);
+            stack.extend(children.into_values());
+        }
+    }
+}
+
 type Rect = merman_core::geom::Box2;
 
 #[derive(Debug, Clone)]
@@ -412,19 +423,52 @@ fn find_non_cluster_child(
 }
 
 fn prepare_graph(
-    mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_dir: &impl Fn(&str) -> Option<String>,
-    depth: usize,
     root_cluster_id: Option<String>,
 ) -> Result<PreparedGraph> {
-    if depth > 10 {
-        return Ok(PreparedGraph {
-            graph,
-            extracted: BTreeMap::new(),
-            root_cluster_id,
-        });
+    let mut root = PreparedGraph {
+        graph,
+        extracted: BTreeMap::new(),
+        root_cluster_id,
+    };
+
+    let mut stack: Vec<Vec<String>> = vec![Vec::new()];
+    while let Some(path) = stack.pop() {
+        let prepared = prepared_graph_at_path_mut(&mut root, &path)?;
+        let mut child_ids = prepare_graph_one_level(prepared, cluster_dir)?;
+        child_ids.reverse();
+        for child_id in child_ids {
+            let mut child_path = path.clone();
+            child_path.push(child_id);
+            stack.push(child_path);
+        }
     }
 
+    Ok(root)
+}
+
+fn prepared_graph_at_path_mut<'a>(
+    root: &'a mut PreparedGraph,
+    path: &[String],
+) -> Result<&'a mut PreparedGraph> {
+    let mut current = root;
+    for id in path {
+        current = current
+            .extracted
+            .get_mut(id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared cluster graph: {id}"),
+            })?;
+    }
+    Ok(current)
+}
+
+fn prepare_graph_one_level(
+    prepared: &mut PreparedGraph,
+    cluster_dir: &impl Fn(&str) -> Option<String>,
+) -> Result<Vec<String>> {
+    let graph = &mut prepared.graph;
     let cluster_ids: Vec<String> = graph
         .node_ids()
         .into_iter()
@@ -432,31 +476,37 @@ fn prepare_graph(
         .collect();
 
     let mut descendants: HashMap<String, HashSet<String>> = HashMap::new();
-    for id in &cluster_ids {
-        let mut vec: Vec<String> = Vec::new();
-        extract_descendants(&graph, id, &mut vec);
-        descendants.insert(id.clone(), vec.into_iter().collect());
-    }
-
     let mut external: HashMap<String, bool> =
         cluster_ids.iter().map(|id| (id.clone(), false)).collect();
-    for id in &cluster_ids {
-        for e in graph.edge_keys() {
-            let d1 = is_descendant(&descendants, &e.v, id);
-            let d2 = is_descendant(&descendants, &e.w, id);
-            if d1 ^ d2 {
-                external.insert(id.clone(), true);
-                break;
+
+    let edge_keys = graph.edge_keys();
+    if !edge_keys.is_empty() {
+        for id in &cluster_ids {
+            let mut vec: Vec<String> = Vec::new();
+            extract_descendants(graph, id, &mut vec);
+            descendants.insert(id.clone(), vec.into_iter().collect());
+        }
+
+        for id in &cluster_ids {
+            for e in &edge_keys {
+                let d1 = is_descendant(&descendants, &e.v, id);
+                let d2 = is_descendant(&descendants, &e.w, id);
+                if d1 ^ d2 {
+                    external.insert(id.clone(), true);
+                    break;
+                }
             }
         }
     }
 
     let mut anchor: HashMap<String, String> = HashMap::new();
-    for id in &cluster_ids {
-        let Some(a) = find_non_cluster_child(&graph, id, id) else {
-            continue;
-        };
-        anchor.insert(id.clone(), a);
+    if !edge_keys.is_empty() {
+        for id in &cluster_ids {
+            let Some(a) = find_non_cluster_child(graph, id, id) else {
+                continue;
+            };
+            anchor.insert(id.clone(), a);
+        }
     }
 
     // Adjust edges that touch cluster ids by rewriting them to anchor nodes.
@@ -464,7 +514,6 @@ fn prepare_graph(
     // Match Mermaid `adjustClustersAndEdges(graph)`: edges incident on cluster nodes are removed
     // and re-inserted even when their endpoints do not change. This affects edge insertion order
     // and can change deterministic tie-breaking in Dagre's acyclic pass.
-    let edge_keys = graph.edge_keys();
     for key in edge_keys {
         let mut from_cluster: Option<String> = None;
         let mut to_cluster: Option<String> = None;
@@ -505,13 +554,12 @@ fn prepare_graph(
         graph.set_edge_named(v, w, key.name.clone(), Some(new_label));
     }
 
-    // Extract clusters without external connections into subgraphs for recursive layout.
+    // Extract clusters without external connections into subgraphs for nested layout.
     //
     // Mermaid@11.12.2 `dagre-wrapper` extractor does not require clusters to be root-level. It
     // extracts any cluster node that has children and no external connections, then relies on the
-    // recursive render pass to (optionally) inject the cluster root node back into the subgraph
+    // nested render pass to (optionally) inject the cluster root node back into the subgraph
     // for sizing/padding.
-    let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
     let mut candidate_roots: Vec<String> = Vec::new();
     for id in graph.node_ids() {
         if graph.children(&id).is_empty() {
@@ -540,6 +588,7 @@ fn prepare_graph(
             .then(a.cmp(b))
     });
 
+    let mut child_ids = Vec::new();
     for cluster_id in candidate_roots {
         if !graph.has_node(&cluster_id) || graph.children(&cluster_id).is_empty() {
             continue;
@@ -554,22 +603,25 @@ fn prepare_graph(
         let marginx = graph.graph().marginx;
         let marginy = graph.graph().marginy;
 
-        let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
+        let mut subgraph = extract_cluster_graph(&cluster_id, graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
         subgraph.graph_mut().ranksep = ranksep;
         subgraph.graph_mut().marginx = marginx;
         subgraph.graph_mut().marginy = marginy;
 
-        let prepared = prepare_graph(subgraph, cluster_dir, depth + 1, Some(cluster_id.clone()))?;
-        extracted.insert(cluster_id, prepared);
+        prepared.extracted.insert(
+            cluster_id.clone(),
+            PreparedGraph {
+                graph: subgraph,
+                extracted: BTreeMap::new(),
+                root_cluster_id: Some(cluster_id.clone()),
+            },
+        );
+        child_ids.push(cluster_id);
     }
 
-    Ok(PreparedGraph {
-        graph,
-        extracted,
-        root_cluster_id,
-    })
+    Ok(child_ids)
 }
 
 fn extract_cluster_graph(
@@ -601,66 +653,94 @@ fn extract_cluster_graph(
         descendants.contains(&ek.v) || descendants.contains(&ek.w)
     }
 
-    fn copy_cluster(
-        current_cluster_id: &str,
-        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        root_id: &str,
-        descendants_set: &HashSet<String>,
-    ) {
-        let mut nodes: Vec<String> = graph
-            .children(current_cluster_id)
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        if current_cluster_id != root_id {
-            nodes.push(current_cluster_id.to_string());
-        }
-
-        for node in nodes {
-            if !graph.has_node(&node) {
-                continue;
-            }
-
-            if !graph.children(&node).is_empty() {
-                copy_cluster(&node, graph, new_graph, root_id, descendants_set);
-            } else {
-                let data = graph.node(&node).cloned().unwrap_or_default();
-                new_graph.set_node(node.clone(), data);
-
-                if let Some(parent) = graph.parent(&node) {
-                    if parent != root_id {
-                        new_graph.set_parent(node.clone(), parent.to_string());
-                    }
-                }
-                if current_cluster_id != root_id && node != current_cluster_id {
-                    new_graph.set_parent(node.clone(), current_cluster_id.to_string());
-                }
-
-                // NOTE: Mermaid uses `graph.edges(node)` but Graphlib ignores the argument and
-                // returns all edges. Mirror that by iterating the full edge set each time.
-                let edge_keys = graph.edge_keys();
-                for ek in edge_keys {
-                    if !edge_in_cluster(&ek, root_id, descendants_set) {
-                        continue;
-                    }
-                    let Some(label) = graph.edge_by_key(&ek).cloned() else {
-                        continue;
-                    };
-                    new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(label));
-                }
-            }
-
-            let _ = graph.remove_node(&node);
-        }
-    }
-
     let mut sub = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
         compound: true,
     });
-    copy_cluster(cluster_id, graph, &mut sub, cluster_id, &descendants_set);
+
+    struct CopyFrame {
+        current_cluster_id: String,
+        nodes: Vec<String>,
+        next_index: usize,
+    }
+
+    let root_nodes: Vec<String> = graph
+        .children(cluster_id)
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut stack = vec![CopyFrame {
+        current_cluster_id: cluster_id.to_string(),
+        nodes: root_nodes,
+        next_index: 0,
+    }];
+
+    while !stack.is_empty() {
+        let frame_idx = stack.len() - 1;
+        let Some((node, current_cluster_id)) = ({
+            let frame = &mut stack[frame_idx];
+            if frame.next_index >= frame.nodes.len() {
+                None
+            } else {
+                let node = frame.nodes[frame.next_index].clone();
+                frame.next_index += 1;
+                Some((node, frame.current_cluster_id.clone()))
+            }
+        }) else {
+            stack.pop();
+            continue;
+        };
+
+        if !graph.has_node(&node) {
+            continue;
+        }
+
+        if !graph.children(&node).is_empty() {
+            let mut child_nodes: Vec<String> = graph
+                .children(&node)
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            if node != cluster_id {
+                child_nodes.push(node.clone());
+            }
+            stack.push(CopyFrame {
+                current_cluster_id: node,
+                nodes: child_nodes,
+                next_index: 0,
+            });
+            continue;
+        }
+
+        let data = graph.node(&node).cloned().unwrap_or_default();
+        sub.set_node(node.clone(), data);
+
+        if let Some(parent) = graph.parent(&node) {
+            if parent != cluster_id {
+                sub.set_parent(node.clone(), parent.to_string());
+            }
+        }
+        if current_cluster_id != cluster_id && node != current_cluster_id {
+            sub.set_parent(node.clone(), current_cluster_id);
+        }
+
+        // NOTE: Mermaid uses `graph.edges(node)` but Graphlib ignores the argument and
+        // returns all edges. Mirror that by iterating the full edge set each time.
+        let edge_keys = graph.edge_keys();
+        for ek in edge_keys {
+            if !edge_in_cluster(&ek, cluster_id, &descendants_set) {
+                continue;
+            }
+            let Some(label) = graph.edge_by_key(&ek).cloned() else {
+                continue;
+            };
+            sub.set_edge_named(ek.v, ek.w, ek.name, Some(label));
+        }
+
+        let _ = graph.remove_node(&node);
+    }
+
     Ok(sub)
 }
 
@@ -697,8 +777,55 @@ fn inject_root_cluster_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, roo
 }
 
 fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
+    let mut stack: Vec<(Vec<String>, bool)> = vec![(Vec::new(), false)];
+    let mut completed: HashMap<Vec<String>, (LayoutFragments, Rect)> = HashMap::new();
+
+    while let Some((path, visited)) = stack.pop() {
+        let child_ids: Vec<String> = {
+            let node = prepared_graph_at_path_mut(prepared, &path)?;
+            node.extracted.keys().cloned().collect()
+        };
+
+        if visited {
+            let mut extracted_fragments = HashMap::new();
+            for child_id in child_ids {
+                let mut child_path = path.clone();
+                child_path.push(child_id.clone());
+                let Some(result) = completed.remove(&child_path) else {
+                    return Err(Error::InvalidModel {
+                        message: format!("missing prepared cluster layout: {child_id}"),
+                    });
+                };
+                extracted_fragments.insert(child_id, result);
+            }
+
+            let node = prepared_graph_at_path_mut(prepared, &path)?;
+            let result = layout_prepared_node(node, extracted_fragments)?;
+            completed.insert(path, result);
+            continue;
+        }
+
+        stack.push((path.clone(), true));
+        for child_id in child_ids.into_iter().rev() {
+            let mut child_path = path.clone();
+            child_path.push(child_id);
+            stack.push((child_path, false));
+        }
+    }
+
+    completed
+        .remove(&Vec::new())
+        .ok_or_else(|| Error::InvalidModel {
+            message: "missing prepared root layout".to_string(),
+        })
+}
+
+fn layout_prepared_node(
+    prepared: &mut PreparedGraph,
+    extracted_fragments: HashMap<String, (LayoutFragments, Rect)>,
+) -> Result<(LayoutFragments, Rect)> {
     if let Some(root_id) = prepared.root_cluster_id.clone() {
-        // Mermaid’s dagre-wrapper recursive render pass injects the parent cluster node into the
+        // Mermaid's dagre-wrapper nested render pass injects the parent cluster node into the
         // extracted graph and parents top-level nodes to it. This is required for Dagre’s
         // compound border nodes to yield the same “outer padding” used by upstream when sizing
         // clusterNode placeholders via `updateNodeBounds(...)`.
@@ -709,19 +836,6 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         nodes: HashMap::new(),
         edge_segments: Vec::new(),
     };
-
-    // Layout extracted subgraphs first to size their placeholder nodes in the parent graph.
-    let extracted_ids: Vec<String> = prepared.extracted.keys().cloned().collect();
-    let mut extracted_fragments: HashMap<String, (LayoutFragments, Rect)> = HashMap::new();
-    for id in extracted_ids {
-        let Some(sub) = prepared.extracted.get_mut(&id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing extracted cluster graph: {id}"),
-            });
-        };
-        let (sub_frag, sub_bounds) = layout_prepared(sub)?;
-        extracted_fragments.insert(id, (sub_frag, sub_bounds));
-    }
 
     for (id, (_sub_frag, bounds)) in &extracted_fragments {
         let Some(n) = prepared.graph.node_mut(id) else {
@@ -1340,7 +1454,7 @@ fn layout_state_diagram_v2_inner(
     let cluster_dir =
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
 
-    let mut prepared = prepare_graph(graph, &cluster_dir, 0, None)?;
+    let mut prepared = prepare_graph(graph, &cluster_dir, None)?;
     let (fragments, _layout_bounds) = layout_prepared(&mut prepared)?;
 
     let semantic_ids: HashSet<&str> = model

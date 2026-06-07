@@ -1,7 +1,7 @@
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use indexmap::IndexMap;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
@@ -30,7 +30,6 @@ struct StateRecord {
     id: String,
     ty: String,
     descriptions: Vec<String>,
-    doc: Option<Vec<Stmt>>,
     note: Option<Note>,
     classes: Vec<String>,
     styles: Vec<String>,
@@ -39,18 +38,27 @@ struct StateRecord {
 }
 
 impl StateRecord {
-    fn to_json(&self) -> Value {
-        json!({
-            "id": self.id,
-            "type": self.ty,
-            "descriptions": self.descriptions,
-            "doc": self.doc.as_ref().map(|d| doc_to_json(d)),
-            "note": self.note.as_ref().map(|n| json!({"position": n.position, "text": n.text})),
-            "classes": self.classes,
-            "styles": self.styles,
-            "textStyles": self.text_styles,
-            "start": self.start,
-        })
+    fn to_json(&self, doc: Option<Value>) -> Value {
+        let mut obj = Map::new();
+        obj.insert("id".to_string(), Value::String(self.id.clone()));
+        obj.insert("type".to_string(), Value::String(self.ty.clone()));
+        obj.insert(
+            "descriptions".to_string(),
+            string_array_value(&self.descriptions),
+        );
+        obj.insert("doc".to_string(), doc.unwrap_or(Value::Null));
+        obj.insert(
+            "note".to_string(),
+            self.note.as_ref().map(note_to_json).unwrap_or(Value::Null),
+        );
+        obj.insert("classes".to_string(), string_array_value(&self.classes));
+        obj.insert("styles".to_string(), string_array_value(&self.styles));
+        obj.insert(
+            "textStyles".to_string(),
+            string_array_value(&self.text_styles),
+        );
+        obj.insert("start".to_string(), option_bool_value(self.start));
+        Value::Object(obj)
     }
 }
 
@@ -115,8 +123,8 @@ impl StateDb {
 
     pub(super) fn set_root_doc(&mut self, mut doc: Vec<Stmt>) {
         self.translate_doc("root", &mut doc);
+        self.extract(&doc);
         self.root_doc = doc;
-        self.extract();
     }
 
     fn translate_state_ref(&self, parent_id: &str, s: &mut StateStmt, first: bool) {
@@ -198,7 +206,7 @@ impl StateDb {
         }
     }
 
-    fn extract(&mut self) {
+    fn extract(&mut self, root_doc: &[Stmt]) {
         self.states.clear();
         self.state_order.clear();
         self.relations.clear();
@@ -209,23 +217,20 @@ impl StateDb {
         self.generated_id_cnt = 0;
         self.links.clear();
 
-        let stmts = self.root_doc.clone();
-        for stmt in stmts {
+        for stmt in root_doc {
             match stmt {
-                Stmt::State(s) => {
-                    self.add_state(&s);
-                }
+                Stmt::State(s) => self.add_state(s),
                 Stmt::Relation(relation) => self.add_relation(
                     &relation.state1,
                     &relation.state2,
                     relation.description.as_deref(),
                 ),
-                Stmt::ClassDef { id, classes } => self.add_style_class(&id, &classes),
-                Stmt::ApplyClass { ids, class_name } => self.set_css_class(&ids, &class_name),
-                Stmt::Style { ids, styles } => self.handle_style_def(&ids, &styles),
-                Stmt::Direction(dir) => self.direction = Some(dir),
-                Stmt::AccTitle(t) => self.acc_title = Some(t),
-                Stmt::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(&d)),
+                Stmt::ClassDef { id, classes } => self.add_style_class(id, classes),
+                Stmt::ApplyClass { ids, class_name } => self.set_css_class(ids, class_name),
+                Stmt::Style { ids, styles } => self.handle_style_def(ids, styles),
+                Stmt::Direction(dir) => self.direction = Some(dir.clone()),
+                Stmt::AccTitle(t) => self.acc_title = Some(t.clone()),
+                Stmt::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(d)),
                 Stmt::Click(c) => self.add_link(&c.id, &c.url, &c.tooltip),
                 Stmt::Noop => {}
             }
@@ -252,7 +257,6 @@ impl StateDb {
                     id,
                     ty: "default".to_string(),
                     descriptions: Vec::new(),
-                    doc: None,
                     note: None,
                     classes: Vec::new(),
                     styles: Vec::new(),
@@ -274,9 +278,6 @@ impl StateDb {
     fn add_state(&mut self, state: &StateStmt) {
         let id = state.id.trim();
         let st = self.ensure_state(id);
-        if st.doc.is_none() && state.doc.is_some() {
-            st.doc = state.doc.clone();
-        }
         if st.ty == "default" && state.ty != "default" {
             st.ty = state.ty.clone();
         }
@@ -405,12 +406,15 @@ impl StateDb {
     }
 
     pub(super) fn to_model(&self, meta: &ParseMetadata) -> Result<Value> {
-        let states_json: serde_json::Map<String, Value> = self
-            .state_order
-            .iter()
-            .filter_map(|id| self.states.get(id))
-            .map(|s| (s.id.clone(), s.to_json()))
-            .collect();
+        let mut doc_json_by_state_id = root_state_doc_json_by_id(&self.root_doc);
+        let mut states_json = Map::new();
+        for id in &self.state_order {
+            let Some(state) = self.states.get(id) else {
+                continue;
+            };
+            let doc = doc_json_by_state_id.remove(&state.id);
+            states_json.insert(state.id.clone(), state.to_json(doc));
+        }
 
         let relations_json: Vec<Value> = self
             .relations
@@ -481,23 +485,32 @@ impl StateDb {
             })
             .collect();
 
-        Ok(json!({
-            "type": meta.diagram_type,
-            // Mermaid's `StateDB.getData()` returns a layout-ready `{ nodes, edges, other, config, direction }`.
-            // We keep additional keys (`states`, `relations`, `styleClasses`, `links`) to help downstream
-            // integrations and parity debugging.
-            "nodes": nodes_json,
-            "edges": edges_json,
-            "other": {},
-            "config": meta.effective_config.as_value(),
-            "direction": self.direction.clone().unwrap_or_else(|| "TB".to_string()),
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "states": Value::Object(states_json),
-            "relations": relations_json,
-            "styleClasses": Value::Object(style_classes_json),
-            "links": Value::Object(links_json),
-        }))
+        let mut root = Map::new();
+        root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        // Mermaid's `StateDB.getData()` returns a layout-ready `{ nodes, edges, other, config, direction }`.
+        // We keep additional keys (`states`, `relations`, `styleClasses`, `links`) to help downstream
+        // integrations and parity debugging.
+        root.insert("nodes".to_string(), Value::Array(nodes_json));
+        root.insert("edges".to_string(), Value::Array(edges_json));
+        root.insert("other".to_string(), Value::Object(Map::new()));
+        root.insert(
+            "config".to_string(),
+            meta.effective_config.as_value().clone(),
+        );
+        root.insert(
+            "direction".to_string(),
+            Value::String(self.direction.clone().unwrap_or_else(|| "TB".to_string())),
+        );
+        root.insert("accTitle".to_string(), option_string_value(&self.acc_title));
+        root.insert("accDescr".to_string(), option_string_value(&self.acc_descr));
+        root.insert("states".to_string(), Value::Object(states_json));
+        root.insert("relations".to_string(), Value::Array(relations_json));
+        root.insert(
+            "styleClasses".to_string(),
+            Value::Object(style_classes_json),
+        );
+        root.insert("links".to_string(), Value::Object(links_json));
+        Ok(Value::Object(root))
     }
 
     pub(super) fn to_model_for_render_typed(
@@ -580,6 +593,13 @@ impl StateDb {
     }
 }
 
+impl Drop for StateDb {
+    fn drop(&mut self) {
+        let root_doc = std::mem::take(&mut self.root_doc);
+        drop_doc_nonrecursive(root_doc);
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Link {
     url: String,
@@ -624,6 +644,41 @@ fn state_dom_id(item_id: &str, counter: usize, ty: Option<&str>) -> String {
         .map(|t| format!("{DOMID_TYPE_SPACER}{t}"))
         .unwrap_or_default();
     format!("{DOMID_STATE}-{item_id}{type_str}-{counter}")
+}
+
+fn string_array_value(values: &[String]) -> Value {
+    Value::Array(values.iter().cloned().map(Value::String).collect())
+}
+
+fn option_string_value(value: &Option<String>) -> Value {
+    value
+        .as_ref()
+        .map(|v| Value::String(v.clone()))
+        .unwrap_or(Value::Null)
+}
+
+fn option_bool_value(value: Option<bool>) -> Value {
+    value.map(Value::Bool).unwrap_or(Value::Null)
+}
+
+fn note_to_json(note: &Note) -> Value {
+    let mut obj = Map::new();
+    obj.insert("position".to_string(), option_string_value(&note.position));
+    obj.insert("text".to_string(), Value::String(note.text.clone()));
+    Value::Object(obj)
+}
+
+fn drop_doc_nonrecursive(doc: Vec<Stmt>) {
+    let mut stack = vec![doc];
+    while let Some(mut current_doc) = stack.pop() {
+        while let Some(mut stmt) = current_doc.pop() {
+            if let Stmt::State(state) = &mut stmt {
+                if let Some(child_doc) = state.doc.take() {
+                    stack.push(child_doc);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1498,27 +1553,75 @@ fn build_layout_data(
     Ok((nodes, edges))
 }
 
+fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    for stmt in root_doc {
+        let Stmt::State(state) = stmt else {
+            continue;
+        };
+        if out.contains_key(&state.id) {
+            continue;
+        }
+        let Some(doc) = state.doc.as_ref() else {
+            continue;
+        };
+        out.insert(state.id.clone(), Value::Array(doc_to_json(doc)));
+    }
+    out
+}
+
 fn doc_to_json(doc: &[Stmt]) -> Vec<Value> {
-    doc.iter().map(stmt_to_json).collect()
+    let mut out = Vec::with_capacity(doc.len());
+    for stmt in doc {
+        out.push(stmt_to_json(stmt));
+    }
+    out
+}
+
+fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+    let mut obj = Map::new();
+    obj.insert("id".to_string(), Value::String(state.id.clone()));
+    obj.insert("type".to_string(), Value::String(state.ty.clone()));
+    obj.insert("classes".to_string(), string_array_value(&state.classes));
+    Value::Object(obj)
 }
 
 fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
     match stmt {
-        Stmt::Noop => json!(null),
-        Stmt::State(s) => json!({
-            "stmt": "state",
-            "id": s.id,
-            "type": s.ty,
-            "description": s.description,
-            "doc": doc,
-            "classes": s.classes,
-        }),
-        Stmt::Relation(relation) => json!({
-            "stmt": "relation",
-            "state1": { "id": relation.state1.id, "type": relation.state1.ty, "classes": relation.state1.classes },
-            "state2": { "id": relation.state2.id, "type": relation.state2.ty, "classes": relation.state2.classes },
-            "description": relation.description,
-        }),
+        Stmt::Noop => Value::Null,
+        Stmt::State(s) => {
+            let mut obj = Map::new();
+            obj.insert("stmt".to_string(), Value::String("state".to_string()));
+            obj.insert("id".to_string(), Value::String(s.id.clone()));
+            obj.insert("type".to_string(), Value::String(s.ty.clone()));
+            obj.insert(
+                "description".to_string(),
+                option_string_value(&s.description),
+            );
+            obj.insert(
+                "doc".to_string(),
+                doc.map(Value::Array).unwrap_or(Value::Null),
+            );
+            obj.insert("classes".to_string(), string_array_value(&s.classes));
+            Value::Object(obj)
+        }
+        Stmt::Relation(relation) => {
+            let mut obj = Map::new();
+            obj.insert("stmt".to_string(), Value::String("relation".to_string()));
+            obj.insert(
+                "state1".to_string(),
+                state_stmt_ref_to_json(&relation.state1),
+            );
+            obj.insert(
+                "state2".to_string(),
+                state_stmt_ref_to_json(&relation.state2),
+            );
+            obj.insert(
+                "description".to_string(),
+                option_string_value(&relation.description),
+            );
+            Value::Object(obj)
+        }
         Stmt::ClassDef { id, classes } => {
             json!({ "stmt": "classDef", "id": id, "classes": classes })
         }
@@ -1543,14 +1646,15 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
         if visited {
             let doc = match current {
                 Stmt::State(s) => s.doc.as_ref().map(|children| {
-                    children
-                        .iter()
-                        .map(|child| {
+                    let mut values = Vec::with_capacity(children.len());
+                    for child in children {
+                        values.push(
                             completed
                                 .remove(&(child as *const Stmt))
-                                .expect("child state statement JSON should be completed")
-                        })
-                        .collect::<Vec<_>>()
+                                .unwrap_or(Value::Null),
+                        );
+                    }
+                    values
                 }),
                 _ => None,
             };
@@ -1569,7 +1673,7 @@ fn stmt_to_json(stmt: &Stmt) -> Value {
 
     completed
         .remove(&(stmt as *const Stmt))
-        .expect("state statement JSON should be completed")
+        .unwrap_or(Value::Null)
 }
 
 fn normalize_multiline_ws(input: &str) -> String {
