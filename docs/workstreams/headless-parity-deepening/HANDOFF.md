@@ -1166,6 +1166,11 @@ Current repository reality to preserve:
     result instead of recursively wrapped through `json!`. Focused known-type small-stack coverage
     validates a `1,024`-level host config across all six families; automatic detector-chain
     small-stack behavior is a separate boundary.
+  - A follow-up HPD-050 panic-surface slice hardened the C4 detector boundary that surfaced during
+    the retained-config auto-detect diagnosis. `detector_c4(...)` now preserves Mermaid's upstream
+    ungrouped regex semantics with direct string checks instead of lazily compiling a static regex
+    on first use, and a small-stack metadata regression covers common headers with a deep host
+    config.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

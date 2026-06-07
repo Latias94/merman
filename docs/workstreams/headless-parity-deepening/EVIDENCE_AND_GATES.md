@@ -7850,3 +7850,42 @@ Gate notes:
 - This is a semantic JSON panic-surface hardening slice only. It does not change parser behavior,
   SVG output, SVG baselines, root viewport formulas, theme semantics, or Architecture residual
   classification.
+
+## HPD-050 - C4 Detector Regex Panic Surface
+
+Outcome:
+
+- Hardened the automatic detection boundary exposed while validating retained semantic config.
+  The first failing auto-detect small-stack attempt overflowed before semantic parsing, in the
+  detector path.
+- `detector_c4(...)` no longer lazily compiles a static regex on first use. It now uses direct
+  string checks for the same fixed Mermaid source pattern.
+- The hand-written checks preserve the upstream ungrouped regex shape:
+  - `C4Context` matches only after leading whitespace, like `^\s*C4Context`;
+  - `C4Container`, `C4Component`, `C4Dynamic`, and `C4Deployment` match anywhere in cleaned text,
+    matching the ungrouped alternation behavior.
+- Added a small-stack metadata parsing regression for common headers with a `1,024`-level host
+  config, covering `block`, `sankey`, `treemap`, and `C4Context`.
+
+Evidence:
+
+- `crates/merman-core/src/detect/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-c4-detector-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core c4_detector_preserves_upstream_ungrouped_regex_shape auto_detect_common_headers_with_deep_config_small_stack` -
+  passed, `2` tests run.
+- `cargo +1.95 nextest run -p merman-core detect` - passed, `17` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No detector ordering or family profile behavior changed. This is an equivalent implementation of
+  the existing C4 detector shape, not a fast-detect expansion.
+- This is a parser detection panic-surface cleanup only. It does not change semantic models,
+  rendered output, SVG baselines, root viewport formulas, or Architecture residual classification.

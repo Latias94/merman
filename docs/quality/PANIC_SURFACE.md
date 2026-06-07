@@ -87,6 +87,10 @@ Library code should not panic on user-controlled input.
     `serde_json::Value::clone()`. C4, Sankey, and Architecture also assemble their final public
     root objects with hand-built maps so a deep retained config is moved into the result instead of
     being wrapped through `json!`.
+  - C4 diagram detection no longer depends on lazily compiling a static regex on the first
+    detection pass. The detector now uses equivalent string checks for Mermaid's upstream
+    ungrouped regex shape, avoiding a fixed stack-heavy regex initialization point in small-stack
+    public parse paths.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -187,6 +191,12 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core state architecture c4 block treemap sankey`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the retained
     semantic config projection cleanup.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    c4_detector_preserves_upstream_ungrouped_regex_shape
+    auto_detect_common_headers_with_deep_config_small_stack`,
+    `cargo +1.95 nextest run -p merman-core detect`,
+    `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the C4 detector
+    small-stack cleanup.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
