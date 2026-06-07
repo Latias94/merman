@@ -1248,6 +1248,11 @@ Current repository reality to preserve:
     construction from `css_override.rs`. `strip_css_important(...)` now scans the local
     case-insensitive marker directly, keeps `CssOverridePolicy::Preserve` unchanged, and preserves
     the previous trailing word-boundary behavior used by scoped CSS override stripping.
+  - A follow-up HPD-050 panic-surface slice removed SVG pipeline CSS sanitization regex
+    construction from `css_sanitize.rs`. `strip_animation_declarations(...)` now preserves the
+    local start / `;` / `{` delimiter boundary without regex construction, and
+    `strip_css_deg_units(...)` now scans the local degree-unit boundary directly. The next
+    production render regex cluster is `svg/pipeline/builtin/attr_sanitize.rs`.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

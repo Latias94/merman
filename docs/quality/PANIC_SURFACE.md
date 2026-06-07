@@ -204,6 +204,11 @@ Library code should not panic on user-controlled input.
   - SVG pipeline CSS override processing no longer compiles a static `!important` regex. The
     local `strip_css_important(...)` helper now scans case-insensitive `!important` markers
     directly while preserving the previous trailing word-boundary behavior.
+  - SVG pipeline CSS sanitization no longer compiles static regexes for animation declaration
+    stripping or CSS degree-unit stripping. `strip_animation_declarations(...)` now scans the
+    local `(^|[;{])\s*animation(?:-[a-z-]+)?\s*:[^;}]*;?` boundary directly, and
+    `strip_css_deg_units(...)` scans the local `(-?\d+(?:\.\d+)?)deg\b` boundary directly for
+    raster-safe output.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -350,6 +355,11 @@ Library code should not panic on user-controlled input.
     `rg -n 'Regex|regex::|OnceLock|css_important|strip_css_important' crates/merman-render/src/svg/pipeline/builtin/css_override.rs crates/merman-render/src/svg/pipeline/builtin/scoped_css.rs`
     passed for the CSS `!important` regex removal; `css_override.rs` has no regex dependency
     matches.
+  - Verification: `cargo +1.95 fmt --check -p merman-render`,
+    `cargo +1.95 nextest run -p merman-render css_sanitize resvg_safe`,
+    `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs`,
+    and `git diff --check` passed for the CSS sanitizer regex removal; `css_sanitize.rs` has no
+    regex dependency matches.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.

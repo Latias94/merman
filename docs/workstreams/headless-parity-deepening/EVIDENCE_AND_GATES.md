@@ -8647,3 +8647,42 @@ Gate notes:
   selection, scoped CSS injection syntax, SVG baseline content outside existing-important
   stripping, core parsing, sanitizer policy, root viewport formulas, or Architecture residual
   classification.
+
+## HPD-050 - CSS Sanitize Regex Panic Surface
+
+Outcome:
+
+- Removed the remaining static regex compilation points from SVG pipeline CSS sanitization in
+  `crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs`.
+- Replaced local animation declaration stripping for
+  `(?i)(^|[;{])\s*animation(?:-[a-z-]+)?\s*:[^;}]*;?` with a delimiter-aware scanner that
+  preserves the previous start / `;` / `{` match boundary and keeps the delimiter in output.
+- Replaced local CSS degree-unit stripping for `(?i)(-?\d+(?:\.\d+)?)deg\b` with a direct scanner
+  that preserves optional negative signs, decimal fractions, case-insensitive `deg`, and the
+  previous trailing word-boundary behavior.
+- Added focused coverage for animation suffix boundaries, delimiter preservation, `.5deg`
+  substring matching, hyphen-followed `deg` stripping, and non-ASCII word-boundary non-matches.
+
+Evidence:
+
+- `crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs`
+- `crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-css-sanitize-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt --check -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render css_sanitize resvg_safe` - passed, `4` tests run.
+- `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs` -
+  no regex dependency matches in `css_sanitize.rs`.
+- `git diff --check` - passed.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a local SVG pipeline panic-surface cleanup for raster-safe CSS sanitization. It does not
+  change unsupported-rule filtering, style-element scanning, attribute sanitization, CSS override
+  policy, scoped CSS injection, core parsing, sanitizer policy, SVG baselines, root viewport
+  formulas, or Architecture residual classification. The remaining production render regex cluster
+  is now in `crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs`.

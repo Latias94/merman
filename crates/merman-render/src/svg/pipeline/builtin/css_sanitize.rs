@@ -1,7 +1,5 @@
 use crate::Result;
-use regex::{Captures, Regex};
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
 use super::util::{find_matching_brace, find_tag_end};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
@@ -94,20 +92,199 @@ fn strip_unsupported_css_rules(css: &str) -> String {
 }
 
 fn strip_animation_declarations(css: &str) -> String {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| {
-        Regex::new(r"(?i)(^|[;{])\s*animation(?:-[a-z-]+)?\s*:[^;}]*;?")
-            .expect("valid animation declaration regex")
-    });
+    let mut out = String::with_capacity(css.len());
+    let mut copied_until = 0usize;
+    let mut cursor = 0usize;
 
-    re.replace_all(css, |caps: &Captures<'_>| caps[1].to_string())
-        .into_owned()
+    while cursor < css.len() {
+        if cursor == 0 {
+            if let Some(end) = animation_declaration_end_after_delimiter(css, 0) {
+                out.push_str(&css[copied_until..cursor]);
+                copied_until = end;
+                cursor = end;
+                continue;
+            }
+        }
+
+        let Some(ch) = css[cursor..].chars().next() else {
+            break;
+        };
+        if matches!(ch, ';' | '{') {
+            let after_delimiter = cursor + ch.len_utf8();
+            if let Some(end) = animation_declaration_end_after_delimiter(css, after_delimiter) {
+                out.push_str(&css[copied_until..cursor]);
+                out.push(ch);
+                copied_until = end;
+                cursor = end;
+                continue;
+            }
+        }
+
+        cursor += ch.len_utf8();
+    }
+
+    out.push_str(&css[copied_until..]);
+    out
+}
+
+fn animation_declaration_end_after_delimiter(css: &str, start: usize) -> Option<usize> {
+    let mut cursor = skip_css_regex_whitespace(css, start);
+    let name_end = cursor + "animation".len();
+    if !css.get(cursor..name_end)?.eq_ignore_ascii_case("animation") {
+        return None;
+    }
+    cursor = name_end;
+
+    if css.get(cursor..)?.starts_with('-') {
+        let suffix_start = cursor + 1;
+        let suffix_end = consume_ascii_alpha_hyphen(css, suffix_start);
+        if suffix_end == suffix_start {
+            return None;
+        }
+        cursor = suffix_end;
+    }
+
+    cursor = skip_css_regex_whitespace(css, cursor);
+    if !css.get(cursor..)?.starts_with(':') {
+        return None;
+    }
+    cursor += 1;
+
+    while let Some(ch) = css.get(cursor..)?.chars().next() {
+        if ch == ';' {
+            return Some(cursor + 1);
+        }
+        if ch == '}' {
+            return Some(cursor);
+        }
+        cursor += ch.len_utf8();
+    }
+
+    Some(cursor)
 }
 
 pub(crate) fn strip_css_deg_units(css: &str) -> String {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE
-        .get_or_init(|| Regex::new(r"(?i)(-?\d+(?:\.\d+)?)deg\b").expect("valid CSS degree regex"));
+    let mut out = String::with_capacity(css.len());
+    let mut copied_until = 0usize;
+    let mut cursor = 0usize;
 
-    re.replace_all(css, "$1").into_owned()
+    while cursor < css.len() {
+        if let Some((number_end, unit_end)) = css_deg_unit_match_at(css, cursor) {
+            out.push_str(&css[copied_until..number_end]);
+            copied_until = unit_end;
+            cursor = unit_end;
+            continue;
+        }
+
+        let Some(ch) = css[cursor..].chars().next() else {
+            break;
+        };
+        cursor += ch.len_utf8();
+    }
+
+    out.push_str(&css[copied_until..]);
+    out
+}
+
+fn css_deg_unit_match_at(css: &str, start: usize) -> Option<(usize, usize)> {
+    let mut cursor = start;
+    if css.get(cursor..)?.starts_with('-') {
+        cursor += 1;
+    }
+
+    let digit_start = cursor;
+    cursor = consume_ascii_digits(css, cursor);
+    if cursor == digit_start {
+        return None;
+    }
+
+    if css.get(cursor..)?.starts_with('.') {
+        let fraction_start = cursor + 1;
+        let fraction_end = consume_ascii_digits(css, fraction_start);
+        if fraction_end == fraction_start {
+            return None;
+        }
+        cursor = fraction_end;
+    }
+
+    let unit_end = cursor + "deg".len();
+    if !css.get(cursor..unit_end)?.eq_ignore_ascii_case("deg") {
+        return None;
+    }
+    if let Some(next) = css.get(unit_end..).and_then(|tail| tail.chars().next()) {
+        if is_css_regex_word_char(next) {
+            return None;
+        }
+    }
+
+    Some((cursor, unit_end))
+}
+
+fn skip_css_regex_whitespace(css: &str, mut cursor: usize) -> usize {
+    while let Some(ch) = css.get(cursor..).and_then(|tail| tail.chars().next()) {
+        if !ch.is_whitespace() {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+    cursor
+}
+
+fn consume_ascii_alpha_hyphen(css: &str, mut cursor: usize) -> usize {
+    while let Some(b) = css.as_bytes().get(cursor) {
+        if !(b.is_ascii_alphabetic() || *b == b'-') {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
+}
+
+fn consume_ascii_digits(css: &str, mut cursor: usize) -> usize {
+    while let Some(b) = css.as_bytes().get(cursor) {
+        if !b.is_ascii_digit() {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
+}
+
+fn is_css_regex_word_char(ch: char) -> bool {
+    ch == '_' || ch.is_alphanumeric()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn css_sanitize_strips_animation_declarations_without_regex() {
+        assert_eq!(
+            strip_animation_declarations(".a{ animation: spin 1s; fill:red; }"),
+            ".a{ fill:red; }"
+        );
+        assert_eq!(
+            strip_animation_declarations("; animation-duration: 1s; stroke:blue"),
+            "; stroke:blue"
+        );
+        assert_eq!(
+            strip_animation_declarations("x animation:spin;"),
+            "x animation:spin;"
+        );
+        assert_eq!(
+            strip_animation_declarations("animation-:keep;animation--:drop;fill:red"),
+            "animation-:keep;fill:red"
+        );
+    }
+
+    #[test]
+    fn css_sanitize_strips_deg_units_without_regex() {
+        assert_eq!(
+            strip_css_deg_units(
+                "rotate(45deg) rotate(-10.5DEG) 90degree 1.deg .5deg 90deg-foo 90degé"
+            ),
+            "rotate(45) rotate(-10.5) 90degree 1.deg .5 90-foo 90degé"
+        );
+    }
 }
