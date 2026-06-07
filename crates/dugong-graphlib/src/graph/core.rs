@@ -158,10 +158,9 @@ where
                 let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
                     continue;
                 };
-                let new_children_vec = self
-                    .children_ix
-                    .get_mut(new_parent)
-                    .expect("children_ix resized to node slots");
+                let Some(new_children_vec) = self.children_ix.get_mut(new_parent) else {
+                    continue;
+                };
                 for old_child in old_children {
                     let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
                         continue;
@@ -301,8 +300,13 @@ where
             });
         }
         std::cell::RefMut::map(cache, |c| {
-            c.as_mut()
-                .expect("directed adjacency cache should be present after ensure")
+            c.get_or_insert_with(|| DirectedAdjCache {
+                generation,
+                out_offsets: vec![0; self.nodes.len() + 1],
+                out_edges: Vec::new(),
+                in_offsets: vec![0; self.nodes.len() + 1],
+                in_edges: Vec::new(),
+            })
         })
     }
 
@@ -350,8 +354,11 @@ where
         }
 
         std::cell::RefMut::map(cache, |c| {
-            c.as_mut()
-                .expect("undirected adjacency cache should be present after ensure")
+            c.get_or_insert_with(|| UndirectedAdjCache {
+                generation,
+                offsets: vec![0; self.nodes.len() + 1],
+                edges: Vec::new(),
+            })
         })
     }
 
@@ -819,15 +826,14 @@ where
             return self;
         }
 
+        let Some(&v_ix) = self.node_index.get(&key.v) else {
+            return self;
+        };
+        let Some(&w_ix) = self.node_index.get(&key.w) else {
+            return self;
+        };
+
         self.invalidate_adj();
-        let v_ix = *self
-            .node_index
-            .get(&key.v)
-            .expect("ensure_node should have inserted the endpoint node");
-        let w_ix = *self
-            .node_index
-            .get(&key.w)
-            .expect("ensure_node should have inserted the endpoint node");
         let idx = self.edges.len();
         self.edges.push(Some(EdgeEntry {
             key: key.clone(),

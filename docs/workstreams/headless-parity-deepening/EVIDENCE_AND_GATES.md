@@ -7523,6 +7523,45 @@ Gate notes:
   option/default label semantics, Dagre reference adapter behavior, renderer SVG output, stored
   baselines, or Architecture/Class residual classification.
 
+## HPD-050 - Graphlib Core Invariant Panic Surface
+
+Outcome:
+
+- Removed internal Graphlib core invariant `expect(...)` calls from
+  `crates/dugong-graphlib/src/graph/core.rs` for compound compaction child-vector remapping,
+  directed and undirected adjacency-cache ensure return paths, and endpoint node-index lookup after
+  `set_edge_named(...)` creates endpoint nodes.
+- Normal `Graph` compaction, adjacency queries, node/edge mutation, named multiedge behavior, and
+  optional-label behavior are unchanged.
+- If a future graph-internal invariant drift leaves these helpers without the expected cache or
+  endpoint index, the code now uses empty/best-effort state or returns from the mutator instead of
+  panicking on the guard.
+
+Evidence:
+
+- `crates/dugong-graphlib/src/graph/core.rs`
+- `crates/dugong-graphlib/tests/graph_core_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-graphlib-core-invariant-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong-graphlib` - passed.
+- `cargo +1.95 nextest run -p dugong-graphlib --test graph_core_test` - passed, `63` tests run.
+- `rg -n 'children_ix resized to node slots|directed adjacency cache should be present after ensure|undirected adjacency cache should be present after ensure|ensure_node should have inserted the endpoint node' crates/dugong-graphlib/src/graph/core.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `868`
+  lines parsed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+
+Gate notes:
+
+- This is an internal invariant panic-surface cleanup only. It does not change Graphlib public
+  schema, Graph API shape, Dagre reference adapter behavior, renderer SVG output, stored baselines,
+  or Architecture/Class residual classification.
+- The source-backed `set_edge_named(...)` panic for named edges on non-multigraph simple graphs is
+  intentionally preserved as a Graphlib throw mapping and remains covered by `graph_core_test`.
+
 ## HPD-050 - Architecture Deep-Group Panic Surface
 
 Outcome:

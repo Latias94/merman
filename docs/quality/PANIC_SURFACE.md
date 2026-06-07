@@ -45,6 +45,9 @@ Library code should not panic on user-controlled input.
     iterator and label lookup drift apart. Missing live node/edge labels now return a
     `serde_json::Error` backed by `InvalidData` instead of triggering JSON writer invariant
     `expect(...)` calls.
+  - `Graph` core compaction, adjacency-cache ensure helpers, and edge endpoint insertion no longer
+    expose internal invariant `expect(...)` calls. Unexpected cache or index drift now falls back to
+    empty/best-effort state or returns from the mutator instead of panicking on the internal guard.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
@@ -372,6 +375,11 @@ Library code should not panic on user-controlled input.
     `rg -n 'node_ids\(\) should only yield live nodes|edge_keys\(\) should only yield live edges' crates/dugong-graphlib/src/json.rs`,
     `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
     `git diff --check` passed for the Graphlib JSON writer invariant panic-surface cleanup.
+  - Verification: `cargo +1.95 fmt -p dugong-graphlib`,
+    `cargo +1.95 nextest run -p dugong-graphlib --test graph_core_test`,
+    `rg -n 'children_ix resized to node slots|directed adjacency cache should be present after ensure|undirected adjacency cache should be present after ensure|ensure_node should have inserted the endpoint node' crates/dugong-graphlib/src/graph/core.rs`,
+    `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
+    `git diff --check` passed for the Graphlib core invariant panic-surface cleanup.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`,
     `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,
@@ -478,6 +486,9 @@ The following patterns are intentionally tolerated for now but should be tracked
 - A small number of `unwrap/expect` in renderer internals:
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
+- `dugong-graphlib::Graph::set_edge_named(...)` still panics for named edges on non-multigraph
+  simple graphs. That is currently preserved as a source-backed Graphlib throw mapping, not treated
+  as an internal invariant panic.
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
     C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and
