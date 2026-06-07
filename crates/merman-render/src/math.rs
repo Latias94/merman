@@ -105,12 +105,9 @@ impl RatexMathRenderer {
     }
 
     fn math_only_lines(text: &str) -> Option<Vec<String>> {
-        static LINE_BREAK_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-        let line_break_re =
-            LINE_BREAK_RE.get_or_init(|| regex::Regex::new(r"(?i)<br\s*/?>").unwrap());
         let normalized = Self::normalized_text(text);
         let mut formulas = Vec::new();
-        for raw_line in line_break_re.split(&normalized) {
+        for raw_line in split_html_br_lines(&normalized) {
             let line = raw_line.trim();
             if line.is_empty() {
                 continue;
@@ -670,6 +667,19 @@ impl MathRenderer for NodeKatexMathRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
+    fn ratex_math_renderer_splits_math_only_labels_with_source_br_shape() {
+        assert_eq!(
+            RatexMathRenderer::math_only_lines("$$x$$<BR /> $$y$$<bR\t/>$$z$$"),
+            Some(vec!["x".to_string(), "y".to_string(), "z".to_string()])
+        );
+        assert!(
+            RatexMathRenderer::math_only_lines("$$x$$<brx>$$y$$").is_none(),
+            "non-source <br> lookalikes must not split a same-line multi-formula label"
+        );
+    }
 
     #[cfg(feature = "ratex-math")]
     #[test]

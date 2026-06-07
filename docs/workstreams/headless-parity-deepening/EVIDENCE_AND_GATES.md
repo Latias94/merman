@@ -8436,3 +8436,43 @@ Gate notes:
   data/ARIA attribute-name policy, URI allowlist semantics, attribute-whitespace cleanup,
   script/data guard semantics, Mermaid preprocessing, semantic parsing, rendered output, SVG
   baselines, root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - RaTeX Math Label Line-Break Regex Panic Surface
+
+Outcome:
+
+- Removed the feature-gated static `<br>` regex compilation from
+  `RatexMathRenderer::math_only_lines(...)`.
+- The pure-math RaTeX label path now reuses `crate::text::split_html_br_lines(...)`, the existing
+  direct scanner for Mermaid common `lineBreakRegex = /<br\s*\/?>/gi`.
+- This aligns the pure-math path with the mixed KaTeX-like path in the same module, which already
+  used `split_html_br_lines(...)`.
+- Added feature-gated coverage for uppercase `<BR />`, whitespace before the optional slash, and a
+  non-matching `<brx>` lookalike.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/common/common.ts`
+- `crates/merman-render/src/text/wrap.rs`
+- `crates/merman-render/src/math.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-ratex-math-line-break-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render --features ratex-math ratex_math_renderer` -
+  passed, `4` tests run.
+- `cargo +1.95 fmt --check -p merman-render` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `rg -n 'LINE_BREAK_RE|Regex::new\(r"\(\?i\)<br|regex::Regex|<br\\s' crates/merman-render/src/math.rs` -
+  no RaTeX math line-break regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `832`
+  lines parsed.
+
+Gate notes:
+
+- This is a render-path panic-surface cleanup for optional RaTeX math labels. It does not change
+  the shared text wrapping scanner, Node/KaTeX renderer probing, non-math labels, Mermaid
+  preprocessing, core sanitization, semantic parsing, SVG baselines, root viewport formulas, or
+  Architecture residual classification.

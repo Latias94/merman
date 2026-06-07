@@ -1227,6 +1227,9 @@ Current repository reality to preserve:
     regex construction from `utils.rs`. The direct scanners preserve the installed
     `@braintree/sanitize-url` 7.1.2 named HTML control entity and whitespace escape source shapes,
     while the existing public sanitize-url attack-vector suite stays green.
+  - A follow-up HPD-050 panic-surface slice removed the optional RaTeX math-only label `<br>`
+    regex construction from `math.rs`. The pure-math path now reuses the shared Mermaid
+    `lineBreakRegex` scanner already used by ordinary HTML-label wrapping and mixed math labels.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

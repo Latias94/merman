@@ -186,6 +186,9 @@ Library code should not panic on user-controlled input.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
+  - RaTeX math-only label splitting no longer compiles a feature-gated `<br>` regex on the render
+    path. It now reuses the shared Mermaid `lineBreakRegex = /<br\s*\/?>/gi` scanner used by
+    ordinary HTML-label wrapping.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
