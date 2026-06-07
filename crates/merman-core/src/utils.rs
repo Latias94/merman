@@ -1,5 +1,4 @@
 use crate::MermaidConfig;
-use regex::Regex;
 use url::Url;
 
 pub const BLANK_URL: &str = "about:blank";
@@ -31,14 +30,113 @@ pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str>
     }
 }
 
-fn html_ctrl_entity_regex() -> &'static Regex {
-    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)&(newline|tab);").expect("valid regex"))
+fn strip_ascii_matches_like(input: &str, match_len: fn(&[u8], usize) -> Option<usize>) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while probe < bytes.len() {
+        if let Some(len) = match_len(bytes, probe) {
+            out.push_str(&input[cursor..probe]);
+            probe += len;
+            cursor = probe;
+            continue;
+        }
+
+        let Some(ch) = input[probe..].chars().next() else {
+            break;
+        };
+        probe += ch.len_utf8();
+    }
+
+    out.push_str(&input[cursor..]);
+    out
 }
 
-fn whitespace_escape_chars_regex() -> &'static Regex {
-    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)(\\|%5c)((%(6e|72|74))|[nrt])").expect("valid regex"))
+fn contains_ascii_match_like(input: &str, match_len: fn(&[u8], usize) -> Option<usize>) -> bool {
+    let bytes = input.as_bytes();
+    let mut probe = 0usize;
+
+    while probe < bytes.len() {
+        if match_len(bytes, probe).is_some() {
+            return true;
+        }
+
+        let Some(ch) = input[probe..].chars().next() else {
+            break;
+        };
+        probe += ch.len_utf8();
+    }
+
+    false
+}
+
+fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u8]) -> bool {
+    haystack
+        .get(start..start + needle.len())
+        .is_some_and(|candidate| {
+            candidate
+                .iter()
+                .zip(needle)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        })
+}
+
+fn html_ctrl_entity_match_len(bytes: &[u8], start: usize) -> Option<usize> {
+    if ascii_case_insensitive_starts_with(bytes, start, b"&newline;") {
+        return Some(b"&newline;".len());
+    }
+
+    if ascii_case_insensitive_starts_with(bytes, start, b"&tab;") {
+        return Some(b"&tab;".len());
+    }
+
+    None
+}
+
+fn strip_html_ctrl_entities_like(input: &str) -> String {
+    strip_ascii_matches_like(input, html_ctrl_entity_match_len)
+}
+
+fn contains_html_ctrl_entity_like(input: &str) -> bool {
+    contains_ascii_match_like(input, html_ctrl_entity_match_len)
+}
+
+fn whitespace_escape_chars_match_len(bytes: &[u8], start: usize) -> Option<usize> {
+    let first_len = if bytes.get(start) == Some(&b'\\') {
+        1
+    } else if bytes.get(start..start + 3).is_some_and(|candidate| {
+        candidate[0] == b'%' && candidate[1] == b'5' && matches!(candidate[2], b'c' | b'C')
+    }) {
+        3
+    } else {
+        return None;
+    };
+
+    let second = start + first_len;
+    if matches!(bytes.get(second), Some(b'n' | b'r' | b't')) {
+        return Some(first_len + 1);
+    }
+
+    let encoded_whitespace = bytes.get(second..second + 3).is_some_and(|candidate| {
+        candidate[0] == b'%'
+            && ((candidate[1] == b'6' && matches!(candidate[2], b'e' | b'E'))
+                || (candidate[1] == b'7' && matches!(candidate[2], b'2' | b'4')))
+    });
+    if encoded_whitespace {
+        return Some(first_len + 3);
+    }
+
+    None
+}
+
+fn strip_whitespace_escape_chars_like(input: &str) -> String {
+    strip_ascii_matches_like(input, whitespace_escape_chars_match_len)
+}
+
+fn contains_whitespace_escape_chars_like(input: &str) -> bool {
+    contains_ascii_match_like(input, whitespace_escape_chars_match_len)
 }
 
 fn is_ctrl_character_like(ch: char) -> bool {
@@ -195,20 +293,16 @@ pub fn sanitize_url(url: &str) -> String {
 
     loop {
         decoded_url = decode_html_characters_like(&decoded_url);
-        decoded_url = html_ctrl_entity_regex()
-            .replace_all(&decoded_url, "")
-            .to_string();
+        decoded_url = strip_html_ctrl_entities_like(&decoded_url);
         decoded_url = strip_ctrl_characters_like(&decoded_url);
-        decoded_url = whitespace_escape_chars_regex()
-            .replace_all(&decoded_url, "")
-            .to_string();
+        decoded_url = strip_whitespace_escape_chars_like(&decoded_url);
         decoded_url = decoded_url.trim().to_string();
         decoded_url = decode_uri_component_like(&decoded_url);
 
         let chars_to_decode = contains_ctrl_characters_like(&decoded_url)
             || contains_html_entity_like(&decoded_url)
-            || html_ctrl_entity_regex().is_match(&decoded_url)
-            || whitespace_escape_chars_regex().is_match(&decoded_url);
+            || contains_html_ctrl_entity_like(&decoded_url)
+            || contains_whitespace_escape_chars_like(&decoded_url);
 
         if !chars_to_decode {
             break;
@@ -324,6 +418,37 @@ mod tests {
         let js = r#"javascript:alert("test")"#;
         assert_eq!(format_url(js, &cfg_loose).as_deref(), Some(js));
         assert_eq!(format_url(js, &cfg_strict).as_deref(), Some("about:blank"));
+    }
+
+    #[test]
+    fn sanitize_url_named_control_entity_scanner_matches_upstream_regex_shape() {
+        assert_eq!(
+            strip_html_ctrl_entities_like("a&NewLine;b&tab;c&TAB;d&newline;e"),
+            "abcde"
+        );
+        assert_eq!(strip_html_ctrl_entities_like("&newlines;"), "&newlines;");
+        assert!(contains_html_ctrl_entity_like("https://x.test&NewLine;/ok"));
+        assert!(!contains_html_ctrl_entity_like(
+            "https://x.test&newlines;/ok"
+        ));
+    }
+
+    #[test]
+    fn sanitize_url_whitespace_escape_scanner_matches_upstream_regex_shape() {
+        assert_eq!(
+            strip_whitespace_escape_chars_like(r"a\nb\rc\td\%6Ee\%72f\%74g"),
+            "abcdefg"
+        );
+        assert_eq!(
+            strip_whitespace_escape_chars_like(r"a%5cnb%5C%72c%5C%6Ed"),
+            "abcd"
+        );
+        assert_eq!(
+            strip_whitespace_escape_chars_like(r"a\Nb%5CTc%5C%6Fd"),
+            r"a\Nb%5CTc%5C%6Fd"
+        );
+        assert!(contains_whitespace_escape_chars_like(r"javascrip%5Ctt"));
+        assert!(!contains_whitespace_escape_chars_like(r"javascrip%5CTt"));
     }
 
     #[test]

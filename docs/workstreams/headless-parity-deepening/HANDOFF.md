@@ -1223,6 +1223,10 @@ Current repository reality to preserve:
     construction and the final `regex::Regex` dependency from `sanitize.rs`. The direct scanner
     preserves pinned DOMPurify 3.4.0 URI allowlist semantics and intentionally aligns the default
     safe scheme set by allowing `matrix:` while default unknown `foo:` remains stripped.
+  - A follow-up HPD-050 panic-surface slice removed the remaining `sanitize_url(...)` cleanup
+    regex construction from `utils.rs`. The direct scanners preserve the installed
+    `@braintree/sanitize-url` 7.1.2 named HTML control entity and whitespace escape source shapes,
+    while the existing public sanitize-url attack-vector suite stays green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

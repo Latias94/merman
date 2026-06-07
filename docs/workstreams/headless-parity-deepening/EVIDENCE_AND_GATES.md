@@ -8389,3 +8389,50 @@ Gate notes:
   attribute-whitespace cleanup, script/data guard semantics, minimal HTML entity decoding, tag
   policy, semantic parsing, rendered output, SVG baselines, root viewport formulas, or Architecture
   residual classification.
+
+## HPD-050 - sanitize_url Cleanup Regex Panic Surface
+
+Outcome:
+
+- Removed the remaining two fixed regex compilation points from the public `sanitize_url(...)`
+  cleanup loop.
+- `crates/merman-core/src/utils.rs` no longer imports `regex::Regex` or stores cached
+  `html_ctrl_entity_regex(...)` / `whitespace_escape_chars_regex(...)` helpers.
+- The named-control-entity scanner preserves installed `@braintree/sanitize-url` 7.1.2
+  `htmlCtrlEntityRegex = /&(newline|tab);/gi` semantics for repeated cleanup-loop stripping.
+- The whitespace-escape scanner preserves installed `@braintree/sanitize-url` 7.1.2
+  `whitespaceEscapeCharsRegex = /(\\|%5[cC])((%(6[eE]|72|74))|[nrt])/g` semantics, including
+  `%5c` / `%5C` backslash encodings, `%6e` / `%6E` newline encodings, `%72` / `%74`, and the
+  source's lowercase literal `[nrt]` branch.
+- Existing public sanitize-url attack-vector coverage stayed green, and helper-level tests now
+  cover the scanner boundaries directly.
+
+Evidence:
+
+- `tools/mermaid-cli/node_modules/@braintree/sanitize-url/src/constants.ts`
+- `tools/mermaid-cli/node_modules/@braintree/sanitize-url/src/index.ts`
+- `tools/mermaid-cli/node_modules/@braintree/sanitize-url/src/__tests__/index.test.ts`
+- `tools/mermaid-cli/package-lock.json`
+- `crates/merman-core/src/utils.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-url-cleanup-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core sanitize_url` - passed, `3` tests run.
+- `cargo +1.95 nextest run -p merman-core sanitize` - passed, `39` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `rg -n 'html_ctrl_entity_regex|whitespace_escape_chars_regex|Regex|regex::' crates/merman-core/src/utils.rs` -
+  no sanitize-url regex dependency or cleanup regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `829`
+  lines parsed.
+
+Gate notes:
+
+- This is a source-backed public URL sanitizer panic-surface cleanup. It does not change the
+  DOMPurify-like `sanitize_text(...)` sanitizer boundary, DOMPurify generated allowlists,
+  data/ARIA attribute-name policy, URI allowlist semantics, attribute-whitespace cleanup,
+  script/data guard semantics, Mermaid preprocessing, semantic parsing, rendered output, SVG
+  baselines, root viewport formulas, or Architecture residual classification.

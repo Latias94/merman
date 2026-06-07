@@ -108,6 +108,10 @@ Library code should not panic on user-controlled input.
   - Sanitizer URI allowlist validation no longer compiles the DOMPurify `IS_ALLOWED_URI` regex.
     It now scans the pinned DOMPurify 3.4.0 source shape directly and intentionally aligns the
     default safe scheme set with upstream by allowing `matrix:`.
+  - `sanitize_url(...)` no longer compiles the two `@braintree/sanitize-url` cleanup regexes for
+    named HTML control entities or whitespace escape sequences. It now scans the installed
+    `@braintree/sanitize-url` 7.1.2 source shapes directly while preserving Mermaid's `^7.1.1`
+    dependency behavior covered by the existing sanitize-url vectors.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional
