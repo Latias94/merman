@@ -44,6 +44,9 @@ Library code should not panic on user-controlled input.
     Deep semantic output is assembled with explicit heap-backed traversal and hand-built final JSON
     maps so the nested `rootNode` is moved into the result instead of being wrapped through deep
     `json!` serialization.
+  - Block deep composite hierarchies no longer depend on recursive `Clone` while populating parent
+    children or projecting `blocksFlat`, and `parse_block(...)` now assembles the final semantic
+    object with a hand-built map instead of wrapping deep block trees through `json!`.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -63,6 +66,9 @@ Library code should not panic on user-controlled input.
   - Mindmap's semantic-JSON layout entrypoint now deserializes only the flat `nodes` / `edges`
     fields consumed by layout, avoiding recursive serde traversal of the deep semantic `rootNode`
     compatibility field.
+  - Block's semantic-JSON layout and SVG entrypoints now project `blocksFlat` through an explicit
+    heap-backed traversal instead of recursive serde over nested block children. Block SVG metadata
+    collection also uses an explicit stack instead of recursive `collect_nodes(...)`.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -89,6 +95,11 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render --test mindmap_svg_test`, and
     `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the Mindmap deep-tree cleanup.
+  - Verification: `cargo nextest run -p merman-core block`,
+    `cargo nextest run -p merman-render --test block_svg_test`, and
+    `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
+    passed for the Block deep-composite cleanup. The new `1,200`-level Block regressions reproduced
+    stack overflow before the non-recursive clone/projection changes.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -114,7 +125,7 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart, Ishikawa, TreeView, Treemap, and Mindmap now have explicit-stack coverage for
+  - Flowchart, Ishikawa, TreeView, Treemap, Mindmap, and Block now have explicit-stack coverage for
     representative deep or maximum-accepted inputs, but similar tree-shaped families should be
     audited before release hardening is considered complete.
 

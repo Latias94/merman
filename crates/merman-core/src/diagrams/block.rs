@@ -82,6 +82,55 @@ impl Block {
     }
 }
 
+fn clone_block_shallow(block: &Block) -> Block {
+    Block {
+        id: block.id.clone(),
+        block_type: block.block_type.clone(),
+        label: block.label.clone(),
+        children: Vec::new(),
+        start: block.start.clone(),
+        end: block.end.clone(),
+        arrow_type_end: block.arrow_type_end.clone(),
+        arrow_type_start: block.arrow_type_start.clone(),
+        width: block.width,
+        columns: block.columns,
+        width_in_columns: block.width_in_columns,
+        directions: block.directions.clone(),
+        classes: block.classes.clone(),
+        styles: block.styles.clone(),
+        css: block.css.clone(),
+        style_class: block.style_class.clone(),
+        styles_str: block.styles_str.clone(),
+    }
+}
+
+fn clone_block_tree_nonrecursive(block: &Block) -> Block {
+    let mut completed: HashMap<*const Block, Block> = HashMap::new();
+    let mut stack = vec![(block, false)];
+
+    while let Some((block, visited)) = stack.pop() {
+        if visited {
+            let children = block
+                .children
+                .iter()
+                .filter_map(|child| completed.remove(&(child as *const Block)))
+                .collect();
+            let mut cloned = clone_block_shallow(block);
+            cloned.children = children;
+            completed.insert(block as *const Block, cloned);
+        } else {
+            stack.push((block, true));
+            for child in block.children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    completed
+        .remove(&(block as *const Block))
+        .unwrap_or_else(|| clone_block_shallow(block))
+}
+
 #[derive(Debug, Clone, Default)]
 struct ClassDef {
     id: String,
@@ -198,12 +247,16 @@ impl BlockDb {
     fn set_hierarchy(&mut self, blocks: Vec<Block>, config: &MermaidConfig) -> Result<()> {
         let root_id = self.root_id.clone();
         self.populate_block_database(blocks, &root_id, config)?;
-        let root = self
+        self.blocks = self
             .block_database
             .get(&self.root_id)
-            .cloned()
+            .map(|root| {
+                root.children
+                    .iter()
+                    .map(clone_block_tree_nonrecursive)
+                    .collect()
+            })
             .unwrap_or_default();
-        self.blocks = root.children;
         Ok(())
     }
 
@@ -229,7 +282,8 @@ impl BlockDb {
                 let child_blocks: Vec<Block> = frame
                     .child_ids
                     .iter()
-                    .filter_map(|id| self.block_database.get(id).cloned())
+                    .filter_map(|id| self.block_database.get(id))
+                    .map(clone_block_tree_nonrecursive)
                     .collect();
                 if let Some(parent) = self.block_database.get_mut(&frame.parent_id) {
                     parent.children = child_blocks;
@@ -300,12 +354,12 @@ impl BlockDb {
 
             let existed = self.block_database.contains_key(&block.id);
             if !existed {
-                self.insert_block(block.id.clone(), block.clone());
+                self.insert_block(block.id.clone(), clone_block_shallow(&block));
             } else {
                 let mut existing = self
                     .block_database
                     .get(&block.id)
-                    .cloned()
+                    .map(clone_block_tree_nonrecursive)
                     .unwrap_or_else(|| Block::new(block.id.clone()));
                 // Mermaid's blockDB only merges a small subset of fields when a block id is
                 // encountered multiple times. In particular, later occurrences do *not* override
@@ -326,7 +380,7 @@ impl BlockDb {
                 let w = block.width.unwrap_or(1).max(0);
                 for j in 0..w {
                     let id = format!("{}-{}", block.id, j);
-                    let mut new_block = block.clone();
+                    let mut new_block = clone_block_shallow(&block);
                     new_block.id = id.clone();
                     self.insert_block(id.clone(), new_block);
                     if let Some(frame) = stack.last_mut() {
@@ -353,10 +407,10 @@ impl BlockDb {
         Ok(())
     }
 
-    fn blocks_flat(&self) -> Vec<Block> {
+    fn blocks_flat(&self) -> Vec<&Block> {
         self.block_database_order
             .iter()
-            .filter_map(|id| self.block_database.get(id).cloned())
+            .filter_map(|id| self.block_database.get(id))
             .collect()
     }
 }
@@ -445,11 +499,7 @@ fn block_to_value(b: &Block) -> Value {
             let children = block
                 .children
                 .iter()
-                .map(|child| {
-                    completed
-                        .remove(&(child as *const Block))
-                        .expect("child value should be completed before parent")
-                })
+                .filter_map(|child| completed.remove(&(child as *const Block)))
                 .collect();
             completed.insert(
                 block as *const Block,
@@ -465,7 +515,7 @@ fn block_to_value(b: &Block) -> Value {
 
     completed
         .remove(&(b as *const Block))
-        .expect("root value should be completed")
+        .unwrap_or_else(|| block_to_value_shallow(b, Vec::new()))
 }
 
 fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
@@ -510,11 +560,7 @@ fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
             let children = block
                 .children
                 .iter()
-                .map(|child| {
-                    completed
-                        .remove(&(child as *const Block))
-                        .expect("child render node should be completed before parent")
-                })
+                .filter_map(|child| completed.remove(&(child as *const Block)))
                 .collect();
             completed.insert(
                 block as *const Block,
@@ -530,7 +576,7 @@ fn block_to_render_node(b: &Block) -> BlockNodeRenderModel {
 
     completed
         .remove(&(b as *const Block))
-        .expect("root render node should be completed")
+        .unwrap_or_else(|| block_to_render_node_shallow(b, Vec::new()))
 }
 
 fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
@@ -546,7 +592,11 @@ fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
 
 fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
     BlockDiagramRenderModel {
-        blocks_flat: db.blocks_flat().iter().map(block_to_render_node).collect(),
+        blocks_flat: db
+            .blocks_flat()
+            .into_iter()
+            .map(block_to_render_node)
+            .collect(),
         edges: db.edges.iter().map(block_to_render_edge).collect(),
     }
 }
@@ -1566,15 +1616,28 @@ impl<'a> Parser<'a> {
 pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let db = parse_block_db(code, meta)?;
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "blocks": db.blocks.iter().map(block_to_value).collect::<Vec<_>>(),
-        "edges": db.edges.iter().map(block_to_value).collect::<Vec<_>>(),
-        "blocksFlat": db.blocks_flat().iter().map(block_to_value).collect::<Vec<_>>(),
-        "classes": class_def_map_to_value(&db.classes),
-        "warnings": db.warnings,
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    let blocks = db.blocks.iter().map(block_to_value).collect::<Vec<_>>();
+    let edges = db.edges.iter().map(block_to_value).collect::<Vec<_>>();
+    let blocks_flat = db
+        .blocks_flat()
+        .into_iter()
+        .map(block_to_value)
+        .collect::<Vec<_>>();
+    let classes = class_def_map_to_value(&db.classes);
+    let warnings = db.warnings.into_iter().map(Value::String).collect();
+
+    let mut out = Map::new();
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("blocks".to_string(), Value::Array(blocks));
+    out.insert("edges".to_string(), Value::Array(edges));
+    out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
+    out.insert("classes".to_string(), classes);
+    out.insert("warnings".to_string(), Value::Array(warnings));
+    out.insert(
+        "config".to_string(),
+        meta.effective_config.as_value().clone(),
+    );
+    Ok(Value::Object(out))
 }
 
 #[cfg(test)]
@@ -1589,6 +1652,18 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn deep_block_chain(depth: usize) -> String {
+        let mut input = String::from("block\n");
+        for level in 0..depth {
+            input.push_str(&format!("block:n{level}[\"n{level}\"]\n"));
+        }
+        input.push_str("leaf[\"leaf\"]\n");
+        for _ in 0..depth {
+            input.push_str("end\n");
+        }
+        input
     }
 
     fn blocks(model: &Value) -> Vec<Value> {
@@ -1687,6 +1762,40 @@ mod tests {
         assert_eq!(parsed_json.model["blocks"][0]["id"], json!("A"));
         assert_eq!(parsed_json.model["edges"][0]["start"], json!("A"));
         assert!(parsed_json.model.get("config").is_some());
+    }
+
+    #[test]
+    fn block_deep_chain_semantic_and_render_model_use_heap_traversal() {
+        const DEPTH: usize = 1200;
+        let input = deep_block_chain(DEPTH);
+
+        let model = parse(&input);
+        let blocks_flat = model["blocksFlat"].as_array().expect("blocksFlat array");
+        assert_eq!(blocks_flat.len(), DEPTH + 2);
+        assert_eq!(blocks_flat[0]["id"].as_str(), Some("root"));
+        assert_eq!(
+            blocks_flat
+                .last()
+                .and_then(|block| block.get("id"))
+                .and_then(Value::as_str),
+            Some("leaf")
+        );
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        match parsed.model {
+            RenderSemanticModel::Block(model) => {
+                assert_eq!(model.blocks_flat.len(), DEPTH + 2);
+                assert_eq!(model.blocks_flat[0].id, "root");
+                assert_eq!(
+                    model.blocks_flat.last().map(|block| block.id.as_str()),
+                    Some("leaf")
+                );
+            }
+            other => panic!("block render parse should return typed model, got {other:?}"),
+        }
     }
 
     #[test]

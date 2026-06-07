@@ -23,6 +23,18 @@ fn render_block_svg_from_text(text: &str) -> String {
     .expect("svg render ok")
 }
 
+fn deep_block_chain(depth: usize) -> String {
+    let mut input = String::from("block\n");
+    for level in 0..depth {
+        input.push_str(&format!("block:n{level}[\"n{level}\"]\n"));
+    }
+    input.push_str("leaf[\"leaf\"]\n");
+    for _ in 0..depth {
+        input.push_str("end\n");
+    }
+    input
+}
+
 #[test]
 fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
     let svg = render_block_svg_from_text(
@@ -42,6 +54,17 @@ fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
     assert!(
         svg.contains(r#"#merman .flowchart-link{stroke:#333333;fill:none;}"#),
         "expected block edges to carry their scoped stroke color"
+    );
+}
+
+#[test]
+fn block_public_svg_render_handles_deep_chain() {
+    const DEPTH: usize = 1200;
+    let svg = render_block_svg_from_text(&deep_block_chain(DEPTH));
+
+    assert!(
+        svg.contains(r#"id="merman-leaf""#),
+        "expected deep Block leaf to render without stack-dependent traversal"
     );
 }
 

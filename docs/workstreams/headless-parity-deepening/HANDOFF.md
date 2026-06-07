@@ -1067,6 +1067,14 @@ Current repository reality to preserve:
     recursively skip the deep `rootNode` compatibility field. Focused regressions cover a
     `1,200`-level chain through core semantic JSON, typed render model, and render `layout_parsed`;
     Mindmap DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened Block's deep composite path after a
+    `1,200`-level nested composite regression reproduced stack overflow in core semantic
+    projection and public SVG rendering. Block DB parent-child population now clones completed
+    subtrees with explicit postorder traversal, `blocks_flat()` returns references instead of
+    recursively cloning subtrees, final semantic object assembly avoids deep `json!`, and
+    renderer layout/SVG entrypoints project `blocksFlat` through explicit heap-backed
+    `serde_json::Value` traversal. SVG node metadata collection also uses an explicit stack.
+    Focused Block tests and DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

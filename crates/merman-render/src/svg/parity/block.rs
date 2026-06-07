@@ -12,7 +12,7 @@ pub(super) fn render_block_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: crate::block::BlockDiagramModel = crate::json::from_value_ref(semantic)?;
+    let model = crate::block::block_model_from_semantic(semantic)?;
     render_block_diagram_svg_model(layout, &model, effective_config, options)
 }
 
@@ -38,39 +38,42 @@ pub(super) fn render_block_diagram_svg_model(
     }
 
     fn collect_nodes(
-        n: &crate::block::BlockNode,
+        root: &crate::block::BlockNode,
         out: &mut std::collections::HashMap<String, RenderNode>,
     ) {
-        if let Some(existing) = out.get_mut(&n.id) {
-            if !n.label.is_empty() {
-                existing.label = n.label.clone();
+        let mut stack = vec![root];
+        while let Some(n) = stack.pop() {
+            if let Some(existing) = out.get_mut(&n.id) {
+                if !n.label.is_empty() {
+                    existing.label = n.label.clone();
+                }
+                if !n.block_type.is_empty() && n.block_type != "na" {
+                    existing.block_type = n.block_type.clone();
+                }
+                if !n.classes.is_empty() {
+                    existing.classes = n.classes.clone();
+                }
+                if !n.styles.is_empty() {
+                    existing.styles = n.styles.clone();
+                }
+                if !n.directions.is_empty() {
+                    existing.directions = n.directions.clone();
+                }
+            } else {
+                out.insert(
+                    n.id.clone(),
+                    RenderNode {
+                        label: n.label.clone(),
+                        block_type: n.block_type.clone(),
+                        classes: n.classes.clone(),
+                        styles: n.styles.clone(),
+                        directions: n.directions.clone(),
+                    },
+                );
             }
-            if !n.block_type.is_empty() && n.block_type != "na" {
-                existing.block_type = n.block_type.clone();
+            for child in n.children.iter().rev() {
+                stack.push(child);
             }
-            if !n.classes.is_empty() {
-                existing.classes = n.classes.clone();
-            }
-            if !n.styles.is_empty() {
-                existing.styles = n.styles.clone();
-            }
-            if !n.directions.is_empty() {
-                existing.directions = n.directions.clone();
-            }
-        } else {
-            out.insert(
-                n.id.clone(),
-                RenderNode {
-                    label: n.label.clone(),
-                    block_type: n.block_type.clone(),
-                    classes: n.classes.clone(),
-                    styles: n.styles.clone(),
-                    directions: n.directions.clone(),
-                },
-            );
-        }
-        for c in &n.children {
-            collect_nodes(c, out);
         }
     }
 

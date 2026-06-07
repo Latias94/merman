@@ -2,7 +2,7 @@ use crate::config::config_f64;
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 
 pub(crate) type BlockDiagramModel = merman_core::diagrams::block::BlockDiagramRenderModel;
@@ -615,11 +615,7 @@ fn to_sized_block(
             let children = block
                 .children
                 .iter()
-                .map(|child| {
-                    completed
-                        .remove(&(child as *const BlockNode))
-                        .expect("child sized block should be completed before parent")
-                })
+                .filter_map(|child| completed.remove(&(child as *const BlockNode)))
                 .collect();
             completed.insert(
                 block as *const BlockNode,
@@ -635,7 +631,7 @@ fn to_sized_block(
 
     completed
         .remove(&(node as *const BlockNode))
-        .expect("root sized block should be completed")
+        .unwrap_or_else(|| to_sized_block_shallow(node, padding, measurer, text_style, Vec::new()))
 }
 
 fn get_max_child_size(block: &SizedBlock) -> (f64, f64) {
@@ -906,12 +902,154 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
     }
 }
 
+fn invalid_block_model(message: impl Into<String>) -> Error {
+    Error::InvalidModel {
+        message: message.into(),
+    }
+}
+
+fn required_string_field(obj: &Map<String, Value>, key: &str) -> Result<String> {
+    match obj.get(key) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(other) => Err(invalid_block_model(format!(
+            "block node field `{key}` must be a string, got {other:?}"
+        ))),
+        None => Err(invalid_block_model(format!(
+            "block node missing required field `{key}`"
+        ))),
+    }
+}
+
+fn optional_string_field(obj: &Map<String, Value>, key: &str) -> Result<String> {
+    match obj.get(key) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(other) => Err(invalid_block_model(format!(
+            "block node field `{key}` must be a string, got {other:?}"
+        ))),
+        None => Ok(String::new()),
+    }
+}
+
+fn optional_i64_field(obj: &Map<String, Value>, key: &str) -> Result<Option<i64>> {
+    match obj.get(key) {
+        Some(Value::Number(value)) => value.as_i64().map(Some).ok_or_else(|| {
+            invalid_block_model(format!("block node field `{key}` must be an integer"))
+        }),
+        Some(Value::Null) | None => Ok(None),
+        Some(other) => Err(invalid_block_model(format!(
+            "block node field `{key}` must be an integer, got {other:?}"
+        ))),
+    }
+}
+
+fn string_array_field(obj: &Map<String, Value>, key: &str) -> Result<Vec<String>> {
+    let Some(value) = obj.get(key) else {
+        return Ok(Vec::new());
+    };
+    let Value::Array(items) = value else {
+        return Err(invalid_block_model(format!(
+            "block node field `{key}` must be an array"
+        )));
+    };
+
+    items
+        .iter()
+        .map(|item| match item {
+            Value::String(value) => Ok(value.clone()),
+            other => Err(invalid_block_model(format!(
+                "block node field `{key}` must contain strings, got {other:?}"
+            ))),
+        })
+        .collect()
+}
+
+fn block_children_values<'a>(value: &'a Value) -> Result<&'a [Value]> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| invalid_block_model("block node must be an object"))?;
+    match obj.get("children") {
+        Some(Value::Array(children)) => Ok(children),
+        Some(other) => Err(invalid_block_model(format!(
+            "block node field `children` must be an array, got {other:?}"
+        ))),
+        None => Ok(&[]),
+    }
+}
+
+fn block_node_from_value_nonrecursive(value: &Value) -> Result<BlockNode> {
+    let mut stack = vec![(value, false)];
+    let mut completed: HashMap<*const Value, BlockNode> = HashMap::new();
+
+    while let Some((current, visited)) = stack.pop() {
+        if visited {
+            let obj = current
+                .as_object()
+                .ok_or_else(|| invalid_block_model("block node must be an object"))?;
+            let children = block_children_values(current)?
+                .iter()
+                .map(|child| {
+                    completed.remove(&std::ptr::from_ref(child)).ok_or_else(|| {
+                        invalid_block_model("block child node was not completed before parent")
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            completed.insert(
+                std::ptr::from_ref(current),
+                BlockNode {
+                    id: required_string_field(obj, "id")?,
+                    label: optional_string_field(obj, "label")?,
+                    block_type: optional_string_field(obj, "type")?,
+                    children,
+                    columns: optional_i64_field(obj, "columns")?,
+                    width_in_columns: optional_i64_field(obj, "widthInColumns")?,
+                    width: optional_i64_field(obj, "width")?,
+                    classes: string_array_field(obj, "classes")?,
+                    styles: string_array_field(obj, "styles")?,
+                    directions: string_array_field(obj, "directions")?,
+                },
+            );
+        } else {
+            stack.push((current, true));
+            for child in block_children_values(current)?.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    completed
+        .remove(&std::ptr::from_ref(value))
+        .ok_or_else(|| invalid_block_model("block root node was not completed"))
+}
+
+pub(crate) fn block_model_from_semantic(semantic: &Value) -> Result<BlockDiagramModel> {
+    let blocks_flat = match semantic.get("blocksFlat") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(block_node_from_value_nonrecursive)
+            .collect::<Result<Vec<_>>>()?,
+        Some(other) => {
+            return Err(invalid_block_model(format!(
+                "block semantic field `blocksFlat` must be an array, got {other:?}"
+            )));
+        }
+        None => Vec::new(),
+    };
+    let edges = semantic
+        .get("edges")
+        .map(crate::json::from_value_ref)
+        .transpose()?
+        .unwrap_or_default();
+
+    Ok(BlockDiagramModel { blocks_flat, edges })
+}
+
 pub fn layout_block_diagram(
     semantic: &Value,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
-    let model: BlockDiagramModel = crate::json::from_value_ref(semantic)?;
+    let model = block_model_from_semantic(semantic)?;
     layout_block_diagram_typed(&model, effective_config, measurer)
 }
 

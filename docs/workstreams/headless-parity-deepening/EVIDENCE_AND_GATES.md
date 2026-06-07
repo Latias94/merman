@@ -7155,3 +7155,54 @@ Gate notes:
   changed.
 - This is release-boundary hardening for Mindmap's unbounded hierarchy path. It does not introduce
   a new Mindmap depth limit.
+
+## HPD-050 - Block Deep-Composite Panic Surface
+
+Outcome:
+
+- Hardened Block's user-authored composite hierarchy path after the Mindmap cleanup. A
+  `1,200`-level nested Block input reproduced stack overflow in both core semantic projection and
+  public SVG rendering before this slice.
+- Block DB parent-child population now uses explicit heap-backed tree cloning instead of recursive
+  derived `Clone` when copying completed child subtrees into parent composites.
+- `BlockDb::blocks_flat(...)` now returns block references instead of recursively cloning every
+  stored subtree before semantic or typed render projection.
+- Block semantic `blocks`, `edges`, and `blocksFlat` projection still uses explicit postorder
+  traversal, and the completed-child maps now degrade by dropping missing invariant children instead
+  of panicking.
+- `parse_block(...)` now assembles the final semantic object with a hand-built `serde_json::Map`,
+  avoiding deep `json!` wrapping of nested block trees.
+- The Block semantic-JSON layout and SVG entrypoints now project `blocksFlat` through an explicit
+  heap-backed `serde_json::Value` traversal instead of recursive serde traversal over nested
+  children.
+- Block SVG metadata collection now uses an explicit stack instead of recursive `collect_nodes(...)`.
+- Added public-path regressions:
+  - core parses and semantically projects a `1,200`-level nested Block composite chain;
+  - core builds the typed Block render model for the same hierarchy;
+  - render parses, layouts, and renders SVG for the same hierarchy through the public
+    `layout_parsed(...)` / `render_block_diagram_svg(...)` path.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/block.rs`
+- `crates/merman-render/src/block.rs`
+- `crates/merman-render/src/svg/parity/block.rs`
+- `crates/merman-render/tests/block_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-block-deep-composite-panic-surface.md`
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo nextest run -p merman-core block` - passed, `35` tests run.
+- `cargo nextest run -p merman-render --test block_svg_test` - passed, `7` tests run.
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for Block's accepted deep composite path. It does not
+  introduce a new Block depth limit.
