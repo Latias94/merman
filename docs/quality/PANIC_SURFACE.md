@@ -517,12 +517,13 @@ The following patterns are intentionally tolerated for now but should be tracked
 - Production `merman-core/src` now has no `regex::Regex`, `Regex::new`, or `OnceLock<Regex>`
   matches. Remaining `OnceLock` use is for generated/default config, family ID lists, theme data,
   or static sanitizer allowlist sets rather than regex compilation.
-- A small number of `unwrap/expect` in renderer internals:
-  - most are on index/iterator operations that are guarded by bounds checks, but they are worth
-    auditing because they can become input-reachable if assumptions drift.
-- `dugong-graphlib::Graph::set_edge_named(...)` still panics for named edges on non-multigraph
-  simple graphs. That is currently preserved as a source-backed Graphlib throw mapping, not treated
-  as an internal invariant panic.
+- A filtered production `unwrap/expect/panic!` scan across `merman-core`, `merman-render`,
+  `dugong`, `dugong-graphlib`, and `manatee`, excluding tests and same-file `#[cfg(test)]`
+  regions, currently reports only:
+  - generated/static JSON validity checks in `merman-core` generated/default config and generated
+    Mermaid theme snapshot loading
+  - `dugong-graphlib::Graph::set_edge_named(...)` for named edges on non-multigraph simple graphs,
+    preserved as a source-backed Graphlib throw mapping rather than an internal invariant panic
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
     C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and

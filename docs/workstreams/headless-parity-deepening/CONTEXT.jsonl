@@ -876,3 +876,5 @@
 {"file":"crates/merman-core/src/diagrams/gantt/datetime.rs","reason":"HPD-050 Gantt panic-surface guard: local datetime fallback helpers now avoid epoch unwraps and checked December rollover panics."}
 {"file":"crates/merman-core/src/diagrams/gantt/tests.rs","reason":"HPD-050 Gantt coverage: last_day_of_month now has leap, invalid month, and overflowing December boundary regression coverage."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-gantt-datetime-fallback-panic-surface.md","reason":"HPD-050 journal: records Gantt datetime fallback unwrap removal, focused Gantt verification, and unchanged date semantics boundary."}
+{"file":"docs/quality/PANIC_SURFACE.md","reason":"HPD-050 production panic-surface reclassification: stale renderer-internals unwrap/expect triage is replaced with the current filtered non-test scan result."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-production-panic-surface-reclassification.md","reason":"HPD-050 journal: records filtered production panic scan residuals and unchanged generated/static plus source-backed Graphlib boundaries."}

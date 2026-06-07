@@ -1303,6 +1303,10 @@ Current repository reality to preserve:
     `serde_json::Number::from_f64(...).unwrap()` calls from `theme.rs`. The new finite-number theme
     helper preserves `curveOpacity = 0.5` and `graticuleOpacity = 0.3`; the stale COSE-Bilkent
     y-force triage note was also removed because the diagnostic panic lives under `#[cfg(test)]`.
+  - A follow-up HPD-050 panic-surface reclassification reran the filtered production
+    `unwrap/expect/panic!` scan. The stale renderer-internals triage note is removed; the remaining
+    non-test hits are generated/static core JSON validity checks and the source-backed Graphlib
+    named-edge panic on non-multigraph simple graphs.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

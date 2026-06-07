@@ -9136,3 +9136,38 @@ Gate notes:
   duration parsing, missing-year today behavior, task ordering, weekend/exclude handling,
   retained config projection, rendered layout, SVG baselines, root viewport formulas, or Mermaid
   parity residual classification.
+
+## HPD-050 - Production Panic Surface Reclassification
+
+Outcome:
+
+- Reran a filtered production `unwrap/expect/panic!` scan across `merman-core`, `merman-render`,
+  `dugong`, `dugong-graphlib`, and `manatee` after the theme and Gantt fallback cleanups.
+- Removed the stale `docs/quality/PANIC_SURFACE.md` triage note claiming a small number of
+  renderer-internal `unwrap/expect` candidates remain. The current filtered scan shows that those
+  hits were test-module noise or already-audited generated/static boundaries.
+- Kept the two intentionally tolerated runtime categories visible: generated/static JSON validity
+  checks in core generated/default config and generated Mermaid theme snapshot loading, plus the
+  source-backed Graphlib named-edge panic on non-multigraph simple graphs.
+
+Evidence:
+
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-production-panic-surface-reclassification.md`
+
+Focused verification:
+
+- Filtered production scan output reported only:
+  - `crates/dugong-graphlib/src/graph/core.rs:398`
+  - `crates/merman-core/src/theme.rs:324`
+  - `crates/merman-core/src/theme.rs:327`
+  - `crates/merman-core/src/generated/mod.rs:13`
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `880`
+  lines parsed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a documentation and triage reclassification slice only. It does not change parser,
+  renderer, layout, Graphlib, generated config, generated theme snapshot, SVG baseline, root
+  viewport, or Mermaid parity behavior.
