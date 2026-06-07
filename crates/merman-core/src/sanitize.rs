@@ -1,7 +1,6 @@
 use crate::MermaidConfig;
 use crate::generated::dompurify_defaults;
 use lol_html::{RewriteStrSettings, element, rewrite_str};
-use regex::Regex;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -124,14 +123,6 @@ fn default_data_uri_tags() -> &'static HashSet<&'static str> {
     })
 }
 
-fn dompurify_is_allowed_uri_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"(?i)^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))")
-            .expect("valid regex")
-    })
-}
-
 fn is_dompurify_data_attr_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("data-") else {
         return false;
@@ -215,6 +206,51 @@ fn is_dompurify_script_or_data_uri(value: &str) -> bool {
     bytes[..bytes.len() - script.len()]
         .iter()
         .all(|byte| is_js_regex_word_byte(*byte))
+}
+
+fn is_dompurify_allowed_uri(value: &str) -> bool {
+    // Source: DOMPurify 3.4.0 `IS_ALLOWED_URI`.
+    if value.is_empty() {
+        return false;
+    }
+
+    if has_dompurify_allowed_uri_scheme(value) {
+        return true;
+    }
+
+    let bytes = value.as_bytes();
+    if !bytes[0].is_ascii_alphabetic() {
+        return true;
+    }
+
+    let mut cursor = 0usize;
+    while bytes
+        .get(cursor)
+        .is_some_and(|byte| is_dompurify_uri_scheme_byte(*byte))
+    {
+        cursor += 1;
+    }
+
+    cursor == bytes.len()
+        || bytes
+            .get(cursor)
+            .is_some_and(|byte| !is_dompurify_uri_scheme_byte(*byte) && *byte != b':')
+}
+
+fn has_dompurify_allowed_uri_scheme(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    const ALLOWED_URI_SCHEMES: &[&[u8]] = &[
+        b"http:", b"https:", b"ftp:", b"ftps:", b"mailto:", b"tel:", b"callto:", b"sms:", b"cid:",
+        b"xmpp:", b"matrix:",
+    ];
+
+    ALLOWED_URI_SCHEMES
+        .iter()
+        .any(|scheme| ascii_case_insensitive_starts_with(bytes, 0, scheme))
+}
+
+fn is_dompurify_uri_scheme_byte(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || matches!(byte, b'+' | b'.' | b'-')
 }
 
 fn is_js_regex_word_byte(byte: u8) -> bool {
@@ -400,7 +436,7 @@ fn dompurify_is_valid_attribute(
     let decoded_value = decode_attr_html_entities_minimally(value);
     let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
 
-    if dompurify_is_allowed_uri_regex().is_match(value_no_ws.as_ref()) {
+    if is_dompurify_allowed_uri(value_no_ws.as_ref()) {
         return true;
     }
 
@@ -856,6 +892,48 @@ mod tests {
     }
 
     #[test]
+    fn dompurify_allowed_uri_matches_source_regex_boundaries() {
+        for uri in [
+            "http://example.test",
+            "https://example.test",
+            "ftp://example.test",
+            "ftps://example.test",
+            "mailto:user@example.test",
+            "tel:+123",
+            "callto:user",
+            "sms:+123",
+            "cid:content-id",
+            "xmpp:user@example.test",
+            "matrix:r/example:example.test",
+            "MATRIX:r/example:example.test",
+            "/relative",
+            "#fragment",
+            "?query",
+            "1-relative",
+            ":colon-relative",
+            "abc",
+            "abc/path",
+            "abc?query",
+            "abc123:allowed-by-source-prefix",
+            "abc_def:allowed-by-source-prefix",
+        ] {
+            assert!(is_dompurify_allowed_uri(uri), "{uri}");
+        }
+
+        for uri in [
+            "",
+            "javascript:alert(1)",
+            "data:text/html,1",
+            "foo:bar",
+            "abc+def:bar",
+            "abc.def:bar",
+            "abc-def:bar",
+        ] {
+            assert!(!is_dompurify_allowed_uri(uri), "{uri}");
+        }
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -1100,6 +1178,22 @@ mod tests {
         assert!(out.contains(">x</a>"));
         assert!(!out.to_ascii_lowercase().contains("javascript:"));
         assert!(!out.to_ascii_lowercase().contains("href="));
+    }
+
+    #[test]
+    fn sanitize_text_dompurify_allowed_uri_matches_pinned_source_schemes() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text(
+            r#"<a href="matrix:r/example:example.test">matrix</a><a href="foo:bar">foo</a>"#,
+            &cfg,
+        );
+        assert!(out.contains(r#"href="matrix:r/example:example.test""#));
+        assert!(out.contains(">matrix</a>"));
+        assert!(out.contains(">foo</a>"));
+        assert!(!out.contains(r#"href="foo:bar""#));
     }
 
     #[test]

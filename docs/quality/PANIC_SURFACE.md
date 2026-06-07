@@ -105,6 +105,9 @@ Library code should not panic on user-controlled input.
   - Sanitizer unknown-protocol script/data guarding no longer compiles the DOMPurify
     `IS_SCRIPT_OR_DATA` regex. It now scans the pinned DOMPurify 3.4.0 source shape directly,
     preserving ASCII `\w+script:` and case-insensitive `data:` behavior.
+  - Sanitizer URI allowlist validation no longer compiles the DOMPurify `IS_ALLOWED_URI` regex.
+    It now scans the pinned DOMPurify 3.4.0 source shape directly and intentionally aligns the
+    default safe scheme set with upstream by allowing `matrix:`.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional

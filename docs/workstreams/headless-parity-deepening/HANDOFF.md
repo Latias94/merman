@@ -1217,8 +1217,12 @@ Current repository reality to preserve:
     unchanged.
   - A follow-up HPD-050 panic-surface slice removed sanitizer DOMPurify `IS_SCRIPT_OR_DATA` regex
     construction from the `ALLOW_UNKNOWN_PROTOCOLS` guard. The direct scanner preserves pinned
-    DOMPurify 3.4.0 ASCII `\w+script:` and case-insensitive `data:` source semantics; URI
-    allowlist regex semantics remain the remaining sanitizer regex audit candidate.
+    DOMPurify 3.4.0 ASCII `\w+script:` and case-insensitive `data:` source semantics; the URI
+    allowlist was handled in the next sanitizer slice.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer DOMPurify `IS_ALLOWED_URI` regex
+    construction and the final `regex::Regex` dependency from `sanitize.rs`. The direct scanner
+    preserves pinned DOMPurify 3.4.0 URI allowlist semantics and intentionally aligns the default
+    safe scheme set by allowing `matrix:` while default unknown `foo:` remains stripped.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

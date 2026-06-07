@@ -8348,3 +8348,44 @@ Gate notes:
   allowlists, data/ARIA attribute-name policy, URI allowlist regex semantics, attribute-whitespace
   cleanup, minimal HTML entity decoding, tag policy, semantic parsing, rendered output, SVG
   baselines, root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - Sanitizer URI Allowlist Cleanup Panic Surface
+
+Outcome:
+
+- Removed the final sanitizer regex compilation point from the DOMPurify-like URI allowlist path.
+- `dompurify_is_valid_attribute(...)` now calls `is_dompurify_allowed_uri(...)` instead of a cached
+  `Regex::new(...)` helper, and `crates/merman-core/src/sanitize.rs` no longer imports
+  `regex::Regex`.
+- The replacement scanner preserves pinned DOMPurify 3.4.0 `IS_ALLOWED_URI` semantics, including
+  safe schemes, relative-like non-letter starts, and source-shaped ASCII scheme-prefix fallback.
+- This slice intentionally aligns the default sanitizer with pinned DOMPurify 3.4.0 by allowing
+  `matrix:` URIs, which the previous Rust regex omitted.
+- Added helper-level source-boundary coverage and public `sanitize_text(...)` coverage proving
+  `matrix:` survives while default unknown `foo:` href remains stripped.
+
+Evidence:
+
+- `repo-ref/dompurify/dist/purify.cjs.js`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-uri-allowlist-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core sanitize` - passed, `37` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'Regex|regex::|dompurify_is_allowed_uri_regex|fn dompurify_is_allowed_uri_regex' crates/merman-core/src/sanitize.rs` -
+  no sanitizer regex dependency or URI allowlist regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a source-backed URI allowlist convergence and public sanitizer panic-surface cleanup. It
+  intentionally changes default URI acceptance for `matrix:` to match pinned DOMPurify 3.4.0. It
+  does not change DOMPurify generated allowlists, data/ARIA attribute-name policy,
+  attribute-whitespace cleanup, script/data guard semantics, minimal HTML entity decoding, tag
+  policy, semantic parsing, rendered output, SVG baselines, root viewport formulas, or Architecture
+  residual classification.
