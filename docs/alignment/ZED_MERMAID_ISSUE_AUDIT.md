@@ -1,7 +1,7 @@
 # Zed Mermaid Issue Audit
 
 Date: 2026-05-28
-Updated: 2026-06-02
+Updated: 2026-06-08
 
 This audit maps Mermaid-related Zed issues and PRs to merman behavior. It focuses on the Zed
 migration from `mermaid-rs-renderer` to `merman` in zed-industries/zed#57644, plus the issue shapes
@@ -9,11 +9,27 @@ that are useful as headless regression fixtures.
 
 ## Integration Shape
 
-The audited Zed tree did not fork `merman` source. It had an internal `crates/mermaid_render`
-wrapper that depended on `merman = { version = "0.4", features = ["render"] }` and then applied
-Zed-specific theme/accent/resvg post-processing. Later PR zed-industries/zed#57967 updates that
-dependency to `0.6` and adopts `SvgPipeline::resvg_safe()`. Treat both versions of the wrapper as
-requirements evidence, not as code to copy into this repository.
+Older audited Zed trees did not vendor `merman` source. They had an internal
+`crates/mermaid_render` wrapper that depended on released `merman` versions and then applied
+Zed-specific theme/accent/resvg post-processing. Later PR zed-industries/zed#57967 updated that
+dependency to `0.6` and adopted `SvgPipeline::resvg_safe()`.
+
+The current `repo-ref/zed` checkout is more release-relevant: `Cargo.lock` pins `merman`,
+`merman-core`, `merman-render`, and `roughr-merman` to
+`git+https://github.com/zed-industries/merman?tag=v0.6.2-with-patches#06094471f97acb10d0eebf8b92bac19ba2928eea`.
+Its `crates/mermaid_render` wrapper calls the public `merman` API shape that alpha.2 must keep
+usable for a future upgrade:
+
+- `merman::MermaidConfig::from_value(...)` for host theme variables,
+- `merman::render::HeadlessRenderer::new().with_site_config(...).with_vendored_text_measurer().with_diagram_id(...)`,
+- `SvgPipeline::resvg_safe().with_postprocessor(CssOverridePostprocessor::strip_existing_important())`,
+- `HeadlessRenderer::render_svg_with_pipeline_sync(...)`.
+
+Alpha.2 adds `crates/merman/tests/zed_editor_contract.rs` so this integration shape is covered
+inside merman itself: configured SVG ids, host theme config, fallback text, `foreignObject`
+removal, generic class text escaping, unsafe CSS stripping, invalid visual-attribute cleanup, and
+representative Zed preview diagram families. Treat Zed wrapper code as requirements evidence, not
+as code to copy into this repository.
 
 ## Coverage Map
 

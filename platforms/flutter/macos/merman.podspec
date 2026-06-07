@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'merman'
-  s.version          = '0.7.0-alpha.1'
+  s.version          = '0.7.0-alpha.2'
   s.summary          = 'Flutter FFI bindings for headless Mermaid rendering on macOS.'
   s.description      = <<-DESC
     Provides a Flutter plugin that links the merman Rust FFI library and exposes

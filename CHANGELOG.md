@@ -6,11 +6,41 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.7.0-alpha.2] - 2026-06-08
+
+This alpha focuses on release-boundary cleanup for host integrations. It hardens parser, layout,
+render, Graphlib/Dagre, sanitizer, and SVG pipeline paths against user-controlled panic surfaces,
+updates the release package versions to the next alpha, and adds regression coverage for Zed's
+real editor-preview integration shape.
+
 ### Breaking Changes
 
 - Removed the deprecated Mermaid-versioned registry constructors that still carried the stale `11_12_2` name. Migration: replace `DiagramRegistry::default_mermaid_11_12_2()` and `RenderDiagramRegistry::default_mermaid_11_12_2()` with `for_pinned_mermaid_baseline()`. Replace `DetectorRegistry::default_mermaid_11_12_2()` with `DetectorRegistry::for_pinned_mermaid_baseline()`, or use `pinned_mermaid_baseline_full()` / `pinned_mermaid_baseline_tiny()` when the feature profile must be explicit.
 - Renamed known-type parser entry points from `*_as*` to `*_with_type*` so the public Rust API says what the supplied argument means. Migration: `parse_metadata_as_sync` -> `parse_metadata_with_type_sync`, `parse_metadata_as` -> `parse_metadata_with_type`, `parse_diagram_as_sync` -> `parse_diagram_with_type_sync`, `parse_diagram_as` -> `parse_diagram_with_type`, `parse_diagram_for_render_model_as_sync` -> `parse_diagram_for_render_model_with_type_sync`, and `parse_diagram_for_render_model_as` -> `parse_diagram_for_render_model_with_type`.
 - Renamed theme metadata entry points to use the same `supported_*` naming as diagram metadata. Migration: `@merman/web` callers should use `supportedThemes()` instead of `themes()`, wasm-bindgen exports `supportedThemes`, UniFFI uses `supported_themes()`, the C ABI uses `merman_supported_themes_json()` instead of `merman_themes_json()`, Android uses `supportedThemesJson()`, and Swift/Dart wrappers use `supportedThemes()`.
+
+### Added
+
+- Added deterministic fixed-time controls for date-sensitive parsing and rendering, including CLI flags and binding-facing options for callers that need stable Gantt output.
+- Added release-preflight and manual platform publishing workflows for Rust crates, CLI artifacts, Python wheels, Android AARs, Apple XCFrameworks, and Flutter packages.
+- Added Zed editor-preview contract coverage for the public `HeadlessRenderer`, `MermaidConfig`, `SvgPipeline::resvg_safe()`, `CssOverridePostprocessor::strip_existing_important()`, vendored text measurement, configured SVG ids, readable fallback text, and raster-safe SVG cleanup.
+- Added copyable Rust examples and refreshed release documentation for the alpha.2 package graph.
+
+### Changed
+
+- Bumped the workspace and platform package versions to `0.7.0-alpha.2`; Python package metadata uses the PEP 440 spelling `0.7.0a2`.
+- Bumped the pinned Rust toolchain and MSRV to `1.95`.
+- Deepened render architecture around typed family ownership, semantic-source sharing, chart/theme role helpers, and shared SVG pipeline behavior without changing the main parity-oriented SVG contract.
+
+### Fixed
+
+- Hardened deep tree and graph traversal across Flowchart, Class, Architecture, State, C4, Block, TreeView, Ishikawa, Treemap, Mindmap, ASCII Flowchart, manatee/FCoSE, Dugong, and Graphlib so accepted nested inputs no longer depend on recursive Rust stack depth.
+- Hardened config, frontmatter, init directive, retained semantic config, and compatibility JSON projection paths so deeply nested host config and family models avoid recursive clone/drop and panic-prone JSON rebuilding.
+- Hardened sanitizer, preprocessing, Gantt/Class parsing helpers, FontAwesome icon handling, and SVG pipeline cleanup by replacing first-use regex compilation and panic-prone helper paths with source-shaped scanners.
+- Hardened `SvgPipeline::resvg_safe()` and raw SVG raster boundaries by removing more rasterizer hazards such as unsupported CSS, empty or non-finite visual attributes, `foreignObject` dependencies, and leftover `!important` declarations when callers opt into stripping them.
+- Hardened Graphlib JSON and named-edge insertion behavior: invalid named edges on simple graphs now return errors through fallible APIs/read paths while chainable mutators no-op instead of panicking.
+- Fixed Python wheel packaging to build native artifacts as platform libraries.
+- Fixed Flowchart zero-spacing defaults and several Zed-derived regression surfaces, including class method/generic text preservation and resvg-safe editor-preview behavior.
 
 ## [0.7.0-alpha.1] - 2026-06-05
 

@@ -17,7 +17,7 @@ Library code should not panic on user-controlled input.
   - degrading gracefully (best-effort output) when strictness would be counterproductive (e.g.
     layout on disconnected graphs)
 
-## Current status (2026-06-07)
+## Current status (2026-06-08)
 
 - `dugong` (Dagre port):
   - No `unwrap/expect/panic!` usage in `crates/dugong/src` (production code).

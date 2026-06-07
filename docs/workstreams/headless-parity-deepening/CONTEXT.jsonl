@@ -897,3 +897,9 @@
 {"file":"crates/dugong-graphlib/tests/graph_core_test.rs","reason":"HPD-050 Graphlib coverage: chainable named-edge mutators no-op on simple graphs and try_* methods report GraphError::NamedEdgeInNonMultigraph."}
 {"file":"crates/dugong-graphlib/tests/json_test.rs","reason":"HPD-050 Graphlib JSON coverage: malformed simple-graph named-edge input is rejected through the fallible read seam."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-graphlib-named-edge-panic-surface.md","reason":"HPD-050 journal: records Graphlib named-edge panic-surface cleanup, focused verification, and unchanged graph/layout/parity boundary."}
+{"file":"crates/merman/tests/zed_editor_contract.rs","reason":"HPD-050 alpha.2 release prep: locks Zed editor-preview public API contract, host theme config, resvg-safe pipeline, fallback text, class generics, and raster-safe SVG cleanup."}
+{"file":"docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md","reason":"HPD-050 alpha.2 release prep: documents current repo-ref/zed patched fork pin and the merman API shape Zed needs for a future upgrade."}
+{"file":"CHANGELOG.md","reason":"HPD-050 alpha.2 release prep: records user-facing 0.7.0-alpha.2 changes, breaking API migration notes, Zed contract coverage, and panic-surface hardening."}
+{"file":"docs/release/PUBLISH_ORDER.md","reason":"HPD-050 alpha.2 release prep: updates publish target, PEP 440 spelling, and dependency-chain blockers for 0.7.0-alpha.2."}
+{"file":"docs/release/RELEASING.md","reason":"HPD-050 alpha.2 release prep: updates release-preflight, tag, and manual platform workflow examples for 0.7.0-alpha.2."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-08-alpha2-zed-release-prep.md","reason":"HPD-050 journal: records Zed usage audit, alpha.2 release metadata prep, local release gates, and remaining CI-only platform boundaries."}

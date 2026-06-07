@@ -9363,3 +9363,54 @@ Gate notes:
   named-edge storage, simple unnamed-edge behavior, edge lookup semantics, endpoint
   canonicalization, JSON serialization format, Dugong layout geometry, Graphlib algorithm
   behavior, SVG baselines, root viewport formulas, or Mermaid parity residual classification.
+
+## HPD-050 - Alpha.2 Zed Release Prep
+
+Outcome:
+
+- Audited the current `repo-ref/zed` wrapper against the public merman API surface needed for a
+  future upgrade from Zed's patched `v0.6.2` fork.
+- Added a Zed editor-preview contract test for host theme config, vendored text measurement,
+  configured SVG ids, `SvgPipeline::resvg_safe()`, `CssOverridePostprocessor::strip_existing_important()`,
+  fallback text, class generics, `foreignObject` removal, and raster-safe SVG cleanup.
+- Prepared `0.7.0-alpha.2` release metadata, release docs, root changelog, and platform changelogs.
+- Reconfirmed the release-boundary panic-surface scan after the Graphlib cleanup.
+
+Evidence:
+
+- `crates/merman/tests/zed_editor_contract.rs`
+- `CHANGELOG.md`
+- `docs/alignment/ZED_MERMAID_ISSUE_AUDIT.md`
+- `docs/release/RELEASING.md`
+- `docs/release/PUBLISH_ORDER.md`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-08-alpha2-zed-release-prep.md`
+
+Focused verification:
+
+- `python scripts/release-version.py check --version 0.7.0-alpha.2` - passed.
+- `cargo +1.95 fmt --check` - passed.
+- `git diff --check` - passed.
+- `cargo +1.95 nextest run -p merman --features render --test zed_editor_contract` - passed,
+  `3` tests run.
+- `cargo +1.95 nextest run -p merman --features render --test zed_mermaid_issue_fixtures --test zed_pr_57644_corpus` -
+  passed, `8` tests run.
+- `cargo +1.95 package -p dugong-graphlib --allow-dirty`,
+  `cargo +1.95 package -p manatee --allow-dirty`, and
+  `cargo +1.95 package -p merman-core --allow-dirty` - passed.
+- `cargo +1.95 package -p <crate> --allow-dirty --list` passed for the `12` crates used by the
+  release-preflight package-list job.
+- `cargo +1.95 nextest run --workspace` - passed, `2072` tests run, `2072` passed, `5` skipped.
+- Filtered production scan across `merman-core`, `merman-render`, `dugong`, `dugong-graphlib`,
+  and `manatee`, excluding tests, same-file `#[cfg(test)]` regions, and comments, reports only:
+  - `crates/merman-core/src/generated/mod.rs:13`
+  - `crates/merman-core/src/theme.rs:324`
+  - `crates/merman-core/src/theme.rs:327`
+
+Gate notes:
+
+- Local release-preflight coverage includes version alignment, Rust formatting, package lists,
+  root publishable crate package verification, Zed-focused integration tests, and the full Rust
+  workspace test suite.
+- Platform CI-only gates for Python wheels, Android AARs, Apple XCFrameworks, and Flutter package
+  dry runs were not run locally; they remain covered by the manual release-preflight workflow.

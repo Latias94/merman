@@ -21,7 +21,7 @@ Use a normal dependency for the simplest setup:
 
 ```toml
 [dependencies]
-merman-rustdoc = "=0.7.0-alpha.1"
+merman-rustdoc = "=0.7.0-alpha.2"
 ```
 
 This works for local `cargo doc` and for docs.rs because the examples below use `cfg_attr(doc, ...)`.
@@ -33,7 +33,7 @@ documentation feature:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.7.0-alpha.1", optional = true }
+merman-rustdoc = { version = "=0.7.0-alpha.2", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]

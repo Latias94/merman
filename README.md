@@ -53,19 +53,19 @@ Diagram coverage and current parity status live in [docs/alignment/STATUS.md](ht
 
 ```sh
 # Command-line tool
-cargo install merman-cli --version 0.7.0-alpha.1
+cargo install merman-cli --version 0.7.0-alpha.2
 
 # Rust library: SVG rendering
-cargo add merman@0.7.0-alpha.1 --features render
+cargo add merman@0.7.0-alpha.2 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman@0.7.0-alpha.1 --features ascii
+cargo add merman@0.7.0-alpha.2 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman@0.7.0-alpha.1 --features raster
+cargo add merman@0.7.0-alpha.2 --features raster
 
 # Rustdoc integration
-cargo add merman-rustdoc@0.7.0-alpha.1 --optional
+cargo add merman-rustdoc@0.7.0-alpha.2 --optional
 
 # Browser / TypeScript package
 npm install @merman/web
