@@ -612,9 +612,7 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
         return Ok(dt);
     }
 
-    let digits_re =
-        DIGITS_RE.get_or_init(|| Regex::new(r"^\d+$").expect("gantt digits regex must compile"));
-    if digits_re.is_match(s) {
+    if is_ascii_digits(s) {
         let n: i32 = s.parse().map_err(|_| Error::DiagramParse {
             diagram_type: "gantt".to_string(),
             message: format!("Invalid date:{s}"),
@@ -896,6 +894,62 @@ fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
     Some(local_from_naive(naive))
 }
 
+fn is_ascii_digits(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn is_js_regex_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+fn is_gantt_ref_id_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b' '
+}
+
+fn gantt_ref_id_prefix_len(s: &str) -> usize {
+    s.bytes().take_while(|b| is_gantt_ref_id_byte(*b)).count()
+}
+
+pub(super) fn relative_ref_ids<'a>(s: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = s.strip_prefix(keyword)?;
+
+    let ws_len: usize = rest
+        .chars()
+        .take_while(|c| is_js_regex_whitespace(*c))
+        .map(char::len_utf8)
+        .sum();
+    if ws_len == 0 {
+        return None;
+    }
+
+    let mut start = ws_len;
+    loop {
+        let refs = &rest[start..];
+        let id_len = gantt_ref_id_prefix_len(refs);
+        if id_len > 0 {
+            return Some(&refs[..id_len]);
+        }
+
+        let Some((previous_start, _)) = rest[..start].char_indices().next_back() else {
+            return None;
+        };
+        if previous_start == 0 {
+            return None;
+        }
+        start = previous_start;
+    }
+}
+
 pub(super) fn get_start_date(
     db: &GanttDb,
     date_format: &str,
@@ -903,11 +957,7 @@ pub(super) fn get_start_date(
 ) -> Result<Option<DateTimeFixed>> {
     let s = raw.trim();
 
-    let after_re = AFTER_RE.get_or_init(|| {
-        Regex::new(r"(?i)^after\s+(?<ids>[\d\w -]+)").expect("gantt after regex must compile")
-    });
-    if let Some(caps) = after_re.captures(s) {
-        let ids = caps.name("ids").map(|m| m.as_str()).unwrap_or("");
+    if let Some(ids) = relative_ref_ids(s, "after") {
         let mut latest: Option<Option<DateTimeFixed>> = None;
         for id in ids.split(' ') {
             let id = id.trim();
@@ -941,7 +991,7 @@ pub(super) fn get_start_date(
     // it uses `new Date(Number(str))` rather than strict dayjs parsing. This treats the numeric
     // payload as *milliseconds* for both `x` and `X`.
     let fmt = date_format.trim();
-    if (fmt == "x" || fmt == "X") && !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
+    if (fmt == "x" || fmt == "X") && is_ascii_digits(s) {
         if let Ok(ms) = s.parse::<i64>() {
             if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) {
                 return Ok(Some(dt.with_timezone(&crate::time::utc_fixed_offset())));
@@ -965,21 +1015,35 @@ pub(super) fn get_start_date(
 }
 
 pub(super) fn parse_duration(str_: &str) -> (f64, String) {
-    let re = DURATION_RE.get_or_init(|| {
-        Regex::new(r"^(\d+(?:\.\d+)?)([Mdhmswy]|ms)$").expect("gantt duration regex must compile")
-    });
-    let Some(caps) = re.captures(str_.trim()) else {
+    let s = str_.trim();
+    let bytes = s.as_bytes();
+
+    let mut end = 0usize;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+    if end == 0 {
         return (f64::NAN, "ms".to_string());
-    };
-    let Some(value_cap) = caps.get(1) else {
+    }
+
+    if bytes.get(end) == Some(&b'.') {
+        end += 1;
+        let fraction_start = end;
+        while end < bytes.len() && bytes[end].is_ascii_digit() {
+            end += 1;
+        }
+        if end == fraction_start {
+            return (f64::NAN, "ms".to_string());
+        }
+    }
+
+    let value = &s[..end];
+    let unit = &s[end..];
+    if !matches!(unit, "M" | "d" | "h" | "m" | "s" | "w" | "y" | "ms") {
         return (f64::NAN, "ms".to_string());
-    };
-    let Some(unit_cap) = caps.get(2) else {
-        return (f64::NAN, "ms".to_string());
-    };
-    let value: f64 = value_cap.as_str().parse().unwrap_or(f64::NAN);
-    let unit = unit_cap.as_str().to_string();
-    (value, unit)
+    }
+
+    (value.parse().unwrap_or(f64::NAN), unit.to_string())
 }
 
 fn add_duration(dt: DateTimeFixed, value: f64, unit: &str) -> Option<DateTimeFixed> {
@@ -1032,11 +1096,7 @@ pub(super) fn get_end_date(
 ) -> Result<Option<DateTimeFixed>> {
     let s = raw.trim();
 
-    let until_re = UNTIL_RE.get_or_init(|| {
-        Regex::new(r"(?i)^until\s+(?<ids>[\d\w -]+)").expect("gantt until regex must compile")
-    });
-    if let Some(caps) = until_re.captures(s) {
-        let ids = caps.name("ids").map(|m| m.as_str()).unwrap_or("");
+    if let Some(ids) = relative_ref_ids(s, "until") {
         let mut earliest: Option<Option<DateTimeFixed>> = None;
         for id in ids.split(' ') {
             let id = id.trim();
@@ -1085,10 +1145,14 @@ pub(super) fn get_end_date(
 
 pub(super) fn is_strict_yyyy_mm_dd(s: &str) -> bool {
     let s = s.trim();
-    let re = STRICT_YYYY_MM_DD_RE.get_or_init(|| {
-        Regex::new(r"^\d{4}-\d{2}-\d{2}$").expect("gantt strict date regex must compile")
-    });
-    if !re.is_match(s) {
+    let bytes = s.as_bytes();
+    if bytes.len() != 10
+        || !bytes[..4].iter().all(u8::is_ascii_digit)
+        || bytes[4] != b'-'
+        || !bytes[5..7].iter().all(u8::is_ascii_digit)
+        || bytes[7] != b'-'
+        || !bytes[8..].iter().all(u8::is_ascii_digit)
+    {
         return false;
     }
     NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()

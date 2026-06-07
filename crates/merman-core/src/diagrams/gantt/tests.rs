@@ -253,6 +253,14 @@ fn gantt_parse_duration_matches_upstream_examples() {
     assert!(parse_duration("1f").0.is_nan());
     assert_eq!(parse_duration("0.1s"), (0.1, "s".to_string()));
     assert_eq!(parse_duration("1ms"), (1.0, "ms".to_string()));
+    assert_eq!(parse_duration(" 2m "), (2.0, "m".to_string()));
+    assert_eq!(parse_duration("01M"), (1.0, "M".to_string()));
+
+    for invalid in [".1s", "1.s", "1MS", "1msx", "1 ms", ""] {
+        let (value, unit) = parse_duration(invalid);
+        assert!(value.is_nan(), "expected invalid duration for {invalid:?}");
+        assert_eq!(unit, "ms");
+    }
 }
 
 #[test]
@@ -704,6 +712,71 @@ task4: id4,2013-02-12,1d
     assert_eq!(
         tasks[0]["endTime"].as_i64().unwrap(),
         local_ms(2013, 0, 11, 0, 0, 0)
+    );
+}
+
+#[test]
+fn gantt_relative_refs_accept_ascii_word_and_hyphen_ids_like_upstream() {
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+base: ref_1-2,2013-01-01,2d
+next: id2,after ref_1-2,1d
+limit: until_1-2,2013-02-01,1d
+bounded: id3,2013-01-01,until until_1-2
+"#,
+    );
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(
+        tasks[1]["startTime"].as_i64().unwrap(),
+        local_ms(2013, 0, 3, 0, 0, 0)
+    );
+    assert_eq!(
+        tasks[3]["endTime"].as_i64().unwrap(),
+        local_ms(2013, 1, 1, 0, 0, 0)
+    );
+}
+
+#[test]
+fn gantt_relative_ref_ids_preserve_source_regex_space_backtracking() {
+    assert_eq!(relative_ref_ids("after id_1-2", "after"), Some("id_1-2"));
+    assert_eq!(relative_ref_ids("after  #", "after"), Some(" "));
+    assert_eq!(relative_ref_ids("after \t #", "after"), Some(" "));
+    assert_eq!(relative_ref_ids("after #", "after"), None);
+    assert_eq!(relative_ref_ids("After id1", "after"), None);
+}
+
+#[test]
+fn gantt_relative_keywords_are_case_sensitive_like_upstream() {
+    let engine = Engine::new();
+    let err = block_on(engine.parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+base: id1,2013-01-01,2d
+next: id2,After id1,1d
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+    assert!(err.to_string().contains("Invalid date:After id1"));
+
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+limit: id2,2013-02-01,1d
+bounded: id1,2013-01-01,Until id2
+"#,
+    );
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(
+        tasks[1]["endTime"].as_i64().unwrap(),
+        local_ms(2013, 0, 1, 0, 0, 0)
     );
 }
 

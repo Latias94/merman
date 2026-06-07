@@ -1234,6 +1234,12 @@ Current repository reality to preserve:
     `accDescr` regex construction from `class/db.rs`. Method parsing now follows Mermaid 11.15's
     greedy `ClassMember.parseMember(...)` source boundary, including method names that contain
     earlier parentheses before the actual parameter list.
+  - A follow-up HPD-050 panic-surface slice removed the remaining Gantt date/duration regex
+    construction from `gantt/mod.rs` and `gantt/date.rs`. Direct scanners now preserve Mermaid
+    11.15 `ganttDb.js` ASCII digit, `after` / `until` relative ID, duration, and strict
+    `YYYY-MM-DD` boundaries, including source-case-sensitive keywords. A fresh production
+    `merman-core/src` regex scan now reports no `regex::Regex`, `Regex::new`, or `OnceLock<Regex>`
+    matches.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

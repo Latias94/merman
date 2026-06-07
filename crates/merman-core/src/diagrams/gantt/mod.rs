@@ -1,17 +1,9 @@
 use crate::{Error, ParseMetadata, Result, utils};
 use chrono::{Datelike, Duration, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Timelike};
-use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::OnceLock;
 
 type DateTimeFixed = chrono::DateTime<FixedOffset>;
-
-static DIGITS_RE: OnceLock<Regex> = OnceLock::new();
-static AFTER_RE: OnceLock<Regex> = OnceLock::new();
-static UNTIL_RE: OnceLock<Regex> = OnceLock::new();
-static DURATION_RE: OnceLock<Regex> = OnceLock::new();
-static STRICT_YYYY_MM_DD_RE: OnceLock<Regex> = OnceLock::new();
 
 mod date;
 mod datetime;

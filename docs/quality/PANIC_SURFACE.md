@@ -137,6 +137,10 @@ Library code should not panic on user-controlled input.
     ClassDB-local regex helpers. Method parsing now uses a source-shaped scanner for Mermaid's
     greedy member regex, and multiline accessibility descriptions collapse newline indentation
     directly.
+  - Gantt date/duration relative-reference helpers no longer compile the remaining core-local
+    regexes. ASCII digit checks, source-shaped `after` / `until` ID capture, duration parsing, and
+    strict `YYYY-MM-DD` shape checks now use direct scanners aligned with Mermaid 11.15
+    `ganttDb.js`.
   - Detector/preprocess Mermaid comment cleanup no longer constructs a regex in
     `DetectorRegistry`. Both public detection and preprocessing now share a source-shaped line
     scanner that mirrors Mermaid 11.15 `cleanupComments`: remove indented `%%` comment lines with
@@ -293,6 +297,12 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core detect flowchart`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the preprocess
     style/classDef hex-protection regex removal.
+  - Verification: `cargo +1.95 fmt -p merman-core`,
+    `cargo +1.95 nextest run -p merman-core gantt`,
+    `cargo +1.95 fmt --check -p merman-core`, `git diff --check`, and
+    `rg -n 'regex::Regex|Regex::new|OnceLock<Regex>|OnceLock\s*<\s*Regex' crates/merman-core/src -g '*.rs'`
+    passed for the Gantt regex removal; the final `rg` reported no production core regex
+    compile/cache matches.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
@@ -373,11 +383,9 @@ Library code should not panic on user-controlled input.
 
 The following patterns are intentionally tolerated for now but should be tracked:
 
-- Regex compilation via `Regex::new("...").unwrap()` in remaining parser/date helper
-  initialization:
-  - input is a static literal; failures indicate a programming error, not user input.
-  - Gantt date/duration helpers are the current `merman-core` regex cluster and should be audited
-    as a source-backed follow-up before claiming core regex cleanup complete.
+- Production `merman-core/src` now has no `regex::Regex`, `Regex::new`, or `OnceLock<Regex>`
+  matches. Remaining `OnceLock` use is for generated/default config, family ID lists, theme data,
+  or static sanitizer allowlist sets rather than regex compilation.
 - A small number of `unwrap/expect` in renderer internals:
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.

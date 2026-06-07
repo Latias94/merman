@@ -8521,3 +8521,53 @@ Gate notes:
   convergence. It does not change Class layout, renderer SVG output, namespace semantics,
   link/callback behavior, common sanitizer policy, Gantt date parsing, retained config projection,
   SVG baselines, root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - Gantt Date/Duration Regex Panic Surface
+
+Outcome:
+
+- Removed the remaining Gantt-local regex compilation points from
+  `crates/merman-core/src/diagrams/gantt/mod.rs` and
+  `crates/merman-core/src/diagrams/gantt/date.rs`.
+- Replaced `DIGITS_RE` with an ASCII digit scanner matching Mermaid's JavaScript `/^\d+$/`
+  timestamp/date-fallback checks.
+- Replaced `AFTER_RE` and `UNTIL_RE` with a source-shaped scanner for pinned Mermaid 11.15
+  `ganttDb.js` `^after\s+(?<ids>[\d\w- ]+)` and
+  `^until\s+(?<ids>[\d\w- ]+)` semantics.
+- Preserved the upstream case-sensitive keyword boundary, JavaScript `\s+` whitespace after the
+  keyword, ASCII word / hyphen / space ID capture, and non-anchored trailing behavior.
+- Replaced `DURATION_RE` with a direct scanner for
+  `^(\d+(?:\.\d+)?)([Mdhmswy]|ms)$`, preserving invalid duration fallback to `[NaN, 'ms']`.
+- Replaced `STRICT_YYYY_MM_DD_RE` with a byte-shape check followed by the existing `NaiveDate`
+  calendar validation.
+- Added focused Gantt coverage for duration boundary failures, `_` / `-` relative IDs,
+  source-regex whitespace backtracking, and source-case-sensitive `after` / `until` keyword
+  behavior.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.js`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.spec.ts`
+- `crates/merman-core/src/diagrams/gantt/mod.rs`
+- `crates/merman-core/src/diagrams/gantt/date.rs`
+- `crates/merman-core/src/diagrams/gantt/tests.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-gantt-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core gantt` - passed, `45` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'regex::Regex|Regex::new|OnceLock<Regex>|OnceLock\s*<\s*Regex' crates/merman-core/src -g '*.rs'` -
+  no production core regex compile/cache matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a source-backed Gantt parser/date panic-surface cleanup and completes the currently known
+  production `merman-core/src` regex compilation cleanup. It does not change Gantt layout,
+  renderer SVG output, section/task ordering, weekend/exclude behavior, common sanitizer policy,
+  retained config projection, SVG baselines, root viewport formulas, or Architecture residual
+  classification.
