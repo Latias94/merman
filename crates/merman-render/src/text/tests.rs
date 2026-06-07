@@ -199,6 +199,32 @@ fn flowchart_html_fontawesome_custom_pack_icon_width_uses_nominal_boundary() {
 }
 
 #[test]
+fn fontawesome_icon_substitution_matches_mermaid_source_boundaries() {
+    assert_eq!(
+        replace_fontawesome_icons("This is an icon: fa:fa-user and fab:fa-github"),
+        r#"This is an icon: <i class="fa fa-user"></i> and <i class="fab fa-github"></i>"#
+    );
+    assert_eq!(
+        replace_fontawesome_icons("Icons galore: fa:fa-arrow-right, fak:fa-truck, fas:fa-home"),
+        r#"Icons galore: <i class="fa fa-arrow-right"></i>, <i class="fak fa-truck"></i>, <i class="fas fa-home"></i>"#
+    );
+    assert_eq!(
+        replace_fontawesome_icons(
+            "Here is a long icon: fak:fa-truck-driving-long-winding-road in use"
+        ),
+        r#"Here is a long icon: <i class="fak fa-truck-driving-long-winding-road"></i> in use"#
+    );
+    assert_eq!(
+        replace_fontawesome_icons("no icons: faa:fa-user fa:fa- fa:fa-éclair"),
+        "no icons: faa:fa-user fa:fa- fa:fa-éclair"
+    );
+    assert_eq!(
+        replace_fontawesome_icons("prefix can match inside text: xfa:fa-user!"),
+        r#"prefix can match inside text: x<i class="fa fa-user"></i>!"#
+    );
+}
+
+#[test]
 fn flowchart_label_metrics_for_layout_fontawesome_uses_nominal_boundary() {
     // Non-markdown Flowchart icon labels should use the same HTML fragment measurement path as
     // emitted `<foreignObject>` content, with the same Mermaid 11.15 icon width boundary.

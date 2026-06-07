@@ -8571,3 +8571,41 @@ Gate notes:
   renderer SVG output, section/task ordering, weekend/exclude behavior, common sanitizer policy,
   retained config projection, SVG baselines, root viewport formulas, or Architecture residual
   classification.
+
+## HPD-050 - FontAwesome Icon Regex Panic Surface
+
+Outcome:
+
+- Removed the static regex compilation point from `replace_fontawesome_icons(...)` in
+  `crates/merman-render/src/text/icons.rs`.
+- Replaced Mermaid `/(fa[bklrs]?):fa-([\w-]+)/g` icon-token replacement with a direct scanner for
+  `fa` plus optional `b/k/l/r/s`, literal `:fa-`, and ASCII word / hyphen icon names.
+- Preserved non-anchored global replacement behavior and the existing local double-quoted
+  `<i class="...">` fallback output shape used by current SVG baselines.
+- Added focused text coverage for the upstream `fa`, `fab`, `fak`, and `fas` examples plus
+  unsupported-prefix, empty-icon, non-ASCII, and inside-string matching boundaries.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/rendering-util/createText.ts`
+- `repo-ref/mermaid/packages/mermaid/src/rendering-util/createText.spec.ts`
+- `crates/merman-render/src/text/icons.rs`
+- `crates/merman-render/src/text/tests.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-fontawesome-icon-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render fontawesome` - passed, `7` tests run.
+- `rg -n 'Regex|regex::|OnceLock|fontawesome_icon_at|replace_fontawesome_icons' crates/merman-render/src/text/icons.rs crates/merman-render/src/text/tests.rs` -
+  no regex dependency matches in `text/icons.rs`; scanner and tests were the only relevant hits.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `843`
+  lines parsed.
+
+Gate notes:
+
+- This is a source-backed render text-label panic-surface cleanup. It does not change registered
+  icon pack resolution, Flowchart icon-shape nodes, HTML label measurement heuristics, SVG
+  baselines, root viewport formulas, core parsing, sanitizer policy, or Architecture residual
+  classification.

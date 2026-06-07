@@ -197,6 +197,10 @@ Library code should not panic on user-controlled input.
   - RaTeX math-only label splitting no longer compiles a feature-gated `<br>` regex on the render
     path. It now reuses the shared Mermaid `lineBreakRegex = /<br\s*\/?>/gi` scanner used by
     ordinary HTML-label wrapping.
+  - FontAwesome icon-token substitution in HTML-ish labels no longer compiles a static regex on
+    the render text path. `replace_fontawesome_icons(...)` now scans Mermaid's
+    `/(fa[bklrs]?):fa-([\w-]+)/g` source shape directly while preserving the existing local
+    `<i class="...">` fallback output.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -333,6 +337,11 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render architecture_layout_handles_deep_group_chain`,
     `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,
     and `git diff --check` passed for the Architecture `iconText` XHTML fragment cleanup.
+  - Verification: `cargo +1.95 fmt -p merman-render`,
+    `cargo +1.95 nextest run -p merman-render fontawesome`, and
+    `rg -n 'Regex|regex::|OnceLock|fontawesome_icon_at|replace_fontawesome_icons' crates/merman-render/src/text/icons.rs crates/merman-render/src/text/tests.rs`
+    passed for the FontAwesome icon-token regex removal; `text/icons.rs` has no regex dependency
+    matches.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.

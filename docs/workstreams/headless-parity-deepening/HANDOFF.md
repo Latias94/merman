@@ -1240,6 +1240,10 @@ Current repository reality to preserve:
     `YYYY-MM-DD` boundaries, including source-case-sensitive keywords. A fresh production
     `merman-core/src` regex scan now reports no `regex::Regex`, `Regex::new`, or `OnceLock<Regex>`
     matches.
+  - A follow-up HPD-050 panic-surface slice removed FontAwesome icon-token regex construction from
+    `text/icons.rs`. `replace_fontawesome_icons(...)` now scans Mermaid 11.15
+    `/(fa[bklrs]?):fa-([\w-]+)/g` source boundaries directly while preserving the existing local
+    double-quoted `<i class="...">` fallback output.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
