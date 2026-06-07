@@ -242,20 +242,26 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     let diagram_id = MINDMAP_DIAGRAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "nodes": nodes,
-        "edges": edges,
-        "config": final_config,
-        "rootNode": db.to_root_node_value(root_id),
-        "markers": ["point"],
-        "direction": "TB",
-        "nodeSpacing": 50,
-        "rankSpacing": 50,
-        "shapes": Value::Object(shapes),
-        // Mermaid uses a random UUID v4 here. For performance and determinism, keep a cheap
-        // monotonic id that is unique within the current process. Snapshot tests normalize this
-        // field to "<dynamic>".
-        "diagramId": format!("mindmap-{diagram_id}"),
-    }))
+    let mut out = Map::new();
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("nodes".to_string(), Value::Array(nodes));
+    out.insert("edges".to_string(), Value::Array(edges));
+    out.insert("config".to_string(), final_config);
+    out.insert("rootNode".to_string(), db.to_root_node_value(root_id));
+    out.insert(
+        "markers".to_string(),
+        Value::Array(vec![Value::String("point".to_string())]),
+    );
+    out.insert("direction".to_string(), Value::String("TB".to_string()));
+    out.insert("nodeSpacing".to_string(), json!(50));
+    out.insert("rankSpacing".to_string(), json!(50));
+    out.insert("shapes".to_string(), Value::Object(shapes));
+    // Mermaid uses a random UUID v4 here. For performance and determinism, keep a cheap
+    // monotonic id that is unique within the current process. Snapshot tests normalize this
+    // field to "<dynamic>".
+    out.insert(
+        "diagramId".to_string(),
+        Value::String(format!("mindmap-{diagram_id}")),
+    );
+    Ok(Value::Object(out))
 }

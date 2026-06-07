@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 ## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
 
@@ -7103,3 +7103,55 @@ Gate notes:
   changed.
 - This is release-boundary hardening for Treemap's unbounded hierarchy path plus the shared
   `layout_parsed(...)` deep semantic clone surface it exposed.
+
+## HPD-050 - Mindmap Deep-Tree Panic Surface
+
+Outcome:
+
+- Hardened Mindmap's unbounded user-authored hierarchy path after the Treemap cleanup. Mindmap has
+  no custom depth rejection boundary, so this slice keeps deeply nested input parseable while
+  removing recursive Rust call-stack traversal from the public parse/layout paths.
+- `MindmapDb::assign_sections(...)` now uses an explicit stack while preserving the existing root
+  child section assignment semantics.
+- Mindmap semantic flat `nodes`, semantic flat `edges`, typed render `nodes`, and typed render
+  `edges` now use explicit heap-backed traversal while preserving preorder node order and DFS edge
+  order.
+- `MindmapDb::to_root_node_value(...)` now builds the nested `rootNode` compatibility field with
+  explicit postorder traversal and moves child `Value`s upward instead of recursively walking the
+  tree.
+- `parse_mindmap(...)` now assembles the final non-empty semantic object with a hand-built
+  `serde_json::Map`, avoiding deep `json!` wrapping of the nested `rootNode` value.
+- The Mindmap semantic-JSON layout entrypoint now deserializes only the flat `nodes` / `edges`
+  fields consumed by layout, avoiding recursive serde traversal of the deep `rootNode`
+  compatibility field.
+- Added public-path regressions:
+  - core parses and semantically projects a `1,200`-level Mindmap chain;
+  - core builds the typed Mindmap render model for the same hierarchy;
+  - render parses through the ordinary JSON semantic path and layouts the same hierarchy through
+    `layout_parsed(...)`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/mindmap/db.rs`
+- `crates/merman-core/src/diagrams/mindmap/parse.rs`
+- `crates/merman-core/src/diagrams/mindmap/tests.rs`
+- `crates/merman-render/src/mindmap.rs`
+- `crates/merman-render/tests/mindmap_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-mindmap-deep-tree-panic-surface.md`
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo nextest run -p merman-core mindmap` - passed, `34` tests run.
+- `cargo nextest run -p merman-render --test mindmap_svg_test` - passed, `4` tests run.
+- `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for Mindmap's unbounded hierarchy path. It does not introduce
+  a new Mindmap depth limit.

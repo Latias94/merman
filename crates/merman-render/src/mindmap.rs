@@ -340,7 +340,18 @@ pub fn layout_mindmap_diagram(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
-    let model: MindmapModel = from_value_ref(model)?;
+    let model = MindmapModel {
+        nodes: model
+            .get("nodes")
+            .map(from_value_ref)
+            .transpose()?
+            .unwrap_or_default(),
+        edges: model
+            .get("edges")
+            .map(from_value_ref)
+            .transpose()?
+            .unwrap_or_default(),
+    };
     layout_mindmap_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
 }
 

@@ -1,7 +1,7 @@
 # Headless Parity Deepening - Handoff
 
 Status: Active
-Last updated: 2026-06-06
+Last updated: 2026-06-07
 
 This workstream opens the post-11.15 structural-parity phase.
 
@@ -1059,6 +1059,14 @@ Current repository reality to preserve:
     `layout_parsed(...)` retained-semantic clone path with a non-recursive `serde_json::Value`
     clone after a `1,200`-level Treemap regression reproduced stack overflow there. Treemap DOM
     parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened Mindmap's unbounded hierarchy path. Core
+    Mindmap section assignment, semantic flat node/edge projection, typed render node/edge
+    projection, and nested `rootNode` projection now use explicit heap-backed traversal. The
+    non-empty semantic object is assembled with a hand-built `Map`, and the renderer's Mindmap
+    semantic-JSON layout entrypoint now deserializes only flat `nodes` / `edges` so it does not
+    recursively skip the deep `rootNode` compatibility field. Focused regressions cover a
+    `1,200`-level chain through core semantic JSON, typed render model, and render `layout_parsed`;
+    Mindmap DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

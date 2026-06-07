@@ -39,6 +39,11 @@ Library code should not panic on user-controlled input.
     user-authored hierarchy. `parse_treemap(...)` now builds deep semantic `root` / `nodes` values
     with explicit heap-backed traversal and hand-built `Map` output, avoiding deep `json!`
     serialization of user-authored trees.
+  - Mindmap section assignment, flat semantic node/edge projection, typed render-model projection,
+    and nested `rootNode` JSON projection no longer recurse over the user-authored hierarchy.
+    Deep semantic output is assembled with explicit heap-backed traversal and hand-built final JSON
+    maps so the nested `rootNode` is moved into the result instead of being wrapped through deep
+    `json!` serialization.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -55,6 +60,9 @@ Library code should not panic on user-controlled input.
   - Treemap layout no longer recurses over user-authored hierarchy nodes while building layout
     nodes, computing subtree sums, or sorting children. The semantic-JSON layout entrypoint now
     projects Treemap nodes iteratively instead of relying on recursive serde deserialization.
+  - Mindmap's semantic-JSON layout entrypoint now deserializes only the flat `nodes` / `edges`
+    fields consumed by layout, avoiding recursive serde traversal of the deep semantic `rootNode`
+    compatibility field.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -77,6 +85,10 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render --test treemap_svg_test`, and
     `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the Treemap deep-tree cleanup.
+  - Verification: `cargo nextest run -p merman-core mindmap`,
+    `cargo nextest run -p merman-render --test mindmap_svg_test`, and
+    `cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity --dom-decimals 3`
+    passed for the Mindmap deep-tree cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -102,9 +114,9 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart, Ishikawa, TreeView, and Treemap now have explicit-stack coverage for representative
-    deep or maximum-accepted inputs, but similar tree-shaped families should be audited before
-    release hardening is considered complete.
+  - Flowchart, Ishikawa, TreeView, Treemap, and Mindmap now have explicit-stack coverage for
+    representative deep or maximum-accepted inputs, but similar tree-shaped families should be
+    audited before release hardening is considered complete.
 
 ## Suggested workflow
 

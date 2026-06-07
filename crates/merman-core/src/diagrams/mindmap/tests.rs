@@ -11,6 +11,15 @@ fn parse(text: &str) -> Value {
         .model
 }
 
+fn deep_mindmap_chain(depth: usize) -> String {
+    let mut input = String::from("mindmap\n");
+    for level in 0..depth {
+        input.push_str(&" ".repeat(level));
+        input.push_str(&format!("n{level}\n"));
+    }
+    input
+}
+
 fn root_descr(model: &Value) -> &str {
     model["rootNode"]["descr"].as_str().unwrap()
 }
@@ -363,6 +372,44 @@ root
             assert_eq!(model.nodes[0].shape, "rounded");
             assert_eq!(model.nodes[1].shape, "rounded");
             assert_eq!(model.edges[0].look, "neo");
+        }
+        other => panic!("mindmap render parse should return typed model, got {other:?}"),
+    }
+}
+
+#[test]
+fn mindmap_deep_chain_semantic_and_render_model_use_heap_traversal() {
+    const DEPTH: usize = 1200;
+    let input = deep_mindmap_chain(DEPTH);
+
+    let model = parse(&input);
+    let nodes = model["nodes"].as_array().expect("nodes array");
+    let edges = model["edges"].as_array().expect("edges array");
+    assert_eq!(nodes.len(), DEPTH);
+    assert_eq!(edges.len(), DEPTH - 1);
+    assert_eq!(nodes[0]["label"].as_str(), Some("n0"));
+    let expected_last = format!("n{}", DEPTH - 1);
+    assert_eq!(
+        nodes
+            .last()
+            .and_then(|node| node.get("label"))
+            .and_then(Value::as_str),
+        Some(expected_last.as_str())
+    );
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    match parsed.model {
+        RenderSemanticModel::Mindmap(model) => {
+            assert_eq!(model.nodes.len(), DEPTH);
+            assert_eq!(model.edges.len(), DEPTH - 1);
+            assert_eq!(model.nodes[0].label, "n0");
+            assert_eq!(
+                model.nodes.last().map(|node| node.label.as_str()),
+                Some(expected_last.as_str())
+            );
         }
         other => panic!("mindmap render parse should return typed model, got {other:?}"),
     }

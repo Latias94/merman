@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
@@ -20,6 +21,15 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
         },
     )
     .expect("render svg")
+}
+
+fn deep_mindmap_chain(depth: usize) -> String {
+    let mut input = String::from("mindmap\n");
+    for level in 0..depth {
+        input.push_str(&" ".repeat(level));
+        input.push_str(&format!("n{level}\n"));
+    }
+    input
 }
 
 #[test]
@@ -55,6 +65,30 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
         svg.contains(r#"id="m15-mindmap-drop-shadow""#)
             && svg.contains(r#"id="m15-mindmap-drop-shadow-small""#),
         "expected Mermaid 11.15 Mindmap scoped drop-shadow defs: {svg}"
+    );
+}
+
+#[test]
+fn mindmap_public_json_layout_handles_deep_chain() {
+    const DEPTH: usize = 1200;
+    let source = deep_mindmap_chain(DEPTH);
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::MindmapDiagram(layout) = &out.layout else {
+        panic!("expected MindmapDiagram layout");
+    };
+
+    assert_eq!(layout.nodes.len(), DEPTH);
+    assert_eq!(layout.edges.len(), DEPTH - 1);
+    let expected_last = format!("{}", DEPTH - 1);
+    assert_eq!(
+        layout.nodes.last().map(|node| node.id.as_str()),
+        Some(expected_last.as_str())
     );
 }
 
