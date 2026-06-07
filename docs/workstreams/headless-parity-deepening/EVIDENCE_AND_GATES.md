@@ -7526,3 +7526,58 @@ Gate notes:
   overhead.
 - This is release-boundary hardening for Architecture foreignObject XHTML handling, not a claim
   that Architecture `parity-root` diagnostics or group/service bbox residuals are closed.
+
+## HPD-050 - Dugong And Graphlib Cycle Traversal Panic Surface
+
+Outcome:
+
+- Hardened two remaining cycle-traversal paths discovered while auditing production panic and
+  recursion surfaces after the Architecture XHTML cleanup.
+- `dugong_graphlib::alg::find_cycles(...)` previously ran Tarjan SCC traversal through recursive
+  `strongconnect(...)`. A public Graphlib `2,048`-edge successor chain reproduced stack overflow
+  on a `64KB` stack before this slice even though the graph had no cycles.
+- `dugong::acyclic::run(...)` defaults to Dagre's DFS feedback-arc path when `acyclicer` is absent,
+  `"dfs"`, or unknown. That path previously recursed through `dfs_fas(...)`, and a `2,048`-edge
+  acyclic successor chain reproduced stack overflow on a `64KB` stack before this slice.
+- Both traversals now use explicit heap-backed frames:
+  - Graphlib Tarjan preserves successor order, lowlink propagation, SCC output, and self-loop cycle
+    filtering;
+  - Dugong acyclic DFS preserves Dagre's node insertion order, out-edge order, self-loop skip, and
+    feedback-edge collection behavior.
+- Added regressions:
+  - `find_cycles_handles_deep_successor_chains_with_small_stack`;
+  - `acyclic_run_handles_deep_dfs_chains_with_small_stack`.
+
+Evidence:
+
+- `crates/dugong-graphlib/src/graph/alg.rs`
+- `crates/dugong-graphlib/tests/alg_test.rs`
+- `crates/dugong/src/acyclic.rs`
+- `crates/dugong/tests/acyclic_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-dugong-cycle-traversal-panic-surface.md`
+
+Focused verification:
+
+- `cargo nextest run -p dugong-graphlib find_cycles_handles_deep_successor_chains_with_small_stack` -
+  first run failed before the fix with stack overflow; passed after iterative Tarjan traversal.
+- `cargo nextest run -p dugong acyclic_run_handles_deep_dfs_chains_with_small_stack` - first run
+  failed before the fix with stack overflow; passed after iterative DFS feedback-arc traversal.
+- `cargo nextest run -p dugong-graphlib --test alg_test` - passed, `23` tests run.
+- `cargo nextest run -p dugong --test acyclic_test --test greedy_fas_test` - passed, `15` tests
+  run.
+- `cargo nextest run -p dugong-graphlib` - passed, `99` tests run.
+- `cargo nextest run -p dugong` - passed, `278` tests run.
+- `cargo nextest run -p merman-render --test class_svg_test` - passed, `26` tests run.
+- `cargo nextest run -p merman-render --test flowchart_svg_test` - passed, `34` tests run.
+- `cargo nextest run -p merman-render state` - passed, `17` tests run.
+- `cargo fmt --check -p dugong -p dugong-graphlib` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Mermaid parity fixture, Architecture root-bounds formula, or
+  rendered output formula changed.
+- This is release-boundary hardening for public Graphlib cycle detection and Dugong's default
+  Dagre cycle-removal traversal. It does not change upstream Dagre semantics or claim closure of
+  any `parity-root` residual.

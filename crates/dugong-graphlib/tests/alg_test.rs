@@ -283,3 +283,23 @@ fn preorder_and_postorder_handle_deep_successor_chains_with_small_stack() {
         .join()
         .expect("graphlib deep traversal should finish without stack overflow");
 }
+
+#[test]
+fn find_cycles_handles_deep_successor_chains_with_small_stack() {
+    const DEPTH: usize = 2048;
+    let handle = std::thread::Builder::new()
+        .name("graphlib-deep-find-cycles".to_string())
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+            for i in 0..DEPTH {
+                g.set_edge(format!("n{i}"), format!("n{}", i + 1));
+            }
+
+            assert!(alg::find_cycles(&g).is_empty());
+        })
+        .expect("spawn graphlib deep find-cycles test");
+    handle
+        .join()
+        .expect("graphlib find_cycles should finish without stack overflow");
+}

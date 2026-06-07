@@ -101,6 +101,12 @@ where
 {
     // Strongly connected components (Tarjan). Report SCCs with size > 1, or self-loops.
     let node_ids = g.node_ids();
+    struct TarjanFrame {
+        v: String,
+        successors: Vec<String>,
+        next_successor: usize,
+    }
+
     struct Tarjan<'a, N, E, G>
     where
         N: Default + 'static,
@@ -122,60 +128,101 @@ where
         E: Default + 'static,
         G: Default,
     {
-        fn strongconnect(&mut self, v: &str) {
+        fn push_frame(&mut self, v: String, frames: &mut Vec<TarjanFrame>) {
             self.indices.insert(v.to_string(), self.index);
             self.lowlink.insert(v.to_string(), self.index);
             self.index += 1;
             self.stack.push(v.to_string());
             self.on_stack.insert(v.to_string());
+            frames.push(TarjanFrame {
+                successors: self
+                    .g
+                    .successors(&v)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                v,
+                next_successor: 0,
+            });
+        }
 
-            for w in self.g.successors(v) {
-                if !self.indices.contains_key(w) {
-                    self.strongconnect(w);
-                    let Some(v_low) = self.lowlink.get(v).copied() else {
-                        debug_assert!(false, "tarjan lowlink missing for v");
-                        continue;
-                    };
-                    let Some(w_low) = self.lowlink.get(w).copied() else {
-                        debug_assert!(false, "tarjan lowlink missing for w");
-                        continue;
-                    };
-                    self.lowlink.insert(v.to_string(), v_low.min(w_low));
-                } else if self.on_stack.contains(w) {
-                    let Some(v_low) = self.lowlink.get(v).copied() else {
-                        debug_assert!(false, "tarjan lowlink missing for v");
-                        continue;
-                    };
-                    let Some(w_idx) = self.indices.get(w).copied() else {
-                        debug_assert!(false, "tarjan index missing for w");
-                        continue;
-                    };
-                    self.lowlink.insert(v.to_string(), v_low.min(w_idx));
-                }
-            }
+        fn strongconnect_iterative(&mut self, root: &str) {
+            let mut frames: Vec<TarjanFrame> = Vec::new();
+            self.push_frame(root.to_string(), &mut frames);
 
-            let Some(v_low) = self.lowlink.get(v).copied() else {
-                debug_assert!(false, "tarjan lowlink missing for v");
-                return;
-            };
-            let Some(v_idx) = self.indices.get(v).copied() else {
-                debug_assert!(false, "tarjan index missing for v");
-                return;
-            };
-            if v_low == v_idx {
-                let mut scc: Vec<String> = Vec::new();
-                loop {
-                    let Some(w) = self.stack.pop() else {
-                        debug_assert!(false, "tarjan stack underflow");
-                        break;
+            while !frames.is_empty() {
+                let next = {
+                    let frame = match frames.last_mut() {
+                        Some(frame) => frame,
+                        None => break,
                     };
-                    self.on_stack.remove(&w);
-                    scc.push(w.clone());
-                    if w == v {
-                        break;
+                    if frame.next_successor < frame.successors.len() {
+                        let w = frame.successors[frame.next_successor].clone();
+                        frame.next_successor += 1;
+                        Some(w)
+                    } else {
+                        None
                     }
+                };
+
+                if let Some(w) = next {
+                    let v = match frames.last() {
+                        Some(frame) => frame.v.clone(),
+                        None => break,
+                    };
+                    if !self.indices.contains_key(&w) {
+                        self.push_frame(w, &mut frames);
+                        continue;
+                    }
+                    if self.on_stack.contains(&w) {
+                        let Some(v_low) = self.lowlink.get(&v).copied() else {
+                            debug_assert!(false, "tarjan lowlink missing for v");
+                            continue;
+                        };
+                        let Some(w_idx) = self.indices.get(&w).copied() else {
+                            debug_assert!(false, "tarjan index missing for w");
+                            continue;
+                        };
+                        self.lowlink.insert(v, v_low.min(w_idx));
+                    }
+                    continue;
                 }
-                self.sccs.push(scc);
+
+                let Some(frame) = frames.pop() else {
+                    break;
+                };
+                let v = frame.v;
+                let Some(v_low) = self.lowlink.get(&v).copied() else {
+                    debug_assert!(false, "tarjan lowlink missing for v");
+                    continue;
+                };
+                let Some(v_idx) = self.indices.get(&v).copied() else {
+                    debug_assert!(false, "tarjan index missing for v");
+                    continue;
+                };
+                if v_low == v_idx {
+                    let mut scc: Vec<String> = Vec::new();
+                    loop {
+                        let Some(w) = self.stack.pop() else {
+                            debug_assert!(false, "tarjan stack underflow");
+                            break;
+                        };
+                        self.on_stack.remove(&w);
+                        scc.push(w.clone());
+                        if w == v {
+                            break;
+                        }
+                    }
+                    self.sccs.push(scc);
+                }
+
+                if let Some(parent) = frames.last_mut() {
+                    let Some(parent_low) = self.lowlink.get(&parent.v).copied() else {
+                        debug_assert!(false, "tarjan lowlink missing for parent");
+                        continue;
+                    };
+                    self.lowlink.insert(parent.v.clone(), parent_low.min(v_low));
+                }
             }
         }
     }
@@ -192,7 +239,7 @@ where
 
     for v in &node_ids {
         if !tarjan.indices.contains_key(v) {
-            tarjan.strongconnect(v);
+            tarjan.strongconnect_iterative(v);
         }
     }
 

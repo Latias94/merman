@@ -1114,6 +1114,14 @@ Current repository reality to preserve:
     `2,048` levels on a `64KB` stack. The user-reported
     `architecture_layout_handles_deep_group_chain` abort was rechecked on the current worktree and
     passes as a focused single test.
+  - A follow-up HPD-050 panic-surface slice hardened the remaining dugong/Graphlib cycle traversal
+    front discovered by production `unwrap/expect/panic` and recursion audit. Graphlib
+    `find_cycles(...)` now runs Tarjan SCC traversal through explicit frames instead of recursive
+    `strongconnect(...)`, and dugong's default `acyclic::run(...)` path now computes DFS feedback
+    arcs through explicit frames instead of recursive `dfs_fas(...)`. Both had focused `64KB`
+    small-stack regressions that reproduced stack overflow before the fixes and now cover
+    `2,048`-edge successor chains. This is a layout-engine panic-surface hardening slice, not a
+    change to Dagre ordering, graph labels, SVG baselines, root bounds, or Architecture residuals.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

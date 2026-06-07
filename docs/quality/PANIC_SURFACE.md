@@ -28,9 +28,16 @@ Library code should not panic on user-controlled input.
   - `rank::util::longest_path(...)`, `order::sort_subgraph(...)`, and
     `order::sort_subgraph_ix(...)` no longer recurse over user-controlled graph depth. Deep edge
     chains and compound subgraph chains now use explicit heap-backed traversal.
+  - The default Dagre cycle-breaking path `acyclic::run(...)` no longer recurses through
+    `dfs_fas(...)`. Deep acyclic successor chains now use explicit heap-backed DFS frames while
+    preserving Dagre's node order, edge order, self-loop skip, and feedback-edge collection
+    behavior.
 - `dugong-graphlib`:
   - `alg::preorder(...)` and `alg::postorder(...)` no longer recurse over successor depth. Deep
     Graphlib successor chains now preserve traversal order through explicit stacks.
+  - `alg::find_cycles(...)` no longer recurses through Tarjan SCC traversal. Deep public Graphlib
+    successor chains now use explicit heap-backed frames and avoid stack overflow while preserving
+    existing SCC and self-loop cycle reporting.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
@@ -162,6 +169,17 @@ Library code should not panic on user-controlled input.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
+- `dugong` / `dugong-graphlib` cycle traversal:
+  - `dugong_graphlib::alg::find_cycles(...)` now uses an iterative Tarjan traversal and is covered
+    by a `2,048`-edge public Graphlib successor-chain regression on a `64KB` stack.
+  - `dugong::acyclic::run(...)` now uses an iterative DFS feedback-arc scan for the default
+    Dagre acyclicer path and is covered by a `2,048`-edge successor-chain regression on a `64KB`
+    stack.
+  - Verification: `cargo nextest run -p dugong-graphlib`,
+    `cargo nextest run -p dugong`, `cargo nextest run -p merman-render --test class_svg_test`,
+    `cargo nextest run -p merman-render --test flowchart_svg_test`,
+    `cargo nextest run -p merman-render state`, `cargo fmt --check -p dugong -p dugong-graphlib`,
+    and `git diff --check` passed.
 - `manatee`:
   - FCoSE relative-placement DAG construction no longer inserts keys and immediately unwraps
     mutable map lookups for source/destination adjacency, reverse edges, or indegree updates. The

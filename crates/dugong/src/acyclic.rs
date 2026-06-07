@@ -74,33 +74,79 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
     let mut stack: BTreeSet<String> = BTreeSet::new();
     let mut visited: BTreeSet<String> = BTreeSet::new();
 
-    fn dfs(
+    struct DfsFrame {
+        v: String,
+        edges: Vec<EdgeKey>,
+        next_edge: usize,
+    }
+
+    fn push_frame(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        v: &str,
+        v: String,
+        visited: &mut BTreeSet<String>,
+        stack: &mut BTreeSet<String>,
+        frames: &mut Vec<DfsFrame>,
+    ) {
+        visited.insert(v.clone());
+        stack.insert(v.clone());
+        frames.push(DfsFrame {
+            edges: g.out_edges(&v, None),
+            v,
+            next_edge: 0,
+        });
+    }
+
+    fn dfs_iterative(
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        root: &str,
         visited: &mut BTreeSet<String>,
         stack: &mut BTreeSet<String>,
         fas: &mut Vec<EdgeKey>,
     ) {
-        if !visited.insert(v.to_string()) {
+        if visited.contains(root) {
             return;
         }
-        stack.insert(v.to_string());
-        for e in g.out_edges(v, None) {
+
+        let mut frames: Vec<DfsFrame> = Vec::new();
+        push_frame(g, root.to_string(), visited, stack, &mut frames);
+
+        while !frames.is_empty() {
+            let next = {
+                let frame = match frames.last_mut() {
+                    Some(frame) => frame,
+                    None => break,
+                };
+                if frame.next_edge < frame.edges.len() {
+                    let edge = frame.edges[frame.next_edge].clone();
+                    frame.next_edge += 1;
+                    Some(edge)
+                } else {
+                    None
+                }
+            };
+
+            let Some(e) = next else {
+                let Some(frame) = frames.pop() else {
+                    break;
+                };
+                stack.remove(&frame.v);
+                continue;
+            };
+
             if e.v == e.w {
                 continue;
             }
             if stack.contains(&e.w) {
                 fas.push(e);
-            } else {
-                dfs(g, &e.w, visited, stack, fas);
+            } else if !visited.contains(&e.w) {
+                push_frame(g, e.w.clone(), visited, stack, &mut frames);
             }
         }
-        stack.remove(v);
     }
 
     // Dagre's `dfsFAS` iterates nodes in `g.nodes()` order (insertion order).
     for v in g.nodes() {
-        dfs(g, v, &mut visited, &mut stack, &mut fas);
+        dfs_iterative(g, v, &mut visited, &mut stack, &mut fas);
     }
     fas
 }

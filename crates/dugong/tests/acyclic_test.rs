@@ -185,3 +185,25 @@ fn acyclic_greedy_prefers_to_break_cycles_at_low_weight_edges() {
     assert_eq!(alg::find_cycles(&g), Vec::<Vec<String>>::new());
     assert!(!g.has_edge("c", "d", None));
 }
+
+#[test]
+fn acyclic_run_handles_deep_dfs_chains_with_small_stack() {
+    const DEPTH: usize = 2048;
+    let handle = std::thread::Builder::new()
+        .name("dugong-deep-acyclic-dfs".to_string())
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let mut g = new_graph("dfs");
+            for i in 0..DEPTH {
+                g.set_edge(format!("n{i}"), format!("n{}", i + 1));
+            }
+
+            acyclic::run(&mut g);
+            assert_eq!(g.edge_count(), DEPTH);
+            assert_eq!(alg::find_cycles(&g), Vec::<Vec<String>>::new());
+        })
+        .expect("spawn dugong deep acyclic dfs test");
+    handle
+        .join()
+        .expect("dugong acyclic dfs should finish without stack overflow");
+}
