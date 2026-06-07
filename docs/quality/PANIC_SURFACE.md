@@ -28,6 +28,9 @@ Library code should not panic on user-controlled input.
   - `rank::util::longest_path(...)`, `order::sort_subgraph(...)`, and
     `order::sort_subgraph_ix(...)` no longer recurse over user-controlled graph depth. Deep edge
     chains and compound subgraph chains now use explicit heap-backed traversal.
+  - `rank::util::longest_path(...)` also no longer exposes a frame-pop `expect(...)` after that
+    iterative conversion. If the explicit stack invariant is unexpectedly violated, traversal exits
+    instead of panicking in the layout ranker.
   - The default Dagre cycle-breaking path `acyclic::run(...)` no longer recurses through
     `dfs_fas(...)`. Deep acyclic successor chains now use explicit heap-backed DFS frames while
     preserving Dagre's node order, edge order, self-loop skip, and feedback-edge collection
@@ -356,6 +359,10 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render --test class_svg_test`,
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
     and `git diff --check` passed for the Class namespace / dugong deep traversal cleanup.
+  - Verification: `cargo +1.95 fmt -p dugong`,
+    `cargo +1.95 nextest run -p dugong --test rank_util_test`,
+    `rg -n 'longest-path frame should exist' crates/dugong/src/rank/util.rs`, and
+    `git diff --check` passed for the Dugong longest-path frame-pop panic-surface cleanup.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`,
     `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,

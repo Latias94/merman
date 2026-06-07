@@ -7454,6 +7454,41 @@ Gate notes:
 - This is release-boundary hardening for Class namespace layout/SVG and dugong-adjacent traversal,
   not a claim that Class root residuals or Architecture solver diagnostics are closed.
 
+## HPD-050 - Dugong Longest-Path Frame Panic Surface
+
+Outcome:
+
+- Removed the remaining production `expect("longest-path frame should exist")` from
+  `crates/dugong/src/rank/util.rs`.
+- The iterative `rank::util::longest_path(...)` loop already uses `while let Some(frame) =
+  stack.last_mut()` before the final pop. The pop now uses `let Some(frame) = stack.pop() else {
+  break; }` so a future invariant drift exits traversal instead of panicking in the layout ranker.
+- Normal longest-path rank propagation, `minlen` handling, visited-node behavior, and deep-chain
+  stack-safety coverage are unchanged.
+
+Evidence:
+
+- `crates/dugong/src/rank/util.rs`
+- `crates/dugong/tests/rank_util_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-dugong-longest-path-frame-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong` - passed.
+- `cargo +1.95 nextest run -p dugong --test rank_util_test` - passed, `6` tests run.
+- `rg -n 'longest-path frame should exist' crates/dugong/src/rank/util.rs` - no matches.
+- `rg -n 'unwrap\(|expect\(|panic!\(' crates/dugong/src -g '*.rs'` - no matches.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `864`
+  lines parsed.
+
+Gate notes:
+
+- This is a Dugong ranker panic-surface guard in an already iterative traversal. It does not change
+  Graphlib API shape, Dagre ordering, edge labels, renderer SVG output, root viewport formulas,
+  stored baselines, or Architecture/Class residual classification.
+
 ## HPD-050 - Architecture Deep-Group Panic Surface
 
 Outcome:

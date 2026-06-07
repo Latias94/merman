@@ -66,7 +66,9 @@ pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 continue;
             }
 
-            let frame = stack.pop().expect("longest-path frame should exist");
+            let Some(frame) = stack.pop() else {
+                break;
+            };
             let rank = frame.rank.unwrap_or(0);
             if let Some(label) = g.node_mut(&frame.v) {
                 label.rank = Some(rank);

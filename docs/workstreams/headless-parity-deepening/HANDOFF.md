@@ -1103,6 +1103,10 @@ Current repository reality to preserve:
     `dugong-graphlib` preorder/postorder, and Class namespace SVG root output now use explicit
     frame stacks. Public Class regressions cover a `128`-level namespace chain, while cheaper
     dugong/graphlib regressions cover `2,048`-level deep graph chains on a `64KB` stack.
+  - A follow-up HPD-050 panic-surface guard removed the remaining production
+    `expect("longest-path frame should exist")` from Dugong longest-path ranking. The iterative
+    ranker now exits if the final pop invariant is unexpectedly violated, without changing normal
+    rank propagation or minlen behavior.
   - A follow-up HPD-050 panic-surface slice hardened Architecture's accepted deep group path after
     a public `architecture-beta` nested group chain reproduced stack overflow in layout while
     parse-only stayed green. manatee/FCoSE compound depth and layout-order reconstruction now use
