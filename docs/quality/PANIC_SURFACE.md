@@ -17,7 +17,7 @@ Library code should not panic on user-controlled input.
   - degrading gracefully (best-effort output) when strictness would be counterproductive (e.g.
     layout on disconnected graphs)
 
-## Current status (2026-06-06)
+## Current status (2026-06-07)
 
 - `dugong` (Dagre port):
   - No `unwrap/expect/panic!` usage in `crates/dugong/src` (production code).
@@ -31,6 +31,10 @@ Library code should not panic on user-controlled input.
   - Ishikawa render-model construction and semantic JSON projection no longer recurse over the
     user-authored tree. Deeply nested Ishikawa input now uses explicit heap-backed traversal for
     arena-to-tree conversion, flattened node projection, and root JSON projection.
+  - TreeView render-model construction and semantic JSON projection no longer recurse over the
+    user-authored tree. The parser still enforces `MAX_DIAGRAM_NESTING_DEPTH`, but accepted
+    `treeView-beta` chains now use explicit heap-backed traversal for arena-to-tree conversion,
+    flattened node projection, and root JSON projection.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -41,6 +45,9 @@ Library code should not panic on user-controlled input.
   - Ishikawa layout no longer recurses over user-authored cause/subcause trees while counting
     descendants or flattening label entries. The odd-depth parent-bone lookup now degrades to the
     current branch bone instead of panicking if the traversal invariant is ever violated.
+  - TreeView layout no longer recurses over user-authored tree nodes. The layout pass now uses an
+    explicit enter/exit stack, preserving preorder node output and postorder vertical-line output
+    while keeping the existing depth-limit error for invalid typed models.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -52,6 +59,10 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-core ishikawa`,
     `cargo nextest run -p merman-render --test ishikawa_svg_test`, and `git diff --check` passed
     for the Ishikawa deep-tree cleanup.
+  - Verification: `cargo nextest run -p merman-core tree_view`,
+    `cargo nextest run -p merman-render --test tree_view_svg_test`, and
+    `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3`
+    passed for the TreeView depth-boundary cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -77,8 +88,9 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart and Ishikawa now have explicit-stack coverage for representative deep inputs, but
-    similar tree-shaped families should be audited before release hardening is considered complete.
+  - Flowchart, Ishikawa, and TreeView now have explicit-stack coverage for representative deep or
+    maximum-accepted inputs, but similar tree-shaped families should be audited before release
+    hardening is considered complete.
 
 ## Suggested workflow
 

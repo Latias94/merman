@@ -7005,3 +7005,49 @@ Gate notes:
   changed.
 - This is release-boundary hardening for panic-surface policy, not a claim that every recursive
   tree-shaped renderer has been audited.
+
+## HPD-050 - TreeView Depth-Boundary Panic Surface
+
+Outcome:
+
+- Hardened another user-input-reachable tree traversal surface outside Architecture root residual
+  chasing: accepted `treeView-beta` trees no longer depend on recursive Rust call-stack traversal
+  for typed render-model construction, semantic JSON projection, flattened node projection, or
+  render layout.
+- The existing `MAX_DIAGRAM_NESTING_DEPTH` policy remains unchanged. This slice does not accept
+  deeper TreeView syntax; it removes recursive walkers from the maximum accepted public parse/layout
+  boundary and keeps invalid deeper models on the existing `InvalidModel` / parse-error path.
+- `arena_node_to_render_model(...)` now builds the nested render model through an explicit
+  postorder stack.
+- `flatten_nodes(...)` and the root JSON projection now use explicit stacks, preserving the
+  existing preorder `nodes` output and nested `root` JSON shape.
+- Render layout now uses an explicit enter/exit stack, preserving preorder node layout rows and
+  postorder vertical-line emission.
+- Added public-path regressions:
+  - core parses and semantically projects the maximum accepted `256`-node TreeView chain;
+  - render parses and layouts the same maximum accepted chain through
+    `layout_parsed_render_layout_only(...)`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/tree_view.rs`
+- `crates/merman-render/src/tree_view.rs`
+- `crates/merman-render/tests/tree_view_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-tree-view-depth-boundary.md`
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo nextest run -p merman-core tree_view` - passed, `5` tests run.
+- `cargo nextest run -p merman-render --test tree_view_svg_test` - passed, `5` tests run.
+- `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for TreeView's accepted depth boundary; similar tree-shaped
+  families remain candidates for follow-up audit.

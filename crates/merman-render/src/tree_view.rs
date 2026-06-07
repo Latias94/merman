@@ -8,6 +8,7 @@ use merman_core::diagrams::tree_view::{
     TreeViewDiagramRenderModel, TreeViewNodeRenderModel as TreeViewNode,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 struct TreeViewConfig {
@@ -49,7 +50,7 @@ pub fn layout_tree_view_diagram_typed(
         lines: Vec::new(),
     };
 
-    layout_node(&mut ctx, &model.root, 0)?;
+    layout_tree(&mut ctx, &model.root);
 
     let min_x = -ctx.cfg.line_thickness / 2.0;
     let total_width = ctx.total_width.max(1.0);
@@ -99,7 +100,51 @@ struct LayoutCtx<'a> {
     lines: Vec<TreeViewLineLayout>,
 }
 
-fn layout_node(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> Result<usize> {
+enum LayoutFrame<'a> {
+    Enter {
+        node: &'a TreeViewNode,
+        depth: usize,
+    },
+    Exit {
+        node: &'a TreeViewNode,
+        node_index: usize,
+    },
+}
+
+fn layout_tree(ctx: &mut LayoutCtx<'_>, root: &TreeViewNode) {
+    let mut stack = vec![LayoutFrame::Enter {
+        node: root,
+        depth: 0,
+    }];
+    let mut node_indices: HashMap<*const TreeViewNode, usize> = HashMap::new();
+
+    while let Some(frame) = stack.pop() {
+        match frame {
+            LayoutFrame::Enter { node, depth } => {
+                let node_index = push_node_layout(ctx, node, depth);
+                node_indices.insert(std::ptr::from_ref(node), node_index);
+                stack.push(LayoutFrame::Exit { node, node_index });
+                for child in node.children.iter().rev() {
+                    stack.push(LayoutFrame::Enter {
+                        node: child,
+                        depth: depth.saturating_add(1),
+                    });
+                }
+            }
+            LayoutFrame::Exit { node, node_index } => {
+                if let Some(last_child) = node.children.last() {
+                    if let Some(last_child_idx) =
+                        node_indices.get(&std::ptr::from_ref(last_child)).copied()
+                    {
+                        push_vertical_line(ctx, node_index, last_child_idx);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn push_node_layout(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> usize {
     let indent = depth as f64 * (ctx.cfg.row_indent + ctx.cfg.padding_x);
     let label_width = tree_view_label_bbox_width_px(ctx.measurer, &node.name, &ctx.style);
     let label_height = tree_view_label_bbox_height_px(ctx.cfg.label_font_size);
@@ -134,25 +179,30 @@ fn layout_node(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> Re
     ctx.total_width = ctx.total_width.max(indent + width);
     ctx.total_height += height;
 
-    let mut direct_child_layouts = Vec::new();
-    for child in &node.children {
-        direct_child_layouts.push(layout_node(ctx, child, depth + 1)?);
-    }
+    idx
+}
 
-    if let Some(last_child_idx) = direct_child_layouts.last().copied() {
-        let current = &ctx.nodes[idx];
-        let last_child = &ctx.nodes[last_child_idx];
-        ctx.lines.push(TreeViewLineLayout {
-            x1: current.x + ctx.cfg.padding_x,
-            y1: current.y + current.height,
-            x2: current.x + ctx.cfg.padding_x,
-            y2: last_child.y + last_child.height / 2.0 + ctx.cfg.line_thickness / 2.0,
-            stroke_width: ctx.cfg.line_thickness,
-            kind: "vertical".to_string(),
-        });
-    }
+fn push_vertical_line(ctx: &mut LayoutCtx<'_>, node_index: usize, last_child_idx: usize) {
+    let Some(current) = ctx.nodes.get(node_index) else {
+        return;
+    };
+    let Some(last_child) = ctx.nodes.get(last_child_idx) else {
+        return;
+    };
+    let current_x = current.x;
+    let current_y = current.y;
+    let current_height = current.height;
+    let last_child_y = last_child.y;
+    let last_child_height = last_child.height;
 
-    Ok(idx)
+    ctx.lines.push(TreeViewLineLayout {
+        x1: current_x + ctx.cfg.padding_x,
+        y1: current_y + current_height,
+        x2: current_x + ctx.cfg.padding_x,
+        y2: last_child_y + last_child_height / 2.0 + ctx.cfg.line_thickness / 2.0,
+        stroke_width: ctx.cfg.line_thickness,
+        kind: "vertical".to_string(),
+    });
 }
 
 fn tree_view_config(effective_config: &Value) -> TreeViewConfig {

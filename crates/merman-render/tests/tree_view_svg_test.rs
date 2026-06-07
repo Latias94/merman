@@ -1,5 +1,6 @@
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
+use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
 use merman_render::tree_view::layout_tree_view_diagram_typed;
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
@@ -169,5 +170,38 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
     assert!(
         err.to_string().contains("treeView nesting depth exceeds"),
         "{err}"
+    );
+}
+
+#[test]
+fn tree_view_public_layout_accepts_max_allowed_chain() {
+    let mut input = String::from("treeView-beta\n");
+    for depth in 0..MAX_DIAGRAM_NESTING_DEPTH {
+        input.push_str(&" ".repeat(depth));
+        input.push('"');
+        input.push_str(&format!("n{depth}"));
+        input.push_str("\"\n");
+    }
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.meta.diagram_type, "treeView");
+
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
+        panic!("expected treeView layout");
+    };
+
+    assert_eq!(tree_view.nodes.len(), MAX_DIAGRAM_NESTING_DEPTH + 1);
+    assert_eq!(
+        tree_view.nodes.first().map(|node| node.name.as_str()),
+        Some("/")
+    );
+    let expected_last = format!("n{}", MAX_DIAGRAM_NESTING_DEPTH - 1);
+    assert_eq!(
+        tree_view.nodes.last().map(|node| node.name.as_str()),
+        Some(expected_last.as_str())
     );
 }

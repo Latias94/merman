@@ -1045,6 +1045,12 @@ Current repository reality to preserve:
     invariant is violated. Focused regressions cover `1,500`-level core projection and a
     `1,200`-level render layout through public paths. This did not change baselines, root overrides, or
     Architecture residual formulas.
+  - A follow-up HPD-050 panic-surface slice hardened TreeView's accepted depth boundary. The parser
+    still rejects input beyond `MAX_DIAGRAM_NESTING_DEPTH`, but accepted `treeView-beta` chains now
+    avoid recursive Rust stack traversal for arena-to-render-model conversion, root JSON projection,
+    semantic node flattening, and render layout. Focused regressions cover the maximum accepted
+    `256`-node chain through core semantic JSON and render public parse/layout paths, and
+    TreeView DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

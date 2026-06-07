@@ -1,5 +1,6 @@
 use crate::{Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TreeViewNodeRenderModel {
@@ -66,13 +67,14 @@ pub fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_tree_view_model_for_render(code, meta)?;
     let mut nodes = Vec::new();
     flatten_nodes(&model.root, &mut nodes);
+    let root = tree_view_node_to_value(&model.root);
 
     Ok(json!({
         "type": meta.diagram_type,
         "title": model.title,
         "accTitle": model.acc_title,
         "accDescr": model.acc_descr,
-        "root": model.root,
+        "root": root,
         "nodes": nodes,
     }))
 }
@@ -195,28 +197,91 @@ fn tree_view_input_to_render_model(
 }
 
 fn arena_node_to_render_model(arena: &[ArenaNode], idx: usize) -> TreeViewNodeRenderModel {
-    let node = &arena[idx];
-    TreeViewNodeRenderModel {
-        id: node.id,
-        level: node.level,
-        name: node.name.clone(),
-        children: node
-            .children
-            .iter()
-            .map(|&child| arena_node_to_render_model(arena, child))
-            .collect(),
+    let mut models: Vec<Option<TreeViewNodeRenderModel>> = vec![None; arena.len()];
+    let mut stack = vec![(idx, false)];
+
+    while let Some((node_idx, visited)) = stack.pop() {
+        let Some(node) = arena.get(node_idx) else {
+            continue;
+        };
+
+        if visited {
+            let children = node
+                .children
+                .iter()
+                .filter_map(|&child_idx| models.get_mut(child_idx).and_then(Option::take))
+                .collect();
+            models[node_idx] = Some(TreeViewNodeRenderModel {
+                id: node.id,
+                level: node.level,
+                name: node.name.clone(),
+                children,
+            });
+        } else {
+            stack.push((node_idx, true));
+            for &child_idx in node.children.iter().rev() {
+                stack.push((child_idx, false));
+            }
+        }
     }
+
+    models
+        .get_mut(idx)
+        .and_then(Option::take)
+        .unwrap_or_default()
 }
 
 fn flatten_nodes(node: &TreeViewNodeRenderModel, out: &mut Vec<Value>) {
-    out.push(json!({
-        "id": node.id,
-        "level": node.level,
-        "name": node.name,
-    }));
-    for child in &node.children {
-        flatten_nodes(child, out);
+    let mut stack = vec![node];
+    while let Some(current) = stack.pop() {
+        out.push(json!({
+            "id": current.id,
+            "level": current.level,
+            "name": current.name,
+        }));
+        for child in current.children.iter().rev() {
+            stack.push(child);
+        }
     }
+}
+
+fn tree_view_node_to_value(root: &TreeViewNodeRenderModel) -> Value {
+    let mut values: HashMap<*const TreeViewNodeRenderModel, Value> = HashMap::new();
+    let mut stack = vec![(root, false)];
+
+    while let Some((node, visited)) = stack.pop() {
+        let node_ptr = std::ptr::from_ref(node);
+        if visited {
+            let children = node
+                .children
+                .iter()
+                .filter_map(|child| values.remove(&std::ptr::from_ref(child)))
+                .collect::<Vec<_>>();
+            values.insert(
+                node_ptr,
+                json!({
+                    "id": node.id,
+                    "level": node.level,
+                    "name": node.name,
+                    "children": children,
+                }),
+            );
+        } else {
+            stack.push((node, true));
+            for child in node.children.iter().rev() {
+                stack.push((child, false));
+            }
+        }
+    }
+
+    values.remove(&std::ptr::from_ref(root)).unwrap_or_else(|| {
+        json!({
+            "id": 0,
+            "level": -1,
+            "name": "/",
+            "children": [],
+        })
+    })
 }
 
 fn parse_node_line(line: &str, meta: &ParseMetadata) -> Result<FlatNode> {
@@ -376,6 +441,35 @@ accDescr: Accessible Description
         assert!(
             err.to_string().contains("treeView nesting depth exceeds"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn parse_tree_view_projects_max_allowed_chain() {
+        let mut input = String::from("treeView-beta\n");
+        for depth in 0..crate::MAX_DIAGRAM_NESTING_DEPTH {
+            input.push_str(&" ".repeat(depth));
+            input.push('"');
+            input.push_str(&format!("n{depth}"));
+            input.push_str("\"\n");
+        }
+
+        let semantic = parse_tree_view(&input, &meta()).unwrap();
+        let nodes = semantic
+            .get("nodes")
+            .and_then(Value::as_array)
+            .expect("nodes array");
+
+        assert_eq!(nodes.len(), crate::MAX_DIAGRAM_NESTING_DEPTH + 1);
+        assert_eq!(nodes[0].get("name").and_then(Value::as_str), Some("/"));
+        assert_eq!(nodes[1].get("name").and_then(Value::as_str), Some("n0"));
+        let expected_last = format!("n{}", crate::MAX_DIAGRAM_NESTING_DEPTH - 1);
+        assert_eq!(
+            nodes
+                .last()
+                .and_then(|node| node.get("name"))
+                .and_then(Value::as_str),
+            Some(expected_last.as_str())
         );
     }
 }
