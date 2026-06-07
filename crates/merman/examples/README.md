@@ -2,9 +2,9 @@
 
 Run these commands from the repository root.
 
-Examples `01` through `08` accept Mermaid source on stdin. If stdin is an interactive terminal,
-they do not wait for input: they print a short note to stderr and render a built-in example. To
-render custom Mermaid, pipe source into the command or redirect a `.mmd` file.
+Examples `01` through `08` and `11` accept Mermaid source on stdin. If stdin is an interactive
+terminal, they do not wait for input: they print a short note to stderr and render a built-in
+example. To render custom Mermaid, pipe source into the command or redirect a `.mmd` file.
 
 ## Built-In Input
 
@@ -19,6 +19,7 @@ cargo run -p merman --features render --example example_07_theme_css > themed.sv
 cargo run -p merman --example example_08_deterministic_gantt
 cargo run -p merman --features render --example example_09_multiple_diagrams
 cargo run -p merman --features egui-example --example example_10_integration_egui
+cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg
 ```
 
 ## Custom Input
@@ -47,6 +48,7 @@ printf "flowchart LR\nA --> B\n" | \
 ## Output Paths
 
 - `example_01`, `example_06`, and `example_07` write SVG to stdout.
+- `example_11` writes host-controlled resvg-safe SVG to stdout.
 - `example_02`, `example_03`, and `example_08` write JSON to stdout.
 - `example_04` writes terminal text to stdout. Pass `-- --ascii` for ASCII-only output.
 - `example_05` writes PNG to `target/merman-raster-example.png` by default, or to the path passed

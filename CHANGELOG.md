@@ -24,7 +24,7 @@ real editor-preview integration shape.
 - Added deterministic fixed-time controls for date-sensitive parsing and rendering, including CLI flags and binding-facing options for callers that need stable Gantt output.
 - Added release-preflight and manual platform publishing workflows for Rust crates, CLI artifacts, Python wheels, Android AARs, Apple XCFrameworks, and Flutter packages.
 - Added Zed editor-preview contract coverage for the public `HeadlessRenderer`, `MermaidConfig`, `SvgPipeline::resvg_safe()`, `CssOverridePostprocessor::strip_existing_important()`, vendored text measurement, configured SVG ids, readable fallback text, and raster-safe SVG cleanup.
-- Added copyable Rust examples and refreshed release documentation for the alpha.2 package graph.
+- Added copyable Rust examples, including a custom host output environment example, and refreshed release documentation for the alpha.2 package graph.
 
 ### Changed
 

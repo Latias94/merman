@@ -123,3 +123,7 @@ required-features = ["render"]
 [[example]]
 name = "example_10_integration_egui"
 required-features = ["egui-example"]
+
+[[example]]
+name = "example_11_custom_output_environment"
+required-features = ["render"]

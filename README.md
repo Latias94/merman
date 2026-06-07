@@ -140,8 +140,8 @@ does not support `<foreignObject>` well. Use the `ascii` feature and
 
 The `crates/merman/examples` programs are ordered as a progressive Rust integration path. Each
 example reads Mermaid source from stdin when provided and falls back to a small built-in diagram.
-When stdin is an interactive terminal, examples `01` through `08` do not wait for input; they print
-a short note to stderr and render their built-in example. See
+When stdin is an interactive terminal, examples `01` through `08` and `11` do not wait for input;
+they print a short note to stderr and render their built-in example. See
 [`crates/merman/examples/README.md`](crates/merman/examples/README.md) for copyable commands with
 custom stdin and output files.
 
@@ -157,6 +157,7 @@ custom stdin and output files.
 | 08 | Make time-sensitive Gantt parsing deterministic | none | `cargo run -p merman --example example_08_deterministic_gantt` |
 | 09 | Inline multiple diagrams without SVG id collisions | `render` | `cargo run -p merman --features render --example example_09_multiple_diagrams` |
 | 10 | Integrate with a desktop GUI host via egui | `egui-example` | `cargo run -p merman --features egui-example --example example_10_integration_egui` |
+| 11 | Build a custom host output environment | `render` | `cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg` |
 
 The egui example is intentionally a host-integration skeleton rather than a full playground: it
 keeps a long-lived renderer, edits Mermaid source, previews a raster texture, reports render
@@ -327,6 +328,7 @@ Runnable example:
 
 ```bash
 cargo run -p merman --features render --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+cargo run -p merman --features render --example example_11_custom_output_environment > host-preview.svg
 ```
 
 ## Quickstart (FFI and native hosts)
