@@ -1253,6 +1253,11 @@ Current repository reality to preserve:
     local start / `;` / `{` delimiter boundary without regex construction, and
     `strip_css_deg_units(...)` now scans the local degree-unit boundary directly. The next
     production render regex cluster is `svg/pipeline/builtin/attr_sanitize.rs`.
+  - A follow-up HPD-050 panic-surface slice removed the SVG pipeline double-quoted attribute regex
+    construction from `attr_sanitize.rs`. Tag rewriting and bad-`rect` dimension lookup now share
+    a source-shaped scanner for the previous local attribute regex. A precise `merman-render/src`
+    regex scan now reports only `svg/parity/er.rs`; builtin SVG sanitizer files have no regex
+    dependency matches.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

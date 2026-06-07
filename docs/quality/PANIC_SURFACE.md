@@ -209,6 +209,9 @@ Library code should not panic on user-controlled input.
     local `(^|[;{])\s*animation(?:-[a-z-]+)?\s*:[^;}]*;?` boundary directly, and
     `strip_css_deg_units(...)` scans the local `(-?\d+(?:\.\d+)?)deg\b` boundary directly for
     raster-safe output.
+  - SVG pipeline attribute sanitization no longer compiles the local double-quoted attribute
+    regex. Tag attribute rewriting and bad-`rect` dimension lookup now share a scanner for the
+    previous `\s+([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*"([^"]*)"` shape.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -360,6 +363,14 @@ Library code should not panic on user-controlled input.
     `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs`,
     and `git diff --check` passed for the CSS sanitizer regex removal; `css_sanitize.rs` has no
     regex dependency matches.
+  - Verification: `cargo +1.95 fmt -p merman-render`,
+    `cargo +1.95 nextest run -p merman-render attr_sanitize resvg_safe`,
+    `cargo +1.95 fmt --check -p merman-render`,
+    `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs crates/merman-render/src/svg/pipeline/builtin/css_override.rs`,
+    `rg -n "regex::Regex|Regex::new|OnceLock<regex::Regex>|OnceLock\s*<\s*Regex|regex::Captures|Captures<'" crates/merman-render/src -g '*.rs'`,
+    and `git diff --check` passed for the SVG attribute sanitizer regex removal. The builtin SVG
+    sanitizer files have no regex dependency matches; the precise render-wide regex scan reports
+    only `svg/parity/er.rs`.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.

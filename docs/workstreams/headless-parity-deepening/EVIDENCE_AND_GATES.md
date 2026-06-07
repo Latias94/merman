@@ -8686,3 +8686,48 @@ Gate notes:
   policy, scoped CSS injection, core parsing, sanitizer policy, SVG baselines, root viewport
   formulas, or Architecture residual classification. The remaining production render regex cluster
   is now in `crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs`.
+
+## HPD-050 - SVG Attribute Sanitize Regex Panic Surface
+
+Outcome:
+
+- Removed the remaining double-quoted SVG attribute regex compilation points from
+  `crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs`.
+- Replaced local `\s+([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*"([^"]*)"` matching with a shared
+  direct scanner used by both full tag attribute rewriting and `attr_value(...)` bad-`rect`
+  dimension lookup.
+- Preserved the previous scanner shape: at least one Unicode whitespace before the attribute,
+  ASCII SVG-like attribute names, optional whitespace around `=`, double-quoted values, and
+  no handling for single-quoted or unquoted attributes.
+- Added focused coverage for unchanged attribute formatting, px normalization, empty guarded
+  attribute dropping, style sanitization, and bad-`rect` detection through spaced uppercase
+  attributes.
+
+Evidence:
+
+- `crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs`
+- `crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs`
+- `crates/merman-render/src/svg/parity/er.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-attr-sanitize-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render attr_sanitize resvg_safe` - passed, `6` tests run.
+- `cargo +1.95 fmt --check -p merman-render` - passed.
+- `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/pipeline/builtin/attr_sanitize.rs crates/merman-render/src/svg/pipeline/builtin/css_sanitize.rs crates/merman-render/src/svg/pipeline/builtin/css_override.rs` -
+  no regex dependency matches in those builtin SVG sanitizer files.
+- `rg -n "regex::Regex|Regex::new|OnceLock<regex::Regex>|OnceLock\s*<\s*Regex|regex::Captures|Captures<'" crates/merman-render/src -g '*.rs'` -
+  reports only `crates/merman-render/src/svg/parity/er.rs`.
+- `git diff --check` - passed.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a local SVG pipeline panic-surface cleanup for raster-safe attribute sanitization. It
+  does not change guarded attribute policy, invalid value policy, style declaration filtering,
+  CSS override policy, scoped CSS injection, core parsing, sanitizer policy, SVG baselines, root
+  viewport formulas, or Architecture residual classification. After this slice, the remaining
+  precise `regex::Regex` / `Regex::new` render hit is the ER parity decimal-normalization helper
+  in `crates/merman-render/src/svg/parity/er.rs`.
