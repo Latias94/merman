@@ -7527,6 +7527,42 @@ Gate notes:
 - This is release-boundary hardening for Architecture foreignObject XHTML handling, not a claim
   that Architecture `parity-root` diagnostics or group/service bbox residuals are closed.
 
+## HPD-050 - Architecture foreignObject Rewrite Frame Panic Surface
+
+Outcome:
+
+- Removed the remaining production `expect("rewrite frame should exist")` from
+  `crates/merman-render/src/svg/parity/architecture/foreign_object.rs`.
+- The XHTML namespace rewrite already checks the explicit frame stack before processing. The final
+  pop now uses a defensive `let Some(frame) = stack.pop() else { return Vec::new(); }` guard so an
+  unexpected invariant violation degrades instead of panicking on the SVG/HTML normalization
+  boundary.
+- Normal Architecture `iconText` XHTML rewriting, namespace splitting, serialization, layout,
+  root-bounds formulas, and SVG baselines are unchanged.
+
+Evidence:
+
+- `crates/merman-render/src/svg/parity/architecture/foreign_object.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-architecture-foreign-object-rewrite-frame-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render normalize_xhtml_fragment_handles_deep_nested_html_with_small_stack architecture_svg_handles_deep_icon_text_xhtml_fragment` -
+  passed, `2` tests run.
+- `rg -n 'rewrite frame should exist' crates/merman-render/src/svg/parity/architecture/foreign_object.rs` -
+  no matches.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `860`
+  lines parsed.
+
+Gate notes:
+
+- This is a renderer panic-surface guard in an already stack-based rewrite loop. It does not change
+  Architecture parsing, layout, service/group geometry, renderer SVG structure, theme CSS,
+  sanitizer policy, root viewport formulas, or Architecture residual classification.
+
 ## HPD-050 - Dugong And Graphlib Cycle Traversal Panic Surface
 
 Outcome:

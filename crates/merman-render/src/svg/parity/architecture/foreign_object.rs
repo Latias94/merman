@@ -479,7 +479,9 @@ fn rewrite_foreign_object_fragment_nodes(
             continue;
         }
 
-        let frame = stack.pop().expect("rewrite frame should exist");
+        let Some(frame) = stack.pop() else {
+            return Vec::new();
+        };
         let Some(pending) = frame.pending else {
             return frame.out;
         };

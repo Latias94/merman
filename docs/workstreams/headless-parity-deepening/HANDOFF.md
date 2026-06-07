@@ -1114,6 +1114,10 @@ Current repository reality to preserve:
     `2,048` levels on a `64KB` stack. The user-reported
     `architecture_layout_handles_deep_group_chain` abort was rechecked on the current worktree and
     passes as a focused single test.
+  - A follow-up HPD-050 panic-surface guard removed the remaining production
+    `expect("rewrite frame should exist")` from Architecture foreignObject XHTML namespace
+    rewriting. The explicit stack loop now degrades to an empty rewritten fragment if its final pop
+    invariant is ever violated, without changing normal `iconText` output.
   - A follow-up HPD-050 panic-surface slice hardened the remaining dugong/Graphlib cycle traversal
     front discovered by production `unwrap/expect/panic` and recursion audit. Graphlib
     `find_cycles(...)` now runs Tarjan SCC traversal through explicit frames instead of recursive

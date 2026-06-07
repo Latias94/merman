@@ -193,6 +193,9 @@ Library code should not panic on user-controlled input.
     foreignObject namespaces or serializing the fragment tree. Public `architecture-beta` service
     `iconText` SVG output now covers a `1,200`-level nested XHTML fragment, while the lower-level
     normalizer covers a `2,048`-level fragment on a `64KB` stack.
+  - Architecture foreignObject XHTML namespace rewriting no longer panics if its explicit frame
+    stack invariant is unexpectedly violated. The defensive fallback returns an empty rewritten
+    fragment instead of exposing a library panic on the SVG/HTML normalization boundary.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -357,6 +360,11 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render architecture_layout_handles_deep_group_chain`,
     `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,
     and `git diff --check` passed for the Architecture `iconText` XHTML fragment cleanup.
+  - Verification: `cargo +1.95 fmt -p merman-render`,
+    `cargo +1.95 nextest run -p merman-render normalize_xhtml_fragment_handles_deep_nested_html_with_small_stack architecture_svg_handles_deep_icon_text_xhtml_fragment`,
+    `rg -n 'rewrite frame should exist' crates/merman-render/src/svg/parity/architecture/foreign_object.rs`,
+    and `git diff --check` passed for the Architecture foreignObject rewrite-frame panic-surface
+    cleanup.
   - Verification: `cargo +1.95 fmt -p merman-render`,
     `cargo +1.95 nextest run -p merman-render fontawesome`, and
     `rg -n 'Regex|regex::|OnceLock|fontawesome_icon_at|replace_fontawesome_icons' crates/merman-render/src/text/icons.rs crates/merman-render/src/text/tests.rs`
