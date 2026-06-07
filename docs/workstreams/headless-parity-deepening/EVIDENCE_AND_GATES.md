@@ -8116,3 +8116,43 @@ Gate notes:
 - This is a public preprocessing panic-surface cleanup only. It does not change entity placeholder
   marker semantics, HTML attribute rewrite behavior, frontmatter/directive parsing, detector order,
   semantic models, rendered output, SVG baselines, or Architecture residual classification.
+
+## HPD-050 - Preprocess HTML Attribute Cleanup Panic Surface
+
+Outcome:
+
+- Removed the final cached regex helpers from the public preprocessing boundary.
+- `cleanup_text(...)` no longer calls preprocess tag or attribute regex helpers for Mermaid's HTML
+  cleanup pass.
+- The replacement scanner preserves the upstream `/<(\w+)([^>]*)>/g` tag shape with JavaScript
+  ASCII `\w` tag names.
+- The attribute rewrite preserves the upstream `/="([^"]*)"/g` replacement only inside matched
+  tags, including empty attribute values, first-`>` tag termination, and non-match behavior for
+  non-ASCII tag names such as `<é ...>`.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/preprocess.ts`
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-html-attr-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core normalize_html_tag_attributes_matches_mermaid_cleanup_shape preprocess_rewrites_html_attributes_without_regex encode_entity_placeholders_matches_mermaid_ascii_word_shape preprocess_encodes_entities_without_entity_regex preprocess_normalizes_crlf_without_regex` -
+  passed, `5` tests run.
+- `cargo +1.95 nextest run -p merman-core detect flowchart` - passed, `118` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'cached_regex|OnceLock|Regex|regex::|re_tag|re_attr_eq_double_quoted|Regex::new' crates/merman-core/src/preprocess/mod.rs` -
+  no preprocess regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public preprocessing panic-surface cleanup only. It does not change CRLF
+  normalization, entity placeholder marker semantics, style/classDef hex protection,
+  frontmatter/directive parsing, detector order, semantic models, rendered output, SVG baselines,
+  root viewport formulas, or Architecture residual classification.

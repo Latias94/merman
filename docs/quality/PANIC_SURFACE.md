@@ -84,6 +84,10 @@ Library code should not panic on user-controlled input.
     placeholder encoding. It now scans each line for Mermaid's source-shaped
     `style.*:\S*#.*;` and `classDef.*:\S*#.*;` behavior, including the greedy final-semicolon
     boundary.
+  - Preprocess HTML attribute cleanup no longer compiles tag or double-quoted-attribute regexes
+    on the public preprocessing boundary. It now scans Mermaid's source-shaped
+    `<(\w+)([^>]*)>` tag match and `="([^"]*)"` attribute rewrite directly, including JavaScript
+    ASCII `\w` tag names and first-`>` tag termination.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional

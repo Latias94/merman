@@ -1,20 +1,7 @@
 use crate::{DetectorRegistry, Error, MermaidConfig, Result};
-use regex::Regex;
 use serde_json::Value;
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
-macro_rules! cached_regex {
-    ($fn_name:ident, $pat:literal) => {
-        fn $fn_name() -> &'static Regex {
-            static RE: OnceLock<Regex> = OnceLock::new();
-            RE.get_or_init(|| Regex::new($pat).expect("preprocess regex must compile"))
-        }
-    };
-}
-
-cached_regex!(re_tag, r"<(\w+)([^>]*)>");
-cached_regex!(re_attr_eq_double_quoted, "=\"([^\"]*)\"");
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub code: String,
@@ -98,16 +85,7 @@ fn cleanup_text(input: &str) -> Cow<'_, str> {
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
     if s.contains('<') && s.contains("=\"") {
-        s = Cow::Owned(
-            re_tag()
-                .replace_all(s.as_ref(), |caps: &regex::Captures| {
-                    let tag = &caps[1];
-                    let attrs = &caps[2];
-                    let attrs = re_attr_eq_double_quoted().replace_all(attrs, "='$1'");
-                    format!("<{tag}{attrs}>")
-                })
-                .into_owned(),
-        );
+        s = Cow::Owned(normalize_html_tag_attributes_like_upstream(s.as_ref()));
     }
 
     s
@@ -126,6 +104,74 @@ fn normalize_crlf(input: &str) -> String {
             out.push(ch);
         }
     }
+    out
+}
+
+fn normalize_html_tag_attributes_like_upstream(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = text[probe..].find('<') {
+        let start = probe + rel_start;
+        let tag_start = start + 1;
+        if tag_start >= bytes.len() || !is_mermaid_js_word_byte(bytes[tag_start]) {
+            probe = tag_start;
+            continue;
+        }
+
+        let mut tag_end = tag_start + 1;
+        while tag_end < bytes.len() && is_mermaid_js_word_byte(bytes[tag_end]) {
+            tag_end += 1;
+        }
+
+        let Some(rel_end) = text[tag_end..].find('>') else {
+            probe = tag_start;
+            continue;
+        };
+        let end = tag_end + rel_end;
+
+        out.push_str(&text[cursor..start]);
+        out.push('<');
+        out.push_str(&text[tag_start..tag_end]);
+        out.push_str(&normalize_html_attributes_like_upstream(
+            &text[tag_end..end],
+        ));
+        out.push('>');
+
+        cursor = end + 1;
+        probe = end + 1;
+    }
+
+    out.push_str(&text[cursor..]);
+    out
+}
+
+fn normalize_html_attributes_like_upstream(attributes: &str) -> String {
+    let mut out = String::with_capacity(attributes.len());
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = attributes[probe..].find("=\"") {
+        let start = probe + rel_start;
+        let value_start = start + 2;
+        let Some(rel_end) = attributes[value_start..].find('"') else {
+            probe = value_start;
+            continue;
+        };
+        let end = value_start + rel_end;
+
+        out.push_str(&attributes[cursor..start]);
+        out.push_str("='");
+        out.push_str(&attributes[value_start..end]);
+        out.push('\'');
+
+        cursor = end + 1;
+        probe = end + 1;
+    }
+
+    out.push_str(&attributes[cursor..]);
     out
 }
 
@@ -164,7 +210,7 @@ fn encode_entity_placeholders_like_upstream(text: &str) -> String {
     while let Some(rel_hash) = text[cursor..].find('#') {
         let start = cursor + rel_hash;
         let mut end = start + 1;
-        while end < bytes.len() && is_mermaid_entity_word_byte(bytes[end]) {
+        while end < bytes.len() && is_mermaid_js_word_byte(bytes[end]) {
             end += 1;
         }
 
@@ -189,7 +235,7 @@ fn encode_entity_placeholders_like_upstream(text: &str) -> String {
     out
 }
 
-fn is_mermaid_entity_word_byte(byte: u8) -> bool {
+fn is_mermaid_js_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
@@ -701,6 +747,28 @@ mod tests {
             "flowchart TD\nA-->B\nC-->D\n"
         );
         assert_eq!(normalize_crlf("\r\r\n\n"), "\n\n\n");
+    }
+
+    #[test]
+    fn normalize_html_tag_attributes_matches_mermaid_cleanup_shape() {
+        assert_eq!(
+            normalize_html_tag_attributes_like_upstream(
+                r#"<span title="A" data-empty="">Label</span><br disabled="yes">"#
+            ),
+            r#"<span title='A' data-empty=''>Label</span><br disabled='yes'>"#
+        );
+        assert_eq!(
+            normalize_html_tag_attributes_like_upstream(r#"<é title="A"><_x value="B"><1 n="C">"#),
+            r#"<é title="A"><_x value='B'><1 n='C'>"#
+        );
+        assert_eq!(
+            normalize_html_tag_attributes_like_upstream(r#"<span a="x" title="A>B">"#),
+            r#"<span a='x' title="A>B">"#
+        );
+        assert_eq!(
+            normalize_html_tag_attributes_like_upstream(r#"<<span title="A">"#),
+            r#"<<span title='A'>"#
+        );
     }
 
     #[test]

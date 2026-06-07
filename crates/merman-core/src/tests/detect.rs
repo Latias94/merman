@@ -168,6 +168,33 @@ fn preprocess_encodes_entities_without_entity_regex() {
 }
 
 #[test]
+fn preprocess_rewrites_html_attributes_without_regex() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let result = preprocess_diagram(
+        r#"flowchart TD
+A["<span title="alpha" data-empty="">Label</span>"]
+B["<é title="unchanged">Local</é>"]"#,
+        &registry,
+    )
+    .expect("preprocess succeeds");
+
+    assert!(
+        result
+            .code
+            .contains(r#"A["<span title='alpha' data-empty=''>Label</span>"]"#),
+        "{:?}",
+        result.code
+    );
+    assert!(
+        result
+            .code
+            .contains(r#"B["<é title="unchanged">Local</é>"]"#),
+        "{:?}",
+        result.code
+    );
+}
+
+#[test]
 fn detector_registry_strips_deep_frontmatter_with_small_stack() {
     const DEPTH: usize = 512;
     let mut text = String::from("---\nconfig: {\"sequence\": ");
