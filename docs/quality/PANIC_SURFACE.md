@@ -21,6 +21,10 @@ Library code should not panic on user-controlled input.
 
 - `dugong` (Dagre port):
   - No `unwrap/expect/panic!` usage in `crates/dugong/src` (production code).
+  - Cycle-breaking reversed-edge naming and long-edge dummy-node naming no longer end in
+    theoretical-exhaustion `unreachable!()` fallbacks. If the internal `rev*` or `_d*` name space
+    is exhausted, the affected transformation step is skipped/stopped instead of panicking; normal
+    layout naming behavior is unchanged.
   - Layout-related helpers are now defensive against:
     - empty graphs
     - disconnected graphs (build a forest instead of panicking)

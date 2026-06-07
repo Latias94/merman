@@ -11,19 +11,19 @@ fn add_dummy_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     label: NodeLabel,
     prefix: &str,
-) -> String {
+) -> Option<String> {
     if !g.has_node(prefix) {
         g.set_node(prefix, label);
-        return prefix.to_string();
+        return Some(prefix.to_string());
     }
     for i in 1usize.. {
         let v = format!("{prefix}{i}");
         if !g.has_node(&v) {
             g.set_node(&v, label.clone());
-            return v;
+            return Some(v);
         }
     }
-    unreachable!()
+    None
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -67,7 +67,7 @@ fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
     let mut r = v_rank + 1;
 
     while r < w_rank {
-        let dummy_id = add_dummy_node(
+        let Some(dummy_id) = add_dummy_node(
             g,
             NodeLabel {
                 width: 0.0,
@@ -79,7 +79,9 @@ fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
                 ..Default::default()
             },
             "_d",
-        );
+        ) else {
+            break;
+        };
 
         if first_dummy.is_none() {
             first_dummy = Some(dummy_id.clone());

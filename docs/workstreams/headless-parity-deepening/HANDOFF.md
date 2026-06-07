@@ -1314,6 +1314,9 @@ Current repository reality to preserve:
   - A follow-up HPD-050 panic-surface guard removed `MermaidConfig::value_mut(...)`'s internal
     `unreachable!` after clone-on-write. Shared config mutation still uses the existing
     non-recursive clone path before returning mutable access through `Arc::make_mut(...)`.
+  - A follow-up HPD-050 panic-surface slice removed Dugong's theoretical name-exhaustion
+    `unreachable!()` fallbacks from cycle-breaking reversed-edge naming and long-edge dummy-node
+    naming. Normal `rev*` and `_d*` allocation semantics are unchanged.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

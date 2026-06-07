@@ -9238,3 +9238,36 @@ Gate notes:
   frontmatter or init directive parsing, legacy font-family mirroring, retained config projection,
   theme derivation, parser behavior, SVG output, root viewport formulas, or Mermaid parity
   residual classification.
+
+## HPD-050 - Dugong Name Exhaustion Panic Surface
+
+Outcome:
+
+- Removed two theoretical-exhaustion `unreachable!()` fallbacks from Dugong layout internals.
+- `acyclic::unique_rev_name(...)` now returns `Option<String>` and skips inserting the affected
+  reversed feedback edge if the `rev*` name space is theoretically exhausted.
+- `normalize::add_dummy_node(...)` now returns `Option<String>` and stops normalizing the current
+  long edge if the `_d*` dummy-node name space is theoretically exhausted.
+- Preserved normal reversed-edge naming, long-edge dummy chain creation, and undo behavior.
+
+Evidence:
+
+- `crates/dugong/src/acyclic.rs`
+- `crates/dugong/src/normalize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-dugong-name-exhaustion-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong` - passed.
+- `cargo +1.95 nextest run -p dugong acyclic normalize` - passed, `23` tests run.
+- `rg -n 'unreachable!|panic!|expect\(|unwrap\(' crates/dugong/src/acyclic.rs crates/dugong/src/normalize.rs` -
+  no matches.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a Dugong layout-engine panic-surface cleanup only. It does not change rank assignment,
+  feedback-arc selection, greedy/DFS cycle-breaking order, normal reversed-edge naming, long-edge
+  dummy chain semantics, edge-label dummy behavior, layout geometry, Graphlib APIs, SVG baselines,
+  root viewport formulas, or Mermaid parity residual classification.

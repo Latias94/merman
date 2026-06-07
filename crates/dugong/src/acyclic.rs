@@ -34,7 +34,9 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         label.forward_name = e.name.clone();
         label.reversed = true;
 
-        let name = unique_rev_name(g, &e.w, &e.v);
+        let Some(name) = unique_rev_name(g, &e.w, &e.v) else {
+            continue;
+        };
         g.set_edge_named(e.w, e.v, Some(name), Some(label));
     }
 }
@@ -58,14 +60,18 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
 }
 
-fn unique_rev_name(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str, w: &str) -> String {
+fn unique_rev_name(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    v: &str,
+    w: &str,
+) -> Option<String> {
     for i in 1usize.. {
         let candidate = format!("rev{i}");
         if !g.has_edge(v, w, Some(&candidate)) {
-            return candidate;
+            return Some(candidate);
         }
     }
-    unreachable!()
+    None
 }
 
 fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
