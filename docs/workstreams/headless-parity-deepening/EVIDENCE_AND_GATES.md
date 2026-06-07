@@ -9171,3 +9171,38 @@ Gate notes:
 - This is a documentation and triage reclassification slice only. It does not change parser,
   renderer, layout, Graphlib, generated config, generated theme snapshot, SVG baseline, root
   viewport, or Mermaid parity behavior.
+
+## HPD-050 - Markdown Line Assembly Panic Surface
+
+Outcome:
+
+- Removed the production `unreachable!("line exists")` dependency from
+  `crates/merman-render/src/text/markdown.rs`.
+- Replaced both Markdown word flushing and raw HTML tag line emission with a small helper that
+  extends the output line vector before returning the requested line.
+- Added focused coverage for raw HTML tags after an explicit newline so the normal line assembly
+  behavior remains locked while the defensive invariant changes.
+
+Evidence:
+
+- `crates/merman-render/src/text/markdown.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-markdown-line-assembly-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render html_tags_after_newline_stay_on_current_markdown_line markdown` -
+  passed, `22` tests run.
+- `rg -n 'line exists|unreachable!|unwrap_or_else\(\|\| unreachable|out\[line_idx\]' crates/merman-render/src/text/markdown.rs` -
+  reports only the guarded helper-internal `&mut out[line_idx]` after `resize_with(...)`.
+- `rg -n 'unwrap_or_else|unreachable!|panic!|expect\(|unwrap\(' crates/merman-render/src/text/markdown.rs` -
+  no matches.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a local Markdown text-tokenization panic-surface cleanup. It does not change Markdown
+  delimiter semantics, raw HTML token handling, flowchart label measurement, SVG baselines, root
+  viewport formulas, parser behavior, sanitizer policy, or Mermaid parity residual
+  classification.

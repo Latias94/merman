@@ -1307,6 +1307,10 @@ Current repository reality to preserve:
     `unwrap/expect/panic!` scan. The stale renderer-internals triage note is removed; the remaining
     non-test hits are generated/static core JSON validity checks and the source-backed Graphlib
     named-edge panic on non-multigraph simple graphs.
+  - A follow-up HPD-050 panic-surface slice removed Markdown line assembly's production
+    `unreachable!("line exists")` dependency. Word flushing and raw HTML tag emission now route
+    through a guarded line helper that extends the output line vector before indexing, preserving
+    normal Markdown tokenization and raw HTML tag line placement.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

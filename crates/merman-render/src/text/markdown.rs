@@ -147,6 +147,16 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut word_ty = MermaidMarkdownWordType::Normal;
     let mut in_code_span = false;
 
+    fn line_mut(
+        out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
+        line_idx: usize,
+    ) -> &mut Vec<(String, MermaidMarkdownWordType)> {
+        if out.len() <= line_idx {
+            out.resize_with(line_idx + 1, Vec::new);
+        }
+        &mut out[line_idx]
+    }
+
     let flush_word = |out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
                       line_idx: &mut usize,
                       word: &mut String,
@@ -158,9 +168,7 @@ pub(crate) fn mermaid_markdown_to_lines(
         if w.contains("&#39;") {
             w = w.replace("&#39;", "'");
         }
-        out.get_mut(*line_idx)
-            .unwrap_or_else(|| unreachable!("line exists"))
-            .push((w, word_ty));
+        line_mut(out, *line_idx).push((w, word_ty));
     };
 
     let mut i = 0usize;
@@ -199,7 +207,7 @@ pub(crate) fn mermaid_markdown_to_lines(
                     line_idx += 1;
                     out.push(Vec::new());
                 } else {
-                    out[line_idx].push((html, MermaidMarkdownWordType::Normal));
+                    line_mut(&mut out, line_idx).push((html, MermaidMarkdownWordType::Normal));
                     word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
                 }
                 i = end + 1;
@@ -349,6 +357,23 @@ mod tests {
                 ("`**not".to_string(), Normal),
                 ("bold**`".to_string(), Normal),
             ]]
+        );
+    }
+
+    #[test]
+    fn html_tags_after_newline_stay_on_current_markdown_line() {
+        use MermaidMarkdownWordType::*;
+
+        assert_eq!(
+            mermaid_markdown_to_lines("alpha\n<strong>bravo</strong>", true),
+            vec![
+                vec![("alpha".to_string(), Normal)],
+                vec![
+                    ("<strong>".to_string(), Normal),
+                    ("bravo".to_string(), Normal),
+                    ("</strong>".to_string(), Normal),
+                ],
+            ]
         );
     }
 }

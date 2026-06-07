@@ -242,6 +242,10 @@ Library code should not panic on user-controlled input.
   - ER path label-coordinate detection no longer compiles the local decimal regex. The helper now
     scans path `d` strings for ASCII decimal substrings matching the previous `\d+\.\d+` shape and
     rounds them before the existing coordinate containment heuristic.
+  - Markdown line assembly no longer depends on `unreachable!("line exists")` or a bare
+    `out[line_idx]` append for raw HTML tokens. Word flushing and raw HTML tag emission now share a
+    guarded line helper that extends the line vector before indexing, preserving the existing
+    tokenization behavior while removing the panic-bearing invariant.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
