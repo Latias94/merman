@@ -8,7 +8,7 @@ use points_on_curve::{curve_to_bezier, points_on_bezier_curves};
 use svgtypes::PathSegment;
 
 use crate::core::{
-    Drawable, FillStyle, OpSet, OpSetType, OpType, Options, OptionsBuilder, PathInfo, _c,
+    _c, Drawable, FillStyle, OpSet, OpSetType, OpType, Options, OptionsBuilder, PathInfo,
 };
 use crate::geometry::{convert_bezier_quadratic_to_cubic, BezierQuadratic};
 use crate::points_on_path::{points_on_path, points_on_segments};

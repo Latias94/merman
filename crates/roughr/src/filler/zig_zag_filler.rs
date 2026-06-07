@@ -7,7 +7,7 @@ use num_traits::{Float, FloatConst, FromPrimitive};
 
 use super::scan_line_hachure::polygon_hachure_lines;
 use super::traits::PatternFiller;
-use crate::core::{OpSet, OpSetType, Options, _c};
+use crate::core::{_c, OpSet, OpSetType, Options};
 use crate::geometry::Line;
 
 pub struct ZigZagFiller<F> {

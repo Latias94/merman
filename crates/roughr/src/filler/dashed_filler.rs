@@ -7,7 +7,7 @@ use num_traits::{Float, FromPrimitive};
 
 use super::scan_line_hachure::polygon_hachure_lines;
 use super::traits::PatternFiller;
-use crate::core::{OpSet, Options, _c};
+use crate::core::{_c, OpSet, Options};
 use crate::geometry::Line;
 use crate::renderer::_double_line;
 

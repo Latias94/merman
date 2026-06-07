@@ -6,8 +6,8 @@ use num_traits::{Float, FloatConst, FromPrimitive};
 use svg_path_ops::{absolutize, normalize};
 use svgtypes::{PathParser, PathSegment};
 
-use super::core::{Options, _c};
-use crate::core::{FillStyle, Op, OpSet, OpSetType, OpType, _cc};
+use super::core::{_c, Options};
+use crate::core::{_cc, FillStyle, Op, OpSet, OpSetType, OpType};
 use crate::filler::get_filler;
 use crate::filler::FillerType::{
     DashedFiller, DotFiller, HatchFiller, ScanLineHachure, ZigZagFiller, ZigZagLineFiller,
@@ -1249,7 +1249,7 @@ where
 mod test {
     use euclid::point2;
 
-    use super::{EllipseParams, EllipsePointsSpec, _compute_ellipse_points, _curve};
+    use super::{_compute_ellipse_points, _curve, EllipseParams, EllipsePointsSpec};
     use crate::core::{Op, OpSet, OpSetType, OpType, Options, OptionsBuilder};
 
     fn get_default_options() -> Options {

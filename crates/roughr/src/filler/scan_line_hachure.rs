@@ -7,7 +7,7 @@ use euclid::Trig;
 use num_traits::{Float, FromPrimitive};
 
 use super::traits::PatternFiller;
-use crate::core::{OpSet, Options, _c};
+use crate::core::{_c, OpSet, Options};
 use crate::geometry::{rotate_lines, rotate_points, Line};
 
 #[derive(Clone)]

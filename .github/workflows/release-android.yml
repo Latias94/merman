@@ -61,7 +61,7 @@ jobs:
           gradle-version: "9.4.1"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 

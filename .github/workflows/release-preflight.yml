@@ -29,7 +29,7 @@ jobs:
           ref: ${{ inputs.source_ref }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -101,7 +101,7 @@ jobs:
         run: python scripts/release-version.py check --version "${{ inputs.version }}"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -158,7 +158,7 @@ jobs:
           gradle-version: "9.4.1"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
@@ -194,7 +194,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -224,7 +224,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.87.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android,aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-windows-gnu
 

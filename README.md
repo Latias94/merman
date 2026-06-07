@@ -90,7 +90,7 @@ cargo build -p merman-ffi --release
 Use [`crates/merman-ffi/include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) and link the
 platform-specific library artifact from `target/release` for native embedding.
 
-MSRV is `rust-version = 1.87`.
+MSRV is `rust-version = 1.95`.
 
 ## Contents
 
