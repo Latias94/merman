@@ -124,14 +124,6 @@ fn default_data_uri_tags() -> &'static HashSet<&'static str> {
     })
 }
 
-fn dompurify_attr_whitespace_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"[\u{0000}-\u{0020}\u{00A0}\u{1680}\u{180E}\u{2000}-\u{2029}\u{205F}\u{3000}]")
-            .expect("valid regex")
-    })
-}
-
 fn dompurify_is_allowed_uri_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -172,6 +164,38 @@ fn is_dompurify_aria_attr_name(name: &str) -> bool {
 fn is_dompurify_aria_attr_suffix_char(ch: char) -> bool {
     // Source: DOMPurify 3.4.0 `ARIA_ATTR = /^aria-[\-\w]+$/`.
     matches!(ch, '-' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z')
+}
+
+fn remove_dompurify_attr_whitespace(input: &str) -> std::borrow::Cow<'_, str> {
+    let Some(first) = input
+        .char_indices()
+        .find_map(|(idx, ch)| is_dompurify_attr_whitespace(ch).then_some(idx))
+    else {
+        return std::borrow::Cow::Borrowed(input);
+    };
+
+    let mut out = String::with_capacity(input.len());
+    out.push_str(&input[..first]);
+    out.extend(
+        input[first..]
+            .chars()
+            .filter(|ch| !is_dompurify_attr_whitespace(*ch)),
+    );
+    std::borrow::Cow::Owned(out)
+}
+
+fn is_dompurify_attr_whitespace(ch: char) -> bool {
+    // Source: DOMPurify 3.4.0 `ATTR_WHITESPACE`.
+    matches!(
+        ch,
+        '\u{0000}'..='\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{180E}'
+            | '\u{2000}'..='\u{2029}'
+            | '\u{205F}'
+            | '\u{3000}'
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -351,11 +375,9 @@ fn dompurify_is_valid_attribute(
     }
 
     let decoded_value = decode_attr_html_entities_minimally(value);
-    let value_no_ws = dompurify_attr_whitespace_regex()
-        .replace_all(&decoded_value, "")
-        .to_string();
+    let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
 
-    if dompurify_is_allowed_uri_regex().is_match(&value_no_ws) {
+    if dompurify_is_allowed_uri_regex().is_match(value_no_ws.as_ref()) {
         return true;
     }
 
@@ -367,7 +389,9 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    if cfg.allow_unknown_protocols && !dompurify_is_script_or_data_regex().is_match(&value_no_ws) {
+    if cfg.allow_unknown_protocols
+        && !dompurify_is_script_or_data_regex().is_match(value_no_ws.as_ref())
+    {
         return true;
     }
 
@@ -771,6 +795,28 @@ mod tests {
     }
 
     #[test]
+    fn dompurify_attr_whitespace_cleanup_matches_source_regex_boundaries() {
+        assert_eq!(
+            remove_dompurify_attr_whitespace(
+                "java\u{0000}\u{0020}\u{00A0}\u{1680}\u{180E}\u{2000}\u{2029}\u{205F}\u{3000}script:"
+            ),
+            "javascript:"
+        );
+        assert_eq!(
+            remove_dompurify_attr_whitespace("java\u{0021}script:"),
+            "java\u{0021}script:"
+        );
+        assert_eq!(
+            remove_dompurify_attr_whitespace("java\u{202A}script:"),
+            "java\u{202A}script:"
+        );
+        assert_eq!(
+            remove_dompurify_attr_whitespace("java\u{FEFF}script:"),
+            "java\u{FEFF}script:"
+        );
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -1002,6 +1048,19 @@ mod tests {
         assert!(out.contains(">x</a>"));
         assert!(!out.to_ascii_lowercase().contains("javascript:"));
         assert!(!out.to_ascii_lowercase().contains("xlink:href"));
+    }
+
+    #[test]
+    fn sanitize_text_strips_javascript_href_after_dompurify_attr_whitespace_cleanup() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text("<a href=\"java\u{00A0}script:alert(1)\">x</a>", &cfg);
+        assert!(out.contains("<a"));
+        assert!(out.contains(">x</a>"));
+        assert!(!out.to_ascii_lowercase().contains("javascript:"));
+        assert!(!out.to_ascii_lowercase().contains("href="));
     }
 
     #[test]

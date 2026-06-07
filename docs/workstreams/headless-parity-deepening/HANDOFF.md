@@ -1210,6 +1210,11 @@ Current repository reality to preserve:
     `ARIA_ATTR` source shapes, including the `data-*` U+00B7..U+FFFF range and the narrower ARIA
     ASCII word/hyphen suffix rule. DOMPurify generated allowlists, URI validation, script/data URL
     checks, and minimal entity decoding remain unchanged.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer DOMPurify attribute-whitespace regex
+    construction before URI validation. The direct scanner preserves pinned DOMPurify 3.4.0
+    `ATTR_WHITESPACE` semantics and cleanup timing before both URI allowlist validation and the
+    unknown-protocol script/data guard; URI allowlist and script/data regex semantics remain
+    unchanged.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

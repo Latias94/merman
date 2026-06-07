@@ -8271,3 +8271,41 @@ Gate notes:
   allowlists, URI allowlist semantics, whitespace cleanup, script/data URL checks, minimal HTML
   entity decoding, tag policy, semantic parsing, rendered output, SVG baselines, root viewport
   formulas, or Architecture residual classification.
+
+## HPD-050 - Sanitizer Attribute Whitespace Cleanup Panic Surface
+
+Outcome:
+
+- Removed one fixed regex compilation point from the sanitizer's pre-URI attribute whitespace
+  cleanup path.
+- `dompurify_is_valid_attribute(...)` no longer calls a cached regex helper before URI allowlist
+  validation or the `ALLOW_UNKNOWN_PROTOCOLS` script/data guard.
+- The replacement scanner preserves pinned DOMPurify 3.4.0 `ATTR_WHITESPACE` semantics:
+  `U+0000..U+0020`, `U+00A0`, `U+1680`, `U+180E`, `U+2000..U+2029`, `U+205F`, and `U+3000`
+  are removed from the parsed attribute value before URI checks.
+- Added helper-level source-boundary coverage and public `sanitize_text(...)` coverage proving a
+  whitespace-obfuscated `java\u00A0script:` `href` is still rejected.
+
+Evidence:
+
+- `repo-ref/dompurify/dist/purify.cjs.js`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-attr-whitespace-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core sanitize` - passed, `33` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'dompurify_attr_whitespace_regex|fn dompurify_attr_whitespace_regex|Regex::new\(r"\[\\u\{0000\}-\\u\{0020\}|Regex::new\(r"\[\\u0000-\\u0020' crates/merman-core/src/sanitize.rs` -
+  no sanitizer attribute-whitespace regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public sanitizer panic-surface cleanup only. It does not change DOMPurify generated
+  allowlists, data/ARIA attribute-name policy, URI allowlist regex semantics, script/data URL regex
+  semantics, minimal HTML entity decoding, tag policy, semantic parsing, rendered output, SVG
+  baselines, root viewport formulas, or Architecture residual classification.
