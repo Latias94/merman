@@ -79,6 +79,21 @@ fn with_architecture_config(diagram: &str, config: &str) -> String {
     format!("%%{{init: {{\"architecture\": {config}}}}}%%\n{diagram}")
 }
 
+fn deep_group_chain_diagram(depth: usize) -> String {
+    let mut lines = vec![
+        r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%"#.to_string(),
+        "architecture-beta".to_string(),
+    ];
+    for i in 0..depth {
+        let parent = (i > 0)
+            .then(|| format!(" in g{}", i - 1))
+            .unwrap_or_default();
+        lines.push(format!("  group g{i}(cloud)[G{i}]{parent}"));
+    }
+    lines.push(format!("  service leaf(server)[Leaf] in g{}", depth - 1));
+    lines.join("\n")
+}
+
 fn chain_diagram() -> &'static str {
     r#"architecture-beta
   group app(cloud)[App]
@@ -99,6 +114,52 @@ fn disconnected_diagram() -> &'static str {
   service c(server)[C]
   service d(server)[D]
 "#
+}
+
+#[test]
+fn architecture_parse_for_render_model_handles_deep_group_chain() {
+    const DEPTH: usize = 64;
+    let source = deep_group_chain_diagram(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("architecture-deep-group-parse".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let engine = Engine::new();
+            engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse ok")
+                .expect("diagram detected");
+        })
+        .expect("spawn architecture deep group parse test");
+    handle
+        .join()
+        .expect("architecture deep group parse should finish without stack overflow");
+}
+
+#[test]
+fn architecture_layout_handles_deep_group_chain() {
+    const DEPTH: usize = 64;
+    let source = deep_group_chain_diagram(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("architecture-deep-group-layout".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || layout_architecture(&source))
+        .expect("spawn architecture deep group layout test");
+    let layout = handle
+        .join()
+        .expect("architecture deep group layout should finish without stack overflow");
+
+    assert!(
+        layout.nodes.iter().any(|node| node.id == "leaf"),
+        "expected deepest service to remain in Architecture layout"
+    );
+    assert!(
+        layout
+            .fcose_compound_bounds
+            .iter()
+            .any(|bounds| bounds.id == format!("g{}", DEPTH - 1)),
+        "expected deepest group to preserve FCoSE compound bounds"
+    );
 }
 
 #[test]

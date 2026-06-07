@@ -1348,30 +1348,46 @@ impl SimGraph {
         // Compute compound inclusion depths (root-level nodes depth=1), and build a stable
         // deepest-first compound node order for updateBounds.
         let mut inclusion_depth: Vec<usize> = vec![1; nodes.len()];
-        fn depth_of(
-            idx: usize,
-            nodes: &[SimNode],
-            memo: &mut [Option<usize>],
-            guard: &mut usize,
-        ) -> usize {
+        fn depth_of(idx: usize, nodes: &[SimNode], memo: &mut [Option<usize>]) -> usize {
+            if idx >= nodes.len() {
+                return 1;
+            }
             if let Some(v) = memo[idx] {
                 return v;
             }
-            *guard += 1;
-            if *guard > 4096 {
-                return 1;
+
+            let mut path: Vec<usize> = Vec::new();
+            let mut cur = idx;
+            let mut base_depth = 0usize;
+            while cur < nodes.len() {
+                if let Some(depth) = memo[cur] {
+                    base_depth = depth;
+                    break;
+                }
+                path.push(cur);
+                if path.len() > nodes.len() {
+                    base_depth = 0;
+                    break;
+                }
+                let owner = nodes[cur].owner_idx;
+                if owner >= nodes.len() {
+                    base_depth = 0;
+                    break;
+                }
+                cur = owner;
             }
-            let d = match nodes[idx].owner_idx {
-                owner if owner >= nodes.len() => 1,
-                parent_idx => depth_of(parent_idx, nodes, memo, guard).saturating_add(1),
-            };
-            memo[idx] = Some(d);
-            d
+
+            let mut depth = base_depth;
+            while let Some(node_idx) = path.pop() {
+                depth = depth.saturating_add(1);
+                memo[node_idx] = Some(depth);
+            }
+
+            memo[idx].unwrap_or(1)
         }
         let mut memo: Vec<Option<usize>> = vec![None; nodes.len()];
         for i in 0..nodes.len() {
-            let mut guard = 0usize;
-            inclusion_depth[i] = depth_of(i, &nodes, &mut memo, &mut guard);
+            inclusion_depth[i] = depth_of(i, &nodes, &mut memo);
         }
         let mut compounds_deep_first: Vec<usize> = nodes
             .iter()
@@ -2090,17 +2106,16 @@ impl SimGraph {
         // `children_by_owner` inclusion tree.
         let mut out: Vec<usize> = Vec::with_capacity(self.nodes.len());
         let mut visited_graph: Vec<bool> = vec![false; self.nodes.len() + 1];
-
-        fn visit(owner: usize, sim: &SimGraph, out: &mut Vec<usize>, visited: &mut [bool]) {
-            if owner >= visited.len() {
-                return;
+        let mut stack = vec![self.root_owner_idx];
+        while let Some(owner) = stack.pop() {
+            if owner >= visited_graph.len() {
+                continue;
             }
-            if visited[owner] {
-                return;
+            if std::mem::replace(&mut visited_graph[owner], true) {
+                continue;
             }
-            visited[owner] = true;
 
-            let nodes = sim
+            let nodes = self
                 .children_by_owner
                 .get(owner)
                 .map(|v| v.as_slice())
@@ -2108,19 +2123,17 @@ impl SimGraph {
             for &idx in nodes {
                 out.push(idx);
             }
-            for &idx in nodes {
-                let is_compound = sim.nodes.get(idx).is_some_and(|n| n.is_compound);
-                let has_children = sim
+            for &idx in nodes.iter().rev() {
+                let is_compound = self.nodes.get(idx).is_some_and(|n| n.is_compound);
+                let has_children = self
                     .children_by_owner
                     .get(idx)
                     .is_some_and(|v| !v.is_empty());
                 if is_compound && has_children {
-                    visit(idx, sim, out, visited);
+                    stack.push(idx);
                 }
             }
         }
-
-        visit(self.root_owner_idx, self, &mut out, &mut visited_graph);
         out
     }
 
@@ -4286,6 +4299,47 @@ mod tests {
             dx,
             dy
         );
+    }
+
+    #[test]
+    fn sim_graph_handles_deep_compound_chain_with_small_stack() {
+        const DEPTH: usize = 2048;
+        let handle = std::thread::Builder::new()
+            .name("manatee-fcose-deep-compound-chain".to_string())
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let nodes = vec![IndexedNode {
+                    parent: Some(DEPTH - 1),
+                    width: 80.0,
+                    height: 80.0,
+                    x: 0.0,
+                    y: 0.0,
+                    bounds_extras: BoundsExtras::default(),
+                }];
+                let compounds = (0..DEPTH)
+                    .map(|idx| IndexedCompound {
+                        parent: (idx > 0).then(|| idx - 1),
+                    })
+                    .collect::<Vec<_>>();
+                let graph = IndexedGraph {
+                    nodes,
+                    edges: Vec::new(),
+                    compounds,
+                };
+
+                let sim = SimGraph::from_indexed(&graph);
+                assert_eq!(sim.compounds_deep_first.len(), DEPTH);
+                assert_eq!(sim.inclusion_depth[0], DEPTH + 1);
+
+                let order = sim.all_nodes_layout_order();
+                assert_eq!(order.len(), DEPTH + 1);
+                assert_eq!(order.first().copied(), Some(1));
+                assert_eq!(order.last().copied(), Some(0));
+            })
+            .expect("spawn manatee deep compound test");
+        handle
+            .join()
+            .expect("deep compound SimGraph construction should not overflow");
     }
 
     #[test]

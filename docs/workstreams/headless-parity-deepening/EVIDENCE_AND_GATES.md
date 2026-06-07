@@ -7419,3 +7419,59 @@ Gate notes:
   carried by cheap dugong/graphlib unit regressions.
 - This is release-boundary hardening for Class namespace layout/SVG and dugong-adjacent traversal,
   not a claim that Class root residuals or Architecture solver diagnostics are closed.
+
+## HPD-050 - Architecture Deep-Group Panic Surface
+
+Outcome:
+
+- Hardened Architecture's public nested group path after the Class namespace / dugong cleanup. A
+  deep `architecture-beta` `group ... in ...` chain was publicly parseable; parse-only stayed
+  green, while layout reproduced stack overflow on a small thread stack before the manatee/FCoSE
+  traversal cleanup.
+- `manatee::algo::fcose::SimGraph::from_indexed(...)` no longer computes compound inclusion depth
+  through recursive parent calls. It now expands the parent chain explicitly and backfills memoized
+  depths.
+- `SimGraph::all_nodes_layout_order(...)` no longer recursively visits owner graphs. It now uses
+  an explicit preorder stack while preserving layout-base graph/node iteration order.
+- Architecture SVG group rectangle computation no longer recursively calls
+  `GroupRectComputer::compute(...)` for child groups. It now uses explicit enter/exit frames and
+  keeps the existing service, junction, child-group inset, padding, debug, and empty-group
+  behavior.
+- Added public-path and cheap lower-level regressions:
+  - Architecture parse, layout, and SVG output cover a `64`-level group chain on a small thread
+    stack;
+  - manatee/FCoSE compound depth and layout-order reconstruction cover a `2,048`-level compound
+    chain on a `64KB` stack;
+  - Architecture SVG group-rect computation covers a `2,048`-level child-group chain on a `64KB`
+    stack.
+
+Evidence:
+
+- `crates/manatee/src/algo/fcose/mod.rs`
+- `crates/merman-render/src/svg/parity/architecture/geometry.rs`
+- `crates/merman-render/tests/architecture_layout_test.rs`
+- `crates/merman-render/tests/architecture_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-architecture-deep-group-panic-surface.md`
+
+Focused verification:
+
+- `cargo fmt --check -p manatee -p merman-render` - passed.
+- `cargo nextest run -p manatee` - passed, `16` tests run.
+- `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test` -
+  passed, `17` tests run and `1` skipped.
+- `cargo nextest run -p merman-render group_rect_computer_handles_deep_child_group_chain_with_small_stack` -
+  passed.
+- `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- The public Architecture regression is intentionally `64` levels because deeper public layout
+  chains quickly become FCoSE performance stress tests on Windows. Deeper stack-safety coverage is
+  carried by cheap manatee and SVG group-rect unit regressions.
+- This is release-boundary hardening for Architecture group layout/SVG traversal, not a claim that
+  Architecture `parity-root` diagnostics or group-bounds residuals are closed.

@@ -1099,6 +1099,12 @@ Current repository reality to preserve:
     `dugong-graphlib` preorder/postorder, and Class namespace SVG root output now use explicit
     frame stacks. Public Class regressions cover a `128`-level namespace chain, while cheaper
     dugong/graphlib regressions cover `2,048`-level deep graph chains on a `64KB` stack.
+  - A follow-up HPD-050 panic-surface slice hardened Architecture's accepted deep group path after
+    a public `architecture-beta` nested group chain reproduced stack overflow in layout while
+    parse-only stayed green. manatee/FCoSE compound depth and layout-order reconstruction now use
+    explicit stacks, and Architecture SVG group-rect computation now uses explicit enter/exit
+    frames. Public Architecture parse/layout/SVG regressions cover a `64`-level group chain, while
+    cheaper manatee and group-rect regressions cover `2,048`-level chains on a `64KB` stack.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

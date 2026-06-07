@@ -90,6 +90,10 @@ Library code should not panic on user-controlled input.
     extracted cluster placement, fallback subtree rectangle collection, cluster rectangle
     postorder computation, or nested SVG root rendering. A public `flowchart TB` / `subgraph`
     chain now covers parse-for-render-model, layout, and SVG output through ordinary render APIs.
+  - Architecture deep group chains no longer depend on recursive Rust stack traversal in SVG group
+    rectangle computation. Public `architecture-beta` group chains now cover parse, layout, and SVG
+    output through ordinary render APIs, while the renderer-side group-rect calculator has a
+    separate `2,048`-level small-stack regression.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -139,6 +143,12 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render --test class_svg_test`,
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3`,
     and `git diff --check` passed for the Class namespace / dugong deep traversal cleanup.
+  - Verification: `cargo fmt --check -p manatee -p merman-render`,
+    `cargo nextest run -p manatee`,
+    `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,
+    `cargo nextest run -p merman-render group_rect_computer_handles_deep_child_group_chain_with_small_stack`,
+    `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+    and `git diff --check` passed for the Architecture deep-group cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -147,6 +157,9 @@ Library code should not panic on user-controlled input.
     mutable map lookups for source/destination adjacency, reverse edges, or indegree updates. The
     code now uses entry-based buckets so malformed or future-expanded relative-placement input does
     not depend on that local construction invariant staying panic-safe.
+  - FCoSE compound inclusion depth calculation and layout-base graph preorder reconstruction no
+    longer recurse over compound nesting depth. Deep compound chains now use explicit heap-backed
+    traversal and are covered by a `2,048`-level small-stack regression.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`, `cargo nextest run -p merman-render architecture`, and
     `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
@@ -164,10 +177,10 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart, Class namespaces, Ishikawa, TreeView, Treemap, Mindmap, Block, C4, and
-    dugong/graphlib graph traversals now have explicit-stack coverage for representative deep or
-    maximum-accepted inputs, but similar tree-shaped families should be audited before release
-    hardening is considered complete.
+  - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
+    C4, manatee/FCoSE compounds, and dugong/graphlib graph traversals now have explicit-stack
+    coverage for representative deep or maximum-accepted inputs, but similar tree-shaped families
+    should be audited before release hardening is considered complete.
 
 ## Suggested workflow
 

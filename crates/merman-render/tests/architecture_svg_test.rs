@@ -53,6 +53,21 @@ fn render_architecture_fixture(fixture_name: &str) -> String {
     )
 }
 
+fn deep_group_chain_diagram(depth: usize) -> String {
+    let mut lines = vec![
+        r#"%%{init: {"architecture": {"numIter": 1, "randomize": false}}}%%"#.to_string(),
+        "architecture-beta".to_string(),
+    ];
+    for i in 0..depth {
+        let parent = (i > 0)
+            .then(|| format!(" in g{}", i - 1))
+            .unwrap_or_default();
+        lines.push(format!("  group g{i}(cloud)[G{i}]{parent}"));
+    }
+    lines.push(format!("  service leaf(server)[Leaf] in g{}", depth - 1));
+    lines.join("\n")
+}
+
 fn arrow_transform_after_edge(svg: &str, edge_id: &str) -> String {
     let pattern = format!(r#"id="{}"[^>]*/><polygon([^>]*)>"#, regex::escape(edge_id));
     let re = Regex::new(&pattern).expect("valid regex");
@@ -141,6 +156,40 @@ fn assert_close(actual: f64, expected: f64, message: &str) {
     assert!(
         delta <= 1e-6,
         "{message}: expected {expected}, got {actual}, delta {delta}"
+    );
+}
+
+#[test]
+fn architecture_svg_handles_deep_group_chain() {
+    const DEPTH: usize = 64;
+    let source = deep_group_chain_diagram(DEPTH);
+    let handle = std::thread::Builder::new()
+        .name("architecture-deep-group-svg".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            render_architecture_text_with_options(
+                &source,
+                &SvgRenderOptions {
+                    diagram_id: Some("architecture-deep-groups".to_string()),
+                    ..Default::default()
+                },
+            )
+        })
+        .expect("spawn architecture deep group SVG test");
+    let svg = handle
+        .join()
+        .expect("architecture deep group SVG should finish without stack overflow");
+
+    assert!(
+        svg.contains(r#"id="architecture-deep-groups-service-leaf""#),
+        "expected deepest service to render"
+    );
+    assert!(
+        svg.contains(&format!(
+            r#"id="architecture-deep-groups-group-g{}""#,
+            DEPTH - 1
+        )),
+        "expected deepest group to render"
     );
 }
 
