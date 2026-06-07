@@ -7361,6 +7361,40 @@ Gate notes:
   introduce a new Flowchart depth limit or claim closure of known Flowchart max-width/root
   residuals.
 
+## HPD-050 - Flowchart Subgraph Builder Frame Panic Surface
+
+Outcome:
+
+- Removed the remaining production explicit-stack invariant `expect(...)` calls from
+  `crates/merman-core/src/diagrams/flowchart/subgraph.rs`.
+- `SubgraphBuilder::eval_statements(...)` now handles unexpected empty-frame states through
+  defensive `Option` branches while preserving normal Flowchart subgraph membership, direction,
+  id/title, and nested-subgraph evaluation behavior.
+- This follows the earlier deep-subgraph traversal hardening by eliminating panic surfaces in the
+  core subgraph membership extraction step itself.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/flowchart/subgraph.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-flowchart-subgraph-builder-frame-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core flowchart` - passed, `98` tests run.
+- `rg -n 'frame stack should not be empty|current frame should exist|finished frame should exist' crates/merman-core/src/diagrams/flowchart/subgraph.rs` -
+  no matches.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `862`
+  lines parsed.
+
+Gate notes:
+
+- This is a core Flowchart parser/model panic-surface guard. It does not change Flowchart grammar,
+  subgraph member ordering, renderer layout, SVG structure, theme CSS, root viewport formulas,
+  stored baselines, or Flowchart residual classification.
+
 ## HPD-050 - Class Namespace And Dugong Deep Traversal Panic Surface
 
 Outcome:

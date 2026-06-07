@@ -51,7 +51,9 @@ impl SubgraphBuilder {
 
         while !stack.is_empty() {
             let step = {
-                let frame = stack.last_mut().expect("frame stack should not be empty");
+                let Some(frame) = stack.last_mut() else {
+                    return root_items;
+                };
                 if frame.index >= frame.statements.len() {
                     EvalStep::Finish
                 } else {
@@ -69,11 +71,14 @@ impl SubgraphBuilder {
                     items: Vec::new(),
                 }),
                 EvalStep::Statement(stmt) => {
-                    let frame = stack.last_mut().expect("current frame should exist");
-                    push_statement_items(&mut frame.items, stmt);
+                    if let Some(frame) = stack.last_mut() {
+                        push_statement_items(&mut frame.items, stmt);
+                    }
                 }
                 EvalStep::Finish => {
-                    let frame = stack.pop().expect("finished frame should exist");
+                    let Some(frame) = stack.pop() else {
+                        return root_items;
+                    };
                     if let Some(sg) = frame.subgraph {
                         let id = self.eval_subgraph_from_items(sg, frame.items);
                         if let Some(parent) = stack.last_mut() {

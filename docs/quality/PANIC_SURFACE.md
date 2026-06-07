@@ -129,6 +129,9 @@ Library code should not panic on user-controlled input.
     now follow the same retained-config projection rule. Their public root objects are hand-built
     maps where needed, including Mindmap's empty-root early return, so retained host config is not
     recursively cloned or re-wrapped through `json!`.
+  - Flowchart subgraph membership extraction no longer exposes invariant `expect(...)` panics while
+    walking the explicit frame stack. Unexpected empty-stack states degrade to the partially
+    accumulated root items instead of panicking on the public flowchart parse/model boundary.
   - C4 diagram detection no longer depends on lazily compiling a static regex on the first
     detection pass. The detector now uses equivalent string checks for Mermaid's upstream
     ungrouped regex shape, avoiding a fixed stack-heavy regex initialization point in small-stack
@@ -341,6 +344,11 @@ Library code should not panic on user-controlled input.
     and `git diff --check` passed for the Flowchart deep-subgraph cleanup. The new `1,200`-level
     Flowchart regression reproduced stack overflow in the public layout path before the
     non-recursive layout placement/cluster-rect changes.
+  - Verification: `cargo +1.95 fmt -p merman-core`,
+    `cargo +1.95 nextest run -p merman-core flowchart`,
+    `rg -n 'frame stack should not be empty|current frame should exist|finished frame should exist' crates/merman-core/src/diagrams/flowchart/subgraph.rs`,
+    and `git diff --check` passed for the Flowchart subgraph builder frame-invariant panic-surface
+    cleanup.
   - Verification: `cargo fmt --check -p dugong -p dugong-graphlib -p merman-render`,
     `cargo nextest run -p dugong-graphlib --test alg_test`,
     `cargo nextest run -p dugong --test rank_util_test`,

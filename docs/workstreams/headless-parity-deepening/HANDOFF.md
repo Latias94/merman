@@ -1093,6 +1093,10 @@ Current repository reality to preserve:
     parse-for-render-model stayed green. Flowchart extracted cluster placement, fallback subtree
     rect collection, final cluster rect postorder computation, and nested SVG root rendering now
     use explicit heap-backed frames. Focused Flowchart tests and DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface guard removed the remaining production explicit-stack
+    invariant `expect(...)` calls from core Flowchart subgraph membership extraction. Unexpected
+    empty-frame states now degrade through `Option` branches without changing normal subgraph
+    membership, direction, id/title, or nested-subgraph behavior.
   - A follow-up HPD-050 panic-surface slice hardened Class namespace layout/SVG after a public
     nested `classDiagram` `namespace` chain exposed deep traversal risk in dugong/graphlib layout
     and then in Class namespace root rendering. `dugong` longest-path and compound sort-subgraph,
