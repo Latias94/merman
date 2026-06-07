@@ -20,11 +20,6 @@ cached_regex!(re_style_hex, r"style.*:\S*#.*;");
 cached_regex!(re_classdef_hex, r"classDef.*:\S*#.*;");
 cached_regex!(re_entity, r"#\w+;");
 cached_regex!(re_int, r"^\+?\d+$");
-cached_regex!(
-    re_frontmatter,
-    r"(?s)^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+"
-);
-
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub code: String,
@@ -62,6 +57,8 @@ const FRONTMATTER_DIAGRAM_CONFIG_ALIASES: &[(&str, &str)] = &[
     ("stateDiagram", "state"),
     ("xychart", "xyChart"),
 ];
+
+const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
 
 pub fn preprocess_diagram(input: &str, registry: &DetectorRegistry) -> Result<PreprocessResult> {
     preprocess_diagram_with_known_type(input, registry, None)
@@ -192,18 +189,28 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
         return Ok((input, None, MermaidConfig::empty_object()));
     }
 
-    let Some(caps) = re_frontmatter().captures(input) else {
+    let Some((yaml_body, stripped)) = split_frontmatter(input) else {
         return Ok((input, None, MermaidConfig::empty_object()));
     };
 
-    let yaml_body = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+    if config_nesting_exceeds_limit(yaml_body) {
+        return Err(Error::InvalidFrontMatterYaml {
+            message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
+        });
+    }
+
     let raw_yaml: serde_yaml::Value =
         serde_yaml::from_str(yaml_body).map_err(|e| Error::InvalidFrontMatterYaml {
             message: e.to_string(),
         })?;
-
     let parsed = serde_json::to_value(raw_yaml).unwrap_or(Value::Null);
-    let parsed_obj = parsed.as_object().cloned().unwrap_or_default();
+    let parsed_obj = match parsed {
+        Value::Object(obj) => obj,
+        other => {
+            crate::config::drop_value_nonrecursive(other);
+            Default::default()
+        }
+    };
 
     let mut title = None;
     let mut display_mode = None;
@@ -225,8 +232,32 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
         config.set_value("gantt.displayMode", Value::String(dm));
     }
 
-    let stripped = caps.get(0).map_or(input, |m| &input[m.end()..]);
+    crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
     Ok((stripped, title, config))
+}
+
+fn split_frontmatter(input: &str) -> Option<(&str, &str)> {
+    let after_marker = input.strip_prefix("---")?;
+    let open_line_end = after_marker.find('\n')?;
+    if !after_marker[..open_line_end].trim().is_empty() {
+        return None;
+    }
+
+    let body_start = 3 + open_line_end + 1;
+    let rest = &input[body_start..];
+    let mut offset = 0usize;
+
+    for line in rest.split_inclusive('\n') {
+        let without_newline = line.trim_end_matches(['\r', '\n']);
+        if without_newline.trim() == "---" {
+            let body = &rest[..offset];
+            let stripped = &rest[offset + line.len()..];
+            return Some((body, stripped));
+        }
+        offset += line.len();
+    }
+
+    None
 }
 
 fn merge_top_level_frontmatter_diagram_configs(
@@ -237,13 +268,13 @@ fn merge_top_level_frontmatter_diagram_configs(
     // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
     for &(source_key, target_key) in FRONTMATTER_DIAGRAM_CONFIG_ALIASES {
         if let Some(value) = parsed_obj.get(source_key) {
-            config.set_value(target_key, value.clone());
+            config.set_value(target_key, crate::config::clone_value_nonrecursive(value));
         }
     }
 
     for &key in FRONTMATTER_DIAGRAM_CONFIG_KEYS {
         if let Some(value) = parsed_obj.get(key) {
-            config.set_value(key, value.clone());
+            config.set_value(key, crate::config::clone_value_nonrecursive(value));
         }
     }
 }
@@ -283,14 +314,17 @@ fn detect_init(
         }
 
         let mut args = match &d.args {
-            Some(v) => v.clone(),
+            Some(v) => crate::config::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
 
         sanitize_directive(&mut args);
 
         // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
-        if let Some(diagram_specific) = args.get("config").cloned() {
+        if let Some(diagram_specific) = args
+            .get("config")
+            .map(crate::config::clone_value_nonrecursive)
+        {
             let detected = diagram_type.map(|t| t.to_string()).or_else(|| {
                 registry
                     .detect_type(input, &mut config_for_detect)
@@ -303,8 +337,12 @@ fn detect_init(
                     ty = "flowchart".to_string();
                 }
                 if let Value::Object(obj) = &mut args {
-                    obj.insert(ty, diagram_specific);
-                    obj.remove("config");
+                    if let Some(old) = obj.insert(ty, diagram_specific) {
+                        crate::config::drop_value_nonrecursive(old);
+                    }
+                    if let Some(old) = obj.remove("config") {
+                        crate::config::drop_value_nonrecursive(old);
+                    }
                 }
             }
         }
@@ -353,28 +391,77 @@ fn detect_directives(input: &str) -> Result<Vec<Directive>> {
     Ok(out)
 }
 
+#[derive(Clone)]
+enum DirectiveValuePathSegment {
+    Key(String),
+    Index(usize),
+}
+
 fn sanitize_directive(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            map.remove("secure");
-            map.retain(|k, _| !k.starts_with("__"));
-            for (_, v) in map.iter_mut() {
-                sanitize_directive(v);
+    let mut stack = vec![Vec::<DirectiveValuePathSegment>::new()];
+
+    while let Some(path) = stack.pop() {
+        let Some(current) = directive_value_at_path_mut(value, &path) else {
+            continue;
+        };
+
+        match current {
+            Value::Object(map) => {
+                if let Some(old) = map.remove("secure") {
+                    crate::config::drop_value_nonrecursive(old);
+                }
+
+                let blocked_keys = map
+                    .keys()
+                    .filter(|key| key.starts_with("__"))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                for key in blocked_keys {
+                    if let Some(old) = map.remove(&key) {
+                        crate::config::drop_value_nonrecursive(old);
+                    }
+                }
+
+                let child_keys = map.keys().cloned().collect::<Vec<_>>();
+                for key in child_keys.into_iter().rev() {
+                    let mut child_path = path.clone();
+                    child_path.push(DirectiveValuePathSegment::Key(key));
+                    stack.push(child_path);
+                }
             }
-        }
-        Value::Array(arr) => {
-            for v in arr {
-                sanitize_directive(v);
+            Value::Array(arr) => {
+                for idx in (0..arr.len()).rev() {
+                    let mut child_path = path.clone();
+                    child_path.push(DirectiveValuePathSegment::Index(idx));
+                    stack.push(child_path);
+                }
             }
-        }
-        Value::String(s) => {
-            let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
-            if blocked {
-                *s = String::new();
+            Value::String(s) => {
+                let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
+                if blocked {
+                    s.clear();
+                }
             }
+            _ => {}
         }
-        _ => {}
     }
+}
+
+fn directive_value_at_path_mut<'a>(
+    mut value: &'a mut Value,
+    path: &[DirectiveValuePathSegment],
+) -> Option<&'a mut Value> {
+    for segment in path {
+        match segment {
+            DirectiveValuePathSegment::Key(key) => {
+                value = value.as_object_mut()?.get_mut(key)?;
+            }
+            DirectiveValuePathSegment::Index(idx) => {
+                value = value.as_array_mut()?.get_mut(*idx)?;
+            }
+        }
+    }
+    Some(value)
 }
 
 fn remove_directives(text: &str) -> String {
@@ -429,6 +516,11 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
         if rest.is_empty() {
             None
         } else if rest.starts_with('{') || rest.starts_with('[') {
+            if config_nesting_exceeds_limit(rest) {
+                return Err(Error::InvalidDirectiveJson {
+                    message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
+                });
+            }
             Some(
                 json5::from_str::<Value>(rest).map_err(|e| Error::InvalidDirectiveJson {
                     message: e.to_string(),
@@ -442,4 +534,141 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
     };
 
     Ok(Some(Directive { ty, args }))
+}
+
+fn config_nesting_exceeds_limit(text: &str) -> bool {
+    max_flow_collection_depth(text) > MAX_CONFIG_NESTING_DEPTH
+        || max_yaml_indent_depth(text) > MAX_CONFIG_NESTING_DEPTH
+}
+
+fn max_flow_collection_depth(text: &str) -> usize {
+    let mut max_depth = 0usize;
+    let mut depth = 0usize;
+    let mut quote = None;
+    let mut escaped = false;
+
+    for ch in text.chars() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == q {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '{' | '[' => {
+                depth = depth.saturating_add(1);
+                max_depth = max_depth.max(depth);
+            }
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+
+    max_depth
+}
+
+fn max_yaml_indent_depth(text: &str) -> usize {
+    let mut indents = Vec::<usize>::new();
+    let mut max_depth = 0usize;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        while indents.last().is_some_and(|prev| indent <= *prev) {
+            indents.pop();
+        }
+        indents.push(indent);
+        let inline_sequence_depth = yaml_inline_sequence_indicator_count(trimmed);
+        max_depth = max_depth.max(indents.len() + inline_sequence_depth.saturating_sub(1));
+    }
+
+    max_depth
+}
+
+fn yaml_inline_sequence_indicator_count(mut text: &str) -> usize {
+    let mut count = 0usize;
+    loop {
+        let Some(after_dash) = text.strip_prefix('-') else {
+            return count;
+        };
+        if after_dash
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_whitespace())
+        {
+            return count;
+        }
+        count += 1;
+        text = after_dash.trim_start();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Map;
+
+    #[test]
+    fn sanitize_directive_handles_deep_values_with_small_stack() {
+        const DEPTH: usize = 2_048;
+        let mut value = deep_directive_value(DEPTH, Value::String("<blocked>".to_string()));
+
+        let handle = std::thread::Builder::new()
+            .name("preprocess-deep-directive-sanitize".to_string())
+            .stack_size(64 * 1024)
+            .spawn(move || {
+                sanitize_directive(&mut value);
+                assert_eq!(
+                    deep_directive_leaf(&value, DEPTH).and_then(Value::as_str),
+                    Some("")
+                );
+                crate::config::drop_value_nonrecursive(value);
+            })
+            .expect("spawn deep directive sanitizer test");
+        handle
+            .join()
+            .expect("deep directive sanitizer should finish without stack overflow");
+    }
+
+    #[test]
+    fn config_nesting_counts_inline_yaml_sequence_indicators() {
+        let yaml = format!(
+            "config:\n  {}\"leaf\"",
+            "- ".repeat(MAX_CONFIG_NESTING_DEPTH + 1)
+        );
+        assert!(config_nesting_exceeds_limit(&yaml));
+    }
+
+    fn deep_directive_value(depth: usize, leaf: Value) -> Value {
+        let mut value = leaf;
+        for idx in (0..depth).rev() {
+            let mut map = Map::new();
+            map.insert(format!("k{idx}"), value);
+            value = Value::Object(map);
+        }
+        value
+    }
+
+    fn deep_directive_leaf(mut value: &Value, depth: usize) -> Option<&Value> {
+        for idx in 0..depth {
+            value = value.as_object()?.get(&format!("k{idx}"))?;
+        }
+        Some(value)
+    }
 }

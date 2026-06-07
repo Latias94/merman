@@ -1,6 +1,7 @@
 use crate::*;
 use futures::executor::block_on;
 use serde_json::json;
+use std::fmt::Write;
 
 #[cfg(feature = "large-features")]
 #[test]
@@ -92,4 +93,34 @@ fn detects_eventmodeling_as_eventmodeling() {
             .unwrap()
             .unwrap();
     assert_eq!(res.diagram_type, "eventmodeling");
+}
+
+#[test]
+fn detector_registry_strips_deep_frontmatter_with_small_stack() {
+    const DEPTH: usize = 512;
+    let mut text = String::from("---\nconfig: {\"sequence\": ");
+    for idx in 0..DEPTH {
+        write!(&mut text, r#"{{"k{idx}":"#).expect("write frontmatter config");
+    }
+    text.push_str("\"leaf\"");
+    for _ in 0..DEPTH {
+        text.push('}');
+    }
+    text.push_str("}\n---\nsequenceDiagram\nAlice->Bob: Hi\n");
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+
+    let handle = std::thread::Builder::new()
+        .name("detector-deep-frontmatter-strip".to_string())
+        .stack_size(64 * 1024)
+        .spawn(move || {
+            let mut config = MermaidConfig::empty_object();
+            let detected = registry
+                .detect_type(&text, &mut config)
+                .expect("detect type");
+            assert_eq!(detected, "sequence");
+        })
+        .expect("spawn detector deep frontmatter test");
+    handle
+        .join()
+        .expect("detector frontmatter stripping should finish without stack overflow");
 }

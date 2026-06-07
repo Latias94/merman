@@ -7581,3 +7581,65 @@ Gate notes:
 - This is release-boundary hardening for public Graphlib cycle detection and Dugong's default
   Dagre cycle-removal traversal. It does not change upstream Dagre semantics or claim closure of
   any `parity-root` residual.
+
+## HPD-050 - Shared Config And Directive Panic Surface
+
+Outcome:
+
+- Hardened the shared Mermaid config boundary after the Dugong/Graphlib cycle traversal cleanup.
+  The public inputs here are host `site_config`, YAML frontmatter config, and `%%{init: ...}%%`
+  directive config.
+- `MermaidConfig` clone-on-write, `set_value(...)`, `deep_merge(...)`, and legacy root
+  `fontFamily` mirroring now use explicit heap-backed clone/drop/merge paths instead of recursive
+  `serde_json::Value` clone/drop.
+- Init directive sanitization now uses an explicit path stack over objects and arrays while
+  preserving the existing sanitizer behavior:
+  - remove `secure`;
+  - remove keys beginning with `__`;
+  - clear string values containing `<`, `>`, or `url(data:`.
+- Frontmatter keeps the legacy `serde_yaml::Value` to `serde_json::Value` conversion behavior,
+  including ignoring non-string YAML keys, while subsequent config merge/drop paths avoid recursive
+  `serde_json::Value` clone/drop.
+- Frontmatter stripping in preprocess and `DetectorRegistry::detect_type(...)` now uses line
+  scanning instead of broad regex replacement over user input.
+- Deep YAML / JSON5 config bodies are rejected before entering the recursive third-party parsers
+  when their structural nesting exceeds `MAX_DIAGRAM_NESTING_DEPTH`; the guard covers flow
+  collections, YAML indentation depth, and inline YAML sequence indicators. Accepted nesting still
+  merges through the same config semantics.
+- Added regressions for:
+  - deep host `site_config` merge through public metadata parsing;
+  - accepted init directive config sanitization;
+  - accepted frontmatter config merge;
+  - excessive init/frontmatter config rejection without stack overflow;
+  - excessive inline YAML sequence nesting rejection without stack overflow;
+  - non-string YAML key conversion compatibility;
+  - config nesting helper coverage for inline YAML sequence indicators;
+  - deep directive sanitizer traversal on a `64KB` stack;
+  - deep config clone-on-write on a `64KB` stack;
+  - detector frontmatter stripping on a `64KB` stack.
+
+Evidence:
+
+- `crates/merman-core/src/config/mod.rs`
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/detect/mod.rs`
+- `crates/merman-core/src/tests/misc.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-config-directive-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 nextest run -p merman-core clone_on_write_handles_deep_config_with_small_stack sanitize_directive_handles_deep_values_with_small_stack detector_registry_strips_deep_frontmatter_with_small_stack site_config_deep_merge_handles_deep_public_config_with_small_stack init_directive_config_sanitizes_deep_values_with_small_stack frontmatter_config_deep_merge_handles_deep_values_with_small_stack init_directive_rejects_excessive_config_nesting_with_small_stack frontmatter_rejects_excessive_config_nesting_with_small_stack frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion config_nesting_counts_inline_yaml_sequence_indicators` -
+  passed, `11` tests run.
+- `cargo +1.95 nextest run -p merman-core` - passed, `609` tests run.
+- `cargo +1.95 fmt` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Mermaid parity fixture, rendered output formula, or
+  Architecture root-bounds behavior changed.
+- The default `cargo` shim for the repo's `1.95.0` override reported that its `cargo.exe` component
+  was not applicable, so verification used the installed `1.95-x86_64-pc-windows-msvc` toolchain
+  explicitly.

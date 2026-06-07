@@ -60,6 +60,20 @@ Library code should not panic on user-controlled input.
   - Block deep composite hierarchies no longer depend on recursive `Clone` while populating parent
     children or projecting `blocksFlat`, and `parse_block(...)` now assembles the final semantic
     object with a hand-built map instead of wrapping deep block trees through `json!`.
+  - Mermaid config merging no longer depends on recursive `serde_json::Value` clone/drop for
+    clone-on-write, `set_value(...)`, `deep_merge(...)`, frontmatter merges, directive merges, or
+    legacy root `fontFamily` mirroring. Deep host `site_config` values now merge through explicit
+    heap-backed traversal.
+  - Init directive sanitization no longer recurses through user-authored JSON values. Directive
+    object/array walking uses explicit path stacks, removes blocked `secure` / `__*` keys with
+    non-recursive drops, and still clears blocked string values.
+  - Frontmatter and init directive config bodies now reject nesting deeper than
+    `MAX_DIAGRAM_NESTING_DEPTH` before entering the recursive YAML / JSON5 parsers, including
+    flow collections, YAML indentation depth, and inline YAML sequence indicators. Accepted
+    nesting continues through the existing merge semantics; excessive nesting returns a normal
+    invalid-frontmatter or invalid-directive error instead of overflowing the Rust stack.
+  - Frontmatter stripping in both preprocess and `DetectorRegistry::detect_type(...)` now uses
+    line scanning instead of a broad DOTALL regex over user input.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -136,6 +150,12 @@ Library code should not panic on user-controlled input.
     `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the Block deep-composite cleanup. The new `1,200`-level Block regressions reproduced
     stack overflow before the non-recursive clone/projection changes.
+  - Verification: `cargo +1.95 nextest run -p merman-core`, `cargo +1.95 fmt`, and
+    `git diff --check` passed for the shared config/directive/frontmatter cleanup. Focused
+    small-stack coverage now includes deep host `site_config`, accepted init/frontmatter config,
+    excessive init/frontmatter config rejection, excessive inline YAML sequence rejection, deep
+    directive sanitizer traversal, config clone-on-write, detector frontmatter stripping, and
+    legacy non-string YAML key conversion behavior.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

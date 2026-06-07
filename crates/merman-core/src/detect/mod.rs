@@ -39,7 +39,6 @@ pub struct Detector {
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
     detectors: Vec<Detector>,
-    frontmatter_re: Regex,
     any_comment_re: Regex,
     profile: BaselineRegistryProfile,
 }
@@ -53,11 +52,6 @@ impl DetectorRegistry {
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
             detectors: Vec::new(),
-            // Mermaid accepts frontmatter even when the source is indented (common in JS template
-            // literals used by Cypress snapshot tests). Match and strip it with optional leading
-            // whitespace on both the opening and closing `---` lines.
-            frontmatter_re: Regex::new(r"(?s)^\s*-{3}\s*[\n\r](.*?)[\n\r]\s*-{3}\s*[\n\r]+")
-                .unwrap(),
             any_comment_re: Regex::new(r"(?m)\s*%%.*\n").unwrap(),
             profile,
         }
@@ -75,7 +69,7 @@ impl DetectorRegistry {
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
-        let no_frontmatter = self.frontmatter_re.replace(text, "");
+        let no_frontmatter = remove_frontmatter(text);
         let no_directives = remove_directives(no_frontmatter.as_ref());
         let cleaned = self
             .any_comment_re
@@ -162,6 +156,34 @@ impl DetectorRegistry {
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.detectors.iter().map(|detector| detector.id)
     }
+}
+
+fn remove_frontmatter(text: &str) -> Cow<'_, str> {
+    let leading_len = text.len() - text.trim_start().len();
+    let trimmed = &text[leading_len..];
+    let Some(after_marker) = trimmed.strip_prefix("---") else {
+        return Cow::Borrowed(text);
+    };
+    let Some(open_line_end) = after_marker.find('\n') else {
+        return Cow::Borrowed(text);
+    };
+    if !after_marker[..open_line_end].trim().is_empty() {
+        return Cow::Borrowed(text);
+    }
+
+    let body_start = leading_len + 3 + open_line_end + 1;
+    let rest = &text[body_start..];
+    let mut offset = 0usize;
+
+    for line in rest.split_inclusive('\n') {
+        let without_newline = line.trim_end_matches(['\r', '\n']);
+        if without_newline.trim() == "---" {
+            return Cow::Borrowed(&rest[offset + line.len()..]);
+        }
+        offset += line.len();
+    }
+
+    Cow::Borrowed(text)
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {

@@ -1122,6 +1122,19 @@ Current repository reality to preserve:
     small-stack regressions that reproduced stack overflow before the fixes and now cover
     `2,048`-edge successor chains. This is a layout-engine panic-surface hardening slice, not a
     change to Dagre ordering, graph labels, SVG baselines, root bounds, or Architecture residuals.
+  - A follow-up HPD-050 panic-surface slice hardened shared config/frontmatter/directive entry
+    points. `MermaidConfig` clone-on-write, `set_value`, `deep_merge`, legacy font-family mirroring,
+    frontmatter config merges, and init directive merges now avoid recursive `serde_json::Value`
+    clone/drop while preserving legacy YAML-to-JSON conversion behavior for frontmatter. Init
+    directive sanitization uses an explicit path stack, frontmatter stripping no longer depends on a
+    broad regex in preprocess or detector APIs, and config bodies deeper than
+    `MAX_DIAGRAM_NESTING_DEPTH` are rejected before entering recursive YAML / JSON5 parsers. The
+    depth guard covers flow collections, YAML indentation, and inline YAML sequence indicators.
+    Focused regressions cover deep host `site_config`, accepted init/frontmatter config, excessive
+    init/frontmatter config rejection, excessive inline YAML sequence rejection, non-string YAML key
+    compatibility, deep sanitizer traversal, config clone-on-write, and detector frontmatter
+    stripping. This is shared parser/config hardening, not an SVG baseline, root-bounds, theme, or
+    rendered-output change.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

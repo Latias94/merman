@@ -1,7 +1,8 @@
 use crate::diagrams::xychart::{XyChartAxisRenderModel, XyChartPlotType};
 use crate::*;
 use futures::executor::block_on;
-use serde_json::json;
+use serde_json::{Map, Value, json};
+use std::fmt::Write;
 
 #[test]
 fn parse_graph_defaults_to_flowchart_v2() {
@@ -273,6 +274,176 @@ architecture-beta
 }
 
 #[test]
+fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
+    const DEPTH: usize = 1_024;
+    let site_config = MermaidConfig::from_value(deep_config_value(
+        "sequence",
+        DEPTH,
+        Value::String("#112233".to_string()),
+    ));
+    let engine = Engine::new();
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-deep-site-config".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let engine = engine.with_site_config(site_config);
+            let meta = engine
+                .parse_metadata_sync("sequenceDiagram\nAlice->Bob: Hi", ParseOptions::strict())
+                .expect("parse succeeds")
+                .expect("diagram detected");
+
+            assert_eq!(
+                deep_config_leaf(meta.effective_config.as_value(), "sequence", DEPTH)
+                    .and_then(Value::as_str),
+                Some("#112233")
+            );
+        })
+        .expect("spawn deep site config test");
+    handle
+        .join()
+        .expect("deep site config merge should finish without stack overflow");
+}
+
+#[test]
+fn init_directive_config_sanitizes_deep_values_with_small_stack() {
+    const DEPTH: usize = 32;
+    let source = deep_init_directive_source("sequence", DEPTH, "<blocked>");
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-deep-init-config".to_string())
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            let meta = Engine::new()
+                .parse_metadata_sync(&source, ParseOptions::strict())
+                .expect("parse succeeds")
+                .expect("diagram detected");
+
+            assert_eq!(
+                deep_config_leaf(meta.config.as_value(), "sequence", DEPTH).and_then(Value::as_str),
+                Some("")
+            );
+        })
+        .expect("spawn deep init config test");
+    handle
+        .join()
+        .expect("deep init config should finish without stack overflow");
+}
+
+#[test]
+fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
+    const DEPTH: usize = 32;
+    let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-deep-frontmatter-config".to_string())
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            let meta = Engine::new()
+                .parse_metadata_sync(&source, ParseOptions::strict())
+                .expect("parse succeeds")
+                .expect("diagram detected");
+
+            assert_eq!(
+                deep_config_leaf(meta.config.as_value(), "sequence", DEPTH).and_then(Value::as_str),
+                Some("#334455")
+            );
+        })
+        .expect("spawn deep frontmatter config test");
+    handle
+        .join()
+        .expect("deep frontmatter config should finish without stack overflow");
+}
+
+#[test]
+fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
+    const DEPTH: usize = 300;
+    let source = deep_init_directive_source("sequence", DEPTH, "#112233");
+    let engine = Engine::new();
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-too-deep-init-config".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let err = engine
+                .parse_metadata_sync(&source, ParseOptions::strict())
+                .expect_err("excessive init config depth should be rejected");
+            assert!(
+                err.to_string().contains("config nesting exceeds"),
+                "unexpected error: {err}"
+            );
+        })
+        .expect("spawn excessive init config test");
+    handle
+        .join()
+        .expect("excessive init config should return an error without stack overflow");
+}
+
+#[test]
+fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
+    const DEPTH: usize = 300;
+    let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
+    let engine = Engine::new();
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-too-deep-frontmatter-config".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let err = engine
+                .parse_metadata_sync(&source, ParseOptions::strict())
+                .expect_err("excessive frontmatter config depth should be rejected");
+            assert!(
+                err.to_string().contains("config nesting exceeds"),
+                "unexpected error: {err}"
+            );
+        })
+        .expect("spawn excessive frontmatter config test");
+    handle
+        .join()
+        .expect("excessive frontmatter config should return an error without stack overflow");
+}
+
+#[test]
+fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack() {
+    const DEPTH: usize = 300;
+    let mut source = String::from("---\nconfig:\n  ");
+    source.push_str(&"- ".repeat(DEPTH));
+    source.push_str("\"leaf\"\n---\nsequenceDiagram\nAlice->Bob: Hi\n");
+    let engine = Engine::new();
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-too-deep-inline-yaml-sequence".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            let err = engine
+                .parse_metadata_sync(&source, ParseOptions::strict())
+                .expect_err("excessive inline YAML sequence depth should be rejected");
+            assert!(
+                err.to_string().contains("config nesting exceeds"),
+                "unexpected error: {err}"
+            );
+        })
+        .expect("spawn excessive inline YAML sequence test");
+    handle
+        .join()
+        .expect("excessive inline YAML sequence should return an error without stack overflow");
+}
+
+#[test]
+fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_metadata(
+        "---\n? [non, string, key]\n: ignored\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
+        ParseOptions::strict(),
+    ))
+    .expect("non-string YAML keys should not fail frontmatter parsing")
+    .expect("diagram detected");
+
+    assert_eq!(res.diagram_type, "sequence");
+    assert_eq!(res.config.as_value(), &json!({}));
+}
+
+#[test]
 fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
@@ -454,6 +625,53 @@ fn render_model_for(input: &str) -> RenderSemanticModel {
         .unwrap()
         .unwrap()
         .model
+}
+
+fn deep_config_value(root_key: &str, depth: usize, leaf: Value) -> Value {
+    let mut value = leaf;
+    for idx in (0..depth).rev() {
+        let mut map = Map::new();
+        map.insert(format!("k{idx}"), value);
+        value = Value::Object(map);
+    }
+
+    let mut root = Map::new();
+    root.insert(root_key.to_string(), value);
+    Value::Object(root)
+}
+
+fn deep_config_leaf<'a>(mut value: &'a Value, root_key: &str, depth: usize) -> Option<&'a Value> {
+    value = value.as_object()?.get(root_key)?;
+    for idx in 0..depth {
+        value = value.as_object()?.get(&format!("k{idx}"))?;
+    }
+    Some(value)
+}
+
+fn deep_init_directive_source(root_key: &str, depth: usize, leaf: &str) -> String {
+    let mut source = format!(r#"%%{{init: {{"{root_key}": "#);
+    for idx in 0..depth {
+        write!(&mut source, r#"{{"k{idx}":"#).expect("write init config");
+    }
+    write!(&mut source, "{leaf:?}").expect("write init leaf");
+    for _ in 0..depth {
+        source.push('}');
+    }
+    source.push_str("}}%%\nsequenceDiagram\nAlice->Bob: Hi\n");
+    source
+}
+
+fn deep_frontmatter_config_source(root_key: &str, depth: usize, leaf: &str) -> String {
+    let mut source = format!("---\nconfig: {{\"{root_key}\": ");
+    for idx in 0..depth {
+        write!(&mut source, r#"{{"k{idx}":"#).expect("write frontmatter config");
+    }
+    write!(&mut source, "{leaf:?}").expect("write frontmatter leaf");
+    for _ in 0..depth {
+        source.push('}');
+    }
+    source.push_str("}\n---\nsequenceDiagram\nAlice->Bob: Hi\n");
+    source
 }
 
 #[test]
