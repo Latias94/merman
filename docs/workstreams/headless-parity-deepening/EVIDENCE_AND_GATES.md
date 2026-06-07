@@ -9271,3 +9271,53 @@ Gate notes:
   feedback-arc selection, greedy/DFS cycle-breaking order, normal reversed-edge naming, long-edge
   dummy chain semantics, edge-label dummy behavior, layout geometry, Graphlib APIs, SVG baselines,
   root viewport formulas, or Mermaid parity residual classification.
+
+## HPD-050 - Layout Invariant Panic Surface
+
+Outcome:
+
+- Removed Architecture service-bounds' production
+  `unreachable!("trimmed non-empty title should produce a Cytoscape label extension")`.
+- The Cytoscape child-label contribution is now applied only when
+  `architecture_cytoscape_child_label_bounds(...)` returns `Some(...)`; if that helper boundary
+  ever drifts, the estimate keeps icon/root bounds instead of panicking.
+- Removed Dugong Brandes-Koepf positioning's impossible string-tuple fallback by deriving
+  `ul` / `ur` / `dl` / `dr` keys directly from boolean traversal flags.
+- Removed Dugong ordering's default
+  `OrderNodeRange::subgraph_layer_label(...)` `unreachable!()` by returning `Self::default()` for
+  label types that do not override subgraph-layer projection.
+- Added a focused layer-graph regression for a generic label with `min_rank` / `max_rank` and no
+  custom `subgraph_layer_label(...)` override.
+
+Evidence:
+
+- `crates/merman-render/src/architecture_metrics.rs`
+- `crates/dugong/src/position/bk/core.rs`
+- `crates/dugong/src/order/types.rs`
+- `crates/dugong/tests/order_build_layer_graph_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-layout-invariant-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong -p merman-render` - passed.
+- `cargo +1.95 nextest run -p dugong --test order_build_layer_graph_test --test position_bk_test` -
+  passed, `56` tests run.
+- `cargo +1.95 nextest run -p merman-render architecture_cytoscape architecture_svg_group_bbox_padding architecture_text_constants` -
+  passed, `5` tests run.
+- Filtered production scan across `merman-core`, `merman-render`, `dugong`, `dugong-graphlib`,
+  and `manatee`, excluding tests, same-file `#[cfg(test)]` blocks, and comments, reports only:
+  - `crates/merman-core/src/theme.rs:324`
+  - `crates/merman-core/src/theme.rs:327`
+  - `crates/merman-core/src/generated/mod.rs:13`
+  - `crates/dugong-graphlib/src/graph/core.rs:398`
+- The same filtered scan reports no remaining production hits in `crates/dugong/src`,
+  `crates/merman-render/src/architecture_metrics.rs`, or
+  `crates/dugong/src/position/bk/core.rs`.
+
+Gate notes:
+
+- This is an internal layout panic-surface cleanup only. It does not change Architecture text
+  metrics, Cytoscape child-label formulas, root bounds, Dugong BK alignment order, horizontal
+  compaction, Dagre `NodeLabel` subgraph border projection, layout geometry, Graphlib APIs, SVG
+  baselines, root viewport formulas, or Mermaid parity residual classification.

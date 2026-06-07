@@ -1317,6 +1317,14 @@ Current repository reality to preserve:
   - A follow-up HPD-050 panic-surface slice removed Dugong's theoretical name-exhaustion
     `unreachable!()` fallbacks from cycle-breaking reversed-edge naming and long-edge dummy-node
     naming. Normal `rev*` and `_d*` allocation semantics are unchanged.
+  - A follow-up HPD-050 panic-surface slice removed the remaining internal layout invariant
+    panics from Architecture service bounds and Dugong ordering/positioning. Architecture
+    Cytoscape child-label contribution now degrades if the label-bound helper unexpectedly returns
+    `None`; Dugong BK alignment keys derive from boolean traversal flags; and generic
+    `OrderNodeRange::subgraph_layer_label(...)` now defaults to `Self::default()` instead of
+    panicking when a custom node label has subgraph rank metadata but no override. Dagre
+    `NodeLabel` border-left/right projection, BK geometry, SVG baselines, and root residual
+    classifications are unchanged.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

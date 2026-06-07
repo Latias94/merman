@@ -306,16 +306,6 @@ where
         let label_extra_bottom_root =
             architecture_create_text_root_label_extra_bottom_px(svg_font_size_px, line_count_root);
 
-        let Some(cytoscape_label_bounds) = architecture_cytoscape_child_label_bounds(
-            Some(title),
-            text_measurer,
-            compound_text_style,
-            arch_font_size_px,
-        ) else {
-            unreachable!("trimmed non-empty title should produce a Cytoscape label extension");
-        };
-        let label_extra_bottom_compound = cytoscape_label_bounds.bottom_extension_px;
-
         let cx = x + icon_size_px / 2.0;
         let text_left_root = cx - bbox_left_root;
         let text_right_root = cx + bbox_right_root;
@@ -327,36 +317,44 @@ where
             max_x: svg_root_bounds.max_x.max(text_right_root),
             max_y: svg_root_bounds.max_y.max(text_bottom_root),
         };
-        cytoscape_group_child_contribution = architecture_cytoscape_child_contribution_bounds(
-            &emitted_icon_bounds,
-            Some(&cytoscape_label_bounds),
-        );
-
-        if debug_service.as_deref() == Some(title) {
-            let label_bounds = cytoscape_group_child_contribution.label_bounds.as_ref();
-            eprintln!(
-                "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} child_body_bounds=({}, {})-({}, {}) child_label_bounds={:?} group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
-                title,
-                lines,
-                bbox_left_root,
-                bbox_right_root,
-                label_extra_bottom_root,
-                cytoscape_label_bounds.half_width,
-                label_extra_bottom_compound,
-                cytoscape_group_child_contribution.body_bounds.min_x,
-                cytoscape_group_child_contribution.body_bounds.min_y,
-                cytoscape_group_child_contribution.body_bounds.max_x,
-                cytoscape_group_child_contribution.body_bounds.max_y,
-                label_bounds.map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
-                cytoscape_group_child_contribution.union_bounds.min_x,
-                cytoscape_group_child_contribution.union_bounds.min_y,
-                cytoscape_group_child_contribution.union_bounds.max_x,
-                cytoscape_group_child_contribution.union_bounds.max_y,
-                svg_root_bounds.min_x,
-                svg_root_bounds.min_y,
-                svg_root_bounds.max_x,
-                svg_root_bounds.max_y,
+        if let Some(cytoscape_label_bounds) = architecture_cytoscape_child_label_bounds(
+            Some(title),
+            text_measurer,
+            compound_text_style,
+            arch_font_size_px,
+        ) {
+            let label_extra_bottom_compound = cytoscape_label_bounds.bottom_extension_px;
+            cytoscape_group_child_contribution = architecture_cytoscape_child_contribution_bounds(
+                &emitted_icon_bounds,
+                Some(&cytoscape_label_bounds),
             );
+
+            if debug_service.as_deref() == Some(title) {
+                let label_bounds = cytoscape_group_child_contribution.label_bounds.as_ref();
+                eprintln!(
+                    "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} child_body_bounds=({}, {})-({}, {}) child_label_bounds={:?} group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
+                    title,
+                    lines,
+                    bbox_left_root,
+                    bbox_right_root,
+                    label_extra_bottom_root,
+                    cytoscape_label_bounds.half_width,
+                    label_extra_bottom_compound,
+                    cytoscape_group_child_contribution.body_bounds.min_x,
+                    cytoscape_group_child_contribution.body_bounds.min_y,
+                    cytoscape_group_child_contribution.body_bounds.max_x,
+                    cytoscape_group_child_contribution.body_bounds.max_y,
+                    label_bounds.map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
+                    cytoscape_group_child_contribution.union_bounds.min_x,
+                    cytoscape_group_child_contribution.union_bounds.min_y,
+                    cytoscape_group_child_contribution.union_bounds.max_x,
+                    cytoscape_group_child_contribution.union_bounds.max_y,
+                    svg_root_bounds.min_x,
+                    svg_root_bounds.min_y,
+                    svg_root_bounds.max_x,
+                    svg_root_bounds.max_y,
+                );
+            }
         }
     }
 

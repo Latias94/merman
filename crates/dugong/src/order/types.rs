@@ -50,9 +50,9 @@ pub trait OrderNodeRange {
     }
     fn subgraph_layer_label(&self, _rank: i32) -> Self
     where
-        Self: Sized,
+        Self: Sized + Default,
     {
-        unreachable!("subgraph_layer_label not implemented for this node label type")
+        Self::default()
     }
 }
 

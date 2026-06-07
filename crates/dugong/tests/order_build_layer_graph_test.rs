@@ -84,6 +84,28 @@ fn new_graph() -> Graph<SharedJson, WeightLabel, Value> {
     })
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+struct DefaultSubgraphLabel {
+    rank: Option<i32>,
+    min_rank: Option<i32>,
+    max_rank: Option<i32>,
+    marker: &'static str,
+}
+
+impl OrderNodeRange for DefaultSubgraphLabel {
+    fn rank(&self) -> Option<i32> {
+        self.rank
+    }
+
+    fn min_rank(&self) -> Option<i32> {
+        self.min_rank
+    }
+
+    fn max_rank(&self) -> Option<i32> {
+        self.max_rank
+    }
+}
+
 fn children_vec(
     g: &Graph<SharedJson, WeightLabel, LayerGraphLabel>,
     parent: Option<&str>,
@@ -267,4 +289,26 @@ fn build_layer_graph_preserves_hierarchy_for_the_movable_layer() {
     );
     assert_eq!(lg.parent("a"), Some("sg"));
     assert_eq!(lg.parent("b"), Some("sg"));
+}
+
+#[test]
+fn build_layer_graph_uses_default_label_for_unimplemented_subgraph_layer_label() {
+    let mut g: Graph<DefaultSubgraphLabel, WeightLabel, ()> = Graph::new(GraphOptions {
+        compound: true,
+        multigraph: true,
+        ..Default::default()
+    });
+    g.set_node(
+        "sg",
+        DefaultSubgraphLabel {
+            min_rank: Some(0),
+            max_rank: Some(0),
+            marker: "source",
+            ..Default::default()
+        },
+    );
+
+    let lg = order::build_layer_graph(&g, 0, Relationship::InEdges, None);
+
+    assert_eq!(lg.node("sg"), Some(&DefaultSubgraphLabel::default()));
 }

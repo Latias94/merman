@@ -25,6 +25,12 @@ Library code should not panic on user-controlled input.
     theoretical-exhaustion `unreachable!()` fallbacks. If the internal `rev*` or `_d*` name space
     is exhausted, the affected transformation step is skipped/stopped instead of panicking; normal
     layout naming behavior is unchanged.
+  - Brandes-Koepf positioning no longer carries an impossible string-tuple `unreachable!()` for
+    the `ul` / `ur` / `dl` / `dr` alignment key; it derives the key from the boolean traversal
+    flags directly.
+  - `OrderNodeRange::subgraph_layer_label(...)` no longer panics for generic node label types that
+    do not override subgraph-layer projection. The default now degrades to `Self::default()`, while
+    Dugong's native `NodeLabel` keeps its explicit border-left/right projection.
   - Layout-related helpers are now defensive against:
     - empty graphs
     - disconnected graphs (build a forest instead of panicking)
@@ -529,8 +535,8 @@ The following patterns are intentionally tolerated for now but should be tracked
   matches. Remaining `OnceLock` use is for generated/default config, family ID lists, theme data,
   or static sanitizer allowlist sets rather than regex compilation.
 - A filtered production `unwrap/expect/panic!` scan across `merman-core`, `merman-render`,
-  `dugong`, `dugong-graphlib`, and `manatee`, excluding tests and same-file `#[cfg(test)]`
-  regions, currently reports only:
+  `dugong`, `dugong-graphlib`, and `manatee`, excluding tests, same-file `#[cfg(test)]` regions,
+  and comments, currently reports only:
   - generated/static JSON validity checks in `merman-core` generated/default config and generated
     Mermaid theme snapshot loading
   - `dugong-graphlib::Graph::set_edge_named(...)` for named edges on non-multigraph simple graphs,

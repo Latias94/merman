@@ -749,14 +749,13 @@ fn position_x_with_layering_ref<'a>(
 
     let mut xss: HashMap<&'static str, HashMap<&'a str, f64>> = HashMap::default();
 
-    for (vert, reverse_layers) in [("u", false), ("d", true)] {
-        for (horiz, reverse_inner) in [("l", false), ("r", true)] {
-            let key: &'static str = match (vert, horiz) {
-                ("u", "l") => "ul",
-                ("u", "r") => "ur",
-                ("d", "l") => "dl",
-                ("d", "r") => "dr",
-                _ => unreachable!(),
+    for reverse_layers in [false, true] {
+        for reverse_inner in [false, true] {
+            let key: &'static str = match (reverse_layers, reverse_inner) {
+                (false, false) => "ul",
+                (false, true) => "ur",
+                (true, false) => "dl",
+                (true, true) => "dr",
             };
 
             let mut adjusted_layering: Vec<Vec<&'a str>> = Vec::with_capacity(layering_ref.len());
@@ -778,8 +777,13 @@ fn position_x_with_layering_ref<'a>(
                 }
             }
 
-            let align =
-                vertical_alignment_ref_fast(g, &adjusted_layering, &conflicts, &canon, vert == "u");
+            let align = vertical_alignment_ref_fast(
+                g,
+                &adjusted_layering,
+                &conflicts,
+                &canon,
+                !reverse_layers,
+            );
             let mut xs = horizontal_compaction_ref_fast(
                 g,
                 &adjusted_layering,
