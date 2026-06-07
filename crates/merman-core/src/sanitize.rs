@@ -132,11 +132,6 @@ fn dompurify_is_allowed_uri_regex() -> &'static Regex {
     })
 }
 
-fn dompurify_is_script_or_data_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)^(?:\w+script|data):").expect("valid regex"))
-}
-
 fn is_dompurify_data_attr_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("data-") else {
         return false;
@@ -196,6 +191,34 @@ fn is_dompurify_attr_whitespace(ch: char) -> bool {
             | '\u{205F}'
             | '\u{3000}'
     )
+}
+
+fn is_dompurify_script_or_data_uri(value: &str) -> bool {
+    // Source: DOMPurify 3.4.0 `IS_SCRIPT_OR_DATA = /^(?:\w+script|data):/i`.
+    let Some(colon) = value.find(':') else {
+        return false;
+    };
+
+    let scheme = &value[..colon];
+    if scheme.eq_ignore_ascii_case("data") {
+        return true;
+    }
+
+    let bytes = scheme.as_bytes();
+    let script = b"script";
+    if bytes.len() <= script.len()
+        || !bytes[bytes.len() - script.len()..].eq_ignore_ascii_case(script)
+    {
+        return false;
+    }
+
+    bytes[..bytes.len() - script.len()]
+        .iter()
+        .all(|byte| is_js_regex_word_byte(*byte))
+}
+
+fn is_js_regex_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 #[derive(Debug, Clone)]
@@ -389,9 +412,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    if cfg.allow_unknown_protocols
-        && !dompurify_is_script_or_data_regex().is_match(value_no_ws.as_ref())
-    {
+    if cfg.allow_unknown_protocols && !is_dompurify_script_or_data_uri(value_no_ws.as_ref()) {
         return true;
     }
 
@@ -817,6 +838,24 @@ mod tests {
     }
 
     #[test]
+    fn dompurify_script_or_data_uri_matches_source_regex_boundaries() {
+        assert!(is_dompurify_script_or_data_uri("javascript:alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("JavaSCRIPT:alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("vbscript:alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("_script:alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("1script:alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("data:text/html,alert(1)"));
+        assert!(is_dompurify_script_or_data_uri("DATA:text/html,alert(1)"));
+        assert!(!is_dompurify_script_or_data_uri("script:alert(1)"));
+        assert!(!is_dompurify_script_or_data_uri("java-script:alert(1)"));
+        assert!(!is_dompurify_script_or_data_uri(
+            "jav\u{00E1}script:alert(1)"
+        ));
+        assert!(!is_dompurify_script_or_data_uri("datax:text/html,alert(1)"));
+        assert!(!is_dompurify_script_or_data_uri("javascript"));
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -1061,6 +1100,25 @@ mod tests {
         assert!(out.contains(">x</a>"));
         assert!(!out.to_ascii_lowercase().contains("javascript:"));
         assert!(!out.to_ascii_lowercase().contains("href="));
+    }
+
+    #[test]
+    fn sanitize_text_allow_unknown_protocols_still_blocks_script_or_data_uri() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true },
+            "dompurifyConfig": { "ALLOW_UNKNOWN_PROTOCOLS": true }
+        }));
+        let out = sanitize_text(
+            r#"<a href="foo:bar">ok</a><a href="javascript:alert(1)">bad</a><a href="data:text/html,1">data</a>"#,
+            &cfg,
+        );
+        assert!(out.contains(r#"href="foo:bar""#));
+        assert!(out.contains(">ok</a>"));
+        assert!(out.contains(">bad</a>"));
+        assert!(out.contains(">data</a>"));
+        assert!(!out.to_ascii_lowercase().contains("javascript:"));
+        assert!(!out.to_ascii_lowercase().contains("data:text/html"));
     }
 
     #[test]

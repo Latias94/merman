@@ -8309,3 +8309,42 @@ Gate notes:
   allowlists, data/ARIA attribute-name policy, URI allowlist regex semantics, script/data URL regex
   semantics, minimal HTML entity decoding, tag policy, semantic parsing, rendered output, SVG
   baselines, root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - Sanitizer Script/Data Guard Cleanup Panic Surface
+
+Outcome:
+
+- Removed one fixed regex compilation point from the sanitizer's `ALLOW_UNKNOWN_PROTOCOLS`
+  script/data URI guard.
+- `dompurify_is_valid_attribute(...)` no longer calls a cached regex helper for DOMPurify's
+  `IS_SCRIPT_OR_DATA` check after attribute-whitespace removal.
+- The replacement scanner preserves pinned DOMPurify 3.4.0 `IS_SCRIPT_OR_DATA` semantics:
+  `data:` matches directly, and `\w+script:` requires at least one ASCII word character before the
+  case-insensitive `script:` suffix.
+- Added helper-level source-boundary coverage and public `sanitize_text(...)` coverage proving
+  `ALLOW_UNKNOWN_PROTOCOLS` keeps an unknown `foo:` href while still removing `javascript:` and
+  `data:` href values.
+
+Evidence:
+
+- `repo-ref/dompurify/dist/purify.cjs.js`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-script-data-guard-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core sanitize` - passed, `35` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'dompurify_is_script_or_data_regex|fn dompurify_is_script_or_data_regex|Regex::new\(r"\(\?i\)\^\(\?:\\w\+script\|data\):' crates/merman-core/src/sanitize.rs` -
+  no sanitizer script/data guard regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public sanitizer panic-surface cleanup only. It does not change DOMPurify generated
+  allowlists, data/ARIA attribute-name policy, URI allowlist regex semantics, attribute-whitespace
+  cleanup, minimal HTML entity decoding, tag policy, semantic parsing, rendered output, SVG
+  baselines, root viewport formulas, or Architecture residual classification.

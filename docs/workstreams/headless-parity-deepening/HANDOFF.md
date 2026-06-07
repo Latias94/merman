@@ -1215,6 +1215,10 @@ Current repository reality to preserve:
     `ATTR_WHITESPACE` semantics and cleanup timing before both URI allowlist validation and the
     unknown-protocol script/data guard; URI allowlist and script/data regex semantics remain
     unchanged.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer DOMPurify `IS_SCRIPT_OR_DATA` regex
+    construction from the `ALLOW_UNKNOWN_PROTOCOLS` guard. The direct scanner preserves pinned
+    DOMPurify 3.4.0 ASCII `\w+script:` and case-insensitive `data:` source semantics; URI
+    allowlist regex semantics remain the remaining sanitizer regex audit candidate.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

@@ -102,6 +102,9 @@ Library code should not panic on user-controlled input.
     `ATTR_WHITESPACE` character-class regex before URI validation. It now scans the pinned
     DOMPurify 3.4.0 character set directly and preserves the cleanup timing before both URI
     allowlist validation and the unknown-protocol script/data guard.
+  - Sanitizer unknown-protocol script/data guarding no longer compiles the DOMPurify
+    `IS_SCRIPT_OR_DATA` regex. It now scans the pinned DOMPurify 3.4.0 source shape directly,
+    preserving ASCII `\w+script:` and case-insensitive `data:` behavior.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional
