@@ -94,6 +94,10 @@ Library code should not panic on user-controlled input.
     rectangle computation. Public `architecture-beta` group chains now cover parse, layout, and SVG
     output through ordinary render APIs, while the renderer-side group-rect calculator has a
     separate `2,048`-level small-stack regression.
+  - Architecture `iconText` XHTML fragment normalization no longer recurses while rewriting
+    foreignObject namespaces or serializing the fragment tree. Public `architecture-beta` service
+    `iconText` SVG output now covers a `1,200`-level nested XHTML fragment, while the lower-level
+    normalizer covers a `2,048`-level fragment on a `64KB` stack.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -149,6 +153,12 @@ Library code should not panic on user-controlled input.
     `cargo nextest run -p merman-render group_rect_computer_handles_deep_child_group_chain_with_small_stack`,
     `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`,
     and `git diff --check` passed for the Architecture deep-group cleanup.
+  - Verification: `cargo fmt --check`,
+    `cargo nextest run -p merman-render architecture_svg_handles_deep_icon_text_xhtml_fragment`,
+    `cargo nextest run -p merman-render normalize_xhtml_fragment_handles_deep_nested_html_with_small_stack`,
+    `cargo nextest run -p merman-render architecture_layout_handles_deep_group_chain`,
+    `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,
+    and `git diff --check` passed for the Architecture `iconText` XHTML fragment cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -178,9 +188,10 @@ The following patterns are intentionally tolerated for now but should be tracked
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
-    C4, manatee/FCoSE compounds, and dugong/graphlib graph traversals now have explicit-stack
-    coverage for representative deep or maximum-accepted inputs, but similar tree-shaped families
-    should be audited before release hardening is considered complete.
+    C4, Architecture XHTML fragments, manatee/FCoSE compounds, and dugong/graphlib graph traversals
+    now have explicit-stack coverage for representative deep or maximum-accepted inputs, but
+    similar tree-shaped families should be audited before release hardening is considered
+    complete.
 
 ## Suggested workflow
 

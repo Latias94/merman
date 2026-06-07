@@ -381,28 +381,31 @@ fn parse_foreign_object_fragment(raw: &str) -> Vec<ForeignObjectFragmentNode> {
     roots
 }
 
-fn serialize_foreign_object_fragment(nodes: &[ForeignObjectFragmentNode]) -> String {
-    fn write_node(node: &ForeignObjectFragmentNode, out: &mut String) {
-        match node {
-            ForeignObjectFragmentNode::Text(text) | ForeignObjectFragmentNode::RawTag(text) => {
-                out.push_str(text)
-            }
-            ForeignObjectFragmentNode::Element(element) => {
-                out.push_str(&element.raw_open);
-                for child in &element.children {
-                    write_node(child, out);
-                }
-                if let Some(raw_close) = &element.raw_close {
-                    out.push_str(raw_close);
-                }
-            }
-        }
+fn serialize_foreign_object_fragment(nodes: Vec<ForeignObjectFragmentNode>) -> String {
+    enum Frame {
+        Node(ForeignObjectFragmentNode),
+        Close(String),
     }
 
     let mut out = String::new();
-    for node in nodes {
-        write_node(node, &mut out);
+    let mut stack: Vec<Frame> = nodes.into_iter().rev().map(Frame::Node).collect();
+
+    while let Some(frame) = stack.pop() {
+        match frame {
+            Frame::Node(ForeignObjectFragmentNode::Text(text))
+            | Frame::Node(ForeignObjectFragmentNode::RawTag(text)) => out.push_str(&text),
+            Frame::Node(ForeignObjectFragmentNode::Element(mut element)) => {
+                out.push_str(&element.raw_open);
+                if let Some(raw_close) = element.raw_close.take() {
+                    stack.push(Frame::Close(raw_close));
+                }
+                let children = std::mem::take(&mut element.children);
+                stack.extend(children.into_iter().rev().map(Frame::Node));
+            }
+            Frame::Close(raw_close) => out.push_str(&raw_close),
+        }
     }
+
     out
 }
 
@@ -423,48 +426,94 @@ fn rewrite_foreign_object_fragment_nodes(
     nodes: Vec<ForeignObjectFragmentNode>,
     parent_ns: ForeignObjectNamespace,
 ) -> Vec<ForeignObjectFragmentNode> {
-    let mut out = Vec::new();
-
-    for node in nodes {
-        match node {
-            ForeignObjectFragmentNode::Text(_) | ForeignObjectFragmentNode::RawTag(_) => {
-                out.push(node)
-            }
-            ForeignObjectFragmentNode::Element(mut element) => {
-                let element_ns =
-                    classify_foreign_object_element_namespace(parent_ns, &element.name_lc);
-                let child_ns =
-                    child_namespace_for_foreign_object_element(element_ns, &element.name_lc);
-                element.children =
-                    rewrite_foreign_object_fragment_nodes(element.children, child_ns);
-
-                if element_ns == ForeignObjectNamespace::Svg
-                    && !is_svg_html_integration_point(&element.name_lc)
-                {
-                    let mut kept = Vec::new();
-                    let mut moved = Vec::new();
-                    let mut keep_prefix = true;
-
-                    for child in element.children {
-                        if keep_prefix && node_allowed_in_svg_content(&child, child_ns) {
-                            kept.push(child);
-                        } else {
-                            keep_prefix = false;
-                            moved.push(child);
-                        }
-                    }
-
-                    element.children = kept;
-                    out.push(ForeignObjectFragmentNode::Element(element));
-                    out.extend(moved);
-                } else {
-                    out.push(ForeignObjectFragmentNode::Element(element));
-                }
-            }
-        }
+    struct PendingElement {
+        element: ForeignObjectFragmentElement,
+        element_ns: ForeignObjectNamespace,
+        child_ns: ForeignObjectNamespace,
     }
 
-    out
+    struct Frame {
+        parent_ns: ForeignObjectNamespace,
+        iter: std::vec::IntoIter<ForeignObjectFragmentNode>,
+        out: Vec<ForeignObjectFragmentNode>,
+        pending: Option<PendingElement>,
+    }
+
+    let mut stack = vec![Frame {
+        parent_ns,
+        iter: nodes.into_iter(),
+        out: Vec::new(),
+        pending: None,
+    }];
+
+    loop {
+        let Some(frame) = stack.last_mut() else {
+            return Vec::new();
+        };
+
+        if let Some(node) = frame.iter.next() {
+            match node {
+                ForeignObjectFragmentNode::Text(_) | ForeignObjectFragmentNode::RawTag(_) => {
+                    frame.out.push(node);
+                }
+                ForeignObjectFragmentNode::Element(mut element) => {
+                    let element_ns = classify_foreign_object_element_namespace(
+                        frame.parent_ns,
+                        &element.name_lc,
+                    );
+                    let child_ns =
+                        child_namespace_for_foreign_object_element(element_ns, &element.name_lc);
+                    let children = std::mem::take(&mut element.children);
+                    stack.push(Frame {
+                        parent_ns: child_ns,
+                        iter: children.into_iter(),
+                        out: Vec::new(),
+                        pending: Some(PendingElement {
+                            element,
+                            element_ns,
+                            child_ns,
+                        }),
+                    });
+                }
+            }
+            continue;
+        }
+
+        let frame = stack.pop().expect("rewrite frame should exist");
+        let Some(pending) = frame.pending else {
+            return frame.out;
+        };
+
+        let Some(parent) = stack.last_mut() else {
+            return frame.out;
+        };
+
+        let mut element = pending.element;
+        element.children = frame.out;
+
+        if pending.element_ns == ForeignObjectNamespace::Svg
+            && !is_svg_html_integration_point(&element.name_lc)
+        {
+            let mut kept = Vec::new();
+            let mut moved = Vec::new();
+            let mut keep_prefix = true;
+
+            for child in element.children {
+                if keep_prefix && node_allowed_in_svg_content(&child, pending.child_ns) {
+                    kept.push(child);
+                } else {
+                    keep_prefix = false;
+                    moved.push(child);
+                }
+            }
+
+            element.children = kept;
+            parent.out.push(ForeignObjectFragmentNode::Element(element));
+            parent.out.extend(moved);
+        } else {
+            parent.out.push(ForeignObjectFragmentNode::Element(element));
+        }
+    }
 }
 
 fn normalize_raw_xhtml_fragment_for_foreign_object(raw: &str) -> String {
@@ -625,7 +674,7 @@ fn normalize_raw_xhtml_fragment_for_foreign_object(raw: &str) -> String {
 pub(super) fn normalize_xhtml_fragment_for_foreign_object(raw: &str) -> String {
     let parsed = parse_foreign_object_fragment(raw);
     let rewritten = rewrite_foreign_object_fragment_nodes(parsed, ForeignObjectNamespace::Svg);
-    let rewritten = serialize_foreign_object_fragment(&rewritten);
+    let rewritten = serialize_foreign_object_fragment(rewritten);
     normalize_raw_xhtml_fragment_for_foreign_object(&rewritten)
 }
 
@@ -659,5 +708,30 @@ mod tests {
             normalize_xhtml_fragment_for_foreign_object(r#"<g>x<b>y</b>z</g>"#),
             r#"<g>x</g><b>y</b>z"#,
         );
+    }
+
+    #[test]
+    fn normalize_xhtml_fragment_handles_deep_nested_html_with_small_stack() {
+        const DEPTH: usize = 2_048;
+        let handle = std::thread::Builder::new()
+            .name("architecture-deep-xhtml-fragment".to_string())
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let mut raw = String::new();
+                for _ in 0..DEPTH {
+                    raw.push_str("<span>");
+                }
+                raw.push_str("Icon");
+                for _ in 0..DEPTH {
+                    raw.push_str("</span>");
+                }
+                normalize_xhtml_fragment_for_foreign_object(&raw)
+            })
+            .expect("spawn deep XHTML fragment test");
+
+        let normalized = handle
+            .join()
+            .expect("deep XHTML fragment normalization should not overflow");
+        assert!(normalized.contains("Icon"));
     }
 }

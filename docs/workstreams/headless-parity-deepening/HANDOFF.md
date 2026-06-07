@@ -1105,6 +1105,15 @@ Current repository reality to preserve:
     explicit stacks, and Architecture SVG group-rect computation now uses explicit enter/exit
     frames. Public Architecture parse/layout/SVG regressions cover a `64`-level group chain, while
     cheaper manatee and group-rect regressions cover `2,048`-level chains on a `64KB` stack.
+  - A follow-up HPD-050 panic-surface slice hardened Architecture service `iconText` XHTML fragment
+    normalization. The parser for these fragments was already stack-based, but namespace rewriting
+    and serialization still recursively walked the user-authored tree after sanitization. Both now
+    use explicit frame stacks, and serialization consumes child vectors before drop so a deep XHTML
+    fragment does not overflow during traversal or cleanup. Public Architecture SVG output covers a
+    `1,200`-level nested `iconText` fragment; the lower-level foreignObject normalizer covers
+    `2,048` levels on a `64KB` stack. The user-reported
+    `architecture_layout_handles_deep_group_chain` abort was rechecked on the current worktree and
+    passes as a focused single test.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

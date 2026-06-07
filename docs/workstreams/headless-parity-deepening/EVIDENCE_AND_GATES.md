@@ -7475,3 +7475,54 @@ Gate notes:
   carried by cheap manatee and SVG group-rect unit regressions.
 - This is release-boundary hardening for Architecture group layout/SVG traversal, not a claim that
   Architecture `parity-root` diagnostics or group-bounds residuals are closed.
+
+## HPD-050 - Architecture iconText XHTML Panic Surface
+
+Outcome:
+
+- Hardened Architecture service `iconText` XHTML fragment normalization after the deep-group
+  cleanup. Mermaid `architecture-beta` exposes `iconText` through public service syntax, and the
+  renderer accepts XHTML/SVG-like markup inside the service icon foreignObject.
+- The fragment parser was already stack-based, but the post-parse namespace rewrite and fragment
+  serialization still walked the user-authored fragment tree recursively.
+- `rewrite_foreign_object_fragment_nodes(...)` now uses explicit heap-backed frames while
+  preserving SVG/HTML namespace classification, SVG integration-point behavior, and the existing
+  split of HTML children out of SVG-only parents.
+- `serialize_foreign_object_fragment(...)` now consumes the fragment tree through an explicit stack,
+  taking child vectors before each node is dropped so deep fragments do not overflow during
+  traversal or cleanup.
+- Added regressions:
+  - public Architecture SVG output covers a `1,200`-level nested XHTML `iconText` fragment;
+  - the lower-level Architecture foreignObject normalizer covers a `2,048`-level nested XHTML
+    fragment on a `64KB` stack.
+- Rechecked the previously landed Architecture deep-group layout regression after a user-reported
+  abort; it passes on the current worktree.
+
+Evidence:
+
+- `crates/merman-render/src/svg/parity/architecture/foreign_object.rs`
+- `crates/merman-render/tests/architecture_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-architecture-icon-text-xhtml-panic-surface.md`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render architecture_svg_handles_deep_icon_text_xhtml_fragment` -
+  passed.
+- `cargo nextest run -p merman-render normalize_xhtml_fragment_handles_deep_nested_html_with_small_stack` -
+  passed.
+- `cargo nextest run -p merman-render architecture_layout_handles_deep_group_chain` - passed.
+- `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test` -
+  passed, `18` tests run and `1` skipped.
+- `cargo fmt --check` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, Mermaid parity fixture, or
+  sanitizer behavior changed.
+- The public SVG regression initializes `Engine` outside the artificial small-stack thread so the
+  gate measures user-controlled XHTML traversal rather than fixed registry/theme initialization
+  overhead.
+- This is release-boundary hardening for Architecture foreignObject XHTML handling, not a claim
+  that Architecture `parity-root` diagnostics or group/service bbox residuals are closed.
