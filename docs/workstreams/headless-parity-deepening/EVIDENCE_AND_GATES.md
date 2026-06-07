@@ -7713,3 +7713,45 @@ Gate notes:
 - Running the same `ascii_api` target without `--features ascii` compiles `0` tests because the
   integration test is feature-gated with `#![cfg(feature = "ascii")]`; those no-test runs were not
   counted as evidence.
+
+## HPD-050 - Sequence Compat JSON Panic Surface
+
+Outcome:
+
+- Hardened the Sequence typed render-model compatibility bridge after the ASCII Flowchart cleanup.
+- `SequenceDiagramRenderModel::to_compat_json(...)` no longer serializes `self` through
+  `serde_json::to_value(...)` and then depends on `expect`, `unreachable!`, and field-removal
+  panics to rebuild the public JSON object.
+- The compat object is now assembled directly from typed fields while preserving the old JSON
+  shape:
+  - `accTitle`, `accDescr`, `actorOrder`, `createdActors`, `destroyedActors`, `actorKeys`, and
+    `centralConnection` names stay camel-cased as before;
+  - `placement` remains omitted when absent;
+  - `centralConnection` remains omitted for `0`;
+  - Sequence autonumber values keep integer JSON numbers for whole finite values and float JSON
+    numbers for decimal values.
+- This is a production panic-surface cleanup for an existing parser/render bridge. It does not
+  change Sequence parsing semantics, SVG output, baselines, root viewport formulas, or known
+  Sequence measurement residuals.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/sequence/render_model.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sequence-compat-json-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core parse_sequence_render_model_uses_typed_variant_without_changing_json_parse` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p merman-core sequence` - passed, `34` tests run.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The existing typed-vs-JSON regression compares the hand-built compat JSON against the legacy
+  `parse_diagram_sync(...)` JSON path, including optional message fields and created/destroyed
+  actor maps.
+- No new broad `merman-core` package run was performed for this narrow internal JSON projection
+  cleanup; the focused Sequence package filter covers the changed diagram family.

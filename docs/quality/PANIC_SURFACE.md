@@ -74,6 +74,10 @@ Library code should not panic on user-controlled input.
     invalid-frontmatter or invalid-directive error instead of overflowing the Rust stack.
   - Frontmatter stripping in both preprocess and `DetectorRegistry::detect_type(...)` now uses
     line scanning instead of a broad DOTALL regex over user input.
+  - Sequence compat JSON construction no longer serializes the typed render model and then panics
+    if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
+    assembles the compatibility object directly, preserving serde rename behavior, optional
+    `placement` / zero `centralConnection` omission, and autonumber integer/float encoding.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -156,6 +160,10 @@ Library code should not panic on user-controlled input.
     excessive init/frontmatter config rejection, excessive inline YAML sequence rejection, deep
     directive sanitizer traversal, config clone-on-write, detector frontmatter stripping, and
     legacy non-string YAML key conversion behavior.
+  - Verification: `cargo +1.95 fmt --check -p merman-core`,
+    `cargo +1.95 nextest run -p merman-core parse_sequence_render_model_uses_typed_variant_without_changing_json_parse`,
+    `cargo +1.95 nextest run -p merman-core sequence`, and `git diff --check` passed for the
+    Sequence compat JSON construction cleanup.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

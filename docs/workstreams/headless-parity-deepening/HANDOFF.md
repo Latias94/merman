@@ -1147,6 +1147,13 @@ Current repository reality to preserve:
     instead of recursively walking child groups. A `merman` ASCII API regression renders a
     `512`-level `flowchart TB` subgraph chain on a `64KB` stack with `--features ascii`; the full
     `ascii_api` integration target passed with that feature enabled.
+  - A follow-up HPD-050 panic-surface slice hardened Sequence compat JSON construction. The typed
+    render-model bridge no longer serializes `SequenceDiagramRenderModel` through
+    `serde_json::to_value(...)` and then uses `expect`, `unreachable!`, or field-removal panics to
+    rebuild the public JSON object. It now assembles the compatibility map directly while
+    preserving camel-cased field names, optional `placement` omission, zero `centralConnection`
+    omission, and autonumber integer/float JSON number encoding. Focused Sequence equivalence and
+    family tests passed.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
