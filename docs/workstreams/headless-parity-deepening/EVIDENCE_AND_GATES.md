@@ -7643,3 +7643,38 @@ Gate notes:
 - The default `cargo` shim for the repo's `1.95.0` override reported that its `cargo.exe` component
   was not applicable, so verification used the installed `1.95-x86_64-pc-windows-msvc` toolchain
   explicitly.
+
+## HPD-050 - COSE-Bilkent Radial Tree Panic Surface
+
+Outcome:
+
+- Hardened the Mindmap-facing COSE-Bilkent radial tree placement path in `manatee`.
+- `SimGraph::branch_radial_layout(...)` no longer recursively descends through forest branches.
+  It now uses explicit heap-backed `BranchFrame` traversal while preserving the previous node
+  angle, child order, parent-edge skip, and radial-distance semantics.
+- Added a public `layout_indexed(...)` regression that lays out a `2,048`-node tree on a `64KB`
+  stack and asserts finite output positions.
+- This is release-boundary stack-safety hardening for a shared layout algorithm used by Mindmap
+  rendering. It does not change Mermaid SVG baselines, root viewport formulas, Architecture
+  residuals, or COSE-Bilkent force constants.
+
+Evidence:
+
+- `crates/manatee/src/algo/cose_bilkent/mod.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-cose-bilkent-radial-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 nextest run -p manatee layout_indexed_handles_deep_tree_radial_layout_with_small_stack` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p manatee` - passed, `17` tests run.
+- `cargo +1.95 nextest run -p merman-render --test mindmap_svg_test` - passed, `4` tests run.
+- `cargo +1.95 fmt` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The broader `merman-render` package and full SVG compare matrix were not rerun for this narrow
+  layout traversal change. The focused Mindmap SVG test covers the direct renderer integration,
+  while `manatee` package tests cover the changed algorithm crate.

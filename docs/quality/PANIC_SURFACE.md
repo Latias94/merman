@@ -208,12 +208,20 @@ Library code should not panic on user-controlled input.
   - FCoSE compound inclusion depth calculation and layout-base graph preorder reconstruction no
     longer recurse over compound nesting depth. Deep compound chains now use explicit heap-backed
     traversal and are covered by a `2,048`-level small-stack regression.
+  - COSE-Bilkent radial tree placement no longer recurses while positioning deep forest branches.
+    The public `layout_indexed(...)` path now uses explicit heap-backed frames for the former
+    `branch_radial_layout(...)` traversal, so Mindmap-style deep trees do not depend on the Rust
+    call stack before spring embedding.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`, `cargo nextest run -p merman-render architecture`, and
     `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the FCoSE relative-placement cleanup.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman` and
     `cargo nextest run -p manatee` passed.
+  - Verification: `cargo +1.95 nextest run -p manatee
+    layout_indexed_handles_deep_tree_radial_layout_with_small_stack`,
+    `cargo +1.95 nextest run -p manatee`, `cargo +1.95 nextest run -p merman-render --test
+    mindmap_svg_test`, and `cargo +1.95 fmt` passed for the COSE-Bilkent radial tree cleanup.
 
 ## Known remaining panic candidates (triage)
 

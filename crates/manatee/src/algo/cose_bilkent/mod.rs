@@ -839,71 +839,94 @@ impl SimGraph {
         distance: f64,
         radial_separation: f64,
     ) {
-        // First, position this node by finding its angle.
-        let mut half_interval = ((end_angle - start_angle) + 1.0) / 2.0;
-        if half_interval < 0.0 {
-            half_interval += 180.0;
+        struct BranchFrame {
+            node: usize,
+            parent: Option<usize>,
+            start_angle: f64,
+            end_angle: f64,
+            distance: f64,
         }
-        let node_angle = (half_interval + start_angle).rem_euclid(360.0);
-        let teta = (node_angle * std::f64::consts::TAU) / 360.0;
-        let x_ = distance * teta.cos();
-        let y_ = distance * teta.sin();
-        self.nodes[node].set_center(x_, y_);
 
-        // Traverse all neighbors of this node and recursively call this function.
-        let neighbor_edges: Vec<usize> = self.nodes[node].edges.clone();
-        let inc_edges_count = neighbor_edges.len();
-        let edge_to_parent = parent.and_then(|p| self.active_edge_between(node, p));
-        let mut child_count = inc_edges_count;
-        if edge_to_parent.is_some() {
-            child_count = child_count.saturating_sub(1);
-        }
-        let mut branch_count = 0usize;
+        let mut stack = vec![BranchFrame {
+            node,
+            parent,
+            start_angle,
+            end_angle,
+            distance,
+        }];
 
-        let start_index: usize =
-            if let Some(parent_edge) = edge_to_parent.filter(|_| inc_edges_count > 0) {
-                (neighbor_edges
-                    .iter()
-                    .position(|&e| e == parent_edge)
-                    .unwrap_or(0)
-                    + 1)
-                    % inc_edges_count
+        while let Some(frame) = stack.pop() {
+            // First, position this node by finding its angle.
+            let mut half_interval = ((frame.end_angle - frame.start_angle) + 1.0) / 2.0;
+            if half_interval < 0.0 {
+                half_interval += 180.0;
+            }
+            let node_angle = (half_interval + frame.start_angle).rem_euclid(360.0);
+            let teta = (node_angle * std::f64::consts::TAU) / 360.0;
+            let x_ = frame.distance * teta.cos();
+            let y_ = frame.distance * teta.sin();
+            self.nodes[frame.node].set_center(x_, y_);
+
+            let neighbor_edges: Vec<usize> = self.nodes[frame.node].edges.clone();
+            let inc_edges_count = neighbor_edges.len();
+            let edge_to_parent = frame
+                .parent
+                .and_then(|parent| self.active_edge_between(frame.node, parent));
+            let mut child_count = inc_edges_count;
+            if edge_to_parent.is_some() {
+                child_count = child_count.saturating_sub(1);
+            }
+
+            let start_index =
+                if let Some(parent_edge) = edge_to_parent.filter(|_| inc_edges_count > 0) {
+                    (neighbor_edges
+                        .iter()
+                        .position(|&edge| edge == parent_edge)
+                        .unwrap_or(0)
+                        + 1)
+                        % inc_edges_count
+                } else {
+                    0
+                };
+
+            let step_angle = if child_count == 0 {
+                0.0
             } else {
-                0
+                (frame.end_angle - frame.start_angle).abs() / (child_count as f64)
             };
 
-        let step_angle = if child_count == 0 {
-            0.0
-        } else {
-            (end_angle - start_angle).abs() / (child_count as f64)
-        };
-
-        if child_count == 0 || inc_edges_count == 0 {
-            return;
-        }
-
-        let mut i = start_index;
-        while branch_count != child_count {
-            let current_neighbor = self.edge_other_end(neighbor_edges[i], node);
-            if Some(current_neighbor) == parent {
-                i = (i + 1) % inc_edges_count;
+            if child_count == 0 || inc_edges_count == 0 {
                 continue;
             }
 
-            let child_start_angle =
-                (start_angle + (branch_count as f64) * step_angle).rem_euclid(360.0);
-            let child_end_angle = (child_start_angle + step_angle).rem_euclid(360.0);
-            self.branch_radial_layout(
-                current_neighbor,
-                Some(node),
-                child_start_angle,
-                child_end_angle,
-                distance + radial_separation,
-                radial_separation,
-            );
+            let mut child_frames = Vec::with_capacity(child_count);
+            let mut branch_count = 0usize;
+            let mut i = start_index;
+            while branch_count != child_count {
+                let current_neighbor = self.edge_other_end(neighbor_edges[i], frame.node);
+                if Some(current_neighbor) == frame.parent {
+                    i = (i + 1) % inc_edges_count;
+                    continue;
+                }
 
-            branch_count += 1;
-            i = (i + 1) % inc_edges_count;
+                let child_start_angle =
+                    (frame.start_angle + (branch_count as f64) * step_angle).rem_euclid(360.0);
+                let child_end_angle = (child_start_angle + step_angle).rem_euclid(360.0);
+                child_frames.push(BranchFrame {
+                    node: current_neighbor,
+                    parent: Some(frame.node),
+                    start_angle: child_start_angle,
+                    end_angle: child_end_angle,
+                    distance: frame.distance + radial_separation,
+                });
+
+                branch_count += 1;
+                i = (i + 1) % inc_edges_count;
+            }
+
+            for child_frame in child_frames.into_iter().rev() {
+                stack.push(child_frame);
+            }
         }
     }
 
@@ -2158,6 +2181,41 @@ mod tests {
         assert_close(out[1].y, 32.0);
         assert_close(out[2].x, 39.460938);
         assert_close(out[2].y, 32.0);
+    }
+
+    #[test]
+    fn layout_indexed_handles_deep_tree_radial_layout_with_small_stack() {
+        const DEPTH: usize = 2_048;
+        let nodes = vec![
+            IndexedNode {
+                width: 48.0,
+                height: 24.0,
+                x: 0.0,
+                y: 0.0,
+            };
+            DEPTH
+        ];
+        let edges = (1..DEPTH)
+            .map(|idx| IndexedEdge { a: idx - 1, b: idx })
+            .collect::<Vec<_>>();
+
+        let handle = std::thread::Builder::new()
+            .name("cose-bilkent-deep-tree-radial-layout".to_string())
+            .stack_size(64 * 1024)
+            .spawn(move || {
+                let out = layout_indexed(&nodes, &edges, &Default::default())
+                    .expect("deep tree layout should not depend on recursive stack growth");
+                assert_eq!(out.len(), DEPTH);
+                assert!(
+                    out.iter()
+                        .all(|point| point.x.is_finite() && point.y.is_finite()),
+                    "deep tree layout should emit finite positions"
+                );
+            })
+            .expect("spawn COSE-Bilkent deep tree layout test");
+        handle
+            .join()
+            .expect("COSE-Bilkent deep tree layout should finish without stack overflow");
     }
 
     #[test]

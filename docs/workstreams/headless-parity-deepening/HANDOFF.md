@@ -1135,6 +1135,13 @@ Current repository reality to preserve:
     compatibility, deep sanitizer traversal, config clone-on-write, and detector frontmatter
     stripping. This is shared parser/config hardening, not an SVG baseline, root-bounds, theme, or
     rendered-output change.
+  - A follow-up HPD-050 panic-surface slice hardened manatee's COSE-Bilkent radial tree placement,
+    which is used by Mindmap layout. `branch_radial_layout(...)` now uses explicit heap-backed
+    frames instead of recursive branch descent while preserving node angle and child-order
+    semantics. A public `layout_indexed(...)` regression covers a `2,048`-node chain on a `64KB`
+    stack, and focused Mindmap SVG tests stayed green. This is shared layout stack-safety
+    hardening, not a COSE force-constant, SVG baseline, root viewport, or Architecture residual
+    change.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
