@@ -9,6 +9,41 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details
         Option<&'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>>,
 }
 
+struct FlowchartRootFrame<'a> {
+    cluster_id: Option<&'a str>,
+    parent_origin_x: f64,
+    parent_origin_y: f64,
+    origin_x: f64,
+    origin_y: f64,
+    content_origin_y: f64,
+    dom_order: Vec<&'a str>,
+    next_dom_index: usize,
+    initialized: bool,
+    nested_start: Option<web_time::Instant>,
+}
+
+impl<'a> FlowchartRootFrame<'a> {
+    fn new(
+        cluster_id: Option<&'a str>,
+        parent_origin_x: f64,
+        parent_origin_y: f64,
+        nested_start: Option<web_time::Instant>,
+    ) -> Self {
+        Self {
+            cluster_id,
+            parent_origin_x,
+            parent_origin_y,
+            origin_x: parent_origin_x,
+            origin_y: parent_origin_y,
+            content_origin_y: parent_origin_y,
+            dom_order: Vec::new(),
+            next_dom_index: 0,
+            initialized: false,
+            nested_start,
+        }
+    }
+}
+
 pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -17,12 +52,103 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     parent_origin_y: f64,
     session: &mut FlowchartRootRenderSession<'_, '_>,
 ) {
+    let mut stack = vec![FlowchartRootFrame::new(
+        cluster_id,
+        parent_origin_x,
+        parent_origin_y,
+        None,
+    )];
+
+    while let Some(frame) = stack.pop() {
+        let mut frame = Some(frame);
+        if !frame.as_ref().is_some_and(|frame| frame.initialized) {
+            if let Some(frame) = frame.as_mut() {
+                initialize_flowchart_root_frame(out, ctx, session, frame);
+            }
+        }
+
+        let mut pushed_nested = false;
+        while frame
+            .as_ref()
+            .is_some_and(|frame| frame.next_dom_index < frame.dom_order.len())
+        {
+            let id = {
+                let Some(frame) = frame.as_mut() else {
+                    break;
+                };
+                let id = frame.dom_order[frame.next_dom_index];
+                frame.next_dom_index += 1;
+                id
+            };
+
+            if ctx
+                .subgraphs_by_id
+                .get(id)
+                .is_some_and(|sg| !sg.nodes.is_empty())
+            {
+                // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
+                // node DOM element. Recursive clusters render as nested `.root` groups.
+                if ctx.recursive_clusters.contains(id) {
+                    let nested_start = session.timing_enabled.then(web_time::Instant::now);
+                    if let Some(parent) = frame.take() {
+                        let child = FlowchartRootFrame::new(
+                            Some(id),
+                            parent.origin_x,
+                            parent.origin_y,
+                            nested_start,
+                        );
+                        stack.push(parent);
+                        stack.push(child);
+                        pushed_nested = true;
+                    }
+                    break;
+                }
+                continue;
+            }
+
+            let node_start = session.timing_enabled.then(web_time::Instant::now);
+            let Some(current) = frame.as_ref() else {
+                break;
+            };
+            render_flowchart_node(
+                out,
+                ctx,
+                id,
+                current.origin_x,
+                current.content_origin_y,
+                session.timing_enabled,
+                &mut *session.details,
+            );
+            if let Some(s) = node_start {
+                session.details.nodes += s.elapsed();
+            }
+        }
+
+        if pushed_nested {
+            continue;
+        }
+
+        if let Some(frame) = frame.take() {
+            out.push_str("</g></g>");
+            if let Some(start) = frame.nested_start {
+                session.details.nested_roots += start.elapsed();
+            }
+        }
+    }
+}
+
+fn initialize_flowchart_root_frame<'a>(
+    out: &mut String,
+    ctx: &'a FlowchartRenderCtx<'a>,
+    session: &mut FlowchartRootRenderSession<'_, '_>,
+    frame: &mut FlowchartRootFrame<'a>,
+) {
     session.details.root_calls += 1;
 
-    let (origin_x, origin_y, transform_attr) = if let Some(cid) = cluster_id {
+    let (origin_x, origin_y, transform_attr) = if let Some(cid) = frame.cluster_id {
         if let Some(off) = flowchart_cluster_root_offsets(ctx, cid) {
-            let rel_x = off.origin_x - parent_origin_x;
-            let rel_y = off.abs_top_transform - parent_origin_y;
+            let rel_x = off.origin_x - frame.parent_origin_x;
+            let rel_y = off.abs_top_transform - frame.parent_origin_y;
             (
                 off.origin_x,
                 off.origin_y,
@@ -35,8 +161,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         } else {
             // Fallback: keep the group in the parent's coordinate space.
             (
-                parent_origin_x,
-                parent_origin_y,
+                frame.parent_origin_x,
+                frame.parent_origin_y,
                 r#" transform="translate(0,0)""#.to_string(),
             )
         }
@@ -44,12 +170,15 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         (0.0, 0.0, String::new())
     };
 
+    frame.origin_x = origin_x;
+    frame.origin_y = origin_y;
+    frame.content_origin_y = origin_y;
+
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
-    let content_origin_y = origin_y;
 
     let _g_clusters = detail_guard(session.timing_enabled, &mut session.details.clusters);
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
-    if let Some(cid) = cluster_id {
+    if let Some(cid) = frame.cluster_id {
         if ctx
             .subgraphs_by_id
             .get(cid)
@@ -62,7 +191,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         }
     }
     for id in ctx.subgraphs_by_id.keys() {
-        if cluster_id.is_some_and(|cid| cid == *id) {
+        if frame.cluster_id.is_some_and(|cid| cid == *id) {
             continue;
         }
         if ctx
@@ -75,7 +204,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         if ctx.recursive_clusters.contains(id) {
             continue;
         }
-        if flowchart_effective_parent(ctx, id) == cluster_id {
+        if flowchart_effective_parent(ctx, id) == frame.cluster_id {
             if let Some(cluster) = ctx.layout_clusters_by_id.get(*id) {
                 clusters_to_draw.push(cluster);
             }
@@ -140,14 +269,14 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
         });
         out.push_str(r#"<g class="clusters">"#);
         for cluster in clusters_to_draw {
-            render_flowchart_cluster(out, ctx, cluster, origin_x, content_origin_y);
+            render_flowchart_cluster(out, ctx, cluster, origin_x, frame.content_origin_y);
         }
         out.push_str("</g>");
     }
     drop(_g_clusters);
 
     let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
-    let edges = flowchart_edges_for_root(ctx, cluster_id);
+    let edges = flowchart_edges_for_root(ctx, frame.cluster_id);
     drop(_g_edges_select);
 
     let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
@@ -162,7 +291,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 ctx,
                 e,
                 origin_x,
-                content_origin_y,
+                frame.content_origin_y,
                 &mut scratch,
                 session.edge_cache,
             );
@@ -203,7 +332,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                     ctx,
                     e,
                     origin_x,
-                    content_origin_y,
+                    frame.content_origin_y,
                     session.edge_cache,
                 );
             }
@@ -216,7 +345,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                     ctx,
                     e,
                     origin_x,
-                    content_origin_y,
+                    frame.content_origin_y,
                     session.edge_cache,
                 );
             }
@@ -232,7 +361,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
     let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
-        .get(cluster_id.unwrap_or(""))
+        .get(frame.cluster_id.unwrap_or(""))
         .map(|ids| ids.iter().map(|s| s.as_str()).collect())
         .unwrap_or_default();
     if !dom_order.is_empty() {
@@ -264,45 +393,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     if dom_order.is_empty() {
         // Fallback for v1 layouts: approximate by appending extracted cluster roots after
         // regular nodes.
-        dom_order = flowchart_root_children_nodes(ctx, cluster_id);
-        dom_order.extend(flowchart_root_children_clusters(ctx, cluster_id));
+        dom_order = flowchart_root_children_nodes(ctx, frame.cluster_id);
+        dom_order.extend(flowchart_root_children_clusters(ctx, frame.cluster_id));
     }
     drop(_g_dom_order);
 
-    for id in dom_order {
-        if ctx
-            .subgraphs_by_id
-            .get(id)
-            .is_some_and(|sg| !sg.nodes.is_empty())
-        {
-            // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
-            // node DOM element. Recursive clusters render as nested `.root` groups.
-            if ctx.recursive_clusters.contains(id) {
-                let nested_start = session.timing_enabled.then(web_time::Instant::now);
-                render_flowchart_root(out, ctx, Some(id), origin_x, origin_y, session);
-                if let Some(s) = nested_start {
-                    session.details.nested_roots += s.elapsed();
-                }
-            }
-            continue;
-        }
-
-        let node_start = session.timing_enabled.then(web_time::Instant::now);
-        render_flowchart_node(
-            out,
-            ctx,
-            id,
-            origin_x,
-            content_origin_y,
-            session.timing_enabled,
-            &mut *session.details,
-        );
-        if let Some(s) = node_start {
-            session.details.nodes += s.elapsed();
-        }
-    }
-
-    out.push_str("</g></g>");
+    frame.dom_order = dom_order;
+    frame.initialized = true;
 }
 
 pub(super) fn flowchart_wrap_svg_text_lines(

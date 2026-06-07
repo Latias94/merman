@@ -7308,3 +7308,55 @@ Gate notes:
   changed.
 - This is release-boundary hardening for State's accepted deep composite path. It does not
   introduce a new State depth limit.
+
+## HPD-050 - Flowchart Deep-Subgraph Panic Surface
+
+Outcome:
+
+- Hardened Flowchart's public nested `subgraph` path after the State cleanup. A `1,200`-level
+  `flowchart TB` subgraph chain parsed successfully but reproduced stack overflow in the public
+  layout path before this slice.
+- Flowchart's extracted cluster placement now uses an explicit heap-backed frame stack instead of
+  recursive `place_graph(...)` calls while preserving parent/child graph offset calculation, edge
+  label overrides, and extracted cluster rect/base-width capture.
+- Fallback compound subtree rectangle collection and final cluster rectangle postorder computation
+  now use explicit stacks instead of recursively walking subgraph membership.
+- Flowchart nested SVG root rendering now uses explicit render frames instead of recursively
+  calling `render_flowchart_root(...)`, preserving Mermaid's nested `.root` group ordering and
+  timing counters.
+- Added public-path regressions:
+  - render-model parsing accepts a `1,200`-level Flowchart subgraph chain;
+  - public `layout_parsed(...)` layouts the same chain and emits the leaf node plus outer cluster;
+  - public SVG rendering emits the same chain without stack overflow and with current Flowchart DOM
+    id shape.
+
+Evidence:
+
+- `crates/merman-render/src/flowchart/layout.rs`
+- `crates/merman-render/src/svg/parity/flowchart/render/root.rs`
+- `crates/merman-render/tests/flowchart_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-flowchart-deep-subgraph-panic-surface.md`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render flowchart_parse_for_render_model_handles_deep_subgraph_chain` -
+  passed, `1` test run.
+- `cargo nextest run -p merman-render flowchart_layout_handles_deep_subgraph_chain` - first run
+  failed before the fix with stack overflow; passed after the non-recursive layout placement and
+  cluster-rect traversal changes.
+- `cargo nextest run -p merman-render flowchart_svg_handles_deep_subgraph_chain` - passed after
+  the explicit-stack SVG root traversal and current DOM id assertion.
+- `cargo nextest run -p merman-render flowchart` - passed, `106` tests run.
+- `cargo fmt --check -p merman-render` - passed.
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for Flowchart's accepted deep subgraph path. It does not
+  introduce a new Flowchart depth limit or claim closure of known Flowchart max-width/root
+  residuals.

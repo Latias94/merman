@@ -1088,6 +1088,11 @@ Current repository reality to preserve:
     projected with explicit heap-backed traversal and hand-built maps, AST/prepared-graph cleanup
     is non-recursive, and render cluster extraction/preparation/layout now uses explicit stacks.
     Focused State core/render tests and DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened Flowchart's accepted deep subgraph path after
+    a `1,200`-level public `flowchart TB` chain reproduced stack overflow in layout while
+    parse-for-render-model stayed green. Flowchart extracted cluster placement, fallback subtree
+    rect collection, final cluster rect postorder computation, and nested SVG root rendering now
+    use explicit heap-backed frames. Focused Flowchart tests and DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

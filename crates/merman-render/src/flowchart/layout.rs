@@ -1897,29 +1897,24 @@ fn layout_flowchart_v2_with_model(
         inputs: &PlaceGraphInputs<'_>,
         out: &mut PlaceGraphOutputs<'_>,
     ) {
-        for id in graph.node_ids() {
-            let Some(n) = graph.node(&id) else { continue };
-            let x = n.x.unwrap_or(0.0) + offset.0;
-            let y = n.y.unwrap_or(0.0) + offset.1;
-            if inputs.leaf_node_ids.contains(&id) {
-                out.base_pos.insert(id.clone(), (x, y));
-                out.leaf_rects
-                    .insert(id.clone(), Rect::from_center(x, y, n.width, n.height));
-                continue;
-            }
+        struct PlaceFrame<'a> {
+            graph: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            offset: (f64, f64),
+            is_root: bool,
         }
 
-        fn subtree_rect(
+        fn subtree_rect_iterative(
             graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             id: &str,
-            visiting: &mut std::collections::HashSet<String>,
         ) -> Option<Rect> {
+            let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
             if !visiting.insert(id.to_string()) {
                 return None;
             }
             let mut out: Option<Rect> = None;
-            for child in graph.children(id) {
-                if let Some(n) = graph.node(child) {
+            let mut stack: Vec<String> = graph.children(id).iter().map(|s| s.to_string()).collect();
+            while let Some(node) = stack.pop() {
+                if let Some(n) = graph.node(&node) {
                     if let (Some(x), Some(y)) = (n.x, n.y) {
                         let r = Rect::from_center(x, y, n.width, n.height);
                         if let Some(ref mut cur) = out {
@@ -1929,150 +1924,173 @@ fn layout_flowchart_v2_with_model(
                         }
                     }
                 }
-                if !graph.children(child).is_empty() {
-                    if let Some(r) = subtree_rect(graph, child, visiting) {
-                        if let Some(ref mut cur) = out {
-                            cur.union(r);
-                        } else {
-                            out = Some(r);
-                        }
+                for child in graph.children(&node) {
+                    if visiting.insert(child.to_string()) {
+                        stack.push(child.to_string());
                     }
                 }
             }
-            visiting.remove(id);
             out
         }
 
-        // Capture the layout-computed compound bounds for non-extracted clusters.
-        //
-        // Upstream Dagre computes compound-node geometry from border nodes and then removes the
-        // border dummy nodes (`removeBorderNodes`). Our dugong parity pipeline mirrors that, so
-        // prefer the compound node's own x/y/width/height when available.
-        for id in graph.node_ids() {
-            if !inputs.subgraph_ids.contains(id.as_str()) {
-                continue;
-            }
-            if inputs.extracted_graphs.contains_key(&id) {
-                continue;
-            }
-            if out.cluster_rects_from_graph.contains_key(&id) {
-                continue;
-            }
-            if let Some(n) = graph.node(&id) {
-                if let (Some(x), Some(y)) = (n.x, n.y) {
-                    if n.width > 0.0 && n.height > 0.0 {
-                        let mut r = Rect::from_center(x, y, n.width, n.height);
-                        r.translate(offset.0, offset.1);
-                        out.cluster_rects_from_graph.insert(id, r);
-                        continue;
-                    }
-                }
-            }
-
-            let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let Some(mut r) = subtree_rect(graph, &id, &mut visiting) else {
-                continue;
-            };
-            r.translate(offset.0, offset.1);
-            out.cluster_rects_from_graph.insert(id, r);
-        }
-
-        for ek in graph.edge_keys() {
-            let Some(edge_key) = ek.name.as_deref() else {
-                continue;
-            };
-            let edge_id = inputs
-                .edge_id_by_key
-                .get(edge_key)
-                .map(String::as_str)
-                .unwrap_or(edge_key);
-            let Some(lbl) = graph.edge_by_key(&ek) else {
-                continue;
-            };
-
-            if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
-                if lbl.width > 0.0 || lbl.height > 0.0 {
-                    let lx = x + offset.0;
-                    let ly = y + offset.1;
-                    let leaf_id = format!("edge-label::{edge_id}");
-                    out.base_pos.insert(leaf_id.clone(), (lx, ly));
-                    out.leaf_rects
-                        .insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
-                }
-            }
-
-            if !is_root {
-                let points = lbl
-                    .points
-                    .iter()
-                    .map(|p| LayoutPoint {
-                        x: p.x + offset.0,
-                        y: p.y + offset.1,
-                    })
-                    .collect::<Vec<_>>();
-                let label_pos = match (lbl.x, lbl.y) {
-                    (Some(x), Some(y)) if lbl.width > 0.0 || lbl.height > 0.0 => {
-                        Some(LayoutLabel {
-                            x: x + offset.0,
-                            y: y + offset.1,
-                            width: lbl.width,
-                            height: lbl.height,
-                        })
-                    }
-                    _ => None,
+        let mut stack = vec![PlaceFrame {
+            graph,
+            offset,
+            is_root,
+        }];
+        while let Some(frame) = stack.pop() {
+            for id in frame.graph.node_ids() {
+                let Some(n) = frame.graph.node(&id) else {
+                    continue;
                 };
-                out.edge_override_points.insert(edge_id.to_string(), points);
-                out.edge_override_label
-                    .insert(edge_id.to_string(), label_pos);
-                let from_cluster = lbl
-                    .extras
-                    .get("fromCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                let to_cluster = lbl
-                    .extras
-                    .get("toCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                out.edge_override_from_cluster
-                    .insert(edge_id.to_string(), from_cluster);
-                out.edge_override_to_cluster
-                    .insert(edge_id.to_string(), to_cluster);
+                let x = n.x.unwrap_or(0.0) + frame.offset.0;
+                let y = n.y.unwrap_or(0.0) + frame.offset.1;
+                if inputs.leaf_node_ids.contains(&id) {
+                    out.base_pos.insert(id.clone(), (x, y));
+                    out.leaf_rects
+                        .insert(id.clone(), Rect::from_center(x, y, n.width, n.height));
+                    continue;
+                }
             }
-        }
 
-        for id in graph.node_ids() {
-            // Only recurse into extracted graphs for leaf cluster nodes ("clusterNode" in Mermaid).
-            // The recursively rendered graph itself also contains a node with the same id (the
-            // parent cluster node injected before layout), which has children and must not recurse.
-            if !graph.children(&id).is_empty() {
-                continue;
+            // Capture the layout-computed compound bounds for non-extracted clusters.
+            //
+            // Upstream Dagre computes compound-node geometry from border nodes and then removes the
+            // border dummy nodes (`removeBorderNodes`). Our dugong parity pipeline mirrors that, so
+            // prefer the compound node's own x/y/width/height when available.
+            for id in frame.graph.node_ids() {
+                if !inputs.subgraph_ids.contains(id.as_str()) {
+                    continue;
+                }
+                if inputs.extracted_graphs.contains_key(&id) {
+                    continue;
+                }
+                if out.cluster_rects_from_graph.contains_key(&id) {
+                    continue;
+                }
+                if let Some(n) = frame.graph.node(&id) {
+                    if let (Some(x), Some(y)) = (n.x, n.y) {
+                        if n.width > 0.0 && n.height > 0.0 {
+                            let mut r = Rect::from_center(x, y, n.width, n.height);
+                            r.translate(frame.offset.0, frame.offset.1);
+                            out.cluster_rects_from_graph.insert(id, r);
+                            continue;
+                        }
+                    }
+                }
+
+                let Some(mut r) = subtree_rect_iterative(frame.graph, &id) else {
+                    continue;
+                };
+                r.translate(frame.offset.0, frame.offset.1);
+                out.cluster_rects_from_graph.insert(id, r);
             }
-            let Some(child) = inputs.extracted_graphs.get(&id) else {
-                continue;
-            };
-            let Some(n) = graph.node(&id) else {
-                continue;
-            };
-            let (Some(px), Some(py)) = (n.x, n.y) else {
-                continue;
-            };
-            let parent_x = px + offset.0;
-            let parent_y = py + offset.1;
-            let Some(cnode) = child.node(&id) else {
-                continue;
-            };
-            let (Some(cx), Some(cy)) = (cnode.x, cnode.y) else {
-                continue;
-            };
-            let child_offset = (parent_x - cx, parent_y - cy);
-            // The extracted cluster's footprint in the parent graph is the clusterNode itself.
-            // Our recursive layout step updates the parent graph's node `width/height` to match
-            // Mermaid's `updateNodeBounds(...)` behavior (including any title margin). Avoid
-            // adding `title_total_margin` again here.
-            let r = Rect::from_center(parent_x, parent_y, n.width, n.height);
-            out.extracted_cluster_rects.insert(id.clone(), r);
-            out.extracted_cluster_base_widths
-                .insert(id.clone(), cnode.width.max(1.0));
-            place_graph(child, child_offset, false, inputs, out);
+
+            for ek in frame.graph.edge_keys() {
+                let Some(edge_key) = ek.name.as_deref() else {
+                    continue;
+                };
+                let edge_id = inputs
+                    .edge_id_by_key
+                    .get(edge_key)
+                    .map(String::as_str)
+                    .unwrap_or(edge_key);
+                let Some(lbl) = frame.graph.edge_by_key(&ek) else {
+                    continue;
+                };
+
+                if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
+                    if lbl.width > 0.0 || lbl.height > 0.0 {
+                        let lx = x + frame.offset.0;
+                        let ly = y + frame.offset.1;
+                        let leaf_id = format!("edge-label::{edge_id}");
+                        out.base_pos.insert(leaf_id.clone(), (lx, ly));
+                        out.leaf_rects
+                            .insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
+                    }
+                }
+
+                if !frame.is_root {
+                    let points = lbl
+                        .points
+                        .iter()
+                        .map(|p| LayoutPoint {
+                            x: p.x + frame.offset.0,
+                            y: p.y + frame.offset.1,
+                        })
+                        .collect::<Vec<_>>();
+                    let label_pos = match (lbl.x, lbl.y) {
+                        (Some(x), Some(y)) if lbl.width > 0.0 || lbl.height > 0.0 => {
+                            Some(LayoutLabel {
+                                x: x + frame.offset.0,
+                                y: y + frame.offset.1,
+                                width: lbl.width,
+                                height: lbl.height,
+                            })
+                        }
+                        _ => None,
+                    };
+                    out.edge_override_points.insert(edge_id.to_string(), points);
+                    out.edge_override_label
+                        .insert(edge_id.to_string(), label_pos);
+                    let from_cluster = lbl
+                        .extras
+                        .get("fromCluster")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()));
+                    let to_cluster = lbl
+                        .extras
+                        .get("toCluster")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()));
+                    out.edge_override_from_cluster
+                        .insert(edge_id.to_string(), from_cluster);
+                    out.edge_override_to_cluster
+                        .insert(edge_id.to_string(), to_cluster);
+                }
+            }
+
+            let mut child_frames = Vec::new();
+            for id in frame.graph.node_ids() {
+                // Only recurse into extracted graphs for leaf cluster nodes ("clusterNode" in Mermaid).
+                // The recursively rendered graph itself also contains a node with the same id (the
+                // parent cluster node injected before layout), which has children and must not recurse.
+                if !frame.graph.children(&id).is_empty() {
+                    continue;
+                }
+                let Some(child) = inputs.extracted_graphs.get(&id) else {
+                    continue;
+                };
+                let Some(n) = frame.graph.node(&id) else {
+                    continue;
+                };
+                let (Some(px), Some(py)) = (n.x, n.y) else {
+                    continue;
+                };
+                let parent_x = px + frame.offset.0;
+                let parent_y = py + frame.offset.1;
+                let Some(cnode) = child.node(&id) else {
+                    continue;
+                };
+                let (Some(cx), Some(cy)) = (cnode.x, cnode.y) else {
+                    continue;
+                };
+                let child_offset = (parent_x - cx, parent_y - cy);
+                // The extracted cluster's footprint in the parent graph is the clusterNode itself.
+                // Our recursive layout step updates the parent graph's node `width/height` to match
+                // Mermaid's `updateNodeBounds(...)` behavior (including any title margin). Avoid
+                // adding `title_total_margin` again here.
+                let r = Rect::from_center(parent_x, parent_y, n.width, n.height);
+                out.extracted_cluster_rects.insert(id.clone(), r);
+                out.extracted_cluster_base_widths
+                    .insert(id.clone(), cnode.width.max(1.0));
+                child_frames.push(PlaceFrame {
+                    graph: child,
+                    offset: child_offset,
+                    is_root: false,
+                });
+            }
+            for child in child_frames.into_iter().rev() {
+                stack.push(child);
+            }
         }
     }
 
@@ -2306,40 +2324,72 @@ fn layout_flowchart_v2_with_model(
                 .unwrap_or_else(|| r.width());
             return Ok((r, base_width));
         }
-        if !state.visiting.insert(id.to_string()) {
-            return Err(Error::InvalidModel {
-                message: format!("cycle in subgraph membership involving {id}"),
-            });
+
+        struct ClusterRectFrame {
+            id: String,
+            expanded: bool,
         }
 
-        let Some(sg) = ctx.subgraphs_by_id.get(id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing subgraph definition for {id}"),
-            });
-        };
+        let mut stack = vec![ClusterRectFrame {
+            id: id.to_string(),
+            expanded: false,
+        }];
+        while let Some(frame) = stack.pop() {
+            if state.cluster_rects.contains_key(&frame.id) {
+                continue;
+            }
 
-        let mut content: Option<Rect> = None;
-        for member in &sg.nodes {
-            let member_rect = if let Some(r) = ctx.leaf_rects.get(member).copied() {
-                Some(r)
-            } else if ctx.subgraphs_by_id.contains_key(member) {
-                Some(compute_cluster_rect(member, ctx, state)?.0)
-            } else {
-                None
+            if !frame.expanded {
+                if !state.visiting.insert(frame.id.clone()) {
+                    return Err(Error::InvalidModel {
+                        message: format!("cycle in subgraph membership involving {}", frame.id),
+                    });
+                }
+
+                let Some(sg) = ctx.subgraphs_by_id.get(&frame.id) else {
+                    return Err(Error::InvalidModel {
+                        message: format!("missing subgraph definition for {}", frame.id),
+                    });
+                };
+
+                stack.push(ClusterRectFrame {
+                    id: frame.id.clone(),
+                    expanded: true,
+                });
+                for member in sg.nodes.iter().rev() {
+                    if ctx.subgraphs_by_id.contains_key(member)
+                        && !state.cluster_rects.contains_key(member)
+                    {
+                        stack.push(ClusterRectFrame {
+                            id: member.clone(),
+                            expanded: false,
+                        });
+                    }
+                }
+                continue;
+            }
+
+            let Some(sg) = ctx.subgraphs_by_id.get(&frame.id) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing subgraph definition for {}", frame.id),
+                });
             };
 
-            if let Some(r) = member_rect {
-                if let Some(ref mut cur) = content {
-                    cur.union(r);
+            let mut content: Option<Rect> = None;
+            for member in &sg.nodes {
+                let member_rect = if let Some(r) = ctx.leaf_rects.get(member).copied() {
+                    Some(r)
+                } else if ctx.subgraphs_by_id.contains_key(member) {
+                    Some(state.cluster_rects.get(member).copied().ok_or_else(|| {
+                        Error::InvalidModel {
+                            message: format!("missing computed subgraph rect for {member}"),
+                        }
+                    })?)
                 } else {
-                    content = Some(r);
-                }
-            }
-        }
+                    None
+                };
 
-        if let Some(extra) = ctx.extra_children.get(id) {
-            for child in extra {
-                if let Some(r) = ctx.leaf_rects.get(child).copied() {
+                if let Some(r) = member_rect {
                     if let Some(ref mut cur) = content {
                         cur.union(r);
                     } else {
@@ -2347,71 +2397,97 @@ fn layout_flowchart_v2_with_model(
                     }
                 }
             }
-        }
 
-        let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
-        let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label: &sg.title,
-            label_type,
-            style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
+            if let Some(extra) = ctx.extra_children.get(&frame.id) {
+                for child in extra {
+                    if let Some(r) = ctx.leaf_rects.get(child).copied() {
+                        if let Some(ref mut cur) = content {
+                            cur.union(r);
+                        } else {
+                            content = Some(r);
+                        }
+                    }
+                }
+            }
+
+            let label_type = sg.label_type.as_deref().unwrap_or("text");
+            let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+            let title_font_style =
+                flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
+            let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                measurer: ctx.measurer,
+                raw_label: &sg.title,
+                label_type,
+                style: if ctx.wrap_mode == WrapMode::HtmlLike {
+                    ctx.html_label_text_style
+                } else {
+                    ctx.text_style
+                },
+                max_width_px: title_width_limit,
+                wrap_mode: ctx.wrap_mode,
+                config: ctx.config,
+                math_renderer: ctx.math_renderer,
+                preserve_string_whitespace_height: false,
+                whole_label_font_style: title_font_style.as_deref(),
+            });
+            let mut rect = if let Some(r) = content {
+                r
             } else {
-                ctx.text_style
-            },
-            max_width_px: title_width_limit,
-            wrap_mode: ctx.wrap_mode,
-            config: ctx.config,
-            math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
-        });
-        let mut rect = if let Some(r) = content {
-            r
-        } else {
-            Rect::from_center(
-                0.0,
-                0.0,
-                title_metrics.width.max(1.0),
-                title_metrics.height.max(1.0),
-            )
-        };
+                Rect::from_center(
+                    0.0,
+                    0.0,
+                    title_metrics.width.max(1.0),
+                    title_metrics.height.max(1.0),
+                )
+            };
 
-        // Expand to provide the cluster's internal padding.
-        rect.pad(ctx.cluster_padding);
+            // Expand to provide the cluster's internal padding.
+            rect.pad(ctx.cluster_padding);
 
-        // Mermaid computes `node.diff` using the pre-widened layout node width, then may widen the
-        // rect to fit the label bbox during rendering.
-        let base_width = rect.width();
+            // Mermaid computes `node.diff` using the pre-widened layout node width, then may widen the
+            // rect to fit the label bbox during rendering.
+            let base_width = rect.width();
 
-        // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
-        // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
-        // `title_width + cluster_padding` when the title is wider than the content.
-        let min_width = title_metrics.width.max(1.0) + ctx.cluster_padding;
-        if rect.width() < min_width {
-            let (cx, cy) = rect.center();
-            rect = Rect::from_center(cx, cy, min_width, rect.height());
+            // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
+            // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
+            // `title_width + cluster_padding` when the title is wider than the content.
+            let min_width = title_metrics.width.max(1.0) + ctx.cluster_padding;
+            if rect.width() < min_width {
+                let (cx, cy) = rect.center();
+                rect = Rect::from_center(cx, cy, min_width, rect.height());
+            }
+
+            // Extend height to reserve space for subgraph title margins (Mermaid does this after layout).
+            if ctx.title_total_margin > 0.0 {
+                let (cx, cy) = rect.center();
+                rect =
+                    Rect::from_center(cx, cy, rect.width(), rect.height() + ctx.title_total_margin);
+            }
+
+            // Keep the cluster tall enough to accommodate the title bbox if needed.
+            let min_height = title_metrics.height.max(1.0) + ctx.title_total_margin;
+            if rect.height() < min_height {
+                let (cx, cy) = rect.center();
+                rect = Rect::from_center(cx, cy, rect.width(), min_height);
+            }
+
+            state.visiting.remove(&frame.id);
+            state.cluster_rects.insert(frame.id.clone(), rect);
+            state.cluster_base_widths.insert(frame.id, base_width);
         }
 
-        // Extend height to reserve space for subgraph title margins (Mermaid does this after layout).
-        if ctx.title_total_margin > 0.0 {
-            let (cx, cy) = rect.center();
-            rect = Rect::from_center(cx, cy, rect.width(), rect.height() + ctx.title_total_margin);
-        }
-
-        // Keep the cluster tall enough to accommodate the title bbox if needed.
-        let min_height = title_metrics.height.max(1.0) + ctx.title_total_margin;
-        if rect.height() < min_height {
-            let (cx, cy) = rect.center();
-            rect = Rect::from_center(cx, cy, rect.width(), min_height);
-        }
-
-        state.visiting.remove(id);
-        state.cluster_rects.insert(id.to_string(), rect);
-        state.cluster_base_widths.insert(id.to_string(), base_width);
+        let rect = state
+            .cluster_rects
+            .get(id)
+            .copied()
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing computed subgraph rect for {id}"),
+            })?;
+        let base_width = state
+            .cluster_base_widths
+            .get(id)
+            .copied()
+            .unwrap_or_else(|| rect.width());
         Ok((rect, base_width))
     }
 

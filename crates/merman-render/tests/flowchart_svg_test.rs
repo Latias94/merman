@@ -56,6 +56,18 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
     .expect("render svg")
 }
 
+fn deep_flowchart_subgraph_chain(depth: usize) -> String {
+    let mut input = String::from("flowchart TB\n");
+    for level in 0..depth {
+        input.push_str(&format!("subgraph S{level}\n"));
+    }
+    input.push_str("Leaf\n");
+    for _ in 0..depth {
+        input.push_str("end\n");
+    }
+    input
+}
+
 fn flowchart_svg_viewbox_values(svg: &str) -> [f64; 4] {
     let viewbox_start = svg.find(r#"viewBox=""#).expect("viewBox") + r#"viewBox=""#.len();
     let viewbox_end = svg[viewbox_start..].find('"').expect("viewBox end") + viewbox_start;
@@ -66,6 +78,48 @@ fn flowchart_svg_viewbox_values(svg: &str) -> [f64; 4] {
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 4, "expected four viewBox values: {viewbox}");
     [values[0], values[1], values[2], values[3]]
+}
+
+#[test]
+fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
+    const DEPTH: usize = 1200;
+    let text = deep_flowchart_subgraph_chain(DEPTH);
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(&text, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+}
+
+#[test]
+fn flowchart_layout_handles_deep_subgraph_chain() {
+    const DEPTH: usize = 1200;
+    let text = deep_flowchart_subgraph_chain(DEPTH);
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
+    assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
+}
+
+#[test]
+fn flowchart_svg_handles_deep_subgraph_chain() {
+    const DEPTH: usize = 1200;
+    let text = deep_flowchart_subgraph_chain(DEPTH);
+
+    let svg = render_flowchart_svg_from_text(&text);
+
+    assert!(svg.contains(r#"id="merman-flowchart-Leaf-"#));
+    assert!(svg.contains(r#"id="merman-S0""#));
 }
 
 #[test]

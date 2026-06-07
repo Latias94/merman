@@ -77,6 +77,10 @@ Library code should not panic on user-controlled input.
     prepared-graph layout, or prepared-graph/AST cleanup. Deep semantic `doc` values are assembled
     with hand-built `Map` output so they are moved into the result instead of recursively wrapped
     through `json!`.
+  - Flowchart deep subgraph chains no longer depend on recursive Rust stack traversal for
+    extracted cluster placement, fallback subtree rectangle collection, cluster rectangle
+    postorder computation, or nested SVG root rendering. A public `flowchart TB` / `subgraph`
+    chain now covers parse-for-render-model, layout, and SVG output through ordinary render APIs.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -113,6 +117,12 @@ Library code should not panic on user-controlled input.
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the C4 deep-boundary cleanup. The new `1,500`-level C4 regression reproduced stack
     overflow before the non-recursive layout traversal.
+  - Verification: `cargo fmt --check -p merman-render`,
+    `cargo nextest run -p merman-render flowchart`,
+    `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`,
+    and `git diff --check` passed for the Flowchart deep-subgraph cleanup. The new `1,200`-level
+    Flowchart regression reproduced stack overflow in the public layout path before the
+    non-recursive layout placement/cluster-rect changes.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
