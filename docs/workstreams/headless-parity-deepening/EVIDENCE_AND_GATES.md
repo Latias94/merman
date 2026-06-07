@@ -7995,3 +7995,40 @@ Gate notes:
 - This is a public detection/preprocess panic-surface cleanup only. It does not change semantic
   models, rendered output, SVG baselines, root viewport formulas, or Architecture residual
   classification.
+
+## HPD-050 - Preprocess CRLF Cleanup Panic Surface
+
+Outcome:
+
+- Removed the preprocess CRLF normalization regex from the public preprocessing boundary.
+- `cleanup_text(...)` no longer calls `Regex::new(r"\r\n?").expect(...)` through the cached
+  preprocess regex helper when source text contains `\r`.
+- CRLF and CR-only input now flows through a small scanner that preserves Mermaid's line-ending
+  normalization to `\n`.
+- Public preprocessing continues to normalize line endings before frontmatter, directive, detector,
+  and comment cleanup handling.
+
+Evidence:
+
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-crlf-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core normalize_crlf_matches_mermaid_line_ending_cleanup preprocess_normalizes_crlf_without_regex preprocess_strips_mermaid_comment_at_eof_without_regex` -
+  passed, `3` tests run.
+- `cargo +1.95 nextest run -p merman-core detect` - passed, `20` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 're_crlf|cached_regex!\(re_crlf|Regex::new\(r"\\r\\n\?' crates/merman-core/src/preprocess/mod.rs` -
+  no CRLF regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public preprocessing panic-surface cleanup only. It does not change entity encoding,
+  HTML attribute rewrite behavior, frontmatter/directive parsing, detector order, semantic models,
+  rendered output, SVG baselines, or Architecture residual classification.

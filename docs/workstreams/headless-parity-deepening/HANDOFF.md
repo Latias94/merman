@@ -1183,6 +1183,9 @@ Current repository reality to preserve:
     removes indented `%%` comment lines with a non-empty body, preserves directives until
     directive processing, trims leading comments/blank lines, and removes EOF comments without
     trailing newlines.
+  - A follow-up HPD-050 panic-surface slice removed preprocess CRLF regex construction.
+    `cleanup_text(...)` now normalizes `\r\n` and CR-only input with a direct scanner before
+    frontmatter, directive, detector, and comment cleanup handling.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

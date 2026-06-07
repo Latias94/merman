@@ -149,6 +149,15 @@ fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
 }
 
 #[test]
+fn preprocess_normalizes_crlf_without_regex() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let result = preprocess_diagram("flowchart TD\r\nA-->B\r%% This is a comment", &registry)
+        .expect("preprocess succeeds");
+
+    assert_eq!(result.code, "flowchart TD\nA-->B\n");
+}
+
+#[test]
 fn detector_registry_strips_deep_frontmatter_with_small_stack() {
     const DEPTH: usize = 512;
     let mut text = String::from("---\nconfig: {\"sequence\": ");

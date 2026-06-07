@@ -13,7 +13,6 @@ macro_rules! cached_regex {
     };
 }
 
-cached_regex!(re_crlf, r"\r\n?");
 cached_regex!(re_tag, r"<(\w+)([^>]*)>");
 cached_regex!(re_attr_eq_double_quoted, "=\"([^\"]*)\"");
 cached_regex!(re_style_hex, r"style.*:\S*#.*;");
@@ -87,7 +86,7 @@ pub fn preprocess_diagram_with_known_type(
 
 fn cleanup_text(input: &str) -> Cow<'_, str> {
     let mut s: Cow<'_, str> = if input.contains('\r') {
-        Cow::Owned(re_crlf().replace_all(input, "\n").into_owned())
+        Cow::Owned(normalize_crlf(input))
     } else {
         Cow::Borrowed(input)
     };
@@ -116,6 +115,22 @@ fn cleanup_text(input: &str) -> Cow<'_, str> {
     }
 
     s
+}
+
+fn normalize_crlf(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\r' {
+            out.push('\n');
+            if chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn encode_mermaid_entities_like_upstream(text: &str) -> String {
@@ -608,6 +623,15 @@ fn yaml_inline_sequence_indicator_count(mut text: &str) -> usize {
 mod tests {
     use super::*;
     use serde_json::Map;
+
+    #[test]
+    fn normalize_crlf_matches_mermaid_line_ending_cleanup() {
+        assert_eq!(
+            normalize_crlf("flowchart TD\r\nA-->B\rC-->D\n"),
+            "flowchart TD\nA-->B\nC-->D\n"
+        );
+        assert_eq!(normalize_crlf("\r\r\n\n"), "\n\n\n");
+    }
 
     #[test]
     fn sanitize_directive_handles_deep_values_with_small_stack() {

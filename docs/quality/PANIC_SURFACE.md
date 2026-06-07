@@ -74,6 +74,9 @@ Library code should not panic on user-controlled input.
     invalid-frontmatter or invalid-directive error instead of overflowing the Rust stack.
   - Frontmatter stripping in both preprocess and `DetectorRegistry::detect_type(...)` now uses
     line scanning instead of a broad DOTALL regex over user input.
+  - Preprocess CRLF normalization no longer compiles a regex on the public preprocessing boundary.
+    It now scans `\r\n` / `\r` line endings directly while preserving Mermaid's normalization to
+    `\n`.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional
@@ -228,6 +231,13 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core detect`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the detector
     comment-cleanup regex removal.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    normalize_crlf_matches_mermaid_line_ending_cleanup
+    preprocess_normalizes_crlf_without_regex
+    preprocess_strips_mermaid_comment_at_eof_without_regex`,
+    `cargo +1.95 nextest run -p merman-core detect`,
+    `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the preprocess
+    CRLF regex removal.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

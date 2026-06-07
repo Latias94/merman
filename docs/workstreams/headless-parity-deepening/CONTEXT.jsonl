@@ -792,3 +792,6 @@
 {"file":"crates/merman-core/src/preprocess/mod.rs","reason":"HPD-050 detector comment cleanup fix: preprocessing now reuses the shared non-regex Mermaid comment cleanup helper instead of a duplicate local scanner."}
 {"file":"crates/merman-core/src/tests/detect.rs","reason":"HPD-050 regression coverage: detector and preprocess paths strip indented and EOF Mermaid comments without regex while preserving directive handling."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-detector-comment-cleanup-panic-surface.md","reason":"HPD-050 journal: records detector comment regex removal, source-backed cleanup semantics, focused verification, and detector-order boundary."}
+{"file":"crates/merman-core/src/preprocess/mod.rs","reason":"HPD-050 preprocess CRLF cleanup fix: cleanup_text now normalizes CRLF and CR-only line endings with a direct scanner instead of a cached regex."}
+{"file":"crates/merman-core/src/tests/detect.rs","reason":"HPD-050 preprocess CRLF regression coverage: public preprocessing normalizes CRLF and CR-only input before comment cleanup without the CRLF regex helper."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-crlf-panic-surface.md","reason":"HPD-050 journal: records preprocess CRLF regex removal, focused verification, and public preprocessing boundary."}
