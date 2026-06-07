@@ -306,6 +306,54 @@ fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
 }
 
 #[test]
+fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
+    const DEPTH: usize = 1_024;
+    let site_config = MermaidConfig::from_value(deep_config_value(
+        "retainedConfig",
+        DEPTH,
+        Value::String("#556677".to_string()),
+    ));
+    let engine = Engine::new().with_site_config(site_config);
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-deep-retained-semantic-config".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            for (label, diagram_type, source) in [
+                ("block", "block", "block\n  A\n"),
+                ("state", "stateDiagram", "stateDiagram-v2\n  [*] --> A\n"),
+                ("treemap", "treemap", "treemap\n\"A\": 1\n"),
+                ("sankey", "sankey", "sankey\nA,B,1\n"),
+                ("c4", "c4", "C4Context\nPerson(a, \"A\")\n"),
+                (
+                    "architecture",
+                    "architecture",
+                    "architecture-beta\n  service a(server)[A]\n",
+                ),
+            ] {
+                let parsed = engine
+                    .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
+                    .expect("parse succeeds")
+                    .expect("diagram detected");
+                let ParsedDiagram { model, .. } = parsed;
+
+                assert_eq!(
+                    deep_config_leaf(&model["config"], "retainedConfig", DEPTH)
+                        .and_then(Value::as_str),
+                    Some("#556677"),
+                    "retained config for {label}"
+                );
+
+                crate::config::drop_value_nonrecursive(model);
+            }
+        })
+        .expect("spawn deep retained semantic config test");
+    handle
+        .join()
+        .expect("retained semantic config projection should finish without stack overflow");
+}
+
+#[test]
 fn init_directive_config_sanitizes_deep_values_with_small_stack() {
     const DEPTH: usize = 32;
     let source = deep_init_directive_source("sequence", DEPTH, "<blocked>");

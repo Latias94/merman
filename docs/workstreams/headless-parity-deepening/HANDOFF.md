@@ -1159,6 +1159,13 @@ Current repository reality to preserve:
     `serde_json::to_value(...).expect(...)` before adding `type` and `config`; it now builds the
     compat object directly and copies retained effective config with the shared non-recursive JSON
     clone helper. The typed-vs-legacy regression now compares the entire compat object.
+  - A follow-up HPD-050 panic-surface slice hardened retained semantic config projection for
+    Block, State, Treemap, Sankey, C4, and Architecture. These public semantic JSON roots now copy
+    `meta.effective_config` with the shared non-recursive JSON clone helper, and the C4, Sankey,
+    and Architecture root objects are hand-built maps so deep retained config is moved into the
+    result instead of recursively wrapped through `json!`. Focused known-type small-stack coverage
+    validates a `1,024`-level host config across all six families; automatic detector-chain
+    small-stack behavior is a separate boundary.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

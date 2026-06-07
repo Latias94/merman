@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -83,11 +83,14 @@ impl SankeyDb {
 
 pub fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let db = parse_sankey_db(code, meta)?;
-    Ok(json!({
-        "type": meta.diagram_type,
-        "graph": db.graph_value(),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    let mut out = Map::with_capacity(3);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("graph".to_string(), db.graph_value());
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 pub fn parse_sankey_model_for_render(

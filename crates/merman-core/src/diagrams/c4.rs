@@ -520,22 +520,65 @@ impl C4Db {
     }
 
     fn to_model(&self, meta: &ParseMetadata) -> Value {
-        json!({
-            "type": meta.diagram_type,
-            "c4Type": self.c4_type,
-            "title": if self.title.is_empty() { Value::Null } else { json!(self.title) },
-            "accTitle": Value::Null,
-            "accDescr": if self.acc_descr.is_empty() { Value::Null } else { json!(self.acc_descr) },
-            "wrap": self.wrap_enabled,
-            "layout": {
-                "c4ShapeInRow": self.c4_shape_in_row,
-                "c4BoundaryInRow": self.c4_boundary_in_row,
+        let mut layout = Map::with_capacity(2);
+        layout.insert(
+            "c4ShapeInRow".to_string(),
+            Value::Number(self.c4_shape_in_row.into()),
+        );
+        layout.insert(
+            "c4BoundaryInRow".to_string(),
+            Value::Number(self.c4_boundary_in_row.into()),
+        );
+
+        let mut out = Map::with_capacity(12);
+        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        out.insert("c4Type".to_string(), Value::String(self.c4_type.clone()));
+        out.insert(
+            "title".to_string(),
+            if self.title.is_empty() {
+                Value::Null
+            } else {
+                Value::String(self.title.clone())
             },
-            "shapes": self.shapes.iter().map(|m| Value::Object(m.clone())).collect::<Vec<_>>(),
-            "boundaries": self.boundaries.iter().map(|m| Value::Object(m.clone())).collect::<Vec<_>>(),
-            "rels": self.rels.iter().map(|m| Value::Object(m.clone())).collect::<Vec<_>>(),
-            "config": meta.effective_config.as_value().clone(),
-        })
+        );
+        out.insert("accTitle".to_string(), Value::Null);
+        out.insert(
+            "accDescr".to_string(),
+            if self.acc_descr.is_empty() {
+                Value::Null
+            } else {
+                Value::String(self.acc_descr.clone())
+            },
+        );
+        out.insert("wrap".to_string(), Value::Bool(self.wrap_enabled));
+        out.insert("layout".to_string(), Value::Object(layout));
+        out.insert(
+            "shapes".to_string(),
+            Value::Array(
+                self.shapes
+                    .iter()
+                    .map(|m| Value::Object(m.clone()))
+                    .collect(),
+            ),
+        );
+        out.insert(
+            "boundaries".to_string(),
+            Value::Array(
+                self.boundaries
+                    .iter()
+                    .map(|m| Value::Object(m.clone()))
+                    .collect(),
+            ),
+        );
+        out.insert(
+            "rels".to_string(),
+            Value::Array(self.rels.iter().map(|m| Value::Object(m.clone())).collect()),
+        );
+        out.insert(
+            "config".to_string(),
+            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+        );
+        Value::Object(out)
     }
 
     fn to_render_model(&self) -> Result<C4DiagramRenderModel> {

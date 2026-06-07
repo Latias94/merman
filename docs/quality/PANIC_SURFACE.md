@@ -82,6 +82,11 @@ Library code should not panic on user-controlled input.
     `serde_json::to_value(...).expect(...)`. `XyChartDiagramRenderModel::to_compat_json(...)` now
     assembles the public object directly and clones retained effective config through the shared
     non-recursive JSON clone helper.
+  - Block, State, Treemap, Sankey, C4, and Architecture semantic JSON roots now retain effective
+    `config` through the shared non-recursive JSON clone helper instead of recursive
+    `serde_json::Value::clone()`. C4, Sankey, and Architecture also assemble their final public
+    root objects with hand-built maps so a deep retained config is moved into the result instead of
+    being wrapped through `json!`.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -172,6 +177,16 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core parse_xychart_render_model_uses_typed_variant_without_changing_json_parse`,
     `cargo +1.95 nextest run -p merman-core xychart`, and `git diff --check` passed for the
     XYChart compat JSON construction cleanup.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    retained_semantic_config_handles_deep_public_config_with_small_stack`,
+    `cargo +1.95 nextest run -p merman-core
+    block_render_model_uses_typed_variant_without_changing_json_parse
+    treemap_render_model_uses_typed_variant_without_changing_json_parse
+    parse_sankey_render_model_uses_typed_variant_without_changing_json_parse
+    c4_render_model_uses_typed_variant_without_changing_json_parse`,
+    `cargo +1.95 nextest run -p merman-core state architecture c4 block treemap sankey`,
+    `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the retained
+    semantic config projection cleanup.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

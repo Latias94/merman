@@ -995,7 +995,7 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
         process_line(line, &mut lines)?;
     }
 
-    let mut config = meta.effective_config.as_value().clone();
+    let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none() {
         if let Some(obj) = config.as_object_mut() {
             obj.insert("layout".to_string(), Value::String("dagre".to_string()));
@@ -1008,18 +1008,39 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let junctions = db.junctions_json();
     let edges = db.edges_json();
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": if db.title.is_empty() { None::<String> } else { Some(db.title.clone()) },
-        "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title.clone()) },
-        "accDescr": if db.acc_descr.is_empty() { None::<String> } else { Some(db.acc_descr.clone()) },
-        "groups": groups,
-        "nodes": nodes,
-        "services": services,
-        "junctions": junctions,
-        "edges": edges,
-        "config": config,
-    }))
+    let mut out = serde_json::Map::with_capacity(10);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert(
+        "title".to_string(),
+        if db.title.is_empty() {
+            Value::Null
+        } else {
+            Value::String(db.title.clone())
+        },
+    );
+    out.insert(
+        "accTitle".to_string(),
+        if db.acc_title.is_empty() {
+            Value::Null
+        } else {
+            Value::String(db.acc_title.clone())
+        },
+    );
+    out.insert(
+        "accDescr".to_string(),
+        if db.acc_descr.is_empty() {
+            Value::Null
+        } else {
+            Value::String(db.acc_descr.clone())
+        },
+    );
+    out.insert("groups".to_string(), Value::Array(groups));
+    out.insert("nodes".to_string(), Value::Array(nodes));
+    out.insert("services".to_string(), Value::Array(services));
+    out.insert("junctions".to_string(), Value::Array(junctions));
+    out.insert("edges".to_string(), Value::Array(edges));
+    out.insert("config".to_string(), config);
+    Ok(Value::Object(out))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

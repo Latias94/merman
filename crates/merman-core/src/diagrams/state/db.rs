@@ -495,7 +495,7 @@ impl StateDb {
         root.insert("other".to_string(), Value::Object(Map::new()));
         root.insert(
             "config".to_string(),
-            meta.effective_config.as_value().clone(),
+            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
         );
         root.insert(
             "direction".to_string(),

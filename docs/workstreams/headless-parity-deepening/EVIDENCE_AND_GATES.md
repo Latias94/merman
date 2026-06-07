@@ -7798,3 +7798,55 @@ Gate notes:
   legacy `parse_diagram_sync(...)` JSON path, including the retained `config` field.
 - No new broad `merman-core` package run was performed for this narrow internal JSON projection
   cleanup; the focused XYChart package filter covers the changed diagram family.
+
+## HPD-050 - Retained Semantic Config Panic Surface
+
+Outcome:
+
+- Hardened retained effective-config projection in public semantic JSON roots after the Sequence
+  and XYChart compat JSON cleanup.
+- Block, State, Treemap, Sankey, C4, and Architecture public JSON models now copy retained
+  `meta.effective_config` through `clone_value_nonrecursive(...)` instead of recursive
+  `serde_json::Value::clone()`.
+- C4, Sankey, and Architecture now assemble the final semantic JSON root with hand-built
+  `serde_json::Map` objects so the retained config is moved into the result and not recursively
+  wrapped through `json!`.
+- Architecture still applies the source-backed default `layout: "dagre"` fallback to the cloned
+  effective config when the caller did not supply an explicit layout.
+- Added a small-stack regression that parses Block, State, Treemap, Sankey, C4, and Architecture
+  through the known-type semantic JSON entrypoint with a `1,024`-level host `site_config`, verifies
+  the retained config leaf, and drops the returned model through the non-recursive drop helper.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/architecture.rs`
+- `crates/merman-core/src/diagrams/block.rs`
+- `crates/merman-core/src/diagrams/c4.rs`
+- `crates/merman-core/src/diagrams/sankey.rs`
+- `crates/merman-core/src/diagrams/state/db.rs`
+- `crates/merman-core/src/diagrams/treemap.rs`
+- `crates/merman-core/src/tests/misc.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-retained-semantic-config-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core retained_semantic_config_handles_deep_public_config_with_small_stack` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p merman-core block_render_model_uses_typed_variant_without_changing_json_parse treemap_render_model_uses_typed_variant_without_changing_json_parse parse_sankey_render_model_uses_typed_variant_without_changing_json_parse c4_render_model_uses_typed_variant_without_changing_json_parse` -
+  passed, `4` tests run.
+- `cargo +1.95 nextest run -p merman-core state architecture c4 block treemap sankey` - passed,
+  `133` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The small-stack regression intentionally uses `parse_diagram_with_type_sync(...)` to isolate the
+  retained semantic config projection path from automatic detector-registry initialization and
+  detector-chain overhead. A diagnostic auto-detect attempt overflowed before semantic parsing,
+  inside detection, which is a separate boundary and is not claimed by this slice.
+- This is a semantic JSON panic-surface hardening slice only. It does not change parser behavior,
+  SVG output, SVG baselines, root viewport formulas, theme semantics, or Architecture residual
+  classification.

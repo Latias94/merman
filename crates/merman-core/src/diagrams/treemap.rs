@@ -150,7 +150,7 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("classes".to_string(), Value::Object(classes));
     out.insert(
         "config".to_string(),
-        meta.effective_config.as_value().clone(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
 
     Ok(Value::Object(out))
