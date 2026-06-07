@@ -9321,3 +9321,45 @@ Gate notes:
   metrics, Cytoscape child-label formulas, root bounds, Dugong BK alignment order, horizontal
   compaction, Dagre `NodeLabel` subgraph border projection, layout geometry, Graphlib APIs, SVG
   baselines, root viewport formulas, or Mermaid parity residual classification.
+
+## HPD-050 - Graphlib Named-Edge Panic Surface
+
+Outcome:
+
+- Removed the remaining non-generated production runtime panic from
+  `dugong_graphlib::Graph::set_edge_named(...)` for named edges on non-multigraph simple graphs.
+- Added `GraphError::NamedEdgeInNonMultigraph` plus fallible `try_set_edge_named(...)` and
+  `try_set_edge_key(...)` APIs for callers that need source-backed Graphlib violation reporting.
+- Kept existing chainable `set_edge_named(...)` and `set_edge_key(...)` APIs as non-panicking
+  no-ops for this invalid named-edge/simple-graph case.
+- Updated Graphlib JSON reads to propagate the same violation as `serde_json::Error`, avoiding
+  silent edge loss after the chainable mutator became non-panicking.
+
+Evidence:
+
+- `crates/dugong-graphlib/src/graph/core.rs`
+- `crates/dugong-graphlib/src/graph.rs`
+- `crates/dugong-graphlib/src/lib.rs`
+- `crates/dugong-graphlib/src/json.rs`
+- `crates/dugong-graphlib/tests/graph_core_test.rs`
+- `crates/dugong-graphlib/tests/json_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-graphlib-named-edge-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong-graphlib` - passed.
+- `cargo +1.95 nextest run -p dugong-graphlib --test graph_core_test --test json_test` - passed,
+  `74` tests run.
+- Filtered production scan across `merman-core`, `merman-render`, `dugong`, `dugong-graphlib`,
+  and `manatee`, excluding tests, same-file `#[cfg(test)]` blocks, and comments, reports only:
+  - `crates/merman-core/src/theme.rs:324`
+  - `crates/merman-core/src/theme.rs:327`
+  - `crates/merman-core/src/generated/mod.rs:13`
+
+Gate notes:
+
+- This is a Graphlib public API panic-surface cleanup only. It does not change multigraph
+  named-edge storage, simple unnamed-edge behavior, edge lookup semantics, endpoint
+  canonicalization, JSON serialization format, Dugong layout geometry, Graphlib algorithm
+  behavior, SVG baselines, root viewport formulas, or Mermaid parity residual classification.

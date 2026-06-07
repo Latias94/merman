@@ -1,4 +1,4 @@
-use dugong_graphlib::{EdgeKey, Graph, GraphOptions};
+use dugong_graphlib::{EdgeKey, Graph, GraphError, GraphOptions};
 
 fn sorted(mut values: Vec<&str>) -> Vec<&str> {
     values.sort();
@@ -379,11 +379,28 @@ fn multigraph_preserves_named_edges() {
 }
 
 #[test]
-#[should_panic(expected = "Cannot set a named edge when is_multigraph = false")]
-fn set_edge_named_panics_on_named_edge_for_non_multigraph() {
+fn set_edge_named_is_noop_for_named_edge_on_non_multigraph() {
     let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
 
     g.set_edge_named("a", "b", Some("name"), None);
+
+    assert_eq!(g.node_count(), 0);
+    assert_eq!(g.edge_count(), 0);
+    assert!(!g.has_edge("a", "b", Some("name")));
+}
+
+#[test]
+fn try_set_edge_named_reports_named_edge_on_non_multigraph() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+
+    let err = match g.try_set_edge_named("a", "b", Some("name"), None) {
+        Ok(_) => panic!("named edge on simple graph should report an error"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err, GraphError::NamedEdgeInNonMultigraph);
+    assert_eq!(g.node_count(), 0);
+    assert_eq!(g.edge_count(), 0);
 }
 
 #[test]
@@ -458,6 +475,20 @@ fn set_edge_key_sets_simple_and_named_edge_labels() {
         multi.edge("a", "b", Some("name")).map(String::as_str),
         Some("named")
     );
+}
+
+#[test]
+fn try_set_edge_key_reports_named_edge_on_non_multigraph() {
+    let mut g: Graph<(), String, ()> = Graph::new(GraphOptions::default());
+
+    let err = match g.try_set_edge_key(EdgeKey::new("a", "b", Some("name")), "value".to_string()) {
+        Ok(_) => panic!("named edge key on simple graph should report an error"),
+        Err(err) => err,
+    };
+
+    assert_eq!(err, GraphError::NamedEdgeInNonMultigraph);
+    assert_eq!(g.node_count(), 0);
+    assert_eq!(g.edge_count(), 0);
 }
 
 #[test]

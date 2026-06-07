@@ -1,4 +1,6 @@
-use dugong_graphlib::json::{read, read_with_defaults, write, write_with_defaults};
+use dugong_graphlib::json::{
+    GraphJson, GraphJsonEdge, read, read_with_defaults, write, write_with_defaults,
+};
 use dugong_graphlib::{Graph, GraphOptions};
 use serde_json::json;
 
@@ -153,6 +155,28 @@ fn json_preserves_multi_edges() {
         object.edge("a", "b", Some("foo")),
         Some(&Some(json!({ "foo": "bar" })))
     );
+}
+
+#[test]
+fn json_rejects_named_edge_in_non_multigraph_input() {
+    let json = GraphJson {
+        options: GraphOptions::default(),
+        value: None,
+        nodes: Vec::new(),
+        edges: vec![GraphJsonEdge {
+            v: "a".to_string(),
+            w: "b".to_string(),
+            name: Some("foo".to_string()),
+            value: None,
+        }],
+    };
+
+    let err = match read::<(), (), ()>(&json) {
+        Ok(_) => panic!("simple graph named edge should fail"),
+        Err(err) => err,
+    };
+
+    assert!(err.to_string().contains("is_multigraph = false"));
 }
 
 #[test]

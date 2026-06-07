@@ -12,6 +12,6 @@ mod edge_key;
 mod entries;
 mod options;
 
-pub use core::Graph;
+pub use core::{Graph, GraphError};
 pub use edge_key::EdgeKey;
 pub use options::GraphOptions;

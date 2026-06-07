@@ -7,7 +7,7 @@
 //! For callers that intentionally want to collapse missing values onto Rust defaults, the explicit
 //! `*_with_defaults` helpers provide that fallback behavior.
 
-use crate::{EdgeKey, Graph, GraphOptions};
+use crate::{EdgeKey, Graph, GraphError, GraphOptions};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
 use std::io;
@@ -106,12 +106,14 @@ where
     }
 
     for edge in &json.edges {
-        graph.set_edge_named(
-            edge.v.clone(),
-            edge.w.clone(),
-            edge.name.clone(),
-            Some(option_label_from_json(edge.value.clone())?),
-        );
+        graph
+            .try_set_edge_named(
+                edge.v.clone(),
+                edge.w.clone(),
+                edge.name.clone(),
+                Some(option_label_from_json(edge.value.clone())?),
+            )
+            .map_err(graph_mutation_error)?;
     }
 
     Ok(graph)
@@ -179,12 +181,14 @@ where
     }
 
     for edge in &json.edges {
-        graph.set_edge_named(
-            edge.v.clone(),
-            edge.w.clone(),
-            edge.name.clone(),
-            Some(default_label_from_json(edge.value.clone())?),
-        );
+        graph
+            .try_set_edge_named(
+                edge.v.clone(),
+                edge.w.clone(),
+                edge.name.clone(),
+                Some(default_label_from_json(edge.value.clone())?),
+            )
+            .map_err(graph_mutation_error)?;
     }
 
     Ok(graph)
@@ -207,6 +211,10 @@ fn missing_edge_label_error(key: &EdgeKey) -> serde_json::Error {
         key.w,
         key.name.as_deref().unwrap_or("<unnamed>")
     ))
+}
+
+fn graph_mutation_error(err: GraphError) -> serde_json::Error {
+    graph_json_invariant_error(format!("Graph JSON read rejected edge mutation: {err}"))
 }
 
 fn option_label_to_json<T>(value: &Option<T>) -> Result<Option<JsonValue>, serde_json::Error>

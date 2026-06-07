@@ -1,7 +1,7 @@
 //! Core graph container implementation.
 
 use rustc_hash::FxBuildHasher;
-use std::cell::RefCell;
+use std::{cell::RefCell, error::Error, fmt};
 
 use super::adj_cache::{DirectedAdjCache, UndirectedAdjCache};
 use super::edge_key::{EdgeKey, EdgeKeyView};
@@ -10,6 +10,23 @@ use super::options::GraphOptions;
 
 type HashMap<K, V> = hashbrown::HashMap<K, V, FxBuildHasher>;
 type HashSet<T> = hashbrown::HashSet<T, FxBuildHasher>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphError {
+    NamedEdgeInNonMultigraph,
+}
+
+impl fmt::Display for GraphError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NamedEdgeInNonMultigraph => {
+                f.write_str("Cannot set a named edge when is_multigraph = false")
+            }
+        }
+    }
+}
+
+impl Error for GraphError {}
 
 pub struct Graph<N, E, G>
 where
@@ -393,19 +410,19 @@ where
         }
     }
 
-    fn canonicalize_name(&self, name: Option<String>) -> Option<String> {
+    fn canonicalize_name(&self, name: Option<String>) -> Result<Option<String>, GraphError> {
         if name.is_some() && !self.options.multigraph {
-            panic!("Cannot set a named edge when is_multigraph = false");
+            return Err(GraphError::NamedEdgeInNonMultigraph);
         }
-        name
+        Ok(name)
     }
 
-    fn canonicalize_key(&self, mut key: EdgeKey) -> EdgeKey {
+    fn canonicalize_key(&self, mut key: EdgeKey) -> Result<EdgeKey, GraphError> {
         if !self.options.directed && key.v > key.w {
             (key.v, key.w) = (key.w, key.v);
         }
-        key.name = self.canonicalize_name(key.name);
-        key
+        key.name = self.canonicalize_name(key.name)?;
+        Ok(key)
     }
 
     pub fn new(options: GraphOptions) -> Self {
@@ -810,12 +827,29 @@ where
         name: Option<impl Into<String>>,
         label: Option<E>,
     ) -> &mut Self {
+        let _ = self.try_set_edge_named(v, w, name, label);
+        self
+    }
+
+    pub fn try_set_edge_named(
+        &mut self,
+        v: impl Into<String>,
+        w: impl Into<String>,
+        name: Option<impl Into<String>>,
+        label: Option<E>,
+    ) -> Result<&mut Self, GraphError> {
         let (v, w) = self.canonicalize_endpoints(v.into(), w.into());
+        let name = self.canonicalize_name(name.map(Into::into))?;
+        let key = EdgeKey { v, w, name };
+
+        Ok(self.set_edge_canonical(key, label))
+    }
+
+    fn set_edge_canonical(&mut self, key: EdgeKey, label: Option<E>) -> &mut Self {
+        let v = key.v.clone();
+        let w = key.w.clone();
         self.ensure_node(v.clone());
         self.ensure_node(w.clone());
-
-        let name = self.canonicalize_name(name.map(Into::into));
-        let key = EdgeKey { v, w, name };
 
         if let Some(&idx) = self.edge_index.get(&key) {
             if let Some(label) = label {
@@ -1310,8 +1344,13 @@ where
     }
 
     pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {
-        let key = self.canonicalize_key(key);
-        self.set_edge_named(key.v, key.w, key.name, Some(label))
+        let _ = self.try_set_edge_key(key, label);
+        self
+    }
+
+    pub fn try_set_edge_key(&mut self, key: EdgeKey, label: E) -> Result<&mut Self, GraphError> {
+        let key = self.canonicalize_key(key)?;
+        Ok(self.set_edge_canonical(key, Some(label)))
     }
 
     pub fn for_each_out_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)

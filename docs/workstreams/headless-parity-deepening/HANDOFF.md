@@ -1325,6 +1325,14 @@ Current repository reality to preserve:
     panicking when a custom node label has subgraph rank metadata but no override. Dagre
     `NodeLabel` border-left/right projection, BK geometry, SVG baselines, and root residual
     classifications are unchanged.
+  - A follow-up HPD-050 panic-surface slice removed the remaining non-generated production runtime
+    panic from Graphlib named-edge insertion. `Graph::set_edge_named(...)` and
+    `Graph::set_edge_key(...)` now no-op instead of panicking for named edges on non-multigraph
+    simple graphs, while `try_set_edge_named(...)` and `try_set_edge_key(...)` expose
+    `GraphError::NamedEdgeInNonMultigraph` for explicit error handling. Graphlib JSON reads use the
+    fallible path so malformed simple-graph named-edge JSON returns `serde_json::Error` instead of
+    silently dropping the edge. A fresh filtered production panic scan now reports only generated /
+    static `merman-core` JSON validity checks.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

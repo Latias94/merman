@@ -58,6 +58,11 @@ Library code should not panic on user-controlled input.
   - `Graph` core compaction, adjacency-cache ensure helpers, and edge endpoint insertion no longer
     expose internal invariant `expect(...)` calls. Unexpected cache or index drift now falls back to
     empty/best-effort state or returns from the mutator instead of panicking on the internal guard.
+  - `Graph::set_edge_named(...)` and `Graph::set_edge_key(...)` no longer panic when a caller
+    attempts to set a named edge on a non-multigraph simple graph. The existing chainable mutators
+    no-op for that invalid case, while `try_set_edge_named(...)` / `try_set_edge_key(...)` return
+    `GraphError::NamedEdgeInNonMultigraph` for callers that need explicit source-backed violation
+    reporting.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
@@ -539,8 +544,6 @@ The following patterns are intentionally tolerated for now but should be tracked
   and comments, currently reports only:
   - generated/static JSON validity checks in `merman-core` generated/default config and generated
     Mermaid theme snapshot loading
-  - `dugong-graphlib::Graph::set_edge_named(...)` for named edges on non-multigraph simple graphs,
-    preserved as a source-backed Graphlib throw mapping rather than an internal invariant panic
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
     C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and

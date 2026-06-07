@@ -6,4 +6,4 @@ mod graph;
 pub mod json;
 
 pub use graph::alg;
-pub use graph::{EdgeKey, Graph, GraphOptions};
+pub use graph::{EdgeKey, Graph, GraphError, GraphOptions};
