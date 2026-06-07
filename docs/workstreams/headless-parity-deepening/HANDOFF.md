@@ -1205,6 +1205,11 @@ Current repository reality to preserve:
     construction before URI validation. The scanner preserves the local DOMPurify bridge's
     `&colon;` / `&newline;` / `&tab;` / decimal-colon / hex-colon replacement order and optional
     numeric semicolon behavior; URI allowlist semantics remain unchanged.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer DOMPurify data/ARIA attribute-name
+    regex construction. The direct scanners preserve pinned DOMPurify 3.4.0 `DATA_ATTR` and
+    `ARIA_ATTR` source shapes, including the `data-*` U+00B7..U+FFFF range and the narrower ARIA
+    ASCII word/hyphen suffix rule. DOMPurify generated allowlists, URI validation, script/data URL
+    checks, and minimal entity decoding remain unchanged.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

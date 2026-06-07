@@ -124,16 +124,6 @@ fn default_data_uri_tags() -> &'static HashSet<&'static str> {
     })
 }
 
-fn dompurify_data_attr_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^data-[\-\w.\u{00B7}-\u{FFFF}]+$").expect("valid regex"))
-}
-
-fn dompurify_aria_attr_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^aria-[\-\w]+$").expect("valid regex"))
-}
-
 fn dompurify_attr_whitespace_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
@@ -153,6 +143,35 @@ fn dompurify_is_allowed_uri_regex() -> &'static Regex {
 fn dompurify_is_script_or_data_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"(?i)^(?:\w+script|data):").expect("valid regex"))
+}
+
+fn is_dompurify_data_attr_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("data-") else {
+        return false;
+    };
+
+    !rest.is_empty() && rest.chars().all(is_dompurify_data_attr_suffix_char)
+}
+
+fn is_dompurify_data_attr_suffix_char(ch: char) -> bool {
+    // Source: DOMPurify 3.4.0 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
+    matches!(
+        ch,
+        '-' | '.' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z'
+    ) || ('\u{00B7}'..='\u{FFFF}').contains(&ch)
+}
+
+fn is_dompurify_aria_attr_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("aria-") else {
+        return false;
+    };
+
+    !rest.is_empty() && rest.chars().all(is_dompurify_aria_attr_suffix_char)
+}
+
+fn is_dompurify_aria_attr_suffix_char(ch: char) -> bool {
+    // Source: DOMPurify 3.4.0 `ARIA_ATTR = /^aria-[\-\w]+$/`.
+    matches!(ch, '-' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z')
 }
 
 #[derive(Debug, Clone)]
@@ -314,12 +333,12 @@ fn dompurify_is_valid_attribute(
 ) -> bool {
     if cfg.allow_data_attr
         && !cfg.forbid_attr.contains(lc_name)
-        && dompurify_data_attr_regex().is_match(lc_name)
+        && is_dompurify_data_attr_name(lc_name)
     {
         return true;
     }
 
-    if cfg.allow_aria_attr && dompurify_aria_attr_regex().is_match(lc_name) {
+    if cfg.allow_aria_attr && is_dompurify_aria_attr_name(lc_name) {
         return true;
     }
 
@@ -734,6 +753,24 @@ mod tests {
     }
 
     #[test]
+    fn dompurify_attr_name_matchers_follow_source_regex_boundaries() {
+        assert!(is_dompurify_data_attr_name("data-x"));
+        assert!(is_dompurify_data_attr_name("data-x.y_9-"));
+        assert!(is_dompurify_data_attr_name("data-\u{00B7}"));
+        assert!(is_dompurify_data_attr_name("data-\u{FFFF}"));
+        assert!(!is_dompurify_data_attr_name("data-"));
+        assert!(!is_dompurify_data_attr_name("data-\u{00B6}"));
+        assert!(!is_dompurify_data_attr_name("data-x:y"));
+        assert!(!is_dompurify_data_attr_name("data-\u{10000}"));
+
+        assert!(is_dompurify_aria_attr_name("aria-label"));
+        assert!(is_dompurify_aria_attr_name("aria-foo_bar"));
+        assert!(!is_dompurify_aria_attr_name("aria-"));
+        assert!(!is_dompurify_aria_attr_name("aria.label"));
+        assert!(!is_dompurify_aria_attr_name("aria-\u{00B7}"));
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -906,10 +943,17 @@ mod tests {
             "securityLevel": "loose",
             "flowchart": { "htmlLabels": true }
         }));
-        let out = sanitize_text(r#"<b data-x="1" aria-label="x" foo="bar">ok</b>"#, &cfg);
+        let out = sanitize_text(
+            r#"<b data-x="1" data-x.y_9-="2" aria-label="x" aria-foo_bar="y" data-x:y="bad" aria.foo="bad" foo="bar">ok</b>"#,
+            &cfg,
+        );
         assert!(!out.contains("foo="));
+        assert!(!out.contains("data-x:y="));
+        assert!(!out.contains("aria.foo="));
         assert!(out.contains(r#"data-x="1""#));
+        assert!(out.contains(r#"data-x.y_9-="2""#));
         assert!(out.contains(r#"aria-label="x""#));
+        assert!(out.contains(r#"aria-foo_bar="y""#));
         assert!(out.starts_with("<b"));
         assert!(out.ends_with(">ok</b>"));
 
@@ -919,7 +963,10 @@ mod tests {
             "dompurifyConfig": { "ALLOW_DATA_ATTR": false, "ALLOW_ARIA_ATTR": false }
         }));
         assert_eq!(
-            sanitize_text(r#"<b data-x="1" aria-label="x">ok</b>"#, &cfg),
+            sanitize_text(
+                r#"<b data-x="1" data-x.y_9-="2" aria-label="x">ok</b>"#,
+                &cfg
+            ),
             "<b>ok</b>"
         );
     }

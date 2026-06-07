@@ -8231,3 +8231,43 @@ Gate notes:
   tag/attribute policy, URI allowlist semantics, script/data URL checks, broad HTML entity
   decoding, semantic parsing, rendered output, SVG baselines, root viewport formulas, or
   Architecture residual classification.
+
+## HPD-050 - Sanitizer Data/ARIA Attribute Cleanup Panic Surface
+
+Outcome:
+
+- Removed two fixed regex compilation points from the sanitizer's DOMPurify-like `data-*` and
+  `aria-*` attribute-name validation path.
+- `dompurify_is_valid_attribute(...)` no longer calls cached regex helpers for DOMPurify's
+  `DATA_ATTR` and `ARIA_ATTR` checks.
+- The replacement scanners preserve the pinned DOMPurify 3.4.0 source shapes:
+  `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/` and `ARIA_ATTR = /^aria-[\-\w]+$/`.
+- The validation order and configuration behavior are unchanged: data attributes still require
+  `ALLOW_DATA_ATTR` and are blocked by `FORBID_ATTR`; ARIA attributes still require
+  `ALLOW_ARIA_ATTR` and are accepted before the generated default-attribute fallback.
+- Added helper-level source-boundary coverage and public `sanitize_text(...)` coverage proving
+  valid `data-*` / `aria-*` names survive while invalid source-shape neighbors are removed.
+
+Evidence:
+
+- `repo-ref/dompurify/dist/purify.cjs.js`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-data-aria-attr-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core sanitize` - passed, `31` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'dompurify_(data|aria)_attr_regex|fn dompurify_.*attr_regex|Regex::new\(r"\^data-|Regex::new\(r"\^aria-' crates/merman-core/src/sanitize.rs` -
+  no sanitizer data/ARIA attribute-name regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public sanitizer panic-surface cleanup only. It does not change DOMPurify generated
+  allowlists, URI allowlist semantics, whitespace cleanup, script/data URL checks, minimal HTML
+  entity decoding, tag policy, semantic parsing, rendered output, SVG baselines, root viewport
+  formulas, or Architecture residual classification.
