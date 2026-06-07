@@ -122,6 +122,33 @@ fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
 }
 
 #[test]
+fn detector_registry_strips_mermaid_comment_lines_without_regex() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let mut config = MermaidConfig::empty_object();
+
+    for source in [
+        "\n\n%% This is a comment\nflowchart TD\nA-->B\n",
+        "    %% This is a comment\nflowchart TD\nA-->B\n",
+        "flowchart TD\nA-->B\n%% This is a comment",
+        "%%{init: {'theme': 'forest'}}%%\nflowchart TD\nA-->B\n",
+    ] {
+        let detected = registry
+            .detect_type(source, &mut config)
+            .expect("detect type");
+        assert_eq!(detected, "flowchart-v2", "source: {source:?}");
+    }
+}
+
+#[test]
+fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let result = preprocess_diagram("flowchart TD\nA-->B\n%% This is a comment", &registry)
+        .expect("preprocess succeeds");
+
+    assert_eq!(result.code, "flowchart TD\nA-->B\n");
+}
+
+#[test]
 fn detector_registry_strips_deep_frontmatter_with_small_stack() {
     const DEPTH: usize = 512;
     let mut text = String::from("---\nconfig: {\"sequence\": ");

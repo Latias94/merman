@@ -95,6 +95,11 @@ Library code should not panic on user-controlled input.
     detection pass. The detector now uses equivalent string checks for Mermaid's upstream
     ungrouped regex shape, avoiding a fixed stack-heavy regex initialization point in small-stack
     public parse paths.
+  - Detector/preprocess Mermaid comment cleanup no longer constructs a regex in
+    `DetectorRegistry`. Both public detection and preprocessing now share a source-shaped line
+    scanner that mirrors Mermaid 11.15 `cleanupComments`: remove indented `%%` comment lines with
+    a non-empty comment body, preserve `%%{...}%%` directives until directive processing, trim
+    leading blank/comment lines, and handle final comments without a trailing newline.
 - `merman-render`:
   - Class namespace edge bucketing no longer unwraps the optional namespace root after a separate
     guard. Edges without complete same-root attribution degrade to outer-edge rendering instead of
@@ -214,6 +219,15 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core detect`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the C4 detector
     small-stack cleanup.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    cleanup_mermaid_comments_matches_mermaid_line_comment_shape
+    detector_registry_strips_mermaid_comment_lines_without_regex
+    preprocess_strips_mermaid_comment_at_eof_without_regex
+    detector_registry_strips_deep_frontmatter_with_small_stack
+    auto_detect_common_headers_with_deep_config_small_stack`,
+    `cargo +1.95 nextest run -p merman-core detect`,
+    `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the detector
+    comment-cleanup regex removal.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

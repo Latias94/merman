@@ -77,7 +77,7 @@ pub fn preprocess_diagram_with_known_type(
 
     frontmatter_config.deep_merge(directive_config.as_value());
 
-    let code = cleanup_comments(without_directives.as_ref());
+    let code = crate::utils::cleanup_mermaid_comments(without_directives.as_ref());
     Ok(PreprocessResult {
         code: code.into_owned(),
         title,
@@ -167,21 +167,6 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     }
 
     txt
-}
-
-fn cleanup_comments(input: &str) -> Cow<'_, str> {
-    if !input.contains("%%") {
-        return Cow::Borrowed(input.trim_start());
-    }
-    let mut out = String::with_capacity(input.len());
-    for line in input.split_inclusive('\n') {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("%%") && !trimmed.starts_with("%%{") {
-            continue;
-        }
-        out.push_str(line);
-    }
-    Cow::Owned(out.trim_start().to_string())
 }
 
 fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {

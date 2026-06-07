@@ -1,6 +1,5 @@
 use crate::baseline::BaselineRegistryProfile;
 use crate::{MermaidConfig, Result};
-use regex::Regex;
 use std::borrow::Cow;
 
 #[derive(Debug, thiserror::Error)]
@@ -29,7 +28,6 @@ pub struct Detector {
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
     detectors: Vec<Detector>,
-    any_comment_re: Regex,
     profile: BaselineRegistryProfile,
 }
 
@@ -42,7 +40,6 @@ impl DetectorRegistry {
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
             detectors: Vec::new(),
-            any_comment_re: Regex::new(r"(?m)\s*%%.*\n").unwrap(),
             profile,
         }
     }
@@ -61,9 +58,7 @@ impl DetectorRegistry {
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
         let no_frontmatter = remove_frontmatter(text);
         let no_directives = remove_directives(no_frontmatter.as_ref());
-        let cleaned = self
-            .any_comment_re
-            .replace_all(no_directives.as_ref(), "\n");
+        let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
 
         if let Some(id) =
             crate::family::fast_detect_by_leading_keyword(cleaned.as_ref(), self.profile)

@@ -7944,3 +7944,54 @@ Gate notes:
 - This is a semantic JSON panic-surface hardening slice only. It does not change parser behavior,
   SVG output, SVG baselines, root viewport formulas, theme semantics, or Architecture residual
   classification.
+
+## HPD-050 - Detector Comment Cleanup Panic Surface
+
+Outcome:
+
+- Removed the remaining detector-registry comment stripping regex from the public auto-detect
+  boundary.
+- `DetectorRegistry` no longer owns or compiles `any_comment_re:
+  Regex::new(r"(?m)\s*%%.*\n").unwrap()` when the registry is constructed.
+- `detect_type(...)` and `preprocess_diagram(...)` now share
+  `crate::utils::cleanup_mermaid_comments(...)`.
+- The shared helper follows Mermaid 11.15 `cleanupComments` source semantics:
+  - remove lines whose first non-whitespace bytes are `%%`, not `%%{`, and have a non-newline
+    comment body after the marker;
+  - preserve `%%{...}%%` init/directive lines until directive processing;
+  - trim leading blank/comment lines;
+  - remove a final comment line even when it has no trailing newline.
+- Added detector and preprocess regressions for indented comments, EOF comments, and directive
+  preservation/removal through the existing public paths.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagram-api/comments.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagram-api/comments.spec.ts`
+- `crates/merman-core/src/utils.rs`
+- `crates/merman-core/src/detect/mod.rs`
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-detector-comment-cleanup-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core cleanup_mermaid_comments_matches_mermaid_line_comment_shape detector_registry_strips_mermaid_comment_lines_without_regex preprocess_strips_mermaid_comment_at_eof_without_regex detector_registry_strips_deep_frontmatter_with_small_stack auto_detect_common_headers_with_deep_config_small_stack` -
+  passed, `5` tests run.
+- `cargo +1.95 nextest run -p merman-core detect` - passed, `19` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'any_comment_re|cleanup_comments\(|Regex::new\(r"\(\?m\)\\s\*%%' crates/merman-core/src -S` -
+  no detector comment-regex or duplicate local cleanup helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed,
+  `794` lines.
+
+Gate notes:
+
+- No detector ordering, family profile, known-type parse side effect, or parser registry behavior
+  changed.
+- This is a public detection/preprocess panic-surface cleanup only. It does not change semantic
+  models, rendered output, SVG baselines, root viewport formulas, or Architecture residual
+  classification.

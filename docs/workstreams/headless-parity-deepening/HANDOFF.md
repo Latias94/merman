@@ -1177,6 +1177,12 @@ Current repository reality to preserve:
     JSON clone helper and hand-build root maps where needed so deep retained config is not
     recursively wrapped through `json!`. Focused known-type small-stack coverage validates a
     `1,024`-level host config across all seven families plus Mindmap's empty-root early return.
+  - A follow-up HPD-050 panic-surface slice removed detector-registry comment cleanup regex
+    construction. `DetectorRegistry` no longer stores or compiles `any_comment_re`; detection and
+    preprocessing share a Mermaid 11.15-shaped `cleanup_mermaid_comments(...)` line scanner that
+    removes indented `%%` comment lines with a non-empty body, preserves directives until
+    directive processing, trims leading comments/blank lines, and removes EOF comments without
+    trailing newlines.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
