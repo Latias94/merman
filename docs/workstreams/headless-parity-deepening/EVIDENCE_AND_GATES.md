@@ -8156,3 +8156,40 @@ Gate notes:
   normalization, entity placeholder marker semantics, style/classDef hex protection,
   frontmatter/directive parsing, detector order, semantic models, rendered output, SVG baselines,
   root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - Sanitizer Line Break Cleanup Panic Surface
+
+Outcome:
+
+- Removed the sanitizer line-break regex compilation point from the public `sanitize_text(...)`
+  boundary.
+- `break_to_placeholder(...)` no longer calls a cached `Regex::new(r"(?i)<br\s*/?>")` helper.
+- The replacement scanner preserves Mermaid common `lineBreakRegex = /<br\s*\/?>/gi` semantics for
+  ASCII-case-insensitive `br`, JavaScript regex whitespace, optional slash, and immediate `>`.
+- Added direct helper coverage plus public `sanitize_text(...)` coverage for the non-loose HTML
+  label escaping path that protects `<br>` with placeholders before escaping other tags.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/common/common.ts`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-line-break-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core break_to_placeholder_matches_mermaid_line_break_regex_shape sanitize_text_preserves_mermaid_line_break_tags_without_regex sanitize` -
+  passed, `28` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'fn line_break_regex|line_break_regex\(\)|Regex::new\(r"\(\?i\)<br\\s\*/\?>"' crates/merman-core/src/sanitize.rs` -
+  no sanitizer line-break regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public sanitizer panic-surface cleanup only. It does not change DOMPurify-like allowed
+  tag/attribute policy, URI validation, script/data URL checks, Mermaid entity decoding, semantic
+  parsing, rendered output, SVG baselines, root viewport formulas, or Architecture residual
+  classification.

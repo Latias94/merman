@@ -88,6 +88,9 @@ Library code should not panic on user-controlled input.
     on the public preprocessing boundary. It now scans Mermaid's source-shaped
     `<(\w+)([^>]*)>` tag match and `="([^"]*)"` attribute rewrite directly, including JavaScript
     ASCII `\w` tag names and first-`>` tag termination.
+  - Sanitizer line-break placeholder handling no longer compiles Mermaid common
+    `/<br\s*\/?>/gi` on first public sanitize use. It now scans the same source-shaped `<br>`
+    variants directly before escaping non-loose HTML labels.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional

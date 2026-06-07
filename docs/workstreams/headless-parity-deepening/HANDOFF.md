@@ -1197,6 +1197,10 @@ Current repository reality to preserve:
     construction. The direct scanner preserves Mermaid's cleanupText tag and attribute source
     shapes, including ASCII `\w` tag names, first-`>` termination, empty double-quoted values, and
     non-match behavior for non-ASCII tag names.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer line-break regex construction from
+    the public `sanitize_text(...)` boundary. The direct scanner preserves Mermaid common
+    `/<br\s*\/?>/gi` source semantics for placeholder protection before non-loose HTML escaping;
+    DOMPurify-like URL and attribute validation regexes remain separate audit candidates.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

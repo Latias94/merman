@@ -5,17 +5,83 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-fn line_break_regex() -> &'static Regex {
-    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)<br\s*/?>").expect("valid regex"))
-}
-
 fn break_to_placeholder(input: &str) -> String {
-    line_break_regex().replace_all(input, "#br#").to_string()
+    let mut out = String::with_capacity(input.len());
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = input[probe..].find('<') {
+        let start = probe + rel_start;
+        let Some(end) = mermaid_line_break_tag_end(input, start) else {
+            probe = start + 1;
+            continue;
+        };
+
+        out.push_str(&input[cursor..start]);
+        out.push_str("#br#");
+        cursor = end;
+        probe = end;
+    }
+
+    out.push_str(&input[cursor..]);
+    out
 }
 
 fn placeholder_to_break(input: &str) -> String {
     input.replace("#br#", "<br/>")
+}
+
+fn mermaid_line_break_tag_end(input: &str, start: usize) -> Option<usize> {
+    let bytes = input.as_bytes();
+    if bytes.get(start) != Some(&b'<')
+        || !bytes
+            .get(start + 1)
+            .is_some_and(|b| b.eq_ignore_ascii_case(&b'b'))
+        || !bytes
+            .get(start + 2)
+            .is_some_and(|b| b.eq_ignore_ascii_case(&b'r'))
+    {
+        return None;
+    }
+
+    let mut cursor = start + 3;
+    while cursor < input.len() {
+        let ch = input[cursor..].chars().next()?;
+        if !is_js_regex_whitespace(ch) {
+            break;
+        }
+        cursor += ch.len_utf8();
+    }
+
+    if bytes.get(cursor) == Some(&b'/') {
+        cursor += 1;
+    }
+
+    (bytes.get(cursor) == Some(&b'>')).then_some(cursor + 1)
+}
+
+fn is_js_regex_whitespace(ch: char) -> bool {
+    if ('\u{2000}'..='\u{200A}').contains(&ch) {
+        return true;
+    }
+
+    matches!(
+        ch,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
 }
 
 fn default_allowed_tags() -> &'static HashSet<&'static str> {
@@ -549,6 +615,22 @@ mod tests {
     }
 
     #[test]
+    fn break_to_placeholder_matches_mermaid_line_break_regex_shape() {
+        assert_eq!(
+            break_to_placeholder("A<br>B<BR/>C<br \t/>D<br   >E"),
+            "A#br#B#br#C#br#D#br#E"
+        );
+        assert_eq!(
+            break_to_placeholder("<br / > <brx> </br> < br>"),
+            "<br / > <brx> </br> < br>"
+        );
+        assert_eq!(
+            break_to_placeholder("A<br\u{00A0}/>B<br\u{FEFF}>C"),
+            "A#br#B#br#C"
+        );
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -627,6 +709,18 @@ mod tests {
         let malicious = "javajavascript:script:alert(1)";
         let out = sanitize_text(malicious, &cfg);
         assert!(!out.contains("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn sanitize_text_preserves_mermaid_line_break_tags_without_regex() {
+        let cfg = MermaidConfig::from_value(json!({
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text("A<br \t/>B<BR>C", &cfg);
+        assert!(out.contains("A<br"));
+        assert!(out.contains(">B<br"));
+        assert!(out.ends_with(">C"));
+        assert!(!out.contains("&lt;br"));
     }
 
     #[test]
