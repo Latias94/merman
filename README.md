@@ -90,7 +90,7 @@ cargo build -p merman-ffi --release
 Use [`crates/merman-ffi/include/merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) and link the
 platform-specific library artifact from `target/release` for native embedding.
 
-MSRV is `rust-version = 1.87`.
+MSRV is `rust-version = 1.95`.
 
 ## Contents
 
@@ -98,6 +98,7 @@ MSRV is `rust-version = 1.87`.
 - [What Merman Outputs](#what-merman-outputs)
 - [Install](#install)
 - [Quickstart (library)](#quickstart-library)
+- [Rust examples](#rust-examples)
 - [Quickstart (CLI)](#quickstart-cli)
 - [Library API details](#library-api-details)
 - [Quickstart (FFI and native hosts)](#quickstart-ffi-and-native-hosts)
@@ -134,6 +135,32 @@ Use `render_svg_sync()` when you want Mermaid-parity SVG. Use
 `render_svg_resvg_safe_sync()` when the result will be rasterized or shown by an SVG engine that
 does not support `<foreignObject>` well. Use the `ascii` feature and
 `merman::ascii::HeadlessAsciiRenderer` for terminal text output.
+
+## Rust examples
+
+The `crates/merman/examples` programs are ordered as a progressive Rust integration path. Each
+example reads Mermaid source from stdin when provided and falls back to a small built-in diagram.
+When stdin is an interactive terminal, examples `01` through `08` do not wait for input; they print
+a short note to stderr and render their built-in example. See
+[`crates/merman/examples/README.md`](crates/merman/examples/README.md) for copyable commands with
+custom stdin and output files.
+
+| Step | Goal | Feature | Command |
+| --- | --- | --- | --- |
+| 01 | Render SVG with the high-level facade | `render` | `cargo run -p merman --features render --example example_01_svg_basic > out.svg` |
+| 02 | Parse Mermaid to semantic JSON | none | `cargo run -p merman --example example_02_semantic_json` |
+| 03 | Produce layout JSON | `render` | `cargo run -p merman --features render --example example_03_layout_json` |
+| 04 | Render terminal text | `ascii` | `cargo run -p merman --features ascii --example example_04_ascii_output` |
+| 05 | Render PNG from Rust | `raster` | `cargo run -p merman --features raster --example example_05_raster_output -- target/example.png` |
+| 06 | Apply an SVG output pipeline | `render` | `cargo run -p merman --features render --example example_06_svg_pipeline > pipeline.svg` |
+| 07 | Use Mermaid theme variables and `themeCSS` | `render` | `cargo run -p merman --features render --example example_07_theme_css > themed.svg` |
+| 08 | Make time-sensitive Gantt parsing deterministic | none | `cargo run -p merman --example example_08_deterministic_gantt` |
+| 09 | Inline multiple diagrams without SVG id collisions | `render` | `cargo run -p merman --features render --example example_09_multiple_diagrams` |
+| 10 | Integrate with a desktop GUI host via egui | `egui-example` | `cargo run -p merman --features egui-example --example example_10_integration_egui` |
+
+The egui example is intentionally a host-integration skeleton rather than a full playground: it
+keeps a long-lived renderer, edits Mermaid source, previews a raster texture, reports render
+errors, and saves SVG/PNG outputs.
 
 ## Quickstart (CLI)
 
@@ -249,6 +276,14 @@ inside a smaller container, while a headless PNG/JPG path must allocate a concre
 per side and `8192*8192` pixels; trusted oversized exports can call
 `RasterOptions::with_unbounded_size()`.
 
+Runnable raster example:
+
+```bash
+cargo run -p merman --features raster --example example_05_raster_output
+printf "flowchart LR\nA --> B\n" | \
+  cargo run -p merman --features raster --example example_05_raster_output -- target/example.png
+```
+
 The split is intentional:
 
 - `render_svg_sync` is for Mermaid-parity snapshots and callers that want the raw SVG contract.
@@ -291,7 +326,7 @@ behavior, custom postprocessors that can read diagram type/title/svg id, and sco
 Runnable example:
 
 ```bash
-cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+cargo run -p merman --features render --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
 ```
 
 ## Quickstart (FFI and native hosts)
@@ -398,8 +433,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Runnable examples:
 
 ```bash
-cargo run -p merman --features ascii --example ascii_output
-cargo run -p merman --features ascii --example ascii_output -- --ascii
+cargo run -p merman --features ascii --example example_04_ascii_output
+cargo run -p merman --features ascii --example example_04_ascii_output -- --ascii
+cargo run -p merman --features raster --example example_05_raster_output
 printf "flowchart LR\nA --> B\n" | cargo run -p merman-cli -- render --format ascii -
 ```
 

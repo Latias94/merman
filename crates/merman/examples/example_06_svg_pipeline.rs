@@ -1,9 +1,10 @@
+mod support;
+
 use merman::render::{
     CssOverridePolicy, HeadlessRenderer, RenderResult, ScopedCssPostprocessor, SvgPipeline,
     SvgPostprocessContext, SvgPostprocessor,
 };
 use std::borrow::Cow;
-use std::io::Read;
 
 struct AddExampleMetadata;
 
@@ -18,7 +19,7 @@ impl SvgPostprocessor for AddExampleMetadata {
         ctx: &SvgPostprocessContext<'_>,
     ) -> RenderResult<Cow<'a, str>> {
         let metadata = format!(
-            r#"<metadata data-merman-example="svg_pipeline" data-preset="{:?}" data-diagram-type="{}" data-title="{}" data-svg-id="{}"/>"#,
+            r#"<metadata data-merman-example="example_06_svg_pipeline" data-preset="{:?}" data-diagram-type="{}" data-title="{}" data-svg-id="{}"/>"#,
             ctx.preset(),
             escape_attr(ctx.diagram_type().unwrap_or("")),
             escape_attr(ctx.diagram_title().unwrap_or("")),
@@ -47,16 +48,14 @@ fn escape_attr(value: &str) -> String {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input)?;
-    if input.trim().is_empty() {
-        input = r#"flowchart TD
+    let input = support::read_mermaid_or_default(
+        "example_06_svg_pipeline",
+        r#"flowchart TD
     L7["Layer 7\nHTTP"]
     L6["Layer 6\nEncryption"]
     L7 --> L6
-"#
-        .to_string();
-    }
+"#,
+    )?;
 
     let renderer = HeadlessRenderer::new().with_diagram_id("svg-pipeline-example");
     let host_css = r#"
