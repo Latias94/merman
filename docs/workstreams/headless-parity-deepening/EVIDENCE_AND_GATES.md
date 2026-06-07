@@ -8073,3 +8073,46 @@ Gate notes:
 - This is a public preprocessing panic-surface cleanup only. It does not change style/classDef hex
   protection, HTML attribute rewrite behavior, frontmatter/directive parsing, detector order,
   semantic models, rendered output, SVG baselines, or Architecture residual classification.
+
+## HPD-050 - Preprocess Style Hex Protection Cleanup Panic Surface
+
+Outcome:
+
+- Removed the preprocess `style` / `classDef` hex-protection regexes from the public preprocessing
+  boundary.
+- `encode_mermaid_entities_like_upstream(...)` no longer calls cached regex helpers for
+  `style.*:\S*#.*;` or `classDef.*:\S*#.*;`.
+- The replacement scanner works line-by-line because Mermaid's JavaScript regex `.` does not cross
+  line terminators.
+- The scanner preserves the upstream greedy final-semicolon behavior: a same-line
+  `style a fill:#fff; style b fill:#000;` span removes only the final semicolon, so the earlier
+  `#fff;` can still flow into entity placeholder encoding.
+- The scanner preserves the upstream non-match boundary when whitespace appears between `:` and
+  `#`.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/utils.ts`
+- `repo-ref/mermaid/packages/mermaid/src/mermaidAPI.spec.ts`
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-style-hex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core encode_entity_placeholders_matches_mermaid_ascii_word_shape preprocess_encodes_entities_without_entity_regex` -
+  passed, `2` tests run.
+- `cargo +1.95 nextest run -p merman-core detect flowchart` - passed, `117` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 're_style_hex|re_classdef_hex|cached_regex!\(re_style_hex|cached_regex!\(re_classdef_hex|Regex::new\(r"style\.\*|Regex::new\(r"classDef\.\*' crates/merman-core/src/preprocess/mod.rs` -
+  no style/classDef hex-protection regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public preprocessing panic-surface cleanup only. It does not change entity placeholder
+  marker semantics, HTML attribute rewrite behavior, frontmatter/directive parsing, detector order,
+  semantic models, rendered output, SVG baselines, or Architecture residual classification.

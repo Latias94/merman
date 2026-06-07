@@ -15,8 +15,6 @@ macro_rules! cached_regex {
 
 cached_regex!(re_tag, r"<(\w+)([^>]*)>");
 cached_regex!(re_attr_eq_double_quoted, "=\"([^\"]*)\"");
-cached_regex!(re_style_hex, r"style.*:\S*#.*;");
-cached_regex!(re_classdef_hex, r"classDef.*:\S*#.*;");
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub code: String,
@@ -144,21 +142,11 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     let mut txt = text.to_string();
 
     if txt.contains("style") && txt.contains(';') {
-        txt = re_style_hex()
-            .replace_all(&txt, |caps: &regex::Captures| {
-                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-                s.strip_suffix(';').unwrap_or(s).to_string()
-            })
-            .to_string();
+        txt = strip_hex_style_semicolons_like_upstream(&txt, "style");
     }
 
     if txt.contains("classDef") && txt.contains(';') {
-        txt = re_classdef_hex()
-            .replace_all(&txt, |caps: &regex::Captures| {
-                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-                s.strip_suffix(';').unwrap_or(s).to_string()
-            })
-            .to_string();
+        txt = strip_hex_style_semicolons_like_upstream(&txt, "classDef");
     }
 
     if txt.contains(';') {
@@ -203,6 +191,67 @@ fn encode_entity_placeholders_like_upstream(text: &str) -> String {
 
 fn is_mermaid_entity_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn strip_hex_style_semicolons_like_upstream(text: &str, keyword: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut line_start = 0usize;
+
+    for (idx, ch) in text.char_indices() {
+        if ch == '\n' {
+            strip_hex_style_semicolons_from_line(&text[line_start..idx], keyword, &mut out);
+            out.push('\n');
+            line_start = idx + ch.len_utf8();
+        }
+    }
+
+    strip_hex_style_semicolons_from_line(&text[line_start..], keyword, &mut out);
+    out
+}
+
+fn strip_hex_style_semicolons_from_line(line: &str, keyword: &str, out: &mut String) {
+    let mut cursor = 0usize;
+    while let Some(semicolon) = find_hex_style_match(line, keyword, cursor) {
+        out.push_str(&line[cursor..semicolon]);
+        cursor = semicolon + 1;
+    }
+    out.push_str(&line[cursor..]);
+}
+
+fn find_hex_style_match(line: &str, keyword: &str, search_start: usize) -> Option<usize> {
+    let mut probe = search_start;
+    while let Some(rel_start) = line[probe..].find(keyword) {
+        let start = probe + rel_start;
+        if let Some(semicolon) = find_hex_style_match_end(line, start + keyword.len()) {
+            return Some(semicolon);
+        }
+        probe = start + keyword.len();
+    }
+    None
+}
+
+fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
+    let mut probe = search_start;
+    while let Some(rel_colon) = line[probe..].find(':') {
+        let colon = probe + rel_colon;
+        let mut hash = None;
+        for (rel, ch) in line[colon + 1..].char_indices() {
+            if ch.is_whitespace() {
+                break;
+            }
+            if ch == '#' {
+                hash = Some(colon + 1 + rel);
+                break;
+            }
+        }
+
+        if let Some(hash) = hash {
+            return line[hash + 1..].rfind(';').map(|rel| hash + 1 + rel);
+        }
+
+        probe = colon + 1;
+    }
+    None
 }
 
 fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {
@@ -665,6 +714,20 @@ mod tests {
                 "style this; is ; everything :something#not-nothing; and this too;"
             ),
             "style this; is ; everything :something#not-nothing; and this too"
+        );
+        assert_eq!(
+            encode_mermaid_entities_like_upstream(
+                "classDef this; is ; everything :something#not-nothing; and this too;"
+            ),
+            "classDef this; is ; everything :something#not-nothing; and this too"
+        );
+        assert_eq!(
+            encode_mermaid_entities_like_upstream("style a fill:#fff; style b fill:#000;"),
+            "style a fill:ﬂ°fff¶ß style b fill:#000"
+        );
+        assert_eq!(
+            encode_mermaid_entities_like_upstream("style a fill: #fff;"),
+            "style a fill: ﬂ°fff¶ß"
         );
         assert_eq!(
             encode_mermaid_entities_like_upstream("#é; #+123; #has-dash;"),

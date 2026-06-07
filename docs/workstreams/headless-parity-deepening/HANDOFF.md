@@ -1190,6 +1190,9 @@ Current repository reality to preserve:
     construction. `encode_mermaid_entities_like_upstream(...)` now scans Mermaid `#\w+;`
     placeholders with source-shaped ASCII word-byte semantics and preserves numeric versus
     nonnumeric marker output without cached entity/int regexes.
+  - A follow-up HPD-050 panic-surface slice removed preprocess `style` / `classDef`
+    hex-protection regex construction. The direct scanner preserves Mermaid's line-local,
+    greedy final-semicolon behavior before entity placeholder encoding.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
