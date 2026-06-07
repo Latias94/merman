@@ -9099,3 +9099,40 @@ Gate notes:
 - This is a local theme-default panic-surface cleanup. It does not change theme derivation,
   supported theme names, retained config projection, Radar parser behavior, render layout, SVG
   baselines, root viewport formulas, or Mermaid parity residual classification.
+
+## HPD-050 - Gantt Datetime Fallback Panic Surface
+
+Outcome:
+
+- Removed production epoch fallback `unwrap()` calls from
+  `crates/merman-core/src/diagrams/gantt/datetime.rs`.
+- Replaced `today_midnight_local()`'s midnight construction with `NaiveDateTime::new(date,
+  chrono::NaiveTime::MIN)`, avoiding an impossible-but-panic-bearing fallback chain.
+- Replaced `last_day_of_month(...)`'s invalid-date fallback unwraps with explicit `Option`
+  branches and checked December year rollover.
+- Added focused coverage for February leap/non-leap behavior plus invalid internal month and
+  overflowing December year boundaries.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/gantt/datetime.rs`
+- `crates/merman-core/src/diagrams/gantt/tests.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-gantt-datetime-fallback-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core gantt` - passed, `46` tests run.
+- `rg -n 'NaiveDate::from_ymd_opt\(1970, 1, 1\)\.unwrap\(\)|and_hms_opt\(0, 0, 0\)\.unwrap\(' crates/merman-core/src/diagrams/gantt/datetime.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `878`
+  lines parsed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a local Gantt datetime panic-surface cleanup. It does not change date parsing,
+  duration parsing, missing-year today behavior, task ordering, weekend/exclude handling,
+  retained config projection, rendered layout, SVG baselines, root viewport formulas, or Mermaid
+  parity residual classification.

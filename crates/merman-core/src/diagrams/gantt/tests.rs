@@ -100,6 +100,14 @@ test1: id1,2013-01-01,2h
 }
 
 #[test]
+fn gantt_last_day_of_month_degrades_without_epoch_unwraps() {
+    assert_eq!(last_day_of_month(2024, 2), 29);
+    assert_eq!(last_day_of_month(2023, 2), 28);
+    assert_eq!(last_day_of_month(2024, 13), 31);
+    assert_eq!(last_day_of_month(i32::MAX, 12), 31);
+}
+
+#[test]
 fn gantt_relative_after_id() {
     let model = parse(
         r#"

@@ -1272,6 +1272,10 @@ Current repository reality to preserve:
     `YYYY-MM-DD` boundaries, including source-case-sensitive keywords. A fresh production
     `merman-core/src` regex scan now reports no `regex::Regex`, `Regex::new`, or `OnceLock<Regex>`
     matches.
+  - A follow-up HPD-050 panic-surface guard removed Gantt datetime epoch fallback unwraps.
+    `today_midnight_local()` now constructs midnight with `NaiveTime::MIN`, and
+    `last_day_of_month(...)` now uses explicit checked branches for invalid internal month/year
+    boundaries while preserving ordinary leap/non-leap month behavior.
   - A follow-up HPD-050 panic-surface slice removed FontAwesome icon-token regex construction from
     `text/icons.rs`. `replace_fontawesome_icons(...)` now scans Mermaid 11.15
     `/(fa[bklrs]?):fa-([\w-]+)/g` source boundaries directly while preserving the existing local

@@ -2,12 +2,7 @@ use super::*;
 
 pub(super) fn today_midnight_local() -> DateTimeFixed {
     let date = crate::runtime::today_naive_local();
-    let naive = date.and_hms_opt(0, 0, 0).unwrap_or_else(|| {
-        NaiveDate::from_ymd_opt(1970, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-    });
+    let naive = NaiveDateTime::new(date, chrono::NaiveTime::MIN);
     local_from_naive(naive)
 }
 
@@ -53,15 +48,19 @@ pub(super) fn add_years_local(dt: DateTimeFixed, years: i64) -> Option<DateTimeF
 }
 
 pub(super) fn last_day_of_month(year: i32, month: u32) -> u32 {
-    let (next_year, next_month) = if month == 12 {
-        (year + 1, 1)
-    } else {
-        (year, month + 1)
+    let Some((next_year, next_month)) = next_month_start(year, month) else {
+        return 31;
     };
-    let first_next = NaiveDate::from_ymd_opt(next_year, next_month, 1)
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
-    let last = first_next
-        .pred_opt()
-        .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
-    last.day()
+    let Some(first_next) = NaiveDate::from_ymd_opt(next_year, next_month, 1) else {
+        return 31;
+    };
+    first_next.pred_opt().map_or(1, |last| last.day())
+}
+
+fn next_month_start(year: i32, month: u32) -> Option<(i32, u32)> {
+    match month {
+        1..=11 => Some((year, month + 1)),
+        12 => year.checked_add(1).map(|next_year| (next_year, 1)),
+        _ => None,
+    }
 }

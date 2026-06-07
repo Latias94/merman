@@ -162,6 +162,9 @@ Library code should not panic on user-controlled input.
     regexes. ASCII digit checks, source-shaped `after` / `until` ID capture, duration parsing, and
     strict `YYYY-MM-DD` shape checks now use direct scanners aligned with Mermaid 11.15
     `ganttDb.js`.
+  - Gantt local datetime helpers no longer unwrap fixed epoch fallback construction. Missing-year
+    "today at midnight" now uses `NaiveTime::MIN`, and `last_day_of_month(...)` uses explicit
+    checked branches for invalid internal month/year boundaries.
   - Detector/preprocess Mermaid comment cleanup no longer constructs a regex in
     `DetectorRegistry`. Both public detection and preprocessing now share a source-shaped line
     scanner that mirrors Mermaid 11.15 `cleanupComments`: remove indented `%%` comment lines with
@@ -354,6 +357,12 @@ Library code should not panic on user-controlled input.
     `rg -n 'regex::Regex|Regex::new|OnceLock<Regex>|OnceLock\s*<\s*Regex' crates/merman-core/src -g '*.rs'`
     passed for the Gantt regex removal; the final `rg` reported no production core regex
     compile/cache matches.
+  - Verification: `cargo +1.95 fmt -p merman-core`,
+    `cargo +1.95 nextest run -p merman-core gantt`,
+    `rg -n 'NaiveDate::from_ymd_opt\(1970, 1, 1\)\.unwrap\(\)|and_hms_opt\(0, 0, 0\)\.unwrap\(' crates/merman-core/src/diagrams/gantt/datetime.rs`,
+    `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
+    `git diff --check` passed for the Gantt datetime fallback panic-surface cleanup. The `rg`
+    command reported no matches.
   - Verification: `cargo +1.95 fmt -p merman-core`,
     `cargo +1.95 nextest run -p merman-core theme`,
     `rg -n 'from_f64\(0\.5\)\.unwrap\(\)|from_f64\(0\.3\)\.unwrap\(\)' crates/merman-core/src/theme.rs`,
