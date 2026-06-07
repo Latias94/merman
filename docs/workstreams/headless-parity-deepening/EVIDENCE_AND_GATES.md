@@ -7678,3 +7678,38 @@ Gate notes:
 - The broader `merman-render` package and full SVG compare matrix were not rerun for this narrow
   layout traversal change. The focused Mindmap SVG test covers the direct renderer integration,
   while `manatee` package tests cover the changed algorithm crate.
+
+## HPD-050 - ASCII Flowchart Group Bounds Panic Surface
+
+Outcome:
+
+- Hardened the public ASCII Flowchart render path after the SVG Flowchart deep-subgraph cleanup.
+- ASCII group raw-bounds calculation no longer recursively re-enters child groups. It now builds
+  node/group lookup tables and resolves descendant group bounds with explicit enter/exit frames,
+  preserving the previous child-before-parent bounds aggregation and title padding behavior.
+- Added a public `merman` ASCII API regression that renders a `512`-level `flowchart TB` subgraph
+  chain on a `64KB` stack and asserts the leaf node remains visible.
+- This is release-boundary stack-safety hardening for terminal rendering. It does not change SVG
+  baselines, root viewport formulas, Mermaid parity fixtures, or graph layout spacing constants.
+
+Evidence:
+
+- `crates/merman-ascii/src/graph/layout.rs`
+- `crates/merman/tests/ascii_api.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-ascii-flowchart-group-bounds-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 nextest run -p merman --features ascii --test ascii_api render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p merman --features ascii --test ascii_api` - passed, `7` tests run.
+
+Gate notes:
+
+- The default `cargo` shim for the repo's `1.95.0` override reported that its `cargo.exe` component
+  was not applicable, so verification used the installed `1.95-x86_64-pc-windows-msvc` toolchain
+  explicitly.
+- Running the same `ascii_api` target without `--features ascii` compiles `0` tests because the
+  integration test is feature-gated with `#![cfg(feature = "ascii")]`; those no-test runs were not
+  counted as evidence.

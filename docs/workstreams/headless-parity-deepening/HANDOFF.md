@@ -1142,6 +1142,11 @@ Current repository reality to preserve:
     stack, and focused Mindmap SVG tests stayed green. This is shared layout stack-safety
     hardening, not a COSE force-constant, SVG baseline, root viewport, or Architecture residual
     change.
+  - A follow-up HPD-050 panic-surface slice hardened ASCII Flowchart group bounds. The public
+    terminal render path now computes nested subgraph raw bounds with explicit enter/exit frames
+    instead of recursively walking child groups. A `merman` ASCII API regression renders a
+    `512`-level `flowchart TB` subgraph chain on a `64KB` stack with `--features ascii`; the full
+    `ascii_api` integration target passed with that feature enabled.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

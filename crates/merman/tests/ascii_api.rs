@@ -3,7 +3,7 @@
 use merman::RenderSemanticModel;
 use merman::ascii::{
     AsciiRenderOptions, HeadlessAsciiRenderer, render_ascii_sync, render_class, render_er,
-    render_xychart,
+    render_model, render_xychart,
 };
 
 fn render_model_for(source: &str) -> RenderSemanticModel {
@@ -12,6 +12,18 @@ fn render_model_for(source: &str) -> RenderSemanticModel {
         .unwrap()
         .unwrap()
         .model
+}
+
+fn deeply_nested_flowchart(depth: usize) -> String {
+    let mut lines = vec!["flowchart TB".to_string()];
+    for i in 0..depth {
+        lines.push(format!("subgraph n{i}"));
+    }
+    lines.push("A".to_string());
+    for _ in 0..depth {
+        lines.push("end".to_string());
+    }
+    lines.join("\n")
 }
 
 #[test]
@@ -139,4 +151,25 @@ fn render_ascii_sync_returns_none_when_no_diagram_is_detected() {
     .unwrap();
 
     assert!(rendered.is_none());
+}
+
+#[test]
+fn render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack() {
+    const DEPTH: usize = 512;
+    let source = deeply_nested_flowchart(DEPTH);
+    let model = render_model_for(&source);
+    let handle = std::thread::Builder::new()
+        .name("ascii-deep-flowchart-subgraph".to_string())
+        .stack_size(64 * 1024)
+        .spawn(move || {
+            let mut options = AsciiRenderOptions::ascii();
+            options.max_grid_cells = 10_000_000;
+            let rendered = render_model(&model, &options)
+                .expect("deep Flowchart ASCII render should not return an error");
+            assert!(rendered.contains('A'));
+        })
+        .expect("spawn deep Flowchart ASCII render test");
+    handle
+        .join()
+        .expect("deep Flowchart ASCII render should not overflow the stack");
 }

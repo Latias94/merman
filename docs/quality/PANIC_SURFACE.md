@@ -222,6 +222,15 @@ Library code should not panic on user-controlled input.
     layout_indexed_handles_deep_tree_radial_layout_with_small_stack`,
     `cargo +1.95 nextest run -p manatee`, `cargo +1.95 nextest run -p merman-render --test
     mindmap_svg_test`, and `cargo +1.95 fmt` passed for the COSE-Bilkent radial tree cleanup.
+- `merman-ascii`:
+  - Flowchart ASCII group raw-bounds calculation no longer recurses through nested subgraph
+    members. The public `merman` ASCII API now resolves group bounds through explicit heap-backed
+    enter/exit frames, so terminal rendering of accepted deep Flowchart subgraph chains no longer
+    depends on Rust call-stack depth.
+  - Verification: `cargo +1.95 nextest run -p merman --features ascii --test ascii_api
+    render_ascii_model_handles_deep_flowchart_subgraph_chain_with_small_stack` and
+    `cargo +1.95 nextest run -p merman --features ascii --test ascii_api` passed. No-test runs
+    without `--features ascii` are not evidence because the integration test is feature-gated.
 
 ## Known remaining panic candidates (triage)
 
@@ -234,10 +243,10 @@ The following patterns are intentionally tolerated for now but should be tracked
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
-    C4, Architecture XHTML fragments, manatee/FCoSE compounds, and dugong/graphlib graph traversals
-    now have explicit-stack coverage for representative deep or maximum-accepted inputs, but
-    similar tree-shaped families should be audited before release hardening is considered
-    complete.
+    C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and
+    dugong/graphlib graph traversals now have explicit-stack coverage for representative deep or
+    maximum-accepted inputs, but similar tree-shaped families should be audited before release
+    hardening is considered complete.
 
 ## Suggested workflow
 

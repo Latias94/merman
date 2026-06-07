@@ -884,23 +884,93 @@ fn raw_group_bounds(
     layouts: &[NodeLayout],
     group_index: usize,
 ) -> Option<RawBounds> {
-    let group = graph.groups.get(group_index)?;
-    let mut member_bounds = None::<RawBounds>;
+    if graph.groups.get(group_index).is_none() {
+        return None;
+    }
 
-    for member in &group.nodes {
-        let bounds = if let Some(layout) = layouts.iter().find(|layout| layout.id == *member) {
-            Some(RawBounds {
+    let mut layout_bounds_by_id = HashMap::new();
+    for layout in layouts {
+        layout_bounds_by_id
+            .entry(layout.id.as_str())
+            .or_insert(RawBounds {
                 x: layout.x as isize,
                 y: layout.y as isize,
                 right: layout.right() as isize,
                 bottom: layout.bottom() as isize,
-            })
-        } else if let Some(child_index) = graph
-            .groups
-            .iter()
-            .position(|child| child.id == *member && child.id != group.id)
+            });
+    }
+    let mut group_index_by_id = HashMap::new();
+    for (index, group) in graph.groups.iter().enumerate() {
+        group_index_by_id.entry(group.id.as_str()).or_insert(index);
+    }
+    let mut completed = HashMap::<usize, Option<RawBounds>>::new();
+    let mut visiting = HashSet::<usize>::new();
+    let mut stack = vec![(group_index, false)];
+
+    while let Some((index, exiting)) = stack.pop() {
+        if completed.contains_key(&index) {
+            continue;
+        }
+        let Some(group) = graph.groups.get(index) else {
+            completed.insert(index, None);
+            continue;
+        };
+
+        if exiting {
+            visiting.remove(&index);
+            completed.insert(
+                index,
+                raw_group_bounds_from_completed_children(
+                    index,
+                    group,
+                    &layout_bounds_by_id,
+                    &group_index_by_id,
+                    &completed,
+                ),
+            );
+            continue;
+        }
+
+        if !visiting.insert(index) {
+            completed.insert(index, None);
+            continue;
+        }
+
+        stack.push((index, true));
+        for member in group.nodes.iter().rev() {
+            if let Some(child_index) = group_index_by_id
+                .get(member.as_str())
+                .copied()
+                .filter(|child_index| *child_index != index)
+            {
+                if !completed.contains_key(&child_index) && !visiting.contains(&child_index) {
+                    stack.push((child_index, false));
+                }
+            }
+        }
+    }
+
+    completed.remove(&group_index).flatten()
+}
+
+fn raw_group_bounds_from_completed_children(
+    group_index: usize,
+    group: &super::model::AsciiGraphGroup,
+    layout_bounds_by_id: &HashMap<&str, RawBounds>,
+    group_index_by_id: &HashMap<&str, usize>,
+    completed: &HashMap<usize, Option<RawBounds>>,
+) -> Option<RawBounds> {
+    let mut member_bounds = None::<RawBounds>;
+
+    for member in &group.nodes {
+        let bounds = if let Some(bounds) = layout_bounds_by_id.get(member.as_str()).copied() {
+            Some(bounds)
+        } else if let Some(child_index) = group_index_by_id
+            .get(member.as_str())
+            .copied()
+            .filter(|child_index| *child_index != group_index)
         {
-            raw_group_bounds(graph, layouts, child_index)
+            completed.get(&child_index).copied().flatten()
         } else {
             None
         };
@@ -912,7 +982,7 @@ fn raw_group_bounds(
             current.include(bounds);
         } else {
             member_bounds = Some(bounds);
-        }
+        };
     }
 
     let member_bounds = member_bounds?;
