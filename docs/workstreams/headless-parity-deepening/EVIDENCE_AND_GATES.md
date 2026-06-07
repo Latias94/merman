@@ -8731,3 +8731,48 @@ Gate notes:
   viewport formulas, or Architecture residual classification. After this slice, the remaining
   precise `regex::Regex` / `Regex::new` render hit is the ER parity decimal-normalization helper
   in `crates/merman-render/src/svg/parity/er.rs`.
+
+## HPD-050 - ER Path Decimal Regex Panic Surface
+
+Outcome:
+
+- Removed the final precise `regex::Regex` / `Regex::new` production render hit from
+  `crates/merman-render/src/svg/parity/er.rs`.
+- Replaced the ER label-coordinate path decimal replacement for `(\d+\.\d+)` with a direct scanner
+  used by `is_label_coordinate_in_path(...)`.
+- Preserved the local non-overlapping replacement behavior used by the old regex helper: decimal
+  substrings require digits on both sides of `.`, signs stay outside the match, `.5` and `10.` do
+  not match, and matched values are rounded before string containment checks.
+- Moved `regex` in `crates/merman-render/Cargo.toml` from normal dependencies to
+  `dev-dependencies`, because only integration tests still use it.
+
+Evidence:
+
+- `crates/merman-render/src/svg/parity/er.rs`
+- `crates/merman-render/Cargo.toml`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-er-path-decimal-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render er` - passed, `279` tests run.
+- `cargo +1.95 nextest run -p merman-render er_label_coordinate_path_decimal_rounding_without_regex` -
+  passed, `1` test run after the dependency move.
+- `cargo +1.95 nextest run -p merman-render --test er_svg_test` - passed, `7` tests run after
+  the dependency move.
+- `cargo +1.95 fmt --check -p merman-render` - passed.
+- `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/parity/er.rs` - no regex
+  dependency matches in `er.rs`.
+- `rg -n "regex::Regex|Regex::new|OnceLock<regex::Regex>|OnceLock\s*<\s*Regex|regex::Captures|Captures<'" crates/merman-core/src crates/merman-render/src -g '*.rs'` -
+  no precise production core/render regex compile/cache matches.
+- `git diff --check` - passed.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a local ER renderer panic-surface cleanup for a path-coordinate heuristic. It does not
+  change ER layout, relationship routing, label placement fallback semantics, SVG baselines, root
+  viewport formulas, parser behavior, or sanitizer policy. Test-only regex use remains in
+  integration tests; production `merman-core/src` and `merman-render/src` now have no precise
+  regex compile/cache matches.

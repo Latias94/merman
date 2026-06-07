@@ -1258,6 +1258,11 @@ Current repository reality to preserve:
     a source-shaped scanner for the previous local attribute regex. A precise `merman-render/src`
     regex scan now reports only `svg/parity/er.rs`; builtin SVG sanitizer files have no regex
     dependency matches.
+  - A follow-up HPD-050 panic-surface slice removed the final precise production render regex hit
+    from `svg/parity/er.rs`. The ER label-coordinate path decimal normalizer now scans decimal
+    substrings directly, and `merman-render` keeps `regex` only as a dev-dependency for integration
+    tests. A precise production `merman-core/src` plus `merman-render/src` regex compile/cache scan
+    now reports no matches.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

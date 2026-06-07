@@ -318,21 +318,69 @@ fn is_label_coordinate_in_path(point: crate::model::LayoutPoint, d_attr: &str) -
     let rounded_x = point.x.round() as i64;
     let rounded_y = point.y.round() as i64;
 
-    fn re_float_with_decimals() -> &'static regex::Regex {
-        use std::sync::OnceLock;
-        static RE: OnceLock<regex::Regex> = OnceLock::new();
-        RE.get_or_init(|| regex::Regex::new(r"(\d+\.\d+)").expect("regex must compile"))
-    }
-    let re = re_float_with_decimals();
-    let sanitized_d = re.replace_all(d_attr, |caps: &regex::Captures<'_>| {
-        let v = caps
-            .get(1)
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or(0.0);
-        format!("{}", v.round() as i64)
-    });
+    let sanitized_d = round_decimal_numbers_in_path(d_attr);
 
     sanitized_d.contains(&rounded_x.to_string()) || sanitized_d.contains(&rounded_y.to_string())
+}
+
+fn round_decimal_numbers_in_path(d_attr: &str) -> String {
+    let mut out = String::new();
+    let mut copied_until = 0usize;
+    let mut cursor = 0usize;
+    let mut changed = false;
+
+    while cursor < d_attr.len() {
+        if let Some(end) = decimal_number_match_end_at(d_attr, cursor) {
+            if !changed {
+                out = String::with_capacity(d_attr.len());
+                changed = true;
+            }
+            out.push_str(&d_attr[copied_until..cursor]);
+            let v = d_attr[cursor..end].parse::<f64>().unwrap_or(0.0);
+            out.push_str(&(v.round() as i64).to_string());
+            copied_until = end;
+            cursor = end;
+            continue;
+        }
+
+        let Some(ch) = d_attr[cursor..].chars().next() else {
+            break;
+        };
+        cursor += ch.len_utf8();
+    }
+
+    if changed {
+        out.push_str(&d_attr[copied_until..]);
+        out
+    } else {
+        d_attr.to_string()
+    }
+}
+
+fn decimal_number_match_end_at(s: &str, start: usize) -> Option<usize> {
+    let digit_start = start;
+    let mut cursor = consume_ascii_digits_in_path(s, start);
+    if cursor == digit_start || !s.get(cursor..)?.starts_with('.') {
+        return None;
+    }
+
+    let fraction_start = cursor + 1;
+    cursor = consume_ascii_digits_in_path(s, fraction_start);
+    if cursor == fraction_start {
+        return None;
+    }
+
+    Some(cursor)
+}
+
+fn consume_ascii_digits_in_path(s: &str, mut cursor: usize) -> usize {
+    while let Some(b) = s.as_bytes().get(cursor) {
+        if !b.is_ascii_digit() {
+            break;
+        }
+        cursor += 1;
+    }
+    cursor
 }
 
 fn calc_label_position(points: &[crate::model::LayoutPoint]) -> Option<(f64, f64)> {
@@ -1882,5 +1930,18 @@ mod tests {
             })),
             r#""IBM Plex Sans",Arial,sans-serif"#
         );
+    }
+
+    #[test]
+    fn er_label_coordinate_path_decimal_rounding_without_regex() {
+        assert_eq!(
+            super::round_decimal_numbers_in_path("M-10.5 20.6 .5 10. 3.4.5"),
+            "M-11 21 .5 10. 3.5"
+        );
+
+        assert!(super::is_label_coordinate_in_path(
+            crate::model::LayoutPoint { x: -11.0, y: 99.0 },
+            "M-10.5 20.6"
+        ));
     }
 }

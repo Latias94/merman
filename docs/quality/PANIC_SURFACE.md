@@ -212,6 +212,9 @@ Library code should not panic on user-controlled input.
   - SVG pipeline attribute sanitization no longer compiles the local double-quoted attribute
     regex. Tag attribute rewriting and bad-`rect` dimension lookup now share a scanner for the
     previous `\s+([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*"([^"]*)"` shape.
+  - ER path label-coordinate detection no longer compiles the local decimal regex. The helper now
+    scans path `d` strings for ASCII decimal substrings matching the previous `\d+\.\d+` shape and
+    rounds them before the existing coordinate containment heuristic.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo run -p xtask -- compare-class-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter namespace`
@@ -371,6 +374,16 @@ Library code should not panic on user-controlled input.
     and `git diff --check` passed for the SVG attribute sanitizer regex removal. The builtin SVG
     sanitizer files have no regex dependency matches; the precise render-wide regex scan reports
     only `svg/parity/er.rs`.
+  - Verification: `cargo +1.95 fmt -p merman-render`,
+    `cargo +1.95 nextest run -p merman-render er`,
+    `cargo +1.95 nextest run -p merman-render er_label_coordinate_path_decimal_rounding_without_regex`,
+    `cargo +1.95 nextest run -p merman-render --test er_svg_test`,
+    `cargo +1.95 fmt --check -p merman-render`,
+    `rg -n 'Regex|regex::|OnceLock' crates/merman-render/src/svg/parity/er.rs`,
+    `rg -n "regex::Regex|Regex::new|OnceLock<regex::Regex>|OnceLock\s*<\s*Regex|regex::Captures|Captures<'" crates/merman-core/src crates/merman-render/src -g '*.rs'`,
+    and `git diff --check` passed for the ER decimal regex removal. The precise production
+    `merman-core/src` plus `merman-render/src` regex compile/cache scan now reports no matches;
+    `merman-render` keeps `regex` only as a test dependency.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
