@@ -1244,6 +1244,10 @@ Current repository reality to preserve:
     `text/icons.rs`. `replace_fontawesome_icons(...)` now scans Mermaid 11.15
     `/(fa[bklrs]?):fa-([\w-]+)/g` source boundaries directly while preserving the existing local
     double-quoted `<i class="...">` fallback output.
+  - A follow-up HPD-050 panic-surface slice removed SVG pipeline CSS `!important` regex
+    construction from `css_override.rs`. `strip_css_important(...)` now scans the local
+    case-insensitive marker directly, keeps `CssOverridePolicy::Preserve` unchanged, and preserves
+    the previous trailing word-boundary behavior used by scoped CSS override stripping.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

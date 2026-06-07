@@ -1,7 +1,5 @@
 use crate::Result;
-use regex::Regex;
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
@@ -51,9 +49,59 @@ impl SvgPostprocessor for CssOverridePostprocessor {
 }
 
 pub(crate) fn strip_css_important(svg: &str) -> String {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| Regex::new(r"(?i)\s*!important\b").expect("valid important regex"));
-    re.replace_all(svg, "").into_owned()
+    let mut out = String::with_capacity(svg.len());
+    let mut copied_until = 0usize;
+    let mut search_from = 0usize;
+    let mut stripped = false;
+
+    while let Some(rel) = svg[search_from..].find('!') {
+        let bang = search_from + rel;
+        if let Some((start, end)) = css_important_match_bounds_at_bang(svg, bang) {
+            out.push_str(&svg[copied_until..start]);
+            copied_until = end;
+            search_from = end;
+            stripped = true;
+            continue;
+        }
+
+        search_from = bang + 1;
+    }
+
+    if !stripped {
+        return svg.to_string();
+    }
+
+    out.push_str(&svg[copied_until..]);
+    out
+}
+
+fn css_important_match_bounds_at_bang(svg: &str, bang: usize) -> Option<(usize, usize)> {
+    let marker_end = bang + "!important".len();
+    if !svg
+        .get(bang..marker_end)?
+        .eq_ignore_ascii_case("!important")
+    {
+        return None;
+    }
+
+    if let Some(next) = svg.get(marker_end..).and_then(|tail| tail.chars().next()) {
+        if is_css_regex_word_char(next) {
+            return None;
+        }
+    }
+
+    let start = svg[..bang]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !ch.is_whitespace())
+        .map(|(idx, ch)| idx + ch.len_utf8())
+        .unwrap_or(0);
+
+    Some((start, marker_end))
+}
+
+fn is_css_regex_word_char(ch: char) -> bool {
+    ch == '_' || ch.is_alphanumeric()
 }
 
 #[cfg(test)]
@@ -76,5 +124,19 @@ mod tests {
 
         assert!(preserve.contains("!important"));
         assert!(!strip.contains("!important"));
+    }
+
+    #[test]
+    fn css_override_important_scanner_preserves_regex_boundaries() {
+        assert_eq!(
+            strip_css_important(
+                ".a{fill:red\t!important;stroke:blue !IMPORTANT;color:green !importantfoo;}"
+            ),
+            ".a{fill:red;stroke:blue;color:green !importantfoo;}"
+        );
+        assert_eq!(
+            strip_css_important(".a{fill:red!important-border;color:blue !importanté;}"),
+            ".a{fill:red-border;color:blue !importanté;}"
+        );
     }
 }

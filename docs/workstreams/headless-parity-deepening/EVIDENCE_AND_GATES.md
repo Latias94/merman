@@ -8609,3 +8609,41 @@ Gate notes:
   icon pack resolution, Flowchart icon-shape nodes, HTML label measurement heuristics, SVG
   baselines, root viewport formulas, core parsing, sanitizer policy, or Architecture residual
   classification.
+
+## HPD-050 - CSS Important Regex Panic Surface
+
+Outcome:
+
+- Removed the static regex compilation point from `CssOverridePostprocessor` in
+  `crates/merman-render/src/svg/pipeline/builtin/css_override.rs`.
+- Replaced local `(?i)\s*!important\b` replacement with a direct scanner anchored on `!`, removing
+  contiguous whitespace immediately before case-insensitive `!important`.
+- Preserved the previous word-boundary behavior after `important`: `!importantfoo` and
+  `!importanté` remain untouched, while `!important-border` strips the marker and leaves
+  `-border`.
+- Kept `CssOverridePolicy::Preserve` behavior unchanged and verified the scoped CSS caller that
+  reuses `strip_css_important(...)`.
+
+Evidence:
+
+- `crates/merman-render/src/svg/pipeline/builtin/css_override.rs`
+- `crates/merman-render/src/svg/pipeline/builtin/scoped_css.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-css-important-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-render` - passed.
+- `cargo +1.95 nextest run -p merman-render important` - passed, `3` tests run.
+- `rg -n 'Regex|regex::|OnceLock|css_important|strip_css_important' crates/merman-render/src/svg/pipeline/builtin/css_override.rs crates/merman-render/src/svg/pipeline/builtin/scoped_css.rs` -
+  no regex dependency matches in `css_override.rs`; scanner and call sites were the only relevant
+  hits.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `846`
+  lines parsed.
+
+Gate notes:
+
+- This is a local SVG pipeline panic-surface cleanup. It does not change CSS override policy
+  selection, scoped CSS injection syntax, SVG baseline content outside existing-important
+  stripping, core parsing, sanitizer policy, root viewport formulas, or Architecture residual
+  classification.
