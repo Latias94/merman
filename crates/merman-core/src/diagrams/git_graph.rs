@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -819,17 +819,20 @@ fn parse_acc_descr_block_start(line: &str) -> bool {
 
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_git_graph_model(code, meta)?;
-    Ok(json!({
-        "type": model.diagram_type,
-        "commits": model.commits,
-        "branches": model.branches,
-        "currentBranch": model.current_branch,
-        "direction": model.direction,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "warnings": model.warnings,
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    let mut out = Map::with_capacity(9);
+    out.insert("type".to_string(), Value::String(model.diagram_type));
+    out.insert("commits".to_string(), json!(model.commits));
+    out.insert("branches".to_string(), json!(model.branches));
+    out.insert("currentBranch".to_string(), json!(model.current_branch));
+    out.insert("direction".to_string(), json!(model.direction));
+    out.insert("accTitle".to_string(), json!(model.acc_title));
+    out.insert("accDescr".to_string(), json!(model.acc_descr));
+    out.insert("warnings".to_string(), json!(model.warnings));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 pub fn parse_git_graph_model_for_render(

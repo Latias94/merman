@@ -354,6 +354,60 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
 }
 
 #[test]
+fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stack() {
+    const DEPTH: usize = 1_024;
+    let site_config = MermaidConfig::from_value(deep_config_value(
+        "retainedConfig",
+        DEPTH,
+        Value::String("#778899".to_string()),
+    ));
+    let engine = Engine::new().with_site_config(site_config);
+
+    let handle = std::thread::Builder::new()
+        .name("merman-core-remaining-deep-retained-config".to_string())
+        .stack_size(128 * 1024)
+        .spawn(move || {
+            for (label, diagram_type, source) in [
+                ("gitGraph", "gitGraph", "gitGraph:\n commit\n"),
+                ("kanban", "kanban", "kanban\n  Todo\n    item\n"),
+                ("packet", "packet", "packet\n+8: \"byte\"\n"),
+                (
+                    "quadrantChart",
+                    "quadrantChart",
+                    "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nquadrant-1 A\nP: [0.5, 0.5]\n",
+                ),
+                ("radar", "radar", "radar-beta\naxis A, B\ncurve one{1,2}\n"),
+                (
+                    "requirement",
+                    "requirement",
+                    "requirementDiagram\nrequirement r {\n  id: R\n  text: \"T\"\n  risk: low\n  verifymethod: test\n}\n",
+                ),
+                ("mindmap", "mindmap", "mindmap\nroot\n child\n"),
+                ("mindmap-empty", "mindmap", "mindmap\n"),
+            ] {
+                let parsed = engine
+                    .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
+                    .expect("parse succeeds")
+                    .expect("diagram detected");
+                let ParsedDiagram { model, .. } = parsed;
+
+                assert_eq!(
+                    deep_config_leaf(&model["config"], "retainedConfig", DEPTH)
+                        .and_then(Value::as_str),
+                    Some("#778899"),
+                    "retained config for {label}"
+                );
+
+                crate::config::drop_value_nonrecursive(model);
+            }
+        })
+        .expect("spawn remaining deep retained semantic config test");
+    handle.join().expect(
+        "remaining retained semantic config projection should finish without stack overflow",
+    );
+}
+
+#[test]
 fn init_directive_config_sanitizes_deep_values_with_small_stack() {
     const DEPTH: usize = 32;
     let source = deep_init_directive_source("sequence", DEPTH, "<blocked>");

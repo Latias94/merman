@@ -1,5 +1,5 @@
 use crate::{Error, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::Peekable;
 use std::str::Lines;
@@ -334,17 +334,20 @@ pub fn parse_requirement_model_for_render(
 }
 
 fn requirement_model_to_value(model: RequirementDiagramRenderModel, meta: &ParseMetadata) -> Value {
-    json!({
-        "type": meta.diagram_type,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "direction": model.direction,
-        "requirements": model.requirements,
-        "elements": model.elements,
-        "relationships": model.relationships,
-        "classes": model.classes,
-        "config": meta.effective_config.as_value().clone(),
-    })
+    let mut out = Map::with_capacity(9);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("accTitle".to_string(), json!(model.acc_title));
+    out.insert("accDescr".to_string(), json!(model.acc_descr));
+    out.insert("direction".to_string(), json!(model.direction));
+    out.insert("requirements".to_string(), json!(model.requirements));
+    out.insert("elements".to_string(), json!(model.elements));
+    out.insert("relationships".to_string(), json!(model.relationships));
+    out.insert("classes".to_string(), json!(model.classes));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Value::Object(out)
 }
 
 fn parse_requirement_model(

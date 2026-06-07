@@ -87,6 +87,10 @@ Library code should not panic on user-controlled input.
     `serde_json::Value::clone()`. C4, Sankey, and Architecture also assemble their final public
     root objects with hand-built maps so a deep retained config is moved into the result instead of
     being wrapped through `json!`.
+  - GitGraph, Kanban, Packet, QuadrantChart, Radar, Requirement, and Mindmap semantic JSON roots
+    now follow the same retained-config projection rule. Their public root objects are hand-built
+    maps where needed, including Mindmap's empty-root early return, so retained host config is not
+    recursively cloned or re-wrapped through `json!`.
   - C4 diagram detection no longer depends on lazily compiling a static regex on the first
     detection pass. The detector now uses equivalent string checks for Mermaid's upstream
     ungrouped regex shape, avoiding a fixed stack-heavy regex initialization point in small-stack
@@ -191,6 +195,19 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core state architecture c4 block treemap sankey`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the retained
     semantic config projection cleanup.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    remaining_retained_semantic_config_handles_deep_public_config_with_small_stack`,
+    `cargo +1.95 nextest run -p merman-core
+    parse_kanban_render_model_uses_typed_variant_without_changing_json_parse
+    parse_packet_render_model_uses_typed_variant_without_changing_json_parse
+    parse_requirement_render_model_uses_typed_variant_without_changing_json_parse
+    parse_radar_render_model_uses_typed_variant_without_changing_json_parse
+    parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse
+    parse_quadrant_chart_render_model_uses_typed_variant_without_changing_json_parse
+    mindmap_render_model_projects_same_look_and_theme_shape_as_json_model`,
+    `cargo +1.95 nextest run -p merman-core gitGraph kanban packet quadrant radar requirement
+    mindmap`, `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the
+    remaining retained semantic config projection cleanup.
   - Verification: `cargo +1.95 nextest run -p merman-core
     c4_detector_preserves_upstream_ungrouped_regex_shape
     auto_detect_common_headers_with_deep_config_small_stack`,

@@ -1,5 +1,5 @@
 use crate::{Error, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone)]
 struct AxisAst {
@@ -167,22 +167,44 @@ impl RadarDb {
 
     #[inline]
     fn semantic_value(&self, meta: &ParseMetadata) -> Value {
-        json!({
-            "type": meta.diagram_type,
-            "title": self.title,
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "axes": self.axes.iter().map(|a| json!({"name": a.name, "label": a.label})).collect::<Vec<_>>(),
-            "curves": self.curves.iter().map(|c| json!({"name": c.name, "label": c.label, "entries": c.entries})).collect::<Vec<_>>(),
-            "options": {
+        let mut out = Map::with_capacity(8);
+        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        out.insert("title".to_string(), json!(self.title));
+        out.insert("accTitle".to_string(), json!(self.acc_title));
+        out.insert("accDescr".to_string(), json!(self.acc_descr));
+        out.insert(
+            "axes".to_string(),
+            Value::Array(
+                self.axes
+                    .iter()
+                    .map(|a| json!({"name": a.name, "label": a.label}))
+                    .collect(),
+            ),
+        );
+        out.insert(
+            "curves".to_string(),
+            Value::Array(
+                self.curves
+                    .iter()
+                    .map(|c| json!({"name": c.name, "label": c.label, "entries": c.entries}))
+                    .collect(),
+            ),
+        );
+        out.insert(
+            "options".to_string(),
+            json!({
                 "showLegend": self.options.show_legend,
                 "ticks": self.options.ticks,
                 "max": self.options.max,
                 "min": self.options.min,
                 "graticule": self.options.graticule,
-            },
-            "config": meta.effective_config.as_value().clone(),
-        })
+            }),
+        );
+        out.insert(
+            "config".to_string(),
+            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+        );
+        Value::Object(out)
     }
 
     #[inline]

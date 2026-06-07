@@ -1171,6 +1171,12 @@ Current repository reality to preserve:
     ungrouped regex semantics with direct string checks instead of lazily compiling a static regex
     on first use, and a small-stack metadata regression covers common headers with a deep host
     config.
+  - A follow-up HPD-050 panic-surface slice completed retained semantic config projection for
+    GitGraph, Kanban, Packet, QuadrantChart, Radar, Requirement, and Mindmap. These public
+    semantic JSON roots now copy retained `meta.effective_config` with the shared non-recursive
+    JSON clone helper and hand-build root maps where needed so deep retained config is not
+    recursively wrapped through `json!`. Focused known-type small-stack coverage validates a
+    `1,024`-level host config across all seven families plus Mindmap's empty-root early return.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

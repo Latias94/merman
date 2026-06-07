@@ -1,5 +1,5 @@
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
 
@@ -47,14 +47,19 @@ type PacketWord = Vec<PacketRenderBlock>;
 pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
     match parse_packet_model(code, meta)? {
         PacketParseOutput::Empty => Ok(json!({})),
-        PacketParseOutput::Model(model) => Ok(json!({
-            "type": meta.diagram_type,
-            "title": model.title,
-            "accTitle": model.acc_title,
-            "accDescr": model.acc_descr,
-            "packet": model.packet,
-            "config": meta.effective_config.as_value().clone(),
-        })),
+        PacketParseOutput::Model(model) => {
+            let mut out = Map::with_capacity(6);
+            out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+            out.insert("title".to_string(), json!(model.title));
+            out.insert("accTitle".to_string(), json!(model.acc_title));
+            out.insert("accDescr".to_string(), json!(model.acc_descr));
+            out.insert("packet".to_string(), json!(model.packet));
+            out.insert(
+                "config".to_string(),
+                crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+            );
+            Ok(Value::Object(out))
+        }
     }
 }
 

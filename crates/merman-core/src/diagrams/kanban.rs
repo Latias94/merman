@@ -814,15 +814,20 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
 
 pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let db = parse_kanban_db(code, meta)?;
-    let config = meta.effective_config.as_value().clone();
-    Ok(json!({
-        "type": meta.diagram_type,
-        "sections": db.sections_json(),
-        "nodes": db.data_nodes_json(&meta.effective_config),
-        "edges": [],
-        "other": {},
-        "config": config,
-    }))
+    let mut out = Map::with_capacity(6);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("sections".to_string(), db.sections_json());
+    out.insert(
+        "nodes".to_string(),
+        Value::Array(db.data_nodes_json(&meta.effective_config)),
+    );
+    out.insert("edges".to_string(), Value::Array(Vec::new()));
+    out.insert("other".to_string(), Value::Object(Map::new()));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 pub fn parse_kanban_model_for_render(

@@ -7889,3 +7889,58 @@ Gate notes:
   the existing C4 detector shape, not a fast-detect expansion.
 - This is a parser detection panic-surface cleanup only. It does not change semantic models,
   rendered output, SVG baselines, root viewport formulas, or Architecture residual classification.
+
+## HPD-050 - Remaining Retained Semantic Config Panic Surface
+
+Outcome:
+
+- Completed the retained effective-config projection sweep for remaining public semantic JSON
+  roots after the Block/State/Treemap/Sankey/C4/Architecture slice.
+- GitGraph, Kanban, Packet, QuadrantChart, Radar, Requirement, and Mindmap now copy retained
+  `meta.effective_config` with `clone_value_nonrecursive(...)` instead of recursive
+  `serde_json::Value::clone()`.
+- These roots now use hand-built `serde_json::Map` objects where the retained config enters the
+  public root object, so deep host config is moved into the model instead of recursively wrapped
+  through `json!`.
+- Mindmap's normal-root and empty-root early-return semantic paths are both covered. The existing
+  source-backed default `layout: "cose-bilkent"` insertion is preserved when the caller did not
+  provide an explicit layout.
+- Added a second small-stack retained-config regression covering GitGraph, Kanban, Packet,
+  QuadrantChart, Radar, Requirement, Mindmap normal root, and Mindmap empty root with a
+  `1,024`-level host `site_config`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/git_graph.rs`
+- `crates/merman-core/src/diagrams/kanban.rs`
+- `crates/merman-core/src/diagrams/mindmap/parse.rs`
+- `crates/merman-core/src/diagrams/packet.rs`
+- `crates/merman-core/src/diagrams/quadrant_chart.rs`
+- `crates/merman-core/src/diagrams/radar.rs`
+- `crates/merman-core/src/diagrams/requirement.rs`
+- `crates/merman-core/src/tests/misc.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-retained-semantic-config-remaining-families.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core remaining_retained_semantic_config_handles_deep_public_config_with_small_stack` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p merman-core parse_kanban_render_model_uses_typed_variant_without_changing_json_parse parse_packet_render_model_uses_typed_variant_without_changing_json_parse parse_requirement_render_model_uses_typed_variant_without_changing_json_parse parse_radar_render_model_uses_typed_variant_without_changing_json_parse parse_gitgraph_render_model_uses_typed_variant_without_changing_json_parse parse_quadrant_chart_render_model_uses_typed_variant_without_changing_json_parse mindmap_render_model_projects_same_look_and_theme_shape_as_json_model` -
+  passed, `7` tests run.
+- `cargo +1.95 nextest run -p merman-core gitGraph kanban packet quadrant radar requirement mindmap` -
+  passed, `117` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The small-stack regression intentionally uses `parse_diagram_with_type_sync(...)` to keep this
+  evidence scoped to semantic JSON projection. Detector-registry small-stack behavior remains a
+  separate boundary and is not claimed by this slice.
+- `rg -n -F "effective_config.as_value().clone()" crates/merman-core/src` now finds no remaining
+  production or test use in `merman-core`.
+- This is a semantic JSON panic-surface hardening slice only. It does not change parser behavior,
+  SVG output, SVG baselines, root viewport formulas, theme semantics, or Architecture residual
+  classification.

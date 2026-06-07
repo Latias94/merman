@@ -185,7 +185,8 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = parse_mindmap_db(code, meta)?;
 
     let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-        let mut final_config = meta.effective_config.as_value().clone();
+        let mut final_config =
+            crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
         if meta.config.as_value().get("layout").is_none() {
             if let Some(obj) = final_config.as_object_mut() {
                 obj.insert(
@@ -195,11 +196,11 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
             }
         }
 
-        return Ok(json!({
-            "nodes": [],
-            "edges": [],
-            "config": final_config,
-        }));
+        let mut out = Map::with_capacity(3);
+        out.insert("nodes".to_string(), Value::Array(Vec::new()));
+        out.insert("edges".to_string(), Value::Array(Vec::new()));
+        out.insert("config".to_string(), final_config);
+        return Ok(Value::Object(out));
     };
 
     db.assign_sections(root_id, None);
@@ -207,7 +208,8 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let nodes = db.to_layout_node_values(root_id, &meta.effective_config);
     let edges = db.to_edge_values(root_id, &meta.effective_config);
 
-    let mut final_config = meta.effective_config.as_value().clone();
+    let mut final_config =
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none() {
         if let Some(obj) = final_config.as_object_mut() {
             obj.insert(

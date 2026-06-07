@@ -1,6 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -483,17 +483,20 @@ fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
 
 pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_quadrant_chart_model(code, meta)?;
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "quadrants": model.quadrants,
-        "axes": model.axes,
-        "points": model.points,
-        "classes": model.classes,
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    let mut out = Map::with_capacity(9);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(model.title));
+    out.insert("accTitle".to_string(), json!(model.acc_title));
+    out.insert("accDescr".to_string(), json!(model.acc_descr));
+    out.insert("quadrants".to_string(), json!(model.quadrants));
+    out.insert("axes".to_string(), json!(model.axes));
+    out.insert("points".to_string(), json!(model.points));
+    out.insert("classes".to_string(), json!(model.classes));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 pub fn parse_quadrant_chart_model_for_render(
