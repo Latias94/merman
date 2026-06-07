@@ -8522,6 +8522,42 @@ Gate notes:
   link/callback behavior, common sanitizer policy, Gantt date parsing, retained config projection,
   SVG baselines, root viewport formulas, or Architecture residual classification.
 
+## HPD-050 - ClassDB Snapshot Gate Follow-up
+
+Outcome:
+
+- Refreshed only `fixtures/zed_issues/zed_50558_class_inheritance.golden.json` after the ClassDB
+  member parser cleanup exposed a stale snapshot gate.
+- Preserved the source-authored spaces after `+` visibility markers for `move`, `eat`, and `bark`
+  methods, matching the source-shaped ClassDB method parser boundary.
+- No production parser, layout, render, sanitizer, config, or root-viewport code changed in this
+  follow-up.
+
+Evidence:
+
+- `fixtures/zed_issues/zed_50558_class_inheritance.mmd`
+- `fixtures/zed_issues/zed_50558_class_inheritance.golden.json`
+- `crates/merman-core/src/diagrams/class/db.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-classdb-snapshot-gate-follow-up.md`
+
+Focused verification:
+
+- `cargo +1.95 run -p xtask -- update-snapshots --diagram all --filter zed_50558_class_inheritance` -
+  updated only the ClassDB zed issue golden after the narrower `--diagram zed_issues` selector did
+  not match the `classDiagram` fixture family.
+- `cargo +1.95 nextest run -p merman-core --test snapshots` - passed, `1` test run.
+- `cargo +1.95 nextest run -p merman-core class` - passed, `49` tests run.
+- `git diff --check` - passed.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `858`
+  lines parsed.
+
+Gate notes:
+
+- This is snapshot evidence alignment only. It does not change Class parser behavior, layout,
+  renderer SVG output, semantic model roots, sanitizer policy, Gantt date parsing, retained config
+  projection, root viewport formulas, or Architecture residual classification.
+
 ## HPD-050 - Gantt Date/Duration Regex Panic Surface
 
 Outcome:

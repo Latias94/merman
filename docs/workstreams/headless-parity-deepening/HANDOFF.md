@@ -1234,6 +1234,10 @@ Current repository reality to preserve:
     `accDescr` regex construction from `class/db.rs`. Method parsing now follows Mermaid 11.15's
     greedy `ClassMember.parseMember(...)` source boundary, including method names that contain
     earlier parentheses before the actual parameter list.
+  - A follow-up HPD-050 snapshot-gate pass refreshed
+    `fixtures/zed_issues/zed_50558_class_inheritance.golden.json` so it preserves source-shaped
+    spaces after `+` visibility markers. The ClassDB zed issue snapshot gate, full core snapshot
+    test, and `merman-core class` tests are green.
   - A follow-up HPD-050 panic-surface slice removed the remaining Gantt date/duration regex
     construction from `gantt/mod.rs` and `gantt/date.rs`. Direct scanners now preserve Mermaid
     11.15 `ganttDb.js` ASCII digit, `after` / `until` relative ID, duration, and strict

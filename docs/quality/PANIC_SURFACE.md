@@ -137,6 +137,8 @@ Library code should not panic on user-controlled input.
     ClassDB-local regex helpers. Method parsing now uses a source-shaped scanner for Mermaid's
     greedy member regex, and multiline accessibility descriptions collapse newline indentation
     directly.
+  - The `zed_50558_class_inheritance` ClassDB golden now matches the source-shaped method parser
+    boundary by preserving the space after `+` visibility markers in method ids and display text.
   - Gantt date/duration relative-reference helpers no longer compile the remaining core-local
     regexes. ASCII digit checks, source-shaped `after` / `until` ID capture, duration parsing, and
     strict `YYYY-MM-DD` shape checks now use direct scanners aligned with Mermaid 11.15
@@ -315,6 +317,10 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core detect flowchart`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the preprocess
     style/classDef hex-protection regex removal.
+  - Verification: `cargo +1.95 run -p xtask -- update-snapshots --diagram all --filter zed_50558_class_inheritance`,
+    `cargo +1.95 nextest run -p merman-core --test snapshots`,
+    `cargo +1.95 nextest run -p merman-core class`, and `git diff --check` passed for the
+    ClassDB snapshot gate follow-up.
   - Verification: `cargo +1.95 fmt -p merman-core`,
     `cargo +1.95 nextest run -p merman-core gantt`,
     `cargo +1.95 fmt --check -p merman-core`, `git diff --check`, and

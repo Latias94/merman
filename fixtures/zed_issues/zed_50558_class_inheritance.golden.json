@@ -16,21 +16,21 @@
           {
             "memberType": "method",
             "visibility": "+",
-            "id": "move",
+            "id": " move",
             "classifier": "",
             "parameters": "",
             "returnType": "void",
-            "displayText": "+move() : void",
+            "displayText": "+ move() : void",
             "cssStyle": ""
           },
           {
             "memberType": "method",
             "visibility": "+",
-            "id": "eat",
+            "id": " eat",
             "classifier": "",
             "parameters": "",
             "returnType": "void",
-            "displayText": "+eat() : void",
+            "displayText": "+ eat() : void",
             "cssStyle": ""
           }
         ],
@@ -67,11 +67,11 @@
           {
             "memberType": "method",
             "visibility": "+",
-            "id": "bark",
+            "id": " bark",
             "classifier": "",
             "parameters": "",
             "returnType": "void",
-            "displayText": "+bark() : void",
+            "displayText": "+ bark() : void",
             "cssStyle": ""
           }
         ],
