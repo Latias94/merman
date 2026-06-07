@@ -1,18 +1,17 @@
+mod support;
+
 use merman::ascii::{AsciiRenderOptions, HeadlessAsciiRenderer};
-use std::io::Read;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input)?;
-    if input.trim().is_empty() {
-        input = r#"sequenceDiagram
+    let input = support::read_mermaid_or_default(
+        "example_04_ascii_output",
+        r#"sequenceDiagram
     participant User
     participant System
     User->>System: Request ASCII output
     System-->>User: Rendered text
-"#
-        .to_string();
-    }
+"#,
+    )?;
 
     let options = if std::env::args().any(|arg| arg == "--ascii") {
         AsciiRenderOptions::ascii()

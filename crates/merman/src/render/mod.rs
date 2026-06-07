@@ -560,7 +560,7 @@ Missing ref: id2,after missing,1d
     }
 }
 
-/// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.
+/// Convenience wrapper that bundles a [`merman_core::Engine`] and common options for headless rendering.
 ///
 /// This is intended for UI integrations where passing 4-5 separate parameters per call is
 /// noisy. It stays runtime-agnostic: all work is CPU-bound and does not perform I/O.

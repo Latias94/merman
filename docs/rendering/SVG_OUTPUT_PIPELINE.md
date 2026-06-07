@@ -44,7 +44,7 @@ let svg = renderer
 Runnable example:
 
 ```bash
-cargo run -p merman --features render --example svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+cargo run -p merman --features render --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
 ```
 
 The compatibility helpers are wrappers around the same pipeline:

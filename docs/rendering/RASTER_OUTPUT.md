@@ -46,24 +46,30 @@ Note on sizing:
 ## Library usage
 
 If you want render-and-raster output without spawning the CLI, enable the `raster` feature on the
-`merman` crate and call the render helpers:
+`merman` crate and call `HeadlessRenderer`:
 
 ```rust
-use merman::{Engine, ParseOptions};
-use merman::render::{headless_layout_options, raster, SvgRenderOptions};
+use merman::render::{
+    HeadlessRenderer,
+    raster::{RasterFitBox, RasterOptions},
+};
 
-let engine = Engine::new();
-let bytes = raster::render_png_sync(
-    &engine,
-    "flowchart TD; A[Layer 7\\nHTTP]-->B;",
-    ParseOptions::default(),
-    &headless_layout_options(),
-    &SvgRenderOptions::default(),
-    &raster::RasterOptions::default(),
-)?
-.unwrap();
+let renderer = HeadlessRenderer::new().with_diagram_id("raster-doc-example");
+let raster = RasterOptions::default()
+    .with_fit_to(RasterFitBox::contain(960, 540))
+    .with_scale(2.0)
+    .with_background("white");
+let bytes = renderer
+    .render_png_sync("flowchart TD; A[Layer 7\\nHTTP]-->B;", &raster)?
+    .unwrap();
 # let _ = bytes;
 # Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+The same path is available as a runnable repository example:
+
+```sh
+cargo run -p merman --features raster --example example_05_raster_output
 ```
 
 If you already have an SVG string and want the same preprocessing before calling the lower-level
