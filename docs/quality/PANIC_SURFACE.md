@@ -142,6 +142,9 @@ Library code should not panic on user-controlled input.
     now follow the same retained-config projection rule. Their public root objects are hand-built
     maps where needed, including Mindmap's empty-root early return, so retained host config is not
     recursively cloned or re-wrapped through `json!`.
+  - Base theme Radar numeric defaults no longer unwrap fixed
+    `serde_json::Number::from_f64(...)` construction for `curveOpacity` or `graticuleOpacity`.
+    They now use a finite-number helper while preserving the same `0.5` and `0.3` JSON defaults.
   - Flowchart subgraph membership extraction no longer exposes invariant `expect(...)` panics while
     walking the explicit frame stack. Unexpected empty-stack states degrade to the partially
     accumulated root items instead of panicking on the public flowchart parse/model boundary.
@@ -351,6 +354,12 @@ Library code should not panic on user-controlled input.
     `rg -n 'regex::Regex|Regex::new|OnceLock<Regex>|OnceLock\s*<\s*Regex' crates/merman-core/src -g '*.rs'`
     passed for the Gantt regex removal; the final `rg` reported no production core regex
     compile/cache matches.
+  - Verification: `cargo +1.95 fmt -p merman-core`,
+    `cargo +1.95 nextest run -p merman-core theme`,
+    `rg -n 'from_f64\(0\.5\)\.unwrap\(\)|from_f64\(0\.3\)\.unwrap\(\)' crates/merman-core/src/theme.rs`,
+    `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
+    `git diff --check` passed for the theme numeric-default panic-surface cleanup. The `rg`
+    command reported no matches.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
@@ -505,9 +514,6 @@ The following patterns are intentionally tolerated for now but should be tracked
 - `dugong-graphlib::Graph::set_edge_named(...)` still panics for named edges on non-multigraph
   simple graphs. That is currently preserved as a source-backed Graphlib throw mapping, not treated
   as an internal invariant panic.
-- `manatee::algo::cose_bilkent` still has a horizontal y-force diagnostic `panic!` in the first
-  spring tick. Keep it visible as a solver-invariant triage item until there is a source-backed
-  error/degrade decision.
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
     C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and

@@ -252,6 +252,12 @@ fn set_string_if_missing(map: &mut Map<String, Value>, key: &str, value: impl In
     set_if_missing(map, key, Value::String(value.into()));
 }
 
+fn set_finite_number_if_missing(map: &mut Map<String, Value>, key: &str, value: f64) {
+    if let Some(number) = serde_json::Number::from_f64(value) {
+        set_if_missing(map, key, Value::Number(number));
+    }
+}
+
 fn set_derived_string_unless_explicit(
     map: &mut Map<String, Value>,
     explicit: &Map<String, Value>,
@@ -2182,11 +2188,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     set_if_missing(&mut radar, "axisColor", Value::String(line_color));
     set_if_missing(&mut radar, "axisStrokeWidth", Value::Number(2.into()));
     set_if_missing(&mut radar, "axisLabelFontSize", Value::Number(12.into()));
-    set_if_missing(
-        &mut radar,
-        "curveOpacity",
-        Value::Number(serde_json::Number::from_f64(0.5).unwrap()),
-    );
+    set_finite_number_if_missing(&mut radar, "curveOpacity", 0.5);
     set_if_missing(&mut radar, "curveStrokeWidth", Value::Number(2.into()));
     set_if_missing(
         &mut radar,
@@ -2194,11 +2196,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         Value::String("#DEDEDE".to_string()),
     );
     set_if_missing(&mut radar, "graticuleStrokeWidth", Value::Number(1.into()));
-    set_if_missing(
-        &mut radar,
-        "graticuleOpacity",
-        Value::Number(serde_json::Number::from_f64(0.3).unwrap()),
-    );
+    set_finite_number_if_missing(&mut radar, "graticuleOpacity", 0.3);
     set_if_missing(&mut radar, "legendBoxSize", Value::Number(12.into()));
     set_if_missing(&mut radar, "legendFontSize", Value::Number(12.into()));
     tv.insert("radar".to_string(), Value::Object(radar));

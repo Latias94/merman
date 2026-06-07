@@ -9062,3 +9062,40 @@ Gate notes:
   viewport formulas, parser behavior, or sanitizer policy. Test-only regex use remains in
   integration tests; production `merman-core/src` and `merman-render/src` now have no precise
   regex compile/cache matches.
+
+## HPD-050 - Theme Numeric Default Panic Surface
+
+Outcome:
+
+- Removed the two production `serde_json::Number::from_f64(...).unwrap()` calls from base theme
+  Radar defaults in `crates/merman-core/src/theme.rs`.
+- Added `set_finite_number_if_missing(...)` beside the existing theme default helpers so fixed
+  finite numeric defaults can be inserted without a panic-bearing unwrap.
+- Preserved the current JSON output for `themeVariables.radar.curveOpacity = 0.5` and
+  `themeVariables.radar.graticuleOpacity = 0.3`; non-finite values would now be skipped instead of
+  panicking if the helper is reused incorrectly later.
+- Removed the stale `manatee::algo::cose_bilkent` horizontal y-force triage bullet from
+  `docs/quality/PANIC_SURFACE.md` after confirming that diagnostic `panic!` is in a `#[cfg(test)]`
+  helper rather than a production runtime path.
+
+Evidence:
+
+- `crates/merman-core/src/theme.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-theme-numeric-default-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core theme` - passed, `23` tests run.
+- `rg -n 'from_f64\(0\.5\)\.unwrap\(\)|from_f64\(0\.3\)\.unwrap\(\)' crates/merman-core/src/theme.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `875`
+  lines parsed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a local theme-default panic-surface cleanup. It does not change theme derivation,
+  supported theme names, retained config projection, Radar parser behavior, render layout, SVG
+  baselines, root viewport formulas, or Mermaid parity residual classification.

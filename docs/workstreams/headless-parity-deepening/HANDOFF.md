@@ -1295,6 +1295,10 @@ Current repository reality to preserve:
     substrings directly, and `merman-render` keeps `regex` only as a dev-dependency for integration
     tests. A precise production `merman-core/src` plus `merman-render/src` regex compile/cache scan
     now reports no matches.
+  - A follow-up HPD-050 panic-surface guard removed base theme Radar numeric default
+    `serde_json::Number::from_f64(...).unwrap()` calls from `theme.rs`. The new finite-number theme
+    helper preserves `curveOpacity = 0.5` and `graticuleOpacity = 0.3`; the stale COSE-Bilkent
+    y-force triage note was also removed because the diagnostic panic lives under `#[cfg(test)]`.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
