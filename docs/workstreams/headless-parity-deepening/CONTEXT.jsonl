@@ -795,3 +795,7 @@
 {"file":"crates/merman-core/src/preprocess/mod.rs","reason":"HPD-050 preprocess CRLF cleanup fix: cleanup_text now normalizes CRLF and CR-only line endings with a direct scanner instead of a cached regex."}
 {"file":"crates/merman-core/src/tests/detect.rs","reason":"HPD-050 preprocess CRLF regression coverage: public preprocessing normalizes CRLF and CR-only input before comment cleanup without the CRLF regex helper."}
 {"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-crlf-panic-surface.md","reason":"HPD-050 journal: records preprocess CRLF regex removal, focused verification, and public preprocessing boundary."}
+{"file":"repo-ref/mermaid/packages/mermaid/src/utils.ts","reason":"HPD-050 preprocess entity cleanup source: Mermaid encodeEntities uses ASCII word-shaped #\\w+; replacement and numeric marker selection before parsing."}
+{"file":"crates/merman-core/src/preprocess/mod.rs","reason":"HPD-050 preprocess entity cleanup fix: encode_mermaid_entities_like_upstream now scans entity placeholders directly instead of cached entity/int regexes."}
+{"file":"crates/merman-core/src/tests/detect.rs","reason":"HPD-050 preprocess entity regression coverage: public preprocessing emits Mermaid entity placeholders without the entity regex helper."}
+{"file":"docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-entity-panic-surface.md","reason":"HPD-050 journal: records preprocess entity placeholder regex removal, source semantics, focused verification, and public preprocessing boundary."}

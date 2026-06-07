@@ -158,6 +158,16 @@ fn preprocess_normalizes_crlf_without_regex() {
 }
 
 #[test]
+fn preprocess_encodes_entities_without_entity_regex() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+    let result = preprocess_diagram("flowchart TD\nA[#there;]\nB[#77653;]", &registry)
+        .expect("preprocess succeeds");
+
+    assert!(result.code.contains("A[ﬂ°there¶ß]"), "{:?}", result.code);
+    assert!(result.code.contains("B[ﬂ°°77653¶ß]"), "{:?}", result.code);
+}
+
+#[test]
 fn detector_registry_strips_deep_frontmatter_with_small_stack() {
     const DEPTH: usize = 512;
     let mut text = String::from("---\nconfig: {\"sequence\": ");

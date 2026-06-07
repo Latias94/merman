@@ -77,6 +77,9 @@ Library code should not panic on user-controlled input.
   - Preprocess CRLF normalization no longer compiles a regex on the public preprocessing boundary.
     It now scans `\r\n` / `\r` line endings directly while preserving Mermaid's normalization to
     `\n`.
+  - Preprocess Mermaid entity placeholder encoding no longer compiles the `#\w+;` entity regex or
+    the integer-classification regex on the public preprocessing boundary. It now scans ASCII word
+    entity placeholders directly, matching Mermaid's JavaScript `\w` source shape.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional
@@ -238,6 +241,13 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p merman-core detect`,
     `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the preprocess
     CRLF regex removal.
+  - Verification: `cargo +1.95 nextest run -p merman-core
+    encode_entity_placeholders_matches_mermaid_ascii_word_shape
+    preprocess_encodes_entities_without_entity_regex
+    preprocess_normalizes_crlf_without_regex`,
+    `cargo +1.95 nextest run -p merman-core detect flowchart`,
+    `cargo +1.95 fmt --check -p merman-core`, and `git diff --check` passed for the preprocess
+    entity placeholder regex removal.
   - Verification: `cargo fmt --check -p merman-render`,
     `cargo nextest run -p merman-render c4`, and
     `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`

@@ -17,8 +17,6 @@ cached_regex!(re_tag, r"<(\w+)([^>]*)>");
 cached_regex!(re_attr_eq_double_quoted, "=\"([^\"]*)\"");
 cached_regex!(re_style_hex, r"style.*:\S*#.*;");
 cached_regex!(re_classdef_hex, r"classDef.*:\S*#.*;");
-cached_regex!(re_entity, r"#\w+;");
-cached_regex!(re_int, r"^\+?\d+$");
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
     pub code: String,
@@ -164,24 +162,47 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     }
 
     if txt.contains(';') {
-        txt = re_entity()
-            .replace_all(&txt, |caps: &regex::Captures| {
-                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-                let inner = s
-                    .strip_prefix('#')
-                    .and_then(|s| s.strip_suffix(';'))
-                    .unwrap_or("");
-                let is_int = re_int().is_match(inner);
-                if is_int {
-                    format!("ﬂ°°{inner}¶ß")
-                } else {
-                    format!("ﬂ°{inner}¶ß")
-                }
-            })
-            .to_string();
+        txt = encode_entity_placeholders_like_upstream(&txt);
     }
 
     txt
+}
+
+fn encode_entity_placeholders_like_upstream(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut cursor = 0usize;
+
+    while let Some(rel_hash) = text[cursor..].find('#') {
+        let start = cursor + rel_hash;
+        let mut end = start + 1;
+        while end < bytes.len() && is_mermaid_entity_word_byte(bytes[end]) {
+            end += 1;
+        }
+
+        if end > start + 1 && bytes.get(end) == Some(&b';') {
+            out.push_str(&text[cursor..start]);
+            let inner = &text[start + 1..end];
+            if inner.bytes().all(|b| b.is_ascii_digit()) {
+                out.push_str("ﬂ°°");
+            } else {
+                out.push_str("ﬂ°");
+            }
+            out.push_str(inner);
+            out.push_str("¶ß");
+            cursor = end + 1;
+        } else {
+            out.push_str(&text[cursor..=start]);
+            cursor = start + 1;
+        }
+    }
+
+    out.push_str(&text[cursor..]);
+    out
+}
+
+fn is_mermaid_entity_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {
@@ -631,6 +652,24 @@ mod tests {
             "flowchart TD\nA-->B\nC-->D\n"
         );
         assert_eq!(normalize_crlf("\r\r\n\n"), "\n\n\n");
+    }
+
+    #[test]
+    fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
+        assert_eq!(
+            encode_mermaid_entities_like_upstream("Hello #there; #andHere;#77653;"),
+            "Hello ﬂ°there¶ß ﬂ°andHere¶ßﬂ°°77653¶ß"
+        );
+        assert_eq!(
+            encode_mermaid_entities_like_upstream(
+                "style this; is ; everything :something#not-nothing; and this too;"
+            ),
+            "style this; is ; everything :something#not-nothing; and this too"
+        );
+        assert_eq!(
+            encode_mermaid_entities_like_upstream("#é; #+123; #has-dash;"),
+            "#é; #+123; #has-dash;"
+        );
     }
 
     #[test]

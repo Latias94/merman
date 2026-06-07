@@ -8032,3 +8032,44 @@ Gate notes:
 - This is a public preprocessing panic-surface cleanup only. It does not change entity encoding,
   HTML attribute rewrite behavior, frontmatter/directive parsing, detector order, semantic models,
   rendered output, SVG baselines, or Architecture residual classification.
+
+## HPD-050 - Preprocess Entity Placeholder Cleanup Panic Surface
+
+Outcome:
+
+- Removed the preprocess entity placeholder regexes from the public preprocessing boundary.
+- `encode_mermaid_entities_like_upstream(...)` no longer calls the cached `#\w+;` entity regex or
+  the integer-classification regex.
+- Entity placeholder encoding now scans ASCII word bytes directly, matching Mermaid's JavaScript
+  `/#\w+;/g` source shape.
+- Numeric entity placeholders still receive the `ﬂ°°...¶ß` marker, while nonnumeric word
+  placeholders receive `ﬂ°...¶ß`.
+- Non-ASCII and non-word hash sequences such as `#é;`, `#+123;`, and `#has-dash;` remain untouched,
+  matching the upstream regex boundary.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/utils.ts`
+- `repo-ref/mermaid/packages/mermaid/src/mermaidAPI.spec.ts`
+- `crates/merman-core/src/preprocess/mod.rs`
+- `crates/merman-core/src/tests/detect.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-preprocess-entity-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core encode_entity_placeholders_matches_mermaid_ascii_word_shape preprocess_encodes_entities_without_entity_regex preprocess_normalizes_crlf_without_regex` -
+  passed, `3` tests run.
+- `cargo +1.95 nextest run -p merman-core detect flowchart` - passed, `117` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 're_entity|re_int|cached_regex!\(re_entity|cached_regex!\(re_int|Regex::new\(r"#\\w\+;"|Regex::new\(r"\^\\\+\?\\d\+\$"' crates/merman-core/src/preprocess/mod.rs` -
+  no entity or integer preprocess regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public preprocessing panic-surface cleanup only. It does not change style/classDef hex
+  protection, HTML attribute rewrite behavior, frontmatter/directive parsing, detector order,
+  semantic models, rendered output, SVG baselines, or Architecture residual classification.

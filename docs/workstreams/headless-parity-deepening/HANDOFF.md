@@ -1186,6 +1186,10 @@ Current repository reality to preserve:
   - A follow-up HPD-050 panic-surface slice removed preprocess CRLF regex construction.
     `cleanup_text(...)` now normalizes `\r\n` and CR-only input with a direct scanner before
     frontmatter, directive, detector, and comment cleanup handling.
+  - A follow-up HPD-050 panic-surface slice removed preprocess entity placeholder regex
+    construction. `encode_mermaid_entities_like_upstream(...)` now scans Mermaid `#\w+;`
+    placeholders with source-shaped ASCII word-byte semantics and preserves numeric versus
+    nonnumeric marker output without cached entity/int regexes.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
