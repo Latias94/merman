@@ -1154,6 +1154,11 @@ Current repository reality to preserve:
     preserving camel-cased field names, optional `placement` omission, zero `centralConnection`
     omission, and autonumber integer/float JSON number encoding. Focused Sequence equivalence and
     family tests passed.
+  - A follow-up HPD-050 panic-surface slice hardened XYChart compat JSON construction. The public
+    `parse_xychart(...)` JSON path no longer serializes `XyChartDiagramRenderModel` through
+    `serde_json::to_value(...).expect(...)` before adding `type` and `config`; it now builds the
+    compat object directly and copies retained effective config with the shared non-recursive JSON
+    clone helper. The typed-vs-legacy regression now compares the entire compat object.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

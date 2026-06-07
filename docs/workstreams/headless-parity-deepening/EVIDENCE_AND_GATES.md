@@ -7755,3 +7755,46 @@ Gate notes:
   actor maps.
 - No new broad `merman-core` package run was performed for this narrow internal JSON projection
   cleanup; the focused Sequence package filter covers the changed diagram family.
+
+## HPD-050 - XYChart Compat JSON Panic Surface
+
+Outcome:
+
+- Hardened the XYChart typed render-model compatibility bridge after the Sequence compat JSON
+  cleanup.
+- `parse_xychart(...)` no longer serializes `XyChartDiagramRenderModel` through
+  `serde_json::to_value(...).expect(...)` before adding public `type` and `config` fields.
+- `XyChartDiagramRenderModel::to_compat_json(...)` now assembles the compatibility map directly
+  from typed fields while preserving the old JSON shape:
+  - `accTitle`, `accDescr`, `xAxis`, and `yAxis` names stay camel-cased as before;
+  - axis variants still emit tagged `type` values of `band` and `linear`;
+  - plot variants still emit tagged `type` values of `bar` and `line`;
+  - absent optional title/accessibility fields and optional numeric axis/data values still emit
+    JSON `null`;
+  - retained `config` is copied with the shared non-recursive JSON clone helper instead of a
+    recursive `serde_json::Value` clone.
+- This is a production panic-surface cleanup for an existing parser/render bridge. It does not
+  change XYChart parsing semantics, SVG output, baselines, root viewport formulas, or known XYChart
+  parity residuals.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/xychart.rs`
+- `crates/merman-core/src/tests/misc.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-xychart-compat-json-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core parse_xychart_render_model_uses_typed_variant_without_changing_json_parse` -
+  passed, `1` test run.
+- `cargo +1.95 nextest run -p merman-core xychart` - passed, `17` tests run.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- The typed-vs-JSON regression now compares the full hand-built compat JSON object against the
+  legacy `parse_diagram_sync(...)` JSON path, including the retained `config` field.
+- No new broad `merman-core` package run was performed for this narrow internal JSON projection
+  cleanup; the focused XYChart package filter covers the changed diagram family.

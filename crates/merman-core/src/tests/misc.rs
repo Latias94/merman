@@ -969,7 +969,7 @@ line "Series 2" [2, 3]
         .unwrap();
 
     assert_eq!(parsed.meta.diagram_type, "xychart");
-    match parsed.model {
+    let typed_json = match &parsed.model {
         RenderSemanticModel::XyChart(model) => {
             assert_eq!(model.orientation, "horizontal");
             assert_eq!(model.title.as_deref(), Some("Typed XYChart"));
@@ -1001,9 +1001,10 @@ line "Series 2" [2, 3]
                 ]
             );
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
+            model.to_compat_json(&parsed.meta)
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
-    }
+    };
 
     let parsed_json = engine
         .parse_diagram_sync(input, ParseOptions::strict())
@@ -1022,6 +1023,7 @@ line "Series 2" [2, 3]
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
     assert!(parsed_json.model.get("config").is_some());
+    assert_eq!(typed_json, parsed_json.model);
 }
 
 #[test]
