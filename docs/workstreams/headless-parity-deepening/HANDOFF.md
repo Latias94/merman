@@ -1075,6 +1075,12 @@ Current repository reality to preserve:
     renderer layout/SVG entrypoints project `blocksFlat` through explicit heap-backed
     `serde_json::Value` traversal. SVG node metadata collection also uses an explicit stack.
     Focused Block tests and DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened C4's deep boundary/deployment-node layout path
+    after a `1,500`-level nested C4 boundary regression reproduced stack overflow through the
+    public render-model layout path. C4 layout now simulates the old recursive
+    `layout_inside_boundary(...)` calls with explicit heap-backed frames, preserving parent-bounds
+    accumulation for sibling rows, shapes, child boundaries, and root bounds. Focused C4 tests and
+    DOM parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

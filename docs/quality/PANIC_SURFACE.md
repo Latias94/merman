@@ -69,6 +69,9 @@ Library code should not panic on user-controlled input.
   - Block's semantic-JSON layout and SVG entrypoints now project `blocksFlat` through an explicit
     heap-backed traversal instead of recursive serde over nested block children. Block SVG metadata
     collection also uses an explicit stack instead of recursive `collect_nodes(...)`.
+  - C4 layout no longer recurses over user-authored boundary/deployment-node nesting. The layout
+    pass now uses an explicit heap-backed frame stack while preserving the existing parent-bounds
+    accumulation semantics for sibling rows, shapes, child boundaries, and root bounds.
   - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
     avoiding stack overflow when a supported parser intentionally returns a deeply nested
     `serde_json::Value`.
@@ -100,6 +103,11 @@ Library code should not panic on user-controlled input.
     `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
     passed for the Block deep-composite cleanup. The new `1,200`-level Block regressions reproduced
     stack overflow before the non-recursive clone/projection changes.
+  - Verification: `cargo fmt --check -p merman-render`,
+    `cargo nextest run -p merman-render c4`, and
+    `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
+    passed for the C4 deep-boundary cleanup. The new `1,500`-level C4 regression reproduced stack
+    overflow before the non-recursive layout traversal.
   - Final commit verification: `cargo fmt --check -p manatee -p merman-render -p merman`,
     `cargo nextest run -p merman-render --test class_svg_test`, and
     `cargo nextest run -p merman-render state` passed.
@@ -125,8 +133,8 @@ The following patterns are intentionally tolerated for now but should be tracked
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.
 - Deep recursive tree walkers in newly supported parser/render families:
-  - Flowchart, Ishikawa, TreeView, Treemap, Mindmap, and Block now have explicit-stack coverage for
-    representative deep or maximum-accepted inputs, but similar tree-shaped families should be
+  - Flowchart, Ishikawa, TreeView, Treemap, Mindmap, Block, and C4 now have explicit-stack coverage
+    for representative deep or maximum-accepted inputs, but similar tree-shaped families should be
     audited before release hardening is considered complete.
 
 ## Suggested workflow

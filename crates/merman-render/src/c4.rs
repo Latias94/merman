@@ -6,7 +6,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use merman_core::diagrams::c4::C4DiagramRenderModel;
+use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -669,102 +669,244 @@ fn layout_c4_shape_array(
     current_bounds.bump_last_margin(ctx.conf.c4_shape_margin);
 }
 
+struct PendingC4BoundaryLayout {
+    alias: String,
+    parent_boundary: String,
+    image: C4ImageLayout,
+    label: C4TextBlockLayout,
+    ty: Option<C4TextBlockLayout>,
+    descr: Option<C4TextBlockLayout>,
+}
+
+struct C4BoundaryFrame {
+    boundary_indices: Vec<usize>,
+    next_index: usize,
+    parent_bounds: BoundsState,
+    current_bounds: BoundsState,
+    pending: Option<PendingC4BoundaryLayout>,
+}
+
+impl C4BoundaryFrame {
+    fn new(
+        boundary_indices: Vec<usize>,
+        parent_bounds: BoundsState,
+        ctx: &C4LayoutContext<'_>,
+    ) -> Self {
+        let denom = ctx.c4_boundary_in_row.min(boundary_indices.len().max(1));
+        let width_limit = parent_bounds.data.width_limit / denom as f64;
+        let mut current_bounds = BoundsState::default();
+        current_bounds.data.width_limit = width_limit;
+
+        Self {
+            boundary_indices,
+            next_index: 0,
+            parent_bounds,
+            current_bounds,
+            pending: None,
+        }
+    }
+}
+
+fn prepare_c4_boundary_layout(
+    boundary: &C4BoundaryRenderModel,
+    width_limit: f64,
+    ctx: &C4LayoutContext<'_>,
+) -> (PendingC4BoundaryLayout, f64) {
+    let mut y = 0.0;
+
+    let mut image = C4ImageLayout {
+        width: 0.0,
+        height: 0.0,
+        y: 0.0,
+    };
+    if has_sprite(&boundary.sprite) {
+        image.width = 48.0;
+        image.height = 48.0;
+        image.y = y;
+        y = image.y + image.height;
+    }
+
+    let text_wrap = boundary.wrap.unwrap_or(ctx.model.wrap) && ctx.conf.wrap;
+    let mut label_conf = ctx.conf.boundary_font();
+    label_conf.font_size += 2.0;
+    label_conf.font_weight = Some("bold".to_string());
+
+    let label_text = boundary.label.as_str().to_string();
+    let label_m = measure_c4_text(
+        ctx.measurer,
+        &label_text,
+        &label_conf,
+        text_wrap,
+        width_limit,
+    );
+    let label = C4TextBlockLayout {
+        text: label_text,
+        y: y + 8.0,
+        width: label_m.width,
+        height: label_m.height,
+        line_count: label_m.line_count,
+    };
+    y = label.y + label.height;
+
+    let mut ty: Option<C4TextBlockLayout> = None;
+    if let Some(boundary_ty) = boundary.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
+        let ty_text = format!("[{}]", boundary_ty.as_str());
+        let ty_conf = ctx.conf.boundary_font();
+        let m = measure_c4_text(ctx.measurer, &ty_text, &ty_conf, text_wrap, width_limit);
+        let block = C4TextBlockLayout {
+            text: ty_text,
+            y: y + 5.0,
+            width: m.width,
+            height: m.height,
+            line_count: m.line_count,
+        };
+        y = block.y + block.height;
+        ty = Some(block);
+    }
+
+    let mut descr: Option<C4TextBlockLayout> = None;
+    if let Some(boundary_descr) = boundary.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
+        let descr_text = boundary_descr.as_str().to_string();
+        let mut descr_conf = ctx.conf.boundary_font();
+        descr_conf.font_size -= 2.0;
+        let m = measure_c4_text(
+            ctx.measurer,
+            &descr_text,
+            &descr_conf,
+            text_wrap,
+            width_limit,
+        );
+        let block = C4TextBlockLayout {
+            text: descr_text,
+            y: y + 20.0,
+            width: m.width,
+            height: m.height,
+            line_count: m.line_count,
+        };
+        y = block.y + block.height;
+        descr = Some(block);
+    }
+
+    (
+        PendingC4BoundaryLayout {
+            alias: boundary.alias.clone(),
+            parent_boundary: boundary.parent_boundary.clone(),
+            image,
+            label,
+            ty,
+            descr,
+        },
+        y,
+    )
+}
+
+fn finish_c4_boundary_layout(
+    parent_bounds: &mut BoundsState,
+    current_bounds: &BoundsState,
+    pending: PendingC4BoundaryLayout,
+    ctx: &C4LayoutContext<'_>,
+    state: &mut C4LayoutState,
+) {
+    let startx = current_bounds.data.startx.unwrap_or(0.0);
+    let stopx = current_bounds.data.stopx.unwrap_or(startx);
+    let starty = current_bounds.data.starty.unwrap_or(0.0);
+    let stopy = current_bounds.data.stopy.unwrap_or(starty);
+
+    state.boundaries.insert(
+        pending.alias.clone(),
+        C4BoundaryLayout {
+            alias: pending.alias,
+            parent_boundary: pending.parent_boundary,
+            x: startx,
+            y: starty,
+            width: stopx - startx,
+            height: stopy - starty,
+            image: pending.image,
+            label: pending.label,
+            ty: pending.ty,
+            descr: pending.descr,
+        },
+    );
+
+    let stopx_with_margin = stopx + ctx.conf.c4_shape_margin;
+    let stopy_with_margin = stopy + ctx.conf.c4_shape_margin;
+    parent_bounds.data.stopx = Some(
+        parent_bounds
+            .data
+            .stopx
+            .unwrap_or(stopx_with_margin)
+            .max(stopx_with_margin),
+    );
+    parent_bounds.data.stopy = Some(
+        parent_bounds
+            .data
+            .stopy
+            .unwrap_or(stopy_with_margin)
+            .max(stopy_with_margin),
+    );
+
+    state.global_max_x = state
+        .global_max_x
+        .max(parent_bounds.data.stopx.unwrap_or(state.global_max_x));
+    state.global_max_y = state
+        .global_max_y
+        .max(parent_bounds.data.stopy.unwrap_or(state.global_max_y));
+}
+
 fn layout_inside_boundary(
     parent_bounds: &mut BoundsState,
     boundary_indices: &[usize],
     ctx: &C4LayoutContext<'_>,
     state: &mut C4LayoutState,
 ) -> Result<()> {
-    let mut current_bounds = BoundsState::default();
+    let mut stack = vec![C4BoundaryFrame::new(
+        boundary_indices.to_vec(),
+        parent_bounds.clone(),
+        ctx,
+    )];
 
-    let denom = ctx.c4_boundary_in_row.min(boundary_indices.len().max(1));
-    let width_limit = parent_bounds.data.width_limit / denom as f64;
-    current_bounds.data.width_limit = width_limit;
-
-    for (i, idx) in boundary_indices.iter().enumerate() {
-        let boundary = &ctx.model.boundaries[*idx];
-        let mut y = 0.0;
-
-        let mut image = C4ImageLayout {
-            width: 0.0,
-            height: 0.0,
-            y: 0.0,
-        };
-        if has_sprite(&boundary.sprite) {
-            image.width = 48.0;
-            image.height = 48.0;
-            image.y = y;
-            y = image.y + image.height;
-        }
-
-        let text_wrap = boundary.wrap.unwrap_or(ctx.model.wrap) && ctx.conf.wrap;
-        let mut label_conf = ctx.conf.boundary_font();
-        label_conf.font_size += 2.0;
-        label_conf.font_weight = Some("bold".to_string());
-
-        let label_text = boundary.label.as_str().to_string();
-        let label_m = measure_c4_text(
-            ctx.measurer,
-            &label_text,
-            &label_conf,
-            text_wrap,
-            width_limit,
-        );
-        let label = C4TextBlockLayout {
-            text: label_text,
-            y: y + 8.0,
-            width: label_m.width,
-            height: label_m.height,
-            line_count: label_m.line_count,
-        };
-        y = label.y + label.height;
-
-        let mut ty_block: Option<C4TextBlockLayout> = None;
-        if let Some(ty) = boundary.ty.as_ref().filter(|t| !t.as_str().is_empty()) {
-            let ty_text = format!("[{}]", ty.as_str());
-            let ty_conf = ctx.conf.boundary_font();
-            let m = measure_c4_text(ctx.measurer, &ty_text, &ty_conf, text_wrap, width_limit);
-            let block = C4TextBlockLayout {
-                text: ty_text,
-                y: y + 5.0,
-                width: m.width,
-                height: m.height,
-                line_count: m.line_count,
-            };
-            y = block.y + block.height;
-            ty_block = Some(block);
-        }
-
-        let mut descr_block: Option<C4TextBlockLayout> = None;
-        if let Some(descr) = boundary.descr.as_ref().filter(|t| !t.as_str().is_empty()) {
-            let descr_text = descr.as_str().to_string();
-            let mut descr_conf = ctx.conf.boundary_font();
-            descr_conf.font_size -= 2.0;
-            let m = measure_c4_text(
-                ctx.measurer,
-                &descr_text,
-                &descr_conf,
-                text_wrap,
-                width_limit,
+    while let Some(frame) = stack.last_mut() {
+        if let Some(pending) = frame.pending.take() {
+            finish_c4_boundary_layout(
+                &mut frame.parent_bounds,
+                &frame.current_bounds,
+                pending,
+                ctx,
+                state,
             );
-            let block = C4TextBlockLayout {
-                text: descr_text,
-                y: y + 20.0,
-                width: m.width,
-                height: m.height,
-                line_count: m.line_count,
-            };
-            y = block.y + block.height;
-            descr_block = Some(block);
+            continue;
         }
 
-        let parent_startx = parent_bounds
+        if frame.next_index >= frame.boundary_indices.len() {
+            let Some(finished) = stack.pop() else {
+                break;
+            };
+            if let Some(parent) = stack.last_mut() {
+                parent.current_bounds = finished.parent_bounds;
+                continue;
+            }
+
+            *parent_bounds = finished.parent_bounds;
+            return Ok(());
+        }
+
+        let i = frame.next_index;
+        let idx = frame.boundary_indices[i];
+        frame.next_index += 1;
+
+        let boundary = &ctx.model.boundaries[idx];
+        let width_limit = frame.current_bounds.data.width_limit;
+        let (pending, y) = prepare_c4_boundary_layout(boundary, width_limit, ctx);
+
+        let parent_startx = frame
+            .parent_bounds
             .data
             .startx
             .ok_or_else(|| Error::InvalidModel {
                 message: "c4: parent bounds missing startx".to_string(),
             })?;
-        let parent_stopy = parent_bounds
+        let parent_stopy = frame
+            .parent_bounds
             .data
             .stopy
             .ok_or_else(|| Error::InvalidModel {
@@ -774,75 +916,45 @@ fn layout_inside_boundary(
         if i == 0 || i % ctx.c4_boundary_in_row == 0 {
             let x = parent_startx + ctx.conf.diagram_margin_x;
             let y0 = parent_stopy + ctx.conf.diagram_margin_y + y;
-            current_bounds.set_data(x, x, y0, y0);
+            frame.current_bounds.set_data(x, x, y0, y0);
         } else {
-            let startx = current_bounds.data.startx.unwrap_or(parent_startx);
-            let stopx = current_bounds.data.stopx.unwrap_or(startx);
+            let startx = frame.current_bounds.data.startx.unwrap_or(parent_startx);
+            let stopx = frame.current_bounds.data.stopx.unwrap_or(startx);
             let x = if stopx != startx {
                 stopx + ctx.conf.diagram_margin_x
             } else {
                 startx
             };
-            let y0 = current_bounds.data.starty.unwrap_or(parent_stopy);
-            current_bounds.set_data(x, x, y0, y0);
+            let y0 = frame.current_bounds.data.starty.unwrap_or(parent_stopy);
+            frame.current_bounds.set_data(x, x, y0, y0);
         }
 
         if let Some(shape_indices) = ctx.shape_children.get(&boundary.alias) {
             if !shape_indices.is_empty() {
-                layout_c4_shape_array(&mut current_bounds, shape_indices, ctx, state);
+                layout_c4_shape_array(&mut frame.current_bounds, shape_indices, ctx, state);
             }
         }
 
         if let Some(next_boundaries) = ctx.boundary_children.get(&boundary.alias) {
             if !next_boundaries.is_empty() {
-                layout_inside_boundary(&mut current_bounds, next_boundaries, ctx, state)?;
+                frame.pending = Some(pending);
+                let child_parent_bounds = frame.current_bounds.clone();
+                stack.push(C4BoundaryFrame::new(
+                    next_boundaries.clone(),
+                    child_parent_bounds,
+                    ctx,
+                ));
+                continue;
             }
         }
 
-        let startx = current_bounds.data.startx.unwrap_or(0.0);
-        let stopx = current_bounds.data.stopx.unwrap_or(startx);
-        let starty = current_bounds.data.starty.unwrap_or(0.0);
-        let stopy = current_bounds.data.stopy.unwrap_or(starty);
-
-        state.boundaries.insert(
-            boundary.alias.clone(),
-            C4BoundaryLayout {
-                alias: boundary.alias.clone(),
-                parent_boundary: boundary.parent_boundary.clone(),
-                x: startx,
-                y: starty,
-                width: stopx - startx,
-                height: stopy - starty,
-                image,
-                label,
-                ty: ty_block,
-                descr: descr_block,
-            },
+        finish_c4_boundary_layout(
+            &mut frame.parent_bounds,
+            &frame.current_bounds,
+            pending,
+            ctx,
+            state,
         );
-
-        let stopx_with_margin = stopx + ctx.conf.c4_shape_margin;
-        let stopy_with_margin = stopy + ctx.conf.c4_shape_margin;
-        parent_bounds.data.stopx = Some(
-            parent_bounds
-                .data
-                .stopx
-                .unwrap_or(stopx_with_margin)
-                .max(stopx_with_margin),
-        );
-        parent_bounds.data.stopy = Some(
-            parent_bounds
-                .data
-                .stopy
-                .unwrap_or(stopy_with_margin)
-                .max(stopy_with_margin),
-        );
-
-        state.global_max_x = state
-            .global_max_x
-            .max(parent_bounds.data.stopx.unwrap_or(state.global_max_x));
-        state.global_max_y = state
-            .global_max_y
-            .max(parent_bounds.data.stopy.unwrap_or(state.global_max_y));
     }
 
     Ok(())

@@ -7206,3 +7206,47 @@ Gate notes:
   changed.
 - This is release-boundary hardening for Block's accepted deep composite path. It does not
   introduce a new Block depth limit.
+
+## HPD-050 - C4 Deep-Boundary Panic Surface
+
+Outcome:
+
+- Hardened C4's user-authored boundary/deployment-node nesting path after the Block cleanup. A
+  `1,500`-level nested C4 boundary input reproduced stack overflow in the public render-model
+  layout path before this slice.
+- C4 core semantic output already stays flat for `boundaries` / `shapes`; this slice keeps the
+  production change scoped to render layout rather than introducing a new nested semantic shape.
+- `layout_inside_boundary(...)` now uses an explicit heap-backed frame stack instead of recursive
+  calls while preserving the existing parent-bounds accumulation model:
+  - sibling boundary row placement still uses the shared per-level `current_bounds`;
+  - shapes still lay out before child boundaries;
+  - child boundary layout still expands the pending parent's bounds before the parent boundary is
+    finalized;
+  - root width/height still come from the accumulated global C4 bounds.
+- Added a public-path regression:
+  - render parses a `1,500`-level C4 boundary chain through `parse_diagram_for_render_model_sync`
+    and layouts it through `layout_parsed_render_layout_only(...)`.
+
+Evidence:
+
+- `crates/merman-render/src/c4.rs`
+- `crates/merman-render/tests/c4_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-c4-deep-boundary-panic-surface.md`
+
+Focused verification:
+
+- `cargo nextest run -p merman-render --test c4_svg_test c4_public_layout_handles_deep_boundary_chain` -
+  first run failed before the fix with stack overflow; passed after the explicit-stack layout
+  traversal.
+- `cargo nextest run -p merman-render c4` - passed, `6` tests run.
+- `cargo fmt --check -p merman-render` - passed.
+- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3` - passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for C4's accepted deep boundary path. It does not introduce a
+  new C4 depth limit.
