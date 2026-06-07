@@ -113,26 +113,47 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
 
     let (arena, roots) = build_hierarchy(&flat_items);
-    let root_value = json!({
-        "name": "",
-        "children": roots.iter().map(|&idx| node_to_value(&arena, idx)).collect::<Vec<_>>(),
-    });
+    let mut root_obj = Map::new();
+    root_obj.insert("name".to_string(), Value::String(String::new()));
+    root_obj.insert(
+        "children".to_string(),
+        Value::Array(
+            roots
+                .iter()
+                .map(|&idx| node_to_value(&arena, idx))
+                .collect(),
+        ),
+    );
+    let root_value = Value::Object(root_obj);
 
     let mut nodes_preorder: Vec<Value> = Vec::new();
     for &idx in &roots {
         flatten_preorder(&arena, idx, 0, &mut nodes_preorder);
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": parsed.title,
-        "accTitle": parsed.acc_title,
-        "accDescr": parsed.acc_descr,
-        "root": root_value,
-        "nodes": nodes_preorder,
-        "classes": Value::Object(classes),
-        "config": meta.effective_config.as_value().clone(),
-    }))
+    let mut out = Map::new();
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert(
+        "title".to_string(),
+        parsed.title.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert(
+        "accTitle".to_string(),
+        parsed.acc_title.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert(
+        "accDescr".to_string(),
+        parsed.acc_descr.map(Value::String).unwrap_or(Value::Null),
+    );
+    out.insert("root".to_string(), root_value);
+    out.insert("nodes".to_string(), Value::Array(nodes_preorder));
+    out.insert("classes".to_string(), Value::Object(classes));
+    out.insert(
+        "config".to_string(),
+        meta.effective_config.as_value().clone(),
+    );
+
+    Ok(Value::Object(out))
 }
 
 pub fn parse_treemap_model_for_render(
@@ -406,67 +427,126 @@ fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
 }
 
 fn node_to_value(arena: &Arena, idx: usize) -> Value {
-    let node = &arena.nodes[idx];
-    let mut obj = Map::new();
-    obj.insert("name".to_string(), Value::String(node.name.clone()));
-    if let Some(v) = &node.value {
-        obj.insert("value".to_string(), v.clone());
+    let mut values: Vec<Option<Value>> = vec![None; arena.nodes.len()];
+    let mut stack = vec![(idx, false)];
+
+    while let Some((node_idx, visited)) = stack.pop() {
+        let Some(node) = arena.nodes.get(node_idx) else {
+            continue;
+        };
+
+        if visited {
+            let mut obj = Map::new();
+            obj.insert("name".to_string(), Value::String(node.name.clone()));
+            if let Some(v) = &node.value {
+                obj.insert("value".to_string(), v.clone());
+            }
+            if let Some(cls) = &node.class_selector {
+                obj.insert("classSelector".to_string(), Value::String(cls.clone()));
+            }
+            if let Some(css) = &node.css_compiled_styles {
+                obj.insert(
+                    "cssCompiledStyles".to_string(),
+                    Value::Array(css.iter().cloned().map(Value::String).collect()),
+                );
+            }
+            if let Some(children) = &node.children {
+                obj.insert(
+                    "children".to_string(),
+                    Value::Array(
+                        children
+                            .iter()
+                            .filter_map(|&child_idx| {
+                                values.get_mut(child_idx).and_then(Option::take)
+                            })
+                            .collect(),
+                    ),
+                );
+            }
+            values[node_idx] = Some(Value::Object(obj));
+        } else {
+            stack.push((node_idx, true));
+            if let Some(children) = &node.children {
+                for &child_idx in children.iter().rev() {
+                    stack.push((child_idx, false));
+                }
+            }
+        }
     }
-    if let Some(cls) = &node.class_selector {
-        obj.insert("classSelector".to_string(), Value::String(cls.clone()));
-    }
-    if let Some(css) = &node.css_compiled_styles {
-        obj.insert(
-            "cssCompiledStyles".to_string(),
-            Value::Array(css.iter().cloned().map(Value::String).collect()),
-        );
-    }
-    if let Some(children) = &node.children {
-        obj.insert(
-            "children".to_string(),
-            Value::Array(children.iter().map(|&c| node_to_value(arena, c)).collect()),
-        );
-    }
-    Value::Object(obj)
+
+    values
+        .get_mut(idx)
+        .and_then(Option::take)
+        .unwrap_or_else(|| json!({ "name": "" }))
 }
 
 fn node_to_render_model(arena: &Arena, idx: usize) -> TreemapNodeRenderModel {
-    let node = &arena.nodes[idx];
-    TreemapNodeRenderModel {
-        name: node.name.clone(),
-        children: node.children.as_ref().map(|children| {
-            children
-                .iter()
-                .map(|&c| node_to_render_model(arena, c))
-                .collect()
-        }),
-        value: node.value.clone(),
-        class_selector: node.class_selector.clone(),
-        css_compiled_styles: node.css_compiled_styles.clone(),
+    let mut models: Vec<Option<TreemapNodeRenderModel>> = vec![None; arena.nodes.len()];
+    let mut stack = vec![(idx, false)];
+
+    while let Some((node_idx, visited)) = stack.pop() {
+        let Some(node) = arena.nodes.get(node_idx) else {
+            continue;
+        };
+
+        if visited {
+            let children = node.children.as_ref().map(|children| {
+                children
+                    .iter()
+                    .filter_map(|&child_idx| models.get_mut(child_idx).and_then(Option::take))
+                    .collect()
+            });
+            models[node_idx] = Some(TreemapNodeRenderModel {
+                name: node.name.clone(),
+                children,
+                value: node.value.clone(),
+                class_selector: node.class_selector.clone(),
+                css_compiled_styles: node.css_compiled_styles.clone(),
+            });
+        } else {
+            stack.push((node_idx, true));
+            if let Some(children) = &node.children {
+                for &child_idx in children.iter().rev() {
+                    stack.push((child_idx, false));
+                }
+            }
+        }
     }
+
+    models
+        .get_mut(idx)
+        .and_then(Option::take)
+        .unwrap_or_default()
 }
 
 fn flatten_preorder(arena: &Arena, idx: usize, level: i64, out: &mut Vec<Value>) {
-    let node = &arena.nodes[idx];
-    let mut obj = Map::new();
-    obj.insert("level".to_string(), Value::Number(level.into()));
-    obj.insert("name".to_string(), Value::String(node.name.clone()));
-    if let Some(v) = &node.value {
-        obj.insert("value".to_string(), v.clone());
-    }
-    if let Some(cls) = &node.class_selector {
-        obj.insert("classSelector".to_string(), Value::String(cls.clone()));
-    }
-    if let Some(css) = &node.css_compiled_styles {
-        obj.insert(
-            "cssCompiledStyles".to_string(),
-            Value::Array(css.iter().cloned().map(Value::String).collect()),
-        );
-    }
-    out.push(Value::Object(obj));
-    if let Some(children) = &node.children {
-        for &c in children {
-            flatten_preorder(arena, c, level + 1, out);
+    let mut stack = vec![(idx, level)];
+    while let Some((node_idx, node_level)) = stack.pop() {
+        let Some(node) = arena.nodes.get(node_idx) else {
+            continue;
+        };
+
+        let mut obj = Map::new();
+        obj.insert("level".to_string(), Value::Number(node_level.into()));
+        obj.insert("name".to_string(), Value::String(node.name.clone()));
+        if let Some(v) = &node.value {
+            obj.insert("value".to_string(), v.clone());
+        }
+        if let Some(cls) = &node.class_selector {
+            obj.insert("classSelector".to_string(), Value::String(cls.clone()));
+        }
+        if let Some(css) = &node.css_compiled_styles {
+            obj.insert(
+                "cssCompiledStyles".to_string(),
+                Value::Array(css.iter().cloned().map(Value::String).collect()),
+            );
+        }
+        out.push(Value::Object(obj));
+
+        if let Some(children) = &node.children {
+            for &child_idx in children.iter().rev() {
+                stack.push((child_idx, node_level.saturating_add(1)));
+            }
         }
     }
 }
@@ -948,6 +1028,62 @@ accDescr: Treemap accDescr
         let engine = Engine::new();
         let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
         err.to_string()
+    }
+
+    fn deep_treemap_chain(depth: usize) -> String {
+        let mut input = String::from("treemap\n");
+        for level in 0..depth {
+            input.push_str(&" ".repeat(level));
+            input.push('"');
+            input.push_str(&format!("section{level}"));
+            input.push_str("\"\n");
+        }
+        input.push_str(&" ".repeat(depth));
+        input.push_str("\"leaf\": 1\n");
+        input
+    }
+
+    fn count_render_nodes(root: &TreemapNodeRenderModel) -> usize {
+        let mut count = 0usize;
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            count += 1;
+            if let Some(children) = node.children.as_ref() {
+                for child in children.iter().rev() {
+                    stack.push(child);
+                }
+            }
+        }
+        count
+    }
+
+    #[test]
+    fn treemap_deep_chain_semantic_and_render_model_use_heap_traversal() {
+        const DEPTH: usize = 1200;
+        let input = deep_treemap_chain(DEPTH);
+
+        let model = parse(&input);
+        let nodes = model["nodes"].as_array().expect("nodes array");
+        assert_eq!(nodes.len(), DEPTH + 1);
+        assert_eq!(nodes[0]["name"], json!("section0"));
+        assert_eq!(
+            nodes
+                .last()
+                .and_then(|node| node.get("name"))
+                .and_then(Value::as_str),
+            Some("leaf")
+        );
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        match parsed.model {
+            RenderSemanticModel::Treemap(model) => {
+                assert_eq!(count_render_nodes(&model.root), DEPTH + 2);
+            }
+            other => panic!("treemap render parse should return typed model, got {other:?}"),
+        }
     }
 
     #[test]

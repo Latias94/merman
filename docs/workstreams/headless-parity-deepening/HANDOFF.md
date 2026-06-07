@@ -1051,6 +1051,14 @@ Current repository reality to preserve:
     semantic node flattening, and render layout. Focused regressions cover the maximum accepted
     `256`-node chain through core semantic JSON and render public parse/layout paths, and
     TreeView DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface slice hardened Treemap's unbounded hierarchy path. Core
+    Treemap semantic JSON and typed render-model construction now use explicit heap-backed
+    traversal, including hand-built semantic `Map` output to avoid deep `json!` serialization.
+    Render Treemap layout no longer recurses for typed-model flattening, subtree sums, child
+    sorting, or semantic-JSON model projection. The same slice fixed the shared
+    `layout_parsed(...)` retained-semantic clone path with a non-recursive `serde_json::Value`
+    clone after a `1,200`-level Treemap regression reproduced stack overflow there. Treemap DOM
+    parity stayed green.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

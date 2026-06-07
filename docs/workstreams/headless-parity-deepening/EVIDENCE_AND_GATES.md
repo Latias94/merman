@@ -7051,3 +7051,55 @@ Gate notes:
   changed.
 - This is release-boundary hardening for TreeView's accepted depth boundary; similar tree-shaped
   families remain candidates for follow-up audit.
+
+## HPD-050 - Treemap Deep-Tree Panic Surface
+
+Outcome:
+
+- Hardened Treemap's user-authored hierarchy path after the TreeView depth-boundary cleanup. Unlike
+  TreeView, Treemap has no custom `MAX_DIAGRAM_NESTING_DEPTH` rejection path, so this slice keeps
+  deeply nested input parseable while removing Rust call-stack recursion from the public parse/layout
+  paths.
+- `parse_treemap(...)` now builds the semantic `root` object with hand-built `serde_json::Map`
+  output and explicit heap-backed traversal, avoiding both recursive tree walkers and deep `json!`
+  serialization of user-authored `Value` trees.
+- `node_to_value(...)`, `node_to_render_model(...)`, and `flatten_preorder(...)` now use explicit
+  stacks while preserving the existing nested root shape and preorder flat `nodes` projection.
+- Treemap layout now uses explicit stacks for typed-model flattening, subtree sum computation, and
+  source-compatible child sorting.
+- The semantic-JSON layout entrypoint now projects Treemap nodes iteratively instead of relying on
+  recursive serde deserialization.
+- `layout_parsed(...)` now retains semantic JSON through a non-recursive `serde_json::Value` clone.
+  This is a shared render-entry hardening because the Treemap deep-chain test reproduced stack
+  overflow there even after Treemap's own walkers were converted.
+- Added public-path regressions:
+  - core parses and semantically projects a `1,200`-level Treemap hierarchy;
+  - core builds the typed Treemap render model for the same hierarchy;
+  - render parses through the ordinary JSON semantic path and layouts the same hierarchy through
+    `layout_parsed(...)`.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/treemap.rs`
+- `crates/merman-render/src/json.rs`
+- `crates/merman-render/src/lib.rs`
+- `crates/merman-render/src/treemap.rs`
+- `crates/merman-render/tests/treemap_svg_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-treemap-deep-tree-panic-surface.md`
+
+Focused verification:
+
+- `cargo fmt --check -p merman-core -p merman-render` - passed.
+- `cargo nextest run -p merman-core treemap` - passed, `13` tests run.
+- `cargo nextest run -p merman-render --test treemap_svg_test` - passed, `6` tests run.
+- `cargo run -p xtask -- compare-treemap-svgs --check-dom --dom-mode parity --dom-decimals 3` -
+  passed.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- No SVG baseline, root override, Architecture root-bounds formula, or Mermaid parity fixture was
+  changed.
+- This is release-boundary hardening for Treemap's unbounded hierarchy path plus the shared
+  `layout_parsed(...)` deep semantic clone surface it exposed.

@@ -5,6 +5,7 @@ use merman_core::diagrams::treemap::{
     TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
 pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
@@ -63,64 +64,94 @@ fn treemap_config(effective_config: &Value) -> TreemapConfig {
 }
 
 fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize>, depth: usize) {
-    let own_value = node.value.as_ref().and_then(json_f64).unwrap_or(0.0);
-    let idx = nodes.len();
-    nodes.push(HierNode {
-        name: node.name.clone(),
-        own_value,
-        value: 0.0,
-        class_selector: node.class_selector.clone(),
-        css_compiled_styles: node.css_compiled_styles.clone(),
-        parent,
-        children: Vec::new(),
-        depth,
-        x0: 0.0,
-        y0: 0.0,
-        x1: 0.0,
-        y1: 0.0,
-    });
+    let mut stack = vec![(node, parent, depth)];
+    while let Some((current, parent_idx, current_depth)) = stack.pop() {
+        let own_value = current.value.as_ref().and_then(json_f64).unwrap_or(0.0);
+        let idx = nodes.len();
+        nodes.push(HierNode {
+            name: current.name.clone(),
+            own_value,
+            value: 0.0,
+            class_selector: current.class_selector.clone(),
+            css_compiled_styles: current.css_compiled_styles.clone(),
+            parent: parent_idx,
+            children: Vec::new(),
+            depth: current_depth,
+            x0: 0.0,
+            y0: 0.0,
+            x1: 0.0,
+            y1: 0.0,
+        });
 
-    if let Some(parent_idx) = parent {
-        nodes[parent_idx].children.push(idx);
-    }
+        if let Some(parent_idx) = parent_idx {
+            if let Some(parent_node) = nodes.get_mut(parent_idx) {
+                parent_node.children.push(idx);
+            }
+        }
 
-    if let Some(children) = node.children.as_ref() {
-        for child in children {
-            push_node(nodes, child, Some(idx), depth + 1);
+        if let Some(children) = current.children.as_ref() {
+            for child in children.iter().rev() {
+                stack.push((child, Some(idx), current_depth.saturating_add(1)));
+            }
         }
     }
 }
 
 fn compute_sum(nodes: &mut [HierNode], idx: usize) -> f64 {
-    let mut sum = nodes[idx].own_value;
-    let children = nodes[idx].children.clone();
-    for c in children {
-        sum += compute_sum(nodes, c);
+    let mut stack = vec![(idx, false)];
+    while let Some((node_idx, visited)) = stack.pop() {
+        let Some(node) = nodes.get(node_idx) else {
+            continue;
+        };
+
+        if visited {
+            let sum = node.own_value
+                + node
+                    .children
+                    .iter()
+                    .filter_map(|&child_idx| nodes.get(child_idx).map(|child| child.value))
+                    .sum::<f64>();
+            if let Some(node) = nodes.get_mut(node_idx) {
+                node.value = sum;
+            }
+        } else {
+            stack.push((node_idx, true));
+            for &child_idx in node.children.iter().rev() {
+                stack.push((child_idx, false));
+            }
+        }
     }
-    nodes[idx].value = sum;
-    sum
+
+    nodes.get(idx).map(|node| node.value).unwrap_or(0.0)
 }
 
 fn sort_children_by_value(nodes: &mut [HierNode], idx: usize) {
-    let mut items = nodes[idx]
-        .children
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(pos, child)| (child, pos))
-        .collect::<Vec<_>>();
-    items.sort_by(|(a, a_pos), (b, b_pos)| {
-        let av = nodes[*a].value;
-        let bv = nodes[*b].value;
-        bv.partial_cmp(&av)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a_pos.cmp(b_pos))
-    });
-    nodes[idx].children = items.into_iter().map(|(child, _pos)| child).collect();
+    let mut stack = vec![idx];
+    while let Some(node_idx) = stack.pop() {
+        if node_idx >= nodes.len() {
+            continue;
+        }
 
-    let children = nodes[idx].children.clone();
-    for c in children {
-        sort_children_by_value(nodes, c);
+        let mut items = nodes[node_idx]
+            .children
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(pos, child)| (child, pos))
+            .collect::<Vec<_>>();
+        items.sort_by(|(a, a_pos), (b, b_pos)| {
+            let av = nodes[*a].value;
+            let bv = nodes[*b].value;
+            bv.partial_cmp(&av)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a_pos.cmp(b_pos))
+        });
+        nodes[node_idx].children = items.into_iter().map(|(child, _pos)| child).collect();
+
+        let children = nodes[node_idx].children.clone();
+        for child_idx in children.into_iter().rev() {
+            stack.push(child_idx);
+        }
     }
 }
 
@@ -376,8 +407,114 @@ pub fn layout_treemap_diagram(
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
-    let model: TreemapDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    let model = treemap_model_from_semantic(semantic)?;
     layout_treemap_diagram_typed(&model, effective_config, _measurer)
+}
+
+fn treemap_model_from_semantic(semantic: &Value) -> Result<TreemapDiagramRenderModel> {
+    let root = semantic
+        .get("root")
+        .ok_or_else(|| invalid_treemap_model("missing root"))?;
+
+    Ok(TreemapDiagramRenderModel {
+        acc_title: optional_string_field(semantic, "accTitle")?,
+        acc_descr: optional_string_field(semantic, "accDescr")?,
+        title: optional_string_field(semantic, "title")?,
+        root: treemap_node_from_value(root)?,
+    })
+}
+
+fn treemap_node_from_value(root: &Value) -> Result<TreemapNode> {
+    let mut models: HashMap<*const Value, TreemapNode> = HashMap::new();
+    let mut stack = vec![(root, false)];
+
+    while let Some((node_value, visited)) = stack.pop() {
+        let node_ptr = std::ptr::from_ref(node_value);
+        if visited {
+            let children = optional_children_array(node_value)?.map(|children| {
+                children
+                    .iter()
+                    .filter_map(|child| models.remove(&std::ptr::from_ref(child)))
+                    .collect::<Vec<_>>()
+            });
+            models.insert(
+                node_ptr,
+                TreemapNode {
+                    name: required_string_field(node_value, "name")?,
+                    children,
+                    value: optional_value_field(node_value, "value"),
+                    class_selector: optional_string_field(node_value, "classSelector")?,
+                    css_compiled_styles: optional_string_vec_field(
+                        node_value,
+                        "cssCompiledStyles",
+                    )?,
+                },
+            );
+        } else {
+            stack.push((node_value, true));
+            if let Some(children) = optional_children_array(node_value)? {
+                for child in children.iter().rev() {
+                    stack.push((child, false));
+                }
+            }
+        }
+    }
+
+    models
+        .remove(&std::ptr::from_ref(root))
+        .ok_or_else(|| invalid_treemap_model("root projection failed"))
+}
+
+fn optional_children_array(value: &Value) -> Result<Option<&Vec<Value>>> {
+    match value.get("children") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(children)) => Ok(Some(children)),
+        Some(_) => Err(invalid_treemap_model("children must be an array")),
+    }
+}
+
+fn required_string_field(value: &Value, field: &str) -> Result<String> {
+    match value.get(field) {
+        Some(Value::String(v)) => Ok(v.clone()),
+        _ => Err(invalid_treemap_model(format!("{field} must be a string"))),
+    }
+}
+
+fn optional_string_field(value: &Value, field: &str) -> Result<Option<String>> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => Ok(Some(v.clone())),
+        Some(_) => Err(invalid_treemap_model(format!("{field} must be a string"))),
+    }
+}
+
+fn optional_string_vec_field(value: &Value, field: &str) -> Result<Option<Vec<String>>> {
+    match value.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| invalid_treemap_model(format!("{field} must contain strings")))
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(Some),
+        Some(_) => Err(invalid_treemap_model(format!("{field} must be an array"))),
+    }
+}
+
+fn optional_value_field(value: &Value, field: &str) -> Option<Value> {
+    value
+        .get(field)
+        .filter(|v| !v.is_null())
+        .map(crate::json::clone_value_nonrecursive)
+}
+
+fn invalid_treemap_model(message: impl Into<String>) -> Error {
+    Error::InvalidModel {
+        message: format!("invalid treemap semantic model: {}", message.into()),
+    }
 }
 
 pub fn layout_treemap_diagram_typed(

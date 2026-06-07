@@ -133,7 +133,7 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
 
     Ok(LayoutedDiagram {
         meta,
-        semantic: Value::clone(&parsed.model),
+        semantic: crate::json::clone_value_nonrecursive(&parsed.model),
         layout,
     })
 }

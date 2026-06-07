@@ -87,6 +87,19 @@ fn render_treemap_svg_from_source(text: &str) -> String {
     render_treemap_svg_and_config_from_source(text).0
 }
 
+fn deep_treemap_chain(depth: usize) -> String {
+    let mut input = String::from("treemap\n");
+    for level in 0..depth {
+        input.push_str(&" ".repeat(level));
+        input.push('"');
+        input.push_str(&format!("section{level}"));
+        input.push_str("\"\n");
+    }
+    input.push_str(&" ".repeat(depth));
+    input.push_str("\"leaf\": 1\n");
+    input
+}
+
 #[test]
 fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_basic_spec.mmd");
@@ -229,4 +242,24 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         svg.contains(r#"aria-roledescription="error""#) && svg.contains("Syntax error in text"),
         "expected Mermaid parser-compatible error SVG for invalid classDef style token: {svg}"
     );
+}
+
+#[test]
+fn treemap_public_json_layout_handles_deep_chain() {
+    const DEPTH: usize = 1200;
+    let source = deep_treemap_chain(DEPTH);
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
+        panic!("expected TreemapDiagram layout");
+    };
+
+    assert_eq!(layout.sections.len(), DEPTH + 1);
+    assert_eq!(layout.leaves.len(), 1);
+    assert_eq!(layout.leaves[0].name, "leaf");
 }
