@@ -133,6 +133,10 @@ Library code should not panic on user-controlled input.
     detection pass. The detector now uses equivalent string checks for Mermaid's upstream
     ungrouped regex shape, avoiding a fixed stack-heavy regex initialization point in small-stack
     public parse paths.
+  - Class diagram member parsing and multiline `accDescr` normalization no longer compile
+    ClassDB-local regex helpers. Method parsing now uses a source-shaped scanner for Mermaid's
+    greedy member regex, and multiline accessibility descriptions collapse newline indentation
+    directly.
   - Detector/preprocess Mermaid comment cleanup no longer constructs a regex in
     `DetectorRegistry`. Both public detection and preprocessing now share a source-shaped line
     scanner that mirrors Mermaid 11.15 `cleanupComments`: remove indented `%%` comment lines with
@@ -369,8 +373,11 @@ Library code should not panic on user-controlled input.
 
 The following patterns are intentionally tolerated for now but should be tracked:
 
-- Regex compilation via `Regex::new("...").unwrap()` in detector initialization:
+- Regex compilation via `Regex::new("...").unwrap()` in remaining parser/date helper
+  initialization:
   - input is a static literal; failures indicate a programming error, not user input.
+  - Gantt date/duration helpers are the current `merman-core` regex cluster and should be audited
+    as a source-backed follow-up before claiming core regex cleanup complete.
 - A small number of `unwrap/expect` in renderer internals:
   - most are on index/iterator operations that are guarded by bounds checks, but they are worth
     auditing because they can become input-reachable if assumptions drift.

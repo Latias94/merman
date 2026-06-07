@@ -82,6 +82,50 @@ namespace Company.Project.Module {
 }
 
 #[test]
+fn parse_diagram_class_method_parser_matches_upstream_greedy_regex_boundary() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+class Parser {
+  +outer(inner)(value) Result$
+}
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let method = &res.model["classes"]["Parser"]["methods"][0];
+    assert_eq!(
+        method["displayText"],
+        json!("+outer(inner)(value) : Result")
+    );
+    assert_eq!(method["id"], json!("outer(inner)"));
+    assert_eq!(method["parameters"], json!("value"));
+    assert_eq!(method["returnType"], json!("Result"));
+    assert_eq!(method["cssStyle"], json!("text-decoration:underline;"));
+}
+
+#[test]
+fn parse_diagram_class_acc_descr_multiline_collapses_newline_whitespace_without_regex() {
+    let engine = Engine::new();
+    let text = r#"classDiagram
+accTitle: My Title
+accDescr {
+  This is my multi
+  line description
+}
+"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.model["accTitle"], json!("My Title"));
+    assert_eq!(
+        res.model["accDescr"],
+        json!("This is my multi\nline description")
+    );
+}
+
+#[test]
 fn parse_diagram_class_hierarchical_dotted_namespace_and_notes() {
     let engine = Engine::new();
     let text = r#"classDiagram

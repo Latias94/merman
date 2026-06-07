@@ -8476,3 +8476,48 @@ Gate notes:
   the shared text wrapping scanner, Node/KaTeX renderer probing, non-math labels, Mermaid
   preprocessing, core sanitization, semantic parsing, SVG baselines, root viewport formulas, or
   Architecture residual classification.
+
+## HPD-050 - ClassDB Member/accDescr Regex Panic Surface
+
+Outcome:
+
+- Removed the remaining ClassDB-local regex compilation points from
+  `crates/merman-core/src/diagrams/class/db.rs`.
+- Replaced the method member fallback regex with a source-shaped scanner for Mermaid 11.15
+  `ClassMember.parseMember(...)`:
+  `([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?`.
+- The scanner preserves the upstream greedy boundary by using the last `(` before the last `)` for
+  method parameters, so names containing earlier parentheses remain part of the method id.
+- Replaced class multiline `accDescr` `\n\s+` replacement with a direct scanner that collapses
+  indentation after newlines.
+- Added public parser coverage for the greedy method boundary and multiline accessibility
+  description normalization.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classTypes.ts`
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDiagram.spec.ts`
+- `crates/merman-core/src/diagrams/class/db.rs`
+- `crates/merman-core/src/tests/class.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-classdb-regex-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core parse_diagram_class_method_parser_matches_upstream_greedy_regex_boundary parse_diagram_class_acc_descr_multiline_collapses_newline_whitespace_without_regex` -
+  passed, `2` tests run.
+- `cargo +1.95 nextest run -p merman-core class` - passed, `49` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+- `rg -n 'Regex|regex::|OnceLock|METHOD_RE|ACC_DESCR_RE|class method regex|class acc descr regex' crates/merman-core/src/diagrams/class/db.rs` -
+  no ClassDB regex dependency or helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `835`
+  lines parsed.
+
+Gate notes:
+
+- This is a source-backed Class parser panic-surface cleanup and a method parser boundary
+  convergence. It does not change Class layout, renderer SVG output, namespace semantics,
+  link/callback behavior, common sanitizer policy, Gantt date parsing, retained config projection,
+  SVG baselines, root viewport formulas, or Architecture residual classification.

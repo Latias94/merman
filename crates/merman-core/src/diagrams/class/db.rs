@@ -4,18 +4,13 @@ use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{MermaidConfig, ParseMetadata};
 use indexmap::IndexMap;
-use regex::Regex;
 use serde_json::Value;
-use std::sync::OnceLock;
 
 use super::ast::{Action, RelationData};
 use super::{
     LINE_DOTTED, LINE_SOLID, MERMAID_DOM_ID_PREFIX, REL_AGGREGATION, REL_COMPOSITION,
     REL_DEPENDENCY, REL_EXTENSION, REL_LOLLIPOP, REL_NONE,
 };
-
-static METHOD_RE: OnceLock<Regex> = OnceLock::new();
-static ACC_DESCR_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct ClassMember {
@@ -46,55 +41,55 @@ impl ClassMember {
         m
     }
 
-    fn parse_method_signature_fast(input: &str) -> Option<(&str, &str, &str, &str, &str)> {
-        // Fast-path for the common Mermaid method member forms:
-        //
-        //   ([#+~-])? <name> "(" <params> ")" <classifier?> <return_type?>
-        //
-        // where classifier is `$` (underline) or `*` (italic) and can appear either:
-        // - immediately after `)` (e.g. `foo()$`)
-        // - at the end of the return type payload (e.g. `foo() : i32$`), in which case Mermaid's
-        //   upstream parsing treats it as the classifier (see legacy regex logic below).
-        //
-        // We return borrowed slices and let the caller allocate as needed.
+    fn parse_method_signature_like_upstream(input: &str) -> Option<(&str, &str, &str, &str, &str)> {
         let s = input.trim();
         if s.is_empty() {
             return None;
         }
 
-        let (visibility, rest) = match s.as_bytes()[0] {
-            b'#' | b'+' | b'~' | b'-' => (&s[..1], &s[1..]),
-            _ => ("", s),
+        if let Some(parsed) = Self::parse_method_signature_from_offset(s, true) {
+            return Some(parsed);
+        }
+        Self::parse_method_signature_from_offset(s, false)
+    }
+
+    fn parse_method_signature_from_offset(
+        input: &str,
+        allow_visibility: bool,
+    ) -> Option<(&str, &str, &str, &str, &str)> {
+        let (visibility, rest) = if allow_visibility {
+            match input.as_bytes()[0] {
+                b'#' | b'+' | b'~' | b'-' => (&input[..1], &input[1..]),
+                _ => ("", input),
+            }
+        } else {
+            ("", input)
         };
 
-        let paren_open_rel = rest.find('(')?;
-        let paren_close_rel = rest.rfind(')')?;
-        if paren_close_rel < paren_open_rel {
+        let paren_close = rest.rfind(')')?;
+        let paren_open = rest[..paren_close].rfind('(')?;
+        if paren_open == 0 {
             return None;
         }
 
-        let name = rest[..paren_open_rel].trim();
-        let params = rest[paren_open_rel + 1..paren_close_rel].trim();
-        let after_paren = rest[paren_close_rel + 1..].trim_start();
+        let name = &rest[..paren_open];
+        let params = rest[paren_open + 1..paren_close].trim();
+        let after_paren = &rest[paren_close + 1..];
 
-        let mut classifier = "";
-        let mut return_type = after_paren.trim();
-
-        if let Some(first) = after_paren.as_bytes().first().copied() {
-            if first == b'$' || first == b'*' {
-                classifier = &after_paren[..1];
-                return_type = after_paren[1..].trim();
+        let (classifier, return_type) = if let Some(first) = after_paren.chars().next() {
+            if first == '$' || first == '*' {
+                (
+                    &after_paren[..first.len_utf8()],
+                    after_paren[first.len_utf8()..].trim(),
+                )
+            } else if is_js_regex_whitespace(first) {
+                ("", after_paren[first.len_utf8()..].trim())
+            } else {
+                ("", after_paren.trim())
             }
-        }
-
-        if classifier.is_empty() {
-            if let Some(last) = return_type.as_bytes().last().copied() {
-                if last == b'$' || last == b'*' {
-                    classifier = &return_type[return_type.len() - 1..];
-                    return_type = return_type[..return_type.len() - 1].trim();
-                }
-            }
-        }
+        } else {
+            ("", "")
+        };
 
         Some((visibility, name, params, classifier, return_type))
     }
@@ -103,7 +98,7 @@ impl ClassMember {
         let input = input.trim();
         if member_type == "method" {
             if let Some((visibility, id, params, classifier, return_type)) =
-                Self::parse_method_signature_fast(input)
+                Self::parse_method_signature_like_upstream(input)
             {
                 if matches!(visibility, "#" | "+" | "~" | "-") {
                     self.visibility = visibility.to_string();
@@ -112,49 +107,15 @@ impl ClassMember {
                 self.parameters = params.to_string();
                 self.classifier = classifier.to_string();
                 self.return_type = return_type.to_string();
-            } else {
-                let method_re = METHOD_RE.get_or_init(|| {
-                    Regex::new(r"^([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?$")
-                        .expect("class method regex must compile")
-                });
-                if let Some(caps) = method_re.captures(input) {
-                    if let Some(v) = caps.get(1).map(|m| m.as_str().trim()) {
-                        if matches!(v, "#" | "+" | "~" | "-" | "") {
-                            self.visibility = v.to_string();
-                        }
-                    }
-                    self.id = caps
-                        .get(2)
-                        .map(|m| m.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    self.parameters = caps
-                        .get(3)
-                        .map(|m| m.as_str().trim())
-                        .unwrap_or_default()
-                        .to_string();
-                    let mut classifier = caps
-                        .get(4)
-                        .map(|m| m.as_str().trim())
-                        .unwrap_or_default()
-                        .to_string();
-                    self.return_type = caps
-                        .get(5)
-                        .map(|m| m.as_str().trim())
-                        .unwrap_or_default()
-                        .to_string();
+            }
 
-                    if classifier.is_empty() {
-                        if let Some(last) = self.return_type.chars().last() {
-                            if last == '$' || last == '*' {
-                                classifier = last.to_string();
-                                self.return_type.pop();
-                                self.return_type = self.return_type.trim().to_string();
-                            }
-                        }
+            if self.classifier.is_empty() {
+                if let Some(last) = self.return_type.chars().last() {
+                    if last == '$' || last == '*' {
+                        self.classifier = last.to_string();
+                        self.return_type.pop();
+                        self.return_type = self.return_type.trim().to_string();
                     }
-
-                    self.classifier = classifier;
                 }
             }
         } else {
@@ -223,6 +184,39 @@ impl ClassMember {
             css_style: self.css_style,
         }
     }
+}
+
+fn is_js_regex_whitespace(ch: char) -> bool {
+    matches!(
+        ch,
+        '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+fn collapse_acc_descr_newline_whitespace(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        out.push(ch);
+        if ch == '\n' {
+            while chars
+                .peek()
+                .is_some_and(|next| is_js_regex_whitespace(*next))
+            {
+                chars.next();
+            }
+        }
+    }
+
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -842,10 +836,7 @@ impl<'a> ClassDb<'a> {
             }
             Action::SetAccDescr(t) => {
                 let trimmed = t.trim().to_string();
-                let re = ACC_DESCR_RE.get_or_init(|| {
-                    Regex::new(r"\n\s+").expect("class acc descr regex must compile")
-                });
-                self.acc_descr = Some(re.replace_all(&trimmed, "\n").to_string());
+                self.acc_descr = Some(collapse_acc_descr_newline_whitespace(&trimmed));
                 Ok(())
             }
 

@@ -1230,6 +1230,10 @@ Current repository reality to preserve:
   - A follow-up HPD-050 panic-surface slice removed the optional RaTeX math-only label `<br>`
     regex construction from `math.rs`. The pure-math path now reuses the shared Mermaid
     `lineBreakRegex` scanner already used by ordinary HTML-label wrapping and mixed math labels.
+  - A follow-up HPD-050 panic-surface slice removed ClassDB-local method and multiline
+    `accDescr` regex construction from `class/db.rs`. Method parsing now follows Mermaid 11.15's
+    greedy `ClassMember.parseMember(...)` source boundary, including method names that contain
+    earlier parentheses before the actual parameter list.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS
