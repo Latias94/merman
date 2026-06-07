@@ -464,6 +464,9 @@ Library code should not panic on user-controlled input.
     The public `layout_indexed(...)` path now uses explicit heap-backed frames for the former
     `branch_radial_layout(...)` traversal, so Mindmap-style deep trees do not depend on the Rust
     call stack before spring embedding.
+  - COSE-Bilkent graph edge ingestion and FCoSE relative-placement component grouping no longer
+    expose invariant `expect(...)` / `unwrap()` calls. Unexpected endpoint or set drift now skips
+    the affected edge/component instead of panicking on the internal guard.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`, `cargo nextest run -p merman-render architecture`, and
     `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
@@ -474,6 +477,11 @@ Library code should not panic on user-controlled input.
     layout_indexed_handles_deep_tree_radial_layout_with_small_stack`,
     `cargo +1.95 nextest run -p manatee`, `cargo +1.95 nextest run -p merman-render --test
     mindmap_svg_test`, and `cargo +1.95 fmt` passed for the COSE-Bilkent radial tree cleanup.
+  - Verification: `cargo +1.95 fmt -p manatee`,
+    `cargo +1.95 nextest run -p manatee`,
+    `rg -n 'expect\("validated"\)|set\.iter\(\)\.next\(\)\.unwrap\(\)' crates/manatee/src/algo/cose_bilkent/mod.rs crates/manatee/src/algo/fcose/mod.rs`,
+    `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
+    `git diff --check` passed for the manatee invariant panic-surface cleanup.
 - `merman-ascii`:
   - Flowchart ASCII group raw-bounds calculation no longer recurses through nested subgraph
     members. The public `merman` ASCII API now resolves group bounds through explicit heap-backed
@@ -497,6 +505,9 @@ The following patterns are intentionally tolerated for now but should be tracked
 - `dugong-graphlib::Graph::set_edge_named(...)` still panics for named edges on non-multigraph
   simple graphs. That is currently preserved as a source-backed Graphlib throw mapping, not treated
   as an internal invariant panic.
+- `manatee::algo::cose_bilkent` still has a horizontal y-force diagnostic `panic!` in the first
+  spring tick. Keep it visible as a solver-invariant triage item until there is a source-backed
+  error/degrade decision.
 - Deep recursive tree walkers in newly supported parser/render families:
   - Flowchart, Class namespaces, Architecture groups, Ishikawa, TreeView, Treemap, Mindmap, Block,
     C4, Architecture XHTML fragments, manatee/FCoSE compounds, ASCII Flowchart groups, and

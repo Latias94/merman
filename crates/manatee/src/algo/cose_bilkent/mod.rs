@@ -519,8 +519,12 @@ impl SimGraph {
             HashSet::with_capacity_and_hasher(graph.edges.len(), Default::default());
         let mut edges: Vec<SimEdge> = Vec::with_capacity(graph.edges.len());
         for e in &graph.edges {
-            let a = *id_to_idx.get(e.source.as_str()).expect("validated");
-            let b = *id_to_idx.get(e.target.as_str()).expect("validated");
+            let Some(&a) = id_to_idx.get(e.source.as_str()) else {
+                continue;
+            };
+            let Some(&b) = id_to_idx.get(e.target.as_str()) else {
+                continue;
+            };
             if a == b {
                 continue;
             }

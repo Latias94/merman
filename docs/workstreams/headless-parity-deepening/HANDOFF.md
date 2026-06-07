@@ -1166,6 +1166,10 @@ Current repository reality to preserve:
     stack, and focused Mindmap SVG tests stayed green. This is shared layout stack-safety
     hardening, not a COSE force-constant, SVG baseline, root viewport, or Architecture residual
     change.
+  - A follow-up HPD-050 panic-surface guard removed manatee's COSE-Bilkent validated endpoint
+    `expect(...)` calls and FCoSE relative-placement component `unwrap()`. Future internal endpoint
+    or component-set drift now skips the affected item instead of panicking; solver formulas,
+    force constants, and residual classifications are unchanged.
   - A follow-up HPD-050 panic-surface slice hardened ASCII Flowchart group bounds. The public
     terminal render path now computes nested subgraph raw bounds with explicit enter/exit frames
     instead of recursively walking child groups. A `merman` ASCII API regression renders a

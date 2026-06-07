@@ -4016,7 +4016,9 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
             if !sink_nodes.contains(&k) || set.is_empty() {
                 continue;
             }
-            let first = *set.iter().next().unwrap();
+            let Some(&first) = set.iter().next() else {
+                continue;
+            };
             if let Some(idx) = components.iter().position(|c| c.contains(&first)) {
                 let mut merged = components[idx].clone();
                 for v in set.iter().copied() {

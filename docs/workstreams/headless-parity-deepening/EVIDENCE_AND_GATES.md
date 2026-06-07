@@ -7596,6 +7596,44 @@ Gate notes:
   output, semantic JSON schema, stored baselines, root-bounds formulas, Graphlib/Dagre behavior, or
   Architecture/Class residual classification.
 
+## HPD-050 - Manatee Invariant Panic Surface
+
+Outcome:
+
+- Removed COSE-Bilkent graph edge ingestion `expect("validated")` calls from
+  `crates/manatee/src/algo/cose_bilkent/mod.rs`.
+- Removed the FCoSE relative-placement component grouping `set.iter().next().unwrap()` from
+  `crates/manatee/src/algo/fcose/mod.rs`.
+- Normal COSE-Bilkent endpoint validation, duplicate-edge collapse, self-loop skip, FCoSE relative
+  placement, and Architecture/Mindmap consumer behavior are unchanged. If future internal drift
+  exposes a missing endpoint or an unexpectedly empty component set, the affected edge/component is
+  skipped instead of panicking on the guard.
+
+Evidence:
+
+- `crates/manatee/src/algo/cose_bilkent/mod.rs`
+- `crates/manatee/src/algo/fcose/mod.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-manatee-invariant-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p manatee` - passed.
+- `cargo +1.95 nextest run -p manatee` - passed, `17` tests run.
+- `rg -n 'expect\("validated"\)|set\.iter\(\)\.next\(\)\.unwrap\(\)' crates/manatee/src/algo/cose_bilkent/mod.rs crates/manatee/src/algo/fcose/mod.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `873`
+  lines parsed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+
+Gate notes:
+
+- This is a manatee internal invariant panic-surface cleanup only. It does not change solver
+  formulas, force constants, renderer SVG output, stored baselines, root-bounds formulas,
+  Graphlib/Dagre behavior, or Architecture/Class residual classification.
+- The COSE-Bilkent horizontal y-force diagnostic `panic!` remains a visible triage item and was not
+  changed in this slice.
+
 ## HPD-050 - Architecture Deep-Group Panic Surface
 
 Outcome:
