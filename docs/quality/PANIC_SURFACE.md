@@ -41,6 +41,10 @@ Library code should not panic on user-controlled input.
   - `alg::find_cycles(...)` no longer recurses through Tarjan SCC traversal. Deep public Graphlib
     successor chains now use explicit heap-backed frames and avoid stack overflow while preserving
     existing SCC and self-loop cycle reporting.
+  - `json::write(...)` and `json::write_with_defaults(...)` no longer panic if a graph id/key
+    iterator and label lookup drift apart. Missing live node/edge labels now return a
+    `serde_json::Error` backed by `InvalidData` instead of triggering JSON writer invariant
+    `expect(...)` calls.
 - `merman-core`:
   - `MermaidConfig::set_value` no longer panics if the config was constructed from a non-object
     JSON value (it coerces to an object).
@@ -363,6 +367,11 @@ Library code should not panic on user-controlled input.
     `cargo +1.95 nextest run -p dugong --test rank_util_test`,
     `rg -n 'longest-path frame should exist' crates/dugong/src/rank/util.rs`, and
     `git diff --check` passed for the Dugong longest-path frame-pop panic-surface cleanup.
+  - Verification: `cargo +1.95 fmt -p dugong-graphlib`,
+    `cargo +1.95 nextest run -p dugong-graphlib --test json_test`,
+    `rg -n 'node_ids\(\) should only yield live nodes|edge_keys\(\) should only yield live edges' crates/dugong-graphlib/src/json.rs`,
+    `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse, and
+    `git diff --check` passed for the Graphlib JSON writer invariant panic-surface cleanup.
   - Verification: `cargo fmt --check -p manatee -p merman-render`,
     `cargo nextest run -p manatee`,
     `cargo nextest run -p merman-render --test architecture_layout_test --test architecture_svg_test`,

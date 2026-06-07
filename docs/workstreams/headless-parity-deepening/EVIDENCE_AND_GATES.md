@@ -7489,6 +7489,40 @@ Gate notes:
   Graphlib API shape, Dagre ordering, edge labels, renderer SVG output, root viewport formulas,
   stored baselines, or Architecture/Class residual classification.
 
+## HPD-050 - Graphlib JSON Write Invariant Panic Surface
+
+Outcome:
+
+- Removed the remaining Graphlib JSON writer invariant `expect(...)` calls from
+  `crates/dugong-graphlib/src/json.rs`.
+- `json::write(...)` and `json::write_with_defaults(...)` still iterate `node_ids()` and
+  `edge_keys()` and preserve the existing Graphlib JSON output shape for normal graphs.
+- If a future graph-internal invariant drift exposes a node id or edge key without a live label, the
+  writer now returns a `serde_json::Error` backed by `InvalidData` instead of panicking.
+
+Evidence:
+
+- `crates/dugong-graphlib/src/json.rs`
+- `crates/dugong-graphlib/tests/json_test.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-graphlib-json-write-invariant-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p dugong-graphlib` - passed.
+- `cargo +1.95 nextest run -p dugong-graphlib --test json_test` - passed, `8` tests run.
+- `rg -n 'node_ids\(\) should only yield live nodes|edge_keys\(\) should only yield live edges' crates/dugong-graphlib/src/json.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `866`
+  lines parsed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+
+Gate notes:
+
+- This is a serialization panic-surface cleanup only. It does not change Graphlib JSON schema,
+  option/default label semantics, Dagre reference adapter behavior, renderer SVG output, stored
+  baselines, or Architecture/Class residual classification.
+
 ## HPD-050 - Architecture Deep-Group Panic Surface
 
 Outcome:

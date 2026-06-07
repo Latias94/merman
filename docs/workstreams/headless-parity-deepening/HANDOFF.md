@@ -250,6 +250,10 @@ Current repository reality to preserve:
     JSON `null` remains a present value. Default-collapsing helpers exist only as an explicit Rust
     bridge. Reuse this seam before adding another Graphlib-shaped serializer.
     Implemented-matrix structural `parity` stayed green after this container-only slice.
+  - Follow-up HPD-050 panic-surface cleanup removed the Graphlib JSON writer invariant
+    `expect(...)` calls. `write(...)` and `write_with_defaults(...)` now return an `InvalidData`
+    `serde_json::Error` if a future graph-internal drift exposes a node id or edge key without a
+    live label; normal JSON schema and option/default semantics are unchanged.
   - A consumer follow-up now routes the active Dagre reference adapter through that Graphlib JSON
     shape. `dagre_reference.rs` serializes reference input and Rust output through
     `dugong::graphlib::json`, while `tools/dagre-harness/run.mjs` accepts the new shape and writes

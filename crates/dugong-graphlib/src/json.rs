@@ -7,9 +7,10 @@
 //! For callers that intentionally want to collapse missing values onto Rust defaults, the explicit
 //! `*_with_defaults` helpers provide that fallback behavior.
 
-use crate::{Graph, GraphOptions};
+use crate::{EdgeKey, Graph, GraphOptions};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
+use std::io;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphJson {
@@ -53,7 +54,7 @@ where
         .map(|id| {
             let value = graph
                 .node(&id)
-                .expect("node_ids() should only yield live nodes");
+                .ok_or_else(|| missing_node_label_error(&id))?;
             Ok(GraphJsonNode {
                 v: id.clone(),
                 value: option_label_to_json(value)?,
@@ -68,7 +69,7 @@ where
         .map(|key| {
             let value = graph
                 .edge_by_key(&key)
-                .expect("edge_keys() should only yield live edges");
+                .ok_or_else(|| missing_edge_label_error(&key))?;
             Ok(GraphJsonEdge {
                 v: key.v,
                 w: key.w,
@@ -128,7 +129,7 @@ where
         .map(|id| {
             let value = graph
                 .node(&id)
-                .expect("node_ids() should only yield live nodes");
+                .ok_or_else(|| missing_node_label_error(&id))?;
             Ok(GraphJsonNode {
                 v: id.clone(),
                 value: default_label_to_json(value)?,
@@ -143,7 +144,7 @@ where
         .map(|key| {
             let value = graph
                 .edge_by_key(&key)
-                .expect("edge_keys() should only yield live edges");
+                .ok_or_else(|| missing_edge_label_error(&key))?;
             Ok(GraphJsonEdge {
                 v: key.v,
                 w: key.w,
@@ -187,6 +188,25 @@ where
     }
 
     Ok(graph)
+}
+
+fn graph_json_invariant_error(message: String) -> serde_json::Error {
+    serde_json::Error::io(io::Error::new(io::ErrorKind::InvalidData, message))
+}
+
+fn missing_node_label_error(id: &str) -> serde_json::Error {
+    graph_json_invariant_error(format!(
+        "Graph JSON write saw node id without live label: {id}"
+    ))
+}
+
+fn missing_edge_label_error(key: &EdgeKey) -> serde_json::Error {
+    graph_json_invariant_error(format!(
+        "Graph JSON write saw edge key without live label: {} -> {} ({})",
+        key.v,
+        key.w,
+        key.name.as_deref().unwrap_or("<unnamed>")
+    ))
 }
 
 fn option_label_to_json<T>(value: &Option<T>) -> Result<Option<JsonValue>, serde_json::Error>
