@@ -91,6 +91,9 @@ Library code should not panic on user-controlled input.
   - Sanitizer line-break placeholder handling no longer compiles Mermaid common
     `/<br\s*\/?>/gi` on first public sanitize use. It now scans the same source-shaped `<br>`
     variants directly before escaping non-loose HTML labels.
+  - Sanitizer URL-attribute minimal entity decoding no longer compiles fixed regexes for
+    `&colon;`, `&newline;`, `&tab;`, decimal colon, or hex colon entities before URI validation.
+    It now scans those fixed shapes directly while preserving the existing replacement order.
   - Sequence compat JSON construction no longer serializes the typed render model and then panics
     if expected object fields are missing. `SequenceDiagramRenderModel::to_compat_json(...)` now
     assembles the compatibility object directly, preserving serde rename behavior, optional

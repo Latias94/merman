@@ -1201,6 +1201,10 @@ Current repository reality to preserve:
     the public `sanitize_text(...)` boundary. The direct scanner preserves Mermaid common
     `/<br\s*\/?>/gi` source semantics for placeholder protection before non-loose HTML escaping;
     DOMPurify-like URL and attribute validation regexes remain separate audit candidates.
+  - A follow-up HPD-050 panic-surface slice removed sanitizer minimal attribute-entity regex
+    construction before URI validation. The scanner preserves the local DOMPurify bridge's
+    `&colon;` / `&newline;` / `&tab;` / decimal-colon / hex-colon replacement order and optional
+    numeric semicolon behavior; URI allowlist semantics remain unchanged.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

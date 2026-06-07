@@ -8193,3 +8193,41 @@ Gate notes:
   tag/attribute policy, URI validation, script/data URL checks, Mermaid entity decoding, semantic
   parsing, rendered output, SVG baselines, root viewport formulas, or Architecture residual
   classification.
+
+## HPD-050 - Sanitizer Attribute Entity Cleanup Panic Surface
+
+Outcome:
+
+- Removed five fixed regex compilation points from the sanitizer URL-attribute decoding path.
+- `decode_attr_html_entities_minimally(...)` no longer compiles cached regexes for `&colon;`,
+  `&newline;`, `&tab;`, `&#0*58;?`, or `&#x0*3a;?`.
+- The replacement scanners preserve the existing local DOMPurify bridge behavior: named entity
+  replacements run before numeric colon replacements, ASCII case-insensitive matching is preserved,
+  and numeric colon references keep the previous optional-semicolon and prefix-match behavior.
+- Public sanitizer coverage now proves numeric decimal and hex colon references are decoded before
+  JavaScript URL validation removes unsafe links.
+
+Evidence:
+
+- `repo-ref/mermaid/packages/mermaid/src/diagrams/common/common.ts`
+- `crates/merman-core/src/sanitize.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-sanitize-attr-entity-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core decode_attr_entities_matches_minimal_dompurify_url_subset_without_regex remove_script_decodes_colon_entities_before_url_validation_without_regex sanitize` -
+  passed, `30` tests run.
+- `cargo +1.95 fmt --check -p merman-core` - passed.
+- `git diff --check` - passed.
+- `rg -n 'colon_entity_regex|newline_entity_regex|tab_entity_regex|numeric_colon_dec_regex|numeric_colon_hex_regex|Regex::new\(r"\(\?i\)&colon;|Regex::new\(r"\(\?i\)&newline;|Regex::new\(r"\(\?i\)&tab;|Regex::new\(r"\(\?i\)&\#0\*58|Regex::new\(r"\(\?i\)&\#x0\*3a' crates/merman-core/src/sanitize.rs` -
+  no sanitizer minimal-entity regex helper matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed.
+
+Gate notes:
+
+- This is a public sanitizer panic-surface cleanup only. It does not change DOMPurify-like allowed
+  tag/attribute policy, URI allowlist semantics, script/data URL checks, broad HTML entity
+  decoding, semantic parsing, rendered output, SVG baselines, root viewport formulas, or
+  Architecture residual classification.

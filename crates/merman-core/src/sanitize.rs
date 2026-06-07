@@ -360,37 +360,120 @@ fn decode_attr_html_entities_minimally(input: &str) -> String {
         return String::new();
     }
 
-    fn colon_entity_regex() -> &'static Regex {
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new(r"(?i)&colon;").expect("valid regex"))
+    let mut out = replace_ascii_case_insensitive_literal(input, "&colon;", ":");
+    out = replace_ascii_case_insensitive_literal(&out, "&newline;", "\n");
+    out = replace_ascii_case_insensitive_literal(&out, "&tab;", "\t");
+    out = replace_decimal_colon_entity_like_current_regex(&out);
+    out = replace_hex_colon_entity_like_current_regex(&out);
+    out
+}
+
+fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let needle = needle.as_bytes();
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = input[probe..].find('&') {
+        let start = probe + rel_start;
+        if ascii_case_insensitive_starts_with(bytes, start, needle) {
+            out.push_str(&input[cursor..start]);
+            out.push_str(replacement);
+            cursor = start + needle.len();
+            probe = cursor;
+        } else {
+            probe = start + 1;
+        }
     }
 
-    fn newline_entity_regex() -> &'static Regex {
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new(r"(?i)&newline;").expect("valid regex"))
+    out.push_str(&input[cursor..]);
+    out
+}
+
+fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u8]) -> bool {
+    haystack
+        .get(start..start + needle.len())
+        .is_some_and(|candidate| {
+            candidate
+                .iter()
+                .zip(needle)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b))
+        })
+}
+
+fn replace_decimal_colon_entity_like_current_regex(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = input[probe..].find("&#") {
+        let start = probe + rel_start;
+        let mut end = start + 2;
+        while bytes.get(end) == Some(&b'0') {
+            end += 1;
+        }
+
+        if bytes.get(end..end + 2) == Some(b"58") {
+            end += 2;
+            if bytes.get(end) == Some(&b';') {
+                end += 1;
+            }
+            out.push_str(&input[cursor..start]);
+            out.push(':');
+            cursor = end;
+            probe = end;
+        } else {
+            probe = start + 1;
+        }
     }
 
-    fn tab_entity_regex() -> &'static Regex {
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new(r"(?i)&tab;").expect("valid regex"))
+    out.push_str(&input[cursor..]);
+    out
+}
+
+fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut cursor = 0usize;
+    let mut probe = 0usize;
+
+    while let Some(rel_start) = input[probe..].find("&#") {
+        let start = probe + rel_start;
+        let mut end = start + 2;
+        if !bytes
+            .get(end)
+            .is_some_and(|b| b.eq_ignore_ascii_case(&b'x'))
+        {
+            probe = start + 1;
+            continue;
+        }
+
+        end += 1;
+        while bytes.get(end) == Some(&b'0') {
+            end += 1;
+        }
+
+        let is_colon_hex = bytes.get(end) == Some(&b'3')
+            && bytes
+                .get(end + 1)
+                .is_some_and(|b| b.eq_ignore_ascii_case(&b'a'));
+        if is_colon_hex {
+            end += 2;
+            if bytes.get(end) == Some(&b';') {
+                end += 1;
+            }
+            out.push_str(&input[cursor..start]);
+            out.push(':');
+            cursor = end;
+            probe = end;
+        } else {
+            probe = start + 1;
+        }
     }
 
-    fn numeric_colon_dec_regex() -> &'static Regex {
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new(r"(?i)&#0*58;?").expect("valid regex"))
-    }
-
-    fn numeric_colon_hex_regex() -> &'static Regex {
-        static RE: OnceLock<Regex> = OnceLock::new();
-        RE.get_or_init(|| Regex::new(r"(?i)&#x0*3a;?").expect("valid regex"))
-    }
-
-    let mut out = input.to_string();
-    out = colon_entity_regex().replace_all(&out, ":").to_string();
-    out = newline_entity_regex().replace_all(&out, "\n").to_string();
-    out = tab_entity_regex().replace_all(&out, "\t").to_string();
-    out = numeric_colon_dec_regex().replace_all(&out, ":").to_string();
-    out = numeric_colon_hex_regex().replace_all(&out, ":").to_string();
+    out.push_str(&input[cursor..]);
     out
 }
 
@@ -631,6 +714,26 @@ mod tests {
     }
 
     #[test]
+    fn decode_attr_entities_matches_minimal_dompurify_url_subset_without_regex() {
+        assert_eq!(
+            decode_attr_html_entities_minimally("javascript&colon;alert&NEWLINE;one&TAB;two"),
+            "javascript:alert\none\ttwo"
+        );
+        assert_eq!(
+            decode_attr_html_entities_minimally("a&#58;b&#00058;c&#058d"),
+            "a:b:c:d"
+        );
+        assert_eq!(
+            decode_attr_html_entities_minimally("a&#x3a;b&#X0003A;c&#x03adef"),
+            "a:b:c:def"
+        );
+        assert_eq!(
+            decode_attr_html_entities_minimally("&colon &newline &tab &#59; &#x3b;"),
+            "&colon &newline &tab &#59; &#x3b;"
+        );
+    }
+
+    #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
 		Act1: Hello 1<script src="http://abc.com/script1.js"></script>1
@@ -657,6 +760,16 @@ mod tests {
         assert_eq!(
             remove_script(r#"<img onerror="alert('hello');">"#).trim(),
             "<img>"
+        );
+    }
+
+    #[test]
+    fn remove_script_decodes_colon_entities_before_url_validation_without_regex() {
+        assert_eq!(
+            remove_script(
+                r#"<a href="javascript&#58;alert(1)">decimal</a><a href="javascript&#x3A;alert(1)">hex</a>"#
+            ),
+            "<a>decimal</a><a>hex</a>"
         );
     }
 
