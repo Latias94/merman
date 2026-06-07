@@ -9206,3 +9206,35 @@ Gate notes:
   delimiter semantics, raw HTML token handling, flowchart label measurement, SVG baselines, root
   viewport formulas, parser behavior, sanitizer policy, or Mermaid parity residual
   classification.
+
+## HPD-050 - Config Value Mutation Panic Surface
+
+Outcome:
+
+- Removed the internal `unreachable!("MermaidConfig Arc was made unique before mutable access")`
+  branch from `MermaidConfig::value_mut(...)`.
+- Preserved the existing non-recursive clone-on-write boundary by explicitly cloning through
+  `clone_value_nonrecursive(...)` when the config has shared strong or weak references.
+- Returned mutable config access through `Arc::make_mut(...)` only after that non-recursive guard.
+
+Evidence:
+
+- `crates/merman-core/src/config/mod.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-config-value-mut-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core clone_on_write_handles_deep_config_with_small_stack site_config_deep_merge_handles_deep_public_config_with_small_stack init_directive_config_sanitizes_deep_values_with_small_stack frontmatter_config_deep_merge_handles_deep_values_with_small_stack` -
+  passed, `4` tests run.
+- `rg -n 'MermaidConfig Arc was made unique|unreachable!|panic!|expect\(|unwrap\(' crates/merman-core/src/config/mod.rs` -
+  reports only `#[cfg(test)]` small-stack thread spawn/join `expect(...)` calls.
+- `git diff --check` - passed.
+
+Gate notes:
+
+- This is a shared config panic-surface cleanup only. It does not change config merge semantics,
+  frontmatter or init directive parsing, legacy font-family mirroring, retained config projection,
+  theme derivation, parser behavior, SVG output, root viewport formulas, or Mermaid parity
+  residual classification.

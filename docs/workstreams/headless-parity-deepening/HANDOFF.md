@@ -1311,6 +1311,9 @@ Current repository reality to preserve:
     `unreachable!("line exists")` dependency. Word flushing and raw HTML tag emission now route
     through a guarded line helper that extends the output line vector before indexing, preserving
     normal Markdown tokenization and raw HTML tag line placement.
+  - A follow-up HPD-050 panic-surface guard removed `MermaidConfig::value_mut(...)`'s internal
+    `unreachable!` after clone-on-write. Shared config mutation still uses the existing
+    non-recursive clone path before returning mutable access through `Arc::make_mut(...)`.
   - Continue HPD-080 only when a failing renderability gate, source-backed emitted-surface gap, or
     concrete consumer report points to a real blank/hidden/miscolored output defect. Otherwise,
     return to HPD-050 source-backed Architecture/Dagre/Graphlib audits instead of speculative CSS

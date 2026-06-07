@@ -90,13 +90,10 @@ impl MermaidConfig {
     }
 
     fn value_mut(&mut self) -> &mut Value {
-        if Arc::get_mut(&mut self.0).is_none() {
+        if Arc::strong_count(&self.0) != 1 || Arc::weak_count(&self.0) != 0 {
             self.0 = Arc::new(clone_value_nonrecursive(self.0.as_ref()));
         }
-        match Arc::get_mut(&mut self.0) {
-            Some(value) => value,
-            None => unreachable!("MermaidConfig Arc was made unique before mutable access"),
-        }
+        Arc::make_mut(&mut self.0)
     }
 }
 

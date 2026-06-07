@@ -77,6 +77,9 @@ Library code should not panic on user-controlled input.
     clone-on-write, `set_value(...)`, `deep_merge(...)`, frontmatter merges, directive merges, or
     legacy root `fontFamily` mirroring. Deep host `site_config` values now merge through explicit
     heap-backed traversal.
+  - `MermaidConfig::value_mut(...)` no longer exposes an internal `unreachable!` after
+    clone-on-write. Shared config mutation still performs the existing non-recursive clone when
+    strong or weak references are shared, then returns mutable access through `Arc::make_mut(...)`.
   - Init directive sanitization no longer recurses through user-authored JSON values. Directive
     object/array walking uses explicit path stacks, removes blocked `secure` / `__*` keys with
     non-recursive drops, and still clears blocked string values.
