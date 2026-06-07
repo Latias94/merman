@@ -7562,6 +7562,40 @@ Gate notes:
 - The source-backed `set_edge_named(...)` panic for named edges on non-multigraph simple graphs is
   intentionally preserved as a Graphlib throw mapping and remains covered by `graph_core_test`.
 
+## HPD-050 - Block Frame Invariant Panic Surface
+
+Outcome:
+
+- Removed Block parser/model explicit-stack frame `expect(...)` calls from
+  `crates/merman-core/src/diagrams/block.rs`.
+- `BlockDb::populate_block_database(...)` now exits the loop if the populate stack is unexpectedly
+  empty instead of panicking on the internal guard.
+- Block document parsing now routes empty document-frame stack drift through a normal block
+  `DiagramParse` error. Normal root, anonymous block, named block, columns, space, class, style,
+  edge, semantic JSON, and typed render-model behavior is unchanged.
+
+Evidence:
+
+- `crates/merman-core/src/diagrams/block.rs`
+- `docs/quality/PANIC_SURFACE.md`
+- `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-07-hpd-050-block-frame-invariant-panic-surface.md`
+
+Focused verification:
+
+- `cargo +1.95 fmt -p merman-core` - passed.
+- `cargo +1.95 nextest run -p merman-core block` - passed, `36` tests run and `604` skipped.
+- `rg -n 'populate frame should exist|document frame should exist|root document frame should exist|parent document frame should exist' crates/merman-core/src/diagrams/block.rs` -
+  no matches.
+- `docs/workstreams/headless-parity-deepening/CONTEXT.jsonl` JSONL parse check - passed, `870`
+  lines parsed.
+- `git diff --check` - passed with the existing `CONTEXT.jsonl` LF/CRLF conversion warning.
+
+Gate notes:
+
+- This is a Block core parser/model panic-surface cleanup only. It does not change renderer SVG
+  output, semantic JSON schema, stored baselines, root-bounds formulas, Graphlib/Dagre behavior, or
+  Architecture/Class residual classification.
+
 ## HPD-050 - Architecture Deep-Group Panic Surface
 
 Outcome:

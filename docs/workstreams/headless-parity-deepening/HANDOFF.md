@@ -1083,6 +1083,10 @@ Current repository reality to preserve:
     renderer layout/SVG entrypoints project `blocksFlat` through explicit heap-backed
     `serde_json::Value` traversal. SVG node metadata collection also uses an explicit stack.
     Focused Block tests and DOM parity stayed green.
+  - A follow-up HPD-050 panic-surface guard removed Block's remaining production explicit-stack
+    frame `expect(...)` calls in parent-child population and document parsing. Unexpected
+    populate-stack drift exits the loop, and unexpected document-frame drift returns a block
+    `DiagramParse` error; normal Block semantic/render-model behavior is unchanged.
   - A follow-up HPD-050 panic-surface slice hardened C4's deep boundary/deployment-node layout path
     after a `1,500`-level nested C4 boundary regression reproduced stack overflow through the
     public render-model layout path. C4 layout now simulates the old recursive

@@ -270,7 +270,9 @@ impl BlockDb {
 
         while !stack.is_empty() {
             let next = {
-                let frame = stack.last_mut().expect("populate frame should exist");
+                let Some(frame) = stack.last_mut() else {
+                    break;
+                };
                 frame
                     .blocks
                     .next()
@@ -278,7 +280,9 @@ impl BlockDb {
             };
 
             let Some((mut block, parent_id, col)) = next else {
-                let frame = stack.pop().expect("populate frame should exist");
+                let Some(frame) = stack.pop() else {
+                    break;
+                };
                 let child_blocks: Vec<Block> = frame
                     .child_ids
                     .iter()
@@ -876,6 +880,22 @@ impl DocumentFrame {
     }
 }
 
+fn block_document_frame_error() -> Error {
+    Error::DiagramParse {
+        diagram_type: "block".to_string(),
+        message: "internal block document frame stack is empty".to_string(),
+    }
+}
+
+fn current_document_frame_mut(frames: &mut [DocumentFrame]) -> Result<&mut DocumentFrame> {
+    frames.last_mut().ok_or_else(block_document_frame_error)
+}
+
+fn push_document_child(frames: &mut [DocumentFrame], block: Block) -> Result<()> {
+    current_document_frame_mut(frames)?.children.push(block);
+    Ok(())
+}
+
 struct Parser<'a> {
     input: &'a str,
     pos: usize,
@@ -1025,7 +1045,7 @@ impl<'a> Parser<'a> {
                 if current_is_root {
                     break;
                 }
-                self.finish_document_frame(&mut frames);
+                self.finish_document_frame(&mut frames)?;
                 continue;
             }
 
@@ -1053,76 +1073,53 @@ impl<'a> Parser<'a> {
 
             if self.peek_keyword("columns") {
                 let block = self.parse_columns_statement()?;
-                frames
-                    .last_mut()
-                    .expect("document frame should exist")
-                    .children
-                    .push(block);
+                push_document_child(&mut frames, block)?;
                 continue;
             }
             if self.peek_keyword("space") {
                 let block = self.parse_space_statement()?;
-                frames
-                    .last_mut()
-                    .expect("document frame should exist")
-                    .children
-                    .push(block);
+                push_document_child(&mut frames, block)?;
                 continue;
             }
             if self.peek_keyword("classDef") {
                 let block = self.parse_classdef_statement()?;
-                frames
-                    .last_mut()
-                    .expect("document frame should exist")
-                    .children
-                    .push(block);
+                push_document_child(&mut frames, block)?;
                 continue;
             }
             if self.peek_keyword("class") {
                 let block = self.parse_apply_class_statement()?;
-                frames
-                    .last_mut()
-                    .expect("document frame should exist")
-                    .children
-                    .push(block);
+                push_document_child(&mut frames, block)?;
                 continue;
             }
             if self.peek_keyword("style") {
                 let block = self.parse_style_statement()?;
-                frames
-                    .last_mut()
-                    .expect("document frame should exist")
-                    .children
-                    .push(block);
+                push_document_child(&mut frames, block)?;
                 continue;
             }
 
             let mut blocks = self.parse_node_statement()?;
-            frames
-                .last_mut()
-                .expect("document frame should exist")
+            current_document_frame_mut(&mut frames)?
                 .children
                 .append(&mut blocks);
         }
 
         while frames.len() > 1 {
-            self.finish_document_frame(&mut frames);
+            self.finish_document_frame(&mut frames)?;
         }
 
-        Ok(frames
-            .pop()
-            .expect("root document frame should exist")
-            .children)
+        let Some(frame) = frames.pop() else {
+            return Err(block_document_frame_error());
+        };
+        Ok(frame.children)
     }
 
-    fn finish_document_frame(&mut self, frames: &mut Vec<DocumentFrame>) {
-        let frame = frames.pop().expect("document frame should exist");
+    fn finish_document_frame(&mut self, frames: &mut Vec<DocumentFrame>) -> Result<()> {
+        let Some(frame) = frames.pop() else {
+            return Err(block_document_frame_error());
+        };
         let block = frame.into_block(self);
-        frames
-            .last_mut()
-            .expect("parent document frame should exist")
-            .children
-            .push(block);
+        current_document_frame_mut(frames)?.children.push(block);
+        Ok(())
     }
 
     fn parse_columns_statement(&mut self) -> Result<Block> {
