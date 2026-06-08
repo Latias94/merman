@@ -1,3 +1,4 @@
+use super::theme::JourneyTheme;
 use super::*;
 use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
@@ -23,22 +24,17 @@ fn journey_svg_height_attr_from_viewbox(viewbox: &str, fallback: &str) -> String
     }
 }
 
-fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn journey_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    theme: &JourneyTheme,
+) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
-    let font = parts.font_family;
-    let text_color = parts.text_color;
-    let line_color = parts.line_color;
-    let theme = SvgTheme::new(effective_config);
-    let face_color = theme.color("faceColor", "#FFF8DC");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let arrowhead_color = theme.color("arrowheadColor", "#333333");
-    let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
-    let title_color = theme.color("titleColor", text_color.as_str());
-    let tertiary_color = theme.color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)");
-    let border2 = theme.color("border2", "#aaaa33");
+    let font = theme.font_family_css.as_str();
+    let text_color = theme.text_color.as_str();
+    let line_color = theme.line_color.as_str();
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -59,19 +55,19 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let _ = write!(
         &mut out,
         r#"#{} .face{{fill:{};stroke:#999;}}"#,
-        id, face_color
+        id, theme.face_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}"#,
-        id, id, id, id, id, main_bkg, node_border
+        id, id, id, id, id, theme.main_bkg, theme.node_border
     );
     let _ = write!(&mut out, r#"#{} .node .label{{text-align:center;}}"#, id);
     let _ = write!(&mut out, r#"#{} .node.clickable{{cursor:pointer;}}"#, id);
     let _ = write!(
         &mut out,
         r#"#{} .arrowheadPath{{fill:{};}}"#,
-        id, arrowhead_color
+        id, theme.arrowhead_color
     );
     let _ = write!(
         &mut out,
@@ -86,39 +82,28 @@ fn journey_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let _ = write!(
         &mut out,
         r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
-        id, edge_label_background
+        id, theme.edge_label_background
     );
     let _ = write!(&mut out, r#"#{} .edgeLabel rect{{opacity:0.5;}}"#, id);
     let _ = write!(
         &mut out,
         r#"#{} .cluster text{{fill:{};}}"#,
-        id, title_color
+        id, theme.title_color
     );
     let _ = write!(
         &mut out,
         r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}"#,
-        id, font, tertiary_color, border2
+        id, font, theme.tertiary_color, theme.border2
     );
-    const DEFAULT_FILL_TYPES: [&str; 8] = [
-        "#ECECFF",
-        "#ffffde",
-        "hsl(304, 100%, 96.2745098039%)",
-        "hsl(124, 100%, 93.5294117647%)",
-        "hsl(176, 100%, 96.2745098039%)",
-        "hsl(-4, 100%, 93.5294117647%)",
-        "hsl(8, 100%, 96.2745098039%)",
-        "hsl(188, 100%, 93.5294117647%)",
-    ];
-    for (i, default_fill) in DEFAULT_FILL_TYPES.iter().enumerate() {
-        let fill = theme.color(&format!("fillType{}", i), default_fill);
+    for (i, fill) in theme.fill_types.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
             id, i, id, i, fill
         );
     }
-    for i in 0..6 {
-        if let Some(fill) = theme.optional_color(&format!("actor{}", i)) {
+    for (i, fill) in theme.actor_colors.iter().enumerate() {
+        if let Some(fill) = fill {
             let _ = write!(&mut out, r#"#{} .actor-{}{{fill:{};}}"#, id, i, fill);
         }
     }
@@ -412,7 +397,8 @@ pub(super) fn render_journey_diagram_svg_model(
         );
     }
 
-    let css = journey_css(diagram_id, effective_config);
+    let theme = PresentationTheme::new(effective_config).journey();
+    let css = journey_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
@@ -645,7 +631,8 @@ mod tests {
             }
         });
 
-        let css = journey_css("journey", &cfg);
+        let theme = PresentationTheme::new(&cfg).journey();
+        let css = journey_css("journey", &cfg, &theme);
 
         assert!(css.contains(r#"#journey line{stroke:#101010;}"#));
         assert!(css.contains(r#"#journey .face{fill:#303030;stroke:#999;}"#));

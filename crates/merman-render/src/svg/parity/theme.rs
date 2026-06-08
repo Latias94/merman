@@ -216,6 +216,23 @@ impl VennTheme {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct JourneyTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) text_color: String,
+    pub(crate) line_color: String,
+    pub(crate) face_color: String,
+    pub(crate) main_bkg: String,
+    pub(crate) node_border: String,
+    pub(crate) arrowhead_color: String,
+    pub(crate) edge_label_background: String,
+    pub(crate) title_color: String,
+    pub(crate) tertiary_color: String,
+    pub(crate) border2: String,
+    pub(crate) fill_types: Vec<String>,
+    pub(crate) actor_colors: Vec<Option<String>>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct RadarTheme {
     pub(crate) font_family_css: String,
     pub(crate) base_font_size_css: String,
@@ -526,6 +543,39 @@ impl<'a> PresentationTheme<'a> {
                 .collect(),
             primary_color: self.raw.color("primaryColor", "#ECECFF"),
             is_dark_theme,
+        }
+    }
+
+    pub(crate) fn journey(&self) -> JourneyTheme {
+        let text_color = self.raw.color("textColor", "#333");
+
+        JourneyTheme {
+            font_family_css: self.raw.font_family_css(),
+            text_color: text_color.clone(),
+            line_color: self.raw.color("lineColor", "#333333"),
+            face_color: self.raw.color("faceColor", "#FFF8DC"),
+            main_bkg: self.raw.color("mainBkg", "#ECECFF"),
+            node_border: self.raw.color("nodeBorder", "#9370DB"),
+            arrowhead_color: self.raw.color("arrowheadColor", "#333333"),
+            edge_label_background: self
+                .raw
+                .color("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
+            title_color: self.raw.color("titleColor", text_color.as_str()),
+            tertiary_color: self
+                .raw
+                .color("tertiaryColor", "hsl(80, 100%, 96.2745098039%)"),
+            border2: self.raw.color("border2", "#aaaa33"),
+            fill_types: (0..8)
+                .map(|index| {
+                    self.raw.color(
+                        &format!("fillType{index}"),
+                        journey_default_fill_type(index),
+                    )
+                })
+                .collect(),
+            actor_colors: (0..6)
+                .map(|index| self.raw.optional_color(&format!("actor{index}")))
+                .collect(),
         }
     }
 
@@ -956,6 +1006,19 @@ fn default_c_scale(i: usize) -> &'static str {
         9 => "hsl(150, 100%, 76.2745098039%)",
         10 => "hsl(180, 100%, 76.2745098039%)",
         _ => "hsl(210, 100%, 76.2745098039%)",
+    }
+}
+
+fn journey_default_fill_type(i: usize) -> &'static str {
+    match i {
+        0 => "#ECECFF",
+        1 => "#ffffde",
+        2 => "hsl(304, 100%, 96.2745098039%)",
+        3 => "hsl(124, 100%, 93.5294117647%)",
+        4 => "hsl(176, 100%, 96.2745098039%)",
+        5 => "hsl(-4, 100%, 93.5294117647%)",
+        6 => "hsl(8, 100%, 96.2745098039%)",
+        _ => "hsl(188, 100%, 93.5294117647%)",
     }
 }
 
@@ -1477,6 +1540,82 @@ mod tests {
         assert!(!venn.is_dark_theme);
         assert_eq!(venn.circle_text_color("#abc"), "#77838f");
         assert_eq!(venn.circle_text_color("not-a-color"), "#000000");
+    }
+
+    #[test]
+    fn presentation_theme_journey_resolves_style_roles() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#101010",
+                "lineColor": "#202020",
+                "faceColor": "#303030",
+                "mainBkg": "#404040",
+                "nodeBorder": "#505050",
+                "arrowheadColor": "#606060",
+                "edgeLabelBackground": "#707070",
+                "titleColor": "#808080",
+                "tertiaryColor": "#909090",
+                "border2": "#a0a0a0",
+                "fillType0": "#b0b0b0",
+                "fillType1": "#c0c0c0",
+                "actor0": "#d0d0d0",
+                "actor1": "#e0e0e0"
+            }
+        });
+
+        let journey = PresentationTheme::new(&cfg).journey();
+
+        assert_eq!(
+            journey.font_family_css,
+            "\"ibm plex sans\",arial,sans-serif"
+        );
+        assert_eq!(journey.text_color, "#101010");
+        assert_eq!(journey.line_color, "#202020");
+        assert_eq!(journey.face_color, "#303030");
+        assert_eq!(journey.main_bkg, "#404040");
+        assert_eq!(journey.node_border, "#505050");
+        assert_eq!(journey.arrowhead_color, "#606060");
+        assert_eq!(journey.edge_label_background, "#707070");
+        assert_eq!(journey.title_color, "#808080");
+        assert_eq!(journey.tertiary_color, "#909090");
+        assert_eq!(journey.border2, "#a0a0a0");
+        assert_eq!(journey.fill_types[0], "#b0b0b0");
+        assert_eq!(journey.fill_types[1], "#c0c0c0");
+        assert_eq!(journey.fill_types[7], "hsl(188, 100%, 93.5294117647%)");
+        assert_eq!(journey.actor_colors[0].as_deref(), Some("#d0d0d0"));
+        assert_eq!(journey.actor_colors[1].as_deref(), Some("#e0e0e0"));
+        assert_eq!(journey.actor_colors[5], None);
+    }
+
+    #[test]
+    fn presentation_theme_journey_uses_default_style_roles() {
+        let cfg = json!({});
+
+        let journey = PresentationTheme::new(&cfg).journey();
+
+        assert_eq!(
+            journey.font_family_css,
+            "\"trebuchet ms\",verdana,arial,sans-serif"
+        );
+        assert_eq!(journey.text_color, "#333");
+        assert_eq!(journey.line_color, "#333333");
+        assert_eq!(journey.face_color, "#FFF8DC");
+        assert_eq!(journey.main_bkg, "#ECECFF");
+        assert_eq!(journey.node_border, "#9370DB");
+        assert_eq!(journey.arrowhead_color, "#333333");
+        assert_eq!(journey.edge_label_background, "rgba(232,232,232, 0.8)");
+        assert_eq!(journey.title_color, "#333");
+        assert_eq!(journey.tertiary_color, "hsl(80, 100%, 96.2745098039%)");
+        assert_eq!(journey.border2, "#aaaa33");
+        assert_eq!(journey.fill_types.len(), 8);
+        assert_eq!(journey.fill_types[0], "#ECECFF");
+        assert_eq!(journey.fill_types[1], "#ffffde");
+        assert_eq!(journey.fill_types[2], "hsl(304, 100%, 96.2745098039%)");
+        assert_eq!(
+            journey.actor_colors,
+            vec![None, None, None, None, None, None]
+        );
     }
 
     #[test]
