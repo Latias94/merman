@@ -1,20 +1,22 @@
 # Phase 2 Parity Backlog (Mermaid@11.15.0)
 
-Status: Active
+Status: Complete
 Baseline: pinned Mermaid `11.15.0`
 Pinned commit: `41646dfd43ac83f001b03c70605feb036afae46d`
-Last updated: 2026-06-04
+Last updated: 2026-06-08
 
-This backlog tracks the next hardening slice for the three diagram families that currently have
-Phase 1 local support but are not yet admitted into the main SVG parity matrix:
+This backlog records the completed admission hardening for the three Phase 2 diagram families that
+had Phase 1 local support before entering the main SVG parity matrix:
 
 - `treeView`
 - `ishikawa`
 - `eventmodeling`
 
 Phase 1 means the local pipeline is complete for a source-backed minimum slice: detector, typed
-parser and semantic model, render model, layout, SVG renderer, and semantic/layout snapshots. It
-does not mean full upstream parity.
+parser and semantic model, render model, layout, SVG renderer, and semantic/layout snapshots. The
+families below now also have upstream SVG baselines, family-local compare gates, and primary
+`compare-all-svgs` admission. Remaining root viewport or browser-measurement residuals stay
+documented per family.
 
 ## Related Documents
 
@@ -29,7 +31,7 @@ does not mean full upstream parity.
 
 ## Admission Target
 
-Do not move these families into the main coverage matrix until each family has:
+Completed target for moving these families into the main coverage matrix:
 
 1. A minimal upstream SVG baseline corpus under `fixtures/upstream-svgs/<diagram>/`.
 2. A dedicated `xtask compare-<diagram>-svgs` command, or an accepted shared compare path that
@@ -139,7 +141,7 @@ Deferred:
 
 ## Suggested Execution Order
 
-Progress as of 2026-06-04:
+Progress as of 2026-06-08:
 
 - Series 1-3 are complete at the admission-infrastructure level: family-local compare commands and
   upstream SVG baseline corpora exist for `treeView`, `ishikawa`, and `eventmodeling`.
@@ -159,11 +161,11 @@ Progress as of 2026-06-04:
   still report root viewport residuals; explicit `compare-all-svgs --diagram <family> --dom-mode
   parity-root` or family-local commands remain the residual audit path.
 
-1. `P2T-001`: `treeView` baseline plus compare command for the existing fixture.
-2. `P2I-001`: `ishikawa` baseline plus compare command for the existing fixture.
-3. `P2E-001`: `eventmodeling` baseline plus compare command for the existing fixture.
-4. Add the first Cypress fixture batch per family after each compare path exists.
-5. Continue theme/config/rough/unsupported-statement policy work outside the primary matrix until
+1. `P2T-001`: `treeView` baseline plus compare command for the existing fixture: done.
+2. `P2I-001`: `ishikawa` baseline plus compare command for the existing fixture: done.
+3. `P2E-001`: `eventmodeling` baseline plus compare command for the existing fixture: done.
+4. First Cypress/source fixture batches per family: done.
+5. Remaining theme/config/rough/unsupported-statement work stays outside the primary matrix until
    documented and covered by source-backed fixtures.
 
 ## Validation Gates

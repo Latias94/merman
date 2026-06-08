@@ -117,6 +117,7 @@ The machine-readable admission projection is tracked in
 main-matrix list.
 Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracked in
 `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
+Venn classic SVG admission is tracked separately in `docs/alignment/VENN_BETA_ADMISSION_PLAN.md`.
 
 | Upstream header or id | Pinned 11.15 source status | Local 11.15 status | Admission decision |
 |---|---|---|---|
