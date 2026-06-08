@@ -449,7 +449,9 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         root_viewport: CoverageStatus::NotApplicable,
         compare_command: None,
         owner_doc: "docs/alignment/VENN_BETA_ADMISSION_PLAN.md",
-        defer_reason: Some("needs pinned @upsetjs/venn.js layout adapter audit before admission"),
+        defer_reason: Some(
+            "needs Rust port of pinned @upsetjs/venn.js layout kernel and oracle fixtures before admission",
+        ),
     },
     DiagramAdmissionRecord {
         diagram: "wardley",

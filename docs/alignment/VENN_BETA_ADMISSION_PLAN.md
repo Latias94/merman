@@ -23,17 +23,31 @@ The parser and DB are small enough to port directly. The risky part is layout/re
 - Dependency: `repo-ref/mermaid/pnpm-lock.yaml` pins `@upsetjs/venn.js@2.0.0`.
 - Tests/docs: `repo-ref/mermaid/packages/mermaid/src/diagrams/venn/parser/venn.spec.ts`, `vennRenderer.spec.ts`, and `repo-ref/mermaid/docs/syntax/venn.md`.
 
+## Layout Source Audit
+
+The pinned `@upsetjs/venn.js@2.0.0` npm tarball publishes the source used for layout and geometry. The audit covered `src/layout.js`, `src/circleintersection.js`, `src/diagram.js`, `src/index.d.ts`, `src/layout.spec.js`, `src/circleintersection.spec.js`, and `src/diagram.spec.js`.
+
+| Area | Source-backed finding | Implementation consequence |
+|---|---|---|
+| Package surface | `@upsetjs/venn.js@2.0.0` is MIT licensed and ships source. Its source imports `fmin@0.0.4` primitives: `bisect`, `nelderMead`, `conjugateGradient`, `zeros`, `zerosM`, `norm2`, and `scale`. `fmin@0.0.4` is BSD-3-Clause. | A Rust port is viable, but license notices and source attribution must be handled when code is ported. Do not depend on a browser or Node runtime in CLI/FFI packages. |
+| Circle layout | `venn()` adds missing pairwise intersections, builds an initial layout, then optimizes all circle centers with `nelderMead` and a loss function over pairwise and higher-order overlaps. | The layout adapter must port the optimization loop, not just the final SVG path generation. |
+| Initial layout | `bestInitialLayout()` starts with `greedyLayout()` and tries `constrainedMDSLayout()` for larger inputs (`areas.length >= 8`). MDS uses `conjugateGradient` and `Math.random` restarts. | The Rust layout kernel needs deterministic seeded random support for oracle tests. Greedy-only layout is not enough for admission. |
+| Geometry | `circleintersection.js` implements `intersectionArea`, `circleOverlap`, `circleCircleIntersection`, circular segment area, containment, and arc stats. | Port geometry as a focused Rust module and cover it with upstream-derived numeric tests before renderer work. |
+| Text and path helpers | `diagram.js` uses `computeTextCentre()` with `nelderMead`, `computeTextCentres()`, `intersectionAreaPath()`, `normalizeSolution()`, and `scaleSolution()`. Its `layout()` helper returns `data`, `text`, `circles`, `arcs`, `path`, and `distinctPath`. | The Rust adapter should expose a typed layout result equivalent to `IVennLayout<T>` so the SVG renderer does not reimplement layout internals. |
+| Mermaid renderer use | Mermaid calls `VennDiagram().width(...).height(...)` to create the base D3 SVG, then separately calls `venn.layout(sets, { width, height, padding })` to place Mermaid-specific text nodes. | Renderer parity requires both the D3 DOM shape and the helper layout output. The JS package should remain a comparison oracle, not the production runtime path. |
+| Upstream tests | `layout.spec.js` covers greedy layout, distance-from-area, normalization, and disjoint clustering. `circleintersection.spec.js` covers segment/overlap/intersection geometry and random failure regressions. `diagram.spec.js` covers text-centre behavior. | Port these as the first layout/geometry test corpus, then add Mermaid syntax-doc fixtures and upstream SVG baselines. |
+
 ## Proposed Solution
 
-Implement `venn-beta` only after the layout dependency is made explicit as a first-class adapter.
+Implement `venn-beta` around a source-backed Rust layout kernel that mirrors the relevant `@upsetjs/venn.js@2.0.0` behavior. The npm package may be used by `xtask` or tests as an oracle, but not by the runtime renderer.
 
 ```mermaid
 flowchart LR
     Source["venn-beta source"] --> Parser["Rust parser + Venn semantic model"]
-    Parser --> Layout["Venn layout adapter"]
+    Parser --> Layout["Rust Venn layout kernel"]
     Layout --> Svg["Stage B SVG renderer"]
     Theme["PresentationTheme Venn roles"] --> Svg
-    Upstream["@upsetjs/venn.js 2.0.0 source audit or port"] --> Layout
+    Upstream["@upsetjs/venn.js 2.0.0 + fmin 0.0.4 oracle"] --> Layout
     Svg --> Compare["compare-venn-svgs + upstream baselines"]
 ```
 
@@ -41,17 +55,19 @@ The implementation lane should have these slices:
 
 1. Detector and typed parser: add `venn` detector for `venn-beta`, port parser behavior from `venn.jison`, and create a typed model with subsets, text nodes, style entries, title, accessibility metadata, and effective `venn` config.
 2. Parser fixtures: port upstream parser cases for labels, sizes, text nodes, style declarations, quoted identifiers, unknown unions, and invalid `set` / `union` arity.
-3. Layout adapter decision: either port the relevant `@upsetjs/venn.js@2.0.0` layout algorithm into Rust or introduce a dedicated deterministic adapter whose output can be compared against the pinned package. This decision must be made before SVG rendering.
-4. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed.
-5. Theme roles: add `PresentationTheme::venn()` for `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and style override precedence.
-6. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, add `xtask compare-venn-svgs`, and keep the family out of the main matrix until family-local structural DOM parity is green.
+3. Layout kernel: port the relevant `@upsetjs/venn.js@2.0.0` layout, geometry, text-centre, normalize, scale, path, and minimal `fmin` helper behavior into Rust behind a typed adapter. Seed the random MDS path for deterministic oracle tests.
+4. Layout oracle fixtures: generate pinned package outputs for small, overlapping, disjoint, nested, higher-order, and text-node diagrams; compare circles, text centres, paths, and loss within documented tolerances before renderer DOM work.
+5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed.
+6. Theme roles: add `PresentationTheme::venn()` for `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and style override precedence.
+7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, add `xtask compare-venn-svgs`, and keep the family out of the main matrix until family-local structural DOM parity is green.
 
 ## Alternatives Considered
 
 | Option | Pros | Cons | Decision |
 |---|---|---|---|
-| Port `@upsetjs/venn.js@2.0.0` layout logic into Rust | Pure Rust, deterministic, no runtime JS dependency, matches headless architecture | Requires source audit of optimization and geometry code before renderer work | Preferred if the source surface is manageable |
-| Use a JS/WASM adapter for `@upsetjs/venn.js` during layout | Highest layout fidelity initially | Adds non-Rust runtime dependency, complicates CLI/FFI packaging, weakens headless portability | Only acceptable as a temporary comparison oracle, not the default renderer path |
+| Port `@upsetjs/venn.js@2.0.0` layout logic into Rust | Pure Rust, deterministic, no runtime JS dependency, matches headless architecture | Requires porting small optimizer helpers and maintaining numeric tolerances | Recommended after audit |
+| Use a JS/WASM adapter for `@upsetjs/venn.js` during layout | Highest layout fidelity initially | Adds non-Rust runtime dependency, complicates CLI/FFI packaging, weakens headless portability | Acceptable only as a comparison oracle |
+| Use a generic Rust optimizer crate instead of porting `fmin` behavior | Reduces local optimizer code | Numeric behavior and termination may drift from the pinned source before SVG parity is measurable | Defer until a source-backed port proves too costly |
 | Implement a local approximate circle solver | Fastest to code | Not source-backed, likely DOM/geometry drift, violates admission rubric | Rejected |
 | Parse-only `venn-beta` support | Low risk, gives early diagnostics/model access | Users expect visible diagrams; no parity value for preview users | Defer unless a caller explicitly needs parse-only metadata |
 
@@ -60,6 +76,7 @@ The implementation lane should have these slices:
 | Metric | Target | Measurement |
 |---|---|---|
 | Parser coverage | Upstream parser spec behavior covered by semantic snapshots | `cargo nextest run -p merman-core venn` |
+| Geometry parity | Circle intersection, overlap, segment area, and path helpers pass upstream-derived numeric tests | Dedicated Rust layout/geometry tests |
 | Layout source parity | Layout adapter outputs match the pinned `@upsetjs/venn.js@2.0.0` oracle for initial fixtures within documented tolerance | Dedicated layout tests or fixture snapshots |
 | SVG structural parity | Family-local Venn DOM parity passes for committed upstream baselines | `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity --dom-decimals 3` |
 | Matrix admission | `venn` is not admitted to `compare-all-svgs` until detector, parser, layout, renderer, baselines, and compare command all exist | `cargo run -p xtask -- check-alignment` |
@@ -68,7 +85,10 @@ The implementation lane should have these slices:
 
 | Risk | Severity | Likelihood | Mitigation |
 |---|---|---:|---|
-| Venn layout drift from `@upsetjs/venn.js` | High | High | Treat layout adapter as the first implementation decision; use pinned package output as an oracle before writing renderer DOM |
+| Venn layout drift from `@upsetjs/venn.js` | High | High | Port the pinned layout/geometry/text-centre code path first; use pinned package output as an oracle before writing renderer DOM |
+| Optimizer behavior drift | High | Medium | Port only the `fmin` primitives used by Venn initially and cover them through layout-level oracle fixtures |
+| Random MDS restarts produce unstable higher-order diagrams | Medium | Medium | Add a deterministic seed path for tests, mirroring the repo's existing seeded Mermaid baseline pattern |
+| Ported license obligations are missed | Medium | Low | Record MIT/BSD-3-Clause attribution in the implementation PR when source code is ported |
 | Browser/D3 serialization noise | Medium | Medium | Normalize only non-semantic D3 wrapper differences in the family compare adapter; do not hide geometry or label differences |
 | `foreignObject` text-node parity differs across renderers | Medium | High | Document strict HTML/browser text-metric residuals separately from structural DOM parity |
 | RoughJS hand-drawn output expands scope | Medium | Medium | Defer `look: "handDrawn"` until classic SVG parity is green; do not emulate rough output with classic paths |
@@ -76,11 +96,12 @@ The implementation lane should have these slices:
 
 ## Admission Decision
 
-`venn-beta` should remain not admitted for now. The next actionable work is a source audit of `@upsetjs/venn.js@2.0.0` to decide whether the layout algorithm should be ported to Rust or used only as a comparison oracle. Implementation should not start from renderer code.
+`venn-beta` should remain not admitted for now. The source audit supports a Rust port of the pinned Venn layout kernel plus minimal `fmin` helpers, with `@upsetjs/venn.js@2.0.0` used as a test/tooling oracle only. The next implementation work should start with geometry/layout tests and adapter types, not renderer DOM.
 
 ## Initial Gates For A Future Workstream
 
 - `cargo nextest run -p merman-core venn`
+- dedicated Venn geometry/layout oracle tests
 - `cargo nextest run -p merman-render venn`
 - `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo run -p xtask -- check-alignment`
