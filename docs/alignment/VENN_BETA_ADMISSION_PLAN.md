@@ -20,6 +20,7 @@ The parser and DB are small enough to port directly. The risky part is layout/re
 - Done: targeted `xtask compare-venn-svgs`, `gen-upstream-svgs --diagram venn`, and `check-upstream-svgs --diagram venn` tooling.
 - Done: normalized Venn fixtures and committed upstream SVG baselines for Mermaid syntax-doc examples.
 - Done: `venn` is admitted to `supported_diagrams()` and the primary SVG matrix for classic SVG output.
+- Done: Venn renderer theme roles are projected through `PresentationTheme::venn()` for classic SVG output.
 - Deferred: `look: "handDrawn"`/RoughJS Venn output remains out of scope until classic coverage is expanded.
 
 ## Source Evidence
@@ -68,7 +69,7 @@ The implementation lane should have these slices:
 3. Layout kernel: port the relevant `@upsetjs/venn.js@2.0.0` layout, geometry, text-centre, normalize, scale, path, and minimal `fmin` helper behavior into Rust behind a typed adapter. Seed the random MDS path for deterministic oracle tests.
 4. Layout oracle fixtures: generate pinned package outputs for small, overlapping, disjoint, nested, higher-order, and text-node diagrams; compare circles, text centres, paths, and loss within documented tolerances before renderer DOM work.
 5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed. Classic SVG foundation is in place; `look: "handDrawn"` remains deferred until classic baselines are green.
-6. Theme roles: add `PresentationTheme::venn()` for `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and style override precedence.
+6. Theme roles: `PresentationTheme::venn()` owns `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and dark/light readable circle text derivation; diagram `style` entries still override per-area fill, stroke, opacity, width, and text color.
 7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, run `xtask compare-venn-svgs`, and keep the family in the main matrix once family-local structural DOM parity is green.
 
 ## Alternatives Considered
@@ -108,6 +109,8 @@ The implementation lane should have these slices:
 
 `venn-beta` is admitted for classic SVG output. The source-backed layout/parser, renderer foundation, normalized fixtures, upstream baselines, and targeted compare tooling are in place. `@upsetjs/venn.js@2.0.0` remains a test/tooling oracle only, not a runtime dependency.
 
+The renderer now consumes Venn theme roles through `PresentationTheme::venn()`, so Venn-specific theme fallback chains no longer live inside the SVG emission module.
+
 ## Admission Gates
 
 - `cargo nextest run -p merman-core venn`
@@ -117,3 +120,12 @@ The implementation lane should have these slices:
 - `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 - `cargo run -p xtask -- check-upstream-svgs --diagram venn --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo run -p xtask -- check-alignment`
+
+Latest focused gates for the theme-role cleanup:
+
+- `cargo nextest run -p merman-render venn_svg presentation_theme`
+- `cargo nextest run -p merman-render --test venn_svg_test`
+- `cargo check -p merman-render`
+- `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo fmt --all --check`
+- `git diff --check`

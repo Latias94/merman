@@ -181,6 +181,41 @@ pub(crate) struct IshikawaTheme {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct VennTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) title_color: String,
+    pub(crate) set_text_color: String,
+    pub(crate) circle_colors: Vec<String>,
+    pub(crate) primary_color: String,
+    pub(crate) is_dark_theme: bool,
+}
+
+impl VennTheme {
+    pub(crate) fn circle_text_color(&self, base_color: &str) -> String {
+        let Some((r, g, b)) = parse_venn_css_rgb(base_color) else {
+            return if self.is_dark_theme {
+                "#ffffff".to_string()
+            } else {
+                "#000000".to_string()
+            };
+        };
+        let adjust = if self.is_dark_theme { 30.0 } else { -30.0 };
+        let mix = |channel: u8| -> u8 {
+            if adjust > 0.0 {
+                (channel as f64 + (255.0 - channel as f64) * (adjust / 100.0))
+                    .round()
+                    .clamp(0.0, 255.0) as u8
+            } else {
+                (channel as f64 * (1.0 + adjust / 100.0))
+                    .round()
+                    .clamp(0.0, 255.0) as u8
+            }
+        };
+        format!("#{:02x}{:02x}{:02x}", mix(r), mix(g), mix(b))
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct TimelineSectionTheme {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
@@ -442,6 +477,33 @@ impl<'a> PresentationTheme<'a> {
             font_family: self
                 .raw
                 .root_or_theme_string("fontFamily", "trebuchet ms, verdana, arial, sans-serif"),
+        }
+    }
+
+    pub(crate) fn venn(&self) -> VennTheme {
+        let background = self.raw.color("background", "#f4f4f4");
+        let is_dark_theme = parse_venn_css_rgb(&background)
+            .is_some_and(|(r, g, b)| venn_luminance(r, g, b) < 0.45)
+            || self.common.theme_name.to_ascii_lowercase().contains("dark");
+
+        VennTheme {
+            font_family_css: self.raw.font_family_css_root_first(),
+            title_color: self
+                .raw
+                .optional_color("vennTitleTextColor")
+                .or_else(|| self.raw.optional_color("titleColor"))
+                .unwrap_or_else(|| "#333".to_string()),
+            set_text_color: self
+                .raw
+                .optional_color("vennSetTextColor")
+                .or_else(|| self.raw.optional_color("primaryTextColor"))
+                .or_else(|| self.raw.optional_color("textColor"))
+                .unwrap_or_else(|| "#333".to_string()),
+            circle_colors: (1..=8)
+                .filter_map(|index| self.raw.optional_color(&format!("venn{index}")))
+                .collect(),
+            primary_color: self.raw.color("primaryColor", "#ECECFF"),
+            is_dark_theme,
         }
     }
 
@@ -747,6 +809,41 @@ fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
     let g = u8::from_str_radix(&t[2..4], 16).ok()?;
     let b = u8::from_str_radix(&t[4..6], 16).ok()?;
     Some((r, g, b))
+}
+
+fn parse_venn_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    let hex = s.trim().strip_prefix('#')?;
+    match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+            Some((r, g, b))
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some((r, g, b))
+        }
+        _ => None,
+    }
+}
+
+fn parse_venn_css_rgb(s: &str) -> Option<(u8, u8, u8)> {
+    parse_venn_hex_rgb(s).or_else(|| parse_rgb_css(s))
+}
+
+fn venn_luminance(r: u8, g: u8, b: u8) -> f64 {
+    fn linear(channel: u8) -> f64 {
+        let v = channel as f64 / 255.0;
+        if v <= 0.04045 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
 }
 
 fn adjust_hex_rgb(hex: &str, delta: i16) -> Option<String> {
@@ -1265,5 +1362,52 @@ mod tests {
             ishikawa.font_family,
             "trebuchet ms, verdana, arial, sans-serif"
         );
+    }
+
+    #[test]
+    fn presentation_theme_venn_resolves_venn_roles() {
+        let cfg = json!({
+            "theme": "dark",
+            "fontFamily": "Inter, sans-serif",
+            "themeVariables": {
+                "background": "#111111",
+                "vennTitleTextColor": "#f43f5e",
+                "vennSetTextColor": "#22c55e",
+                "venn1": "#123456",
+                "venn2": "#abcdef",
+                "primaryColor": "#987654",
+                "primaryTextColor": "#eeeeee",
+                "textColor": "#dddddd"
+            }
+        });
+
+        let venn = PresentationTheme::new(&cfg).venn();
+
+        assert_eq!(venn.font_family_css, "Inter,sans-serif");
+        assert_eq!(venn.title_color, "#f43f5e");
+        assert_eq!(venn.set_text_color, "#22c55e");
+        assert_eq!(venn.circle_colors, vec!["#123456", "#abcdef"]);
+        assert_eq!(venn.primary_color, "#987654");
+        assert!(venn.is_dark_theme);
+        assert_eq!(venn.circle_text_color("#123456"), "#597189");
+    }
+
+    #[test]
+    fn presentation_theme_venn_uses_default_venn_roles() {
+        let cfg = json!({});
+
+        let venn = PresentationTheme::new(&cfg).venn();
+
+        assert_eq!(
+            venn.font_family_css,
+            "\"trebuchet ms\",verdana,arial,sans-serif"
+        );
+        assert_eq!(venn.title_color, "#333");
+        assert_eq!(venn.set_text_color, "#333");
+        assert!(venn.circle_colors.is_empty());
+        assert_eq!(venn.primary_color, "#ECECFF");
+        assert!(!venn.is_dark_theme);
+        assert_eq!(venn.circle_text_color("#abc"), "#77838f");
+        assert_eq!(venn.circle_text_color("not-a-color"), "#000000");
     }
 }

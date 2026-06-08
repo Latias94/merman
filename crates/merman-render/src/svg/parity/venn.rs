@@ -1,3 +1,4 @@
+use super::theme::VennTheme;
 use super::*;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use std::collections::{BTreeMap, HashMap};
@@ -40,110 +41,6 @@ fn render_label(area: &crate::model::VennAreaLayout) -> &str {
     } else {
         ""
     }
-}
-
-fn theme_colors(effective_config: &serde_json::Value) -> Vec<String> {
-    (1..=8)
-        .filter_map(|index| {
-            config_string(
-                effective_config,
-                &["themeVariables", &format!("venn{index}")],
-            )
-        })
-        .collect()
-}
-
-fn optional_theme_color(effective_config: &serde_json::Value, key: &str) -> Option<String> {
-    config_string(effective_config, &["themeVariables", key])
-}
-
-fn default_text_color(effective_config: &serde_json::Value) -> String {
-    optional_theme_color(effective_config, "primaryTextColor")
-        .or_else(|| optional_theme_color(effective_config, "textColor"))
-        .unwrap_or_else(|| "#333".to_string())
-}
-
-fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
-    let hex = s.trim().strip_prefix('#')?;
-    let (r, g, b) = match hex.len() {
-        3 => {
-            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-            (r, g, b)
-        }
-        6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            (r, g, b)
-        }
-        _ => return None,
-    };
-    Some((r, g, b))
-}
-
-fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
-    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
-    let mut parts = inner.split(',').map(str::trim);
-    let channel = |part: &str| -> Option<u8> {
-        let value = part.parse::<f64>().ok()?;
-        value
-            .is_finite()
-            .then(|| value.round().clamp(0.0, 255.0) as u8)
-    };
-    Some((
-        channel(parts.next()?)?,
-        channel(parts.next()?)?,
-        channel(parts.next()?)?,
-    ))
-}
-
-fn parse_css_rgb(s: &str) -> Option<(u8, u8, u8)> {
-    parse_hex_rgb(s).or_else(|| parse_rgb_css(s))
-}
-
-fn luminance(r: u8, g: u8, b: u8) -> f64 {
-    fn linear(channel: u8) -> f64 {
-        let v = channel as f64 / 255.0;
-        if v <= 0.04045 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
-}
-
-fn theme_is_dark(effective_config: &serde_json::Value) -> bool {
-    optional_theme_color(effective_config, "background")
-        .and_then(|color| parse_css_rgb(&color))
-        .is_some_and(|(r, g, b)| luminance(r, g, b) < 0.45)
-        || config_string(effective_config, &["theme"])
-            .is_some_and(|theme| theme.to_ascii_lowercase().contains("dark"))
-}
-
-fn readable_circle_text_color(base_color: &str, dark_theme: bool) -> String {
-    let Some((r, g, b)) = parse_css_rgb(base_color) else {
-        return if dark_theme {
-            "#ffffff".to_string()
-        } else {
-            "#000000".to_string()
-        };
-    };
-    let adjust = if dark_theme { 30.0 } else { -30.0 };
-    let mix = |channel: u8| -> u8 {
-        if adjust > 0.0 {
-            (channel as f64 + (255.0 - channel as f64) * (adjust / 100.0))
-                .round()
-                .clamp(0.0, 255.0) as u8
-        } else {
-            (channel as f64 * (1.0 + adjust / 100.0))
-                .round()
-                .clamp(0.0, 255.0) as u8
-        }
-    };
-    format!("#{:02x}{:02x}{:02x}", mix(r), mix(g), mix(b))
 }
 
 fn root_open(
@@ -189,19 +86,16 @@ fn root_open(
     }
 }
 
-fn venn_css(
-    diagram_id: &str,
-    effective_config: &serde_json::Value,
-    title_color: &str,
-    set_text_color: &str,
-) -> String {
+fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
     let id = escape_xml(diagram_id);
-    let font_family = SvgTheme::new(effective_config).font_family_css_root_first();
     format!(
         "#{id} .venn-title{{font-size:32px;fill:{title_color};font-family:{font_family};}}\
 #{id} .venn-circle text{{font-size:48px;font-family:{font_family};}}\
 #{id} .venn-intersection text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
-#{id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}"
+#{id} .venn-text-node{{font-family:{font_family};color:{set_text_color};}}",
+        title_color = theme.title_color,
+        font_family = theme.font_family_css,
+        set_text_color = theme.set_text_color,
     )
 }
 
@@ -272,12 +166,8 @@ pub(super) fn render_venn_diagram_svg_model(
         );
     }
 
-    let title_color = optional_theme_color(effective_config, "vennTitleTextColor")
-        .or_else(|| optional_theme_color(effective_config, "titleColor"))
-        .unwrap_or_else(|| "#333".to_string());
-    let set_text_color = optional_theme_color(effective_config, "vennSetTextColor")
-        .unwrap_or_else(|| default_text_color(effective_config));
-    let css = venn_css(diagram_id, effective_config, &title_color, &set_text_color);
+    let theme = PresentationTheme::new(effective_config).venn();
+    let css = venn_css(diagram_id, &theme);
     let _ = write!(&mut out, r#"<style>{css}</style>"#);
     out.push_str("<g/>");
 
@@ -287,7 +177,7 @@ pub(super) fn render_venn_diagram_svg_model(
             r#"<text class="venn-title" font-size="{font_size}px" text-anchor="middle" dominant-baseline="middle" x="50%" y="{y}" style="fill: {fill};">{text}</text>"#,
             font_size = fmt(32.0 * layout.scale),
             y = fmt(32.0 * layout.scale),
-            fill = escape_xml(&title_color),
+            fill = escape_xml(&theme.title_color),
             text = escape_xml(title)
         );
     }
@@ -299,10 +189,6 @@ pub(super) fn render_venn_diagram_svg_model(
     );
 
     let style_by_key = build_style_by_key(model);
-    let colors = theme_colors(effective_config);
-    let primary_color = optional_theme_color(effective_config, "primaryColor")
-        .unwrap_or_else(|| "#ECECFF".to_string());
-    let dark_theme = theme_is_dark(effective_config);
     let mut circle_index = 0usize;
 
     for area in &layout.areas {
@@ -312,10 +198,11 @@ pub(super) fn render_venn_diagram_svg_model(
             let base_color = style_value(styles, "fill")
                 .map(str::to_string)
                 .unwrap_or_else(|| {
-                    colors
-                        .get(circle_index % colors.len().max(1))
+                    theme
+                        .circle_colors
+                        .get(circle_index % theme.circle_colors.len().max(1))
                         .cloned()
-                        .unwrap_or_else(|| primary_color.clone())
+                        .unwrap_or_else(|| theme.primary_color.clone())
                 });
             let fill_opacity = style_value(styles, "fill-opacity").unwrap_or("0.1");
             let stroke_color = style_value(styles, "stroke").unwrap_or(base_color.as_str());
@@ -324,7 +211,7 @@ pub(super) fn render_venn_diagram_svg_model(
                 .unwrap_or_else(|| fmt_string(5.0 * layout.scale));
             let text_color = style_value(styles, "color")
                 .map(str::to_string)
-                .unwrap_or_else(|| readable_circle_text_color(&base_color, dark_theme));
+                .unwrap_or_else(|| theme.circle_text_color(&base_color));
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}"><path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
@@ -349,7 +236,7 @@ pub(super) fn render_venn_diagram_svg_model(
             } else {
                 "0"
             };
-            let text_color = style_value(styles, "color").unwrap_or(set_text_color.as_str());
+            let text_color = style_value(styles, "color").unwrap_or(theme.set_text_color.as_str());
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}"><path d="{path}" style="fill-opacity: {fill_opacity}; fill: {fill};"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
