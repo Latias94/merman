@@ -149,10 +149,7 @@ pub fn layout_diagram_sync(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
 ) -> Result<Option<LayoutedDiagram>> {
-    let Some(parsed) = engine.parse_diagram_sync(text, parse_options)? else {
-        return Ok(None);
-    };
-    Ok(Some(merman_render::layout_parsed(&parsed, layout_options)?))
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options).layout_diagram()
 }
 
 /// Returns layout defaults intended for UI integrations that render headless SVG.
@@ -193,14 +190,8 @@ pub fn render_svg_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<String>> {
-    operation::HeadlessRenderOperation::new(
-        engine,
-        text,
-        parse_options,
-        layout_options,
-        svg_options,
-    )
-    .render_svg()
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .render_svg(svg_options)
 }
 
 pub fn apply_svg_pipeline(svg: &str, pipeline: &SvgPipeline) -> Result<String> {
@@ -231,14 +222,8 @@ pub fn render_svg_with_pipeline_sync(
     svg_options: &SvgRenderOptions,
     pipeline: &SvgPipeline,
 ) -> Result<Option<String>> {
-    operation::HeadlessRenderOperation::new(
-        engine,
-        text,
-        parse_options,
-        layout_options,
-        svg_options,
-    )
-    .render_svg_with_pipeline(pipeline)
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .render_svg_with_pipeline(svg_options, pipeline)
 }
 
 /// Synchronous SVG render helper that applies a best-effort readability fallback for
@@ -420,6 +405,29 @@ mod svg_pipeline_tests {
 
         assert_eq!(default_svg, parity_pipeline);
         assert_ne!(default_svg, readable);
+    }
+
+    #[test]
+    fn layout_helpers_share_headless_operation_semantics() {
+        let source = "flowchart TD\nA[Hello] --> B[World]";
+        let renderer = HeadlessRenderer::new().with_lenient_parsing();
+        let free_layout =
+            layout_diagram_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
+                .unwrap()
+                .unwrap();
+        let renderer_layout = renderer.layout_diagram_sync(source).unwrap().unwrap();
+
+        assert_eq!(free_layout.semantic, renderer_layout.semantic);
+        assert_eq!(
+            free_layout.meta.diagram_type,
+            renderer_layout.meta.diagram_type
+        );
+        assert!(
+            renderer
+                .layout_diagram_sync("not a mermaid diagram")
+                .unwrap()
+                .is_none()
+        );
     }
 
     struct MetadataComment;

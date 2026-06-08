@@ -36,6 +36,22 @@ Last updated: 2026-06-08
 
 ## M4 — Public Headless Operation Interface Cleanup
 
-- [ ] PA2R-050 [owner=codex] [deps=PA2R-040] [scope=crates/merman,crates/merman-core,crates/merman-render,crates/merman-bindings-core]
+- [x] PA2R-050 [owner=codex] [deps=PA2R-040] [scope=crates/merman]
   Goal: Reassess public headless operation entry points after bindings/theme cleanup, delete pass-through or duplicate operation surfaces that are not earning their interface, and keep parse/layout/render expert paths clearly separate from canonical headless render paths.
-  Validation: focused tests for touched crates; `cargo fmt --all --check`
+  Validation: `cargo check -p merman --features render`; `cargo nextest run -p merman --features render svg_pipeline_tests`; `cargo nextest run -p merman --features render render_svg`; `cargo fmt --all --check`
+  Review: `HeadlessOperation` now owns the semantic-layout path and typed-render SVG path while public free functions and `HeadlessRenderer` remain adapters.
+  Evidence: `crates/merman/src/render/operation.rs`; focused gates passed on 2026-06-08.
+
+## M5 — Admission Inventory Module
+
+- [ ] PA2R-060 [owner=codex] [deps=PA2R-050] [scope=xtask,docs/alignment,docs/workstreams]
+  Goal: Reassess fixture/family admission status after the alpha.2 release and move duplicated support, skip, defer, and root-coverage facts toward one inventory Module.
+  Validation: `cargo run -p xtask -- check-alignment`; focused xtask tests for touched inventory/report code; `cargo fmt --all --check`
+  Review: Admission facts should be projectable into docs and gates without hand-maintained family lists drifting across reports.
+
+## M6 — Xtask Parity Harness Module
+
+- [ ] PA2R-070 [owner=codex] [deps=PA2R-060] [scope=xtask]
+  Goal: Reduce compare/import/audit harness duplication and make DOM policy reporting more explicit without weakening comparator normalization.
+  Validation: focused xtask tests for touched harness code; representative parity compare command; `cargo fmt --all --check`
+  Review: Keep comparator normalization narrow and source-backed.

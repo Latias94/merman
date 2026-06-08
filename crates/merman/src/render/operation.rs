@@ -1,49 +1,63 @@
 use super::{
-    LayoutOptions, Result, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+    LayoutOptions, LayoutedDiagram, Result, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
     apply_svg_pipeline_with_metadata,
 };
 
-pub(super) struct HeadlessRenderOperation<'a> {
+pub(super) struct HeadlessOperation<'a> {
     engine: &'a merman_core::Engine,
     text: &'a str,
     parse_options: merman_core::ParseOptions,
     layout_options: &'a LayoutOptions,
-    svg_options: &'a SvgRenderOptions,
 }
 
-impl<'a> HeadlessRenderOperation<'a> {
+impl<'a> HeadlessOperation<'a> {
     pub(super) fn new(
         engine: &'a merman_core::Engine,
         text: &'a str,
         parse_options: merman_core::ParseOptions,
         layout_options: &'a LayoutOptions,
-        svg_options: &'a SvgRenderOptions,
     ) -> Self {
         Self {
             engine,
             text,
             parse_options,
             layout_options,
-            svg_options,
         }
     }
 
-    pub(super) fn render_svg(&self) -> Result<Option<String>> {
-        Ok(self.render_svg_parts()?.map(RenderedSvgParts::into_svg))
+    pub(super) fn layout_diagram(&self) -> Result<Option<LayoutedDiagram>> {
+        let Some(parsed) = self
+            .engine
+            .parse_diagram_sync(self.text, self.parse_options)?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(merman_render::layout_parsed(
+            &parsed,
+            self.layout_options,
+        )?))
+    }
+
+    pub(super) fn render_svg(&self, svg_options: &SvgRenderOptions) -> Result<Option<String>> {
+        Ok(self
+            .render_svg_parts(svg_options)?
+            .map(RenderedSvgParts::into_svg))
     }
 
     pub(super) fn render_svg_with_pipeline(
         &self,
+        svg_options: &SvgRenderOptions,
         pipeline: &SvgPipeline,
     ) -> Result<Option<String>> {
-        let Some(parts) = self.render_svg_parts()? else {
+        let Some(parts) = self.render_svg_parts(svg_options)? else {
             return Ok(None);
         };
 
         Ok(Some(parts.into_pipeline_svg(pipeline)?))
     }
 
-    fn render_svg_parts(&self) -> Result<Option<RenderedSvgParts>> {
+    fn render_svg_parts(&self, svg_options: &SvgRenderOptions) -> Result<Option<RenderedSvgParts>> {
         let Some(parsed) = self
             .engine
             .parse_diagram_for_render_model_sync(self.text, self.parse_options)?
@@ -58,7 +72,7 @@ impl<'a> HeadlessRenderOperation<'a> {
             &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
             self.layout_options.text_measurer.as_ref(),
-            self.svg_options,
+            svg_options,
         )?;
 
         Ok(Some(RenderedSvgParts {
