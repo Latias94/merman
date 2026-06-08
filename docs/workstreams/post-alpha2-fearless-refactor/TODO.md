@@ -68,7 +68,15 @@ Last updated: 2026-06-08
 
 ## M8 — Root Parity Residual Policy Module
 
-- [ ] PA2R-090 [owner=codex] [deps=PA2R-080] [scope=crates/xtask/src/cmd/compare]
+- [x] PA2R-090 [owner=codex] [deps=PA2R-080] [scope=crates/xtask/src/cmd/compare]
   Goal: Reassess whether fixture-specific root parity residual acceptance should stay in `compare/all.rs` or move behind a dedicated policy Module with a narrower Interface.
-  Validation: focused xtask tests for accepted, missing, and changed residuals; representative parity-root compare command if policy behavior changes; `cargo fmt --all --check`
-  Review: Keep accepted residuals fixture-specific and fail loudly when expected residuals disappear or change.
+  Validation: `cargo nextest run -p xtask root_parity_policy`; `cargo nextest run -p xtask compare_invocation`; `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: Fixture-specific root parity residual records and summary behavior now live behind `RootParityResidualPolicy`, so `compare-all-svgs` no longer owns acceptance fragments or mismatch summarization.
+  Evidence: `crates/xtask/src/cmd/compare/root_parity.rs`; focused gates passed on 2026-06-08.
+
+## M9 — Compare-All Options And Diagram Selection
+
+- [ ] PA2R-100 [owner=codex] [deps=PA2R-090] [scope=crates/xtask/src/cmd/compare]
+  Goal: Continue shrinking `compare-all-svgs` by moving CLI option parsing, diagram allow/skip filtering, and root-parity global sweep filtering behind small internal types.
+  Validation: focused xtask tests for option parsing and diagram selection; representative `compare-all-svgs` command; `cargo fmt --all --check`
+  Review: Preserve existing `--diagram`, `--skip`, `treeView` alias, and root-viewport-deferred skip behavior.
