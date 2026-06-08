@@ -18,6 +18,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | `release-python.yml` | `merman` wheels for Linux, macOS, and Windows | GitHub Release + PyPI |
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
+| `release-web.yml` | `@mermanjs/web` TypeScript/WASM package | npm |
 
 Most platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
 and `source_ref` inputs. This lets a fixed workflow on `main` build assets for an existing release
@@ -34,6 +35,7 @@ propagation delays.
 | crates.io | `CARGO_REGISTRY_TOKEN` repository secret |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
+| npm | Trusted Publishing / OIDC configured for `@mermanjs/web`, this repository, `release-web.yml`, and the `npm` environment after the package exists |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 
 Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, and `github-release`).
@@ -41,6 +43,11 @@ Configure required reviewers on those environments if publication should require
 
 Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
 publication metadata, but Central Portal credentials and signing secrets still need to be configured.
+
+npm Trusted Publishing can only be configured for an existing package. For the first web release,
+manually publish `@mermanjs/web` once from `platforms/web`, then configure the npm trusted publisher
+for workflow file `release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes
+automatically include npm provenance; the workflow does not need `--provenance`.
 
 ## Version Checklist
 
@@ -64,8 +71,8 @@ gh workflow run release-preflight.yml -f version=0.7.0-alpha.2 -f source_ref=mai
 ```
 
 The preflight workflow verifies release versions, package file lists, Python wheels, Android AAR
-builds, Apple XCFramework builds, and Flutter `dart pub publish --dry-run`. It does not publish to
-any registry.
+builds, Apple XCFramework builds, the web npm package dry-run, and Flutter
+`dart pub publish --dry-run`. It does not publish to any registry.
 
 For local spot checks, run the normal Rust and platform gates:
 
@@ -103,6 +110,21 @@ generated Android, iOS, macOS, Windows, and Linux native artifacts and then publ
 `--force`; a full local pub package dry run should first run the same artifact injection steps from
 `.github/workflows/release-flutter.yml`.
 
+For the first npm package creation:
+
+```bash
+cd platforms/web
+npm ci
+npm run build
+npm run smoke
+npm pack --dry-run
+npm publish --access public --tag alpha
+```
+
+After that first publish, configure npm Trusted Publishing for `@mermanjs/web` with workflow file
+`release-web.yml` and environment `npm`; future web releases should use `release-web.yml` instead
+of local `npm publish`.
+
 ## Tag And Push
 
 ```bash
@@ -123,6 +145,7 @@ After the primary release exists, run platform publish workflows manually:
 gh workflow run release-python.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2 -f publish_to_pypi=true
 gh workflow run release-android.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2
 gh workflow run release-apple.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2
+gh workflow run release-web.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2 -f publish_to_npm=true
 ```
 
 Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
@@ -136,5 +159,4 @@ behavior.
 ## Follow-On Registry Work
 
 - Add Android Maven Central publishing after Central Portal credentials and signing secrets are configured.
-- Add npm publishing for `@merman/web` after npm Trusted Publishing/provenance is configured.
 - Add device-level Flutter smoke coverage after a stable CI target is chosen for each platform.

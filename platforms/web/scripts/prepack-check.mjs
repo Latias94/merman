@@ -1,11 +1,13 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const generatedPackageJson = path.join(root, "pkg", "package.json");
 const required = [
   path.join(root, "dist", "index.js"),
   path.join(root, "dist", "index.d.ts"),
+  generatedPackageJson,
   path.join(root, "pkg", "merman_wasm.js"),
   path.join(root, "pkg", "merman_wasm_bg.wasm"),
 ];
@@ -26,5 +28,17 @@ if (missing.length > 0) {
       ...missing.map((file) => `  - ${path.relative(root, file)}`),
     ].join("\n"),
   );
+  process.exit(1);
+}
+
+try {
+  const packageJson = JSON.parse(readFileSync(generatedPackageJson, "utf8"));
+  if (packageJson.type !== "module") {
+    console.error("prepack: generated pkg/package.json must declare `type: module`.");
+    console.error("Run `npm run build --prefix platforms/web` before pack/publish.");
+    process.exit(1);
+  }
+} catch (error) {
+  console.error(`prepack: failed to read generated pkg/package.json: ${error.message}`);
   process.exit(1);
 }

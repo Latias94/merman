@@ -11,7 +11,7 @@ import { StatusBar } from "./components/StatusBar";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
 import { prewarmWasmRenderer } from "./lib/wasm-loader";
-import { normalizeThemeName } from "@merman/web";
+import { normalizeThemeName } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 

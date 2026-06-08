@@ -34,7 +34,7 @@ Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
-| Embed in a browser or TypeScript app | [`@merman/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
+| Embed in a browser or TypeScript app | [`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
 | Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
 | Work on layout/rendering internals | [`merman-render`](https://crates.io/crates/merman-render) | Low-level layout and SVG stack used by the public `merman` facade. |
@@ -68,7 +68,7 @@ cargo add merman@0.7.0-alpha.2 --features raster
 cargo add merman-rustdoc@0.7.0-alpha.2 --optional
 
 # Browser / TypeScript package
-npm install @merman/web
+npm install @mermanjs/web
 
 # Flutter package
 flutter pub add merman
@@ -697,7 +697,7 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI for native hosts and platform wrappers. |
 | [`merman-bindings-core`](https://crates.io/crates/merman-bindings-core) | Shared safe facade behind C ABI and UniFFI bindings. |
 | [`merman-uniffi`](https://crates.io/crates/merman-uniffi) | UniFFI-generated binding surface, currently used for Python packaging. |
-| [`merman-wasm`](https://crates.io/crates/merman-wasm) | wasm-bindgen transport crate behind the `@merman/web` TypeScript package. |
+| [`merman-wasm`](https://crates.io/crates/merman-wasm) | wasm-bindgen transport crate behind the `@mermanjs/web` TypeScript package. |
 | [`dugong`](https://crates.io/crates/dugong) | Dagre-compatible layout port. |
 | [`dugong-graphlib`](https://crates.io/crates/dugong-graphlib) | Graph container APIs ported from `dagrejs/graphlib`. |
 | [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |

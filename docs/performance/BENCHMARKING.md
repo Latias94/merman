@@ -89,13 +89,13 @@ for playground and web embedding decisions.
 For web-to-web comparisons, measure after both engines are initialized in the same headless
 Chromium session:
 
-- Merman: initialize `@merman/web` once, then measure repeated `renderSvg()` calls.
+- Merman: initialize `@mermanjs/web` once, then measure repeated `renderSvg()` calls.
 - Mermaid JS: initialize Mermaid once, then measure repeated `mermaid.render()` calls.
 - Use the same fixtures, theme, viewport width, warmup window, and measurement window.
 - Keep cold-start numbers separate from steady-state render numbers.
 
 `tools/bench/mermaid_js_bench.cjs` already provides the Mermaid JS side of this comparison through
-the pinned `tools/mermaid-cli` dependency set. A future `@merman/web` browser harness should emit
+the pinned `tools/mermaid-cli` dependency set. A future `@mermanjs/web` browser harness should emit
 the same JSON shape so `tools/bench/compare_mermaid_renderers.py` can report native, WASM, and
 Mermaid JS results without mixing unlike measurements.
 

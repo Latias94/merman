@@ -17,7 +17,7 @@ import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
-import { normalizeThemeName } from "@merman/web";
+import { normalizeThemeName } from "@mermanjs/web";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

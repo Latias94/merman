@@ -1,4 +1,4 @@
-import { normalizeThemeName } from "@merman/web";
+import { normalizeThemeName } from "@mermanjs/web";
 
 export type MermaidConfigObject = Record<string, unknown>;
 

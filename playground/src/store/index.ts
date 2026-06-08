@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ThemeName } from "@merman/web";
+import type { ThemeName } from "@mermanjs/web";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 
 export type Theme = ThemeName;

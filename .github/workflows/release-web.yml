@@ -1,0 +1,122 @@
+name: Release Web (npm)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag/version to publish, for example v0.7.0-alpha.2"
+        required: true
+        type: string
+      source_ref:
+        description: "Git ref to build from"
+        required: true
+        default: "main"
+        type: string
+      publish_to_npm:
+        description: "Publish @mermanjs/web to npm after checks pass"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: npm
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Read version from tag
+        id: version
+        run: |
+          RELEASE_TAG="${{ inputs.release_tag }}"
+          if [[ "$RELEASE_TAG" != v* ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must start with v."
+            exit 1
+          fi
+          VERSION="${RELEASE_TAG#v}"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag version: $VERSION"
+
+      - name: Verify web package version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node - <<'JS'
+          const fs = require("node:fs");
+          const version = process.env.VERSION;
+          const pkg = JSON.parse(fs.readFileSync("platforms/web/package.json", "utf8"));
+          if (pkg.name !== "@mermanjs/web") {
+            console.error(`::error::Unexpected npm package name ${pkg.name}`);
+            process.exit(1);
+          }
+          if (pkg.version !== version) {
+            console.error(`::error::Web package version '${pkg.version}' does not match tag ${version}`);
+            process.exit(1);
+          }
+          console.log(`@mermanjs/web ${pkg.version}`);
+          JS
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Install WASM tools
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.108 --locked
+          cargo install wasm-pack --version 0.12.1 --locked
+
+      - name: Install web package dependencies
+        run: npm ci --prefix platforms/web
+
+      - name: Build web package
+        run: npm run build --prefix platforms/web
+
+      - name: Verify web package
+        run: npm run prepack --prefix platforms/web
+
+      - name: Pack dry-run
+        working-directory: platforms/web
+        run: npm pack --dry-run
+
+      - name: Check npm version
+        id: npm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "@mermanjs/web@$VERSION" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "@mermanjs/web $VERSION is already published"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "@mermanjs/web $VERSION is not published yet"
+          fi
+
+      - name: Publish to npm
+        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists != 'true' }}
+        working-directory: platforms/web
+        run: npm publish --access public
+
+      - name: Skip existing npm version
+        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists == 'true' }}
+        run: echo "@mermanjs/web ${{ steps.version.outputs.version }} is already published on npm; skipping."

@@ -1,5 +1,5 @@
 {
-  "name": "@merman/web",
+  "name": "@mermanjs/web",
   "version": "0.7.0-alpha.2",
   "description": "Merman browser integration: WebAssembly renderer and TypeScript helpers.",
   "type": "module",
@@ -19,8 +19,7 @@
   ],
   "license": "MIT OR Apache-2.0",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "exports": {
     ".": {

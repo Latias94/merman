@@ -3,7 +3,7 @@ import {
   buildMermaidConfig,
   sourceWithConfig,
 } from "@/src/lib/mermaid-config";
-import { normalizeThemeName } from "@merman/web";
+import { normalizeThemeName } from "@mermanjs/web";
 
 export const MERMAID_JS_VERSION = "11.15.0";
 export const MERMAID_CDN_URL =

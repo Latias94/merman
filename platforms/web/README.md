@@ -1,4 +1,4 @@
-# @merman/web
+# @mermanjs/web
 
 Browser integration for merman. This package wraps the `merman-wasm` wasm-bindgen output with a
 small TypeScript API.
@@ -16,7 +16,7 @@ npm run smoke --prefix platforms/web
 ## Usage
 
 ```ts
-import { initMerman, renderSvg } from "@merman/web";
+import { initMerman, renderSvg } from "@mermanjs/web";
 
 await initMerman();
 
@@ -33,7 +33,7 @@ The options object is serialized to the shared merman binding options JSON contr
 For non-framework browser integrations, render directly into a host element:
 
 ```ts
-import { initMerman, renderSvgToElement } from "@merman/web";
+import { initMerman, renderSvgToElement } from "@mermanjs/web";
 
 await initMerman();
 
@@ -51,12 +51,12 @@ By default, `initMerman()` dynamically imports `../pkg/merman_wasm.js`. If a bun
 needs to provide the wasm-bindgen module or wasm URL explicitly, pass initialization options:
 
 ```ts
-import type { MermanWasmModule } from "@merman/web";
+import type { MermanWasmModule } from "@mermanjs/web";
 
 await initMerman({
   loader: async () =>
-    (await import("@merman/web/pkg/merman_wasm.js")) as MermanWasmModule,
-  wasm: new URL("@merman/web/pkg/merman_wasm_bg.wasm", import.meta.url),
+    (await import("@mermanjs/web/pkg/merman_wasm.js")) as MermanWasmModule,
+  wasm: new URL("@mermanjs/web/pkg/merman_wasm_bg.wasm", import.meta.url),
 });
 ```
 
@@ -64,7 +64,7 @@ Concurrent calls share the same in-flight initialization promise.
 
 ## WASM loading best practices
 
-`@merman/web` ships one full browser renderer artifact. It is intended for playgrounds, diagram
+`@mermanjs/web` ships one full browser renderer artifact. It is intended for playgrounds, diagram
 editors, documentation previews, and applications that need headless Mermaid rendering in the
 browser. Treat it as a feature module, not as first-paint UI code:
 
@@ -83,14 +83,14 @@ keeps the public API simple and avoids fragmenting cache behavior across package
 
 ## Web Worker integration
 
-`@merman/web` does not bundle an opinionated worker wrapper yet. Worker queues, cancellation,
+`@mermanjs/web` does not bundle an opinionated worker wrapper yet. Worker queues, cancellation,
 timeouts, transfer protocol, and framework integration usually belong to the host application. The
 recommended pattern is to initialize Merman once inside a module worker and send SVG strings back to
 the main thread:
 
 ```ts
 // merman.worker.ts
-import { initMerman, renderSvg, type SvgBindingOptions } from "@merman/web";
+import { initMerman, renderSvg, type SvgBindingOptions } from "@mermanjs/web";
 
 type RenderRequest = {
   id: string;
@@ -152,9 +152,9 @@ fast if the generated WebAssembly metadata drifts from the TypeScript surface.
 
 The web binding is suitable for browser-to-browser benchmarks after initialization:
 
-1. Build `@merman/web` once.
+1. Build `@mermanjs/web` once.
 2. Launch one headless Chromium instance.
-3. Initialize `@merman/web` and Mermaid JS before measuring.
+3. Initialize `@mermanjs/web` and Mermaid JS before measuring.
 4. Measure repeated `renderSvg()` calls against repeated `mermaid.render()` calls on the same
    fixtures, theme, viewport width, and warmup/measurement windows.
 

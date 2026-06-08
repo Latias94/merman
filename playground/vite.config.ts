@@ -23,7 +23,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@merman/web"],
+    exclude: ["@mermanjs/web"],
   },
   server: {
     fs: {

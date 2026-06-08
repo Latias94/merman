@@ -212,6 +212,50 @@ jobs:
           swift build
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
+  web-npm-dry-run:
+    name: web-npm-dry-run
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Verify release versions
+        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: platforms/web/package-lock.json
+
+      - name: Install WASM tools
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.108 --locked
+          cargo install wasm-pack --version 0.12.1 --locked
+
+      - name: Install web package dependencies
+        run: npm ci --prefix platforms/web
+
+      - name: Build web package
+        run: npm run build --prefix platforms/web
+
+      - name: Verify web package
+        run: npm run prepack --prefix platforms/web
+
+      - name: Pack npm package dry-run
+        working-directory: platforms/web
+        run: npm pack --dry-run
+
   flutter-dry-run:
     name: flutter-dry-run
     runs-on: macos-15

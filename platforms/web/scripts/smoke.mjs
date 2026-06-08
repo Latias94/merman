@@ -7,12 +7,12 @@ const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), ".."
 const repoRoot = path.join(packageRoot, "..", "..");
 
 const api = await import(pathToFileURL(path.join(packageRoot, "dist", "index.js")).href);
-const exportedWasmModule = await import("@merman/web/pkg/merman_wasm.js");
+const exportedWasmModule = await import("@mermanjs/web/pkg/merman_wasm.js");
 
 assert.equal(typeof exportedWasmModule.default, "function");
 if (typeof import.meta.resolve === "function") {
   assert.match(
-    import.meta.resolve("@merman/web/pkg/merman_wasm_bg.wasm"),
+    import.meta.resolve("@mermanjs/web/pkg/merman_wasm_bg.wasm"),
     /merman_wasm_bg\.wasm$/
   );
 }
@@ -103,5 +103,5 @@ for (const diagram of api.supportedDiagrams()) {
 }
 
 console.log(
-  `@merman/web smoke passed (${api.supportedDiagrams().length} diagram fixtures)`
+  `@mermanjs/web smoke passed (${api.supportedDiagrams().length} diagram fixtures)`
 );

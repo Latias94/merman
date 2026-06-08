@@ -10,8 +10,8 @@ import {
   supportedThemes,
   validate as validateDiagram,
   type MermanWasmModule,
-} from "@merman/web";
-import mermanWasmUrl from "@merman/web/pkg/merman_wasm_bg.wasm?url";
+} from "@mermanjs/web";
+import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 import {
   DEFAULT_MERMAID_CONFIG,
   sourceWithConfig,
@@ -78,7 +78,7 @@ export async function loadWasm(): Promise<MermanWasm> {
 }
 
 async function loadWasmModule(): Promise<MermanWasmModule> {
-  return (await import("@merman/web/pkg/merman_wasm.js")) as MermanWasmModule;
+  return (await import("@mermanjs/web/pkg/merman_wasm.js")) as MermanWasmModule;
 }
 
 async function loadCachedWasmResponse(): Promise<Response | undefined> {
