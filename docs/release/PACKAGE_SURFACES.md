@@ -16,7 +16,7 @@ protect them before any registry publication is enabled.
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
-| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Package metadata and release workflow are present. The first publish must create the npm package manually; subsequent releases use npm Trusted Publishing/provenance. |
+| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Package metadata and release workflow are present. The npm package exists; subsequent releases use npm Trusted Publishing/provenance once the trusted publisher is configured. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
 
@@ -30,7 +30,7 @@ The first release set is:
 4. GitHub Release wheels and PyPI publishing for Python.
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.
-7. npm publishing for `@mermanjs/web` after the first manual package creation and trusted publisher setup.
+7. npm publishing for `@mermanjs/web` through `release-web.yml` after trusted publisher setup.
 
 ## CI Gates
 

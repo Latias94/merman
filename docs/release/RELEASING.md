@@ -38,20 +38,20 @@ propagation delays.
 | npm | Trusted Publishing / OIDC configured for `@mermanjs/web`, this repository, `release-web.yml`, and the `npm` environment after the package exists |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 
-Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, and `github-release`).
+Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and `github-release`).
 Configure required reviewers on those environments if publication should require explicit approval.
 
 Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
 publication metadata, but Central Portal credentials and signing secrets still need to be configured.
 
-If the PyPI project does not exist yet, configure a PyPI Pending Publisher for project `merman`,
-owner `Latias94`, repository `merman`, workflow `release-python.yml`, and environment `pypi`.
-The first trusted publish will create the PyPI project and convert the pending publisher.
+The PyPI project `merman` exists. Keep PyPI Trusted Publishing configured for owner `Latias94`,
+repository `merman`, workflow `release-python.yml`, and environment `pypi`. A PyPI Pending
+Publisher is only needed before the first trusted publish of a new project name.
 
-npm Trusted Publishing can only be configured for an existing package. For the first web release,
-manually publish `@mermanjs/web` once from `platforms/web`, then configure the npm trusted publisher
-for workflow file `release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes
-automatically include npm provenance; the workflow does not need `--provenance`.
+The npm package `@mermanjs/web` exists. Configure npm Trusted Publishing for workflow file
+`release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes automatically include
+npm provenance; the workflow does not need `--provenance`. A manual first publish is only needed if
+the package name changes and the new npm package does not exist yet.
 
 The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release
 assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a
@@ -119,7 +119,7 @@ generated Android, iOS, macOS, Windows, and Linux native artifacts and then publ
 `--force`; a full local pub package dry run should first run the same artifact injection steps from
 `.github/workflows/release-flutter.yml`.
 
-For the first npm package creation:
+For local npm validation or emergency first package creation:
 
 ```bash
 cd platforms/web
@@ -130,9 +130,8 @@ npm pack --dry-run
 npm publish --access public --tag alpha
 ```
 
-After that first publish, configure npm Trusted Publishing for `@mermanjs/web` with workflow file
-`release-web.yml` and environment `npm`; future web releases should use `release-web.yml` instead
-of local `npm publish`.
+Normal web releases should use `release-web.yml` instead of local `npm publish` once npm Trusted
+Publishing is configured for `@mermanjs/web`.
 
 ## Tag And Push
 

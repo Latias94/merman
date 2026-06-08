@@ -108,7 +108,8 @@ Last updated: 2026-06-08
 
 ## M13 — Release Operator Final Sweep
 
-- [ ] PA2R-140 [owner=codex] [deps=PA2R-130] [scope=docs/release,.github/workflows,platforms,Cargo.toml,CHANGELOG.md,docs/workstreams/post-alpha2-fearless-refactor]
+- [x] PA2R-140 [owner=codex] [deps=PA2R-130] [scope=.github/workflows,docs/release,docs/workstreams/post-alpha2-fearless-refactor]
   Goal: Do a final release-operator sweep for stale alpha.2 instructions, registry setup assumptions, package names, version spellings, and workflow gates before deciding whether the lane is ready to close.
-  Validation: focused release docs/workflow checks selected by findings; `git diff --check -- docs/release .github/workflows platforms CHANGELOG.md docs/workstreams/post-alpha2-fearless-refactor`
-  Review: Prefer deleting or correcting stale release instructions over adding more narrative; do not publish or move tags from this refactor lane.
+  Validation: stale alpha.1/manual-first-publish grep; release-facing `@merman/web` grep; `python scripts/release-version.py check --version 0.7.0-alpha.2`; `git diff --check -- docs/release .github/workflows platforms CHANGELOG.md docs/workstreams/post-alpha2-fearless-refactor`
+  Review: Release workflow examples now point at alpha.2, release docs include the `npm` environment, and registry setup text reflects that npm, pub.dev, and PyPI packages already exist. No publish or tag movement was performed from this refactor lane.
+  Evidence: `.github/workflows/release-*.yml`; `docs/release/PACKAGE_SURFACES.md`; `docs/release/RELEASING.md`; registry queries passed on 2026-06-08.

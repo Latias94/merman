@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "post-alpha2-fearless-refactor",
   "title": "Post Alpha.2 Fearless Refactor",
-  "status": "active",
+  "status": "complete",
   "updated": "2026-06-08",
   "scope_kind": "architecture_lane",
   "problem": "After 0.7.0-alpha.2, release-facing binding, family facts, headless operation, theme, admission, and xtask seams still contain shallow implementation-era surfaces that should be cleaned before the next alpha.",
@@ -42,10 +42,12 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-140",
+  "current_task": null,
   "gates": [
     "cargo fmt --all --check",
     "git diff --check -- CHANGELOG.md crates/merman-wasm/README.md docs/workstreams/post-alpha2-fearless-refactor",
+    "python scripts/release-version.py check --version 0.7.0-alpha.2",
+    "git diff --check -- docs/release .github/workflows platforms CHANGELOG.md docs/workstreams/post-alpha2-fearless-refactor",
     "cargo check -p merman --features render",
     "cargo nextest run -p merman --features render svg_pipeline_tests",
     "cargo nextest run -p merman --features render render_svg",
@@ -69,7 +71,8 @@
     "cargo nextest run -p merman-render timeline"
   ],
   "continue_policy": {
-    "default_action": "execute-next-task",
-    "notes": "Compound Engineering ce-plan is recorded in docs/plans/2026-06-08-001-refactor-post-alpha2-fearless-refactor-plan.md. This workstream remains the execution ledger and proceeds serially with local safety rails."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane complete after PA2R-140. Release-facing FFI, binding package docs, npm/PyPI/pub.dev registry assumptions, workflow examples, and release docs were cleaned for alpha.2 readiness. Follow docs/release/RELEASING.md and docs/release/PUBLISH_ORDER.md for any remaining operator-driven publishing; do not publish or move tags from this refactor lane."
   }
 }
