@@ -1,5 +1,44 @@
 use super::*;
 
+fn xychart_has_renderable_plot(body: &str) -> bool {
+    fn plot_data_is_renderable(rest: &str) -> bool {
+        let Some(open) = rest.find('[') else {
+            return false;
+        };
+        let after_open = &rest[open + 1..];
+        if after_open.contains('[') {
+            return false;
+        }
+
+        let Some(close_rel) = after_open.find(']') else {
+            return false;
+        };
+        let data = after_open[..close_rel].trim();
+        let trailing = after_open[close_rel + 1..].trim();
+        if data.is_empty() || !(trailing.is_empty() || trailing.starts_with(';')) {
+            return false;
+        }
+
+        data.split(',')
+            .map(str::trim)
+            .all(|token| !token.is_empty() && token.parse::<f64>().is_ok())
+    }
+
+    body.lines().any(|raw| {
+        let line = raw.trim_start();
+        let lower = line.to_ascii_lowercase();
+        let Some(rest) = lower
+            .strip_prefix("line")
+            .or_else(|| lower.strip_prefix("bar"))
+        else {
+            return false;
+        };
+
+        (rest.starts_with('[') || rest.starts_with(char::is_whitespace) || rest.starts_with('"'))
+            && plot_data_is_renderable(rest)
+    })
+}
+
 pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -783,6 +822,14 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             if diagram != "all" && diagram_dir != diagram {
                 continue;
             }
+            if with_baselines && diagram_dir == "xychart" && !xychart_has_renderable_plot(&body) {
+                skipped.push(format!(
+                    "skip (xychart parser-only without renderable plot): {} (idx={})",
+                    spec_path.display(),
+                    idx + 1
+                ));
+                continue;
+            }
 
             let stem = format!("upstream_pkgtests_{source_slug}_{idx:03}", idx = idx + 1);
             candidates.push(Candidate {
@@ -1003,4 +1050,27 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xychart_has_renderable_plot;
+
+    #[test]
+    fn xychart_render_baseline_import_requires_valid_plot_data() {
+        assert!(!xychart_has_renderable_plot("xychart\nx-axis xAxisName\n"));
+        assert!(!xychart_has_renderable_plot("xychart\nline \"t\"\n"));
+        assert!(!xychart_has_renderable_plot("xychart\nline \"t\" [ ]\n"));
+        assert!(!xychart_has_renderable_plot(
+            "xychart\nline \"t\" [  +23 [ -45  , 56.6 ]\n"
+        ));
+        assert!(!xychart_has_renderable_plot(
+            "xychart\nbar \"t\" [  +23 , -4aa5  , 56.6 ]\n"
+        ));
+
+        assert!(xychart_has_renderable_plot("xychart\nline[1,2,.33]\n"));
+        assert!(xychart_has_renderable_plot(
+            "xychart\nbar \"barTitle with space\" [ +23 , -45 , 56.6 ]\n"
+        ));
+    }
 }
