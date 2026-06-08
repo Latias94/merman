@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Latias94/merman.git"
+    "url": "git+https://github.com/Latias94/merman.git"
   },
   "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web#readme",
   "keywords": [
