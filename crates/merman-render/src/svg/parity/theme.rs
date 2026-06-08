@@ -172,6 +172,31 @@ pub(crate) struct EventModelingTheme {
     pub(crate) arrowhead_fill: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct TimelineSectionTheme {
+    pub(crate) c_scale: String,
+    pub(crate) c_scale_label: String,
+    pub(crate) c_scale_inv: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TimelineTheme {
+    pub(crate) is_redux_theme: bool,
+    pub(crate) is_dark_theme: bool,
+    pub(crate) is_color_theme: bool,
+    pub(crate) stroke_width: String,
+    pub(crate) font_weight: String,
+    pub(crate) main_bkg: String,
+    pub(crate) node_border: String,
+    pub(crate) drop_shadow: String,
+    pub(crate) disabled_fill: String,
+    pub(crate) disabled_text_fill: String,
+    pub(crate) root_fill: String,
+    pub(crate) root_label: String,
+    pub(crate) border_colors: Vec<String>,
+    pub(crate) sections: Vec<TimelineSectionTheme>,
+}
+
 pub(crate) struct PresentationTheme<'a> {
     raw: SvgTheme<'a>,
     common: CommonCssTheme,
@@ -401,6 +426,67 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    pub(crate) fn timeline(&self) -> TimelineTheme {
+        let theme_name = self.common.theme_name.clone();
+        let theme_color_limit = self
+            .raw
+            .optional_f64("THEME_COLOR_LIMIT")
+            .map(|value| value.max(1.0).min(64.0) as usize)
+            .unwrap_or(12);
+        let label_text_color = self.raw.color("labelTextColor", "black");
+        let label_text_is_calculated = label_text_color.trim() == "calculated";
+        let scale_label_color = self.raw.color("scaleLabelColor", &label_text_color);
+        let mut buf = ryu_js::Buffer::new();
+        let sections = (0..theme_color_limit)
+            .map(|i| {
+                let c_scale = self
+                    .raw
+                    .color(&format!("cScale{i}"), timeline_default_c_scale(i));
+                let c_scale_label = self
+                    .raw
+                    .optional_color(&format!("cScaleLabel{i}"))
+                    .unwrap_or_else(|| {
+                        if label_text_is_calculated {
+                            scale_label_color.clone()
+                        } else if i == 0 || i == 3 {
+                            invert_timeline_label_color_to_hex(&label_text_color)
+                                .unwrap_or_else(|| label_text_color.clone())
+                        } else {
+                            label_text_color.clone()
+                        }
+                    });
+                let c_scale_inv = self
+                    .raw
+                    .optional_color(&format!("cScaleInv{i}"))
+                    .or_else(|| derive_timeline_c_scale_inv_fallback(&c_scale, &mut buf))
+                    .unwrap_or_else(|| c_scale.clone());
+
+                TimelineSectionTheme {
+                    c_scale,
+                    c_scale_label,
+                    c_scale_inv,
+                }
+            })
+            .collect();
+
+        TimelineTheme {
+            is_redux_theme: theme_name.contains("redux"),
+            is_dark_theme: theme_name.contains("dark"),
+            is_color_theme: theme_name.contains("color"),
+            stroke_width: self.raw.css_value("strokeWidth", "1"),
+            font_weight: self.raw.css_value("fontWeight", "normal"),
+            main_bkg: self.raw.color("mainBkg", "#ECECFF"),
+            node_border: self.raw.color("nodeBorder", "#9370DB"),
+            drop_shadow: self.raw.css_value("dropShadow", "none"),
+            disabled_fill: self.raw.color("tertiaryColor", "lightgray"),
+            disabled_text_fill: self.raw.color("clusterBorder", "#efefef"),
+            root_fill: self.raw.color("git0", "hsl(240, 100%, 46.2745098039%)"),
+            root_label: self.raw.color("gitBranchLabel0", "#ffffff"),
+            border_colors: self.raw.string_array("borderColorArray"),
+            sections,
+        }
+    }
+
     pub(super) fn common(&self) -> &CommonCssTheme {
         &self.common
     }
@@ -603,6 +689,36 @@ fn invert_hex_color(s: &str) -> Option<String> {
     Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b))
 }
 
+fn invert_timeline_label_color_to_hex(color: &str) -> Option<String> {
+    let color = color.trim();
+    if color.is_empty() {
+        return None;
+    }
+    if color.eq_ignore_ascii_case("black") {
+        return Some("#ffffff".to_string());
+    }
+    if color.eq_ignore_ascii_case("white") {
+        return Some("#000000".to_string());
+    }
+    let hex = color.strip_prefix('#')?.trim();
+    let (r, g, b) = match hex.len() {
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+            (r, g, b)
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            (r, g, b)
+        }
+        _ => return None,
+    };
+    Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b))
+}
+
 fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
     let t = s.trim().strip_prefix('#').unwrap_or(s.trim());
     if t.len() != 6 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -621,6 +737,42 @@ fn adjust_hex_rgb(hex: &str, delta: i16) -> Option<String> {
         v.clamp(0, 255) as u8
     };
     Some(format!("#{:02x}{:02x}{:02x}", adj(r), adj(g), adj(b)))
+}
+
+fn round_1e10(v: f64) -> f64 {
+    let v = (v * 1e10).round() / 1e10;
+    if v == -0.0 { 0.0 } else { v }
+}
+
+fn format_hsl_css(h: f64, s: f64, l: f64, buf: &mut ryu_js::Buffer) -> String {
+    let h = buf.format_finite(round_1e10(h)).to_string();
+    let s = buf.format_finite(round_1e10(s)).to_string();
+    let l = buf.format_finite(round_1e10(l)).to_string();
+    format!("hsl({h}, {s}%, {l}%)")
+}
+
+fn derive_timeline_c_scale_inv_fallback(c_scale: &str, buf: &mut ryu_js::Buffer) -> Option<String> {
+    let (h, s, l) = parse_hsl_css(c_scale)?;
+    let h = (h + 180.0) % 360.0;
+    let l = (l + 10.0).clamp(0.0, 100.0);
+    Some(format_hsl_css(h, s, l, buf))
+}
+
+fn timeline_default_c_scale(i: usize) -> &'static str {
+    match i {
+        0 => "hsl(240, 100%, 76.2745098039%)",
+        1 => "hsl(60, 100%, 73.5294117647%)",
+        2 => "hsl(80, 100%, 76.2745098039%)",
+        3 => "hsl(270, 100%, 76.2745098039%)",
+        4 => "hsl(300, 100%, 76.2745098039%)",
+        5 => "hsl(330, 100%, 76.2745098039%)",
+        6 => "hsl(0, 100%, 76.2745098039%)",
+        7 => "hsl(30, 100%, 76.2745098039%)",
+        8 => "hsl(90, 100%, 76.2745098039%)",
+        9 => "hsl(150, 100%, 76.2745098039%)",
+        10 => "hsl(180, 100%, 76.2745098039%)",
+        _ => "hsl(210, 100%, 76.2745098039%)",
+    }
 }
 
 fn fmt_rgb(r: u8, g: u8, b: u8) -> String {
@@ -930,6 +1082,85 @@ mod tests {
         assert_eq!(tree_view.label_font_size_css, "16px");
         assert_eq!(tree_view.label_color, "black");
         assert_eq!(tree_view.line_color, "black");
+    }
+
+    #[test]
+    fn presentation_theme_timeline_resolves_timeline_roles() {
+        let cfg = json!({
+            "theme": "redux-color",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 2,
+                "strokeWidth": 5,
+                "fontWeight": 600,
+                "mainBkg": "#111827",
+                "nodeBorder": "#38bdf8",
+                "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))",
+                "tertiaryColor": "#334155",
+                "clusterBorder": "#f97316",
+                "git0": "#22c55e",
+                "gitBranchLabel0": "#020617",
+                "borderColorArray": ["#ef4444", "#f59e0b"],
+                "cScale0": "#ef4444",
+                "cScaleLabel0": "#e879f9",
+                "cScaleInv0": "#334155",
+                "cScale1": "#172554",
+                "cScaleLabel1": "#f8fafc",
+                "cScaleInv1": "#475569"
+            }
+        });
+
+        let timeline = PresentationTheme::new(&cfg).timeline();
+
+        assert!(timeline.is_redux_theme);
+        assert!(!timeline.is_dark_theme);
+        assert!(timeline.is_color_theme);
+        assert_eq!(timeline.stroke_width, "5");
+        assert_eq!(timeline.font_weight, "600");
+        assert_eq!(timeline.main_bkg, "#111827");
+        assert_eq!(timeline.node_border, "#38bdf8");
+        assert_eq!(timeline.disabled_fill, "#334155");
+        assert_eq!(timeline.disabled_text_fill, "#f97316");
+        assert_eq!(timeline.root_fill, "#22c55e");
+        assert_eq!(timeline.root_label, "#020617");
+        assert_eq!(timeline.border_colors, vec!["#ef4444", "#f59e0b"]);
+        assert_eq!(timeline.sections.len(), 2);
+        assert_eq!(timeline.sections[0].c_scale, "#ef4444");
+        assert_eq!(timeline.sections[0].c_scale_label, "#e879f9");
+        assert_eq!(timeline.sections[0].c_scale_inv, "#334155");
+        assert_eq!(timeline.sections[1].c_scale, "#172554");
+        assert_eq!(timeline.sections[1].c_scale_label, "#f8fafc");
+        assert_eq!(timeline.sections[1].c_scale_inv, "#475569");
+    }
+
+    #[test]
+    fn presentation_theme_timeline_uses_default_timeline_roles() {
+        let cfg = json!({});
+
+        let timeline = PresentationTheme::new(&cfg).timeline();
+
+        assert!(!timeline.is_redux_theme);
+        assert!(!timeline.is_dark_theme);
+        assert!(!timeline.is_color_theme);
+        assert_eq!(timeline.stroke_width, "1");
+        assert_eq!(timeline.font_weight, "normal");
+        assert_eq!(timeline.main_bkg, "#ECECFF");
+        assert_eq!(timeline.node_border, "#9370DB");
+        assert_eq!(timeline.disabled_fill, "lightgray");
+        assert_eq!(timeline.disabled_text_fill, "#efefef");
+        assert_eq!(timeline.root_fill, "hsl(240, 100%, 46.2745098039%)");
+        assert_eq!(timeline.root_label, "#ffffff");
+        assert!(timeline.border_colors.is_empty());
+        assert_eq!(timeline.sections.len(), 12);
+        assert_eq!(
+            timeline.sections[0].c_scale,
+            "hsl(240, 100%, 76.2745098039%)"
+        );
+        assert_eq!(timeline.sections[0].c_scale_label, "#ffffff");
+        assert_eq!(
+            timeline.sections[0].c_scale_inv,
+            "hsl(60, 100%, 86.2745098039%)"
+        );
+        assert_eq!(timeline.sections[1].c_scale_label, "black");
     }
 
     #[test]

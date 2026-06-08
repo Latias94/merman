@@ -1,181 +1,44 @@
+use super::theme::TimelineTheme;
 use super::*;
 use merman_core::diagrams::timeline::TimelineDiagramRenderModel;
 
-fn timeline_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<String> {
-    effective_config
-        .get("themeVariables")
-        .and_then(|value| value.get(key))
-        .and_then(|value| value.as_array())
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item.as_str().map(|s| s.to_string()))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn timeline_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    theme: &TimelineTheme,
+) -> String {
     let id = escape_xml(diagram_id);
-
-    fn default_c_scale(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 76.2745098039%)",
-            1 => "hsl(60, 100%, 73.5294117647%)",
-            2 => "hsl(80, 100%, 76.2745098039%)",
-            3 => "hsl(270, 100%, 76.2745098039%)",
-            4 => "hsl(300, 100%, 76.2745098039%)",
-            5 => "hsl(330, 100%, 76.2745098039%)",
-            6 => "hsl(0, 100%, 76.2745098039%)",
-            7 => "hsl(30, 100%, 76.2745098039%)",
-            8 => "hsl(90, 100%, 76.2745098039%)",
-            9 => "hsl(150, 100%, 76.2745098039%)",
-            10 => "hsl(180, 100%, 76.2745098039%)",
-            _ => "hsl(210, 100%, 76.2745098039%)",
-        }
-    }
-
-    fn round_1e10(v: f64) -> f64 {
-        let v = (v * 1e10).round() / 1e10;
-        if v == -0.0 { 0.0 } else { v }
-    }
-
-    fn invert_css_color_to_hex(color: &str) -> Option<String> {
-        let color = color.trim();
-        if color.is_empty() {
-            return None;
-        }
-        if color.eq_ignore_ascii_case("black") {
-            return Some("#ffffff".to_string());
-        }
-        if color.eq_ignore_ascii_case("white") {
-            return Some("#000000".to_string());
-        }
-        if let Some(hex) = color.strip_prefix('#') {
-            let hex = hex.trim();
-            let (r, g, b) = match hex.len() {
-                3 => {
-                    let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
-                    let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
-                    let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
-                    (r, g, b)
-                }
-                6 => {
-                    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-                    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-                    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-                    (r, g, b)
-                }
-                _ => return None,
-            };
-            return Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b));
-        }
-        None
-    }
-
-    fn parse_hsl(s: &str) -> Option<(f64, f64, f64)> {
-        let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-        let mut parts = inner.split(',').map(|p| p.trim());
-        let h = parts.next()?.parse::<f64>().ok()?;
-        let s = parts
-            .next()?
-            .strip_suffix('%')?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        let l = parts
-            .next()?
-            .strip_suffix('%')?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        Some((h, s, l))
-    }
-
-    fn fmt_hsl(h: f64, s: f64, l: f64, buf: &mut ryu_js::Buffer) -> String {
-        let h = buf.format_finite(round_1e10(h)).to_string();
-        let s = buf.format_finite(round_1e10(s)).to_string();
-        let l = buf.format_finite(round_1e10(l)).to_string();
-        format!("hsl({h}, {s}%, {l}%)")
-    }
-
-    fn derive_c_scale_inv_fallback(c_scale: &str, buf: &mut ryu_js::Buffer) -> Option<String> {
-        let (h, s, l) = parse_hsl(c_scale)?;
-        let h = (h + 180.0) % 360.0;
-        let l = (l + 10.0).clamp(0.0, 100.0);
-        Some(fmt_hsl(h, s, l, buf))
-    }
 
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let root_rule = parts.root_rule;
     let mut out = parts.css_prefix;
-    let theme = SvgTheme::new(effective_config);
-    let theme_name = theme.theme_name();
-    let is_redux_theme = theme_name.contains("redux");
-    let is_dark_theme = theme_name.contains("dark");
-    let is_color_theme = theme_name.contains("color");
-    let theme_color_limit = config_f64(effective_config, &["themeVariables", "THEME_COLOR_LIMIT"])
-        .map(|value| value.max(1.0).min(64.0) as usize)
-        .unwrap_or(12);
-    let stroke_width = theme.css_value("strokeWidth", "1");
-    let font_weight = theme.css_value("fontWeight", "normal");
-    let main_bkg = theme.color("mainBkg", "#ECECFF");
-    let node_border = theme.color("nodeBorder", "#9370DB");
-    let border_color_array = timeline_theme_array(effective_config, "borderColorArray");
     let scoped_drop_shadow = if diagram_id.is_empty() {
-        theme.css_value("dropShadow", "none")
+        theme.drop_shadow.clone()
     } else {
         format!("url(#{id}-drop-shadow)")
     };
 
-    let label_text_color = theme_color(effective_config, "labelTextColor", "black");
-    let label_text_is_calculated = label_text_color.trim() == "calculated";
-    let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
-    let disabled_fill = theme_color(effective_config, "tertiaryColor", "lightgray");
-    let disabled_text_fill = theme_color(effective_config, "clusterBorder", "#efefef");
-    let mut buf = ryu_js::Buffer::new();
-
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
-    for i in 0..theme_color_limit {
+    for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
-        let c_scale = theme_color(effective_config, &format!("cScale{i}"), default_c_scale(i));
-        let c_scale_label = config_string(
-            effective_config,
-            &["themeVariables", &format!("cScaleLabel{i}")],
-        )
-        .unwrap_or_else(|| {
-            if label_text_is_calculated {
-                scale_label_color.clone()
-            } else if i == 0 || i == 3 {
-                invert_css_color_to_hex(&label_text_color)
-                    .unwrap_or_else(|| label_text_color.clone())
-            } else {
-                label_text_color.clone()
-            }
-        });
-        let c_scale_inv = config_string(
-            effective_config,
-            &["themeVariables", &format!("cScaleInv{i}")],
-        )
-        .or_else(|| derive_c_scale_inv_fallback(&c_scale, &mut buf))
-        .unwrap_or_else(|| c_scale.clone());
         let sw = 17 - 3 * (i as i64);
 
-        if is_redux_theme {
-            let border_color = border_color_array
+        if theme.is_redux_theme {
+            let border_color = theme
+                .border_colors
                 .get(i)
                 .cloned()
-                .unwrap_or_else(|| node_border.clone());
-            let redux_fill = if is_color_theme && !is_dark_theme {
+                .unwrap_or_else(|| theme.node_border.clone());
+            let redux_fill = if theme.is_color_theme && !theme.is_dark_theme {
                 border_color.clone()
             } else {
-                main_bkg.clone()
+                theme.main_bkg.clone()
             };
-            let redux_stroke = if is_color_theme {
+            let redux_stroke = if theme.is_color_theme {
                 border_color
             } else {
-                node_border.clone()
+                theme.node_border.clone()
             };
             let _ = write!(
                 &mut out,
@@ -188,33 +51,33 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
                 section,
                 redux_fill,
                 redux_stroke,
-                stroke_width,
+                theme.stroke_width,
                 scoped_drop_shadow,
                 id,
                 section,
-                node_border,
-                font_weight,
+                theme.node_border,
+                theme.font_weight,
                 id,
                 section,
-                c_scale_label,
+                section_theme.c_scale_label,
                 id,
                 section,
-                c_scale,
+                section_theme.c_scale,
                 id,
                 section,
                 sw,
                 id,
                 section,
-                c_scale_inv,
+                section_theme.c_scale_inv,
                 id,
-                node_border,
-                stroke_width,
+                theme.node_border,
+                theme.stroke_width,
                 id,
                 id,
                 id,
-                disabled_fill,
+                theme.disabled_fill,
                 id,
-                disabled_text_fill,
+                theme.disabled_text_fill,
             );
         } else {
             let _ = write!(
@@ -228,40 +91,38 @@ fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> Strin
                 section,
                 id,
                 section,
-                c_scale,
+                section_theme.c_scale,
                 id,
                 section,
-                c_scale_label,
+                section_theme.c_scale_label,
                 id,
                 section,
-                c_scale_label,
+                section_theme.c_scale_label,
                 id,
                 section,
-                c_scale,
+                section_theme.c_scale,
                 id,
                 section,
                 sw,
                 id,
                 section,
-                c_scale_inv,
+                section_theme.c_scale_inv,
                 id,
-                c_scale_label,
+                section_theme.c_scale_label,
                 id,
                 id,
                 id,
-                disabled_fill,
+                theme.disabled_fill,
                 id,
-                disabled_text_fill,
+                theme.disabled_text_fill,
             );
         }
     }
 
-    let git0 = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let git_branch_label0 = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
     let _ = write!(
         &mut out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
-        id, id, id, git0, id, git_branch_label0, id, id, id
+        id, id, id, theme.root_fill, id, theme.root_label, id, id, id
     );
 
     out.push_str(&root_rule);
@@ -299,9 +160,8 @@ fn render_timeline_diagram_svg_inner(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let is_redux_theme = config_string(effective_config, &["theme"])
-        .map(|theme| theme.contains("redux"))
-        .unwrap_or(false);
+    let theme = PresentationTheme::new(effective_config).timeline();
+    let is_redux_theme = theme.is_redux_theme;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -443,7 +303,7 @@ fn render_timeline_diagram_svg_inner(
             ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
         },
     );
-    let css = timeline_css(diagram_id, effective_config);
+    let css = timeline_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g/>"#);

@@ -96,6 +96,14 @@ impl<'a> SvgTheme<'a> {
         crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
     }
 
+    pub(super) fn optional_f64(&self, key: &str) -> Option<f64> {
+        crate::config::config_f64(self.effective_config, &["themeVariables", key])
+    }
+
+    pub(super) fn string_array(&self, key: &str) -> Vec<String> {
+        crate::config::config_string_vec(self.effective_config, &["themeVariables", key])
+    }
+
     pub(super) fn color(&self, key: &str, fallback: &str) -> String {
         theme_color(self.effective_config, key, fallback)
     }

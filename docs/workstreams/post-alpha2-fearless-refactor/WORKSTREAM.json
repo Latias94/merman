@@ -42,12 +42,14 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-040",
+  "current_task": "PA2R-050",
   "gates": [
     "cargo fmt --all --check",
     "cargo nextest run -p merman-bindings-core",
     "cargo nextest run -p merman-ffi render_svg",
-    "cargo run -p xtask -- check-alignment"
+    "cargo run -p xtask -- check-alignment",
+    "cargo nextest run -p merman-render presentation_theme",
+    "cargo nextest run -p merman-render timeline"
   ],
   "continue_policy": {
     "default_action": "execute-next-task",
