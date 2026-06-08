@@ -30,7 +30,7 @@ for current Mermaid parity.
   - `Merman.validate` / `validateJsonRaw`
   - `Merman.supportedDiagrams`
   - `Merman.asciiSupportedDiagrams`
-  - `Merman.themes`
+  - `Merman.supportedThemes`
 - Converts non-OK C ABI results into `MermanException`.
 - Provides `Merman.openPath(path)` only for local Dart CLI smoke tests and other development
   diagnostics where Flutter platform packaging is not running.

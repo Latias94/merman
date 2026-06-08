@@ -57,6 +57,16 @@ def require_command(name: str) -> str:
     return path
 
 
+def bash_path(path: Path) -> str:
+    resolved = path.resolve()
+    if os.name == "nt":
+        drive = resolved.drive.rstrip(":").lower()
+        parts = [part for part in resolved.parts[1:]]
+        if drive:
+            return "/mnt/" + drive + "/" + "/".join(parts)
+    return str(resolved)
+
+
 def resolve_gradle_command(path: str | None) -> str:
     if path:
         resolved = Path(path).expanduser().resolve()
@@ -124,13 +134,27 @@ def main() -> int:
         step("Android Rust target check")
         run(["rustup", "target", "add", "aarch64-linux-android"])
         run(["cargo", "check", "-p", "merman-ffi", "--target", "aarch64-linux-android"])
-        run(["cargo", "clippy", "-p", "merman-ffi", "--target", "aarch64-linux-android", "--", "-D", "warnings"])
+        run(
+            [
+                "cargo",
+                "clippy",
+                "--no-deps",
+                "-p",
+                "merman-ffi",
+                "--target",
+                "aarch64-linux-android",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        )
 
         step("Android Kotlin wrapper compile")
+        kotlinc = require_command("kotlinc")
         ANDROID_JAR_OUT.parent.mkdir(parents=True, exist_ok=True)
         run(
             [
-                "kotlinc",
+                kotlinc,
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanException.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanEngine.kt"),
                 "-d",
@@ -153,16 +177,18 @@ def main() -> int:
             )
 
         step("Flutter/Dart package checks")
-        run(["flutter", "pub", "get"], cwd=FLUTTER_ROOT)
-        run(["flutter", "analyze"], cwd=FLUTTER_ROOT)
-        run(["dart", "format", "--set-exit-if-changed", "lib", "example"], cwd=FLUTTER_ROOT)
+        flutter = require_command("flutter")
+        dart = require_command("dart")
+        run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
+        run([flutter, "analyze"], cwd=FLUTTER_ROOT)
+        run([dart, "format", "--set-exit-if-changed", "lib", "example"], cwd=FLUTTER_ROOT)
 
         step("Flutter Android plugin Kotlin compile")
         flutter_jar = flutter_android_embedding_jar()
         FLUTTER_JAR_OUT.parent.mkdir(parents=True, exist_ok=True)
         run(
             [
-                "kotlinc",
+                kotlinc,
                 str(FLUTTER_ROOT / "android" / "src" / "main" / "kotlin" / "io" / "merman" / "flutter" / "MermanFlutterPlugin.kt"),
                 "-classpath",
                 str(flutter_jar),
@@ -177,9 +203,19 @@ def main() -> int:
             FLUTTER_ROOT / "build-ios.sh",
             FLUTTER_ROOT / "build-desktop.sh",
             FLUTTER_ROOT / "ios" / "merman.podspec",
-            FLUTTER_ROOT / "ios" / "Classes" / "MermanFlutterPlugin.swift",
+            FLUTTER_ROOT
+            / "ios"
+            / "merman"
+            / "Sources"
+            / "merman"
+            / "MermanFlutterPlugin.swift",
             FLUTTER_ROOT / "macos" / "merman.podspec",
-            FLUTTER_ROOT / "macos" / "Classes" / "MermanFlutterPlugin.swift",
+            FLUTTER_ROOT
+            / "macos"
+            / "merman"
+            / "Sources"
+            / "merman"
+            / "MermanFlutterPlugin.swift",
             FLUTTER_ROOT / "linux" / "CMakeLists.txt",
             FLUTTER_ROOT / "linux" / "include" / "merman" / "merman_flutter_plugin.h",
             FLUTTER_ROOT / "windows" / "CMakeLists.txt",
@@ -187,12 +223,12 @@ def main() -> int:
         ]:
             if not path.exists():
                 raise RuntimeError(f"required Flutter packaging file not found: {path}")
-        run([bash, "-n", str(FLUTTER_ROOT / "build-ios.sh")])
-        run([bash, "-n", str(FLUTTER_ROOT / "build-desktop.sh")])
+        run([bash, "-n", bash_path(FLUTTER_ROOT / "build-ios.sh")])
+        run([bash, "-n", bash_path(FLUTTER_ROOT / "build-desktop.sh")])
 
         step("Dart FFI native smoke")
         run(["cargo", "build", "-p", "merman-ffi"])
-        run(["dart", "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
+        run([dart, "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
 
         if args.run_android_gradle_build:
             arm64_lib = ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so"
@@ -225,8 +261,8 @@ def main() -> int:
         ]:
             if not path.exists():
                 raise RuntimeError(f"required Apple binding file not found: {path}")
-        run([bash, "-n", "scripts/build-apple-xcframework.sh"])
-        run([bash, "-n", "platforms/ios/build-ios.sh"])
+        run([bash, "-n", bash_path(REPO_ROOT / "scripts" / "build-apple-xcframework.sh")])
+        run([bash, "-n", bash_path(REPO_ROOT / "platforms" / "ios" / "build-ios.sh")])
 
         if args.build_apple_xcframework:
             if platform.system() != "Darwin":
