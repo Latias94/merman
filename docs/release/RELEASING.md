@@ -19,17 +19,20 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 
-The platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
+Most platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
 and `source_ref` inputs. This lets a fixed workflow on `main` build assets for an existing release
-tag without moving the tag. The crates.io workflow is idempotent for already-published crate
-versions, so a rerun can continue after a partial publish caused by registry propagation delays.
+tag without moving the tag. Flutter is the exception: pub.dev automated publishing only accepts
+GitHub Actions runs triggered by a pushed git tag, so `release-flutter.yml` publishes from the `v*`
+tag push and uses manual runs for validation only. The crates.io workflow is idempotent for
+already-published crate versions, so a rerun can continue after a partial publish caused by registry
+propagation delays.
 
 ## Required Credentials
 
 | Surface | Credential |
 | --- | --- |
 | crates.io | `CARGO_REGISTRY_TOKEN` repository secret |
-| pub.dev | Trusted Publishing / OIDC configured for `merman` |
+| pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and the release tag pattern |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
 
@@ -120,8 +123,11 @@ After the primary release exists, run platform publish workflows manually:
 gh workflow run release-python.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2 -f publish_to_pypi=true
 gh workflow run release-android.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2
 gh workflow run release-apple.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2
-gh workflow run release-flutter.yml -f release_tag=v0.7.0-alpha.2 -f source_ref=v0.7.0-alpha.2 -f publish_to_pub=true
 ```
+
+Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
+injects native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real
+`dart pub publish --force` step only runs from the pushed `v*` tag.
 
 For a workflow-only recovery after a release tag already exists, use `source_ref=main` only when the
 source code and manifest versions are unchanged and the new commits only fix CI/release workflow

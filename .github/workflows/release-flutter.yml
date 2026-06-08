@@ -1,6 +1,9 @@
 name: Release Flutter (pub.dev)
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -29,12 +32,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
 
       - name: Read version from tag
         id: version
         run: |
-          RELEASE_TAG="${{ inputs.release_tag }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RELEASE_TAG="${{ inputs.release_tag }}"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+          fi
           if [[ "$RELEASE_TAG" != v* ]]; then
             echo "::error::Release tag '$RELEASE_TAG' must start with v."
             exit 1
@@ -162,10 +169,15 @@ jobs:
           PY
 
       - name: Publish to pub.dev
-        if: ${{ inputs.publish_to_pub && steps.pubdev.outputs.exists != 'true' }}
+        if: ${{ github.event_name == 'push' && steps.pubdev.outputs.exists != 'true' }}
         working-directory: platforms/flutter
         run: dart pub publish --force
 
       - name: Skip existing pub.dev version
-        if: ${{ inputs.publish_to_pub && steps.pubdev.outputs.exists == 'true' }}
+        if: ${{ github.event_name == 'push' && steps.pubdev.outputs.exists == 'true' }}
         run: echo "merman ${{ steps.version.outputs.version }} is already published on pub.dev; skipping."
+
+      - name: Explain manual pub.dev publish skip
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_pub }}
+        run: |
+          echo "::warning::pub.dev automated publishing only accepts GitHub Actions runs triggered by a pushed git tag. This manual run completed validation but did not publish."

@@ -91,9 +91,10 @@ because the package carries a native library.
 
 ## Release
 
-`release-python.yml` runs on `v*` tags, builds and smokes wheels on Linux, macOS, and Windows,
-repairs the Linux wheel with `auditwheel`, checks wheel metadata with `twine`, attaches wheels to
-the GitHub Release, and publishes to PyPI through Trusted Publishing.
+`release-python.yml` is a manual release workflow that accepts a `v*` release tag and source ref,
+builds and smokes wheels on Linux, macOS, and Windows, repairs the Linux wheel with `auditwheel`,
+checks wheel metadata with `twine`, attaches wheels to the GitHub Release, and publishes to PyPI
+through Trusted Publishing.
 
 Configure the PyPI project `merman` with a Trusted Publisher for this repository and
 `.github/workflows/release-python.yml`. No PyPI API token is required for the OIDC path.
