@@ -173,6 +173,14 @@ pub(crate) struct EventModelingTheme {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct IshikawaTheme {
+    pub(crate) line_color: String,
+    pub(crate) main_bkg: String,
+    pub(crate) text_color: String,
+    pub(crate) font_family: String,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct TimelineSectionTheme {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
@@ -423,6 +431,17 @@ impl<'a> PresentationTheme<'a> {
                 .unwrap_or_else(|| "rgb(240,240,240)".to_string()),
             relation_stroke: self.raw.color("emRelationStroke", "#000"),
             arrowhead_fill: self.raw.color("emArrowhead", "#000000"),
+        }
+    }
+
+    pub(crate) fn ishikawa(&self) -> IshikawaTheme {
+        IshikawaTheme {
+            line_color: self.raw.color("lineColor", "#333"),
+            main_bkg: self.raw.color("mainBkg", "#fff"),
+            text_color: self.raw.color("textColor", "#333"),
+            font_family: self
+                .raw
+                .root_or_theme_string("fontFamily", "trebuchet ms, verdana, arial, sans-serif"),
         }
     }
 
@@ -1211,5 +1230,40 @@ mod tests {
         assert_eq!(eventmodeling.swimlane_background_stroke, "rgb(240,240,240)");
         assert_eq!(eventmodeling.relation_stroke, "#000");
         assert_eq!(eventmodeling.arrowhead_fill, "#000000");
+    }
+
+    #[test]
+    fn presentation_theme_ishikawa_resolves_ishikawa_roles() {
+        let cfg = json!({
+            "fontFamily": "Inter, sans-serif",
+            "themeVariables": {
+                "lineColor": "#008800",
+                "mainBkg": "#FFFFFF",
+                "textColor": "#111111",
+                "fontFamily": "Ignored, sans-serif"
+            }
+        });
+
+        let ishikawa = PresentationTheme::new(&cfg).ishikawa();
+
+        assert_eq!(ishikawa.line_color, "#008800");
+        assert_eq!(ishikawa.main_bkg, "#FFFFFF");
+        assert_eq!(ishikawa.text_color, "#111111");
+        assert_eq!(ishikawa.font_family, "Inter, sans-serif");
+    }
+
+    #[test]
+    fn presentation_theme_ishikawa_uses_default_ishikawa_roles() {
+        let cfg = json!({});
+
+        let ishikawa = PresentationTheme::new(&cfg).ishikawa();
+
+        assert_eq!(ishikawa.line_color, "#333");
+        assert_eq!(ishikawa.main_bkg, "#fff");
+        assert_eq!(ishikawa.text_color, "#333");
+        assert_eq!(
+            ishikawa.font_family,
+            "trebuchet ms, verdana, arial, sans-serif"
+        );
     }
 }

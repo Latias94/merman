@@ -448,8 +448,8 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         svg: CoverageStatus::NotAdmitted,
         root_viewport: CoverageStatus::NotApplicable,
         compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("needs source-backed @upsetjs/venn.js layout parity plan"),
+        owner_doc: "docs/alignment/VENN_BETA_ADMISSION_PLAN.md",
+        defer_reason: Some("needs pinned @upsetjs/venn.js layout adapter audit before admission"),
     },
     DiagramAdmissionRecord {
         diagram: "wardley",

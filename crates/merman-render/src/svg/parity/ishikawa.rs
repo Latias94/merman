@@ -177,15 +177,7 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
 }
 
 fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
-    let line_color = config_string(effective_config, &["themeVariables", "lineColor"])
-        .unwrap_or_else(|| "#333".to_string());
-    let main_bkg = config_string(effective_config, &["themeVariables", "mainBkg"])
-        .unwrap_or_else(|| "#fff".to_string());
-    let text_color = config_string(effective_config, &["themeVariables", "textColor"])
-        .unwrap_or_else(|| "#333".to_string());
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .unwrap_or_else(|| "trebuchet ms, verdana, arial, sans-serif".to_string());
+    let theme = PresentationTheme::new(effective_config).ishikawa();
     let font_size = crate::config::config_css_number_or_string(effective_config, &["fontSize"])
         .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
 
@@ -201,6 +193,10 @@ fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::V
 .ishikawa .ishikawa-label.cause {{ text-anchor: middle; dominant-baseline: middle; }}\
 .ishikawa .ishikawa-label.align {{ text-anchor: end; dominant-baseline: middle; }}\
 .ishikawa .ishikawa-label.up {{ dominant-baseline: baseline; }}\
-.ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}"
+.ishikawa .ishikawa-label.down {{ dominant-baseline: hanging; }}",
+        line_color = theme.line_color,
+        main_bkg = theme.main_bkg,
+        font_family = theme.font_family,
+        text_color = theme.text_color
     )
 }

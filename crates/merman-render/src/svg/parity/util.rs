@@ -86,6 +86,12 @@ impl<'a> SvgTheme<'a> {
             .or_else(|| config_string(self.effective_config, &["themeVariables", scope, key]))
     }
 
+    pub(super) fn root_or_theme_string(&self, key: &str, fallback: &str) -> String {
+        config_string(self.effective_config, &[key])
+            .or_else(|| config_string(self.effective_config, &["themeVariables", key]))
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
     pub(super) fn optional_scoped_f64(&self, scope: &str, key: &str) -> Option<f64> {
         crate::config::config_f64(self.effective_config, &[scope, key]).or_else(|| {
             crate::config::config_f64(self.effective_config, &["themeVariables", scope, key])
