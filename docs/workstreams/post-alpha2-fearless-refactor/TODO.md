@@ -6,9 +6,9 @@ Last updated: 2026-06-08
 ## M0 — Plan Record
 
 - [x] PA2R-010 [owner=codex] [deps=none] [scope=docs/workstreams/post-alpha2-fearless-refactor]
-  Goal: Record the post-alpha.2 fearless refactor priorities and the local fallback because `ce-plan` is unavailable.
+  Goal: Record the post-alpha.2 fearless refactor priorities and link the durable CE plan.
   Validation: `git diff --check -- docs/workstreams/post-alpha2-fearless-refactor`
-  Evidence: `DESIGN.md`, `WORKSTREAM.json`
+  Evidence: `DESIGN.md`, `WORKSTREAM.json`, `docs/plans/2026-06-08-001-refactor-post-alpha2-fearless-refactor-plan.md`
 
 ## M1 — Binding Render Request Module
 

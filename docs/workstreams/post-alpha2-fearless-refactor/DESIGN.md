@@ -7,7 +7,7 @@ Last updated: 2026-06-08
 
 Clean the release-facing architecture after `0.7.0-alpha.2` so the next alpha does not preserve shallow implementation-era seams as compatibility promises.
 
-`compound-engineering:ce-plan` was requested for this lane, but no local `ce-plan` tool or `ce-*` skill is available in this session. This document is the local fallback plan and should be treated as the durable goal record for this run.
+`compound-engineering:ce-plan` is recorded in `docs/plans/2026-06-08-001-refactor-post-alpha2-fearless-refactor-plan.md`. This document remains the local execution brief for the current workstream.
 
 ## Priority Order
 
