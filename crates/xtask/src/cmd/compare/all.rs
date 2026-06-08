@@ -3,7 +3,7 @@
 use crate::XtaskError;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::diagrams::compare_diagram_svgs;
 use super::{
@@ -96,24 +96,6 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         return Err(XtaskError::Usage);
     }
 
-    fn dom_mode_slug(mode: &str) -> String {
-        let mut out = String::with_capacity(mode.len());
-        let mut prev_underscore = false;
-        for ch in mode.trim().chars() {
-            if ch.is_ascii_alphanumeric() {
-                prev_underscore = false;
-                out.push(ch.to_ascii_lowercase());
-            } else {
-                if prev_underscore {
-                    continue;
-                }
-                prev_underscore = true;
-                out.push('_');
-            }
-        }
-        out.trim_matches('_').to_string()
-    }
-
     let compare_dir = crate::cmd::target_root().join("compare");
     fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
         path: compare_dir.display().to_string(),
@@ -146,67 +128,25 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut root_parity_policy =
         root_parity_policy_enabled.then(|| RootParityResidualPolicy::new(&diagrams));
 
-    fn common_compare_args(
-        check_dom: bool,
-        dom_mode: Option<&str>,
-        dom_decimals: Option<u32>,
-        filter: Option<&str>,
-    ) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        if check_dom {
-            out.push("--check-dom".to_string());
-        }
-        if let Some(mode) = dom_mode {
-            out.push("--dom-mode".to_string());
-            out.push(mode.to_string());
-        }
-        if let Some(n) = dom_decimals {
-            out.push("--dom-decimals".to_string());
-            out.push(n.to_string());
-        }
-        if let Some(f) = filter {
-            out.push("--filter".to_string());
-            out.push(f.to_string());
-        }
-        out
-    }
+    let invocation_options = CompareAllInvocationOptions {
+        check_dom,
+        dom_mode: dom_mode.as_deref(),
+        dom_decimals,
+        filter: filter.as_deref(),
+        flowchart_text_measurer: flowchart_text_measurer.as_deref(),
+        report_root,
+        root_report_limit,
+    };
 
     let mut failures: Vec<String> = Vec::new();
 
     for diagram in diagrams {
         println!("\n== compare {diagram} ==");
 
-        let mut cmd_args = common_compare_args(
-            check_dom,
-            dom_mode.as_deref(),
-            dom_decimals,
-            filter.as_deref(),
-        );
-        let mut report_path = None;
-
-        // Avoid overwriting reports across multiple runs (e.g. `parity` then `parity-root`).
-        // When a dom mode is specified, we emit mode-suffixed reports:
-        // `target/compare/<diagram>_report_<mode>.md` (e.g. `state_report_parity_root.md`).
-        if let Some(ref mode) = dom_mode {
-            let mode = dom_mode_slug(mode);
-            if !mode.is_empty() {
-                let path = compare_dir.join(format!("{diagram}_report_{mode}.md"));
-                cmd_args.push("--out".to_string());
-                cmd_args.push(path.display().to_string());
-                report_path = Some(path);
-            }
-        }
-
-        if diagram == "flowchart" {
-            if let Some(tm) = flowchart_text_measurer.as_deref() {
-                cmd_args.push("--text-measurer".to_string());
-                cmd_args.push(tm.to_string());
-            }
-        }
-
-        if report_root && diagram_supports_root_delta_report(diagram) {
-            push_root_report_args(&mut cmd_args, root_report_limit);
-        }
+        let DiagramCompareInvocation {
+            args: cmd_args,
+            report_path,
+        } = invocation_options.for_diagram(diagram, &compare_dir);
 
         let res = compare_diagram_svgs(diagram, cmd_args);
 
@@ -254,21 +194,127 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
-fn push_root_report_args(
-    cmd_args: &mut Vec<String>,
+#[derive(Debug, Clone, Copy)]
+struct CompareAllInvocationOptions<'a> {
+    check_dom: bool,
+    dom_mode: Option<&'a str>,
+    dom_decimals: Option<u32>,
+    filter: Option<&'a str>,
+    flowchart_text_measurer: Option<&'a str>,
+    report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
-) {
-    cmd_args.push("--report-root".to_string());
-    match root_report_limit {
-        Some(RootDeltaReportLimit::All) => {
-            cmd_args.push("--report-root-all".to_string());
+}
+
+impl<'a> Default for CompareAllInvocationOptions<'a> {
+    fn default() -> Self {
+        Self {
+            check_dom: false,
+            dom_mode: None,
+            dom_decimals: None,
+            filter: None,
+            flowchart_text_measurer: None,
+            report_root: false,
+            root_report_limit: None,
         }
-        Some(RootDeltaReportLimit::Top(limit)) => {
-            cmd_args.push("--report-root-limit".to_string());
-            cmd_args.push(limit.to_string());
-        }
-        None => {}
     }
+}
+
+impl CompareAllInvocationOptions<'_> {
+    fn for_diagram(&self, diagram: &str, compare_dir: &Path) -> DiagramCompareInvocation {
+        let mut args = self.common_compare_args();
+        let report_path = self.push_report_path_args(diagram, compare_dir, &mut args);
+        self.push_diagram_args(diagram, &mut args);
+        self.push_root_report_args(diagram, &mut args);
+        DiagramCompareInvocation { args, report_path }
+    }
+
+    fn common_compare_args(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        if self.check_dom {
+            out.push("--check-dom".to_string());
+        }
+        if let Some(mode) = self.dom_mode {
+            out.push("--dom-mode".to_string());
+            out.push(mode.to_string());
+        }
+        if let Some(n) = self.dom_decimals {
+            out.push("--dom-decimals".to_string());
+            out.push(n.to_string());
+        }
+        if let Some(f) = self.filter {
+            out.push("--filter".to_string());
+            out.push(f.to_string());
+        }
+        out
+    }
+
+    fn push_report_path_args(
+        &self,
+        diagram: &str,
+        compare_dir: &Path,
+        args: &mut Vec<String>,
+    ) -> Option<PathBuf> {
+        let mode = self.dom_mode.map(dom_mode_slug)?;
+        if mode.is_empty() {
+            return None;
+        }
+
+        let path = compare_dir.join(format!("{diagram}_report_{mode}.md"));
+        args.push("--out".to_string());
+        args.push(path.display().to_string());
+        Some(path)
+    }
+
+    fn push_diagram_args(&self, diagram: &str, args: &mut Vec<String>) {
+        if diagram == "flowchart" {
+            if let Some(tm) = self.flowchart_text_measurer {
+                args.push("--text-measurer".to_string());
+                args.push(tm.to_string());
+            }
+        }
+    }
+
+    fn push_root_report_args(&self, diagram: &str, args: &mut Vec<String>) {
+        if !self.report_root || !diagram_supports_root_delta_report(diagram) {
+            return;
+        }
+
+        args.push("--report-root".to_string());
+        match self.root_report_limit {
+            Some(RootDeltaReportLimit::All) => {
+                args.push("--report-root-all".to_string());
+            }
+            Some(RootDeltaReportLimit::Top(limit)) => {
+                args.push("--report-root-limit".to_string());
+                args.push(limit.to_string());
+            }
+            None => {}
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DiagramCompareInvocation {
+    args: Vec<String>,
+    report_path: Option<PathBuf>,
+}
+
+fn dom_mode_slug(mode: &str) -> String {
+    let mut out = String::with_capacity(mode.len());
+    let mut prev_underscore = false;
+    for ch in mode.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            prev_underscore = false;
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            if prev_underscore {
+                continue;
+            }
+            prev_underscore = true;
+            out.push('_');
+        }
+    }
+    out.trim_matches('_').to_string()
 }
 
 fn diagram_filter_key(diagram: &str) -> String {
@@ -562,17 +608,79 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
     }
 
     #[test]
-    fn push_root_report_args_propagates_all_limit_shapes() {
-        let mut args = Vec::new();
-        push_root_report_args(&mut args, None);
-        assert_eq!(args, ["--report-root"]);
+    fn compare_invocation_builds_common_dom_args_and_mode_report_path() {
+        let compare_dir = Path::new("target/compare");
+        let expected_report = compare_dir.join("info_report_parity_root.md");
+        let invocation = CompareAllInvocationOptions {
+            check_dom: true,
+            dom_mode: Some("parity-root"),
+            dom_decimals: Some(3),
+            filter: Some("upstream_info_spec"),
+            ..Default::default()
+        }
+        .for_diagram("info", compare_dir);
 
-        let mut args = Vec::new();
-        push_root_report_args(&mut args, Some(RootDeltaReportLimit::All));
-        assert_eq!(args, ["--report-root", "--report-root-all"]);
+        assert_eq!(
+            invocation.report_path.as_deref(),
+            Some(expected_report.as_path())
+        );
+        assert_eq!(
+            invocation.args,
+            vec![
+                "--check-dom".to_string(),
+                "--dom-mode".to_string(),
+                "parity-root".to_string(),
+                "--dom-decimals".to_string(),
+                "3".to_string(),
+                "--filter".to_string(),
+                "upstream_info_spec".to_string(),
+                "--out".to_string(),
+                expected_report.display().to_string(),
+            ]
+        );
+    }
 
-        let mut args = Vec::new();
-        push_root_report_args(&mut args, Some(RootDeltaReportLimit::Top(7)));
-        assert_eq!(args, ["--report-root", "--report-root-limit", "7"]);
+    #[test]
+    fn compare_invocation_adds_flowchart_text_measurer_only_for_flowchart() {
+        let compare_dir = Path::new("target/compare");
+        let options = CompareAllInvocationOptions {
+            flowchart_text_measurer: Some("browser"),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            options.for_diagram("flowchart", compare_dir).args,
+            ["--text-measurer", "browser"]
+        );
+        assert!(options.for_diagram("state", compare_dir).args.is_empty());
+    }
+
+    #[test]
+    fn compare_invocation_adds_root_report_args_only_for_supported_diagrams() {
+        let compare_dir = Path::new("target/compare");
+        let options = CompareAllInvocationOptions {
+            report_root: true,
+            root_report_limit: Some(RootDeltaReportLimit::Top(7)),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            options.for_diagram("class", compare_dir).args,
+            ["--report-root", "--report-root-limit", "7"]
+        );
+        assert!(options.for_diagram("er", compare_dir).args.is_empty());
+    }
+
+    #[test]
+    fn compare_invocation_propagates_all_root_report_limit() {
+        let compare_dir = Path::new("target/compare");
+        let invocation = CompareAllInvocationOptions {
+            report_root: true,
+            root_report_limit: Some(RootDeltaReportLimit::All),
+            ..Default::default()
+        }
+        .for_diagram("timeline", compare_dir);
+
+        assert_eq!(invocation.args, ["--report-root", "--report-root-all"]);
     }
 }

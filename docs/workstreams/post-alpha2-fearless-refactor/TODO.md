@@ -60,7 +60,15 @@ Last updated: 2026-06-08
 
 ## M7 — Compare Harness Common Arguments
 
-- [ ] PA2R-080 [owner=codex] [deps=PA2R-070] [scope=crates/xtask/src/cmd/compare]
+- [x] PA2R-080 [owner=codex] [deps=PA2R-070] [scope=crates/xtask/src/cmd/compare]
   Goal: Continue deepening the compare harness by moving common compare argument construction, report path naming, and optional root-report argument policy behind a small internal Module.
-  Validation: focused xtask tests for common compare args/report paths; representative `compare-all-svgs` command; `cargo fmt --all --check`
-  Review: Keep DOM signature policy unchanged; this is harness plumbing, not comparator normalization.
+  Validation: `cargo nextest run -p xtask compare_invocation`; `cargo nextest run -p xtask root_parity_policy`; `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: `compare-all-svgs` now builds per-diagram command arguments through `CompareAllInvocationOptions`, keeping DOM mode, mode-suffixed report paths, flowchart text measurement, and optional root-report flags out of the main execution loop.
+  Evidence: `crates/xtask/src/cmd/compare/all.rs`; focused gates passed on 2026-06-08.
+
+## M8 — Root Parity Residual Policy Module
+
+- [ ] PA2R-090 [owner=codex] [deps=PA2R-080] [scope=crates/xtask/src/cmd/compare]
+  Goal: Reassess whether fixture-specific root parity residual acceptance should stay in `compare/all.rs` or move behind a dedicated policy Module with a narrower Interface.
+  Validation: focused xtask tests for accepted, missing, and changed residuals; representative parity-root compare command if policy behavior changes; `cargo fmt --all --check`
+  Review: Keep accepted residuals fixture-specific and fail loudly when expected residuals disappear or change.
