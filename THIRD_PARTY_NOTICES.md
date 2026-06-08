@@ -19,3 +19,18 @@ in code comments, fixture names, workstream evidence, and release documentation 
 
 Use "Mermaid-compatible" or "Mermaid-parity" when describing behavior. Do not describe merman as an
 official Mermaid package or imply that Mermaid endorses this project.
+
+## Venn Layout References
+
+Merman's Venn layout kernel follows the pinned layout and geometry behavior used by Mermaid
+`venn-beta`.
+
+- Upstream project: <https://github.com/upsetjs/venn.js>
+- Upstream package: `@upsetjs/venn.js@2.0.0`
+- Upstream license: MIT
+- Optimizer reference: `fmin@0.0.4`
+- Optimizer license: BSD-3-Clause
+
+The Rust implementation in `crates/merman-render/src/venn.rs` is a source-backed compatibility
+port for headless rendering. Keep provenance comments and numeric oracle tests when changing this
+kernel.

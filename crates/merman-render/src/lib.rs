@@ -45,6 +45,7 @@ pub mod timeline;
 pub mod tree_view;
 pub mod treemap;
 mod trig_tables;
+pub mod venn;
 pub mod xychart;
 
 use crate::math::MathRenderer;
