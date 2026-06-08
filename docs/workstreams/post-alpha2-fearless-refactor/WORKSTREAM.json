@@ -42,7 +42,7 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-100",
+  "current_task": "PA2R-110",
   "gates": [
     "cargo fmt --all --check",
     "cargo check -p merman --features render",
@@ -51,6 +51,8 @@
     "cargo check -p xtask",
     "cargo nextest run -p xtask admission",
     "cargo nextest run -p xtask compare_adapter_registry",
+    "cargo nextest run -p xtask compare_all_options",
+    "cargo nextest run -p xtask compare_all_diagram_selection",
     "cargo nextest run -p xtask compare_invocation",
     "cargo nextest run -p xtask diagram_filter_key",
     "cargo nextest run -p xtask root_parity_policy",

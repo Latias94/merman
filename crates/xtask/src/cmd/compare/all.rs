@@ -12,132 +12,21 @@ use super::{
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut check_dom: bool = false;
-    let mut dom_mode: Option<String> = None;
-    let mut dom_decimals: Option<u32> = None;
-    let mut filter: Option<String> = None;
-    let mut flowchart_text_measurer: Option<String> = None;
-    let mut report_root: bool = false;
-    let mut root_report_limit: Option<RootDeltaReportLimit> = None;
-
-    let mut only_diagrams: Vec<String> = Vec::new();
-    let mut skip_diagrams: Vec<String> = Vec::new();
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--check-dom" => check_dom = true,
-            "--dom-mode" => {
-                i += 1;
-                dom_mode = args.get(i).map(|s| s.trim().to_string());
-            }
-            "--dom-decimals" => {
-                i += 1;
-                dom_decimals = args.get(i).and_then(|s| s.trim().parse::<u32>().ok());
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--flowchart-text-measurer" => {
-                i += 1;
-                flowchart_text_measurer = args.get(i).map(|s| s.trim().to_ascii_lowercase());
-            }
-            "--report-root" => report_root = true,
-            "--report-root-all" => {
-                report_root = true;
-                root_report_limit = Some(RootDeltaReportLimit::All);
-            }
-            "--report-root-limit" => {
-                i += 1;
-                report_root = true;
-                root_report_limit = Some(parse_root_delta_report_limit(
-                    args.get(i).map(String::as_str),
-                )?);
-            }
-            "--diagram" => {
-                i += 1;
-                let d = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
-                if !d.is_empty() {
-                    only_diagrams.push(d);
-                }
-            }
-            "--skip" => {
-                i += 1;
-                let d = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
-                if !d.is_empty() {
-                    skip_diagrams.push(d);
-                }
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let mut diagrams: Vec<&str> = crate::cmd::primary_svg_matrix_diagrams().collect();
-
-    if !only_diagrams.is_empty() {
-        let only: Vec<String> = only_diagrams
-            .iter()
-            .map(|s| diagram_filter_key(s))
-            .collect();
-        diagrams.retain(|d| only.iter().any(|o| o == &diagram_filter_key(d)));
-    }
-
-    if !skip_diagrams.is_empty() {
-        let skip: Vec<String> = skip_diagrams
-            .iter()
-            .map(|s| diagram_filter_key(s))
-            .collect();
-        diagrams.retain(|d| !skip.iter().any(|s| s == &diagram_filter_key(d)));
-    }
-
-    if diagrams.is_empty() {
-        return Err(XtaskError::Usage);
-    }
+    let options = CompareAllOptions::parse(args)?;
+    let diagram_selection = CompareAllDiagramSelection::from_options(&options)?;
 
     let compare_dir = crate::cmd::target_root().join("compare");
     fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
         path: compare_dir.display().to_string(),
         source,
     })?;
+    diagram_selection.print_root_deferred_skip();
+    let diagrams = diagram_selection.diagrams;
 
-    let root_parity_policy_enabled = check_dom
-        && filter.is_none()
-        && dom_mode
-            .as_deref()
-            .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"));
-    let global_root_parity_sweep = root_parity_policy_enabled && only_diagrams.is_empty();
-
-    if global_root_parity_sweep {
-        let root_deferred: BTreeSet<&str> = crate::cmd::root_viewport_deferred_diagrams().collect();
-        let skipped: Vec<&str> = diagrams
-            .iter()
-            .copied()
-            .filter(|d| root_deferred.contains(d))
-            .collect();
-        diagrams.retain(|d| !root_deferred.contains(d));
-        if !skipped.is_empty() {
-            println!(
-                "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",
-                skipped.join(", ")
-            );
-        }
-    }
-
-    let mut root_parity_policy =
-        root_parity_policy_enabled.then(|| RootParityResidualPolicy::new(&diagrams));
-
-    let invocation_options = CompareAllInvocationOptions {
-        check_dom,
-        dom_mode: dom_mode.as_deref(),
-        dom_decimals,
-        filter: filter.as_deref(),
-        flowchart_text_measurer: flowchart_text_measurer.as_deref(),
-        report_root,
-        root_report_limit,
-    };
+    let mut root_parity_policy = options
+        .root_parity_policy_enabled()
+        .then(|| RootParityResidualPolicy::new(&diagrams));
+    let invocation_options = options.invocation_options();
 
     let mut failures: Vec<String> = Vec::new();
 
@@ -154,9 +43,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         match res {
             Ok(()) => {}
             Err(XtaskError::SvgCompareFailed(msg))
-                if filter.is_some()
-                    && only_diagrams.is_empty()
-                    && msg.contains("no .mmd fixtures matched under ") =>
+                if options.should_skip_unmatched_filter_message(&msg) =>
             {
                 println!("(skipped: {msg})");
             }
@@ -190,6 +77,189 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         Ok(())
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CompareAllOptions {
+    check_dom: bool,
+    dom_mode: Option<String>,
+    dom_decimals: Option<u32>,
+    filter: Option<String>,
+    flowchart_text_measurer: Option<String>,
+    report_root: bool,
+    root_report_limit: Option<RootDeltaReportLimit>,
+    only_diagrams: Vec<String>,
+    skip_diagrams: Vec<String>,
+}
+
+impl CompareAllOptions {
+    fn parse(args: Vec<String>) -> Result<Self, XtaskError> {
+        let mut options = Self::default();
+
+        let mut i = 0;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--check-dom" => options.check_dom = true,
+                "--dom-mode" => {
+                    i += 1;
+                    options.dom_mode = args.get(i).map(|s| s.trim().to_string());
+                }
+                "--dom-decimals" => {
+                    i += 1;
+                    options.dom_decimals = args.get(i).and_then(|s| s.trim().parse::<u32>().ok());
+                }
+                "--filter" => {
+                    i += 1;
+                    options.filter = args.get(i).map(|s| s.to_string());
+                }
+                "--flowchart-text-measurer" => {
+                    i += 1;
+                    options.flowchart_text_measurer =
+                        args.get(i).map(|s| s.trim().to_ascii_lowercase());
+                }
+                "--report-root" => options.report_root = true,
+                "--report-root-all" => {
+                    options.report_root = true;
+                    options.root_report_limit = Some(RootDeltaReportLimit::All);
+                }
+                "--report-root-limit" => {
+                    i += 1;
+                    options.report_root = true;
+                    options.root_report_limit = Some(parse_root_delta_report_limit(
+                        args.get(i).map(String::as_str),
+                    )?);
+                }
+                "--diagram" => {
+                    i += 1;
+                    let diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+                    if !diagram.is_empty() {
+                        options.only_diagrams.push(diagram);
+                    }
+                }
+                "--skip" => {
+                    i += 1;
+                    let diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+                    if !diagram.is_empty() {
+                        options.skip_diagrams.push(diagram);
+                    }
+                }
+                "--help" | "-h" => return Err(XtaskError::Usage),
+                _ => return Err(XtaskError::Usage),
+            }
+            i += 1;
+        }
+
+        Ok(options)
+    }
+
+    fn root_parity_policy_enabled(&self) -> bool {
+        self.check_dom
+            && self.filter.is_none()
+            && self
+                .dom_mode
+                .as_deref()
+                .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
+    }
+
+    fn global_root_parity_sweep(&self) -> bool {
+        self.root_parity_policy_enabled() && self.only_diagrams.is_empty()
+    }
+
+    fn should_skip_unmatched_filter_message(&self, msg: &str) -> bool {
+        self.filter.is_some()
+            && self.only_diagrams.is_empty()
+            && msg.contains("no .mmd fixtures matched under ")
+    }
+
+    fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
+        CompareAllInvocationOptions {
+            check_dom: self.check_dom,
+            dom_mode: self.dom_mode.as_deref(),
+            dom_decimals: self.dom_decimals,
+            filter: self.filter.as_deref(),
+            flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
+            report_root: self.report_root,
+            root_report_limit: self.root_report_limit,
+        }
+    }
+}
+
+impl Default for CompareAllOptions {
+    fn default() -> Self {
+        Self {
+            check_dom: false,
+            dom_mode: None,
+            dom_decimals: None,
+            filter: None,
+            flowchart_text_measurer: None,
+            report_root: false,
+            root_report_limit: None,
+            only_diagrams: Vec::new(),
+            skip_diagrams: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CompareAllDiagramSelection {
+    diagrams: Vec<&'static str>,
+    skipped_root_deferred: Vec<&'static str>,
+}
+
+impl CompareAllDiagramSelection {
+    fn from_options(options: &CompareAllOptions) -> Result<Self, XtaskError> {
+        let mut diagrams: Vec<&'static str> = crate::cmd::primary_svg_matrix_diagrams().collect();
+
+        if !options.only_diagrams.is_empty() {
+            let only: Vec<String> = options
+                .only_diagrams
+                .iter()
+                .map(|s| diagram_filter_key(s))
+                .collect();
+            diagrams.retain(|d| only.iter().any(|o| o == &diagram_filter_key(d)));
+        }
+
+        if !options.skip_diagrams.is_empty() {
+            let skip: Vec<String> = options
+                .skip_diagrams
+                .iter()
+                .map(|s| diagram_filter_key(s))
+                .collect();
+            diagrams.retain(|d| !skip.iter().any(|s| s == &diagram_filter_key(d)));
+        }
+
+        let skipped_root_deferred = if options.global_root_parity_sweep() {
+            let root_deferred: BTreeSet<&str> =
+                crate::cmd::root_viewport_deferred_diagrams().collect();
+            let skipped = diagrams
+                .iter()
+                .copied()
+                .filter(|d| root_deferred.contains(d))
+                .collect::<Vec<_>>();
+            diagrams.retain(|d| !root_deferred.contains(d));
+            skipped
+        } else {
+            Vec::new()
+        };
+
+        if diagrams.is_empty() {
+            return Err(XtaskError::Usage);
+        }
+
+        Ok(Self {
+            diagrams,
+            skipped_root_deferred,
+        })
+    }
+
+    fn print_root_deferred_skip(&self) {
+        if !self.skipped_root_deferred.is_empty() {
+            println!(
+                "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",
+                self.skipped_root_deferred.join(", ")
+            );
+        }
     }
 }
 
@@ -332,6 +402,138 @@ mod tests {
         assert_eq!(diagram_filter_key("treeView"), "treeview");
         assert_eq!(diagram_filter_key("tree-view"), "treeview");
         assert_eq!(diagram_filter_key("eventmodeling"), "eventmodeling");
+    }
+
+    #[test]
+    fn compare_all_options_parse_common_flags_without_tightening_legacy_inputs() {
+        let options = CompareAllOptions::parse(vec![
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            " parity-root ".to_string(),
+            "--dom-decimals".to_string(),
+            "nope".to_string(),
+            "--filter".to_string(),
+            "upstream_info_spec".to_string(),
+            "--flowchart-text-measurer".to_string(),
+            " BROWSER ".to_string(),
+            "--report-root-limit".to_string(),
+            "7".to_string(),
+            "--diagram".to_string(),
+            "tree-view".to_string(),
+            "--skip".to_string(),
+            "er".to_string(),
+        ])
+        .expect("options should parse");
+
+        assert!(options.check_dom);
+        assert_eq!(options.dom_mode.as_deref(), Some("parity-root"));
+        assert_eq!(options.dom_decimals, None);
+        assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
+        assert_eq!(options.flowchart_text_measurer.as_deref(), Some("browser"));
+        assert!(options.report_root);
+        assert_eq!(
+            options.root_report_limit,
+            Some(RootDeltaReportLimit::Top(7))
+        );
+        assert_eq!(options.only_diagrams, ["tree-view"]);
+        assert_eq!(options.skip_diagrams, ["er"]);
+    }
+
+    #[test]
+    fn compare_all_options_reject_missing_required_values_for_strict_flags() {
+        assert!(CompareAllOptions::parse(vec!["--diagram".to_string()]).is_err());
+        assert!(CompareAllOptions::parse(vec!["--skip".to_string()]).is_err());
+        assert!(CompareAllOptions::parse(vec!["--report-root-limit".to_string()]).is_err());
+    }
+
+    #[test]
+    fn compare_all_options_detects_root_parity_policy_scope() {
+        let global = CompareAllOptions {
+            check_dom: true,
+            dom_mode: Some("parity_root".to_string()),
+            ..Default::default()
+        };
+        assert!(global.root_parity_policy_enabled());
+        assert!(global.global_root_parity_sweep());
+
+        let targeted = CompareAllOptions {
+            only_diagrams: vec!["flowchart".to_string()],
+            ..global.clone()
+        };
+        assert!(targeted.root_parity_policy_enabled());
+        assert!(!targeted.global_root_parity_sweep());
+
+        let filtered = CompareAllOptions {
+            filter: Some("smoke".to_string()),
+            ..global
+        };
+        assert!(!filtered.root_parity_policy_enabled());
+    }
+
+    #[test]
+    fn compare_all_options_skips_unmatched_filter_only_for_global_filtered_runs() {
+        let msg = "no .mmd fixtures matched under fixtures";
+        let global = CompareAllOptions {
+            filter: Some("missing".to_string()),
+            ..Default::default()
+        };
+        assert!(global.should_skip_unmatched_filter_message(msg));
+
+        let targeted = CompareAllOptions {
+            filter: Some("missing".to_string()),
+            only_diagrams: vec!["info".to_string()],
+            ..Default::default()
+        };
+        assert!(!targeted.should_skip_unmatched_filter_message(msg));
+    }
+
+    #[test]
+    fn compare_all_diagram_selection_applies_only_and_skip_aliases() {
+        let options = CompareAllOptions {
+            only_diagrams: vec!["tree-view".to_string(), "info".to_string()],
+            skip_diagrams: vec!["info".to_string()],
+            ..Default::default()
+        };
+
+        let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
+
+        assert_eq!(selection.diagrams, ["treeView"]);
+        assert!(selection.skipped_root_deferred.is_empty());
+    }
+
+    #[test]
+    fn compare_all_diagram_selection_skips_root_deferred_only_for_global_root_sweep() {
+        let options = CompareAllOptions {
+            check_dom: true,
+            dom_mode: Some("parity-root".to_string()),
+            ..Default::default()
+        };
+        let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
+
+        let root_deferred: Vec<&str> = crate::cmd::root_viewport_deferred_diagrams().collect();
+        assert!(!root_deferred.is_empty());
+        for diagram in root_deferred {
+            assert!(!selection.diagrams.contains(&diagram));
+            assert!(selection.skipped_root_deferred.contains(&diagram));
+        }
+
+        let targeted = CompareAllOptions {
+            only_diagrams: vec!["flowchart".to_string()],
+            ..options
+        };
+        let selection = CompareAllDiagramSelection::from_options(&targeted).expect("selection");
+        assert_eq!(selection.diagrams, ["flowchart"]);
+        assert!(selection.skipped_root_deferred.is_empty());
+    }
+
+    #[test]
+    fn compare_all_diagram_selection_rejects_empty_result() {
+        let options = CompareAllOptions {
+            only_diagrams: vec!["not-a-diagram".to_string()],
+            ..Default::default()
+        };
+
+        assert!(CompareAllDiagramSelection::from_options(&options).is_err());
     }
 
     #[test]

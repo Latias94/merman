@@ -76,7 +76,15 @@ Last updated: 2026-06-08
 
 ## M9 — Compare-All Options And Diagram Selection
 
-- [ ] PA2R-100 [owner=codex] [deps=PA2R-090] [scope=crates/xtask/src/cmd/compare]
+- [x] PA2R-100 [owner=codex] [deps=PA2R-090] [scope=crates/xtask/src/cmd/compare]
   Goal: Continue shrinking `compare-all-svgs` by moving CLI option parsing, diagram allow/skip filtering, and root-parity global sweep filtering behind small internal types.
-  Validation: focused xtask tests for option parsing and diagram selection; representative `compare-all-svgs` command; `cargo fmt --all --check`
-  Review: Preserve existing `--diagram`, `--skip`, `treeView` alias, and root-viewport-deferred skip behavior.
+  Validation: `cargo nextest run -p xtask compare_all_options`; `cargo nextest run -p xtask compare_all_diagram_selection`; `cargo nextest run -p xtask compare_invocation`; `cargo nextest run -p xtask root_parity_policy`; `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: Option parsing, diagram allow/skip selection, `treeView` alias handling, unmatched-filter skip policy, and root-deferred global sweep filtering now live behind internal types while preserving legacy CLI behavior.
+  Evidence: `CompareAllOptions`; `CompareAllDiagramSelection`; focused gates passed on 2026-06-08.
+
+## M10 — Compare Harness Follow-Up Selection
+
+- [ ] PA2R-110 [owner=codex] [deps=PA2R-100] [scope=crates/xtask/src/cmd/compare,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Reassess the remaining compare harness complexity after PA2R-100 and select the next deletion-test refactor only if it removes duplicated policy or narrows a release-facing interface.
+  Validation: selected focused xtask tests; representative `compare-all-svgs` command if compare behavior changes; `cargo fmt --all --check`
+  Review: Prefer failure aggregation/reporting cleanup or a higher-leverage non-xtask slice over style-only helper extraction.
