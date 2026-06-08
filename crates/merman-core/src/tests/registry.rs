@@ -100,7 +100,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             .map(|fact| fact.id),
     );
     for fact in crate::family::supported_diagram_facts() {
-        for parser_id in fact.render_parser_ids {
+        for parser_id in &fact.render_parser_ids {
             assert!(
                 render_ids.contains(parser_id),
                 "{} metadata points to missing render parser {parser_id}",

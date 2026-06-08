@@ -31,15 +31,15 @@ pub(crate) struct SemanticParserFact {
 #[derive(Clone, Copy)]
 pub(crate) struct RenderParserFact {
     pub(crate) id: &'static str,
+    pub(crate) metadata_id: Option<&'static str>,
     pub(crate) model_kind: &'static str,
     pub(crate) parser: RenderSemanticParser,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SupportedDiagramFact {
     pub(crate) metadata_id: &'static str,
-    #[allow(dead_code)]
-    pub(crate) render_parser_ids: &'static [&'static str],
+    pub(crate) render_parser_ids: Vec<&'static str>,
 }
 
 pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
@@ -82,16 +82,32 @@ pub(crate) fn render_parser_facts() -> &'static [RenderParserFact] {
     RENDER_PARSER_FACTS
 }
 
-#[allow(dead_code)]
 pub(crate) fn supported_diagram_facts() -> &'static [SupportedDiagramFact] {
-    SUPPORTED_DIAGRAM_FACTS
+    static FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            SUPPORTED_DIAGRAM_METADATA_IDS
+                .iter()
+                .map(|metadata_id| SupportedDiagramFact {
+                    metadata_id,
+                    render_parser_ids: RENDER_PARSER_FACTS
+                        .iter()
+                        .filter_map(|fact| {
+                            (fact.metadata_id == Some(*metadata_id)).then_some(fact.id)
+                        })
+                        .collect(),
+                })
+                .collect()
+        })
+        .as_slice()
 }
 
 pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
     static IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
     IDS.get_or_init(|| {
-        SUPPORTED_DIAGRAM_FACTS
+        supported_diagram_facts()
             .iter()
+            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
             .map(|fact| fact.metadata_id)
             .collect()
     })
@@ -804,261 +820,221 @@ render_parser!(
 const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
     RenderParserFact {
         id: "mindmap",
+        metadata_id: Some("mindmap"),
         model_kind: "mindmap",
         parser: render_mindmap,
     },
     RenderParserFact {
         id: "stateDiagram",
+        metadata_id: Some("state"),
         model_kind: "state",
         parser: render_state,
     },
     RenderParserFact {
         id: "state",
+        metadata_id: Some("state"),
         model_kind: "state",
         parser: render_state,
     },
     RenderParserFact {
         id: "zenuml",
+        metadata_id: Some("zenuml"),
         model_kind: "sequence",
         parser: render_zenuml,
     },
     RenderParserFact {
         id: "sequence",
+        metadata_id: Some("sequence"),
         model_kind: "sequence",
         parser: render_sequence,
     },
     RenderParserFact {
         id: "flowchart-v2",
+        metadata_id: Some("flowchart"),
         model_kind: "flowchart",
         parser: render_flowchart,
     },
     RenderParserFact {
         id: "flowchart",
+        metadata_id: Some("flowchart"),
         model_kind: "flowchart",
         parser: render_flowchart,
     },
     RenderParserFact {
         id: "flowchart-elk",
+        metadata_id: Some("flowchart"),
         model_kind: "flowchart",
         parser: render_flowchart,
     },
     RenderParserFact {
         id: "classDiagram",
+        metadata_id: Some("class"),
         model_kind: "class",
         parser: render_class,
     },
     RenderParserFact {
         id: "class",
+        metadata_id: Some("class"),
         model_kind: "class",
         parser: render_class,
     },
     RenderParserFact {
         id: "c4",
+        metadata_id: Some("c4"),
         model_kind: "c4",
         parser: render_c4,
     },
     RenderParserFact {
         id: "architecture",
+        metadata_id: Some("architecture"),
         model_kind: "architecture",
         parser: render_architecture,
     },
     RenderParserFact {
         id: "kanban",
+        metadata_id: Some("kanban"),
         model_kind: "kanban",
         parser: render_kanban,
     },
     RenderParserFact {
         id: "gantt",
+        metadata_id: Some("gantt"),
         model_kind: "gantt",
         parser: render_gantt,
     },
     RenderParserFact {
         id: "pie",
+        metadata_id: Some("pie"),
         model_kind: "pie",
         parser: render_pie,
     },
     RenderParserFact {
         id: "packet",
+        metadata_id: Some("packet"),
         model_kind: "packet",
         parser: render_packet,
     },
     RenderParserFact {
         id: "timeline",
+        metadata_id: Some("timeline"),
         model_kind: "timeline",
         parser: render_timeline,
     },
     RenderParserFact {
         id: "journey",
+        metadata_id: Some("journey"),
         model_kind: "journey",
         parser: render_journey,
     },
     RenderParserFact {
         id: "requirement",
+        metadata_id: Some("requirement"),
         model_kind: "requirement",
         parser: render_requirement,
     },
     RenderParserFact {
         id: "sankey",
+        metadata_id: Some("sankey"),
         model_kind: "sankey",
         parser: render_sankey,
     },
     RenderParserFact {
         id: "radar",
+        metadata_id: Some("radar"),
         model_kind: "radar",
         parser: render_radar,
     },
     RenderParserFact {
         id: "info",
+        metadata_id: Some("info"),
         model_kind: "info",
         parser: render_info,
     },
     RenderParserFact {
         id: "treemap",
+        metadata_id: Some("treemap"),
         model_kind: "treemap",
         parser: render_treemap,
     },
     RenderParserFact {
         id: "block",
+        metadata_id: Some("block"),
         model_kind: "block",
         parser: render_block,
     },
     RenderParserFact {
         id: "er",
+        metadata_id: Some("er"),
         model_kind: "er",
         parser: render_er,
     },
     RenderParserFact {
         id: "erDiagram",
+        metadata_id: Some("er"),
         model_kind: "er",
         parser: render_er,
     },
     RenderParserFact {
         id: "quadrantChart",
+        metadata_id: Some("quadrantchart"),
         model_kind: "quadrantChart",
         parser: render_quadrant_chart,
     },
     RenderParserFact {
         id: "xychart",
+        metadata_id: Some("xychart"),
         model_kind: "xychart",
         parser: render_xychart,
     },
     RenderParserFact {
         id: "gitGraph",
+        metadata_id: Some("gitgraph"),
         model_kind: "gitGraph",
         parser: render_git_graph,
     },
     RenderParserFact {
         id: "treeView",
+        metadata_id: None,
         model_kind: "treeView",
         parser: render_tree_view,
     },
     RenderParserFact {
         id: "ishikawa",
+        metadata_id: None,
         model_kind: "ishikawa",
         parser: render_ishikawa,
     },
     RenderParserFact {
         id: "eventmodeling",
+        metadata_id: None,
         model_kind: "eventmodeling",
         parser: render_eventmodeling,
     },
 ];
 
-const SUPPORTED_DIAGRAM_FACTS: &[SupportedDiagramFact] = &[
-    SupportedDiagramFact {
-        metadata_id: "architecture",
-        render_parser_ids: &["architecture"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "block",
-        render_parser_ids: &["block"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "c4",
-        render_parser_ids: &["c4"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "class",
-        render_parser_ids: &["classDiagram", "class"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "er",
-        render_parser_ids: &["er", "erDiagram"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "flowchart",
-        render_parser_ids: &["flowchart-v2", "flowchart", "flowchart-elk"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "gantt",
-        render_parser_ids: &["gantt"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "gitgraph",
-        render_parser_ids: &["gitGraph"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "info",
-        render_parser_ids: &["info"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "journey",
-        render_parser_ids: &["journey"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "kanban",
-        render_parser_ids: &["kanban"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "mindmap",
-        render_parser_ids: &["mindmap"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "packet",
-        render_parser_ids: &["packet"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "pie",
-        render_parser_ids: &["pie"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "quadrantchart",
-        render_parser_ids: &["quadrantChart"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "radar",
-        render_parser_ids: &["radar"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "requirement",
-        render_parser_ids: &["requirement"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "sankey",
-        render_parser_ids: &["sankey"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "sequence",
-        render_parser_ids: &["sequence"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "state",
-        render_parser_ids: &["stateDiagram", "state"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "timeline",
-        render_parser_ids: &["timeline"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "treemap",
-        render_parser_ids: &["treemap"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "xychart",
-        render_parser_ids: &["xychart"],
-    },
-    SupportedDiagramFact {
-        metadata_id: "zenuml",
-        render_parser_ids: &["zenuml"],
-    },
+const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
+    "architecture",
+    "block",
+    "c4",
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitgraph",
+    "info",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "pie",
+    "quadrantchart",
+    "radar",
+    "requirement",
+    "sankey",
+    "sequence",
+    "state",
+    "timeline",
+    "treemap",
+    "xychart",
+    "zenuml",
 ];

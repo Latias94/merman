@@ -42,7 +42,7 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-030",
+  "current_task": "PA2R-040",
   "gates": [
     "cargo fmt --all --check",
     "cargo nextest run -p merman-bindings-core",

@@ -20,6 +20,14 @@ Last updated: 2026-06-08
 
 ## M2 — Next Architecture Slice
 
-- [ ] PA2R-030 [owner=codex] [deps=PA2R-020] [scope=crates/merman-core/src/family.rs,crates/merman-core/src/detect,crates/merman-core/src/diagram]
+- [x] PA2R-030 [owner=codex] [deps=PA2R-020] [scope=crates/merman-core/src/family.rs,crates/merman-core/src/tests/registry.rs]
   Goal: Reassess Diagram Family Facts after bindings cleanup and deepen the next highest-leverage projection without changing public JSON output.
   Validation: `cargo nextest run -p merman-core registry`; `cargo nextest run -p merman-core detect`; `cargo run -p xtask -- check-alignment`
+  Review: Supported diagram metadata should be projected from render parser facts instead of duplicating render parser id lists.
+  Evidence: `RenderParserFact.metadata_id`; focused gates passed on 2026-06-08.
+
+## M3 — Presentation Theme View
+
+- [ ] PA2R-040 [owner=codex] [deps=PA2R-030] [scope=crates/merman-render/src/svg/parity/theme.rs,crates/merman-render/src/svg/parity]
+  Goal: Continue ADR-0068 by migrating one high-duplication raw `themeVariables` reader into `PresentationTheme` roles without moving host styling policy into the parity renderer.
+  Validation: `cargo nextest run -p merman-render presentation_theme`; targeted renderer test for the migrated family; `cargo fmt --all --check`
