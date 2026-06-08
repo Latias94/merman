@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#,
     )?;
 
+    // Strict parsing surfaces malformed input early; the stable id helps when inlining the SVG.
     let renderer = HeadlessRenderer::new()
         .with_strict_parsing()
         .with_diagram_id("svg-basic-example");

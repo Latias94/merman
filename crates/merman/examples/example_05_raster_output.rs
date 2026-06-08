@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#,
     )?;
 
+    // Bound raster output explicitly; SVG viewBoxes can be much larger than preview surfaces.
     let raster = RasterOptions::default()
         .with_fit_to(RasterFitBox::contain(960, 540))
         .with_scale(2.0)

@@ -6,6 +6,7 @@ use merman::render::{
 };
 use std::borrow::Cow;
 
+// Custom postprocessors can observe diagram metadata and append host-owned SVG nodes.
 struct AddExampleMetadata;
 
 impl SvgPostprocessor for AddExampleMetadata {
@@ -40,6 +41,7 @@ impl SvgPostprocessor for AddExampleMetadata {
 }
 
 fn escape_attr(value: &str) -> String {
+    // The metadata element is assembled as XML text, so context values must be escaped.
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -67,6 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   fill: #111827;
 }
 "#;
+    // Built-in resvg-safe cleanup runs before host styling and custom metadata passes.
     let pipeline = SvgPipeline::resvg_safe()
         .with_postprocessor(
             ScopedCssPostprocessor::new(host_css)

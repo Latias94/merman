@@ -15,6 +15,7 @@ Alpha polish: active, p2, after p1, 3d
 "#,
     )?;
 
+    // Relative Gantt parsing depends on "today" and local offset; fix both for snapshots.
     let engine = Engine::new()
         .with_fixed_today(Some(
             NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed date"),

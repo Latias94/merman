@@ -33,6 +33,7 @@ struct MermanEguiApp {
 
 impl MermanEguiApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Keep renderer and raster options as host state instead of rebuilding policy per frame.
         let mut app = Self {
             source: DEFAULT_SOURCE.to_string(),
             renderer: HeadlessRenderer::new()
@@ -68,6 +69,7 @@ impl MermanEguiApp {
     }
 
     fn render_inner(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        // The preview path rasterizes the resvg-safe SVG contract used by non-browser hosts.
         let svg = self
             .renderer
             .render_svg_resvg_safe_sync(&self.source)
@@ -158,6 +160,7 @@ impl eframe::App for MermanEguiApp {
 }
 
 fn fit_size(source: egui::Vec2, bounds: egui::Vec2) -> egui::Vec2 {
+    // Fit into the visible panel without upscaling a smaller preview texture.
     if source.x <= 0.0 || source.y <= 0.0 || bounds.x <= 0.0 || bounds.y <= 0.0 {
         return source;
     }

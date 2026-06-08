@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no Mermaid diagram detected".into());
     };
 
+    // Keep metadata beside the semantic model so callers can route diagrams without reparsing.
     let output = json!({
         "diagramType": parsed.meta.diagram_type,
         "title": parsed.meta.title,

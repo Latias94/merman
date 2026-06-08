@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     ];
 
+    // Caller-owned ids keep root SVG and internal definition ids distinct across diagrams.
     let out_dir = Path::new("target/merman-multiple-diagrams");
     fs::create_dir_all(out_dir)?;
 

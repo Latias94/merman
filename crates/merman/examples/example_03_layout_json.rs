@@ -8,6 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "flowchart TD\n  A[Parse] --> B[Layout]\n  B --> C[Geometry]\n",
     )?;
 
+    // Layout JSON exposes computed geometry and routes before SVG emission.
     let renderer = HeadlessRenderer::new().with_strict_parsing();
     let Some(layout) = renderer.layout_diagram_sync(&input)? else {
         return Err("no Mermaid diagram detected".into());

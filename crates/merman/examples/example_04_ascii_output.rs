@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#,
     )?;
 
+    // Pass `-- --ascii` for terminals or logs that should avoid Unicode box drawing.
     let options = if std::env::args().any(|arg| arg == "--ascii") {
         AsciiRenderOptions::ascii()
     } else {
