@@ -42,9 +42,10 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-130",
+  "current_task": "PA2R-140",
   "gates": [
     "cargo fmt --all --check",
+    "git diff --check -- CHANGELOG.md crates/merman-wasm/README.md docs/workstreams/post-alpha2-fearless-refactor",
     "cargo check -p merman --features render",
     "cargo nextest run -p merman --features render svg_pipeline_tests",
     "cargo nextest run -p merman --features render render_svg",

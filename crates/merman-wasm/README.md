@@ -3,15 +3,15 @@
 WebAssembly bindings for Merman browser use.
 
 `merman-wasm` is the Rust `wasm-bindgen` transport crate behind the public
-[`@merman/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) package. It
+[`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) package. It
 exposes SVG rendering, semantic JSON, layout JSON, ASCII/Unicode rendering, validation, and metadata
 helpers with the same options JSON contract used by the native bindings.
 
-Most browser and TypeScript applications should install `@merman/web` rather than depending on this
+Most browser and TypeScript applications should install `@mermanjs/web` rather than depending on this
 crate directly:
 
 ```sh
-npm install @merman/web
+npm install @mermanjs/web
 ```
 
 Use this crate directly when you need to rebuild the wasm-bindgen package from source or integrate

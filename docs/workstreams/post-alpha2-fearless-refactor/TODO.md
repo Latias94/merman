@@ -100,7 +100,15 @@ Last updated: 2026-06-08
 
 ## M12 — Binding Surface Final Audit
 
-- [ ] PA2R-130 [owner=codex] [deps=PA2R-120] [scope=crates/merman-bindings-core,crates/merman-uniffi,crates/merman-wasm,crates/merman-ffi,docs/workstreams/post-alpha2-fearless-refactor]
+- [x] PA2R-130 [owner=codex] [deps=PA2R-120] [scope=CHANGELOG.md,crates/merman-wasm/README.md,docs/workstreams/post-alpha2-fearless-refactor]
   Goal: Reassess the high-level binding surfaces and package docs for duplicated options/error policy, stale examples, or alpha-era public contracts that should be clarified before the next release.
-  Validation: focused binding/package gates selected by any chosen slice; `cargo fmt --all --check`
-  Review: Do not change public ABI or generated-binding API shape without explicit contract evidence; prefer internal locality and documentation cleanup.
+  Validation: release-facing package-name grep; `git diff --check -- CHANGELOG.md crates/merman-wasm/README.md docs/workstreams/post-alpha2-fearless-refactor`
+  Review: Public ABI and generated-binding API shape stayed unchanged; stale `@merman/web` user-facing references now match the actual `@mermanjs/web` npm package.
+  Evidence: `CHANGELOG.md`; `crates/merman-wasm/README.md`; non-historical release-facing grep passed on 2026-06-08.
+
+## M13 — Release Operator Final Sweep
+
+- [ ] PA2R-140 [owner=codex] [deps=PA2R-130] [scope=docs/release,.github/workflows,platforms,Cargo.toml,CHANGELOG.md,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Do a final release-operator sweep for stale alpha.2 instructions, registry setup assumptions, package names, version spellings, and workflow gates before deciding whether the lane is ready to close.
+  Validation: focused release docs/workflow checks selected by findings; `git diff --check -- docs/release .github/workflows platforms CHANGELOG.md docs/workstreams/post-alpha2-fearless-refactor`
+  Review: Prefer deleting or correcting stale release instructions over adding more narrative; do not publish or move tags from this refactor lane.

@@ -46,7 +46,7 @@ Merman 0.7 alpha.1 updates the renderer to Mermaid 11.15 compatibility and opens
 
 - Added ASCII/Unicode rendering through `merman-ascii`, `merman::ascii`, and `merman-cli render --format ascii|unicode`.
 - Added `merman-rustdoc` for rendering Mermaid fences and `include_mmd!` files as inline rustdoc SVG without injecting Mermaid JavaScript.
-- Added the `@merman/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid compare mode, diagnostics, benchmarks, and examples.
+- Added the `@mermanjs/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid compare mode, diagnostics, benchmarks, and examples.
 - Added experimental native bindings for C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI.
 - Added initial support for more Mermaid 11.15 diagram families, including TreeView, Ishikawa, and Event Modeling.
 
