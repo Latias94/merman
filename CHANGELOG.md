@@ -8,71 +8,59 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.7.0-alpha.2] - 2026-06-08
 
-This alpha focuses on release-boundary cleanup for host integrations. It hardens parser, layout,
-render, Graphlib/Dagre, sanitizer, and SVG pipeline paths against user-controlled panic surfaces,
-updates the release package versions to the next alpha, and adds regression coverage for Zed's
-real editor-preview integration shape.
+This alpha prepares the native, web, and editor-preview surfaces for external testing. It focuses on safer host integrations, clearer package APIs, and a smaller set of release-ready examples.
 
 ### Breaking Changes
 
-- Removed the deprecated Mermaid-versioned registry constructors that still carried the stale `11_12_2` name. Migration: replace `DiagramRegistry::default_mermaid_11_12_2()` and `RenderDiagramRegistry::default_mermaid_11_12_2()` with `for_pinned_mermaid_baseline()`. Replace `DetectorRegistry::default_mermaid_11_12_2()` with `DetectorRegistry::for_pinned_mermaid_baseline()`, or use `pinned_mermaid_baseline_full()` / `pinned_mermaid_baseline_tiny()` when the feature profile must be explicit.
-- Renamed known-type parser entry points from `*_as*` to `*_with_type*` so the public Rust API says what the supplied argument means. Migration: `parse_metadata_as_sync` -> `parse_metadata_with_type_sync`, `parse_metadata_as` -> `parse_metadata_with_type`, `parse_diagram_as_sync` -> `parse_diagram_with_type_sync`, `parse_diagram_as` -> `parse_diagram_with_type`, `parse_diagram_for_render_model_as_sync` -> `parse_diagram_for_render_model_with_type_sync`, and `parse_diagram_for_render_model_as` -> `parse_diagram_for_render_model_with_type`.
-- Renamed theme metadata entry points to use the same `supported_*` naming as diagram metadata. Migration: `@merman/web` callers should use `supportedThemes()` instead of `themes()`, wasm-bindgen exports `supportedThemes`, UniFFI uses `supported_themes()`, the C ABI uses `merman_supported_themes_json()` instead of `merman_themes_json()`, Android uses `supportedThemesJson()`, and Swift/Dart wrappers use `supportedThemes()`.
+- Replaced the stale Mermaid 11.12 registry constructors with `for_pinned_mermaid_baseline()`. Detector callers can also choose `pinned_mermaid_baseline_full()` or `pinned_mermaid_baseline_tiny()`.
+- Renamed known-type parser methods from `*_as*` to `*_with_type*`, for example `parse_diagram_as_sync` -> `parse_diagram_with_type_sync`.
+- Renamed theme metadata APIs to `supportedThemes()`, `supported_themes()`, and `merman_supported_themes_json()` to match the supported diagram metadata API.
 
 ### Added
 
-- Added deterministic fixed-time controls for date-sensitive parsing and rendering, including CLI flags and binding-facing options for callers that need stable Gantt output.
-- Added release-preflight and manual platform publishing workflows for Rust crates, CLI artifacts, Python wheels, Android AARs, Apple XCFrameworks, and Flutter packages.
-- Added Zed editor-preview contract coverage for the public `HeadlessRenderer`, `MermaidConfig`, `SvgPipeline::resvg_safe()`, `CssOverridePostprocessor::strip_existing_important()`, vendored text measurement, configured SVG ids, readable fallback text, and raster-safe SVG cleanup.
-- Added copyable Rust examples, including a custom host output environment example, and refreshed release documentation for the alpha.2 package graph.
+- Added fixed-time render options for stable date-sensitive diagrams such as Gantt charts.
+- Added copyable Rust examples, including a custom host output environment example.
 
 ### Changed
 
-- Bumped the workspace and platform package versions to `0.7.0-alpha.2`; Python package metadata uses the PEP 440 spelling `0.7.0a2`.
-- Bumped the pinned Rust toolchain and MSRV to `1.95`.
-- Deepened render architecture around typed family ownership, semantic-source sharing, chart/theme role helpers, and shared SVG pipeline behavior without changing the main parity-oriented SVG contract.
+- Raised the MSRV to Rust `1.95`.
 
 ### Fixed
 
-- Hardened deep tree and graph traversal across Flowchart, Class, Architecture, State, C4, Block, TreeView, Ishikawa, Treemap, Mindmap, ASCII Flowchart, manatee/FCoSE, Dugong, and Graphlib so accepted nested inputs no longer depend on recursive Rust stack depth.
-- Hardened config, frontmatter, init directive, retained semantic config, and compatibility JSON projection paths so deeply nested host config and family models avoid recursive clone/drop and panic-prone JSON rebuilding.
-- Hardened sanitizer, preprocessing, Gantt/Class parsing helpers, FontAwesome icon handling, and SVG pipeline cleanup by replacing first-use regex compilation and panic-prone helper paths with source-shaped scanners.
-- Hardened `SvgPipeline::resvg_safe()` and raw SVG raster boundaries by removing more rasterizer hazards such as unsupported CSS, empty or non-finite visual attributes, `foreignObject` dependencies, and leftover `!important` declarations when callers opt into stripping them.
-- Hardened Graphlib JSON and named-edge insertion behavior: invalid named edges on simple graphs now return errors through fallible APIs/read paths while chainable mutators no-op instead of panicking.
-- Fixed Python wheel packaging to build native artifacts as platform libraries.
-- Fixed Flowchart zero-spacing defaults and several Zed-derived regression surfaces, including class method/generic text preservation and resvg-safe editor-preview behavior.
+- Improved editor-preview stability for host apps such as Zed, including readable SVG and `resvg`-safe output.
+- Hardened parser, layout, Graphlib/Dagre, sanitizer, and SVG cleanup paths against malformed or deeply nested input.
+- Fixed Python wheel packaging so published wheels include native platform libraries.
+- Fixed Flowchart zero-spacing defaults and class text preservation in preview/raster output.
 
 ## [0.7.0-alpha.1] - 2026-06-05
 
-Merman 0.7 moves the project from the Mermaid 11.12 line to Mermaid 11.15 compatibility and adds new public surfaces for [native FFI](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [ASCII/Unicode rendering](https://github.com/Latias94/merman/tree/main/crates/merman-ascii), and [rustdoc Mermaid rendering](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc). It also makes the playground useful as a real parity/debugging tool. A large amount of parser, layout, SVG, theme, and test infrastructure was reworked internally to make future Mermaid upgrades less brittle.
+Merman 0.7 alpha.1 updates the renderer to Mermaid 11.15 compatibility and opens the first public surfaces for ASCII output, rustdoc rendering, web/WASM usage, and native FFI experiments.
 
 ### Breaking Changes
 
-- Updated the compatibility target to Mermaid `11.15.0`. If you keep semantic, layout, or SVG goldens, expect to refresh them.
-- PNG/JPG raster output now applies a safety budget by default. Very large diagrams are downscaled unless callers configure `RasterOptions`, provide a `RasterSizeLimit`, or opt into unbounded raster output.
-- `RasterOptions` gained target-aware sizing fields. Callers using exhaustive struct literals should add `..Default::default()` or set the new fields explicitly.
+- Updated the compatibility target to Mermaid `11.15.0`. Refresh semantic, layout, or SVG goldens if your integration keeps parity snapshots.
+- PNG/JPG raster output now applies a safety budget by default. Configure `RasterOptions`, `RasterSizeLimit`, or unbounded raster output for very large diagrams.
+- `RasterOptions` gained target-aware sizing fields. Exhaustive struct literals should add `..Default::default()` or set the new fields explicitly.
 
 ### Added
 
-- Added ASCII/Unicode rendering through [`merman-ascii`](https://github.com/Latias94/merman/tree/main/crates/merman-ascii), `merman::ascii`, and `merman-cli render --format ascii|unicode`.
-- Added rustdoc integration through [`merman-rustdoc`](https://github.com/Latias94/merman/tree/main/crates/merman-rustdoc), a proc-macro crate that renders Mermaid fences and `include_mmd!` files in rustdoc as inline headless SVG without injecting Mermaid JavaScript. The macro supports `scope`, `pipeline`, `fail`, `source`, `sanitize`, and `theme` options, including recursive inline item processing with `scope = "tree"`, rustdoc light/dark theme switching by default, fixed build-time Mermaid themes with source-level config precedence, and strict SVG safety checks by default.
-- Added a more Mermaid CLI-like `merman-cli render` surface, including markdown input handling, icon pack compatibility, and raster sizing flags.
-- Added the `@merman/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid JS compare mode, diagnostics, benchmark tools, mobile layout support, and a larger example gallery.
-- Added experimental platform bindings through [`merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi): C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI packages.
-- Added minimum support and parity tracking for additional Mermaid families including TreeView, Ishikawa, and Event Modeling, alongside Mermaid 11.15 updates for Class, XY Chart, Sankey, Pie, Flowchart, Sequence, C4, Timeline, Radar, Mindmap, Kanban, Gantt, and Block.
+- Added ASCII/Unicode rendering through `merman-ascii`, `merman::ascii`, and `merman-cli render --format ascii|unicode`.
+- Added `merman-rustdoc` for rendering Mermaid fences and `include_mmd!` files as inline rustdoc SVG without injecting Mermaid JavaScript.
+- Added the `@merman/web` TypeScript/WASM package and a hosted playground with live editing, SVG export, Mermaid compare mode, diagnostics, benchmarks, and examples.
+- Added experimental native bindings for C ABI, Flutter/Dart, Android JNI, Apple SwiftPM, and Python UniFFI.
+- Added initial support for more Mermaid 11.15 diagram families, including TreeView, Ishikawa, and Event Modeling.
 
 ### Changed
 
-- Reworked theme handling to follow Mermaid 11.15 more closely, including supported theme metadata, `look` handling, `themeVariables`, scoped `themeCSS`, and SVG colors that remain readable inside host pages.
-- Reworked rasterization so PNG/JPG sizing is planned before allocating buffers. SVG output remains parity-oriented and does not clamp the root `viewBox`.
-- Reworked major internals around render dispatch, config/font/theme resolution, Architecture/FCoSE layout seams, Graphlib/Dagre compatibility, and parity tooling. These changes are mostly internal, but they make 11.15 support and future Mermaid upgrades more stable.
+- Theme handling now follows Mermaid 11.15 more closely, including supported theme metadata, `look`, `themeVariables`, and scoped `themeCSS`.
+- Raster export plans output size before allocating buffers, while SVG output remains parity-oriented.
 
 ### Fixed
 
-- Fixed deeply nested valid diagrams that previously hit Merman-specific depth limits or stack-sensitive parser/layout paths.
-- Fixed many Mermaid 11.15 SVG parity gaps across Flowchart, Sequence, Class, Architecture, State, Block, Timeline, Pie, Radar, Treemap, Mindmap, ER, Journey, Requirement, Sankey, C4, and XY Chart.
-- Fixed dark-host and custom-theme visibility issues for diagram labels, notes, edges, clusters, and chart elements.
-- Fixed oversized raster exports and JPG background handling so image export is safer and more predictable.
+- Fixed many Mermaid 11.15 rendering gaps across Flowchart, Sequence, Class, Architecture, State, Block, Timeline, Pie, Radar, Treemap, Mindmap, ER, Journey, Requirement, Sankey, C4, and XY Chart.
+- Fixed dark-host and custom-theme visibility issues for labels, notes, edges, clusters, and chart elements.
+- Fixed deeply nested valid diagrams that could hit stack-sensitive parser or layout paths.
+- Fixed oversized raster exports and JPG background handling.
 
 ## [0.6.0] - 2026-05-28
 
