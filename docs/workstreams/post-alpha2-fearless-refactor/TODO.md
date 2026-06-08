@@ -1,7 +1,9 @@
 # Post Alpha.2 Fearless Refactor — TODO
 
-Status: Active
+Status: Complete
 Last updated: 2026-06-08
+
+Closeout: all PA2R tasks through PA2R-140 are complete. Remaining operator-driven publishing should follow `docs/release/RELEASING.md` and `docs/release/PUBLISH_ORDER.md`.
 
 ## M0 — Plan Record
 

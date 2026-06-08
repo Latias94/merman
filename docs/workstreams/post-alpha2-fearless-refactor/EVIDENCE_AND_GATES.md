@@ -1,6 +1,6 @@
 # Post Alpha.2 Fearless Refactor — Evidence And Gates
 
-Status: Active
+Status: Complete
 Last updated: 2026-06-08
 
 ## Planned Gates

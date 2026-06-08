@@ -1,9 +1,9 @@
 ---
 title: Post Alpha.2 Fearless Refactor
 type: refactor
-status: active
+status: complete
 date: 2026-06-08
-execution: code
+execution: complete
 ---
 
 # Post Alpha.2 Fearless Refactor
@@ -11,6 +11,8 @@ execution: code
 ## Summary
 
 Prepare the next alpha by removing shallow release-facing seams that survived `0.7.0-alpha.2`. The work proceeds through focused, independently landable refactor slices recorded in `docs/workstreams/post-alpha2-fearless-refactor`.
+
+Status: completed through PA2R-140. Follow release operator docs for any remaining publish actions; this refactor lane should not move tags or publish packages.
 
 ---
 
