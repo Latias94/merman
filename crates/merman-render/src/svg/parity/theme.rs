@@ -216,6 +216,28 @@ impl VennTheme {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct RadarTheme {
+    pub(crate) font_family_css: String,
+    pub(crate) base_font_size_css: String,
+    pub(crate) text_color: String,
+    pub(crate) line_color: String,
+    pub(crate) error_bkg_color: String,
+    pub(crate) error_text_color: String,
+    pub(crate) title_font_size_css: String,
+    pub(crate) title_color: String,
+    pub(crate) axis_color: String,
+    pub(crate) axis_stroke_width: f64,
+    pub(crate) axis_label_font_size: f64,
+    pub(crate) graticule_color: String,
+    pub(crate) graticule_opacity: f64,
+    pub(crate) graticule_stroke_width: f64,
+    pub(crate) legend_font_size: f64,
+    pub(crate) curve_opacity: f64,
+    pub(crate) curve_stroke_width: f64,
+    pub(crate) series_colors: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct TimelineSectionTheme {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
@@ -507,6 +529,54 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    pub(crate) fn radar(&self) -> RadarTheme {
+        let font_family_css = self
+            .raw
+            .optional_color("fontFamily")
+            .map(|font_family| crate::config::normalize_css_font_family(&font_family))
+            .unwrap_or_else(|| crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+        let base_font_size_css = self
+            .raw
+            .optional_value("fontSize")
+            .unwrap_or_else(|| "16px".to_string());
+        let scoped_string = |key: &str, fallback: &str| {
+            self.raw
+                .optional_scoped_string("radar", key)
+                .unwrap_or_else(|| fallback.to_string())
+        };
+        let scoped_f64 = |key: &str, fallback: f64| {
+            self.raw
+                .optional_scoped_f64("radar", key)
+                .unwrap_or(fallback)
+        };
+
+        RadarTheme {
+            font_family_css,
+            base_font_size_css: base_font_size_css.clone(),
+            text_color: self.raw.color("textColor", "#333"),
+            line_color: self.raw.color("lineColor", "#333333"),
+            error_bkg_color: self.raw.color("errorBkgColor", "#552222"),
+            error_text_color: self.raw.color("errorTextColor", "#552222"),
+            title_font_size_css: base_font_size_css,
+            title_color: self.raw.color("titleColor", "#333"),
+            axis_color: scoped_string("axisColor", "#333333"),
+            axis_stroke_width: scoped_f64("axisStrokeWidth", 2.0),
+            axis_label_font_size: scoped_f64("axisLabelFontSize", 12.0),
+            graticule_color: scoped_string("graticuleColor", "#DEDEDE"),
+            graticule_opacity: scoped_f64("graticuleOpacity", 0.3),
+            graticule_stroke_width: scoped_f64("graticuleStrokeWidth", 1.0),
+            legend_font_size: scoped_f64("legendFontSize", 12.0),
+            curve_opacity: scoped_f64("curveOpacity", 0.5),
+            curve_stroke_width: scoped_f64("curveStrokeWidth", 2.0),
+            series_colors: (0..12)
+                .map(|index| {
+                    self.raw
+                        .color(&format!("cScale{index}"), default_c_scale(index))
+                })
+                .collect(),
+        }
+    }
+
     pub(crate) fn timeline(&self) -> TimelineTheme {
         let theme_name = self.common.theme_name.clone();
         let theme_color_limit = self
@@ -520,9 +590,7 @@ impl<'a> PresentationTheme<'a> {
         let mut buf = ryu_js::Buffer::new();
         let sections = (0..theme_color_limit)
             .map(|i| {
-                let c_scale = self
-                    .raw
-                    .color(&format!("cScale{i}"), timeline_default_c_scale(i));
+                let c_scale = self.raw.color(&format!("cScale{i}"), default_c_scale(i));
                 let c_scale_label = self
                     .raw
                     .optional_color(&format!("cScaleLabel{i}"))
@@ -874,7 +942,7 @@ fn derive_timeline_c_scale_inv_fallback(c_scale: &str, buf: &mut ryu_js::Buffer)
     Some(format_hsl_css(h, s, l, buf))
 }
 
-fn timeline_default_c_scale(i: usize) -> &'static str {
+fn default_c_scale(i: usize) -> &'static str {
     match i {
         0 => "hsl(240, 100%, 76.2745098039%)",
         1 => "hsl(60, 100%, 73.5294117647%)",
@@ -1409,5 +1477,96 @@ mod tests {
         assert!(!venn.is_dark_theme);
         assert_eq!(venn.circle_text_color("#abc"), "#77838f");
         assert_eq!(venn.circle_text_color("not-a-color"), "#000000");
+    }
+
+    #[test]
+    fn presentation_theme_radar_resolves_style_roles() {
+        let cfg = json!({
+            "fontFamily": "Ignored, sans-serif",
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "fontSize": 18,
+                "textColor": "#101010",
+                "lineColor": "#111111",
+                "errorBkgColor": "#121212",
+                "errorTextColor": "#131313",
+                "titleColor": "#202020",
+                "cScale0": "#303030",
+                "radar": {
+                    "axisColor": "#404040",
+                    "axisStrokeWidth": 2,
+                    "axisLabelFontSize": 12,
+                    "graticuleColor": "#505050",
+                    "graticuleOpacity": 0.3,
+                    "graticuleStrokeWidth": 1,
+                    "legendFontSize": 12,
+                    "curveOpacity": 0.5,
+                    "curveStrokeWidth": 2
+                }
+            },
+            "radar": {
+                "axisColor": "#606060",
+                "axisStrokeWidth": 4,
+                "axisLabelFontSize": 14,
+                "graticuleColor": "#707070",
+                "graticuleOpacity": 0.8,
+                "graticuleStrokeWidth": 5,
+                "legendFontSize": 16,
+                "curveOpacity": 0.9,
+                "curveStrokeWidth": 6
+            }
+        });
+
+        let radar = PresentationTheme::new(&cfg).radar();
+
+        assert_eq!(radar.font_family_css, "\"ibm plex sans\",arial,sans-serif");
+        assert_eq!(radar.base_font_size_css, "18");
+        assert_eq!(radar.title_font_size_css, "18");
+        assert_eq!(radar.text_color, "#101010");
+        assert_eq!(radar.line_color, "#111111");
+        assert_eq!(radar.error_bkg_color, "#121212");
+        assert_eq!(radar.error_text_color, "#131313");
+        assert_eq!(radar.title_color, "#202020");
+        assert_eq!(radar.axis_color, "#606060");
+        assert_eq!(radar.axis_stroke_width, 4.0);
+        assert_eq!(radar.axis_label_font_size, 14.0);
+        assert_eq!(radar.graticule_color, "#707070");
+        assert_eq!(radar.graticule_opacity, 0.8);
+        assert_eq!(radar.graticule_stroke_width, 5.0);
+        assert_eq!(radar.legend_font_size, 16.0);
+        assert_eq!(radar.curve_opacity, 0.9);
+        assert_eq!(radar.curve_stroke_width, 6.0);
+        assert_eq!(radar.series_colors[0], "#303030");
+        assert_eq!(radar.series_colors[11], "hsl(210, 100%, 76.2745098039%)");
+    }
+
+    #[test]
+    fn presentation_theme_radar_uses_default_style_roles() {
+        let cfg = json!({});
+
+        let radar = PresentationTheme::new(&cfg).radar();
+
+        assert_eq!(
+            radar.font_family_css,
+            "\"trebuchet ms\",verdana,arial,sans-serif"
+        );
+        assert_eq!(radar.base_font_size_css, "16px");
+        assert_eq!(radar.title_font_size_css, "16px");
+        assert_eq!(radar.text_color, "#333");
+        assert_eq!(radar.line_color, "#333333");
+        assert_eq!(radar.error_bkg_color, "#552222");
+        assert_eq!(radar.error_text_color, "#552222");
+        assert_eq!(radar.title_color, "#333");
+        assert_eq!(radar.axis_color, "#333333");
+        assert_eq!(radar.axis_stroke_width, 2.0);
+        assert_eq!(radar.axis_label_font_size, 12.0);
+        assert_eq!(radar.graticule_color, "#DEDEDE");
+        assert_eq!(radar.graticule_opacity, 0.3);
+        assert_eq!(radar.graticule_stroke_width, 1.0);
+        assert_eq!(radar.legend_font_size, 12.0);
+        assert_eq!(radar.curve_opacity, 0.5);
+        assert_eq!(radar.curve_stroke_width, 2.0);
+        assert_eq!(radar.series_colors.len(), 12);
+        assert_eq!(radar.series_colors[0], "hsl(240, 100%, 76.2745098039%)");
     }
 }

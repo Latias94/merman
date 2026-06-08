@@ -1,75 +1,18 @@
+use super::theme::RadarTheme;
 use super::*;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 
 // Radar diagram SVG renderer implementation (split from parity.rs).
 
-fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
     let id = escape_xml(diagram_id);
-    let default_font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let theme = SvgTheme::new(effective_config);
-
-    fn radar_style_string(theme: &SvgTheme<'_>, key: &str, fallback: &str) -> String {
-        theme
-            .optional_scoped_string("radar", key)
-            .unwrap_or_else(|| fallback.to_string())
-    }
-
-    fn radar_style_f64(theme: &SvgTheme<'_>, key: &str, fallback: f64) -> f64 {
-        theme.optional_scoped_f64("radar", key).unwrap_or(fallback)
-    }
-
-    fn default_c_scale(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 76.2745098039%)",
-            1 => "hsl(60, 100%, 73.5294117647%)",
-            2 => "hsl(80, 100%, 76.2745098039%)",
-            3 => "hsl(270, 100%, 76.2745098039%)",
-            4 => "hsl(300, 100%, 76.2745098039%)",
-            5 => "hsl(330, 100%, 76.2745098039%)",
-            6 => "hsl(0, 100%, 76.2745098039%)",
-            7 => "hsl(30, 100%, 76.2745098039%)",
-            8 => "hsl(90, 100%, 76.2745098039%)",
-            9 => "hsl(150, 100%, 76.2745098039%)",
-            10 => "hsl(180, 100%, 76.2745098039%)",
-            _ => "hsl(210, 100%, 76.2745098039%)",
-        }
-    }
-
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .map(|s| normalize_css_font_family(&s))
-        .unwrap_or_else(|| default_font.to_string());
-    let base_font_size = crate::config::config_css_number_or_string(
-        effective_config,
-        &["themeVariables", "fontSize"],
-    )
-    .unwrap_or_else(|| "16px".to_string());
-    let base_text_color = theme_color(effective_config, "textColor", "#333");
-    let error_bkg_color = theme_color(effective_config, "errorBkgColor", "#552222");
-    let error_text_color = theme_color(effective_config, "errorTextColor", "#552222");
-    let line_color = theme_color(effective_config, "lineColor", "#333333");
-
-    let title_font_size = base_font_size.clone();
-    let title_color = theme_color(effective_config, "titleColor", "#333");
-
-    let axis_color = radar_style_string(&theme, "axisColor", "#333333");
-    let axis_stroke_width = radar_style_f64(&theme, "axisStrokeWidth", 2.0);
-    let axis_label_font_size = radar_style_f64(&theme, "axisLabelFontSize", 12.0);
-
-    let graticule_color = radar_style_string(&theme, "graticuleColor", "#DEDEDE");
-    let graticule_opacity = radar_style_f64(&theme, "graticuleOpacity", 0.3);
-    let graticule_stroke_width = radar_style_f64(&theme, "graticuleStrokeWidth", 1.0);
-
-    let legend_font_size = radar_style_f64(&theme, "legendFontSize", 12.0);
-
-    let curve_opacity = radar_style_f64(&theme, "curveOpacity", 0.5);
-    let curve_stroke_width = radar_style_f64(&theme, "curveStrokeWidth", 2.0);
 
     let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
-        id, font_family, base_font_size, base_text_color
+        id, theme.font_family_css, theme.base_font_size_css, theme.text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -82,7 +25,7 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let _ = write!(
         &mut out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, error_bkg_color, id, error_text_color, error_text_color
+        id, theme.error_bkg_color, id, theme.error_text_color, theme.error_text_color
     );
     let _ = write!(
         &mut out,
@@ -92,52 +35,50 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let _ = write!(
         &mut out,
         r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, line_color, line_color, id, line_color
+        id, theme.line_color, theme.line_color, id, theme.line_color
     );
     let _ = write!(
         &mut out,
         r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
-        id, font_family, base_font_size, id
+        id, theme.font_family_css, theme.base_font_size_css, id
     );
 
     let _ = write!(
         &mut out,
         r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
-        id, title_font_size, title_color
+        id, theme.title_font_size_css, theme.title_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
         id,
-        axis_color,
-        fmt(axis_stroke_width)
+        theme.axis_color,
+        fmt(theme.axis_stroke_width)
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarAxisLabel{{dominant-baseline:middle;text-anchor:middle;font-size:{}px;color:{};}}"#,
         id,
-        fmt(axis_label_font_size),
-        axis_color
+        fmt(theme.axis_label_font_size),
+        theme.axis_color
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarGraticule{{fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}"#,
         id,
-        graticule_color,
-        fmt(graticule_opacity),
-        graticule_color,
-        fmt(graticule_stroke_width)
+        theme.graticule_color,
+        fmt(theme.graticule_opacity),
+        theme.graticule_color,
+        fmt(theme.graticule_stroke_width)
     );
     let _ = write!(
         &mut out,
         r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
         id,
-        fmt(legend_font_size)
+        fmt(theme.legend_font_size)
     );
 
-    for i in 0..12 {
-        let key = format!("cScale{i}");
-        let c = theme_color(effective_config, &key, default_c_scale(i));
+    for (i, c) in theme.series_colors.iter().enumerate() {
         let _ = write!(
             &mut out,
             r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
@@ -145,13 +86,13 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
             i,
             c,
             c,
-            fmt(curve_opacity),
+            fmt(theme.curve_opacity),
             c,
-            fmt(curve_stroke_width),
+            fmt(theme.curve_stroke_width),
             id,
             i,
             c,
-            fmt(curve_opacity),
+            fmt(theme.curve_opacity),
             c
         );
     }
@@ -159,7 +100,7 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let _ = write!(
         &mut out,
         r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font_family
+        id, theme.font_family_css
     );
 
     out
@@ -231,7 +172,8 @@ pub(super) fn render_radar_diagram_svg_model(
         );
     }
 
-    let css = radar_css(diagram_id, effective_config);
+    let theme = PresentationTheme::new(effective_config).radar();
+    let css = radar_css(diagram_id, &theme);
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g/>");
 
@@ -390,7 +332,8 @@ mod tests {
             }
         });
 
-        let css = radar_css("radar", &cfg);
+        let theme = PresentationTheme::new(&cfg).radar();
+        let css = radar_css("radar", &theme);
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#606060;stroke-width:4;}"#));
@@ -431,7 +374,8 @@ mod tests {
             }
         });
 
-        let css = radar_css("radar", &cfg);
+        let theme = PresentationTheme::new(&cfg).radar();
+        let css = radar_css("radar", &theme);
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
         assert!(css.contains(
