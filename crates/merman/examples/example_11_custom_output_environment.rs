@@ -16,6 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#,
     )?;
 
+    // Host-owned Mermaid defaults stay outside the diagram source.
     let site_config = MermaidConfig::from_value(serde_json::json!({
         "theme": "base",
         "darkMode": true,
@@ -34,6 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }));
 
+    // Keep host CSS scoped to the configured root SVG id.
     let host_css = r#"
 .node rect,
 .node polygon,
@@ -51,10 +53,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 "#;
 
+    // Stable ids and vendored text metrics make embedded previews deterministic across machines.
     let renderer = HeadlessRenderer::new()
         .with_site_config(site_config)
         .with_vendored_text_measurer()
         .with_diagram_id("custom-output-environment-example");
+    // The host pipeline is explicit so default rendering remains Mermaid-parity oriented.
     let pipeline = SvgPipeline::resvg_safe()
         .with_postprocessor(CssOverridePostprocessor::strip_existing_important())
         .with_postprocessor(RootBackgroundPostprocessor::new("#111827"))
@@ -64,6 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no Mermaid diagram detected".into());
     };
 
+    // Example-level contract check: this output should be safe for resvg-like preview surfaces.
     if svg.contains("<foreignObject") || svg.contains("!important") {
         return Err(
             "custom output environment should produce raster-safe host-controlled SVG".into(),

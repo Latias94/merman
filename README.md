@@ -141,9 +141,10 @@ does not support `<foreignObject>` well. Use the `ascii` feature and
 The `crates/merman/examples` programs are ordered as a progressive Rust integration path. Each
 example reads Mermaid source from stdin when provided and falls back to a small built-in diagram.
 When stdin is an interactive terminal, examples `01` through `08` and `11` do not wait for input;
-they print a short note to stderr and render their built-in example. See
-[`crates/merman/examples/README.md`](crates/merman/examples/README.md) for copyable commands with
-custom stdin and output files.
+they print a short note to stderr and render their built-in example. See the
+[`crates/merman/examples`](crates/merman/examples) directory and its
+[`README.md`](crates/merman/examples/README.md) for copyable commands with custom stdin and output
+files.
 
 | Step | Goal | Feature | Command |
 | --- | --- | --- | --- |
