@@ -447,10 +447,10 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         layout: CoverageStatus::NotAdmitted,
         svg: CoverageStatus::NotAdmitted,
         root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
+        compare_command: Some("compare-venn-svgs"),
         owner_doc: "docs/alignment/VENN_BETA_ADMISSION_PLAN.md",
         defer_reason: Some(
-            "needs Rust port of pinned @upsetjs/venn.js layout kernel and oracle fixtures before admission",
+            "needs normalized fixtures and committed upstream SVG baselines before admission",
         ),
     },
     DiagramAdmissionRecord {

@@ -11,6 +11,97 @@ use std::time::{Duration, Instant};
 
 const DOMPURIFY_BASELINE_VERSION: &str = "3.4.0";
 
+const UPSTREAM_SVG_TARGET_DIAGRAMS: &[&str] = &[
+    "er",
+    "flowchart",
+    "state",
+    "class",
+    "sequence",
+    "info",
+    "pie",
+    "requirement",
+    "sankey",
+    "packet",
+    "timeline",
+    "journey",
+    "kanban",
+    "gitgraph",
+    "gantt",
+    "c4",
+    "block",
+    "radar",
+    "quadrantchart",
+    "treemap",
+    "xychart",
+    "mindmap",
+    "treeView",
+    "ishikawa",
+    "eventmodeling",
+    "architecture",
+    "venn",
+];
+
+const UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS: &[&str] = &[
+    "er",
+    "flowchart",
+    "gantt",
+    "architecture",
+    "mindmap",
+    "state",
+    "class",
+    "sequence",
+    "info",
+    "pie",
+    "sankey",
+    "requirement",
+    "packet",
+    "timeline",
+    "journey",
+    "kanban",
+    "gitgraph",
+    "quadrantchart",
+    "c4",
+    "block",
+    "radar",
+    "treemap",
+    "treeView",
+    "ishikawa",
+    "eventmodeling",
+];
+
+const UPSTREAM_SVG_CHECK_ALL_DIAGRAMS: &[&str] = &[
+    "er",
+    "flowchart",
+    "gantt",
+    "architecture",
+    "mindmap",
+    "state",
+    "class",
+    "sequence",
+    "info",
+    "pie",
+    "sankey",
+    "requirement",
+    "packet",
+    "timeline",
+    "journey",
+    "kanban",
+    "gitgraph",
+    "quadrantchart",
+    "c4",
+    "block",
+    "radar",
+    "treemap",
+    "xychart",
+    "treeView",
+    "ishikawa",
+    "eventmodeling",
+];
+
+fn upstream_svg_supported_diagrams_message() -> String {
+    format!("{}, all", UPSTREAM_SVG_TARGET_DIAGRAMS.join(", "))
+}
+
 fn upstream_svg_fixture_is_skipped_for_generation(diagram: &str, path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -438,33 +529,7 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     match diagram.as_str() {
         "all" => {
             let mut failures: Vec<String> = Vec::new();
-            for d in [
-                "er",
-                "flowchart",
-                "gantt",
-                "architecture",
-                "mindmap",
-                "state",
-                "class",
-                "sequence",
-                "info",
-                "pie",
-                "sankey",
-                "requirement",
-                "packet",
-                "timeline",
-                "journey",
-                "kanban",
-                "gitgraph",
-                "quadrantchart",
-                "c4",
-                "block",
-                "radar",
-                "treemap",
-                "treeView",
-                "ishikawa",
-                "eventmodeling",
-            ] {
+            for &d in UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS {
                 if let Err(err) =
                     run_one(&workspace_root, &fixtures_root, &out_root, &mmdc, d, filter)
                 {
@@ -477,19 +542,17 @@ pub(crate) fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
             }
         }
-        "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
-        | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
-        | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap" | "treeView"
-        | "ishikawa" | "eventmodeling" | "architecture" => run_one(
+        target if UPSTREAM_SVG_TARGET_DIAGRAMS.contains(&target) => run_one(
             &workspace_root,
             &fixtures_root,
             &out_root,
             &mmdc,
-            &diagram,
+            target,
             filter,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, treeView, ishikawa, eventmodeling, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: {})",
+            upstream_svg_supported_diagrams_message()
         ))),
     }
 }
@@ -685,34 +748,7 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     match diagram.as_str() {
         "all" => {
             let mut failures: Vec<String> = Vec::new();
-            for d in [
-                "er",
-                "flowchart",
-                "gantt",
-                "architecture",
-                "mindmap",
-                "state",
-                "class",
-                "sequence",
-                "info",
-                "pie",
-                "sankey",
-                "requirement",
-                "packet",
-                "timeline",
-                "journey",
-                "kanban",
-                "gitgraph",
-                "quadrantchart",
-                "c4",
-                "block",
-                "radar",
-                "treemap",
-                "xychart",
-                "treeView",
-                "ishikawa",
-                "eventmodeling",
-            ] {
+            for &d in UPSTREAM_SVG_CHECK_ALL_DIAGRAMS {
                 if let Err(err) = check_one(UpstreamSvgCheck {
                     baseline_root: &baseline_root,
                     out_root: &out_root,
@@ -731,20 +767,18 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
             }
         }
-        "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "requirement"
-        | "sankey" | "packet" | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4"
-        | "block" | "radar" | "quadrantchart" | "treemap" | "xychart" | "mindmap" | "treeView"
-        | "ishikawa" | "eventmodeling" | "architecture" => check_one(UpstreamSvgCheck {
+        target if UPSTREAM_SVG_TARGET_DIAGRAMS.contains(&target) => check_one(UpstreamSvgCheck {
             baseline_root: &baseline_root,
             out_root: &out_root,
-            diagram: diagram.as_str(),
+            diagram: target,
             filter,
             check_dom,
             dom_mode: parsed_dom_mode,
             dom_decimals,
         }),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, architecture, mindmap, state, class, sequence, info, pie, sankey, requirement, packet, timeline, journey, kanban, gitgraph, quadrantchart, c4, block, radar, treemap, xychart, treeView, ishikawa, eventmodeling, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: {})",
+            upstream_svg_supported_diagrams_message()
         ))),
     }
 }
@@ -2169,7 +2203,9 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         DOMPURIFY_BASELINE_VERSION, DefaultConfigOverride, DefaultConfigOverrideOp,
-        apply_default_config_overrides, render_dompurify_defaults_rs, sort_json_value_keys,
+        UPSTREAM_SVG_CHECK_ALL_DIAGRAMS, UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS,
+        UPSTREAM_SVG_TARGET_DIAGRAMS, apply_default_config_overrides, render_dompurify_defaults_rs,
+        sort_json_value_keys,
     };
     use serde_json::json;
 
@@ -2293,5 +2329,25 @@ mod tests {
         assert!(message.contains("repo-ref/dompurify"));
         assert!(message.contains(DOMPURIFY_BASELINE_VERSION));
         assert!(message.contains("tools/upstreams/REPOS.lock.json"));
+    }
+
+    #[test]
+    fn venn_upstream_svg_tools_are_targeted_only_before_admission() {
+        assert!(UPSTREAM_SVG_TARGET_DIAGRAMS.contains(&"venn"));
+        assert!(!UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS.contains(&"venn"));
+        assert!(!UPSTREAM_SVG_CHECK_ALL_DIAGRAMS.contains(&"venn"));
+    }
+
+    #[test]
+    fn bulk_upstream_svg_lists_are_targetable_diagrams() {
+        for diagram in UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS
+            .iter()
+            .chain(UPSTREAM_SVG_CHECK_ALL_DIAGRAMS)
+        {
+            assert!(
+                UPSTREAM_SVG_TARGET_DIAGRAMS.contains(diagram),
+                "{diagram} should be accepted by targeted upstream SVG commands"
+            );
+        }
     }
 }

@@ -123,6 +123,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-tree-view-svgs");
     println!("  compare-ishikawa-svgs");
     println!("  compare-eventmodeling-svgs");
+    println!("  compare-venn-svgs");
     println!();
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
@@ -225,6 +226,7 @@ fn main() -> Result<(), XtaskError> {
         "compare-tree-view-svgs" => cmd::compare_tree_view_svgs(args.collect()),
         "compare-ishikawa-svgs" => cmd::compare_ishikawa_svgs(args.collect()),
         "compare-eventmodeling-svgs" => cmd::compare_eventmodeling_svgs(args.collect()),
+        "compare-venn-svgs" => cmd::compare_venn_svgs(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),

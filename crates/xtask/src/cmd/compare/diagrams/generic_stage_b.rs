@@ -47,6 +47,17 @@ pub(crate) fn compare_eventmodeling_svgs(args: Vec<String>) -> Result<(), XtaskE
     )
 }
 
+pub(crate) fn compare_venn_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "venn",
+            report_title: "Venn",
+            local_renderer: "render_layouted_svg venn dispatch (Stage B)",
+        },
+    )
+}
+
 fn compare_stage_b_svgs(args: Vec<String>, spec: StageBCompareSpec) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;

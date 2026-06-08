@@ -34,7 +34,7 @@ pub(crate) use er::compare_er_svgs;
 pub(crate) use flowchart::compare_flowchart_svgs;
 pub(crate) use gantt::compare_gantt_svgs;
 pub(crate) use generic_stage_b::{
-    compare_eventmodeling_svgs, compare_ishikawa_svgs, compare_tree_view_svgs,
+    compare_eventmodeling_svgs, compare_ishikawa_svgs, compare_tree_view_svgs, compare_venn_svgs,
 };
 pub(crate) use gitgraph::compare_gitgraph_svgs;
 pub(crate) use info::compare_info_svgs;
@@ -166,6 +166,10 @@ const DIAGRAM_COMPARE_ADAPTERS: &[DiagramCompareAdapter] = &[
         diagram: "eventmodeling",
         run: compare_eventmodeling_svgs,
     },
+    DiagramCompareAdapter {
+        diagram: "venn",
+        run: compare_venn_svgs,
+    },
 ];
 
 pub(crate) fn compare_diagram_svgs(diagram: &str, args: Vec<String>) -> Result<(), XtaskError> {
@@ -208,5 +212,14 @@ mod tests {
                 adapter.diagram
             );
         }
+    }
+
+    #[test]
+    fn venn_adapter_is_available_without_primary_admission() {
+        assert!(diagram_compare_adapter("venn").is_some());
+        assert!(
+            !crate::cmd::primary_svg_matrix_diagrams().any(|diagram| diagram == "venn"),
+            "venn should stay out of compare-all until admission gates are green"
+        );
     }
 }
