@@ -39,6 +39,26 @@ fn xychart_has_renderable_plot(body: &str) -> bool {
     })
 }
 
+fn class_has_whitespace_only_text_label(body: &str) -> bool {
+    body.lines().any(|raw| {
+        let line = raw.trim_start();
+        if !line.starts_with("class ") {
+            return false;
+        }
+
+        let Some(open) = line.find("[\"") else {
+            return false;
+        };
+        let label_start = open + 2;
+        let Some(close_rel) = line[label_start..].find("\"]") else {
+            return false;
+        };
+
+        let label = &line[label_start..label_start + close_rel];
+        !label.is_empty() && label.trim().is_empty()
+    })
+}
+
 pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -830,6 +850,17 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 ));
                 continue;
             }
+            if with_baselines
+                && diagram_dir == "class"
+                && class_has_whitespace_only_text_label(&body)
+            {
+                skipped.push(format!(
+                    "skip (class parser-only whitespace text label): {} (idx={})",
+                    spec_path.display(),
+                    idx + 1
+                ));
+                continue;
+            }
 
             let stem = format!("upstream_pkgtests_{source_slug}_{idx:03}", idx = idx + 1);
             candidates.push(Candidate {
@@ -1054,7 +1085,24 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
 #[cfg(test)]
 mod tests {
-    use super::xychart_has_renderable_plot;
+    use super::{class_has_whitespace_only_text_label, xychart_has_renderable_plot};
+
+    #[test]
+    fn class_render_baseline_import_skips_whitespace_only_text_label() {
+        assert!(!class_has_whitespace_only_text_label(
+            "classDiagram\nclass C1[\"OneWord\"]\n"
+        ));
+        assert!(!class_has_whitespace_only_text_label(
+            "classDiagram\nclass C1[\" With spaces around words \"]\n"
+        ));
+
+        assert!(class_has_whitespace_only_text_label(
+            "classDiagram\nclass C6[\" \"]\n"
+        ));
+        assert!(class_has_whitespace_only_text_label(
+            "classDiagram\nclass C6[\"   \"]\n"
+        ));
+    }
 
     #[test]
     fn xychart_render_baseline_import_requires_valid_plot_data() {

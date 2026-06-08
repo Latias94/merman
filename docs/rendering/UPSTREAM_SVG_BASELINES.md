@@ -390,7 +390,7 @@ output (DOM signature comparison):
 
 Notes:
 
-- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.3).
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.15.0).
 - `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
   compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
   `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
@@ -455,7 +455,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
   Mermaid when not explicitly specified. Baseline verification uses a structure-level DOM signature
   by default.
 
-## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.12.3)
+## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.15.0)
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
