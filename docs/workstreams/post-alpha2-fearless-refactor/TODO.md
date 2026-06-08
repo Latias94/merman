@@ -52,7 +52,15 @@ Last updated: 2026-06-08
 
 ## M6 — Xtask Parity Harness Module
 
-- [ ] PA2R-070 [owner=codex] [deps=PA2R-060] [scope=xtask]
+- [x] PA2R-070 [owner=codex] [deps=PA2R-060] [scope=crates/xtask/src/cmd/compare]
   Goal: Reduce compare/import/audit harness duplication and make DOM policy reporting more explicit without weakening comparator normalization.
-  Validation: focused xtask tests for touched harness code; representative parity compare command; `cargo fmt --all --check`
-  Review: Keep comparator normalization narrow and source-backed.
+  Validation: `cargo nextest run -p xtask compare_adapter_registry`; `cargo nextest run -p xtask diagram_filter_key`; `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: `compare-all-svgs` now delegates diagram dispatch to the per-diagram compare adapter registry instead of carrying a duplicate match over all primary SVG matrix diagrams.
+  Evidence: `crates/xtask/src/cmd/compare/diagrams.rs`; focused gates passed on 2026-06-08.
+
+## M7 — Compare Harness Common Arguments
+
+- [ ] PA2R-080 [owner=codex] [deps=PA2R-070] [scope=crates/xtask/src/cmd/compare]
+  Goal: Continue deepening the compare harness by moving common compare argument construction, report path naming, and optional root-report argument policy behind a small internal Module.
+  Validation: focused xtask tests for common compare args/report paths; representative `compare-all-svgs` command; `cargo fmt --all --check`
+  Review: Keep DOM signature policy unchanged; this is harness plumbing, not comparator normalization.

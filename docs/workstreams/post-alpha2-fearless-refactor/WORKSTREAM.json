@@ -42,7 +42,7 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-070",
+  "current_task": "PA2R-080",
   "gates": [
     "cargo fmt --all --check",
     "cargo check -p merman --features render",
@@ -50,6 +50,8 @@
     "cargo nextest run -p merman --features render render_svg",
     "cargo check -p xtask",
     "cargo nextest run -p xtask admission",
+    "cargo nextest run -p xtask compare_adapter_registry",
+    "cargo nextest run -p xtask diagram_filter_key",
     "cargo nextest run -p merman-bindings-core",
     "cargo nextest run -p merman-ffi render_svg",
     "cargo run -p xtask -- check-alignment",

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use super::diagrams::*;
+use super::diagrams::compare_diagram_svgs;
 use super::{
     RootDeltaReportLimit, diagram_supports_root_delta_report, parse_root_delta_report_limit,
 };
@@ -208,37 +208,7 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             push_root_report_args(&mut cmd_args, root_report_limit);
         }
 
-        let res = match diagram {
-            "er" => compare_er_svgs(cmd_args),
-            "flowchart" => compare_flowchart_svgs(cmd_args),
-            "state" => compare_state_svgs(cmd_args),
-            "class" => compare_class_svgs(cmd_args),
-            "sequence" => compare_sequence_svgs(cmd_args),
-            "info" => compare_info_svgs(cmd_args),
-            "pie" => compare_pie_svgs(cmd_args),
-            "sankey" => compare_sankey_svgs(cmd_args),
-            "packet" => compare_packet_svgs(cmd_args),
-            "timeline" => compare_timeline_svgs(cmd_args),
-            "journey" => compare_journey_svgs(cmd_args),
-            "kanban" => compare_kanban_svgs(cmd_args),
-            "gitgraph" => compare_gitgraph_svgs(cmd_args),
-            "gantt" => compare_gantt_svgs(cmd_args),
-            "c4" => compare_c4_svgs(cmd_args),
-            "block" => compare_block_svgs(cmd_args),
-            "radar" => compare_radar_svgs(cmd_args),
-            "requirement" => compare_requirement_svgs(cmd_args),
-            "mindmap" => compare_mindmap_svgs(cmd_args),
-            "architecture" => compare_architecture_svgs(cmd_args),
-            "quadrantchart" => compare_quadrantchart_svgs(cmd_args),
-            "treemap" => compare_treemap_svgs(cmd_args),
-            "xychart" => compare_xychart_svgs(cmd_args),
-            "treeView" => compare_tree_view_svgs(cmd_args),
-            "ishikawa" => compare_ishikawa_svgs(cmd_args),
-            "eventmodeling" => compare_eventmodeling_svgs(cmd_args),
-            other => Err(XtaskError::SvgCompareFailed(format!(
-                "unexpected diagram: {other}"
-            ))),
-        };
+        let res = compare_diagram_svgs(diagram, cmd_args);
 
         match res {
             Ok(()) => {}
