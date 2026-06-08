@@ -89,6 +89,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "state",
             "timeline",
             "treemap",
+            "venn",
             "xychart",
             "zenuml",
         ]

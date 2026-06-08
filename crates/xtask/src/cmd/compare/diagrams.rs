@@ -215,11 +215,11 @@ mod tests {
     }
 
     #[test]
-    fn venn_adapter_is_available_without_primary_admission() {
+    fn venn_adapter_is_available_for_primary_admission() {
         assert!(diagram_compare_adapter("venn").is_some());
         assert!(
-            !crate::cmd::primary_svg_matrix_diagrams().any(|diagram| diagram == "venn"),
-            "venn should stay out of compare-all until admission gates are green"
+            crate::cmd::primary_svg_matrix_diagrams().any(|diagram| diagram == "venn"),
+            "venn should be covered by compare-all after admission gates are green"
         );
     }
 }

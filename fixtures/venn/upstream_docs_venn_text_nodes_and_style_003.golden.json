@@ -1,0 +1,76 @@
+{
+  "diagramType": "venn",
+  "model": {
+    "type": "venn",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "subsets": [
+      {
+        "sets": [
+          "A"
+        ],
+        "size": 20.0,
+        "label": "Alpha"
+      },
+      {
+        "sets": [
+          "B"
+        ],
+        "size": 12.0,
+        "label": "Beta"
+      },
+      {
+        "sets": [
+          "A",
+          "B"
+        ],
+        "size": 3.0,
+        "label": "AB"
+      }
+    ],
+    "textNodes": [
+      {
+        "sets": [
+          "A"
+        ],
+        "id": "A1",
+        "label": "React"
+      },
+      {
+        "sets": [
+          "A"
+        ],
+        "id": "A2",
+        "label": "Design Systems"
+      }
+    ],
+    "styleEntries": [
+      {
+        "targets": [
+          "A"
+        ],
+        "styles": {
+          "fill": "#ff6b6b"
+        }
+      },
+      {
+        "targets": [
+          "A",
+          "B"
+        ],
+        "styles": {
+          "color": "#333"
+        }
+      },
+      {
+        "targets": [
+          "A1"
+        ],
+        "styles": {
+          "color": "red"
+        }
+      }
+    ]
+  }
+}

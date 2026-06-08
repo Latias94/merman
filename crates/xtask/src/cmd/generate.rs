@@ -67,6 +67,7 @@ const UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS: &[&str] = &[
     "treeView",
     "ishikawa",
     "eventmodeling",
+    "venn",
 ];
 
 const UPSTREAM_SVG_CHECK_ALL_DIAGRAMS: &[&str] = &[
@@ -96,6 +97,7 @@ const UPSTREAM_SVG_CHECK_ALL_DIAGRAMS: &[&str] = &[
     "treeView",
     "ishikawa",
     "eventmodeling",
+    "venn",
 ];
 
 fn upstream_svg_supported_diagrams_message() -> String {
@@ -2332,10 +2334,10 @@ mod tests {
     }
 
     #[test]
-    fn venn_upstream_svg_tools_are_targeted_only_before_admission() {
+    fn venn_upstream_svg_tools_are_included_after_admission() {
         assert!(UPSTREAM_SVG_TARGET_DIAGRAMS.contains(&"venn"));
-        assert!(!UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS.contains(&"venn"));
-        assert!(!UPSTREAM_SVG_CHECK_ALL_DIAGRAMS.contains(&"venn"));
+        assert!(UPSTREAM_SVG_EXPORT_ALL_DIAGRAMS.contains(&"venn"));
+        assert!(UPSTREAM_SVG_CHECK_ALL_DIAGRAMS.contains(&"venn"));
     }
 
     #[test]

@@ -1029,7 +1029,7 @@ const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
     },
     RenderParserFact {
         id: "venn",
-        metadata_id: None,
+        metadata_id: Some("venn"),
         model_kind: "venn",
         parser: render_venn,
     },
@@ -1058,6 +1058,7 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "state",
     "timeline",
     "treemap",
+    "venn",
     "xychart",
     "zenuml",
 ];

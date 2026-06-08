@@ -1,0 +1,126 @@
+{
+  "diagramType": "venn",
+  "layout": {
+    "VennDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 450.0
+      },
+      "width": 800.0,
+      "height": 450.0,
+      "diagram_height": 450.0,
+      "title_height": 0.0,
+      "scale": 0.5,
+      "padding": 15.0,
+      "use_max_width": true,
+      "use_debug_layout": false,
+      "areas": [
+        {
+          "sets": [
+            "A"
+          ],
+          "size": 20.0,
+          "label": "Alpha",
+          "text_x": 237.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "A",
+              "x": 294.216,
+              "y": 225.0,
+              "radius": 210.0
+            }
+          ],
+          "path": "\nM 294.22 225 \nm -210 0 \na 210 210 0 1 0 420 0 \na 210 210 0 1 0 -420 0",
+          "distinctPath": "\nM 294.22 225 \nm -210 0 \na 210 210 0 1 0 420 0 \na 210 210 0 1 0 -420 0 \nM 457.73 356.76 \nA 162.67 162.67 0 0 1 457.73 93.24 \nA 210 210 0 0 1 457.73 356.76"
+        },
+        {
+          "sets": [
+            "B"
+          ],
+          "size": 12.0,
+          "label": "Beta",
+          "text_x": 610.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "B",
+              "x": 553.118,
+              "y": 225.0,
+              "radius": 162.665
+            }
+          ],
+          "path": "\nM 553.12 225 \nm -162.67 0 \na 162.67 162.67 0 1 0 325.34 0 \na 162.67 162.67 0 1 0 -325.34 0",
+          "distinctPath": "\nM 553.12 225 \nm -162.67 0 \na 162.67 162.67 0 1 0 325.34 0 \na 162.67 162.67 0 1 0 -325.34 0 \nM 457.73 356.76 \nA 162.67 162.67 0 0 1 457.73 93.24 \nA 210 210 0 0 1 457.73 356.76"
+        },
+        {
+          "sets": [
+            "A",
+            "B"
+          ],
+          "size": 3.0,
+          "label": "AB",
+          "text_x": 447.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "A",
+              "x": 294.216,
+              "y": 225.0,
+              "radius": 210.0
+            },
+            {
+              "set": "B",
+              "x": 553.118,
+              "y": 225.0,
+              "radius": 162.665
+            }
+          ],
+          "path": "\nM 457.73 356.76 \nA 162.67 162.67 0 0 1 457.73 93.24 \nA 210 210 0 0 1 457.73 356.76",
+          "distinctPath": "\nM 457.73 356.76 \nA 162.67 162.67 0 0 1 457.73 93.24 \nA 210 210 0 0 1 457.73 356.76"
+        }
+      ],
+      "text_areas": [
+        {
+          "sets": [
+            "A"
+          ],
+          "center_x": 237.335,
+          "center_y": 225.0,
+          "inner_radius": 153.118,
+          "font_size": 20.0,
+          "debug_cells": []
+        }
+      ],
+      "text_nodes": [
+        {
+          "sets": [
+            "A"
+          ],
+          "id": "A1",
+          "label": "React",
+          "x": 99.145,
+          "y": 125.084,
+          "width": 130.916,
+          "height": 261.832
+        },
+        {
+          "sets": [
+            "A"
+          ],
+          "id": "A2",
+          "label": "Design Systems",
+          "x": 244.608,
+          "y": 125.084,
+          "width": 130.916,
+          "height": 261.832
+        }
+      ]
+    }
+  }
+}

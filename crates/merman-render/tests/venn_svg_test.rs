@@ -51,8 +51,8 @@ union A,B["Shared"]:4
     assert!(svg.contains(r#"class="venn-area venn-circle venn-set-1""#));
     assert!(svg.contains(r#"class="venn-area venn-intersection""#));
     assert!(svg.contains(r#"data-venn-sets="A_B""#));
-    assert!(svg.contains(">Core</text>"));
-    assert!(svg.contains(">Shared</text>"));
+    assert!(svg.contains(">Core</tspan></text>"));
+    assert!(svg.contains(">Shared</tspan></text>"));
 }
 
 #[test]

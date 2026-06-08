@@ -437,22 +437,12 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         owner_doc: "docs/alignment/ERROR_MINIMUM.md",
         defer_reason: Some("tracked as parse/snapshot-only; no upstream SVG baseline corpus"),
     },
-    DiagramAdmissionRecord {
-        diagram: "venn",
-        admission: AdmissionStatus::NotAdmitted,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotAdmitted,
-        layout: CoverageStatus::NotAdmitted,
-        svg: CoverageStatus::NotAdmitted,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: Some("compare-venn-svgs"),
-        owner_doc: "docs/alignment/VENN_BETA_ADMISSION_PLAN.md",
-        defer_reason: Some(
-            "needs normalized fixtures and committed upstream SVG baselines before admission",
-        ),
-    },
+    primary!(
+        "venn",
+        FixtureCorpusStatus::Normalized,
+        "compare-venn-svgs",
+        "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
+    ),
     DiagramAdmissionRecord {
         diagram: "wardley",
         admission: AdmissionStatus::NotAdmitted,
@@ -517,6 +507,7 @@ mod tests {
         assert_eq!(diagrams.first().copied(), Some("er"));
         assert!(diagrams.contains(&"flowchart"));
         assert!(diagrams.contains(&"treeView"));
+        assert!(diagrams.contains(&"venn"));
         assert!(!diagrams.contains(&"zenuml"));
         assert!(!diagrams.contains(&"error"));
     }
@@ -547,7 +538,14 @@ mod tests {
         assert!(!compatibility.requires_compare_command());
         assert!(!compatibility.svg_requires_upstream_baseline());
 
-        let not_admitted = record("venn");
+        let venn = record("venn");
+        assert!(venn.requires_compare_command());
+        assert!(!venn.requires_defer_reason());
+        assert!(venn.semantic_requires_golden());
+        assert!(venn.layout_requires_golden());
+        assert!(venn.svg_requires_upstream_baseline());
+
+        let not_admitted = record("wardley");
         assert!(!not_admitted.requires_compare_command());
         assert!(not_admitted.requires_defer_reason());
         assert!(!not_admitted.semantic_requires_golden());

@@ -1,0 +1,33 @@
+{
+  "diagramType": "venn",
+  "model": {
+    "type": "venn",
+    "title": "\"Team overlap\"",
+    "accTitle": null,
+    "accDescr": null,
+    "subsets": [
+      {
+        "sets": [
+          "Frontend"
+        ],
+        "size": 10.0
+      },
+      {
+        "sets": [
+          "Backend"
+        ],
+        "size": 10.0
+      },
+      {
+        "sets": [
+          "Backend",
+          "Frontend"
+        ],
+        "size": 2.5,
+        "label": "APIs"
+      }
+    ],
+    "textNodes": [],
+    "styleEntries": []
+  }
+}

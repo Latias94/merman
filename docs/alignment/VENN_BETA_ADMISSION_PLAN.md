@@ -1,14 +1,14 @@
 # Venn Beta Admission Plan (Mermaid@11.15.0)
 
-Status: In progress
+Status: Admitted
 Last updated: 2026-06-08
 Pinned Mermaid commit: `41646dfd43ac83f001b03c70605feb036afae46d`
 
-This document records the source-backed plan required before `venn-beta` can become an implementation workstream in `merman`.
+This document records the source-backed plan and admission evidence for `venn-beta` in `merman`.
 
 ## Problem
 
-Mermaid 11.15 includes `venn-beta`. Local support has started with a source-backed Rust layout kernel, a core detector/parser/typed semantic model, and a classic Stage B SVG renderer foundation. It now has targeted SVG tooling, but still lacks normalized Venn fixtures and committed upstream SVG baselines, so the family must stay out of the public supported matrix for now.
+Mermaid 11.15 includes `venn-beta`. Local support now has a source-backed Rust layout kernel, a core detector/parser/typed semantic model, a classic Stage B SVG renderer, normalized Venn fixtures, committed upstream SVG baselines, and a green family-local compare gate.
 
 The parser and DB are small enough to port directly. The risky part is layout/rendering: Mermaid delegates circle placement and intersection geometry to `@upsetjs/venn.js@2.0.0`, then mutates the generated SVG with D3 and optionally replaces shapes with RoughJS for `look: "handDrawn"`. A local renderer must not approximate that geometry with ad hoc circle formulas and then claim Mermaid parity.
 
@@ -18,7 +18,9 @@ The parser and DB are small enough to port directly. The risky part is layout/re
 - Done: core `venn-beta` detector, semantic JSON parser, and typed `RenderSemanticModel::Venn` model.
 - Done: classic Stage B SVG renderer foundation for title, circles, intersections, text-node `foreignObject`, debug text-node layout, typed render-model path, and semantic JSON path.
 - Done: targeted `xtask compare-venn-svgs`, `gen-upstream-svgs --diagram venn`, and `check-upstream-svgs --diagram venn` tooling.
-- Deferred: Venn is intentionally not listed in `supported_diagrams()` until normalized fixtures, committed upstream baselines, and family-local compare results exist.
+- Done: normalized Venn fixtures and committed upstream SVG baselines for Mermaid syntax-doc examples.
+- Done: `venn` is admitted to `supported_diagrams()` and the primary SVG matrix for classic SVG output.
+- Deferred: `look: "handDrawn"`/RoughJS Venn output remains out of scope until classic coverage is expanded.
 
 ## Source Evidence
 
@@ -67,7 +69,7 @@ The implementation lane should have these slices:
 4. Layout oracle fixtures: generate pinned package outputs for small, overlapping, disjoint, nested, higher-order, and text-node diagrams; compare circles, text centres, paths, and loss within documented tolerances before renderer DOM work.
 5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed. Classic SVG foundation is in place; `look: "handDrawn"` remains deferred until classic baselines are green.
 6. Theme roles: add `PresentationTheme::venn()` for `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and style override precedence.
-7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, run `xtask compare-venn-svgs`, and keep the family out of the main matrix until family-local structural DOM parity is green.
+7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, run `xtask compare-venn-svgs`, and keep the family in the main matrix once family-local structural DOM parity is green.
 
 ## Alternatives Considered
 
@@ -87,7 +89,7 @@ The implementation lane should have these slices:
 | Geometry parity | Circle intersection, overlap, segment area, and path helpers pass upstream-derived numeric tests | Dedicated Rust layout/geometry tests |
 | Layout source parity | Layout adapter outputs match the pinned `@upsetjs/venn.js@2.0.0` oracle for initial fixtures within documented tolerance | Dedicated layout tests or fixture snapshots |
 | SVG structural parity | Family-local Venn DOM parity passes for committed upstream baselines | `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity --dom-decimals 3` |
-| Matrix admission | `venn` is not admitted to `compare-all-svgs` until detector, parser, layout, renderer, fixtures, and baselines all exist | `cargo run -p xtask -- check-alignment` |
+| Matrix admission | `venn` is admitted to `compare-all-svgs` after detector, parser, layout, renderer, fixtures, and baselines exist | `cargo run -p xtask -- check-alignment` |
 
 ## Risks and Mitigations
 
@@ -104,12 +106,14 @@ The implementation lane should have these slices:
 
 ## Admission Decision
 
-`venn-beta` should remain not admitted for now. The source-backed layout/parser, classic renderer foundation, and targeted compare tooling are in place, but public support should wait for normalized fixtures and committed upstream SVG baselines. `@upsetjs/venn.js@2.0.0` should remain a test/tooling oracle only, not a runtime dependency.
+`venn-beta` is admitted for classic SVG output. The source-backed layout/parser, renderer foundation, normalized fixtures, upstream baselines, and targeted compare tooling are in place. `@upsetjs/venn.js@2.0.0` remains a test/tooling oracle only, not a runtime dependency.
 
-## Initial Gates For A Future Workstream
+## Admission Gates
 
 - `cargo nextest run -p merman-core venn`
 - dedicated Venn geometry/layout oracle tests
 - `cargo nextest run -p merman-render venn`
 - `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-venn-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+- `cargo run -p xtask -- check-upstream-svgs --diagram venn --check-dom --dom-mode parity --dom-decimals 3`
 - `cargo run -p xtask -- check-alignment`

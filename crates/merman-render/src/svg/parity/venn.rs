@@ -327,7 +327,7 @@ pub(super) fn render_venn_diagram_svg_model(
                 .unwrap_or_else(|| readable_circle_text_color(&base_color, dark_theme));
             let _ = write!(
                 &mut out,
-                r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}"><path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};">{label}</text></g>"#,
+                r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}"><path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
                 set_class = circle_index % 8,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
                 path = escape_attr(&area.path),
@@ -352,7 +352,7 @@ pub(super) fn render_venn_diagram_svg_model(
             let text_color = style_value(styles, "color").unwrap_or(set_text_color.as_str());
             let _ = write!(
                 &mut out,
-                r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}"><path d="{path}" style="fill-opacity: {fill_opacity}; fill: {fill};"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};">{label}</text></g>"#,
+                r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}"><path d="{path}" style="fill-opacity: {fill_opacity}; fill: {fill};"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
                 path = escape_attr(&area.path),
                 fill_opacity = fill_opacity,

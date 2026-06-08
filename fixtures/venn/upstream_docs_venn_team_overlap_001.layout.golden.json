@@ -1,0 +1,90 @@
+{
+  "diagramType": "venn",
+  "layout": {
+    "VennDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 450.0
+      },
+      "width": 800.0,
+      "height": 450.0,
+      "diagram_height": 426.0,
+      "title_height": 24.0,
+      "scale": 0.5,
+      "padding": 15.0,
+      "use_max_width": true,
+      "use_debug_layout": false,
+      "areas": [
+        {
+          "sets": [
+            "Frontend"
+          ],
+          "size": 10.0,
+          "text_x": 202.0,
+          "text_y": 213.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Frontend",
+              "x": 274.328,
+              "y": 213.0,
+              "radius": 198.0
+            }
+          ],
+          "path": "\nM 274.33 213 \nm -198 0 \na 198 198 0 1 0 396 0 \na 198 198 0 1 0 -396 0",
+          "distinctPath": "\nM 274.33 213 \nm -198 0 \na 198 198 0 1 0 396 0 \na 198 198 0 1 0 -396 0 \nM 400 366.01 \nA 198 198 0 0 1 400 59.99 \nA 198 198 0 0 1 400 366.01"
+        },
+        {
+          "sets": [
+            "Backend"
+          ],
+          "size": 10.0,
+          "text_x": 598.0,
+          "text_y": 213.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 525.672,
+              "y": 213.0,
+              "radius": 198.0
+            }
+          ],
+          "path": "\nM 525.67 213 \nm -198 0 \na 198 198 0 1 0 396 0 \na 198 198 0 1 0 -396 0",
+          "distinctPath": "\nM 525.67 213 \nm -198 0 \na 198 198 0 1 0 396 0 \na 198 198 0 1 0 -396 0 \nM 400 366.01 \nA 198 198 0 0 1 400 59.99 \nA 198 198 0 0 1 400 366.01"
+        },
+        {
+          "sets": [
+            "Backend",
+            "Frontend"
+          ],
+          "size": 2.5,
+          "label": "APIs",
+          "text_x": 400.0,
+          "text_y": 212.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Backend",
+              "x": 525.672,
+              "y": 213.0,
+              "radius": 198.0
+            },
+            {
+              "set": "Frontend",
+              "x": 274.328,
+              "y": 213.0,
+              "radius": 198.0
+            }
+          ],
+          "path": "\nM 400 366.01 \nA 198 198 0 0 1 400 59.99 \nA 198 198 0 0 1 400 366.01",
+          "distinctPath": "\nM 400 366.01 \nA 198 198 0 0 1 400 59.99 \nA 198 198 0 0 1 400 366.01"
+        }
+      ],
+      "text_areas": [],
+      "text_nodes": []
+    }
+  }
+}
