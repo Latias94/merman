@@ -40,7 +40,7 @@ spot checks:
 As of `2026-06-08` (see the generated report for details):
 
 - Parser-only fixtures: `10` (not included in SVG DOM parity gates)
-- Deferred fixtures (`fixtures/_deferred`): `17` parse OK, `86` parse ERR
+- Deferred fixtures (`fixtures/_deferred`): `16` parse OK, `86` parse ERR
 - Most “parse OK but deferred” cases are out-of-scope config signals (`look=handDrawn`, `layout=elk`) rather than
   parser correctness issues.
 
