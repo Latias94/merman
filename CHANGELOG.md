@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Fixed
+
+- Corrected web package documentation to use the published `@mermanjs/web` npm package name.
+
 ## [0.7.0-alpha.2] - 2026-06-08
 
 This alpha prepares the native, web, and editor-preview surfaces for external testing. It focuses on safer host integrations, clearer package APIs, and a smaller set of release-ready examples.
