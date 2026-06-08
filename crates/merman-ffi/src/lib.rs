@@ -130,9 +130,7 @@ pub unsafe extern "C" fn merman_engine_render_svg(
     source_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe {
-        let engine = engine_ref(engine)?;
-        let source_bytes = raw_bytes(source, source_len, "source")?;
-        engine.inner.render_svg(source_bytes)
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::render_svg)
     })
 }
 
@@ -148,9 +146,7 @@ pub unsafe extern "C" fn merman_engine_render_ascii(
     source_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe {
-        let engine = engine_ref(engine)?;
-        let source_bytes = raw_bytes(source, source_len, "source")?;
-        engine.inner.render_ascii(source_bytes)
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::render_ascii)
     })
 }
 
@@ -166,9 +162,7 @@ pub unsafe extern "C" fn merman_engine_parse_json(
     source_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe {
-        let engine = engine_ref(engine)?;
-        let source_bytes = raw_bytes(source, source_len, "source")?;
-        engine.inner.parse_json(source_bytes)
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::parse_json)
     })
 }
 
@@ -184,9 +178,7 @@ pub unsafe extern "C" fn merman_engine_layout_json(
     source_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe {
-        let engine = engine_ref(engine)?;
-        let source_bytes = raw_bytes(source, source_len, "source")?;
-        engine.inner.layout_json(source_bytes)
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::layout_json)
     })
 }
 
@@ -202,9 +194,7 @@ pub unsafe extern "C" fn merman_engine_validate_json(
     source_len: usize,
 ) -> MermanResult {
     ffi_result(|| unsafe {
-        let engine = engine_ref(engine)?;
-        let source_bytes = raw_bytes(source, source_len, "source")?;
-        engine.inner.validate_json(source_bytes)
+        ffi_engine_source_call(engine, source, source_len, BindingEngine::validate_json)
     })
 }
 
@@ -223,7 +213,15 @@ pub unsafe extern "C" fn merman_render_svg(
     options_json: *const u8,
     options_len: usize,
 ) -> MermanResult {
-    ffi_result(|| unsafe { render_svg_impl(source, source_len, options_json, options_len) })
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::render_svg,
+        )
+    })
 }
 
 /// Render Mermaid source to Unicode ASCII-art text.
@@ -241,7 +239,15 @@ pub unsafe extern "C" fn merman_render_ascii(
     options_json: *const u8,
     options_len: usize,
 ) -> MermanResult {
-    ffi_result(|| unsafe { render_ascii_impl(source, source_len, options_json, options_len) })
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::render_ascii,
+        )
+    })
 }
 
 /// Parse Mermaid source to semantic JSON bytes.
@@ -259,7 +265,15 @@ pub unsafe extern "C" fn merman_parse_json(
     options_json: *const u8,
     options_len: usize,
 ) -> MermanResult {
-    ffi_result(|| unsafe { parse_json_impl(source, source_len, options_json, options_len) })
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::parse_json,
+        )
+    })
 }
 
 /// Layout Mermaid source to layout JSON bytes.
@@ -277,7 +291,15 @@ pub unsafe extern "C" fn merman_layout_json(
     options_json: *const u8,
     options_len: usize,
 ) -> MermanResult {
-    ffi_result(|| unsafe { layout_json_impl(source, source_len, options_json, options_len) })
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::layout_json,
+        )
+    })
 }
 
 /// Validate Mermaid source and return a JSON validation payload.
@@ -295,7 +317,15 @@ pub unsafe extern "C" fn merman_validate_json(
     options_json: *const u8,
     options_len: usize,
 ) -> MermanResult {
-    ffi_result(|| unsafe { validate_json_impl(source, source_len, options_json, options_len) })
+    ffi_result(|| unsafe {
+        ffi_source_options_call(
+            source,
+            source_len,
+            options_json,
+            options_len,
+            merman_bindings_core::validate_json,
+        )
+    })
 }
 
 /// Return supported diagram type metadata as a JSON string array.
@@ -393,59 +423,55 @@ unsafe fn engine_ref<'a>(engine: *const MermanEngine) -> Result<&'a MermanEngine
     Ok(unsafe { &*engine })
 }
 
-unsafe fn render_svg_impl(
+unsafe fn ffi_engine_source_call<F>(
+    engine: *const MermanEngine,
     source: *const u8,
     source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> Result<Vec<u8>, BindingError> {
+    f: F,
+) -> Result<Vec<u8>, BindingError>
+where
+    F: FnOnce(&BindingEngine, &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let engine = unsafe { engine_ref(engine)? };
     let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    merman_bindings_core::render_svg(source_bytes, options_bytes)
+    f(&engine.inner, source_bytes)
 }
 
-unsafe fn render_ascii_impl(
+unsafe fn ffi_source_options_call<F>(
     source: *const u8,
     source_len: usize,
     options_json: *const u8,
     options_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    merman_bindings_core::render_ascii(source_bytes, options_bytes)
+    f: F,
+) -> Result<Vec<u8>, BindingError>
+where
+    F: FnOnce(&[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let request = unsafe {
+        FfiSourceOptionsRequest::from_raw(source, source_len, options_json, options_len)?
+    };
+    f(request.source, request.options_json)
 }
 
-unsafe fn parse_json_impl(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    merman_bindings_core::parse_json(source_bytes, options_bytes)
+struct FfiSourceOptionsRequest<'a> {
+    source: &'a [u8],
+    options_json: &'a [u8],
 }
 
-unsafe fn layout_json_impl(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    merman_bindings_core::layout_json(source_bytes, options_bytes)
-}
-
-unsafe fn validate_json_impl(
-    source: *const u8,
-    source_len: usize,
-    options_json: *const u8,
-    options_len: usize,
-) -> Result<Vec<u8>, BindingError> {
-    let source_bytes = unsafe { raw_bytes(source, source_len, "source")? };
-    let options_bytes = unsafe { raw_bytes(options_json, options_len, "options_json")? };
-    merman_bindings_core::validate_json(source_bytes, options_bytes)
+impl<'a> FfiSourceOptionsRequest<'a> {
+    unsafe fn from_raw(
+        source: *const u8,
+        source_len: usize,
+        options_json: *const u8,
+        options_len: usize,
+    ) -> Result<Self, BindingError> {
+        let source = unsafe { raw_bytes(source, source_len, "source")? };
+        let options_json = unsafe { raw_bytes(options_json, options_len, "options_json")? };
+        Ok(Self {
+            source,
+            options_json,
+        })
+    }
 }
 
 unsafe fn raw_bytes<'a>(
@@ -850,6 +876,34 @@ mod tests {
         assert_eq!(result.code, BindingStatus::Panic.code());
         let error = take_error(result);
         assert_eq!(error["code_name"], BindingStatus::Panic.code_name());
+    }
+
+    #[test]
+    fn ffi_source_options_request_decodes_source_and_null_options() {
+        let source = b"flowchart TD\nA[Hello]";
+        let request = unsafe {
+            FfiSourceOptionsRequest::from_raw(source.as_ptr(), source.len(), ptr::null(), 0)
+        }
+        .unwrap();
+
+        assert_eq!(request.source, source);
+        assert!(request.options_json.is_empty());
+    }
+
+    #[test]
+    fn ffi_engine_source_call_decodes_engine_and_source() {
+        let engine = MermanEngine {
+            inner: BindingEngine::new(b"").unwrap(),
+        };
+        let source = b"flowchart TD\nA[Hello]";
+        let output = unsafe {
+            ffi_engine_source_call(&engine, source.as_ptr(), source.len(), |_engine, source| {
+                Ok(source.to_vec())
+            })
+        }
+        .unwrap();
+
+        assert_eq!(output, source);
     }
 
     #[test]

@@ -5,7 +5,7 @@ Last updated: 2026-06-08
 
 ## Planned Gates
 
-- `git diff --check -- docs/workstreams/post-alpha2-fearless-refactor`
+- `git diff --check -- crates/merman-ffi/src/lib.rs docs/workstreams/post-alpha2-fearless-refactor`
 - `cargo fmt --all --check`
 - `cargo check -p merman --features render`
 - `cargo nextest run -p merman --features render svg_pipeline_tests`
@@ -21,6 +21,10 @@ Last updated: 2026-06-08
 - `cargo nextest run -p xtask root_parity_policy`
 - `cargo nextest run -p merman-bindings-core`
 - `cargo nextest run -p merman-ffi render_svg`
+- `cargo nextest run -p merman-ffi ffi_source_options_request`
+- `cargo nextest run -p merman-ffi ffi_engine_source_call`
+- `cargo nextest run -p merman-ffi`
+- `cargo check -p merman-ffi`
 - `cargo run -p xtask -- check-alignment`
 - `cargo nextest run -p merman-render presentation_theme`
 - `cargo nextest run -p merman-render timeline`
@@ -38,3 +42,4 @@ Last updated: 2026-06-08
 - 2026-06-08: PA2R-090 moved fixture-specific root parity residual acceptance out of `compare/all.rs` and into `compare/root_parity.rs`. `compare-all-svgs` now asks `RootParityResidualPolicy` to accept or summarize failures instead of owning acceptance fragments, remaining mismatch summaries, and missing-residual failures. `cargo nextest run -p xtask root_parity_policy` passed 4/4 focused tests. `cargo nextest run -p xtask compare_invocation` passed 4/4 focused tests. `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3` passed. `cargo check -p xtask` passed. `cargo fmt --all --check` passed.
 - 2026-06-08: PA2R-100 moved `compare-all-svgs` option parsing, diagram allow/skip selection, `treeView` alias handling, unmatched-filter skip policy, and root-deferred global sweep filtering behind `CompareAllOptions` and `CompareAllDiagramSelection`. `cargo nextest run -p xtask compare_all_options` passed 4/4 focused tests. `cargo nextest run -p xtask compare_all_diagram_selection` passed 3/3 focused tests. `cargo nextest run -p xtask compare_invocation` passed 4/4 focused tests. `cargo nextest run -p xtask root_parity_policy` passed 5/5 focused tests. `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3` passed. `cargo check -p xtask` passed. `cargo fmt --all --check` passed.
 - 2026-06-08: PA2R-110 moved `compare-all-svgs` result classification, unmatched-filter skips, root residual acceptance, accepted-residual printing, and final failure aggregation behind `CompareAllFailures`. `cargo nextest run -p xtask compare_all_failures` passed 3/3 focused tests. `cargo nextest run -p xtask compare_all_options` passed 3/3 focused tests. `cargo nextest run -p xtask compare_all_diagram_selection` passed 3/3 focused tests. `cargo nextest run -p xtask compare_invocation` passed 4/4 focused tests. `cargo nextest run -p xtask root_parity_policy` passed 5/5 focused tests. `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3` passed. `cargo check -p xtask` passed. `cargo fmt --all --check` passed.
+- 2026-06-08: PA2R-120 moved repeated C ABI raw pointer decoding and stateless/cached-engine call dispatch behind internal FFI helpers. Exported symbols, structs, headers, and ABI version stayed unchanged. `cargo nextest run -p merman-ffi ffi_source_options_request` passed 1/1 focused test. `cargo nextest run -p merman-ffi ffi_engine_source_call` passed 1/1 focused test. `cargo nextest run -p merman-ffi` passed 25/25 tests. `cargo check -p merman-ffi` passed. `cargo fmt --all --check` passed.

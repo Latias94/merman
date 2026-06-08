@@ -42,7 +42,7 @@
     "admission-inventory",
     "xtask-parity"
   ],
-  "current_task": "PA2R-120",
+  "current_task": "PA2R-130",
   "gates": [
     "cargo fmt --all --check",
     "cargo check -p merman --features render",
@@ -59,6 +59,10 @@
     "cargo nextest run -p xtask root_parity_policy",
     "cargo nextest run -p merman-bindings-core",
     "cargo nextest run -p merman-ffi render_svg",
+    "cargo nextest run -p merman-ffi ffi_source_options_request",
+    "cargo nextest run -p merman-ffi ffi_engine_source_call",
+    "cargo nextest run -p merman-ffi",
+    "cargo check -p merman-ffi",
     "cargo run -p xtask -- check-alignment",
     "cargo nextest run -p merman-render presentation_theme",
     "cargo nextest run -p merman-render timeline"

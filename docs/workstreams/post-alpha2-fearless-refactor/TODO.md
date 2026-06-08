@@ -92,7 +92,15 @@ Last updated: 2026-06-08
 
 ## M11 — Release-Facing Surface Reassessment
 
-- [ ] PA2R-120 [owner=codex] [deps=PA2R-110] [scope=crates/merman,crates/merman-bindings-core,crates/merman-ffi,crates/xtask,docs/workstreams/post-alpha2-fearless-refactor]
-  Goal: Reassess whether the next slice should leave xtask and target a higher-leverage release-facing seam: stale pass-through APIs, duplicated binding/package policy, or alpha-era surfaces that should not become de facto contracts.
-  Validation: focused gates selected by the chosen slice; `cargo fmt --all --check`
-  Review: Prefer deletion-test leverage and public-surface clarity over continuing compare harness helper extraction.
+- [x] PA2R-120 [owner=codex] [deps=PA2R-110] [scope=crates/merman-ffi,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Leave xtask for a release-facing seam and move repeated C ABI raw pointer decoding plus stateless/engine call dispatch behind internal FFI helpers without changing exported symbols, structs, or headers.
+  Validation: `cargo nextest run -p merman-ffi ffi_source_options_request`; `cargo nextest run -p merman-ffi ffi_engine_source_call`; `cargo nextest run -p merman-ffi`; `cargo check -p merman-ffi`; `cargo fmt --all --check`
+  Review: `ffi_source_options_call`, `ffi_engine_source_call`, and `FfiSourceOptionsRequest` now own the unsafe source/options decoding rules that had been duplicated across stateless and cached-engine entry points.
+  Evidence: `crates/merman-ffi/src/lib.rs`; focused and crate-level FFI gates passed on 2026-06-08.
+
+## M12 — Binding Surface Final Audit
+
+- [ ] PA2R-130 [owner=codex] [deps=PA2R-120] [scope=crates/merman-bindings-core,crates/merman-uniffi,crates/merman-wasm,crates/merman-ffi,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Reassess the high-level binding surfaces and package docs for duplicated options/error policy, stale examples, or alpha-era public contracts that should be clarified before the next release.
+  Validation: focused binding/package gates selected by any chosen slice; `cargo fmt --all --check`
+  Review: Do not change public ABI or generated-binding API shape without explicit contract evidence; prefer internal locality and documentation cleanup.
