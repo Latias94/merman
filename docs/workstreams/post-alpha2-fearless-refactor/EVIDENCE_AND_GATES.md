@@ -10,6 +10,8 @@ Last updated: 2026-06-08
 - `cargo check -p merman --features render`
 - `cargo nextest run -p merman --features render svg_pipeline_tests`
 - `cargo nextest run -p merman --features render render_svg`
+- `cargo check -p xtask`
+- `cargo nextest run -p xtask admission`
 - `cargo nextest run -p merman-bindings-core`
 - `cargo nextest run -p merman-ffi render_svg`
 - `cargo run -p xtask -- check-alignment`
@@ -23,3 +25,4 @@ Last updated: 2026-06-08
 - 2026-06-08: PA2R-030 derived supported diagram metadata from render parser facts. `cargo nextest run -p merman-core registry` passed 10/10 focused tests. `cargo nextest run -p merman-core detect` passed 22/22 focused tests. `cargo run -p xtask -- check-alignment` passed. `cargo fmt --all --check` passed.
 - 2026-06-08: PA2R-040 moved Timeline theme color, palette, disabled color, root color, and redux mode roles behind `PresentationTheme::timeline`. `timeline.rs` no longer walks raw `themeVariables` paths. `cargo nextest run -p merman-render presentation_theme` passed 10/10 focused tests. `cargo nextest run -p merman-render timeline` passed 9/9 focused tests. `cargo fmt --all --check` passed.
 - 2026-06-08: PA2R-050 replaced the narrow private `HeadlessRenderOperation` helper with `HeadlessOperation`. The internal Module now owns semantic `layout_diagram` and typed-render SVG stages, while public free functions and `HeadlessRenderer` remain adapters. `cargo check -p merman --features render` passed. `cargo nextest run -p merman --features render svg_pipeline_tests` passed 9/9 focused tests. `cargo nextest run -p merman --features render render_svg` passed 7/7 focused tests. `cargo fmt --all --check` passed.
+- 2026-06-08: PA2R-060 moved admission status combinations behind `DiagramAdmissionRecord` and status helper methods. Primary SVG, root-deferred, compare-command, defer-reason, and fixture evidence projections now read from the inventory Module instead of duplicating enum combinations in the alignment check. `cargo nextest run -p xtask admission` passed 4/4 focused tests. `cargo run -p xtask -- check-alignment` passed. `cargo check -p xtask` passed. `cargo fmt --all --check` passed.

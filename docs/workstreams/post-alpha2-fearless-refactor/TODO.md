@@ -44,10 +44,11 @@ Last updated: 2026-06-08
 
 ## M5 — Admission Inventory Module
 
-- [ ] PA2R-060 [owner=codex] [deps=PA2R-050] [scope=xtask,docs/alignment,docs/workstreams]
+- [x] PA2R-060 [owner=codex] [deps=PA2R-050] [scope=crates/xtask/src/cmd/admission.rs]
   Goal: Reassess fixture/family admission status after the alpha.2 release and move duplicated support, skip, defer, and root-coverage facts toward one inventory Module.
-  Validation: `cargo run -p xtask -- check-alignment`; focused xtask tests for touched inventory/report code; `cargo fmt --all --check`
-  Review: Admission facts should be projectable into docs and gates without hand-maintained family lists drifting across reports.
+  Validation: `cargo nextest run -p xtask admission`; `cargo run -p xtask -- check-alignment`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: Admission status combinations now live behind `DiagramAdmissionRecord` and status helper methods instead of leaking enum combinations into projections and alignment checks.
+  Evidence: `crates/xtask/src/cmd/admission.rs`; focused gates passed on 2026-06-08.
 
 ## M6 — Xtask Parity Harness Module
 

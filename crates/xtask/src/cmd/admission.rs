@@ -29,18 +29,72 @@ pub(crate) enum FixtureCorpusStatus {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DiagramAdmissionRecord {
-    pub(crate) diagram: &'static str,
-    pub(crate) admission: AdmissionStatus,
-    pub(crate) fixtures: FixtureCorpusStatus,
-    pub(crate) normalized_fixture_dir: Option<&'static str>,
-    pub(crate) deferred_fixture_dir: Option<&'static str>,
-    pub(crate) semantic: CoverageStatus,
-    pub(crate) layout: CoverageStatus,
-    pub(crate) svg: CoverageStatus,
-    pub(crate) root_viewport: CoverageStatus,
-    pub(crate) compare_command: Option<&'static str>,
-    pub(crate) owner_doc: &'static str,
-    pub(crate) defer_reason: Option<&'static str>,
+    diagram: &'static str,
+    admission: AdmissionStatus,
+    fixtures: FixtureCorpusStatus,
+    normalized_fixture_dir: Option<&'static str>,
+    deferred_fixture_dir: Option<&'static str>,
+    semantic: CoverageStatus,
+    layout: CoverageStatus,
+    svg: CoverageStatus,
+    root_viewport: CoverageStatus,
+    compare_command: Option<&'static str>,
+    owner_doc: &'static str,
+    defer_reason: Option<&'static str>,
+}
+
+impl CoverageStatus {
+    fn requires_fixture_evidence(self) -> bool {
+        self == Self::Covered
+    }
+}
+
+impl FixtureCorpusStatus {
+    fn expects_normalized_dir(self) -> bool {
+        matches!(self, Self::Normalized | Self::NormalizedWithDeferred)
+    }
+
+    fn expects_deferred_dir(self) -> bool {
+        matches!(self, Self::NormalizedWithDeferred)
+    }
+}
+
+impl DiagramAdmissionRecord {
+    fn is_primary_svg_matrix(self) -> bool {
+        self.admission == AdmissionStatus::PrimarySvgMatrix
+    }
+
+    fn is_root_viewport_deferred(self) -> bool {
+        self.is_primary_svg_matrix() && self.root_viewport == CoverageStatus::Deferred
+    }
+
+    fn requires_compare_command(self) -> bool {
+        self.is_primary_svg_matrix()
+    }
+
+    fn requires_defer_reason(self) -> bool {
+        matches!(
+            self.admission,
+            AdmissionStatus::NotAdmitted | AdmissionStatus::NotInPinnedBaseline
+        ) || self.is_root_viewport_deferred()
+    }
+
+    fn has_consistent_fixture_dirs(self) -> bool {
+        self.normalized_fixture_dir.is_some() == self.fixtures.expects_normalized_dir()
+            && self.deferred_fixture_dir.is_some() == self.fixtures.expects_deferred_dir()
+    }
+
+    fn semantic_requires_golden(self) -> bool {
+        self.semantic.requires_fixture_evidence()
+    }
+
+    fn layout_requires_golden(self) -> bool {
+        self.layout.requires_fixture_evidence()
+    }
+
+    fn svg_requires_upstream_baseline(self) -> bool {
+        self.svg.requires_fixture_evidence()
+    }
 }
 
 pub(crate) fn admission_inventory() -> &'static [DiagramAdmissionRecord] {
@@ -50,17 +104,16 @@ pub(crate) fn admission_inventory() -> &'static [DiagramAdmissionRecord] {
 pub(crate) fn primary_svg_matrix_diagrams() -> impl Iterator<Item = &'static str> {
     ADMISSION_INVENTORY
         .iter()
-        .filter(|record| record.admission == AdmissionStatus::PrimarySvgMatrix)
+        .copied()
+        .filter(|record| record.is_primary_svg_matrix())
         .map(|record| record.diagram)
 }
 
 pub(crate) fn root_viewport_deferred_diagrams() -> impl Iterator<Item = &'static str> {
     ADMISSION_INVENTORY
         .iter()
-        .filter(|record| {
-            record.admission == AdmissionStatus::PrimarySvgMatrix
-                && record.root_viewport == CoverageStatus::Deferred
-        })
+        .copied()
+        .filter(|record| record.is_root_viewport_deferred())
         .map(|record| record.diagram)
 }
 
@@ -69,51 +122,23 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
     let mut failures = Vec::new();
 
     for record in admission_inventory() {
-        match record.fixtures {
-            FixtureCorpusStatus::Normalized => {
-                if record.normalized_fixture_dir.is_none() || record.deferred_fixture_dir.is_some()
-                {
-                    failures.push(format!(
-                        "admission inventory: `{}` fixture status is Normalized but dirs are inconsistent",
-                        record.diagram
-                    ));
-                }
-            }
-            FixtureCorpusStatus::NormalizedWithDeferred => {
-                if record.normalized_fixture_dir.is_none() || record.deferred_fixture_dir.is_none()
-                {
-                    failures.push(format!(
-                        "admission inventory: `{}` fixture status is NormalizedWithDeferred but dirs are incomplete",
-                        record.diagram
-                    ));
-                }
-            }
-            FixtureCorpusStatus::None => {
-                if record.normalized_fixture_dir.is_some() || record.deferred_fixture_dir.is_some()
-                {
-                    failures.push(format!(
-                        "admission inventory: `{}` fixture status is None but fixture dirs are set",
-                        record.diagram
-                    ));
-                }
-            }
+        if !record.has_consistent_fixture_dirs() {
+            failures.push(format!(
+                "admission inventory: `{}` fixture status {:?} has inconsistent dirs",
+                record.diagram, record.fixtures
+            ));
         }
 
-        if record.admission == AdmissionStatus::PrimarySvgMatrix && record.compare_command.is_none()
-        {
+        if record.requires_compare_command() && record.compare_command.is_none() {
             failures.push(format!(
                 "admission inventory: primary SVG diagram `{}` has no compare command",
                 record.diagram
             ));
         }
 
-        if matches!(
-            record.admission,
-            AdmissionStatus::NotAdmitted | AdmissionStatus::NotInPinnedBaseline
-        ) && record.defer_reason.is_none()
-        {
+        if record.requires_defer_reason() && record.defer_reason.is_none() {
             failures.push(format!(
-                "admission inventory: non-admitted diagram `{}` needs a defer reason",
+                "admission inventory: diagram `{}` needs a defer reason",
                 record.diagram
             ));
         }
@@ -136,7 +161,7 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
                     path.display()
                 ));
             } else {
-                if record.semantic == CoverageStatus::Covered
+                if record.semantic_requires_golden()
                     && count_files_with_suffix(&path, ".golden.json") == 0
                 {
                     failures.push(format!(
@@ -145,7 +170,7 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
                         path.display()
                     ));
                 }
-                if record.layout == CoverageStatus::Covered
+                if record.layout_requires_golden()
                     && count_files_with_suffix(&path, ".layout.golden.json") == 0
                 {
                     failures.push(format!(
@@ -161,7 +186,7 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
         // Keep `NormalizedWithDeferred` as inventory metadata, but do not make the release
         // alignment gate depend on those local directories existing in every checkout.
 
-        if record.svg == CoverageStatus::Covered {
+        if record.svg_requires_upstream_baseline() {
             let upstream_dir = fixtures_root.join("upstream-svgs").join(record.diagram);
             if !upstream_dir.is_dir() {
                 failures.push(format!(
@@ -469,3 +494,95 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         defer_reason: Some("absent from pinned Mermaid 11.15 source"),
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn record(diagram: &str) -> DiagramAdmissionRecord {
+        admission_inventory()
+            .iter()
+            .copied()
+            .find(|record| record.diagram == diagram)
+            .unwrap_or_else(|| panic!("missing admission record for {diagram}"))
+    }
+
+    #[test]
+    fn primary_svg_matrix_projection_keeps_inventory_order() {
+        let diagrams: Vec<_> = primary_svg_matrix_diagrams().collect();
+
+        assert_eq!(diagrams.first().copied(), Some("er"));
+        assert!(diagrams.contains(&"flowchart"));
+        assert!(diagrams.contains(&"treeView"));
+        assert!(!diagrams.contains(&"zenuml"));
+        assert!(!diagrams.contains(&"error"));
+    }
+
+    #[test]
+    fn root_deferred_projection_is_derived_from_inventory_records() {
+        let diagrams: Vec<_> = root_viewport_deferred_diagrams().collect();
+
+        assert_eq!(diagrams, ["treeView", "ishikawa", "eventmodeling"]);
+        for diagram in diagrams {
+            let record = record(diagram);
+            assert!(record.is_primary_svg_matrix());
+            assert!(record.is_root_viewport_deferred());
+            assert!(record.requires_defer_reason());
+        }
+    }
+
+    #[test]
+    fn admission_rules_are_record_owned() {
+        let primary = record("flowchart");
+        assert!(primary.requires_compare_command());
+        assert!(!primary.requires_defer_reason());
+        assert!(primary.semantic_requires_golden());
+        assert!(primary.layout_requires_golden());
+        assert!(primary.svg_requires_upstream_baseline());
+
+        let compatibility = record("zenuml");
+        assert!(!compatibility.requires_compare_command());
+        assert!(!compatibility.svg_requires_upstream_baseline());
+
+        let not_admitted = record("venn");
+        assert!(!not_admitted.requires_compare_command());
+        assert!(not_admitted.requires_defer_reason());
+        assert!(!not_admitted.semantic_requires_golden());
+        assert!(!not_admitted.layout_requires_golden());
+        assert!(!not_admitted.svg_requires_upstream_baseline());
+    }
+
+    #[test]
+    fn admission_inventory_records_are_internally_consistent() {
+        let mut seen = BTreeSet::new();
+
+        for record in admission_inventory() {
+            assert!(
+                seen.insert(record.diagram),
+                "duplicate admission record for {}",
+                record.diagram
+            );
+            assert!(
+                record.has_consistent_fixture_dirs(),
+                "{} fixture dirs should match {:?}",
+                record.diagram,
+                record.fixtures
+            );
+            if record.requires_compare_command() {
+                assert!(
+                    record.compare_command.is_some(),
+                    "{} should name its compare command",
+                    record.diagram
+                );
+            }
+            if record.requires_defer_reason() {
+                assert!(
+                    record.defer_reason.is_some(),
+                    "{} should explain its defer reason",
+                    record.diagram
+                );
+            }
+        }
+    }
+}
