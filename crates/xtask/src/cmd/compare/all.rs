@@ -23,12 +23,8 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     diagram_selection.print_root_deferred_skip();
     let diagrams = diagram_selection.diagrams;
 
-    let mut root_parity_policy = options
-        .root_parity_policy_enabled()
-        .then(|| RootParityResidualPolicy::new(&diagrams));
     let invocation_options = options.invocation_options();
-
-    let mut failures: Vec<String> = Vec::new();
+    let mut failures = CompareAllFailures::new(&options, &diagrams);
 
     for diagram in diagrams {
         println!("\n== compare {diagram} ==");
@@ -38,46 +34,14 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             report_path,
         } = invocation_options.for_diagram(diagram, &compare_dir);
 
-        let res = compare_diagram_svgs(diagram, cmd_args);
-
-        match res {
-            Ok(()) => {}
-            Err(XtaskError::SvgCompareFailed(msg))
-                if options.should_skip_unmatched_filter_message(&msg) =>
-            {
-                println!("(skipped: {msg})");
-            }
-            Err(XtaskError::SvgCompareFailed(msg)) => {
-                if let Some(policy) = root_parity_policy.as_mut() {
-                    if let Some(failure) =
-                        policy.accept_or_summarize_failure(diagram, &msg, report_path.as_deref())
-                    {
-                        failures.push(failure);
-                    }
-                } else {
-                    failures.push(format!("{diagram}: {}", XtaskError::SvgCompareFailed(msg)));
-                }
-            }
-            Err(err) => failures.push(format!("{diagram}: {err}")),
-        }
+        failures.record(
+            diagram,
+            compare_diagram_svgs(diagram, cmd_args),
+            report_path.as_deref(),
+        );
     }
 
-    if let Some(policy) = root_parity_policy {
-        let accepted = policy.accepted_summaries();
-        if !accepted.is_empty() {
-            println!("\n== accepted root parity residuals ==");
-            for line in accepted {
-                println!("{line}");
-            }
-        }
-        failures.extend(policy.missing_failures());
-    }
-
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
-    }
+    failures.finish()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,12 +128,6 @@ impl CompareAllOptions {
 
     fn global_root_parity_sweep(&self) -> bool {
         self.root_parity_policy_enabled() && self.only_diagrams.is_empty()
-    }
-
-    fn should_skip_unmatched_filter_message(&self, msg: &str) -> bool {
-        self.filter.is_some()
-            && self.only_diagrams.is_empty()
-            && msg.contains("no .mmd fixtures matched under ")
     }
 
     fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
@@ -260,6 +218,80 @@ impl CompareAllDiagramSelection {
                 self.skipped_root_deferred.join(", ")
             );
         }
+    }
+}
+
+#[derive(Debug)]
+struct CompareAllFailures {
+    skip_unmatched_filter_messages: bool,
+    root_parity_policy: Option<RootParityResidualPolicy>,
+    failures: Vec<String>,
+}
+
+impl CompareAllFailures {
+    fn new(options: &CompareAllOptions, diagrams: &[&str]) -> Self {
+        Self {
+            skip_unmatched_filter_messages: options.filter.is_some()
+                && options.only_diagrams.is_empty(),
+            root_parity_policy: options
+                .root_parity_policy_enabled()
+                .then(|| RootParityResidualPolicy::new(diagrams)),
+            failures: Vec::new(),
+        }
+    }
+
+    fn record(
+        &mut self,
+        diagram: &str,
+        result: Result<(), XtaskError>,
+        report_path: Option<&Path>,
+    ) {
+        match result {
+            Ok(()) => {}
+            Err(XtaskError::SvgCompareFailed(msg)) if self.should_skip_unmatched_filter(&msg) => {
+                println!("(skipped: {msg})");
+            }
+            Err(XtaskError::SvgCompareFailed(msg)) => {
+                self.record_svg_compare_failure(diagram, &msg, report_path);
+            }
+            Err(err) => self.failures.push(format!("{diagram}: {err}")),
+        }
+    }
+
+    fn finish(mut self) -> Result<(), XtaskError> {
+        if let Some(policy) = self.root_parity_policy {
+            let accepted = policy.accepted_summaries();
+            if !accepted.is_empty() {
+                println!("\n== accepted root parity residuals ==");
+                for line in accepted {
+                    println!("{line}");
+                }
+            }
+            self.failures.extend(policy.missing_failures());
+        }
+
+        if self.failures.is_empty() {
+            Ok(())
+        } else {
+            Err(XtaskError::SvgCompareFailed(self.failures.join("\n")))
+        }
+    }
+
+    fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
+        if let Some(policy) = self.root_parity_policy.as_mut() {
+            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
+                self.failures.push(failure);
+            }
+        } else {
+            self.failures.push(format!(
+                "{diagram}: {}",
+                XtaskError::SvgCompareFailed(msg.to_string())
+            ));
+        }
+    }
+
+    fn should_skip_unmatched_filter(&self, msg: &str) -> bool {
+        self.skip_unmatched_filter_messages && msg.contains("no .mmd fixtures matched under ")
     }
 }
 
@@ -471,20 +503,60 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_skips_unmatched_filter_only_for_global_filtered_runs() {
+    fn compare_all_failures_skip_unmatched_filter_only_for_global_filtered_runs() {
         let msg = "no .mmd fixtures matched under fixtures";
-        let global = CompareAllOptions {
+        let global_options = CompareAllOptions {
             filter: Some("missing".to_string()),
             ..Default::default()
         };
-        assert!(global.should_skip_unmatched_filter_message(msg));
+        let global = CompareAllFailures::new(&global_options, &["info"]);
+        assert!(global.should_skip_unmatched_filter(msg));
 
-        let targeted = CompareAllOptions {
+        let targeted_options = CompareAllOptions {
             filter: Some("missing".to_string()),
             only_diagrams: vec!["info".to_string()],
             ..Default::default()
         };
-        assert!(!targeted.should_skip_unmatched_filter_message(msg));
+        let targeted = CompareAllFailures::new(&targeted_options, &["info"]);
+        assert!(!targeted.should_skip_unmatched_filter(msg));
+    }
+
+    #[test]
+    fn compare_all_failures_records_plain_svg_compare_failures() {
+        let options = CompareAllOptions::default();
+        let mut failures = CompareAllFailures::new(&options, &["info"]);
+
+        failures.record(
+            "info",
+            Err(XtaskError::SvgCompareFailed("dom mismatch".to_string())),
+            None,
+        );
+
+        assert_eq!(
+            failures.failures,
+            ["info: svg compare failed:\ndom mismatch"]
+        );
+    }
+
+    #[test]
+    fn compare_all_failures_accepts_expected_root_residuals() {
+        let options = CompareAllOptions {
+            check_dom: true,
+            dom_mode: Some("parity-root".to_string()),
+            ..Default::default()
+        };
+        let mut failures = CompareAllFailures::new(&options, &["sequence"]);
+
+        failures.record(
+            "sequence",
+            Err(XtaskError::SvgCompareFailed(
+                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `viewBox` mismatch upstream=`<n> <n> 796 1096` local=`<n> <n> 796 1126`)"
+                    .to_string(),
+            )),
+            None,
+        );
+
+        assert!(failures.finish().is_ok());
     }
 
     #[test]

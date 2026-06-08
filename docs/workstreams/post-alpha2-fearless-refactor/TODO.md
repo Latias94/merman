@@ -82,9 +82,17 @@ Last updated: 2026-06-08
   Review: Option parsing, diagram allow/skip selection, `treeView` alias handling, unmatched-filter skip policy, and root-deferred global sweep filtering now live behind internal types while preserving legacy CLI behavior.
   Evidence: `CompareAllOptions`; `CompareAllDiagramSelection`; focused gates passed on 2026-06-08.
 
-## M10 — Compare Harness Follow-Up Selection
+## M10 — Compare-All Failure Collection
 
-- [ ] PA2R-110 [owner=codex] [deps=PA2R-100] [scope=crates/xtask/src/cmd/compare,docs/workstreams/post-alpha2-fearless-refactor]
-  Goal: Reassess the remaining compare harness complexity after PA2R-100 and select the next deletion-test refactor only if it removes duplicated policy or narrows a release-facing interface.
-  Validation: selected focused xtask tests; representative `compare-all-svgs` command if compare behavior changes; `cargo fmt --all --check`
-  Review: Prefer failure aggregation/reporting cleanup or a higher-leverage non-xtask slice over style-only helper extraction.
+- [x] PA2R-110 [owner=codex] [deps=PA2R-100] [scope=crates/xtask/src/cmd/compare,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Move `compare-all-svgs` failure classification, unmatched-filter skips, root residual acceptance, accepted-residual printing, and final failure aggregation behind a small internal object.
+  Validation: `cargo nextest run -p xtask compare_all_failures`; `cargo nextest run -p xtask compare_all_options`; `cargo nextest run -p xtask compare_all_diagram_selection`; `cargo nextest run -p xtask compare_invocation`; `cargo nextest run -p xtask root_parity_policy`; `cargo run -p xtask -- compare-all-svgs --diagram info --filter upstream_info_spec --check-dom --dom-mode parity --dom-decimals 3`; `cargo check -p xtask`; `cargo fmt --all --check`
+  Review: `CompareAllFailures` now owns the result policy for compare-all runs, leaving the command loop to build invocations and execute diagram adapters without carrying residual/reporting state.
+  Evidence: `CompareAllFailures`; focused gates passed on 2026-06-08.
+
+## M11 — Release-Facing Surface Reassessment
+
+- [ ] PA2R-120 [owner=codex] [deps=PA2R-110] [scope=crates/merman,crates/merman-bindings-core,crates/merman-ffi,crates/xtask,docs/workstreams/post-alpha2-fearless-refactor]
+  Goal: Reassess whether the next slice should leave xtask and target a higher-leverage release-facing seam: stale pass-through APIs, duplicated binding/package policy, or alpha-era surfaces that should not become de facto contracts.
+  Validation: focused gates selected by the chosen slice; `cargo fmt --all --check`
+  Review: Prefer deletion-test leverage and public-surface clarity over continuing compare harness helper extraction.
