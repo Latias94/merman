@@ -1,321 +1,80 @@
+mod request;
+
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, binding_fixed_local_offset_minutes,
-    binding_fixed_today, binding_site_config, css_declaration_value, finite_positive,
-    internal_json_error, no_diagram_error, normalize_option, parse_options, source_text,
-    validation_payload_json,
+    BindingError, BindingOptions, parse_options, source_text, validation_payload_json,
 };
-use merman::render::{
-    DeterministicTextMeasurer, HeadlessRenderer, LayoutOptions, VendoredFontMetricsTextMeasurer,
-};
-use std::sync::Arc;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PipelineKind {
-    Parity,
-    Readable,
-    ResvgSafe,
-}
-
-impl Default for PipelineKind {
-    fn default() -> Self {
-        Self::Parity
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SvgPipelineOptions {
-    kind: PipelineKind,
-    scoped_css: Option<String>,
-    css_override_policy: merman::render::CssOverridePolicy,
-    root_background_color: Option<String>,
-    drop_native_duplicate_fallbacks: bool,
-}
-
-impl Default for SvgPipelineOptions {
-    fn default() -> Self {
-        Self {
-            kind: PipelineKind::default(),
-            scoped_css: None,
-            css_override_policy: merman::render::CssOverridePolicy::Preserve,
-            root_background_color: None,
-            drop_native_duplicate_fallbacks: false,
-        }
-    }
-}
-
-impl SvgPipelineOptions {
-    fn to_pipeline(self) -> merman::render::SvgPipeline {
-        let mut pipeline = match self.kind {
-            PipelineKind::Parity => merman::render::SvgPipeline::parity(),
-            PipelineKind::Readable => merman::render::SvgPipeline::readable(),
-            PipelineKind::ResvgSafe => merman::render::SvgPipeline::resvg_safe(),
-        };
-
-        if self.drop_native_duplicate_fallbacks {
-            pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
-        }
-
-        if let Some(root_background_color) = self.root_background_color {
-            pipeline.push_postprocessor(merman::render::RootBackgroundPostprocessor::new(
-                root_background_color,
-            ));
-        }
-
-        if let Some(scoped_css) = self.scoped_css.filter(|css| !css.trim().is_empty()) {
-            pipeline.push_postprocessor(
-                merman::render::ScopedCssPostprocessor::new(scoped_css)
-                    .with_override_policy(self.css_override_policy),
-            );
-            if matches!(self.kind, PipelineKind::ResvgSafe) {
-                pipeline.push_postprocessor(merman::render::SanitizeCssPostprocessor);
-            }
-        }
-
-        pipeline
-    }
-}
+use request::RenderRequestPlan;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    let options = parse_options(options_json)?;
-    let (renderer, pipeline) = build_renderer(&options)?;
-
-    let svg = renderer
-        .render_svg_with_pipeline_sync(source, &pipeline.to_pipeline())
-        .map_err(classify_render_error)?;
-
-    match svg {
-        Some(svg) => Ok(svg.into_bytes()),
-        None => Err(no_diagram_error()),
-    }
+    request_plan_from_options_json(options_json)?.render_svg(source)
 }
 
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    let options = parse_options(options_json)?;
-    let (renderer, _pipeline) = build_renderer(&options)?;
-
-    let parsed = renderer
-        .parse_diagram_sync(source)
-        .map_err(classify_render_error)?
-        .ok_or_else(no_diagram_error)?;
-
-    serde_json::to_vec(&parsed.model).map_err(internal_json_error)
+    request_plan_from_options_json(options_json)?.parse_json(source)
 }
 
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     let source = source_text(source)?;
-    let options = parse_options(options_json)?;
-    let (renderer, _pipeline) = build_renderer(&options)?;
-
-    let layouted = renderer
-        .layout_diagram_sync(source)
-        .map_err(classify_render_error)?
-        .ok_or_else(no_diagram_error)?;
-
-    serde_json::to_vec(&layouted).map_err(internal_json_error)
+    request_plan_from_options_json(options_json)?.layout_json(source)
 }
 
 pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    validation_payload_json(parse_json(source, options_json).map(|_| ()))
+    validation_payload_json(validate_source(source, options_json))
 }
 
 #[derive(Clone)]
 pub(crate) struct CachedRenderEngine {
-    renderer: HeadlessRenderer,
-    pipeline: merman::render::SvgPipeline,
+    plan: RenderRequestPlan,
 }
 
 impl CachedRenderEngine {
     pub(crate) fn new(options: &BindingOptions) -> Result<Self, BindingError> {
-        let (renderer, pipeline) = build_renderer(options)?;
         Ok(Self {
-            renderer,
-            pipeline: pipeline.to_pipeline(),
+            plan: RenderRequestPlan::from_options(options)?,
         })
     }
 
     pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        let svg = self
-            .renderer
-            .render_svg_with_pipeline_sync(source, &self.pipeline)
-            .map_err(classify_render_error)?;
-
-        match svg {
-            Some(svg) => Ok(svg.into_bytes()),
-            None => Err(no_diagram_error()),
-        }
+        self.plan.render_svg(source)
     }
 
     pub(crate) fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        let parsed = self
-            .renderer
-            .parse_diagram_sync(source)
-            .map_err(classify_render_error)?
-            .ok_or_else(no_diagram_error)?;
-
-        serde_json::to_vec(&parsed.model).map_err(internal_json_error)
+        self.plan.parse_json(source)
     }
 
     pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
-        let layouted = self
-            .renderer
-            .layout_diagram_sync(source)
-            .map_err(classify_render_error)?
-            .ok_or_else(no_diagram_error)?;
-
-        serde_json::to_vec(&layouted).map_err(internal_json_error)
+        self.plan.layout_json(source)
     }
 
     pub(crate) fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        validation_payload_json(self.parse_json(source).map(|_| ()))
+        validation_payload_json(self.validate_source(source))
+    }
+
+    fn validate_source(&self, source: &[u8]) -> Result<(), BindingError> {
+        let source = source_text(source)?;
+        self.plan.validate(source)
     }
 }
 
-fn build_renderer(
-    options: &BindingOptions,
-) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
-    let mut renderer = HeadlessRenderer::new()
-        .with_fixed_today(binding_fixed_today(options)?)
-        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?);
-
-    if options
-        .parse
-        .as_ref()
-        .and_then(|parse| parse.suppress_errors)
-        .unwrap_or(false)
-    {
-        renderer = renderer.with_lenient_parsing();
-    } else {
-        renderer = renderer.with_strict_parsing();
-    }
-
-    if let Some(site_config) = binding_site_config(options)? {
-        renderer = renderer.with_site_config(site_config);
-    }
-
-    let mut layout = LayoutOptions::headless_svg_defaults();
-    if let Some(layout_json) = options.layout.as_ref() {
-        if let Some(width) = layout_json.viewport_width {
-            layout.viewport_width = finite_positive(width, "layout.viewport_width")?;
-        }
-        if let Some(height) = layout_json.viewport_height {
-            layout.viewport_height = finite_positive(height, "layout.viewport_height")?;
-        }
-        if let Some(kind) = layout_json.text_measurer.as_deref() {
-            match normalize_option(kind).as_str() {
-                "vendored" => {
-                    layout.text_measurer = Arc::new(VendoredFontMetricsTextMeasurer::default());
-                }
-                "deterministic" => {
-                    layout.text_measurer = Arc::new(DeterministicTextMeasurer::default());
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported layout.text_measurer: {other}"),
-                    ));
-                }
-            }
-        }
-    }
-    renderer = renderer.with_layout_options(layout);
-
-    if let Some(math_renderer) = options
-        .layout
-        .as_ref()
-        .and_then(|layout| layout.math_renderer.as_deref())
-    {
-        match normalize_option(math_renderer).as_str() {
-            "none" => {}
-            "ratex" => {
-                #[cfg(feature = "ratex-math")]
-                {
-                    renderer = renderer
-                        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
-                }
-                #[cfg(not(feature = "ratex-math"))]
-                {
-                    return Err(BindingError::new(
-                        BindingStatus::UnsupportedFormat,
-                        "layout.math_renderer=ratex requires the ratex-math feature",
-                    ));
-                }
-            }
-            other => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported layout.math_renderer: {other}"),
-                ));
-            }
-        }
-    }
-
-    let mut pipeline = SvgPipelineOptions::default();
-    if let Some(svg) = options.svg.as_ref() {
-        if let Some(diagram_id) = svg.diagram_id.as_deref() {
-            renderer = renderer.with_diagram_id(diagram_id);
-        }
-        if let Some(raw_pipeline) = svg.pipeline.as_deref() {
-            pipeline.kind = match normalize_option(raw_pipeline).as_str() {
-                "parity" => PipelineKind::Parity,
-                "readable" => PipelineKind::Readable,
-                "resvg-safe" | "resvg_safe" => PipelineKind::ResvgSafe,
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported svg.pipeline: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(raw_policy) = svg.css_override_policy.as_deref() {
-            pipeline.css_override_policy = match normalize_option(raw_policy).as_str() {
-                "preserve" => merman::render::CssOverridePolicy::Preserve,
-                "strip-existing-important" | "strip_existing_important" => {
-                    merman::render::CssOverridePolicy::StripExistingImportant
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported svg.css_override_policy: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(scoped_css) = svg.scoped_css.as_deref() {
-            pipeline.scoped_css = Some(scoped_css.to_string());
-        }
-        if let Some(root_background_color) = svg.root_background_color.as_deref() {
-            pipeline.root_background_color = Some(css_declaration_value(
-                root_background_color,
-                "svg.root_background_color",
-            )?);
-        }
-        pipeline.drop_native_duplicate_fallbacks =
-            svg.drop_native_duplicate_fallbacks.unwrap_or(false);
-    }
-
-    Ok((renderer, pipeline))
+fn request_plan_from_options_json(options_json: &[u8]) -> Result<RenderRequestPlan, BindingError> {
+    let options = parse_options(options_json)?;
+    RenderRequestPlan::from_options(&options)
 }
 
-fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
-    match err {
-        merman::render::HeadlessError::Parse(err) => {
-            BindingError::new(BindingStatus::ParseError, err.to_string())
-        }
-        merman::render::HeadlessError::Render(err) => {
-            BindingError::new(BindingStatus::RenderError, err.to_string())
-        }
-    }
+fn validate_source(source: &[u8], options_json: &[u8]) -> Result<(), BindingError> {
+    let source = source_text(source)?;
+    request_plan_from_options_json(options_json)?.validate(source)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BindingStatus;
     use serde_json::Value;
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
@@ -419,9 +178,8 @@ mod tests {
             }"##,
         )
         .unwrap();
-        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .to_pipeline()
             .process_to_string(
                 r#"<svg id="host"><style>.node{fill:red !important;}</style><g/></svg>"#,
             )
@@ -442,9 +200,8 @@ mod tests {
             }"##,
         )
         .unwrap();
-        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .to_pipeline()
             .process_to_string(r#"<svg id="host"><path class="edge"/></svg>"#)
             .unwrap();
 
@@ -464,9 +221,8 @@ mod tests {
             }"##,
         )
         .unwrap();
-        let (_renderer, pipeline) = build_renderer(&options).unwrap();
+        let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .to_pipeline()
             .process_to_string(
                 r#"<svg id="host" style="max-width: 400px; background-color: white;"><g/></svg>"#,
             )
@@ -515,11 +271,8 @@ mod tests {
 </svg>"##;
 
         let default_options = parse_options(br#"{"svg":{"pipeline":"resvg-safe"}}"#).unwrap();
-        let (_renderer, default_pipeline) = build_renderer(&default_options).unwrap();
-        let default_out = default_pipeline
-            .to_pipeline()
-            .process_to_string(svg)
-            .unwrap();
+        let default_pipeline = request::pipeline_for_options(&default_options).unwrap();
+        let default_out = default_pipeline.process_to_string(svg).unwrap();
         assert_eq!(
             default_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
@@ -532,11 +285,8 @@ mod tests {
             br#"{"svg":{"pipeline":"resvg-safe","drop_native_duplicate_fallbacks":true}}"#,
         )
         .unwrap();
-        let (_renderer, cleanup_pipeline) = build_renderer(&cleanup_options).unwrap();
-        let cleanup_out = cleanup_pipeline
-            .to_pipeline()
-            .process_to_string(svg)
-            .unwrap();
+        let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
+        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
 
         assert_eq!(
             cleanup_out
