@@ -44,10 +44,19 @@ Configure required reviewers on those environments if publication should require
 Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
 publication metadata, but Central Portal credentials and signing secrets still need to be configured.
 
+If the PyPI project does not exist yet, configure a PyPI Pending Publisher for project `merman`,
+owner `Latias94`, repository `merman`, workflow `release-python.yml`, and environment `pypi`.
+The first trusted publish will create the PyPI project and convert the pending publisher.
+
 npm Trusted Publishing can only be configured for an existing package. For the first web release,
 manually publish `@mermanjs/web` once from `platforms/web`, then configure the npm trusted publisher
 for workflow file `release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes
 automatically include npm provenance; the workflow does not need `--provenance`.
+
+The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release
+assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a
+`.binaryTarget(url:checksum:)`, because that checksum must be known and committed before the release
+tag. Treat direct remote SwiftPM support as a separate release-manifest design task.
 
 ## Version Checklist
 

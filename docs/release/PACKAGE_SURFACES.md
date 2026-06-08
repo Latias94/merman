@@ -12,7 +12,7 @@ protect them before any registry publication is enabled.
 | --- | --- | --- | --- | --- |
 | Rust crates | workspace crates listed in `PUBLISH_ORDER.md` | `release-crates.yml` | crates.io | Publishes in dependency order. `xtask` remains private. |
 | CLI | `merman-cli` binary archives | `release.yml` | GitHub Release | Existing cargo-dist workflow. |
-| Apple | SwiftPM `Merman` with `Merman.xcframework` | `release-apple.yml` | GitHub Release asset | Builds, zips, computes checksum, and uploads assets without moving the release tag. |
+| Apple | Swift wrapper plus `Merman.xcframework` | `release-apple.yml` | GitHub Release asset | Builds, zips, computes checksum, and uploads assets without moving the release tag. Direct remote SwiftPM consumption still needs a release manifest strategy with URL + checksum committed before tagging. |
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
@@ -26,7 +26,7 @@ The first release set is:
 
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
 2. GitHub Release artifacts for `merman-cli`.
-3. SwiftPM/GitHub Release packaging for Apple.
+3. GitHub Release XCFramework packaging for Apple.
 4. GitHub Release wheels and PyPI publishing for Python.
 5. pub.dev for Flutter.
 6. GitHub Release AAR for Android.

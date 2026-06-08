@@ -72,4 +72,6 @@ The example lives in `platforms/apple/examples/smoke` and exercises SVG, ASCII, 
 layout JSON, validation, and metadata through the Swift wrapper.
 
 Release builds upload a zipped `Merman.xcframework` and checksum to GitHub Releases. Release
-workflows do not move or force-update release tags.
+workflows do not move or force-update release tags. Direct remote SwiftPM consumption through
+`.binaryTarget(url:checksum:)` is not enabled yet; the current manifest is for local package use
+after building or downloading the XCFramework.
