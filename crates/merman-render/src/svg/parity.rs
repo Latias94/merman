@@ -6,7 +6,7 @@ use crate::model::{
     IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
     PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
     SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout,
-    TreeViewDiagramLayout, XyChartDiagramLayout,
+    TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -51,6 +51,7 @@ mod timing;
 mod tree_view;
 mod treemap;
 mod util;
+mod venn;
 mod xychart;
 use crate::math::MathRenderer;
 use css::{
@@ -195,6 +196,9 @@ fn render_layout_svg_parts_raw(
         }
         LayoutDiagram::TreemapDiagram(layout) => {
             render_treemap_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::VennDiagram(layout) => {
+            render_venn_diagram_svg(layout, semantic, effective_config, title, options)
         }
         LayoutDiagram::XyChartDiagram(layout) => {
             render_xychart_diagram_svg(layout, semantic, effective_config, options)
@@ -341,6 +345,9 @@ fn render_layout_svg_parts_with_config_raw(
         }
         LayoutDiagram::TreemapDiagram(layout) => {
             render_treemap_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::VennDiagram(layout) => {
+            render_venn_diagram_svg(layout, semantic, effective_config_value, title, options)
         }
         LayoutDiagram::XyChartDiagram(layout) => {
             render_xychart_diagram_svg(layout, semantic, effective_config_value, options)
@@ -628,6 +635,15 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
+        (LayoutDiagram::VennDiagram(layout), RenderSemanticModel::Venn(model)) => {
+            venn::render_venn_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                title,
+                options,
+            )
+        }
         (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
             render_block_diagram_svg_model(layout, model, effective_config.as_value(), options)
         }
@@ -874,6 +890,26 @@ pub fn render_treemap_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     treemap::render_treemap_diagram_svg(layout, _semantic, effective_config, options)
+}
+
+pub fn render_venn_diagram_svg(
+    layout: &VennDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    venn::render_venn_diagram_svg(layout, semantic, effective_config, diagram_title, options)
+}
+
+pub fn render_venn_diagram_svg_model(
+    layout: &VennDiagramLayout,
+    model: &merman_core::diagrams::venn::VennDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    venn::render_venn_diagram_svg_model(layout, model, effective_config, diagram_title, options)
 }
 
 pub fn render_packet_diagram_svg(

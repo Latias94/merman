@@ -24,5 +24,6 @@ pub mod state;
 pub mod timeline;
 pub mod tree_view;
 pub mod treemap;
+pub mod venn;
 pub mod xychart;
 pub mod zenuml;

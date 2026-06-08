@@ -96,6 +96,15 @@ fn detects_eventmodeling_as_eventmodeling() {
 }
 
 #[test]
+fn detects_venn_beta_as_venn() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_metadata("venn-beta\nset A", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "venn");
+}
+
+#[test]
 fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
     let engine = Engine::new();
 

@@ -1,15 +1,263 @@
-//! Source-backed Venn layout kernel.
+//! Source-backed Venn layout kernel and diagram adapter.
 //!
 //! This module ports the layout/geometry path used by `@upsetjs/venn.js@2.0.0` and the minimal
-//! `fmin@0.0.4` optimizer helpers it depends on. It is intentionally kept independent from parser
-//! and SVG renderer code so Venn admission can first prove numeric/layout parity.
+//! `fmin@0.0.4` optimizer helpers it depends on. The diagram adapter is intentionally thin: it
+//! projects the core render model into the same helper layout surface that Mermaid consumes before
+//! SVG emission.
 
+use crate::config::{config_bool, config_f64};
+use crate::model::{
+    Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
+    VennTextAreaLayout, VennTextDebugCellLayout, VennTextNodeLayout,
+};
+use crate::{Error, Result};
 use indexmap::IndexMap;
+use merman_core::diagrams::venn::VennDiagramRenderModel;
 use ryu_js::Buffer;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::{PI, TAU};
 
 const SMALL: f64 = 1e-10;
+const DEFAULT_SVG_WIDTH: f64 = 800.0;
+const DEFAULT_SVG_HEIGHT: f64 = 450.0;
+const DEFAULT_PADDING: f64 = 15.0;
+const REFERENCE_WIDTH: f64 = 1600.0;
+
+pub fn layout_venn_diagram(
+    semantic: &serde_json::Value,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+) -> Result<VennDiagramLayout> {
+    let model: VennDiagramRenderModel = crate::json::from_value_ref(semantic)?;
+    layout_venn_diagram_typed(&model, diagram_title, effective_config)
+}
+
+pub fn layout_venn_diagram_typed(
+    model: &VennDiagramRenderModel,
+    diagram_title: Option<&str>,
+    effective_config: &serde_json::Value,
+) -> Result<VennDiagramLayout> {
+    let width = config_f64(effective_config, &["venn", "width"])
+        .unwrap_or(DEFAULT_SVG_WIDTH)
+        .max(1.0);
+    let height = config_f64(effective_config, &["venn", "height"])
+        .unwrap_or(DEFAULT_SVG_HEIGHT)
+        .max(1.0);
+    let padding = config_f64(effective_config, &["venn", "padding"])
+        .unwrap_or(DEFAULT_PADDING)
+        .max(0.0);
+    let use_max_width = config_bool(effective_config, &["venn", "useMaxWidth"]).unwrap_or(true);
+    let use_debug_layout =
+        config_bool(effective_config, &["venn", "useDebugLayout"]).unwrap_or(false);
+    let title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or_else(|| {
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+        });
+    let scale = width / REFERENCE_WIDTH;
+    let title_height = if title.is_some() { 48.0 * scale } else { 0.0 };
+    let diagram_height = (height - title_height).max(1.0);
+
+    let areas = model
+        .subsets
+        .iter()
+        .map(|subset| VennArea {
+            sets: subset.sets.clone(),
+            size: subset.size,
+            weight: None,
+            label: subset.label.clone(),
+        })
+        .collect::<Vec<_>>();
+    let layout_areas = if areas.is_empty() {
+        Vec::new()
+    } else {
+        compute_venn_layout(
+            &areas,
+            &VennLayoutOptions {
+                width,
+                height: diagram_height,
+                padding,
+                ..Default::default()
+            },
+        )
+        .map_err(|err| Error::InvalidModel {
+            message: err.to_string(),
+        })?
+    };
+
+    let areas = layout_areas
+        .iter()
+        .map(|area| VennAreaLayout {
+            sets: area.data.sets.clone(),
+            size: area.data.size,
+            label: area.data.label.clone(),
+            text_x: area.text.x.floor(),
+            text_y: area.text.y.floor(),
+            text_disjoint: area.text.disjoint,
+            circles: area
+                .circles
+                .iter()
+                .map(|circle| VennCircleLayout {
+                    set: circle.set.clone(),
+                    x: circle.x,
+                    y: circle.y,
+                    radius: circle.radius,
+                })
+                .collect(),
+            path: area.path.clone(),
+            distinct_path: area.distinct_path.clone(),
+        })
+        .collect::<Vec<_>>();
+    let layout_by_key = layout_areas
+        .iter()
+        .map(|area| (stable_sets_key(&area.data.sets), area))
+        .collect::<HashMap<_, _>>();
+    let (text_areas, text_nodes) =
+        layout_text_nodes(model, &layout_by_key, scale, use_debug_layout);
+
+    Ok(VennDiagramLayout {
+        bounds: Some(LayoutBounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: width,
+            max_y: height,
+        }),
+        width,
+        height,
+        diagram_height,
+        title_height,
+        scale,
+        padding,
+        use_max_width,
+        use_debug_layout,
+        areas,
+        text_areas,
+        text_nodes,
+    })
+}
+
+fn layout_text_nodes(
+    model: &VennDiagramRenderModel,
+    layout_by_key: &HashMap<String, &VennLayoutArea>,
+    scale: f64,
+    use_debug_layout: bool,
+) -> (Vec<VennTextAreaLayout>, Vec<VennTextNodeLayout>) {
+    let mut nodes_by_area: IndexMap<
+        String,
+        Vec<&merman_core::diagrams::venn::VennTextNodeRenderModel>,
+    > = IndexMap::new();
+    for node in &model.text_nodes {
+        nodes_by_area
+            .entry(stable_sets_key(&node.sets))
+            .or_default()
+            .push(node);
+    }
+
+    let mut text_areas = Vec::new();
+    let mut text_nodes = Vec::new();
+    for (key, nodes) in nodes_by_area {
+        let Some(area) = layout_by_key.get(&key).copied() else {
+            continue;
+        };
+        if area.circles.is_empty() {
+            continue;
+        }
+
+        let center_x = area.text.x;
+        let center_y = area.text.y;
+        let min_circle_radius = area
+            .circles
+            .iter()
+            .map(|circle| circle.radius)
+            .fold(f64::INFINITY, f64::min);
+        let inner_radius_raw = area
+            .circles
+            .iter()
+            .map(|circle| {
+                circle.radius
+                    - ((center_x - circle.x).powi(2) + (center_y - circle.y).powi(2)).sqrt()
+            })
+            .fold(f64::INFINITY, f64::min);
+        let mut inner_radius = if inner_radius_raw.is_finite() {
+            inner_radius_raw.max(0.0)
+        } else {
+            0.0
+        };
+        if inner_radius == 0.0 && min_circle_radius.is_finite() {
+            inner_radius = min_circle_radius * 0.6;
+        }
+
+        let inner_width = (80.0 * scale).max(inner_radius * 2.0 * 0.95);
+        let inner_height = (60.0 * scale).max(inner_radius * 2.0 * 0.95);
+        let has_label = area
+            .data
+            .label
+            .as_deref()
+            .is_some_and(|label| !label.is_empty());
+        let label_offset_base = if has_label {
+            (32.0 * scale).min(inner_radius * 0.25)
+        } else {
+            0.0
+        };
+        let label_offset = label_offset_base + if nodes.len() <= 2 { 30.0 * scale } else { 0.0 };
+        let start_x = center_x - inner_width / 2.0;
+        let start_y = center_y - inner_height / 2.0 + label_offset;
+        let cols = (nodes.len() as f64).sqrt().ceil().max(1.0) as usize;
+        let rows = nodes.len().div_ceil(cols).max(1);
+        let cell_width = inner_width / cols as f64;
+        let cell_height = inner_height / rows as f64;
+
+        let mut debug_cells = Vec::new();
+        for (index, node) in nodes.iter().enumerate() {
+            let col = index % cols;
+            let row = index / cols;
+            let cell_x = start_x + cell_width * col as f64;
+            let cell_y = start_y + cell_height * row as f64;
+            if use_debug_layout {
+                debug_cells.push(VennTextDebugCellLayout {
+                    x: cell_x,
+                    y: cell_y,
+                    width: cell_width,
+                    height: cell_height,
+                });
+            }
+
+            let x = start_x + cell_width * (col as f64 + 0.5);
+            let y = start_y + cell_height * (row as f64 + 0.5);
+            let box_width = cell_width * 0.9;
+            let box_height = cell_height * 0.9;
+            text_nodes.push(VennTextNodeLayout {
+                sets: node.sets.clone(),
+                id: node.id.clone(),
+                label: node.label.clone(),
+                x: x - box_width / 2.0,
+                y: y - box_height / 2.0,
+                width: box_width,
+                height: box_height,
+            });
+        }
+
+        text_areas.push(VennTextAreaLayout {
+            sets: area.data.sets.clone(),
+            center_x,
+            center_y,
+            inner_radius,
+            font_size: 40.0 * scale,
+            debug_cells,
+        });
+    }
+
+    (text_areas, text_nodes)
+}
+
+fn stable_sets_key(sets: &[String]) -> String {
+    sets.join("|")
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VennArea {

@@ -30,6 +30,7 @@ const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
     "sequence",
     "state",
     "timeline",
+    "venn",
     "xyChart",
 ];
 

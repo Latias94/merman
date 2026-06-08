@@ -87,6 +87,7 @@ pub enum RenderSemanticModel {
     TreeView(crate::diagrams::tree_view::TreeViewDiagramRenderModel),
     Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramRenderModel),
     EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
+    Venn(crate::diagrams::venn::VennDiagramRenderModel),
 }
 
 impl RenderSemanticModel {
@@ -120,6 +121,7 @@ impl RenderSemanticModel {
             Self::TreeView(v) => v.sanitize_common_db_fields(config),
             Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
             Self::EventModeling(v) => v.sanitize_common_db_fields(config),
+            Self::Venn(v) => v.sanitize_common_db_fields(config),
         }
     }
 
@@ -153,6 +155,7 @@ impl RenderSemanticModel {
             Self::TreeView(_) => "treeView",
             Self::Ishikawa(_) => "ishikawa",
             Self::EventModeling(_) => "eventmodeling",
+            Self::Venn(_) => "venn",
         }
     }
 

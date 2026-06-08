@@ -1,6 +1,6 @@
 # Venn Beta Admission Plan (Mermaid@11.15.0)
 
-Status: Proposed
+Status: In progress
 Last updated: 2026-06-08
 Pinned Mermaid commit: `41646dfd43ac83f001b03c70605feb036afae46d`
 
@@ -8,9 +8,16 @@ This document records the source-backed plan required before `venn-beta` can bec
 
 ## Problem
 
-Mermaid 11.15 includes `venn-beta`, but local support currently has no detector, parser, semantic model, layout, renderer, fixtures, upstream SVG baselines, or compare command.
+Mermaid 11.15 includes `venn-beta`. Local support has started with a source-backed Rust layout kernel, a core detector/parser/typed semantic model, and a classic Stage B SVG renderer foundation. It still lacks upstream SVG fixtures/baselines and a family-local compare command, so the family must stay out of the public supported matrix for now.
 
 The parser and DB are small enough to port directly. The risky part is layout/rendering: Mermaid delegates circle placement and intersection geometry to `@upsetjs/venn.js@2.0.0`, then mutates the generated SVG with D3 and optionally replaces shapes with RoughJS for `look: "handDrawn"`. A local renderer must not approximate that geometry with ad hoc circle formulas and then claim Mermaid parity.
+
+## Implementation Progress
+
+- Done: source-backed `@upsetjs/venn.js@2.0.0` / `fmin@0.0.4` Rust layout kernel in `merman-render`.
+- Done: core `venn-beta` detector, semantic JSON parser, and typed `RenderSemanticModel::Venn` model.
+- Done: classic Stage B SVG renderer foundation for title, circles, intersections, text-node `foreignObject`, debug text-node layout, typed render-model path, and semantic JSON path.
+- Deferred: Venn is intentionally not listed in `supported_diagrams()` until upstream baselines and family-local compare gates exist.
 
 ## Source Evidence
 
@@ -57,7 +64,7 @@ The implementation lane should have these slices:
 2. Parser fixtures: port upstream parser cases for labels, sizes, text nodes, style declarations, quoted identifiers, unknown unions, and invalid `set` / `union` arity.
 3. Layout kernel: port the relevant `@upsetjs/venn.js@2.0.0` layout, geometry, text-centre, normalize, scale, path, and minimal `fmin` helper behavior into Rust behind a typed adapter. Seed the random MDS path for deterministic oracle tests.
 4. Layout oracle fixtures: generate pinned package outputs for small, overlapping, disjoint, nested, higher-order, and text-node diagrams; compare circles, text centres, paths, and loss within documented tolerances before renderer DOM work.
-5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed.
+5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed. Classic SVG foundation is in place; `look: "handDrawn"` remains deferred until classic baselines are green.
 6. Theme roles: add `PresentationTheme::venn()` for `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and style override precedence.
 7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, add `xtask compare-venn-svgs`, and keep the family out of the main matrix until family-local structural DOM parity is green.
 
@@ -96,7 +103,7 @@ The implementation lane should have these slices:
 
 ## Admission Decision
 
-`venn-beta` should remain not admitted for now. The source audit supports a Rust port of the pinned Venn layout kernel plus minimal `fmin` helpers, with `@upsetjs/venn.js@2.0.0` used as a test/tooling oracle only. The next implementation work should start with geometry/layout tests and adapter types, not renderer DOM.
+`venn-beta` should remain not admitted for now. The source-backed layout/parser and classic renderer foundation are in place, but public support should wait for committed upstream SVG baselines and a family-local compare gate. `@upsetjs/venn.js@2.0.0` should remain a test/tooling oracle only, not a runtime dependency.
 
 ## Initial Gates For A Future Workstream
 

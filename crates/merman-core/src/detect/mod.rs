@@ -382,6 +382,10 @@ pub(crate) fn detector_treemap(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("treemap")
 }
 
+pub(crate) fn detector_venn(txt: &str, _config: &mut MermaidConfig) -> bool {
+    txt.trim_start().starts_with("venn-beta")
+}
+
 pub(crate) fn detector_mindmap(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("mindmap")
 }

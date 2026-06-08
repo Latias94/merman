@@ -354,6 +354,9 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?),
         )),
+        RenderSemanticModel::Venn(model) => Ok(LayoutDiagram::VennDiagram(Box::new(
+            venn::layout_venn_diagram_typed(model, title, effective_config)?,
+        ))),
         RenderSemanticModel::Json(semantic) => layout_json_by_type(
             diagram_type,
             semantic,
@@ -416,6 +419,9 @@ fn layout_json_by_type(
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?,
+        ))),
+        "venn" => Ok(LayoutDiagram::VennDiagram(Box::new(
+            venn::layout_venn_diagram(semantic, title, effective_config_value)?,
         ))),
         "flowchart-v2" => Ok(LayoutDiagram::FlowchartV2(Box::new(
             flowchart::layout_flowchart_v2(

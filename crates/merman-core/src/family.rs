@@ -279,6 +279,10 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
         id: "treemap",
         detector: crate::detect::detector_treemap,
     },
+    DetectorFact {
+        id: "venn",
+        detector: crate::detect::detector_venn,
+    },
 ];
 
 const DETECTOR_FACTS_TINY: &[DetectorFact] = &[
@@ -401,6 +405,10 @@ const DETECTOR_FACTS_TINY: &[DetectorFact] = &[
     DetectorFact {
         id: "treemap",
         detector: crate::detect::detector_treemap,
+    },
+    DetectorFact {
+        id: "venn",
+        detector: crate::detect::detector_venn,
     },
 ];
 
@@ -664,6 +672,10 @@ const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
         parser: crate::diagrams::treemap::parse_treemap,
     },
     SemanticParserFact {
+        id: "venn",
+        parser: crate::diagrams::venn::parse_venn,
+    },
+    SemanticParserFact {
         id: "sankey",
         parser: crate::diagrams::sankey::parse_sankey,
     },
@@ -815,6 +827,11 @@ render_parser!(
     render_eventmodeling,
     crate::diagrams::eventmodeling::parse_eventmodeling_model_for_render,
     RenderSemanticModel::EventModeling
+);
+render_parser!(
+    render_venn,
+    crate::diagrams::venn::parse_venn_model_for_render,
+    RenderSemanticModel::Venn
 );
 
 const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
@@ -1009,6 +1026,12 @@ const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
         metadata_id: None,
         model_kind: "eventmodeling",
         parser: render_eventmodeling,
+    },
+    RenderParserFact {
+        id: "venn",
+        metadata_id: None,
+        model_kind: "venn",
+        parser: render_venn,
     },
 ];
 
