@@ -7,11 +7,15 @@ use std::fmt::Write as _;
 
 pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
     ctx: &FlowchartRenderCtx<'_>,
+    node_id: &str,
     icon_name: &str,
     icon_size: f64,
 ) -> String {
+    let id_scope = format!("{}-flowchart-icon-{node_id}", ctx.diagram_id);
     ctx.icon_registry
-        .and_then(|registry| registry.svg_for(icon_name, icon_size, icon_size, None, None))
+        .and_then(|registry| {
+            registry.svg_for_scoped(icon_name, icon_size, icon_size, None, None, &id_scope)
+        })
         .unwrap_or_else(|| placeholder_icon_svg(icon_size))
 }
 

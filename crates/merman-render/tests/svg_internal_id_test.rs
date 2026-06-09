@@ -1,8 +1,19 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
+use merman_render::svg::{IconRegistry, IconSvg, SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
+use std::sync::Arc;
 
 fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
+    render_svg_from_text_with_options(
+        text,
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+}
+
+fn render_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
@@ -10,15 +21,7 @@ fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
 
     let layout_options = LayoutOptions::default();
     let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg")
+    render_layouted_svg(&out, layout_options.text_measurer.as_ref(), options).expect("render svg")
 }
 
 fn assert_scoped_marker(svg: &str, diagram_id: &str, local_id: &str) {
@@ -176,4 +179,73 @@ section Work
     assert_scoped_definition_id(&svg, "m15-gantt-proto", "__proto__-text");
     assert_scoped_definition_id(&svg, "m15-gantt-proto", "constructor");
     assert_scoped_definition_id(&svg, "m15-gantt-proto", "constructor-text");
+}
+
+#[test]
+fn flowchart_iconify_internal_ids_are_scoped_per_node() {
+    let mut registry = IconRegistry::new();
+    registry.insert(
+        "test:clip",
+        IconSvg::new(
+            r##"<defs><clipPath id="clip"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/>"##,
+            16.0,
+            16.0,
+        ),
+    );
+
+    let svg = render_svg_from_text_with_options(
+        r#"flowchart TD
+A@{ icon: "test:clip", label: "A" }
+B@{ icon: "test:clip", label: "B" }
+A --> B"#,
+        &SvgRenderOptions {
+            diagram_id: Some("m15-flowchart-icons".to_string()),
+            icon_registry: Some(Arc::new(registry)),
+            ..SvgRenderOptions::default()
+        },
+    );
+
+    assert!(!svg.contains(r#"id="clip""#), "{svg}");
+    assert!(!svg.contains(r#"id="shape""#), "{svg}");
+    assert!(!svg.contains(r#"url(#clip)"#), "{svg}");
+    assert!(!svg.contains(r##"href="#shape""##), "{svg}");
+    assert_eq!(svg.matches(r#"data-icon="fixture""#).count(), 2, "{svg}");
+
+    let ids = internal_iconify_ids(&svg);
+    assert_eq!(ids.len(), 4, "{svg}");
+    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), ids.len(), "{svg}");
+}
+
+#[test]
+fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
+    let svg = render_svg_from_text(
+        r#"architecture-beta
+  service a(database)[A]
+  service b(database)[B]
+  a:R --> L:b"#,
+        "m15-architecture-icons",
+    );
+
+    assert!(!svg.contains(r#"id="b""#), "{svg}");
+    assert!(!svg.contains(r#"id="c""#), "{svg}");
+    assert!(!svg.contains(r#"id="d""#), "{svg}");
+    assert!(!svg.contains(r#"id="e""#), "{svg}");
+
+    let ids = internal_iconify_ids(&svg);
+    assert_eq!(ids.len(), 8, "{svg}");
+    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), ids.len(), "{svg}");
+}
+
+fn internal_iconify_ids(svg: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut index = 0;
+    while let Some(relative) = svg[index..].find(r#"id="IconifyId"#) {
+        let id_start = index + relative + r#"id=""#.len();
+        let id_end = svg[id_start..].find('"').expect("id end") + id_start;
+        ids.push(svg[id_start..id_end].to_string());
+        index = id_end + 1;
+    }
+    ids
 }

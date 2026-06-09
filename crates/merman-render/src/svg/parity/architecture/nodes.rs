@@ -78,14 +78,20 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {
                 (Some(icon), _) => {
-                    let svg =
-                        arch_icon_svg_with_registry(icon, settings.icon_size_px, ctx.icon_registry);
+                    let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
+                    let svg = arch_icon_svg_with_registry(
+                        icon,
+                        settings.icon_size_px,
+                        ctx.icon_registry,
+                        &id_scope,
+                    );
                     out.push_str("<g>");
                     out.push_str(&svg);
                     out.push_str("</g>");
                 }
                 (None, Some(icon_text)) => {
-                    let svg = arch_icon_svg("blank", settings.icon_size_px);
+                    let id_scope = format!("{diagram_id}-service-{}-icon", svc.id);
+                    let svg = arch_icon_svg("blank", settings.icon_size_px, &id_scope);
                     out.push_str("<g>");
                     out.push_str(&svg);
                     out.push_str("</g>");
@@ -181,7 +187,13 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             let mut shifted_x1 = x1;
             let mut shifted_y1 = y1;
             if let Some(icon) = grp.icon.map(str::trim).filter(|t| !t.is_empty()) {
-                let svg = arch_icon_svg_with_registry(icon, group_icon_size_px, ctx.icon_registry);
+                let id_scope = format!("{}-group-{}-icon", ctx.diagram_id, grp.id);
+                let svg = arch_icon_svg_with_registry(
+                    icon,
+                    group_icon_size_px,
+                    ctx.icon_registry,
+                    &id_scope,
+                );
                 let _ = write!(
                     out,
                     r#"<g transform="translate({x}, {y})"><g>{svg}</g></g>"#,

@@ -9,6 +9,7 @@ pub(in crate::svg::parity) mod roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {
+    pub node_id: &'a str,
     pub shape: &'a str,
     pub look: &'a str,
     pub layout_node: &'a crate::model::LayoutNode,
@@ -151,6 +152,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .unwrap_or(0);
 
     let common = FlowchartNodeRenderCommon {
+        node_id,
         shape,
         look,
         layout_node,
