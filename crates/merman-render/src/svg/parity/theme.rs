@@ -199,6 +199,24 @@ pub(crate) struct GanttTheme {
     pub(crate) vert_line_color: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct KanbanSectionTheme {
+    pub(crate) section_fill: String,
+    pub(crate) c_scale: String,
+    pub(crate) c_scale_label: String,
+    pub(crate) c_scale_inv: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct KanbanTheme {
+    pub(crate) text_color: String,
+    pub(crate) background: String,
+    pub(crate) node_border: String,
+    pub(crate) root_fill: String,
+    pub(crate) root_label: String,
+    pub(crate) sections: Vec<KanbanSectionTheme>,
+}
+
 impl TreemapTheme {
     pub(crate) fn readable_leaf_label_fill(
         &self,
@@ -670,6 +688,37 @@ impl<'a> PresentationTheme<'a> {
             crit_border_color: option("critBorderColor", "#ff8888"),
             crit_bkg_color: option("critBkgColor", "red"),
             vert_line_color: option("vertLineColor", "navy"),
+        }
+    }
+
+    pub(crate) fn kanban(&self) -> KanbanTheme {
+        let dark_mode = self.raw.bool_root_or_theme("darkMode").unwrap_or(false);
+        let mut hsl_buf = ryu_js::Buffer::new();
+        let sections = (0..12)
+            .map(|i| {
+                let c_scale = self.raw.color(&format!("cScale{i}"), default_c_scale(i));
+                let section_fill = adjust_kanban_section_fill(&c_scale, dark_mode, &mut hsl_buf)
+                    .unwrap_or_else(|| c_scale.clone());
+                KanbanSectionTheme {
+                    section_fill,
+                    c_scale,
+                    c_scale_label: self
+                        .raw
+                        .color(&format!("cScaleLabel{i}"), default_c_scale_label(i)),
+                    c_scale_inv: self
+                        .raw
+                        .color(&format!("cScaleInv{i}"), default_c_scale_inv(i)),
+                }
+            })
+            .collect();
+
+        KanbanTheme {
+            text_color: self.common.text_color.clone(),
+            background: self.raw.color("background", "white"),
+            node_border: self.raw.color("nodeBorder", "#9370DB"),
+            root_fill: self.raw.color("git0", "hsl(240, 100%, 46.2745098039%)"),
+            root_label: self.raw.color("gitBranchLabel0", "#ffffff"),
+            sections,
         }
     }
 
@@ -1226,6 +1275,40 @@ fn default_c_scale_peer(i: usize) -> &'static str {
     }
 }
 
+fn default_c_scale_inv(i: usize) -> &'static str {
+    match i {
+        0 => "hsl(60, 100%, 86.2745098039%)",
+        1 => "hsl(240, 100%, 83.5294117647%)",
+        2 => "hsl(260, 100%, 86.2745098039%)",
+        3 => "hsl(90, 100%, 86.2745098039%)",
+        4 => "hsl(120, 100%, 86.2745098039%)",
+        5 => "hsl(150, 100%, 86.2745098039%)",
+        6 => "hsl(180, 100%, 86.2745098039%)",
+        7 => "hsl(210, 100%, 86.2745098039%)",
+        8 => "hsl(270, 100%, 86.2745098039%)",
+        9 => "hsl(330, 100%, 86.2745098039%)",
+        10 => "hsl(0, 100%, 86.2745098039%)",
+        _ => "hsl(30, 100%, 86.2745098039%)",
+    }
+}
+
+fn default_c_scale_label(i: usize) -> &'static str {
+    match i {
+        0 | 3 => "#ffffff",
+        _ => "black",
+    }
+}
+
+fn adjust_kanban_section_fill(
+    c_scale: &str,
+    dark_mode: bool,
+    buf: &mut ryu_js::Buffer,
+) -> Option<String> {
+    let (h, s, l) = parse_hsl_css(c_scale)?;
+    let delta = if dark_mode { -10.0 } else { 10.0 };
+    Some(format_hsl_css(h, s, (l + delta).clamp(0.0, 100.0), buf))
+}
+
 fn journey_default_fill_type(i: usize) -> &'static str {
     match i {
         0 => "#ECECFF",
@@ -1776,6 +1859,54 @@ mod tests {
 
         assert_eq!(gantt.title_color, "   ");
         assert_eq!(gantt.title_text_color, "#707070");
+    }
+
+    #[test]
+    fn presentation_theme_kanban_resolves_theme_roles() {
+        let cfg = json!({
+            "themeVariables": {
+                "background": "#0f172a",
+                "nodeBorder": "#38bdf8",
+                "textColor": "#f8fafc",
+                "git0": "#22c55e",
+                "gitBranchLabel0": "#020617",
+                "cScale0": "hsl(160, 80%, 40%)",
+                "cScaleLabel0": "#f8fafc",
+                "cScaleInv0": "#111827"
+            }
+        });
+
+        let kanban = PresentationTheme::new(&cfg).kanban();
+
+        assert_eq!(kanban.text_color, "#f8fafc");
+        assert_eq!(kanban.background, "#0f172a");
+        assert_eq!(kanban.node_border, "#38bdf8");
+        assert_eq!(kanban.root_fill, "#22c55e");
+        assert_eq!(kanban.root_label, "#020617");
+        assert_eq!(kanban.sections[0].c_scale, "hsl(160, 80%, 40%)");
+        assert_eq!(kanban.sections[0].section_fill, "hsl(160, 80%, 50%)");
+        assert_eq!(kanban.sections[0].c_scale_label, "#f8fafc");
+        assert_eq!(kanban.sections[0].c_scale_inv, "#111827");
+    }
+
+    #[test]
+    fn presentation_theme_kanban_dark_mode_adjusts_section_fill_down() {
+        let cfg = json!({
+            "darkMode": true
+        });
+
+        let kanban = PresentationTheme::new(&cfg).kanban();
+
+        assert_eq!(kanban.sections[0].c_scale, "hsl(240, 100%, 76.2745098039%)");
+        assert_eq!(
+            kanban.sections[0].section_fill,
+            "hsl(240, 100%, 66.2745098039%)"
+        );
+        assert_eq!(kanban.sections[0].c_scale_label, "#ffffff");
+        assert_eq!(
+            kanban.sections[0].c_scale_inv,
+            "hsl(60, 100%, 86.2745098039%)"
+        );
     }
 
     #[test]

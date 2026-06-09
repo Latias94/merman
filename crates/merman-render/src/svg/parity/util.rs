@@ -106,6 +106,11 @@ impl<'a> SvgTheme<'a> {
         })
     }
 
+    pub(super) fn bool_root_or_theme(&self, key: &str) -> Option<bool> {
+        config_bool(self.effective_config, &[key])
+            .or_else(|| config_bool(self.effective_config, &["themeVariables", key]))
+    }
+
     pub(super) fn optional_value(&self, key: &str) -> Option<String> {
         crate::config::config_css_number_or_string(self.effective_config, &["themeVariables", key])
     }

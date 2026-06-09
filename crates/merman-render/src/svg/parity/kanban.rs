@@ -7,114 +7,13 @@ use crate::kanban::{
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let theme = PresentationTheme::new(effective_config).kanban();
     let mut out = parts.css_prefix;
     let root_rule = parts.root_rule;
 
-    fn default_c_scale(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 76.2745098039%)",
-            1 => "hsl(60, 100%, 73.5294117647%)",
-            2 => "hsl(80, 100%, 76.2745098039%)",
-            3 => "hsl(270, 100%, 76.2745098039%)",
-            4 => "hsl(300, 100%, 76.2745098039%)",
-            5 => "hsl(330, 100%, 76.2745098039%)",
-            6 => "hsl(0, 100%, 76.2745098039%)",
-            7 => "hsl(30, 100%, 76.2745098039%)",
-            8 => "hsl(90, 100%, 76.2745098039%)",
-            9 => "hsl(150, 100%, 76.2745098039%)",
-            10 => "hsl(180, 100%, 76.2745098039%)",
-            _ => "hsl(210, 100%, 76.2745098039%)",
-        }
-    }
-
-    fn default_c_scale_inv(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(60, 100%, 86.2745098039%)",
-            1 => "hsl(240, 100%, 83.5294117647%)",
-            2 => "hsl(260, 100%, 86.2745098039%)",
-            3 => "hsl(90, 100%, 86.2745098039%)",
-            4 => "hsl(120, 100%, 86.2745098039%)",
-            5 => "hsl(150, 100%, 86.2745098039%)",
-            6 => "hsl(180, 100%, 86.2745098039%)",
-            7 => "hsl(210, 100%, 86.2745098039%)",
-            8 => "hsl(270, 100%, 86.2745098039%)",
-            9 => "hsl(330, 100%, 86.2745098039%)",
-            10 => "hsl(0, 100%, 86.2745098039%)",
-            _ => "hsl(30, 100%, 86.2745098039%)",
-        }
-    }
-
-    fn default_c_scale_label(i: usize) -> &'static str {
-        match i {
-            0 | 3 => "#ffffff",
-            _ => "black",
-        }
-    }
-
-    fn round_1e10(v: f64) -> f64 {
-        let v = (v * 1e10).round() / 1e10;
-        if v == -0.0 { 0.0 } else { v }
-    }
-
-    fn parse_hsl(s: &str) -> Option<(f64, f64, f64)> {
-        let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-        let mut parts = inner.split(',').map(|part| part.trim());
-        let h = parts.next()?.parse::<f64>().ok()?;
-        let s = parts
-            .next()?
-            .strip_suffix('%')?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        let l = parts
-            .next()?
-            .strip_suffix('%')?
-            .trim()
-            .parse::<f64>()
-            .ok()?;
-        Some((h, s, l))
-    }
-
-    fn fmt_hsl(h: f64, s: f64, l: f64, buf: &mut ryu_js::Buffer) -> String {
-        let h = buf.format_finite(round_1e10(h)).to_string();
-        let s = buf.format_finite(round_1e10(s)).to_string();
-        let l = buf.format_finite(round_1e10(l)).to_string();
-        format!("hsl({h}, {s}%, {l}%)")
-    }
-
-    fn adjust_section_fill(
-        c_scale: &str,
-        dark_mode: bool,
-        buf: &mut ryu_js::Buffer,
-    ) -> Option<String> {
-        let (h, s, l) = parse_hsl(c_scale)?;
-        let delta = if dark_mode { -10.0 } else { 10.0 };
-        Some(fmt_hsl(h, s, (l + delta).clamp(0.0, 100.0), buf))
-    }
-
-    let dark_mode = config_bool(effective_config, &["darkMode"])
-        .or_else(|| config_bool(effective_config, &["themeVariables", "darkMode"]))
-        .unwrap_or(false);
-    let background = theme_color(effective_config, "background", "white");
-    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let mut hsl_buf = ryu_js::Buffer::new();
-
     let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
-    for i in 0..12usize {
+    for (i, section_theme) in theme.sections.iter().enumerate() {
         let section = i as i64 - 1;
-        let c_scale = theme_color(effective_config, &format!("cScale{i}"), default_c_scale(i));
-        let section_fill = adjust_section_fill(&c_scale, dark_mode, &mut hsl_buf)
-            .unwrap_or_else(|| c_scale.clone());
-        let c_scale_label = theme_color(
-            effective_config,
-            &format!("cScaleLabel{i}"),
-            default_c_scale_label(i),
-        );
-        let c_scale_inv = theme_color(
-            effective_config,
-            &format!("cScaleInv{i}"),
-            default_c_scale_inv(i),
-        );
         let sw = 17_i64 - 3_i64 * (i as i64);
         let _ = write!(
             &mut out,
@@ -129,23 +28,23 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
             section,
             id,
             section,
-            section_fill,
-            section_fill,
+            section_theme.section_fill,
+            section_theme.section_fill,
             id,
             section,
-            c_scale_label,
+            section_theme.c_scale_label,
             id,
             section,
-            c_scale_label,
+            section_theme.c_scale_label,
             id,
             section,
-            c_scale,
+            section_theme.c_scale,
             id,
             section,
             sw,
             id,
             section,
-            c_scale_inv,
+            section_theme.c_scale_inv,
             id,
             id,
             id,
@@ -155,16 +54,14 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
             id,
             id,
             id,
-            background,
-            node_border,
+            theme.background,
+            theme.node_border,
             id,
-            background,
-            node_border
+            theme.background,
+            theme.node_border
         );
     }
 
-    let git0 = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let git_branch_label0 = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
     let _ = write!(
         &mut out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .cluster-label,#{} .label{{color:{};fill:{};}}#{} .kanban-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
@@ -172,15 +69,15 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
         id,
         id,
         id,
-        git0,
+        theme.root_fill,
         id,
-        git_branch_label0,
-        id,
-        id,
+        theme.root_label,
         id,
         id,
-        parts.text_color,
-        parts.text_color,
+        id,
+        id,
+        theme.text_color,
+        theme.text_color,
         id,
         id,
         id
