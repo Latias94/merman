@@ -1,10 +1,13 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, binding_fixed_local_offset_minutes,
-    binding_fixed_today, binding_site_config, css_declaration_value, finite_positive,
-    internal_json_error, no_diagram_error, normalize_option,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson,
+    binding_fixed_local_offset_minutes, binding_fixed_today, binding_site_config,
+    css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
+    normalize_option,
 };
 use merman::render::{
-    DeterministicTextMeasurer, HeadlessRenderer, LayoutOptions, VendoredFontMetricsTextMeasurer,
+    DeterministicTextMeasurer, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
+    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
+    VendoredFontMetricsTextMeasurer,
 };
 use std::sync::Arc;
 
@@ -85,6 +88,7 @@ struct SvgPipelineOptions {
     kind: PipelineKind,
     scoped_css: Option<String>,
     css_override_policy: merman::render::CssOverridePolicy,
+    strip_existing_important: bool,
     root_background_color: Option<String>,
     drop_native_duplicate_fallbacks: bool,
 }
@@ -95,6 +99,7 @@ impl Default for SvgPipelineOptions {
             kind: PipelineKind::default(),
             scoped_css: None,
             css_override_policy: merman::render::CssOverridePolicy::Preserve,
+            strip_existing_important: false,
             root_background_color: None,
             drop_native_duplicate_fallbacks: false,
         }
@@ -102,12 +107,38 @@ impl Default for SvgPipelineOptions {
 }
 
 impl SvgPipelineOptions {
+    fn apply_compiled_host_output(&mut self, output: merman::render::CompiledHostThemeOutput) {
+        self.kind = match output.preset {
+            merman::render::SvgPipelinePreset::Parity => PipelineKind::Parity,
+            merman::render::SvgPipelinePreset::Readable => PipelineKind::Readable,
+            merman::render::SvgPipelinePreset::ResvgSafe => PipelineKind::ResvgSafe,
+        };
+        self.css_override_policy = output.css_override_policy;
+        self.strip_existing_important = matches!(
+            output.css_override_policy,
+            merman::render::CssOverridePolicy::StripExistingImportant
+        );
+        if output.root_background_color.is_some() {
+            self.root_background_color = output.root_background_color;
+        }
+        self.drop_native_duplicate_fallbacks = output.drop_native_duplicate_fallbacks;
+        if output.scoped_css.is_some() {
+            self.scoped_css = output.scoped_css;
+        }
+    }
+
     fn into_pipeline(self) -> merman::render::SvgPipeline {
         let mut pipeline = match self.kind {
             PipelineKind::Parity => merman::render::SvgPipeline::parity(),
             PipelineKind::Readable => merman::render::SvgPipeline::readable(),
             PipelineKind::ResvgSafe => merman::render::SvgPipeline::resvg_safe(),
         };
+
+        if self.strip_existing_important {
+            pipeline.push_postprocessor(
+                merman::render::CssOverridePostprocessor::strip_existing_important(),
+            );
+        }
 
         if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(merman::render::DropNativeDuplicateFallbacksPostprocessor);
@@ -149,6 +180,13 @@ fn build_renderer(
         renderer = renderer.with_lenient_parsing();
     } else {
         renderer = renderer.with_strict_parsing();
+    }
+
+    let mut pipeline = SvgPipelineOptions::default();
+    if let Some(host_theme) = options.host_theme.as_ref() {
+        let compiled = binding_host_theme(host_theme)?;
+        pipeline.apply_compiled_host_output(compiled.output);
+        renderer = renderer.with_site_config(compiled.site_config);
     }
 
     if let Some(site_config) = binding_site_config(options)? {
@@ -212,7 +250,6 @@ fn build_renderer(
         }
     }
 
-    let mut pipeline = SvgPipelineOptions::default();
     if let Some(svg) = options.svg.as_ref() {
         if let Some(diagram_id) = svg.diagram_id.as_deref() {
             renderer = renderer.with_diagram_id(diagram_id);
@@ -232,8 +269,12 @@ fn build_renderer(
         }
         if let Some(raw_policy) = svg.css_override_policy.as_deref() {
             pipeline.css_override_policy = match normalize_option(raw_policy).as_str() {
-                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "preserve" => {
+                    pipeline.strip_existing_important = false;
+                    merman::render::CssOverridePolicy::Preserve
+                }
                 "strip-existing-important" | "strip_existing_important" => {
+                    pipeline.strip_existing_important = true;
                     merman::render::CssOverridePolicy::StripExistingImportant
                 }
                 other => {
@@ -258,6 +299,184 @@ fn build_renderer(
     }
 
     Ok((renderer, pipeline))
+}
+
+fn binding_host_theme(
+    host_theme: &HostThemeOptionsJson,
+) -> Result<merman::render::CompiledHostTheme, BindingError> {
+    let mut profile = HostThemeProfile::default();
+
+    if let Some(appearance) = host_theme.appearance.as_deref() {
+        profile.appearance = match normalize_option(appearance).as_str() {
+            "light" => HostThemeAppearance::Light,
+            "dark" => HostThemeAppearance::Dark,
+            other => {
+                return Err(BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("unsupported host_theme.appearance: {other}"),
+                ));
+            }
+        };
+    }
+
+    if let Some(font_family) = host_theme
+        .font_family
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        profile.font_family = Some(font_family.to_string());
+    }
+    if let Some(font_size) = host_theme
+        .font_size
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        profile.font_size = Some(css_declaration_value(font_size, "host_theme.font_size")?);
+    }
+
+    if let Some(roles) = host_theme.roles.as_ref() {
+        profile.roles = HostThemeRoles {
+            canvas: css_role_value(roles.canvas.as_deref(), "host_theme.roles.canvas")?,
+            surface: css_role_value(roles.surface.as_deref(), "host_theme.roles.surface")?,
+            surface_alt: css_role_value(
+                roles.surface_alt.as_deref(),
+                "host_theme.roles.surface_alt",
+            )?,
+            surface_muted: css_role_value(
+                roles.surface_muted.as_deref(),
+                "host_theme.roles.surface_muted",
+            )?,
+            text: css_role_value(roles.text.as_deref(), "host_theme.roles.text")?,
+            subtle_text: css_role_value(
+                roles.subtle_text.as_deref(),
+                "host_theme.roles.subtle_text",
+            )?,
+            border: css_role_value(roles.border.as_deref(), "host_theme.roles.border")?,
+            line: css_role_value(roles.line.as_deref(), "host_theme.roles.line")?,
+            edge_label_background: css_role_value(
+                roles.edge_label_background.as_deref(),
+                "host_theme.roles.edge_label_background",
+            )?,
+            cluster_background: css_role_value(
+                roles.cluster_background.as_deref(),
+                "host_theme.roles.cluster_background",
+            )?,
+            cluster_border: css_role_value(
+                roles.cluster_border.as_deref(),
+                "host_theme.roles.cluster_border",
+            )?,
+            note_background: css_role_value(
+                roles.note_background.as_deref(),
+                "host_theme.roles.note_background",
+            )?,
+            note_border: css_role_value(
+                roles.note_border.as_deref(),
+                "host_theme.roles.note_border",
+            )?,
+            note_text: css_role_value(roles.note_text.as_deref(), "host_theme.roles.note_text")?,
+            actor_background: css_role_value(
+                roles.actor_background.as_deref(),
+                "host_theme.roles.actor_background",
+            )?,
+            actor_border: css_role_value(
+                roles.actor_border.as_deref(),
+                "host_theme.roles.actor_border",
+            )?,
+            actor_text: css_role_value(roles.actor_text.as_deref(), "host_theme.roles.actor_text")?,
+            activation_background: css_role_value(
+                roles.activation_background.as_deref(),
+                "host_theme.roles.activation_background",
+            )?,
+            activation_border: css_role_value(
+                roles.activation_border.as_deref(),
+                "host_theme.roles.activation_border",
+            )?,
+            error: css_role_value(roles.error.as_deref(), "host_theme.roles.error")?,
+            warning: css_role_value(roles.warning.as_deref(), "host_theme.roles.warning")?,
+            success: css_role_value(roles.success.as_deref(), "host_theme.roles.success")?,
+        };
+    }
+
+    if let Some(palette) = host_theme.series_palette.as_ref() {
+        let mut parsed = Vec::with_capacity(palette.len());
+        for (index, color) in palette.iter().enumerate() {
+            parsed.push(
+                css_declaration_value(color, "host_theme.series_palette").map_err(|err| {
+                    BindingError::new(err.status(), format!("{} at index {index}", err.message()))
+                })?,
+            );
+        }
+        profile.series_palette = parsed;
+    }
+
+    if let Some(output) = host_theme.output.as_ref() {
+        if let Some(pipeline) = output.pipeline.as_deref() {
+            profile.output.pipeline = match normalize_option(pipeline).as_str() {
+                "parity" => HostThemePipelinePreset::Parity,
+                "readable" => HostThemePipelinePreset::Readable,
+                "resvg-safe" | "resvg_safe" => HostThemePipelinePreset::ResvgSafe,
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported host_theme.output.pipeline: {other}"),
+                    ));
+                }
+            };
+        }
+        if let Some(policy) = output.css_override_policy.as_deref() {
+            profile.output.css_override_policy = match normalize_option(policy).as_str() {
+                "preserve" => merman::render::CssOverridePolicy::Preserve,
+                "strip-existing-important" | "strip_existing_important" => {
+                    merman::render::CssOverridePolicy::StripExistingImportant
+                }
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported host_theme.output.css_override_policy: {other}"),
+                    ));
+                }
+            };
+        }
+        if let Some(root_background) = output.root_background.as_deref() {
+            profile.output.root_background = match normalize_option(root_background).as_str() {
+                "none" => HostThemeRootBackground::None,
+                "canvas" => HostThemeRootBackground::Canvas,
+                _ => HostThemeRootBackground::Color(css_declaration_value(
+                    root_background,
+                    "host_theme.output.root_background",
+                )?),
+            };
+        }
+        if let Some(drop) = output.drop_native_duplicate_fallbacks {
+            profile.output.drop_native_duplicate_fallbacks = drop;
+        }
+        if let Some(scoped_css) = output.scoped_css.as_deref() {
+            profile.output.scoped_css = Some(scoped_css.to_string());
+        }
+    }
+
+    if let Some(theme_variables) = host_theme.theme_variables.as_ref() {
+        profile.theme_variables = theme_variables.clone();
+    }
+    if let Some(site_config) = host_theme.site_config.as_ref() {
+        let Some(object) = site_config.as_object() else {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "host_theme.site_config must be a JSON object",
+            ));
+        };
+        profile.site_config = object.clone();
+    }
+
+    Ok(profile.compile())
+}
+
+fn css_role_value(value: Option<&str>, name: &str) -> Result<Option<String>, BindingError> {
+    value
+        .map(|value| css_declaration_value(value, name))
+        .transpose()
 }
 
 fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {

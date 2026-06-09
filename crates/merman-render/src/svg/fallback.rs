@@ -232,7 +232,36 @@ fn extract_css_background_color_for_class(svg: &str, class_name: &str) -> Option
 fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String> {
     // Mermaid parity SVGs inline styles in a `<style>` element and typically emit rules like:
     //   #<id> .section-root text{fill:#ffffff;}
-    // This is a cheap non-validating parser that looks for the pattern and extracts the value.
+    //   #<id> .label text,#<id> span,#<id> p{fill:#ffffff;color:#ffffff;}
+    // This is a cheap non-validating parser for scoped selector lists. It deliberately avoids
+    // shape selectors like `.node rect` so node backgrounds do not become text fallback fills.
+    let mut search = 0usize;
+    while let Some(open_rel) = svg[search..].find('{') {
+        let open = search + open_rel;
+        let Some(close_rel) = svg[open + 1..].find('}') else {
+            break;
+        };
+        let close = open + 1 + close_rel;
+        let selector_start = svg[..open].rfind('}').map_or(0, |idx| idx + 1);
+        let selector = svg[selector_start..open].trim();
+        let declarations = &svg[open + 1..close];
+
+        if selector_rule_applies_to_text_class(selector, class_name) {
+            let property = extract_style_property(declarations, "fill")
+                .or_else(|| extract_style_property(declarations, "color"));
+            if property.is_some() {
+                return property;
+            }
+        } else if selector_rule_applies_inherited_color_to_class(selector, class_name) {
+            if let Some(color) = extract_style_property(declarations, "color") {
+                return Some(color);
+            }
+        }
+
+        search = close + 1;
+    }
+
+    // Preserve the historical fast path for compact unscoped rules.
     let needle = format!(".{class_name} text{{fill:");
     let mut search = 0usize;
     while let Some(rel) = svg[search..].find(&needle) {
@@ -249,6 +278,113 @@ fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String
         search = i + end;
     }
     None
+}
+
+fn extract_css_root_text_fill(svg: &str) -> Option<String> {
+    let svg_start = svg.find("<svg")?;
+    let svg_end = svg[svg_start..].find('>').map(|rel| svg_start + rel + 1)?;
+    let root_id = parse_attr_str(&svg[svg_start..svg_end], "id")?;
+    let needle = format!("#{root_id}{{");
+    let i = svg.find(&needle)? + needle.len();
+    let end_rel = svg[i..].find('}')?;
+    let declarations = &svg[i..i + end_rel];
+    extract_style_property(declarations, "fill")
+        .or_else(|| extract_style_property(declarations, "color"))
+}
+
+fn selector_rule_applies_to_text_class(selector_list: &str, class_name: &str) -> bool {
+    selector_list.split(',').map(str::trim).any(|selector| {
+        selector_has_class(selector, class_name)
+            && (selector_targets_text_like(selector)
+                || selector_targets_class_directly(selector, class_name))
+    })
+}
+
+fn selector_rule_applies_inherited_color_to_class(selector_list: &str, class_name: &str) -> bool {
+    selector_list.split(',').map(str::trim).any(|selector| {
+        selector_has_class(selector, class_name) && !selector_targets_shape(selector)
+    })
+}
+
+fn selector_has_class(selector: &str, class_name: &str) -> bool {
+    let needle = format!(".{class_name}");
+    let mut search = 0usize;
+    while let Some(rel) = selector[search..].find(&needle) {
+        let start = search + rel;
+        let after = start + needle.len();
+        if selector[after..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !is_css_identifier_char(ch))
+        {
+            return true;
+        }
+        search = after;
+    }
+    false
+}
+
+fn is_css_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'
+}
+
+fn selector_targets_text_like(selector: &str) -> bool {
+    selector_targets_element(selector, "text")
+        || selector_targets_element(selector, "tspan")
+        || selector_targets_element(selector, "span")
+        || selector_targets_element(selector, "p")
+}
+
+fn selector_targets_shape(selector: &str) -> bool {
+    selector_targets_element(selector, "rect")
+        || selector_targets_element(selector, "circle")
+        || selector_targets_element(selector, "ellipse")
+        || selector_targets_element(selector, "polygon")
+        || selector_targets_element(selector, "path")
+        || selector_targets_element(selector, "line")
+}
+
+fn selector_targets_element(selector: &str, element: &str) -> bool {
+    let lower = selector.to_ascii_lowercase();
+    let mut search = 0usize;
+    while let Some(rel) = lower[search..].find(element) {
+        let start = search + rel;
+        let before = lower[..start].chars().next_back();
+        let after = lower[start + element.len()..].chars().next();
+        let before_ok = before.is_none_or(|ch| !is_css_identifier_char(ch));
+        let after_ok = after.is_none_or(|ch| !is_css_identifier_char(ch));
+        if before_ok && after_ok {
+            return true;
+        }
+        search = start + element.len();
+    }
+    false
+}
+
+fn selector_targets_class_directly(selector: &str, class_name: &str) -> bool {
+    let needle = format!(".{class_name}");
+    let mut search = 0usize;
+    while let Some(rel) = selector[search..].find(&needle) {
+        let start = search + rel;
+        let after_start = start + needle.len();
+        let Some(after_ch) = selector[after_start..].chars().next() else {
+            return true;
+        };
+        if is_css_identifier_char(after_ch) {
+            search = after_start;
+            continue;
+        }
+        let after = selector[after_start..].trim_start();
+        if after.is_empty()
+            || after.starts_with(':')
+            || after.starts_with('[')
+            || after.starts_with('.')
+        {
+            return true;
+        }
+        search = after_start;
+    }
+    false
 }
 
 fn extract_style_property(style: &str, property: &str) -> Option<String> {
@@ -301,7 +437,7 @@ fn extract_svg_text_fill_from_ancestors(svg: &str, g_stack: &[GFrame]) -> Option
             return Some(fill.clone());
         }
     }
-    None
+    extract_css_root_text_fill(svg)
 }
 
 fn extract_svg_font_style_from_ancestors(g_stack: &[GFrame], property: &str) -> Option<String> {
@@ -627,6 +763,32 @@ mod tests {
                 && out.contains("font-weight: 600")
                 && out.contains("font-style: italic"),
             "expected font context to propagate: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_scoped_label_css_for_fallback_fill() {
+        let svg = r##"<svg id="host-theme-block" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-block{fill:#eeeeee;}#host-theme-block .node rect{fill:#111827;}#host-theme-block .label text,#host-theme-block span,#host-theme-block p{fill:#e5e7eb;color:#e5e7eb;}</style><g class="block"><g class="node flowchart-label"><g class="label"><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></g></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r##"fill="#e5e7eb""##),
+            "expected scoped label CSS, not shape CSS/default fill, to drive fallback text: {out}"
+        );
+        assert!(
+            !out.contains(r##"fill="#111827""##),
+            "fallback text should not inherit node rectangle fill: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_root_fill_when_no_label_context_matches() {
+        let svg = r##"<svg id="host-theme-root" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-root{font-family:Inter;fill:#ddeeff;}#host-theme-root .node rect{fill:#111827;}</style><g><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(r##"fill="#ddeeff""##),
+            "expected root fill to be the final readable fallback: {out}"
         );
     }
 

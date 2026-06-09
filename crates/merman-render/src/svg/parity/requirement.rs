@@ -274,6 +274,9 @@ pub(super) fn render_requirement_diagram_svg_model(
         effective_config,
     ));
     let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
+    let theme = SvgTheme::new(effective_config);
+    let default_fill_color = theme.color("requirementBackground", "#ECECFF");
+    let default_stroke_color = theme.color("requirementBorderColor", "#9370DB");
     let hand_drawn_seed = effective_config
         .get("handDrawnSeed")
         .and_then(|v| v.as_u64())
@@ -964,8 +967,8 @@ pub(super) fn render_requirement_diagram_svg_model(
             stroke_override,
             stroke_width_override,
         ) = parse_node_style_overrides(css_styles);
-        let fill_color = fill_override.as_deref().unwrap_or("#ECECFF");
-        let stroke_color = stroke_override.as_deref().unwrap_or("#9370DB");
+        let fill_color = fill_override.as_deref().unwrap_or(&default_fill_color);
+        let stroke_color = stroke_override.as_deref().unwrap_or(&default_stroke_color);
         let stroke_width = stroke_width_override.unwrap_or(1.3);
 
         let x = -n.width / 2.0;
