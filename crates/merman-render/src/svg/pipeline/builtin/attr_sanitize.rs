@@ -2,7 +2,7 @@ use crate::Result;
 use std::borrow::Cow;
 
 use super::css_sanitize::strip_css_deg_units;
-use super::util::find_tag_end;
+use super::util::{find_tag_end, next_svg_quoted_attr};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -69,7 +69,7 @@ fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
     let mut copied_until = 0usize;
     let mut cursor = 0usize;
 
-    while let Some(attr) = next_svg_double_quoted_attr(tag, cursor) {
+    while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
         let name = &tag[attr.name_start..attr.name_end];
         let value = &tag[attr.value_start..attr.value_end];
 
@@ -208,102 +208,13 @@ fn is_start_or_empty_tag(tag: &str, expected: &str) -> bool {
 
 fn attr_value(tag: &str, name: &str) -> Option<String> {
     let mut cursor = 0usize;
-    while let Some(attr) = next_svg_double_quoted_attr(tag, cursor) {
+    while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
         if tag[attr.name_start..attr.name_end].eq_ignore_ascii_case(name) {
             return Some(tag[attr.value_start..attr.value_end].to_string());
         }
         cursor = attr.full_end;
     }
     None
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SvgAttrMatch {
-    full_start: usize,
-    full_end: usize,
-    name_start: usize,
-    name_end: usize,
-    value_start: usize,
-    value_end: usize,
-}
-
-fn next_svg_double_quoted_attr(tag: &str, from: usize) -> Option<SvgAttrMatch> {
-    let mut cursor = from;
-    while cursor < tag.len() {
-        let ch = tag.get(cursor..)?.chars().next()?;
-        if ch.is_whitespace() {
-            let full_start = cursor;
-            let name_start = skip_svg_attr_regex_whitespace(tag, cursor);
-            if let Some(attr_match) = svg_double_quoted_attr_at(tag, full_start, name_start) {
-                return Some(attr_match);
-            }
-            cursor = name_start;
-        } else {
-            cursor += ch.len_utf8();
-        }
-    }
-    None
-}
-
-fn svg_double_quoted_attr_at(
-    tag: &str,
-    full_start: usize,
-    name_start: usize,
-) -> Option<SvgAttrMatch> {
-    let first = *tag.as_bytes().get(name_start)?;
-    if !is_svg_attr_name_start_byte(first) {
-        return None;
-    }
-
-    let name_end = consume_svg_attr_name(tag, name_start);
-    let mut cursor = skip_svg_attr_regex_whitespace(tag, name_end);
-    if !tag.get(cursor..)?.starts_with('=') {
-        return None;
-    }
-    cursor += 1;
-    cursor = skip_svg_attr_regex_whitespace(tag, cursor);
-    if !tag.get(cursor..)?.starts_with('"') {
-        return None;
-    }
-
-    let value_start = cursor + 1;
-    let value_end = value_start + tag.get(value_start..)?.find('"')?;
-    Some(SvgAttrMatch {
-        full_start,
-        full_end: value_end + 1,
-        name_start,
-        name_end,
-        value_start,
-        value_end,
-    })
-}
-
-fn skip_svg_attr_regex_whitespace(tag: &str, mut cursor: usize) -> usize {
-    while let Some(ch) = tag.get(cursor..).and_then(|tail| tail.chars().next()) {
-        if !ch.is_whitespace() {
-            break;
-        }
-        cursor += ch.len_utf8();
-    }
-    cursor
-}
-
-fn consume_svg_attr_name(tag: &str, mut cursor: usize) -> usize {
-    while let Some(b) = tag.as_bytes().get(cursor) {
-        if !is_svg_attr_name_continue_byte(*b) {
-            break;
-        }
-        cursor += 1;
-    }
-    cursor
-}
-
-fn is_svg_attr_name_start_byte(b: u8) -> bool {
-    b.is_ascii_alphabetic() || matches!(b, b'_' | b':')
-}
-
-fn is_svg_attr_name_continue_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
 }
 
 fn is_missing_or_invalid_rect_dimension(value: Option<&str>) -> bool {
@@ -416,6 +327,16 @@ mod tests {
             out.contains(r#"style="transform:rotate(45);stroke:#333""#),
             "got: {out}"
         );
+        assert!(!out.contains("animation"), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_scans_single_quoted_attrs() {
+        let svg = r#"<svg><path x = '10px' style='animation: dash 1s; stroke: #333;'/></svg>"#;
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains(r#" x="10""#), "got: {out}");
+        assert!(out.contains(r#"style="stroke:#333""#), "got: {out}");
         assert!(!out.contains("animation"), "got: {out}");
     }
 

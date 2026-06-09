@@ -9,6 +9,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Fixed
 
 - Corrected web package documentation to use the published `@mermanjs/web` npm package name.
+- Limited CSS override cleanup to `<style>` blocks and `style` attributes so ordinary SVG text and metadata containing `!important` stay intact.
 
 ## [0.7.0-alpha.2] - 2026-06-08
 
