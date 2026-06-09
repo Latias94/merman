@@ -17,7 +17,7 @@ categories = ["development-tools::build-utils", "visualization"]
 proc-macro = true
 
 [dependencies]
-merman = { workspace = true, default-features = false, features = ["render"] }
+merman = { workspace = true, features = ["core-full", "core-host", "render"] }
 proc-macro2.workspace = true
 quote.workspace = true
 roxmltree.workspace = true

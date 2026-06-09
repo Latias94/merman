@@ -10,7 +10,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
-chrono.workspace = true
+chrono = { workspace = true, features = ["clock"] }
 base64.workspace = true
 futures.workspace = true
 dugong = { path = "../dugong" }

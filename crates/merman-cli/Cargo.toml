@@ -22,7 +22,7 @@ ratex-math = ["merman/ratex-math"]
 [dependencies]
 clap.workspace = true
 chrono.workspace = true
-merman = { workspace = true, features = ["raster"] }
+merman = { workspace = true, features = ["core-full", "core-host", "raster"] }
 rayon.workspace = true
 regex.workspace = true
 reqwest.workspace = true

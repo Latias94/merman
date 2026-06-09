@@ -50,7 +50,7 @@ use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
-use shape_data::{apply_shape_data_to_node, parse_shape_data_yaml, yaml_to_bool, yaml_to_string};
+use shape_data::{apply_shape_data_to_node, parse_shape_data, value_to_bool, value_to_string};
 use subgraph::SubgraphBuilder;
 
 #[derive(Debug, Clone)]

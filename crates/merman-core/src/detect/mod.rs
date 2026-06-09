@@ -126,13 +126,13 @@ impl DetectorRegistry {
     }
 
     /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(feature = "large-features")]
+    #[cfg(feature = "full")]
     pub fn for_pinned_mermaid_baseline() -> Self {
         Self::pinned_mermaid_baseline_full()
     }
 
     /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(not(feature = "large-features"))]
+    #[cfg(not(feature = "full"))]
     pub fn for_pinned_mermaid_baseline() -> Self {
         Self::pinned_mermaid_baseline_tiny()
     }

@@ -123,6 +123,7 @@ MSRV is `rust-version = 1.95`.
 - [Parity and coverage](#parity-and-coverage)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
+- [Feature surfaces](#feature-surfaces)
 - [Architecture notes](#architecture-notes)
 - [Workspace crates](#workspace-crates)
 - [Links](#links)
@@ -684,6 +685,17 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
   choose a target fit box or explicitly opt into unbounded raster output.
 - Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
+
+## Feature surfaces
+
+Cargo feature meanings and host profile expectations are documented in
+[`docs/FEATURES.md`](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md). In short:
+`merman-wasm` is the browser/wasm-bindgen package, while pure-WASM and Typst-style hosts start from
+`merman-core --no-default-features` or `merman --no-default-features` and must avoid full core
+config/sanitization, host-clock, host-random, host-timing, JS, and WASI imports. The pure core
+profile keeps common inline metadata such as `@{ shape: rounded }`, but does not apply YAML
+frontmatter title/config and uses conservative HTML escaping instead of DOMPurify-like
+sanitization.
 
 ## Architecture notes
 

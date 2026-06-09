@@ -15,8 +15,17 @@ categories = ["parser-implementations", "visualization"]
 build = "build.rs"
 
 [features]
-default = ["large-features"]
-large-features = []
+# `full` keeps Mermaid-compatible parser/config/sanitizer affordances on by default.
+# `host` keeps ambient host capabilities on by default.
+# Disable defaults for pure-WASM/Typst profiles.
+default = ["full", "host"]
+full = ["full-config", "full-sanitization"]
+full-config = ["dep:serde_yaml", "dep:json5"]
+full-sanitization = ["dep:lol_html", "dep:url"]
+host = ["host-clock", "host-random", "host-timing"]
+host-clock = ["chrono/clock"]
+host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
+host-timing = ["dep:web-time"]
 
 [dependencies]
 euclid.workspace = true
@@ -27,17 +36,17 @@ logos.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
-json5.workspace = true
+serde_yaml = { workspace = true, optional = true }
+json5 = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
-lol_html.workspace = true
-url.workspace = true
-uuid.workspace = true
+lol_html = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
 chrono.workspace = true
 ryu-js.workspace = true
 rustc-hash.workspace = true
-web-time.workspace = true
+web-time = { workspace = true, optional = true }
 
 [build-dependencies]
 lalrpop.workspace = true

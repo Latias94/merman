@@ -18,6 +18,7 @@ pub mod error;
 mod family;
 pub mod generated;
 pub mod geom;
+mod inline_config;
 pub mod models;
 pub mod preprocess;
 mod runtime;
@@ -116,6 +117,17 @@ impl Default for Engine {
 
 impl Engine {
     fn parse_timing_enabled() -> bool {
+        #[cfg(feature = "host-timing")]
+        {
+            return Self::parse_timing_enabled_from_env();
+        }
+
+        #[cfg(not(feature = "host-timing"))]
+        false
+    }
+
+    #[cfg(feature = "host-timing")]
+    fn parse_timing_enabled_from_env() -> bool {
         static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         *ENABLED.get_or_init(|| {
             matches!(
@@ -280,15 +292,15 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         let timing_enabled = Self::parse_timing_enabled();
-        let total_start = timing_enabled.then(web_time::Instant::now);
+        let total_start = crate::runtime::timing_start(timing_enabled);
 
-        let preprocess_start = timing_enabled.then(web_time::Instant::now);
+        let preprocess_start = crate::runtime::timing_start(timing_enabled);
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
-        let preprocess = preprocess_start.map(|s| s.elapsed());
+        let preprocess = preprocess_start.map(crate::runtime::timing_elapsed);
 
-        let parse_start = timing_enabled.then(web_time::Instant::now);
+        let parse_start = crate::runtime::timing_start(timing_enabled);
         let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
             crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
                 diagram::parse_or_unsupported(
@@ -308,13 +320,15 @@ impl Engine {
                 }
 
                 if let Some(start) = total_start {
-                    let parse = parse_start.map(|s| s.elapsed()).unwrap_or_default();
+                    let parse = parse_start
+                        .map(crate::runtime::timing_elapsed)
+                        .unwrap_or_default();
                     eprintln!(
                         "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                        start.elapsed(),
+                        crate::runtime::timing_elapsed(start),
                         preprocess.unwrap_or_default(),
                         parse,
-                        web_time::Duration::default(),
+                        crate::runtime::timing_zero_duration(),
                         text.len(),
                     );
                 }
@@ -323,17 +337,17 @@ impl Engine {
                 ));
             }
         };
-        let parse = parse_start.map(|s| s.elapsed());
+        let parse = parse_start.map(crate::runtime::timing_elapsed);
 
-        let sanitize_start = timing_enabled.then(web_time::Instant::now);
+        let sanitize_start = crate::runtime::timing_start(timing_enabled);
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-        let sanitize = sanitize_start.map(|s| s.elapsed());
+        let sanitize = sanitize_start.map(crate::runtime::timing_elapsed);
 
         if let Some(start) = total_start {
             eprintln!(
                 "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                 meta.diagram_type,
-                start.elapsed(),
+                crate::runtime::timing_elapsed(start),
                 preprocess.unwrap_or_default(),
                 parse.unwrap_or_default(),
                 sanitize.unwrap_or_default(),
@@ -407,21 +421,21 @@ impl Engine {
         preprocess: impl FnOnce(&Self) -> Result<Option<(String, ParseMetadata)>>,
     ) -> Result<Option<ParsedDiagramRender>> {
         let timing_enabled = Self::parse_timing_enabled();
-        let total_start = timing_enabled.then(web_time::Instant::now);
+        let total_start = crate::runtime::timing_start(timing_enabled);
 
-        let preprocess_start = timing_enabled.then(web_time::Instant::now);
+        let preprocess_start = crate::runtime::timing_start(timing_enabled);
         let Some((code, meta)) = preprocess(self)? else {
             return Ok(None);
         };
-        let preprocess = preprocess_start.map(|s| s.elapsed());
+        let preprocess = preprocess_start.map(crate::runtime::timing_elapsed);
 
-        let parse_start = timing_enabled.then(web_time::Instant::now);
+        let parse_start = crate::runtime::timing_start(timing_enabled);
         let parse_res = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
             crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
                 self.parse_render_semantic_model(&code, &meta)
             })
         });
-        let parse = parse_start.map(|s| s.elapsed());
+        let parse = parse_start.map(crate::runtime::timing_elapsed);
 
         let mut model = match parse_res {
             Ok(v) => v,
@@ -433,10 +447,10 @@ impl Engine {
                 if let Some(start) = total_start {
                     eprintln!(
                         "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                        start.elapsed(),
+                        crate::runtime::timing_elapsed(start),
                         preprocess.unwrap_or_default(),
                         parse.unwrap_or_default(),
-                        web_time::Duration::default(),
+                        crate::runtime::timing_zero_duration(),
                         text.len(),
                     );
                 }
@@ -446,16 +460,16 @@ impl Engine {
             }
         };
 
-        let sanitize_start = timing_enabled.then(web_time::Instant::now);
+        let sanitize_start = crate::runtime::timing_start(timing_enabled);
         model.sanitize_common_db_fields(&meta.effective_config);
-        let sanitize = sanitize_start.map(|s| s.elapsed());
+        let sanitize = sanitize_start.map(crate::runtime::timing_elapsed);
 
         if let Some(start) = total_start {
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                 meta.diagram_type,
                 model.kind(),
-                start.elapsed(),
+                crate::runtime::timing_elapsed(start),
                 preprocess.unwrap_or_default(),
                 parse.unwrap_or_default(),
                 sanitize.unwrap_or_default(),

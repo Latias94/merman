@@ -15,6 +15,7 @@ fn parse_graph_defaults_to_flowchart_v2() {
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn parse_merges_frontmatter_and_directive_config() {
     let engine = Engine::new();
     let text = r#"---
@@ -41,6 +42,7 @@ graph TD;A-->B;"#;
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn parse_maps_top_level_frontmatter_diagram_config() {
     let engine = Engine::new();
     let text = r#"---
@@ -81,6 +83,7 @@ gantt
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn parse_frontmatter_config_takes_priority_over_diagram_compat() {
     let engine = Engine::new();
     let text = r#"---
@@ -158,6 +161,7 @@ fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn parse_sanitizes_frontmatter_title_like_mermaid_common_db() {
     let engine = Engine::new();
     let text = r#"---
@@ -433,6 +437,7 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
     const DEPTH: usize = 32;
     let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
@@ -482,6 +487,7 @@ fn init_directive_rejects_excessive_config_nesting_with_small_stack() {
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let source = deep_frontmatter_config_source("sequence", DEPTH, "#334455");
@@ -506,6 +512,7 @@ fn frontmatter_rejects_excessive_config_nesting_with_small_stack() {
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack() {
     const DEPTH: usize = 300;
     let mut source = String::from("---\nconfig:\n  ");
@@ -532,6 +539,7 @@ fn frontmatter_rejects_excessive_inline_yaml_sequence_nesting_with_small_stack()
 }
 
 #[test]
+#[cfg(feature = "full-config")]
 fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata(
@@ -542,6 +550,22 @@ fn frontmatter_non_string_yaml_keys_are_ignored_like_legacy_conversion() {
     .expect("diagram detected");
 
     assert_eq!(res.diagram_type, "sequence");
+    assert_eq!(res.config.as_value(), &json!({}));
+}
+
+#[test]
+#[cfg(not(feature = "full-config"))]
+fn frontmatter_is_stripped_without_full_config_but_config_is_not_applied() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_metadata(
+        "---\ntitle: Pure profile title\nconfig:\n  theme: forest\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
+        ParseOptions::strict(),
+    ))
+    .expect("closed frontmatter should be stripped")
+    .expect("diagram detected");
+
+    assert_eq!(res.diagram_type, "sequence");
+    assert_eq!(res.title, None);
     assert_eq!(res.config.as_value(), &json!({}));
 }
 
@@ -763,6 +787,7 @@ fn deep_init_directive_source(root_key: &str, depth: usize, leaf: &str) -> Strin
     source
 }
 
+#[cfg(feature = "full-config")]
 fn deep_frontmatter_config_source(root_key: &str, depth: usize, leaf: &str) -> String {
     let mut source = format!("---\nconfig: {{\"{root_key}\": ");
     for idx in 0..depth {

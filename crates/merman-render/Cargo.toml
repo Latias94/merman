@@ -31,11 +31,11 @@ ratex-math = [
 
 [dependencies]
 base64.workspace = true
-chrono.workspace = true
+chrono = { workspace = true, features = ["clock"] }
 dugong.workspace = true
 indexmap.workspace = true
 manatee.workspace = true
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["full", "host"] }
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }

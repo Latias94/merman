@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowSubGraph, LinkStylePos, Node, Stmt, TitleKind,
-    apply_shape_data_to_node, parse_shape_data_yaml, yaml_to_bool, yaml_to_string,
+    apply_shape_data_to_node, parse_shape_data, value_to_bool, value_to_string,
 };
 
 pub(super) struct FlowchartSemanticContext<'a> {
@@ -143,12 +143,12 @@ impl<'a> FlowchartSemanticContext<'a> {
                     // Mermaid syntax uses the same `@{...}` form for both nodes and edges:
                     // - if an edge with the given ID exists, it updates the edge metadata
                     // - otherwise it updates (and may create) a node
-                    let v = parse_shape_data_yaml(yaml).map_err(|e| Error::DiagramParse {
+                    let v = parse_shape_data(yaml).map_err(|e| Error::DiagramParse {
                         diagram_type: self.diagram_type.to_string(),
                         message: format!("Invalid shapeData: {e}"),
                     })?;
 
-                    let map = v.as_mapping();
+                    let map = v.as_object();
                     let is_edge_target = self
                         .edges
                         .iter()
@@ -159,21 +159,20 @@ impl<'a> FlowchartSemanticContext<'a> {
                                 if e.id.as_deref() != Some(target.as_str()) {
                                     continue;
                                 }
-                                for (k, v) in map {
-                                    let Some(key) = k.as_str() else { continue };
-                                    match key {
+                                for (key, v) in map {
+                                    match key.as_str() {
                                         "animate" => {
-                                            if let Some(b) = yaml_to_bool(v) {
+                                            if let Some(b) = value_to_bool(v) {
                                                 e.animate = Some(b);
                                             }
                                         }
                                         "animation" => {
-                                            if let Some(s) = yaml_to_string(v) {
+                                            if let Some(s) = value_to_string(v) {
                                                 e.animation = Some(s);
                                             }
                                         }
                                         "curve" => {
-                                            if let Some(s) = yaml_to_string(v) {
+                                            if let Some(s) = value_to_string(v) {
                                                 e.interpolate = Some(s);
                                             }
                                         }

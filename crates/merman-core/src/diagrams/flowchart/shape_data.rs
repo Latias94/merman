@@ -1,14 +1,8 @@
 use super::{Node, TitleKind};
+use serde_json::Value;
 
-pub(super) fn parse_shape_data_yaml(
-    yaml_body: &str,
-) -> std::result::Result<serde_yaml::Value, String> {
-    let yaml_data = if yaml_body.contains('\n') {
-        format!("{yaml_body}\n")
-    } else {
-        format!("{{\n{yaml_body}\n}}")
-    };
-    serde_yaml::from_str(&yaml_data).map_err(|e| format!("{e}"))
+pub(super) fn parse_shape_data(input: &str) -> std::result::Result<Value, String> {
+    crate::inline_config::parse_mermaid_inline_object(input)
 }
 
 const MERMAID_SHAPES_11_12_2: &[&str] = &[
@@ -179,33 +173,16 @@ fn is_valid_shape_11_12_2(shape: &str) -> bool {
     MERMAID_SHAPES_11_12_2.binary_search(&shape).is_ok()
 }
 
-pub(super) fn yaml_to_string(v: &serde_yaml::Value) -> Option<String> {
-    match v {
-        serde_yaml::Value::String(s) => Some(s.clone()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
+pub(super) fn value_to_string(v: &Value) -> Option<String> {
+    crate::inline_config::value_to_string(v)
 }
 
-pub(super) fn yaml_to_bool(v: &serde_yaml::Value) -> Option<bool> {
-    match v {
-        serde_yaml::Value::Bool(b) => Some(*b),
-        serde_yaml::Value::String(s) => match s.trim() {
-            "true" => Some(true),
-            "false" => Some(false),
-            _ => None,
-        },
-        _ => None,
-    }
+pub(super) fn value_to_bool(v: &Value) -> Option<bool> {
+    crate::inline_config::value_to_bool(v)
 }
 
-fn yaml_to_f64(v: &serde_yaml::Value) -> Option<f64> {
-    match v {
-        serde_yaml::Value::Number(n) => n.as_f64(),
-        serde_yaml::Value::String(s) => s.trim().parse::<f64>().ok(),
-        _ => None,
-    }
+fn value_to_f64(v: &Value) -> Option<f64> {
+    crate::inline_config::value_to_f64(v)
 }
 
 fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
@@ -222,8 +199,8 @@ pub(super) fn apply_shape_data_to_node(
     yaml_body: &str,
 ) -> std::result::Result<(), String> {
     // If shapeData is attached to a node reference, Mermaid has already decided this is a node.
-    let v = parse_shape_data_yaml(yaml_body)?;
-    let map = match v.as_mapping() {
+    let v = parse_shape_data(yaml_body)?;
+    let map = match v.as_object() {
         Some(m) => m,
         None => return Ok(()),
     };
@@ -231,8 +208,7 @@ pub(super) fn apply_shape_data_to_node(
     let mut provided_label: Option<String> = None;
     let mut provided_label_type: Option<TitleKind> = None;
     for (k, v) in map {
-        let Some(key) = k.as_str() else { continue };
-        match key {
+        match k.as_str() {
             "shape" => {
                 let Some(shape) = v.as_str() else { continue };
                 if shape != shape.to_lowercase() || shape.contains('_') {
@@ -246,46 +222,47 @@ pub(super) fn apply_shape_data_to_node(
                 node.shape = Some(shape.to_string());
             }
             "label" => {
-                if let Some(label) = yaml_to_string(v) {
+                if let Some(label) = value_to_string(v) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
                 }
             }
             "labelType" => {
-                provided_label_type = Some(sanitize_shape_label_type(yaml_to_string(v).as_deref()));
+                provided_label_type =
+                    Some(sanitize_shape_label_type(value_to_string(v).as_deref()));
             }
             "icon" => {
-                if let Some(icon) = yaml_to_string(v) {
+                if let Some(icon) = value_to_string(v) {
                     node.icon = Some(icon);
                 }
             }
             "form" => {
-                if let Some(form) = yaml_to_string(v) {
+                if let Some(form) = value_to_string(v) {
                     node.form = Some(form);
                 }
             }
             "pos" => {
-                if let Some(pos) = yaml_to_string(v) {
+                if let Some(pos) = value_to_string(v) {
                     node.pos = Some(pos);
                 }
             }
             "img" => {
-                if let Some(img) = yaml_to_string(v) {
+                if let Some(img) = value_to_string(v) {
                     node.img = Some(img);
                 }
             }
             "constraint" => {
-                if let Some(constraint) = yaml_to_string(v) {
+                if let Some(constraint) = value_to_string(v) {
                     node.constraint = Some(constraint);
                 }
             }
             "w" => {
-                if let Some(w) = yaml_to_f64(v) {
+                if let Some(w) = value_to_f64(v) {
                     node.asset_width = Some(w);
                 }
             }
             "h" => {
-                if let Some(h) = yaml_to_f64(v) {
+                if let Some(h) = value_to_f64(v) {
                     node.asset_height = Some(h);
                 }
             }
