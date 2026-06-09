@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload the XCFramework to, for example v0.7.0-alpha.2"
+        description: "Release tag to upload the XCFramework to, for example v0.7.0"
         required: true
         type: string
       source_ref:

@@ -4,6 +4,15 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.7.0] - 2026-06-09
+
+Corresponds to merman workspace release `0.7.0`.
+
+### Changed
+
+- Updated package metadata for the merman workspace `0.7.0` release.
+- Added host theme preset discovery through the UniFFI Python package.
+
 ## [0.7.0a2] - 2026-06-08
 
 Corresponds to merman workspace release `0.7.0-alpha.2`.
