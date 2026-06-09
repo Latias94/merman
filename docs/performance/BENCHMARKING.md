@@ -40,14 +40,21 @@ inputs designed for regression tracking.
 
 ## Comparing with mermaid-rs-renderer (optional)
 
-If you have a local checkout under `repo-ref/mermaid-rs-renderer`, you can generate a comparison
-report:
+If you have a local checkout under `repo-ref/mermaid-rs-renderer`, you can generate a renderer
+comparison report:
 
 ```bash
 python tools/bench/compare_mermaid_renderers.py
 ```
 
-By default this writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
+By default this runs the `quick` corpus suite, writes a Markdown report to
+`docs/performance/COMPARISON.md`, and writes a structured JSON report to
+`target/bench/renderer_comparison.json`.
+
+The comparison harness is intentionally corpus-driven. `tools/bench/corpus.json` records which
+fixtures belong to each suite, their diagram family, broad feature tags, and the quality gates that
+should eventually be paired with the timing result. This keeps benchmark selection out of the
+runner implementation and makes coverage differences explicit.
 
 The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout automatically.
 If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
@@ -61,10 +68,14 @@ a newer Rust toolchain than this workspace's `rust-toolchain.toml`, pass it expl
 python tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
 ```
 
-If you prefer keeping comparison artifacts out of the docs tree, pass `--out` explicitly, e.g.:
+If you prefer keeping comparison artifacts out of the docs tree, pass `--out` and `--json-out`
+explicitly, e.g.:
 
 ```bash
-python tools/bench/compare_mermaid_renderers.py --out target/bench/COMPARISON.latest.md
+python tools/bench/compare_mermaid_renderers.py \
+  --suite standard \
+  --out target/bench/COMPARISON.latest.md \
+  --json-out target/bench/COMPARISON.latest.json
 ```
 
 For lower-noise results (recommended when tracking canaries), use the `long` preset:
@@ -79,6 +90,56 @@ add `--skip-mermaid-js`:
 ```bash
 python tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
 ```
+
+To see the available corpus suites:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py --list-suites
+```
+
+The main suites are:
+
+- `quick`: a small smoke set for local iteration; mirrors the historical comparison filter.
+- `standard`: a balanced cross-family set for routine comparison reports.
+- `cross_family`: one representative medium fixture per supported diagram family.
+- `flowchart`: flowchart-heavy routing and layout stress coverage.
+- `stress`: heavier fixtures used when validating optimization work.
+- `full`: every fixture in `tools/bench/corpus.json`.
+
+The legacy `--filter` path is still available for ad-hoc exact selections. When `--filter` is set,
+`--suite` is ignored:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py \
+  --filter 'end_to_end/(flowchart_medium|class_medium)' \
+  --out target/bench/filter.md \
+  --json-out target/bench/filter.json
+```
+
+### How to read comparison reports
+
+The comparison report separates three signals that should not be collapsed into a single speed
+number:
+
+- Performance: successful timing samples for each renderer.
+- Coverage: requested, available, measured, missing, skipped, and errored fixture counts.
+- Quality expectations: fixture-level tags for future SVG sanity, DOM comparison, and raster
+  comparison gates.
+
+Ratios are only computed when both renderers successfully measured the same fixture. Missing,
+skipped, and errored fixtures reduce coverage rather than being treated as slow or fast results.
+This matters when comparing `merman` with renderers that have different goals or partial Mermaid
+coverage.
+
+The current harness measures warm steady-state rendering:
+
+- `merman`: Criterion `end_to_end/*` benches.
+- `mermaid-rs-renderer`: Criterion `end_to_end/*` benches in the local checkout.
+- Mermaid JS: repeated warm `mermaid.render()` calls inside a single Puppeteer/Chromium process.
+
+Cold CLI startup, WASM/browser-hosted `@mermanjs/web`, DOM diff, and raster diff should remain
+separate modes or quality gates. Do not mix them into the warm native comparison without making the
+mode explicit in the JSON schema.
 
 ## Browser comparison with Mermaid JS
 
