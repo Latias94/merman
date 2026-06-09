@@ -2,6 +2,23 @@
 
 use merman::render::{HeadlessRenderer, HostThemeProfile};
 
+const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
+    commit
+    commit
+    branch develop
+    checkout develop
+    commit
+    commit
+    checkout main
+    merge develop
+    commit
+    branch feature
+    checkout feature
+    commit
+    checkout main
+    merge feature
+"#;
+
 fn render_with_dark_profile(name: &str, source: &str) -> String {
     let profile = HostThemeProfile::editor_dark();
     let compiled = profile.compile();
@@ -36,6 +53,104 @@ fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
             "{name}: expected current DOM/CSS surface {needle:?} in SVG: {svg}"
         );
     }
+}
+
+fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+    let mut checked = 0usize;
+
+    for label_group in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().name() == "g"
+            && node.attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| class == "label")
+                    && classes
+                        .split_whitespace()
+                        .any(|class| class.starts_with("branch-label"))
+            })
+    }) {
+        let Some(text) = label_group
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "text")
+        else {
+            panic!("{name}: branch label group is missing text: {svg}");
+        };
+        assert_eq!(
+            text.attribute("dominant-baseline"),
+            Some("middle"),
+            "{name}: branch label text should use a stable middle baseline: {svg}"
+        );
+        assert_eq!(
+            text.attribute("alignment-baseline"),
+            Some("middle"),
+            "{name}: branch label text should use a stable middle alignment: {svg}"
+        );
+        assert!(
+            text.attribute("y").is_some(),
+            "{name}: branch label text should carry explicit centered y: {svg}"
+        );
+
+        let Some(tspan) = text
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "tspan")
+        else {
+            panic!("{name}: branch label text is missing tspan: {svg}");
+        };
+        assert_eq!(
+            tspan.attribute("dy"),
+            Some("0"),
+            "{name}: branch label tspan should not rely on font-sensitive dy=1em: {svg}"
+        );
+        checked += 1;
+    }
+
+    assert!(
+        checked >= 3,
+        "{name}: expected main/develop/feature branch labels, checked {checked}: {svg}"
+    );
+}
+
+fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &str) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+    let mut checked = 0usize;
+
+    for label_group in document.descendants().filter(|node| {
+        node.is_element()
+            && node.tag_name().name() == "g"
+            && node.attribute("class").is_some_and(|classes| {
+                classes.split_whitespace().any(|class| class == "label")
+                    && classes
+                        .split_whitespace()
+                        .any(|class| class.starts_with("branch-label"))
+            })
+    }) {
+        let text = label_group
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "text")
+            .unwrap_or_else(|| panic!("{name}: branch label group is missing text: {svg}"));
+        assert_eq!(
+            text.attribute("dominant-baseline"),
+            None,
+            "{name}: parity SVG should preserve Mermaid's raw branch label text shape: {svg}"
+        );
+        let tspan = text
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "tspan")
+            .unwrap_or_else(|| panic!("{name}: branch label text is missing tspan: {svg}"));
+        assert_eq!(
+            tspan.attribute("dy"),
+            Some("1em"),
+            "{name}: parity SVG should keep Mermaid's dy=1em branch label baseline: {svg}"
+        );
+        checked += 1;
+    }
+
+    assert!(
+        checked >= 3,
+        "{name}: expected main/develop/feature branch labels, checked {checked}: {svg}"
+    );
 }
 
 #[test]
@@ -118,6 +233,27 @@ fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
         let svg = render_with_dark_profile(name, source);
         assert_contains_all(name, &svg, expected);
     }
+}
+
+#[test]
+fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
+    let plain = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("gitgraph-plain-baseline")
+        .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
+        .unwrap_or_else(|err| panic!("plain gitGraph render failed: {err}"))
+        .unwrap_or_else(|| panic!("plain gitGraph render produced no diagram"));
+    assert_gitgraph_branch_labels_keep_mermaid_parity_baseline("plain-gitgraph", &plain);
+
+    let profile = HostThemeProfile::one_dark();
+    let themed = HeadlessRenderer::new()
+        .with_host_theme(&profile)
+        .with_vendored_text_measurer()
+        .with_diagram_id("gitgraph-one-dark-baseline")
+        .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
+        .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
+        .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
+    assert_gitgraph_branch_label_baselines_centered("one-dark-gitgraph", &themed);
 }
 
 #[test]

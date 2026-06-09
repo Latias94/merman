@@ -2,6 +2,7 @@ mod builtin;
 mod context;
 mod preset;
 
+pub(crate) use builtin::GitGraphBranchLabelBaselinePostprocessor;
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
     ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
