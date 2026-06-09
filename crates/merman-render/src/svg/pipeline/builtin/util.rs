@@ -29,6 +29,61 @@ pub(crate) fn find_tag_end(svg: &str, start: usize) -> Option<usize> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) struct SvgTag<'a> {
+    source: &'a str,
+    start: usize,
+    end: usize,
+}
+
+impl<'a> SvgTag<'a> {
+    pub(crate) fn raw(self) -> &'a str {
+        &self.source[self.start..=self.end]
+    }
+
+    pub(crate) fn start(self) -> usize {
+        self.start
+    }
+
+    pub(crate) fn is_self_closing(self) -> bool {
+        self.raw().trim_end().ends_with("/>")
+    }
+}
+
+pub(crate) struct SvgTagScanner<'a> {
+    source: &'a str,
+    cursor: usize,
+}
+
+impl<'a> SvgTagScanner<'a> {
+    pub(crate) fn new(source: &'a str) -> Self {
+        Self { source, cursor: 0 }
+    }
+
+    pub(crate) fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub(crate) fn skip_to(&mut self, cursor: usize) {
+        self.cursor = cursor.min(self.source.len());
+    }
+
+    pub(crate) fn next(&mut self) -> Option<SvgTag<'a>> {
+        let rel_start = self.source[self.cursor..].find('<')?;
+        let start = self.cursor + rel_start;
+        let Some(end) = find_tag_end(self.source, start) else {
+            self.cursor = start;
+            return None;
+        };
+        self.cursor = end + 1;
+        Some(SvgTag {
+            source: self.source,
+            start,
+            end,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct SvgQuotedAttr {
     pub(crate) full_start: usize,
     pub(crate) full_end: usize,
@@ -197,5 +252,28 @@ mod tests {
 
         let inserted = set_or_insert_quoted_attr(tag, "x", "10");
         assert!(inserted.contains(r#" x="10" />"#), "{inserted}");
+    }
+
+    #[test]
+    fn svg_tag_scanner_reports_tag_spans_and_names() {
+        let svg = r#"<svg><g class="a > b"><rect width="1"/></g><!--x--></svg>"#;
+        let mut scanner = SvgTagScanner::new(svg);
+
+        let svg_tag = scanner.next().unwrap();
+        assert_eq!(svg_tag.raw(), "<svg>");
+        assert_eq!(svg_tag.start(), 0);
+        assert!(!svg_tag.is_self_closing());
+
+        let g_tag = scanner.next().unwrap();
+        assert_eq!(g_tag.raw(), r#"<g class="a > b">"#);
+
+        let rect_tag = scanner.next().unwrap();
+        assert!(rect_tag.is_self_closing());
+
+        let g_close = scanner.next().unwrap();
+        assert_eq!(g_close.raw(), "</g>");
+
+        let comment = scanner.next().unwrap();
+        assert_eq!(comment.raw(), "<!--x-->");
     }
 }
