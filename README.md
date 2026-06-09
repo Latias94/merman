@@ -49,23 +49,36 @@ Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
 Diagram coverage and current parity status live in [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 
+## Performance
+
+`merman` includes a corpus-driven benchmark harness for comparing native `merman`,
+`mermaid-rs-renderer`, and upstream Mermaid JS v11.15.0. In a local warm-render `standard` suite
+run on Apple M4, `merman` measured all 34 requested fixtures and used about 1.8% to 23.0% of
+Mermaid JS render time across successful Mermaid JS cases, roughly 4.3x to 56.4x faster, with a
+median speedup around 15.8x.
+
+Performance numbers are not a substitute for SVG parity. Missing, skipped, errored, and quality
+comparison results are reported separately by the benchmark harness. See
+[`docs/performance/BENCHMARKING.md`](https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md)
+for methodology and commands.
+
 ## Install
 
 ```sh
 # Command-line tool
-cargo install merman-cli --version 0.7.0-alpha.2
+cargo install merman-cli --version 0.7.0
 
 # Rust library: SVG rendering
-cargo add merman@0.7.0-alpha.2 --features render
+cargo add merman@0.7.0 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman@0.7.0-alpha.2 --features ascii
+cargo add merman@0.7.0 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman@0.7.0-alpha.2 --features raster
+cargo add merman@0.7.0 --features raster
 
 # Rustdoc integration
-cargo add merman-rustdoc@0.7.0-alpha.2 --optional
+cargo add merman-rustdoc@0.7.0 --optional
 
 # Browser / TypeScript package
 npm install @mermanjs/web
@@ -96,6 +109,7 @@ MSRV is `rust-version = 1.95`.
 
 - [Choose Your Entry Point](#choose-your-entry-point)
 - [What Merman Outputs](#what-merman-outputs)
+- [Performance](#performance)
 - [Install](#install)
 - [Quickstart (library)](#quickstart-library)
 - [Rust examples](#rust-examples)
