@@ -578,12 +578,13 @@ impl HostThemeProfile {
             put_str(&mut theme_variables, "fontSize", font_size);
         }
 
-        put_theme_roles(&mut theme_variables, &self.roles);
+        let resolved_roles = ResolvedHostThemeRoles::new(&self.roles);
+        put_theme_roles(&mut theme_variables, &resolved_roles);
         put_series_palette(&mut theme_variables, &self.series_palette);
         put_diagram_config(
             &mut root,
             &mut theme_variables,
-            &self.roles,
+            &resolved_roles,
             &self.series_palette,
         );
 
@@ -741,224 +742,284 @@ impl CompiledHostThemeOutput {
     }
 }
 
-fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &HostThemeRoles) {
-    let canvas = roles.canvas.as_deref();
-    let surface = roles.surface.as_deref();
-    let surface_alt = roles.surface_alt.as_deref().or(surface);
-    let surface_muted = roles.surface_muted.as_deref().or(surface_alt);
-    let text = roles.text.as_deref();
-    let subtle_text = roles.subtle_text.as_deref().or(text);
-    let border = roles.border.as_deref();
-    let line = roles.line.as_deref().or(border);
-    let error = roles.error.as_deref();
-    let warning = roles.warning.as_deref();
-    let success = roles.success.as_deref();
+#[derive(Debug, Clone, Copy)]
+struct ResolvedHostThemeRoles<'a> {
+    canvas: Option<&'a str>,
+    surface: Option<&'a str>,
+    surface_alt: Option<&'a str>,
+    surface_muted: Option<&'a str>,
+    text: Option<&'a str>,
+    subtle_text: Option<&'a str>,
+    border: Option<&'a str>,
+    line: Option<&'a str>,
+    edge_label_background: Option<&'a str>,
+    commit_label_background: Option<&'a str>,
+    cluster_background: Option<&'a str>,
+    swimlane_background_odd: Option<&'a str>,
+    cluster_border: Option<&'a str>,
+    note_background: Option<&'a str>,
+    note_border: Option<&'a str>,
+    note_text: Option<&'a str>,
+    actor_background: Option<&'a str>,
+    actor_border: Option<&'a str>,
+    actor_text: Option<&'a str>,
+    activation_background: Option<&'a str>,
+    activation_border: Option<&'a str>,
+    error: Option<&'a str>,
+    warning: Option<&'a str>,
+    success: Option<&'a str>,
+}
 
-    put_opt(theme_variables, "background", canvas);
-    put_opt(theme_variables, "primaryColor", surface);
-    put_opt(theme_variables, "mainBkg", surface);
-    put_opt(theme_variables, "secondaryColor", surface_alt);
-    put_opt(theme_variables, "tertiaryColor", surface_muted);
-    put_opt(theme_variables, "primaryTextColor", text);
-    put_opt(theme_variables, "nodeTextColor", text);
-    put_opt(theme_variables, "textColor", text);
-    put_opt(theme_variables, "titleColor", text);
-    put_opt(theme_variables, "secondaryTextColor", subtle_text);
-    put_opt(theme_variables, "tertiaryTextColor", subtle_text);
-    put_opt(theme_variables, "primaryBorderColor", border);
-    put_opt(theme_variables, "nodeBorder", border);
-    put_opt(theme_variables, "lineColor", line);
-    put_opt(theme_variables, "arrowheadColor", line);
+impl<'a> ResolvedHostThemeRoles<'a> {
+    fn new(roles: &'a HostThemeRoles) -> Self {
+        let canvas = roles.canvas.as_deref();
+        let surface = roles.surface.as_deref();
+        let surface_alt = roles.surface_alt.as_deref().or(surface);
+        let surface_muted = roles.surface_muted.as_deref().or(surface_alt);
+        let text = roles.text.as_deref();
+        let subtle_text = roles.subtle_text.as_deref().or(text);
+        let border = roles.border.as_deref();
+        let line = roles.line.as_deref().or(border);
+
+        Self {
+            canvas,
+            surface,
+            surface_alt,
+            surface_muted,
+            text,
+            subtle_text,
+            border,
+            line,
+            edge_label_background: roles.edge_label_background.as_deref().or(canvas),
+            commit_label_background: roles.edge_label_background.as_deref().or(surface),
+            cluster_background: roles.cluster_background.as_deref().or(surface_alt),
+            swimlane_background_odd: roles.cluster_background.as_deref().or(surface_muted),
+            cluster_border: roles.cluster_border.as_deref().or(border),
+            note_background: roles.note_background.as_deref().or(surface_alt),
+            note_border: roles.note_border.as_deref().or(border),
+            note_text: roles.note_text.as_deref().or(text),
+            actor_background: roles.actor_background.as_deref().or(surface_alt),
+            actor_border: roles.actor_border.as_deref().or(border),
+            actor_text: roles.actor_text.as_deref().or(text),
+            activation_background: roles.activation_background.as_deref().or(surface_muted),
+            activation_border: roles.activation_border.as_deref().or(border),
+            error: roles.error.as_deref(),
+            warning: roles.warning.as_deref(),
+            success: roles.success.as_deref(),
+        }
+    }
+}
+
+fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedHostThemeRoles<'_>) {
+    put_opt(theme_variables, "background", roles.canvas);
+    put_opt(theme_variables, "primaryColor", roles.surface);
+    put_opt(theme_variables, "mainBkg", roles.surface);
+    put_opt(theme_variables, "secondaryColor", roles.surface_alt);
+    put_opt(theme_variables, "tertiaryColor", roles.surface_muted);
+    put_opt(theme_variables, "primaryTextColor", roles.text);
+    put_opt(theme_variables, "nodeTextColor", roles.text);
+    put_opt(theme_variables, "textColor", roles.text);
+    put_opt(theme_variables, "titleColor", roles.text);
+    put_opt(theme_variables, "secondaryTextColor", roles.subtle_text);
+    put_opt(theme_variables, "tertiaryTextColor", roles.subtle_text);
+    put_opt(theme_variables, "primaryBorderColor", roles.border);
+    put_opt(theme_variables, "nodeBorder", roles.border);
+    put_opt(theme_variables, "lineColor", roles.line);
+    put_opt(theme_variables, "arrowheadColor", roles.line);
     put_opt(
         theme_variables,
         "edgeLabelBackground",
-        roles.edge_label_background.as_deref().or(canvas),
+        roles.edge_label_background,
     );
 
-    put_opt(
-        theme_variables,
-        "clusterBkg",
-        roles.cluster_background.as_deref().or(surface_alt),
-    );
-    put_opt(
-        theme_variables,
-        "clusterBorder",
-        roles.cluster_border.as_deref().or(border),
-    );
+    put_opt(theme_variables, "clusterBkg", roles.cluster_background);
+    put_opt(theme_variables, "clusterBorder", roles.cluster_border);
 
-    put_opt(
-        theme_variables,
-        "noteBkgColor",
-        roles.note_background.as_deref().or(surface_alt),
-    );
-    put_opt(
-        theme_variables,
-        "noteBorderColor",
-        roles.note_border.as_deref().or(border),
-    );
-    put_opt(
-        theme_variables,
-        "noteTextColor",
-        roles.note_text.as_deref().or(text),
-    );
+    put_opt(theme_variables, "noteBkgColor", roles.note_background);
+    put_opt(theme_variables, "noteBorderColor", roles.note_border);
+    put_opt(theme_variables, "noteTextColor", roles.note_text);
 
-    put_opt(
-        theme_variables,
-        "actorBkg",
-        roles.actor_background.as_deref().or(surface_alt),
-    );
-    put_opt(
-        theme_variables,
-        "actorBorder",
-        roles.actor_border.as_deref().or(border),
-    );
-    put_opt(
-        theme_variables,
-        "actorTextColor",
-        roles.actor_text.as_deref().or(text),
-    );
-    put_opt(theme_variables, "actorLineColor", line);
-    put_opt(theme_variables, "signalColor", line.or(text));
-    put_opt(theme_variables, "signalTextColor", text);
-    put_opt(theme_variables, "labelTextColor", text);
-    put_opt(theme_variables, "loopTextColor", text);
-    put_opt(theme_variables, "labelBoxBkgColor", surface_alt);
-    put_opt(theme_variables, "labelBoxBorderColor", border);
+    put_opt(theme_variables, "actorBkg", roles.actor_background);
+    put_opt(theme_variables, "actorBorder", roles.actor_border);
+    put_opt(theme_variables, "actorTextColor", roles.actor_text);
+    put_opt(theme_variables, "actorLineColor", roles.line);
+    put_opt(theme_variables, "signalColor", roles.line.or(roles.text));
+    put_opt(theme_variables, "signalTextColor", roles.text);
+    put_opt(theme_variables, "labelTextColor", roles.text);
+    put_opt(theme_variables, "loopTextColor", roles.text);
+    put_opt(theme_variables, "labelBoxBkgColor", roles.surface_alt);
+    put_opt(theme_variables, "labelBoxBorderColor", roles.border);
     put_opt(
         theme_variables,
         "activationBkgColor",
-        roles.activation_background.as_deref().or(surface_muted),
+        roles.activation_background,
     );
     put_opt(
         theme_variables,
         "activationBorderColor",
-        roles.activation_border.as_deref().or(border),
+        roles.activation_border,
     );
 
-    put_opt(theme_variables, "classText", text);
-    put_opt(theme_variables, "labelColor", text);
-    put_opt(theme_variables, "transitionColor", line);
-    put_opt(theme_variables, "transitionLabelColor", text);
-    put_opt(theme_variables, "stateLabelColor", text);
-    put_opt(theme_variables, "stateBkg", surface);
-    put_opt(theme_variables, "stateBorder", border);
-    put_opt(theme_variables, "specialStateColor", line);
-    put_opt(theme_variables, "compositeBackground", canvas.or(surface));
+    put_opt(theme_variables, "classText", roles.text);
+    put_opt(theme_variables, "labelColor", roles.text);
+    put_opt(theme_variables, "transitionColor", roles.line);
+    put_opt(theme_variables, "transitionLabelColor", roles.text);
+    put_opt(theme_variables, "stateLabelColor", roles.text);
+    put_opt(theme_variables, "stateBkg", roles.surface);
+    put_opt(theme_variables, "stateBorder", roles.border);
+    put_opt(theme_variables, "specialStateColor", roles.line);
+    put_opt(
+        theme_variables,
+        "compositeBackground",
+        roles.canvas.or(roles.surface),
+    );
 
-    put_opt(theme_variables, "attributeBackgroundColorOdd", surface);
-    put_opt(theme_variables, "attributeBackgroundColorEven", surface_alt);
-    put_opt(theme_variables, "rowOdd", surface);
-    put_opt(theme_variables, "rowEven", surface_alt);
+    put_opt(
+        theme_variables,
+        "attributeBackgroundColorOdd",
+        roles.surface,
+    );
+    put_opt(
+        theme_variables,
+        "attributeBackgroundColorEven",
+        roles.surface_alt,
+    );
+    put_opt(theme_variables, "rowOdd", roles.surface);
+    put_opt(theme_variables, "rowEven", roles.surface_alt);
 
-    put_opt(theme_variables, "requirementBackground", surface);
-    put_opt(theme_variables, "requirementBorderColor", border);
-    put_opt(theme_variables, "requirementTextColor", text);
-    put_opt(theme_variables, "relationColor", line);
+    put_opt(theme_variables, "requirementBackground", roles.surface);
+    put_opt(theme_variables, "requirementBorderColor", roles.border);
+    put_opt(theme_variables, "requirementTextColor", roles.text);
+    put_opt(theme_variables, "relationColor", roles.line);
     put_opt(
         theme_variables,
         "relationLabelBackground",
-        roles.edge_label_background.as_deref().or(canvas),
+        roles.edge_label_background,
     );
-    put_opt(theme_variables, "relationLabelColor", text);
+    put_opt(theme_variables, "relationLabelColor", roles.text);
     put_opt(
         theme_variables,
         "requirementEdgeLabelBackground",
-        roles.edge_label_background.as_deref().or(canvas),
+        roles.edge_label_background,
     );
 
-    put_opt(theme_variables, "pieTitleTextColor", text);
-    put_opt(theme_variables, "pieSectionTextColor", text);
-    put_opt(theme_variables, "pieLegendTextColor", subtle_text);
-    put_opt(theme_variables, "pieStrokeColor", border);
-    put_opt(theme_variables, "pieOuterStrokeColor", border);
+    put_opt(theme_variables, "pieTitleTextColor", roles.text);
+    put_opt(theme_variables, "pieSectionTextColor", roles.text);
+    put_opt(theme_variables, "pieLegendTextColor", roles.subtle_text);
+    put_opt(theme_variables, "pieStrokeColor", roles.border);
+    put_opt(theme_variables, "pieOuterStrokeColor", roles.border);
 
-    put_opt(theme_variables, "commitLabelColor", text);
+    put_opt(theme_variables, "commitLabelColor", roles.text);
     put_opt(
         theme_variables,
         "commitLabelBackground",
-        roles.edge_label_background.as_deref().or(surface),
+        roles.commit_label_background,
     );
-    put_opt(theme_variables, "commitLineColor", line);
-    put_opt(theme_variables, "tagLabelColor", text);
-    put_opt(theme_variables, "tagLabelBackground", surface);
-    put_opt(theme_variables, "tagLabelBorder", border);
+    put_opt(theme_variables, "commitLineColor", roles.line);
+    put_opt(theme_variables, "tagLabelColor", roles.text);
+    put_opt(theme_variables, "tagLabelBackground", roles.surface);
+    put_opt(theme_variables, "tagLabelBorder", roles.border);
 
-    put_opt(theme_variables, "quadrant1Fill", surface);
-    put_opt(theme_variables, "quadrant2Fill", surface_alt);
-    put_opt(theme_variables, "quadrant3Fill", canvas.or(surface));
-    put_opt(theme_variables, "quadrant4Fill", surface_muted);
-    put_opt(theme_variables, "quadrant1TextFill", text);
-    put_opt(theme_variables, "quadrant2TextFill", text);
-    put_opt(theme_variables, "quadrant3TextFill", text);
-    put_opt(theme_variables, "quadrant4TextFill", text);
-    put_opt(theme_variables, "quadrantPointFill", line);
-    put_opt(theme_variables, "quadrantPointTextFill", text);
-    put_opt(theme_variables, "quadrantTitleFill", text);
-    put_opt(theme_variables, "quadrantXAxisTextFill", subtle_text);
-    put_opt(theme_variables, "quadrantYAxisTextFill", subtle_text);
-    put_opt(theme_variables, "quadrantExternalBorderStrokeFill", border);
-    put_opt(theme_variables, "quadrantInternalBorderStrokeFill", border);
+    put_opt(theme_variables, "quadrant1Fill", roles.surface);
+    put_opt(theme_variables, "quadrant2Fill", roles.surface_alt);
+    put_opt(
+        theme_variables,
+        "quadrant3Fill",
+        roles.canvas.or(roles.surface),
+    );
+    put_opt(theme_variables, "quadrant4Fill", roles.surface_muted);
+    put_opt(theme_variables, "quadrant1TextFill", roles.text);
+    put_opt(theme_variables, "quadrant2TextFill", roles.text);
+    put_opt(theme_variables, "quadrant3TextFill", roles.text);
+    put_opt(theme_variables, "quadrant4TextFill", roles.text);
+    put_opt(theme_variables, "quadrantPointFill", roles.line);
+    put_opt(theme_variables, "quadrantPointTextFill", roles.text);
+    put_opt(theme_variables, "quadrantTitleFill", roles.text);
+    put_opt(theme_variables, "quadrantXAxisTextFill", roles.subtle_text);
+    put_opt(theme_variables, "quadrantYAxisTextFill", roles.subtle_text);
+    put_opt(
+        theme_variables,
+        "quadrantExternalBorderStrokeFill",
+        roles.border,
+    );
+    put_opt(
+        theme_variables,
+        "quadrantInternalBorderStrokeFill",
+        roles.border,
+    );
 
-    put_opt(theme_variables, "archEdgeColor", line);
-    put_opt(theme_variables, "archEdgeArrowColor", line);
+    put_opt(theme_variables, "archEdgeColor", roles.line);
+    put_opt(theme_variables, "archEdgeArrowColor", roles.line);
     put_opt(
         theme_variables,
         "archGroupBorderColor",
-        roles.cluster_border.as_deref().or(border),
+        roles.cluster_border,
     );
 
-    put_opt(theme_variables, "emUiFill", surface);
-    put_opt(theme_variables, "emUiStroke", border);
-    put_opt(theme_variables, "emRelationStroke", line);
-    put_opt(theme_variables, "emArrowhead", line);
+    put_opt(theme_variables, "emUiFill", roles.surface);
+    put_opt(theme_variables, "emUiStroke", roles.border);
+    put_opt(theme_variables, "emRelationStroke", roles.line);
+    put_opt(theme_variables, "emArrowhead", roles.line);
     put_opt(
         theme_variables,
         "emSwimlaneBackgroundOdd",
-        roles.cluster_background.as_deref().or(surface_muted),
+        roles.swimlane_background_odd,
     );
     put_opt(
         theme_variables,
         "emSwimlaneBackgroundStroke",
-        roles.cluster_border.as_deref().or(border),
+        roles.cluster_border,
     );
 
-    put_opt(theme_variables, "taskTextDarkColor", text);
-    put_opt(theme_variables, "taskTextClickableColor", line);
-    put_opt(theme_variables, "taskTextColor", text);
-    put_opt(theme_variables, "taskTextOutsideColor", subtle_text);
-    put_opt(theme_variables, "taskBkgColor", surface);
-    put_opt(theme_variables, "taskBorderColor", border);
-    put_opt(theme_variables, "activeTaskBkgColor", surface_muted);
-    put_opt(theme_variables, "activeTaskBorderColor", line);
-    put_opt(theme_variables, "doneTaskBkgColor", success.or(surface_alt));
-    put_opt(theme_variables, "doneTaskBorderColor", success.or(border));
-    put_opt(theme_variables, "critBkgColor", error);
-    put_opt(theme_variables, "critBorderColor", error.or(border));
-    put_opt(theme_variables, "excludeBkgColor", surface_alt);
-    put_opt(theme_variables, "gridColor", border);
+    put_opt(theme_variables, "taskTextDarkColor", roles.text);
+    put_opt(theme_variables, "taskTextClickableColor", roles.line);
+    put_opt(theme_variables, "taskTextColor", roles.text);
+    put_opt(theme_variables, "taskTextOutsideColor", roles.subtle_text);
+    put_opt(theme_variables, "taskBkgColor", roles.surface);
+    put_opt(theme_variables, "taskBorderColor", roles.border);
+    put_opt(theme_variables, "activeTaskBkgColor", roles.surface_muted);
+    put_opt(theme_variables, "activeTaskBorderColor", roles.line);
+    put_opt(
+        theme_variables,
+        "doneTaskBkgColor",
+        roles.success.or(roles.surface_alt),
+    );
+    put_opt(
+        theme_variables,
+        "doneTaskBorderColor",
+        roles.success.or(roles.border),
+    );
+    put_opt(theme_variables, "critBkgColor", roles.error);
+    put_opt(
+        theme_variables,
+        "critBorderColor",
+        roles.error.or(roles.border),
+    );
+    put_opt(theme_variables, "excludeBkgColor", roles.surface_alt);
+    put_opt(theme_variables, "gridColor", roles.border);
     put_opt(
         theme_variables,
         "todayLineColor",
-        warning.or(error).or(line),
+        roles.warning.or(roles.error).or(roles.line),
     );
-    put_opt(theme_variables, "vertLineColor", warning.or(line));
+    put_opt(
+        theme_variables,
+        "vertLineColor",
+        roles.warning.or(roles.line),
+    );
     put_opt(
         theme_variables,
         "sectionBkgColor",
-        roles.cluster_background.as_deref().or(surface_alt),
+        roles.cluster_background.or(roles.surface_alt),
     );
-    put_opt(theme_variables, "sectionBkgColor2", surface_muted);
-    put_opt(theme_variables, "altSectionBkgColor", canvas);
+    put_opt(theme_variables, "sectionBkgColor2", roles.surface_muted);
+    put_opt(theme_variables, "altSectionBkgColor", roles.canvas);
 
-    put_opt(theme_variables, "errorBkgColor", roles.error.as_deref());
-    put_opt(theme_variables, "errorTextColor", text);
+    put_opt(theme_variables, "errorBkgColor", roles.error);
+    put_opt(theme_variables, "errorTextColor", roles.text);
 
-    put_opt(theme_variables, "faceColor", surface);
-    put_opt(
-        theme_variables,
-        "border2",
-        roles.cluster_border.as_deref().or(border),
-    );
+    put_opt(theme_variables, "faceColor", roles.surface);
+    put_opt(theme_variables, "border2", roles.cluster_border);
 }
 
 fn put_series_palette(theme_variables: &mut Map<String, Value>, palette: &[String]) {
@@ -992,40 +1053,31 @@ fn put_series_palette(theme_variables: &mut Map<String, Value>, palette: &[Strin
 fn put_diagram_config(
     root: &mut Map<String, Value>,
     theme_variables: &mut Map<String, Value>,
-    roles: &HostThemeRoles,
+    roles: &ResolvedHostThemeRoles<'_>,
     palette: &[String],
 ) {
-    let text = roles.text.as_deref();
-    let subtle_text = roles.subtle_text.as_deref().or(text);
-    let surface = roles.surface.as_deref();
-    let surface_alt = roles.surface_alt.as_deref().or(surface);
-    let border = roles.border.as_deref();
-    let line = roles.line.as_deref().or(border);
-    let warning = roles.warning.as_deref();
-    let success = roles.success.as_deref();
-
     let mut packet = Map::new();
-    put_opt(&mut packet, "startByteColor", line);
-    put_opt(&mut packet, "endByteColor", border.or(line));
-    put_opt(&mut packet, "labelColor", text);
-    put_opt(&mut packet, "titleColor", text);
-    put_opt(&mut packet, "blockStrokeColor", border);
-    put_opt(&mut packet, "blockFillColor", surface);
+    put_opt(&mut packet, "startByteColor", roles.line);
+    put_opt(&mut packet, "endByteColor", roles.border.or(roles.line));
+    put_opt(&mut packet, "labelColor", roles.text);
+    put_opt(&mut packet, "titleColor", roles.text);
+    put_opt(&mut packet, "blockStrokeColor", roles.border);
+    put_opt(&mut packet, "blockFillColor", roles.surface);
     put_nonempty_object(root, "packet", packet);
 
     let mut treemap = Map::new();
-    put_opt(&mut treemap, "titleColor", text);
-    put_opt(&mut treemap, "labelColor", text);
-    put_opt(&mut treemap, "valueColor", subtle_text);
-    put_opt(&mut treemap, "sectionStrokeColor", border);
-    put_opt(&mut treemap, "sectionFillColor", surface_alt);
-    put_opt(&mut treemap, "leafStrokeColor", border);
-    put_opt(&mut treemap, "leafFillColor", surface);
+    put_opt(&mut treemap, "titleColor", roles.text);
+    put_opt(&mut treemap, "labelColor", roles.text);
+    put_opt(&mut treemap, "valueColor", roles.subtle_text);
+    put_opt(&mut treemap, "sectionStrokeColor", roles.border);
+    put_opt(&mut treemap, "sectionFillColor", roles.surface_alt);
+    put_opt(&mut treemap, "leafStrokeColor", roles.border);
+    put_opt(&mut treemap, "leafFillColor", roles.surface);
     put_nonempty_object(root, "treemap", treemap);
 
     let mut tree_view = Map::new();
-    put_opt(&mut tree_view, "labelColor", text);
-    put_opt(&mut tree_view, "lineColor", line);
+    put_opt(&mut tree_view, "labelColor", roles.text);
+    put_opt(&mut tree_view, "lineColor", roles.line);
     if !tree_view.is_empty() {
         let entry = theme_variables.get("treeView");
         let mut merged = entry
@@ -1037,43 +1089,55 @@ fn put_diagram_config(
     }
 
     let mut radar = Map::new();
-    put_opt(&mut radar, "axisColor", line);
-    put_opt(&mut radar, "graticuleColor", border);
+    put_opt(&mut radar, "axisColor", roles.line);
+    put_opt(&mut radar, "graticuleColor", roles.border);
     put_nonempty_object(root, "radar", radar);
 
     let mut eventmodeling = Map::new();
     put_opt(
         &mut eventmodeling,
         "emProcessorFill",
-        palette.get(3).map(String::as_str).or(surface_alt),
+        palette.get(3).map(String::as_str).or(roles.surface_alt),
     );
-    put_opt(&mut eventmodeling, "emProcessorStroke", border);
+    put_opt(&mut eventmodeling, "emProcessorStroke", roles.border);
     put_opt(
         &mut eventmodeling,
         "emReadModelFill",
         palette
             .get(1)
             .map(String::as_str)
-            .or(success)
-            .or(surface_alt),
+            .or(roles.success)
+            .or(roles.surface_alt),
     );
-    put_opt(&mut eventmodeling, "emReadModelStroke", success.or(border));
+    put_opt(
+        &mut eventmodeling,
+        "emReadModelStroke",
+        roles.success.or(roles.border),
+    );
     put_opt(
         &mut eventmodeling,
         "emCommandFill",
-        palette.first().map(String::as_str).or(surface_alt),
+        palette.first().map(String::as_str).or(roles.surface_alt),
     );
-    put_opt(&mut eventmodeling, "emCommandStroke", line.or(border));
+    put_opt(
+        &mut eventmodeling,
+        "emCommandStroke",
+        roles.line.or(roles.border),
+    );
     put_opt(
         &mut eventmodeling,
         "emEventFill",
         palette
             .get(2)
             .map(String::as_str)
-            .or(warning)
-            .or(surface_alt),
+            .or(roles.warning)
+            .or(roles.surface_alt),
     );
-    put_opt(&mut eventmodeling, "emEventStroke", warning.or(border));
+    put_opt(
+        &mut eventmodeling,
+        "emEventStroke",
+        roles.warning.or(roles.border),
+    );
     for (key, value) in eventmodeling {
         theme_variables.insert(key, value);
     }
@@ -1101,8 +1165,8 @@ fn put_diagram_config(
         "external_component_db",
         "external_component_queue",
     ] {
-        put_opt(&mut c4, &format!("{prefix}_bg_color"), surface);
-        put_opt(&mut c4, &format!("{prefix}_border_color"), border);
+        put_opt(&mut c4, &format!("{prefix}_bg_color"), roles.surface);
+        put_opt(&mut c4, &format!("{prefix}_border_color"), roles.border);
     }
     put_nonempty_object(root, "c4", c4);
 }
@@ -1301,6 +1365,33 @@ mod tests {
             cfg["c4"]["external_component_queue_border_color"],
             "#070707"
         );
+    }
+
+    #[test]
+    fn host_theme_role_fallbacks_preserve_context_specific_targets() {
+        let cfg = HostThemeProfile::builder()
+            .roles(HostThemeRoles {
+                canvas: Some("#101010".to_string()),
+                surface: Some("#202020".to_string()),
+                surface_alt: Some("#303030".to_string()),
+                surface_muted: Some("#404040".to_string()),
+                ..HostThemeRoles::default()
+            })
+            .build()
+            .compile()
+            .site_config
+            .as_value()
+            .clone();
+        let vars = cfg["themeVariables"].as_object().unwrap();
+
+        assert_eq!(vars["edgeLabelBackground"], "#101010");
+        assert_eq!(vars["relationLabelBackground"], "#101010");
+        assert_eq!(vars["requirementEdgeLabelBackground"], "#101010");
+        assert_eq!(vars["commitLabelBackground"], "#202020");
+
+        assert_eq!(vars["clusterBkg"], "#303030");
+        assert_eq!(vars["sectionBkgColor"], "#303030");
+        assert_eq!(vars["emSwimlaneBackgroundOdd"], "#404040");
     }
 
     #[test]
