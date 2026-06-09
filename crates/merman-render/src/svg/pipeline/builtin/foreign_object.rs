@@ -274,6 +274,14 @@ mod tests {
     }
 
     #[test]
+    fn fallback_text_class_scanner_handles_single_quoted_attrs() {
+        assert!(text_tag_is_fallback(
+            r#"<text class = 'label merman-foreignobject-fallback-text'>"#
+        ));
+        assert!(!text_tag_is_fallback(r#"<text class = 'label task'>"#));
+    }
+
+    #[test]
     fn resvg_safe_can_optionally_drop_native_duplicate_fallbacks() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>

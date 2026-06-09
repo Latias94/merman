@@ -1,7 +1,7 @@
 use crate::Result;
 use std::borrow::Cow;
 
-use super::util::{escape_xml_attr, find_tag_end};
+use super::util::{escape_xml_attr, find_quoted_attr_value_span, find_tag_end};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,52 +115,6 @@ fn set_background_in_style_attr(style: &str, background_color: &str) -> String {
     format!("{};", declarations.join("; "))
 }
 
-fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
-    let bytes = tag.as_bytes();
-    let mut cursor = 0usize;
-
-    while cursor < bytes.len() {
-        let rel = tag[cursor..].find(name)?;
-        let name_start = cursor + rel;
-        let name_end = name_start + name.len();
-
-        let before_ok = name_start == 0
-            || bytes[name_start - 1].is_ascii_whitespace()
-            || bytes[name_start - 1] == b'<';
-        let after_ok = name_end == bytes.len()
-            || bytes[name_end].is_ascii_whitespace()
-            || bytes[name_end] == b'=';
-        if !before_ok || !after_ok {
-            cursor = name_end;
-            continue;
-        }
-
-        let mut i = name_end;
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
-        }
-        if bytes.get(i) != Some(&b'=') {
-            cursor = name_end;
-            continue;
-        }
-        i += 1;
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
-        }
-
-        let quote = *bytes.get(i)?;
-        if quote != b'"' && quote != b'\'' {
-            cursor = name_end;
-            continue;
-        }
-        let value_start = i + 1;
-        let rel_end = tag[value_start..].find(quote as char)?;
-        return Some((value_start, value_start + rel_end));
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,5 +158,18 @@ mod tests {
         let out = set_root_background_color(svg, "rgb(1, 2, 3)&");
 
         assert!(out.contains("background-color: rgb(1, 2, 3)&amp;;"));
+    }
+
+    #[test]
+    fn root_background_rewrites_single_quoted_style_attr() {
+        let svg =
+            r#"<svg id="diagram" style='max-width: 400px; background-color: white;'><g/></svg>"#;
+
+        let out = set_root_background_color(svg, "#111827");
+
+        assert_eq!(
+            out,
+            r##"<svg id="diagram" style='max-width: 400px; background-color: #111827;'><g/></svg>"##
+        );
     }
 }

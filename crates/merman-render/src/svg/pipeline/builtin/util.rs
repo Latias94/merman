@@ -123,11 +123,44 @@ pub(crate) fn extract_root_svg_id(svg: &str) -> Option<String> {
 }
 
 pub(crate) fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
-    let needle = format!(r#"{name}=""#);
-    let i = tag.find(&needle)?;
-    let rest = &tag[i + needle.len()..];
-    let end = rest.find('"')?;
-    Some(rest[..end].trim())
+    let (start, end) = find_quoted_attr_value_span(tag, name)?;
+    Some(tag[start..end].trim())
+}
+
+pub(crate) fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
+    let mut cursor = 0usize;
+    while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
+        if tag[attr.name_start..attr.name_end].eq_ignore_ascii_case(name) {
+            return Some((attr.value_start, attr.value_end));
+        }
+        cursor = attr.full_end;
+    }
+    None
+}
+
+pub(crate) fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> String {
+    if let Some((value_start, value_end)) = find_quoted_attr_value_span(tag, name) {
+        let mut out = String::with_capacity(tag.len() + value.len());
+        out.push_str(&tag[..value_start]);
+        out.push_str(value);
+        out.push_str(&tag[value_end..]);
+        return out;
+    }
+
+    let insert_at = tag
+        .trim_end()
+        .strip_suffix("/>")
+        .map(|prefix| prefix.trim_end().len())
+        .unwrap_or_else(|| tag.rfind('>').unwrap_or(tag.len()));
+    let mut out = String::with_capacity(tag.len() + name.len() + value.len() + 4);
+    out.push_str(&tag[..insert_at]);
+    out.push(' ');
+    out.push_str(name);
+    out.push_str(r#"=""#);
+    out.push_str(value);
+    out.push('"');
+    out.push_str(&tag[insert_at..]);
+    out
 }
 
 pub(crate) fn escape_xml_attr(value: &str) -> String {
@@ -143,4 +176,26 @@ pub(crate) fn escape_xml_attr(value: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quoted_attr_helpers_handle_spacing_case_and_quote_style() {
+        let tag = r#"<path DATA-note = 'keep' style = "fill:red" />"#;
+
+        assert_eq!(extract_quoted_attr(tag, "data-note"), Some("keep"));
+        assert_eq!(extract_quoted_attr(tag, "STYLE"), Some("fill:red"));
+
+        let rewritten = set_or_insert_quoted_attr(tag, "style", "stroke:blue");
+        assert!(
+            rewritten.contains(r#"style = "stroke:blue""#),
+            "{rewritten}"
+        );
+
+        let inserted = set_or_insert_quoted_attr(tag, "x", "10");
+        assert!(inserted.contains(r#" x="10" />"#), "{inserted}");
+    }
 }
