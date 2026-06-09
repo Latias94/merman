@@ -88,6 +88,7 @@ export function Preview({ className }: PreviewProps) {
   const {
     code,
     diagramTheme,
+    hostThemePreset,
     mermaidConfig,
     setLastRenderTime,
     setDiagramType,
@@ -132,6 +133,8 @@ export function Preview({ className }: PreviewProps) {
     svg: mermaidSvg,
     enabled: previewMode === "compare",
   });
+  const activeHostThemePreset =
+    hostThemePreset === "none" ? undefined : hostThemePreset;
 
   const detectDiagramType = useCallback((source: string): string => {
     const firstLine = source.trim().split("\n")[0]?.toLowerCase() || "";
@@ -204,12 +207,16 @@ export function Preview({ className }: PreviewProps) {
         setDiagramType(diagramType);
 
         void (async () => {
-          await prewarmWasmRenderer(diagramTheme, mermaidConfig).catch(
-            () => undefined
-          );
+          await prewarmWasmRenderer(
+            diagramTheme,
+            mermaidConfig,
+            activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+          ).catch(() => undefined);
           if (cancelled) return;
 
-          const result = render(code, diagramTheme, mermaidConfig);
+          const result = render(code, diagramTheme, mermaidConfig, {
+            hostThemePreset: activeHostThemePreset,
+          });
           if (cancelled) return;
 
           setSvg(result.svg);
@@ -239,6 +246,7 @@ export function Preview({ className }: PreviewProps) {
     };
   }, [
     code,
+    activeHostThemePreset,
     detectDiagramType,
     diagramTheme,
     localizeMermanError,
@@ -328,11 +336,23 @@ export function Preview({ className }: PreviewProps) {
     diagnosticsDebounceRef.current = setTimeout(() => {
       setDiagnostics({
         parse: collectDiagnostic(
-          () => parseJson(code, diagramTheme, mermaidConfig),
+          () =>
+            parseJson(
+              code,
+              diagramTheme,
+              mermaidConfig,
+              activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+            ),
           localizeMermanError
         ),
         layout: collectDiagnostic(
-          () => layoutJson(code, diagramTheme, mermaidConfig),
+          () =>
+            layoutJson(
+              code,
+              diagramTheme,
+              mermaidConfig,
+              activeHostThemePreset ? { hostThemePreset: activeHostThemePreset } : undefined
+            ),
           localizeMermanError
         ),
       });
@@ -346,6 +366,7 @@ export function Preview({ className }: PreviewProps) {
     };
   }, [
     code,
+    activeHostThemePreset,
     diagramTheme,
     layoutJson,
     loading,
@@ -428,6 +449,7 @@ export function Preview({ className }: PreviewProps) {
       if (engine === "merman") {
         const pngResult = render(code, diagramTheme, mermaidConfig, {
           pipeline: "resvg-safe",
+          hostThemePreset: activeHostThemePreset,
         });
         if (!pngResult.svg) {
           throw new Error(pngResult.error ?? "Failed to render PNG SVG");
@@ -441,7 +463,7 @@ export function Preview({ className }: PreviewProps) {
     } finally {
       setExportingEngine(null);
     }
-  }, [code, diagramTheme, mermaidConfig, render]);
+  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, render]);
 
   const handleRefreshCompare = useCallback(() => {
     setRefreshNonce((value) => value + 1);

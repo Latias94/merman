@@ -1,6 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, type Theme, type UITheme } from "@/src/store";
+import {
+  useAppStore,
+  type HostThemePreset,
+  type Theme,
+  type UITheme,
+} from "@/src/store";
 import { useShare } from "@/src/hooks/useShare";
 import {
   exportSVG,
@@ -17,7 +22,12 @@ import {
   createMarkdownImageLink,
   createMermaidLiveEditorUrl,
 } from "@/src/lib/mermaid-live";
-import { normalizeThemeName } from "@mermanjs/web";
+import {
+  SUPPORTED_HOST_THEME_PRESETS,
+  normalizeHostThemePresetName,
+  normalizeThemeName,
+  type HostThemePresetName,
+} from "@mermanjs/web";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -65,8 +75,10 @@ export function Toolbar() {
   const {
     code,
     diagramTheme,
+    hostThemePreset,
     mermaidConfig,
     setDiagramTheme,
+    setHostThemePreset,
     uiTheme,
     setUITheme,
     toggleExamples,
@@ -94,6 +106,24 @@ export function Toolbar() {
       }));
   }, [getThemes, t]);
 
+  const hostThemeOptions: { value: HostThemePreset; label: string }[] = useMemo(
+    () => [
+      { value: "none", label: t("hostThemes.none") },
+      ...SUPPORTED_HOST_THEME_PRESETS.map((preset) => ({
+        value: preset,
+        label: t(`hostThemes.${preset}`, { defaultValue: preset }),
+      })),
+    ],
+    [t]
+  );
+
+  const activeHostThemePreset: HostThemePresetName | undefined =
+    hostThemePreset === "none" ? undefined : hostThemePreset;
+  const renderThemeLabel =
+    hostThemePreset === "none"
+      ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
+      : t(`hostThemes.${hostThemePreset}`, { defaultValue: hostThemePreset });
+
   const UI_THEME_OPTIONS: { value: UITheme; label: string }[] = [
     { value: "light", label: t("uiThemes.light") },
     { value: "dark", label: t("uiThemes.dark") },
@@ -102,9 +132,11 @@ export function Toolbar() {
 
   // 获取当前 SVG
   const currentSvg = useMemo(() => {
-    const result = render(code, diagramTheme, mermaidConfig);
+    const result = render(code, diagramTheme, mermaidConfig, {
+      hostThemePreset: activeHostThemePreset,
+    });
     return result.svg;
-  }, [code, diagramTheme, mermaidConfig, render]);
+  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, render]);
 
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
@@ -126,6 +158,7 @@ export function Toolbar() {
     try {
       const pngResult = render(code, diagramTheme, mermaidConfig, {
         pipeline: "resvg-safe",
+        hostThemePreset: activeHostThemePreset,
       });
       if (!pngResult.svg) {
         throw new Error(pngResult.error ?? "Failed to render PNG SVG");
@@ -138,7 +171,15 @@ export function Toolbar() {
     } finally {
       setIsExporting(false);
     }
-  }, [code, currentSvg, diagramTheme, mermaidConfig, render, t]);
+  }, [
+    activeHostThemePreset,
+    code,
+    currentSvg,
+    diagramTheme,
+    mermaidConfig,
+    render,
+    t,
+  ]);
 
   // 导出 ASCII
   const handleExportASCII = useCallback(() => {
@@ -205,12 +246,12 @@ export function Toolbar() {
       return;
     }
     try {
-      await copyShareUrl(code, diagramTheme, mermaidConfig);
+      await copyShareUrl(code, diagramTheme, mermaidConfig, activeHostThemePreset);
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [code, diagramTheme, mermaidConfig, copyShareUrl, t]);
+  }, [activeHostThemePreset, code, diagramTheme, mermaidConfig, copyShareUrl, t]);
 
   const handleOpenMermaidLive = useCallback(() => {
     if (!code.trim()) {
@@ -223,6 +264,11 @@ export function Toolbar() {
       "noopener,noreferrer"
     );
   }, [code, diagramTheme, mermaidConfig, t]);
+
+  const normalizeHostThemeValue = useCallback((value: string): HostThemePreset => {
+    if (value === "none") return "none";
+    return normalizeHostThemePresetName(value) ?? "none";
+  }, []);
 
   // 应用 UI 主题到 HTML
   const handleUIThemeChange = useCallback(
@@ -249,6 +295,36 @@ export function Toolbar() {
   const handleLanguageChange = useCallback((lang: string) => {
     changeLanguage(lang as "en" | "zh");
   }, []);
+
+  const renderThemeMenuContent = () => (
+    <DropdownMenuContent align="end">
+      <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.mermaidTheme")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={hostThemePreset === "none" ? diagramTheme : ""}
+        onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
+      >
+        {themeOptions.map((option) => (
+          <DropdownMenuRadioItem key={option.value} value={option.value}>
+            {option.label}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>{t("toolbar.hostTheme")}</DropdownMenuLabel>
+      <DropdownMenuRadioGroup
+        value={hostThemePreset}
+        onValueChange={(v) => setHostThemePreset(normalizeHostThemeValue(v))}
+      >
+        {hostThemeOptions.map((option) => (
+          <DropdownMenuRadioItem key={option.value} value={option.value}>
+            {option.label}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  );
 
   const asciiSupported = isAsciiSupported(diagramType);
 
@@ -302,20 +378,7 @@ export function Toolbar() {
               </TooltipTrigger>
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={diagramTheme}
-                onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
-              >
-                {themeOptions.map((option) => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
-                    {option.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
+            {renderThemeMenuContent()}
           </DropdownMenu>
 
           <DropdownMenu>
@@ -395,27 +458,14 @@ export function Toolbar() {
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
                   >
                     <Palette className="size-4" />
-                    <span className="hidden sm:inline capitalize">{diagramTheme}</span>
+                    <span className="hidden sm:inline">{renderThemeLabel}</span>
                     <ChevronDown className="hidden size-3 opacity-50 sm:block" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent>{t("toolbar.theme")}</TooltipContent>
             </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t("toolbar.theme")}</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup
-                value={diagramTheme}
-                onValueChange={(v) => setDiagramTheme(normalizeThemeName(v))}
-              >
-                {themeOptions.map((option) => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
-                    {option.label}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
+            {renderThemeMenuContent()}
           </DropdownMenu>
 
           {/* 导出 */}

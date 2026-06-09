@@ -31,13 +31,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .output(merman::render::HostThemeOutput::resvg_safe_editor())
         .build();
 
-    let compiled = profile.compile();
     let renderer = HeadlessRenderer::new()
-        .with_compiled_host_theme(&compiled)
+        .with_host_theme(&profile)
         .with_vendored_text_measurer()
         .with_diagram_id("host-theme-profile-example");
 
-    let Some(svg) = renderer.render_svg_with_pipeline_sync(&input, &compiled.pipeline())? else {
+    let Some(svg) = renderer.render_svg_sync(&input)? else {
         return Err("no Mermaid diagram detected".into());
     };
 

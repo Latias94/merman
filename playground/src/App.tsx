@@ -11,7 +11,7 @@ import { StatusBar } from "./components/StatusBar";
 import { useAppStore } from "./store";
 import { useShare } from "./hooks/useShare";
 import { prewarmWasmRenderer } from "./lib/wasm-loader";
-import { normalizeThemeName } from "@mermanjs/web";
+import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -42,6 +42,8 @@ export default function App() {
     setCode,
     setDiagramTheme,
     diagramTheme,
+    hostThemePreset,
+    setHostThemePreset,
     setMermaidConfig,
     mermaidConfig,
     editorMode,
@@ -69,11 +71,17 @@ export default function App() {
       if (initialData.theme) {
         setDiagramTheme(normalizeThemeName(initialData.theme));
       }
+      if (initialData.hostThemePreset) {
+        const preset = normalizeHostThemePresetName(initialData.hostThemePreset);
+        if (preset) {
+          setHostThemePreset(preset);
+        }
+      }
       if (initialData.config !== undefined) {
         setMermaidConfig(initialData.config);
       }
     }
-  }, [initialData, setCode, setDiagramTheme, setMermaidConfig]);
+  }, [initialData, setCode, setDiagramTheme, setHostThemePreset, setMermaidConfig]);
 
   // 应用 UI 主题
   useEffect(() => {
@@ -101,11 +109,15 @@ export default function App() {
   // 页面级后台预热核心 WASM 渲染器；Mermaid JS 是可选对比引擎，按需加载。
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void prewarmWasmRenderer(diagramTheme, mermaidConfig).catch(() => undefined);
+      void prewarmWasmRenderer(
+        diagramTheme,
+        mermaidConfig,
+        hostThemePreset === "none" ? undefined : { hostThemePreset }
+      ).catch(() => undefined);
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [diagramTheme, mermaidConfig]);
+  }, [diagramTheme, hostThemePreset, mermaidConfig]);
 
   return (
     <TooltipProvider delayDuration={300}>

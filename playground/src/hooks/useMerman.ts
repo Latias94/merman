@@ -6,7 +6,7 @@ import {
   loadWasm,
   SUPPORTED_THEMES,
   type MermanWasm,
-  type SvgPipeline,
+  type WasmRenderOptions,
   type ValidationResult,
 } from "@/src/lib/wasm-loader";
 
@@ -19,9 +19,7 @@ export interface RenderResult {
 export const MERMAN_WASM_LOADING_ERROR = "__merman_wasm_loading__";
 export const MERMAN_WASM_NOT_LOADED_ERROR = "__merman_wasm_not_loaded__";
 
-interface RenderOptions {
-  pipeline?: SvgPipeline;
-}
+type RenderOptions = WasmRenderOptions;
 
 export function mermanRuntimeErrorI18nKey(message: string | null | undefined) {
   if (message === MERMAN_WASM_LOADING_ERROR) return "wasm.loading";
@@ -91,7 +89,7 @@ export function useMerman() {
           code,
           theme,
           configJson,
-          options?.pipeline
+          options
         );
         const renderTime = performance.now() - startTime;
         return { svg, error: null, renderTime };
@@ -148,14 +146,15 @@ export function useMerman() {
     (
       code: string,
       theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: RenderOptions
     ): string => {
       if (!ready || !wasmRef.current) {
         throw new Error(
           loading ? MERMAN_WASM_LOADING_ERROR : MERMAN_WASM_NOT_LOADED_ERROR
         );
       }
-      return wasmRef.current.parse_json(code, theme, configJson);
+      return wasmRef.current.parse_json(code, theme, configJson, options);
     },
     [ready, loading]
   );
@@ -164,14 +163,15 @@ export function useMerman() {
     (
       code: string,
       theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: RenderOptions
     ): string => {
       if (!ready || !wasmRef.current) {
         throw new Error(
           loading ? MERMAN_WASM_LOADING_ERROR : MERMAN_WASM_NOT_LOADED_ERROR
         );
       }
-      return wasmRef.current.layout_json(code, theme, configJson);
+      return wasmRef.current.layout_json(code, theme, configJson, options);
     },
     [ready, loading]
   );

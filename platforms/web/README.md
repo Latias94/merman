@@ -28,6 +28,18 @@ const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
 The options object is serialized to the shared merman binding options JSON contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
+Host/editor theme presets are separate from Mermaid's native `theme` names:
+
+```ts
+import { initMerman, renderSvg } from "@mermanjs/web";
+
+await initMerman();
+
+const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
+  host_theme: { preset: "one-dark" },
+});
+```
+
 ## Browser DOM helper
 
 For non-framework browser integrations, render directly into a host element:

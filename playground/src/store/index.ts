@@ -1,8 +1,9 @@
 import { create } from "zustand";
-import type { ThemeName } from "@mermanjs/web";
+import type { HostThemePresetName, ThemeName } from "@mermanjs/web";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 
 export type Theme = ThemeName;
+export type HostThemePreset = "none" | HostThemePresetName;
 export type UITheme = "light" | "dark" | "system";
 export type EditorMode = "code" | "config";
 
@@ -22,6 +23,8 @@ interface AppState {
   // Mermaid 主题
   diagramTheme: Theme;
   setDiagramTheme: (theme: Theme) => void;
+  hostThemePreset: HostThemePreset;
+  setHostThemePreset: (preset: HostThemePreset) => void;
 
   // UI 主题
   uiTheme: UITheme;
@@ -78,7 +81,14 @@ export const useAppStore = create<AppState>((set) => ({
 
   // Mermaid 主题
   diagramTheme: "default",
-  setDiagramTheme: (diagramTheme) => set({ diagramTheme }),
+  setDiagramTheme: (diagramTheme) =>
+    set({ diagramTheme, hostThemePreset: "none" }),
+  hostThemePreset: "none",
+  setHostThemePreset: (hostThemePreset) =>
+    set((state) => ({
+      hostThemePreset,
+      diagramTheme: hostThemePreset === "none" ? state.diagramTheme : "default",
+    })),
 
   // UI 主题
   uiTheme: getInitialUITheme(),

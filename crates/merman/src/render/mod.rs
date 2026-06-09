@@ -5,12 +5,13 @@ pub use merman_render::model::LayoutedDiagram;
 pub use merman_render::svg::{
     CompiledHostTheme, CompiledHostThemeOutput, CssOverridePolicy, CssOverridePostprocessor,
     DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
-    HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset, HostThemeProfile,
-    HostThemeProfileBuilder, HostThemeRoles, HostThemeRootBackground, IconRegistry,
-    IconRegistryError, IconSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgRenderOptions, foreign_object_label_fallback_svg_text, resvg_safe_svg,
+    HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset, HostThemePreset,
+    HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles, HostThemeRootBackground,
+    IconRegistry, IconRegistryError, IconSvg, RootBackgroundPostprocessor,
+    SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
+    StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
+    foreign_object_label_fallback_svg_text, resvg_safe_svg,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
@@ -549,12 +550,11 @@ flowchart TD
             .with_diagram_id("host-theme-profile");
 
         let svg = renderer
-            .render_svg_with_pipeline_sync(
+            .render_svg_sync(
                 r##"%%{init: {"themeCSS": ".node rect { stroke-width: 3px !important; }"}}%%
 flowchart TD
   A[Host] --> B[Theme]
 "##,
-                &compiled.pipeline(),
             )
             .unwrap()
             .unwrap();
@@ -563,6 +563,7 @@ flowchart TD
         assert!(svg.contains("#e5e7eb"), "{svg}");
         assert!(svg.contains("#94a3b8"), "{svg}");
         assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(!svg.contains("!important"), "{svg}");
     }
 
@@ -629,6 +630,12 @@ pub struct HeadlessRenderer {
     pub parse: merman_core::ParseOptions,
     pub layout: LayoutOptions,
     pub svg: SvgRenderOptions,
+    /// Optional renderer-owned SVG output pipeline.
+    ///
+    /// A fresh renderer leaves this unset so `render_svg_sync` keeps the Mermaid-parity SVG
+    /// contract. Host theme helpers set this to the compiled profile pipeline so the profile's
+    /// output settings travel with the renderer instead of requiring each call to pass them again.
+    pub svg_pipeline: Option<SvgPipeline>,
 }
 
 impl Default for HeadlessRenderer {
@@ -638,6 +645,7 @@ impl Default for HeadlessRenderer {
             parse: merman_core::ParseOptions::default(),
             layout: LayoutOptions::headless_svg_defaults(),
             svg: SvgRenderOptions::default(),
+            svg_pipeline: None,
         }
     }
 }
@@ -654,12 +662,20 @@ impl HeadlessRenderer {
 
     pub fn with_host_theme(mut self, profile: &HostThemeProfile) -> Self {
         let compiled = profile.compile();
+        let pipeline = compiled.pipeline();
         self.engine = self.engine.with_site_config(compiled.site_config);
+        self.svg_pipeline = Some(pipeline);
         self
     }
 
     pub fn with_compiled_host_theme(mut self, theme: &CompiledHostTheme) -> Self {
         self.engine = self.engine.with_site_config(theme.site_config.clone());
+        self.svg_pipeline = Some(theme.pipeline());
+        self
+    }
+
+    pub fn with_svg_pipeline(mut self, pipeline: SvgPipeline) -> Self {
+        self.svg_pipeline = Some(pipeline);
         self
     }
 
@@ -741,7 +757,10 @@ impl HeadlessRenderer {
     }
 
     pub fn render_layouted_svg_sync(&self, diagram: &LayoutedDiagram) -> Result<String> {
-        render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)
+        self.apply_default_svg_pipeline(
+            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)?,
+            &diagram.meta,
+        )
     }
 
     pub fn render_layouted_svg_sync_with(
@@ -749,10 +768,16 @@ impl HeadlessRenderer {
         diagram: &LayoutedDiagram,
         svg: &SvgRenderOptions,
     ) -> Result<String> {
-        render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)
+        self.apply_default_svg_pipeline(
+            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)?,
+            &diagram.meta,
+        )
     }
 
     pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
+        if let Some(pipeline) = &self.svg_pipeline {
+            return self.render_svg_with_pipeline_sync(text, pipeline);
+        }
         render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
     }
 
@@ -784,20 +809,34 @@ impl HeadlessRenderer {
         self.render_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
     }
 
+    fn apply_default_svg_pipeline(
+        &self,
+        svg: String,
+        meta: &merman_render::model::LayoutMeta,
+    ) -> Result<String> {
+        let Some(pipeline) = &self.svg_pipeline else {
+            return Ok(svg);
+        };
+        let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_diagram_type(meta.diagram_type.clone())
+            .with_optional_diagram_title(meta.title.clone());
+        apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)
+    }
+
     #[cfg(feature = "raster")]
     pub fn render_png_sync(
         &self,
         text: &str,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        raster::render_png_sync(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.svg,
-            raster,
-        )
+        let pipeline = self
+            .svg_pipeline
+            .clone()
+            .unwrap_or_else(SvgPipeline::resvg_safe);
+        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
+            return Ok(None);
+        };
+        Ok(Some(raster::svg_to_png(&svg, raster)?))
     }
 
     #[cfg(feature = "raster")]
@@ -806,18 +845,25 @@ impl HeadlessRenderer {
         text: &str,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        raster::render_jpeg_sync(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
-            &self.svg,
-            raster,
-        )
+        let pipeline = self
+            .svg_pipeline
+            .clone()
+            .unwrap_or_else(SvgPipeline::resvg_safe);
+        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
+            return Ok(None);
+        };
+        Ok(Some(raster::svg_to_jpeg(&svg, raster)?))
     }
 
     #[cfg(feature = "raster")]
     pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
-        raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        let pipeline = self
+            .svg_pipeline
+            .clone()
+            .unwrap_or_else(SvgPipeline::resvg_safe);
+        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
+            return Ok(None);
+        };
+        Ok(Some(raster::svg_to_pdf(&svg)?))
     }
 }

@@ -237,6 +237,66 @@ mod tests {
     }
 
     #[test]
+    fn host_theme_preset_applies_common_editor_theme() {
+        let svg = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[One Dark] --> B[Readable]",
+                br##"{
+                    "host_theme": {
+                        "preset": "one-dark"
+                    },
+                    "svg": { "diagram_id": "bindings one dark" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains("#282c34"), "{svg}");
+        assert!(svg.contains("#abb2bf"), "{svg}");
+        assert!(svg.contains("#61afef"), "{svg}");
+        assert!(svg.contains("background-color: #282c34;"), "{svg}");
+    }
+
+    #[test]
+    fn host_theme_preset_allows_role_overrides() {
+        let svg = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[Override]",
+                br##"{
+                    "host_theme": {
+                        "preset": "ayu-dark",
+                        "roles": {
+                            "canvas": "#101010",
+                            "line": "#ff00aa"
+                        }
+                    },
+                    "svg": { "diagram_id": "bindings ayu override" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains("#101010"), "{svg}");
+        assert!(svg.contains("#ff00aa"), "{svg}");
+        assert!(svg.contains("#bfbdb6"), "{svg}");
+        assert!(svg.contains("background-color: #101010;"), "{svg}");
+    }
+
+    #[test]
+    fn invalid_host_theme_preset_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Host]",
+            br##"{ "host_theme": { "preset": "solarized-maybe" } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("host_theme.preset"));
+    }
+
+    #[test]
     fn svg_css_override_policy_can_preserve_after_host_theme_strip_default() {
         let options = parse_options(
             br##"{

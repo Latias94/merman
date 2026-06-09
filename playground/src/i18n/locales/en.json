@@ -7,6 +7,8 @@
   "toolbar": {
     "examples": "Examples",
     "theme": "Theme",
+    "mermaidTheme": "Mermaid themes",
+    "hostTheme": "Host presets",
     "export": "Export",
     "share": "Share",
     "bench": "Bench",
@@ -257,6 +259,16 @@
     "neutral": "Neutral",
     "base": "Base",
     "system": "System"
+  },
+  "hostThemes": {
+    "none": "None",
+    "editor-light": "Editor Light",
+    "editor-dark": "Editor Dark",
+    "one-dark": "One Dark",
+    "gruvbox-light": "Gruvbox Light",
+    "gruvbox-dark": "Gruvbox Dark",
+    "ayu-light": "Ayu Light",
+    "ayu-dark": "Ayu Dark"
   },
   "uiThemes": {
     "light": "Light",

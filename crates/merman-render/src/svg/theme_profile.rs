@@ -20,6 +20,51 @@ impl HostThemeAppearance {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HostThemePreset {
+    /// Neutral light editor preview palette.
+    #[default]
+    EditorLight,
+    /// Neutral dark editor preview palette.
+    EditorDark,
+    /// One Dark-inspired editor preview palette.
+    OneDark,
+    /// Gruvbox light-inspired editor preview palette.
+    GruvboxLight,
+    /// Gruvbox dark-inspired editor preview palette.
+    GruvboxDark,
+    /// Ayu light-inspired editor preview palette.
+    AyuLight,
+    /// Ayu dark-inspired editor preview palette.
+    AyuDark,
+}
+
+impl HostThemePreset {
+    /// All built-in host profile presets.
+    pub const ALL: [Self; 7] = [
+        Self::EditorLight,
+        Self::EditorDark,
+        Self::OneDark,
+        Self::GruvboxLight,
+        Self::GruvboxDark,
+        Self::AyuLight,
+        Self::AyuDark,
+    ];
+
+    /// Stable `host_theme.preset` value accepted by bindings.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::EditorLight => "editor-light",
+            Self::EditorDark => "editor-dark",
+            Self::OneDark => "one-dark",
+            Self::GruvboxLight => "gruvbox-light",
+            Self::GruvboxDark => "gruvbox-dark",
+            Self::AyuLight => "ayu-light",
+            Self::AyuDark => "ayu-dark",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostThemeRoles {
     pub canvas: Option<String>,
@@ -75,9 +120,17 @@ impl HostThemeRoles {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HostThemePipelinePreset {
+    /// Keep Mermaid-parity SVG output.
     #[default]
     Parity,
+    /// Keep native `<foreignObject>` labels and add readable SVG text fallbacks.
+    ///
+    /// This is useful for consumers that need both browser-like SVG and non-HTML label fallbacks.
+    /// For browser/editor display surfaces, prefer [`Self::ResvgSafe`] if duplicate labels are a
+    /// risk.
     Readable,
+    /// Add readable fallback text, remove native `<foreignObject>` labels, and sanitize common
+    /// rasterization hazards.
     ResvgSafe,
 }
 
@@ -121,6 +174,11 @@ impl Default for HostThemeOutput {
 }
 
 impl HostThemeOutput {
+    /// Returns product-neutral defaults for editor previews and raster-oriented host surfaces.
+    ///
+    /// The preset selects `resvg-safe` output, strips existing `!important` CSS so host theme rules
+    /// can win predictably, uses the profile canvas as the root SVG background, and enables
+    /// duplicate fallback cleanup. Callers can still add scoped CSS or override individual fields.
     pub fn resvg_safe_editor() -> Self {
         Self {
             pipeline: HostThemePipelinePreset::ResvgSafe,
@@ -162,6 +220,18 @@ impl Default for HostThemeProfile {
 impl HostThemeProfile {
     pub fn builder() -> HostThemeProfileBuilder {
         HostThemeProfileBuilder::default()
+    }
+
+    pub fn from_preset(preset: HostThemePreset) -> Self {
+        match preset {
+            HostThemePreset::EditorLight => Self::editor_light(),
+            HostThemePreset::EditorDark => Self::editor_dark(),
+            HostThemePreset::OneDark => Self::one_dark(),
+            HostThemePreset::GruvboxLight => Self::gruvbox_light(),
+            HostThemePreset::GruvboxDark => Self::gruvbox_dark(),
+            HostThemePreset::AyuLight => Self::ayu_light(),
+            HostThemePreset::AyuDark => Self::ayu_dark(),
+        }
     }
 
     pub fn editor_light() -> Self {
@@ -206,7 +276,7 @@ impl HostThemeProfile {
                 "#a16207".to_string(),
                 "#65a30d".to_string(),
             ],
-            output: HostThemeOutput::default(),
+            output: HostThemeOutput::resvg_safe_editor(),
             theme_variables: Map::new(),
             site_config: Map::new(),
         }
@@ -255,6 +325,202 @@ impl HostThemeProfile {
                 "#a3e635".to_string(),
             ],
             output: HostThemeOutput::resvg_safe_editor(),
+            theme_variables: Map::new(),
+            site_config: Map::new(),
+        }
+    }
+
+    pub fn one_dark() -> Self {
+        Self::editor_profile(
+            HostThemeAppearance::Dark,
+            HostThemeRoles {
+                canvas: Some("#282c34".to_string()),
+                surface: Some("#21252b".to_string()),
+                surface_alt: Some("#2c313a".to_string()),
+                surface_muted: Some("#3e4451".to_string()),
+                text: Some("#abb2bf".to_string()),
+                subtle_text: Some("#828997".to_string()),
+                border: Some("#3e4451".to_string()),
+                line: Some("#61afef".to_string()),
+                edge_label_background: Some("#282c34".to_string()),
+                cluster_background: Some("#2c313a".to_string()),
+                cluster_border: Some("#3e4451".to_string()),
+                note_background: Some("#3a2f1b".to_string()),
+                note_border: Some("#e5c07b".to_string()),
+                note_text: Some("#f0dca4".to_string()),
+                actor_background: Some("#2c313a".to_string()),
+                actor_border: Some("#3e4451".to_string()),
+                actor_text: Some("#abb2bf".to_string()),
+                activation_background: Some("#3e4451".to_string()),
+                activation_border: Some("#5c6370".to_string()),
+                error: Some("#e06c75".to_string()),
+                warning: Some("#e5c07b".to_string()),
+                success: Some("#98c379".to_string()),
+            },
+            [
+                "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
+                "#be5046",
+            ],
+            HostThemeOutput::resvg_safe_editor(),
+        )
+    }
+
+    pub fn gruvbox_light() -> Self {
+        Self::editor_profile(
+            HostThemeAppearance::Light,
+            HostThemeRoles {
+                canvas: Some("#fbf1c7".to_string()),
+                surface: Some("#f2e5bc".to_string()),
+                surface_alt: Some("#ebdbb2".to_string()),
+                surface_muted: Some("#d5c4a1".to_string()),
+                text: Some("#3c3836".to_string()),
+                subtle_text: Some("#665c54".to_string()),
+                border: Some("#d5c4a1".to_string()),
+                line: Some("#7c6f64".to_string()),
+                edge_label_background: Some("#fbf1c7".to_string()),
+                cluster_background: Some("#ebdbb2".to_string()),
+                cluster_border: Some("#d5c4a1".to_string()),
+                note_background: Some("#f2e5bc".to_string()),
+                note_border: Some("#d79921".to_string()),
+                note_text: Some("#3c3836".to_string()),
+                actor_background: Some("#ebdbb2".to_string()),
+                actor_border: Some("#d5c4a1".to_string()),
+                actor_text: Some("#3c3836".to_string()),
+                activation_background: Some("#d5c4a1".to_string()),
+                activation_border: Some("#bdae93".to_string()),
+                error: Some("#cc241d".to_string()),
+                warning: Some("#d79921".to_string()),
+                success: Some("#98971a".to_string()),
+            },
+            [
+                "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
+                "#427b58",
+            ],
+            HostThemeOutput::resvg_safe_editor(),
+        )
+    }
+
+    pub fn gruvbox_dark() -> Self {
+        Self::editor_profile(
+            HostThemeAppearance::Dark,
+            HostThemeRoles {
+                canvas: Some("#282828".to_string()),
+                surface: Some("#3c3836".to_string()),
+                surface_alt: Some("#504945".to_string()),
+                surface_muted: Some("#665c54".to_string()),
+                text: Some("#ebdbb2".to_string()),
+                subtle_text: Some("#d5c4a1".to_string()),
+                border: Some("#665c54".to_string()),
+                line: Some("#d5c4a1".to_string()),
+                edge_label_background: Some("#282828".to_string()),
+                cluster_background: Some("#3c3836".to_string()),
+                cluster_border: Some("#665c54".to_string()),
+                note_background: Some("#3c3836".to_string()),
+                note_border: Some("#fabd2f".to_string()),
+                note_text: Some("#fbf1c7".to_string()),
+                actor_background: Some("#3c3836".to_string()),
+                actor_border: Some("#665c54".to_string()),
+                actor_text: Some("#ebdbb2".to_string()),
+                activation_background: Some("#504945".to_string()),
+                activation_border: Some("#7c6f64".to_string()),
+                error: Some("#fb4934".to_string()),
+                warning: Some("#fabd2f".to_string()),
+                success: Some("#b8bb26".to_string()),
+            },
+            [
+                "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
+                "#689d6a",
+            ],
+            HostThemeOutput::resvg_safe_editor(),
+        )
+    }
+
+    pub fn ayu_light() -> Self {
+        Self::editor_profile(
+            HostThemeAppearance::Light,
+            HostThemeRoles {
+                canvas: Some("#fafafa".to_string()),
+                surface: Some("#f3f4f5".to_string()),
+                surface_alt: Some("#e6e8eb".to_string()),
+                surface_muted: Some("#d9d7ce".to_string()),
+                text: Some("#5c6773".to_string()),
+                subtle_text: Some("#8a9199".to_string()),
+                border: Some("#d9d7ce".to_string()),
+                line: Some("#55b4d4".to_string()),
+                edge_label_background: Some("#fafafa".to_string()),
+                cluster_background: Some("#f3f4f5".to_string()),
+                cluster_border: Some("#d9d7ce".to_string()),
+                note_background: Some("#fff3bf".to_string()),
+                note_border: Some("#ffaa33".to_string()),
+                note_text: Some("#5c6773".to_string()),
+                actor_background: Some("#f3f4f5".to_string()),
+                actor_border: Some("#d9d7ce".to_string()),
+                actor_text: Some("#5c6773".to_string()),
+                activation_background: Some("#e6e8eb".to_string()),
+                activation_border: Some("#d9d7ce".to_string()),
+                error: Some("#f07171".to_string()),
+                warning: Some("#ffaa33".to_string()),
+                success: Some("#86b300".to_string()),
+            },
+            [
+                "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
+                "#399ee6",
+            ],
+            HostThemeOutput::resvg_safe_editor(),
+        )
+    }
+
+    pub fn ayu_dark() -> Self {
+        Self::editor_profile(
+            HostThemeAppearance::Dark,
+            HostThemeRoles {
+                canvas: Some("#0b0e14".to_string()),
+                surface: Some("#11151c".to_string()),
+                surface_alt: Some("#1f2430".to_string()),
+                surface_muted: Some("#343b48".to_string()),
+                text: Some("#bfbdb6".to_string()),
+                subtle_text: Some("#8a9199".to_string()),
+                border: Some("#343b48".to_string()),
+                line: Some("#59c2ff".to_string()),
+                edge_label_background: Some("#0b0e14".to_string()),
+                cluster_background: Some("#1f2430".to_string()),
+                cluster_border: Some("#343b48".to_string()),
+                note_background: Some("#332a14".to_string()),
+                note_border: Some("#ffb454".to_string()),
+                note_text: Some("#ffdf99".to_string()),
+                actor_background: Some("#1f2430".to_string()),
+                actor_border: Some("#343b48".to_string()),
+                actor_text: Some("#bfbdb6".to_string()),
+                activation_background: Some("#343b48".to_string()),
+                activation_border: Some("#4f5866".to_string()),
+                error: Some("#f07178".to_string()),
+                warning: Some("#ffb454".to_string()),
+                success: Some("#aad94c".to_string()),
+            },
+            [
+                "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#f29668",
+                "#39bae6",
+            ],
+            HostThemeOutput::resvg_safe_editor(),
+        )
+    }
+
+    fn editor_profile<const N: usize>(
+        appearance: HostThemeAppearance,
+        roles: HostThemeRoles,
+        palette: [&str; N],
+        output: HostThemeOutput,
+    ) -> Self {
+        Self {
+            appearance,
+            font_family: Some(
+                r#"Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif"#
+                    .to_string(),
+            ),
+            font_size: Some("14px".to_string()),
+            roles,
+            series_palette: palette.iter().map(|color| color.to_string()).collect(),
+            output,
             theme_variables: Map::new(),
             site_config: Map::new(),
         }
@@ -900,6 +1166,56 @@ mod tests {
         assert_eq!(vars["pie1"], "#60a5fa");
         assert_eq!(vars["git0"], "#60a5fa");
         assert_eq!(vars["gitBranchLabel0"], "#ffffff");
+    }
+
+    #[test]
+    fn common_editor_presets_compile_named_palettes() {
+        let cases = [
+            (HostThemePreset::EditorLight, "#ffffff", "#2563eb"),
+            (HostThemePreset::EditorDark, "#0f172a", "#60a5fa"),
+            (HostThemePreset::OneDark, "#282c34", "#61afef"),
+            (HostThemePreset::GruvboxDark, "#282828", "#83a598"),
+            (HostThemePreset::GruvboxLight, "#fbf1c7", "#458588"),
+            (HostThemePreset::AyuDark, "#0b0e14", "#59c2ff"),
+            (HostThemePreset::AyuLight, "#fafafa", "#55b4d4"),
+        ];
+
+        for (preset, background, first_series_color) in cases {
+            let compiled = HostThemeProfile::from_preset(preset).compile();
+            let cfg = compiled.site_config.as_value();
+            let vars = cfg["themeVariables"].as_object().unwrap();
+
+            assert_eq!(cfg["theme"], "base", "{preset:?}");
+            assert_eq!(vars["background"], background, "{preset:?}");
+            assert_eq!(vars["pie1"], first_series_color, "{preset:?}");
+            assert_eq!(
+                compiled.output.preset,
+                SvgPipelinePreset::ResvgSafe,
+                "{preset:?}"
+            );
+            assert_eq!(
+                vars["xyChart"]["accentColor"], first_series_color,
+                "{preset:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn host_theme_preset_names_are_binding_stable() {
+        let names = HostThemePreset::ALL.map(HostThemePreset::as_str);
+
+        assert_eq!(
+            names,
+            [
+                "editor-light",
+                "editor-dark",
+                "one-dark",
+                "gruvbox-light",
+                "gruvbox-dark",
+                "ayu-light",
+                "ayu-dark"
+            ]
+        );
     }
 
     #[test]

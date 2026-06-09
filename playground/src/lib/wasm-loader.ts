@@ -9,7 +9,9 @@ import {
   supportedDiagrams,
   supportedThemes,
   validate as validateDiagram,
+  type HostThemePresetName,
   type MermanWasmModule,
+  type SvgBindingOptions,
 } from "@mermanjs/web";
 import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 import {
@@ -25,6 +27,12 @@ export interface ValidationResult {
 }
 
 export type SvgPipeline = "parity" | "readable" | "resvg-safe";
+export type HostThemePreset = HostThemePresetName;
+
+export interface WasmRenderOptions {
+  pipeline?: SvgPipeline;
+  hostThemePreset?: HostThemePreset;
+}
 
 export interface MermanWasm {
   init(): Promise<void>;
@@ -32,11 +40,21 @@ export interface MermanWasm {
     code: string,
     theme: string,
     configJson?: string,
-    pipeline?: SvgPipeline
+    options?: WasmRenderOptions
   ): string;
   render_ascii(code: string, theme?: string, configJson?: string): string | null;
-  parse_json(code: string, theme?: string, configJson?: string): string;
-  layout_json(code: string, theme?: string, configJson?: string): string;
+  parse_json(
+    code: string,
+    theme?: string,
+    configJson?: string,
+    options?: WasmRenderOptions
+  ): string;
+  layout_json(
+    code: string,
+    theme?: string,
+    configJson?: string,
+    options?: WasmRenderOptions
+  ): string;
   get_supported_diagrams(): string[];
   get_supported_themes(): string[];
   get_ascii_supported_diagrams(): string[];
@@ -121,10 +139,15 @@ function pruneStaleWasmCacheEntries(cache: Cache, currentUrl: string) {
 export async function prewarmWasmRenderer(
   theme = "default",
   configJson = DEFAULT_MERMAID_CONFIG,
-  pipeline?: SvgPipeline
+  options?: WasmRenderOptions
 ): Promise<void> {
   const wasm = await loadWasm();
-  const configSignature = [theme, configJson, pipeline ?? "parity"].join("\0");
+  const configSignature = [
+    theme,
+    configJson,
+    options?.pipeline ?? "parity",
+    options?.hostThemePreset ?? "none",
+  ].join("\0");
 
   if (warmupConfigSignature === configSignature) return;
   if (warmupPromise) {
@@ -134,7 +157,7 @@ export async function prewarmWasmRenderer(
 
   warmupPromise = Promise.resolve()
     .then(() => {
-      wasm.render_svg(WARMUP_SOURCE, theme, configJson, pipeline);
+      wasm.render_svg(WARMUP_SOURCE, theme, configJson, options);
       if (wasmModule === wasm) {
         warmupConfigSignature = configSignature;
       }
@@ -165,11 +188,12 @@ function createWasmAdapter(): MermanWasm {
       code: string,
       theme: string,
       configJson = DEFAULT_MERMAID_CONFIG,
-      pipeline?: SvgPipeline
+      options?: WasmRenderOptions
     ): string {
+      const sourceTheme = options?.hostThemePreset ? "default" : theme;
       return renderSvg(
-        sourceWithConfig(code, theme, configJson),
-        pipeline ? { svg: { pipeline } } : undefined
+        sourceWithConfig(code, sourceTheme, configJson),
+        bindingOptionsForRender(options)
       );
     },
 
@@ -188,17 +212,27 @@ function createWasmAdapter(): MermanWasm {
     parse_json(
       code: string,
       theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: WasmRenderOptions
     ): string {
-      return parseJson(sourceWithConfig(code, theme, configJson));
+      const sourceTheme = options?.hostThemePreset ? "default" : theme;
+      return parseJson(
+        sourceWithConfig(code, sourceTheme, configJson),
+        bindingOptionsForRender(options)
+      );
     },
 
     layout_json(
       code: string,
       theme = "default",
-      configJson = DEFAULT_MERMAID_CONFIG
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options?: WasmRenderOptions
     ): string {
-      return layoutJson(sourceWithConfig(code, theme, configJson));
+      const sourceTheme = options?.hostThemePreset ? "default" : theme;
+      return layoutJson(
+        sourceWithConfig(code, sourceTheme, configJson),
+        bindingOptionsForRender(options)
+      );
     },
 
     get_supported_diagrams(): string[] {
@@ -221,4 +255,21 @@ function createWasmAdapter(): MermanWasm {
       };
     },
   };
+}
+
+function bindingOptionsForRender(
+  options: WasmRenderOptions | undefined
+): SvgBindingOptions | undefined {
+  if (!options?.pipeline && !options?.hostThemePreset) {
+    return undefined;
+  }
+
+  const bindingOptions: SvgBindingOptions = {};
+  if (options.hostThemePreset) {
+    bindingOptions.host_theme = { preset: options.hostThemePreset };
+  }
+  if (options.pipeline) {
+    bindingOptions.svg = { pipeline: options.pipeline };
+  }
+  return bindingOptions;
 }
