@@ -140,6 +140,155 @@ mod tests {
     }
 
     #[test]
+    fn render_svg_accepts_host_theme_profile() {
+        let options = br##"{
+            "host_theme": {
+                "appearance": "dark",
+                "font_family": "system-ui",
+                "roles": {
+                    "canvas": "#0f172a",
+                    "surface": "#111827",
+                    "text": "#e5e7eb",
+                    "border": "#475569",
+                    "line": "#94a3b8",
+                    "note_background": "#422006",
+                    "note_border": "#f59e0b"
+                },
+                "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
+                "output": {
+                    "pipeline": "resvg-safe",
+                    "root_background": "canvas",
+                    "drop_native_duplicate_fallbacks": true,
+                    "css_override_policy": "strip-existing-important"
+                }
+            },
+            "svg": { "diagram_id": "bindings host theme" }
+        }"##;
+        let svg = String::from_utf8(
+            render_svg(
+                b"sequenceDiagram\n  participant A as Alpha\n  participant B as Beta\n  A->>B: Hello\n  Note over A,B: Host note",
+                options,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"id="bindings-host-theme""#), "{svg}");
+        assert!(svg.contains("#111827"), "{svg}");
+        assert!(svg.contains("#e5e7eb"), "{svg}");
+        assert!(svg.contains("#94a3b8"), "{svg}");
+        assert!(svg.contains("#422006"), "{svg}");
+        assert!(svg.contains("#f59e0b"), "{svg}");
+        assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(!svg.contains("<foreignObject"), "{svg}");
+        assert!(!svg.contains("!important"), "{svg}");
+    }
+
+    #[test]
+    fn explicit_site_config_overrides_host_theme_profile_variables() {
+        let options = br##"{
+            "host_theme": {
+                "roles": {
+                    "surface": "#111111",
+                    "text": "#eeeeee",
+                    "border": "#222222"
+                }
+            },
+            "site_config": {
+                "themeVariables": {
+                    "nodeBorder": "#abcdef"
+                }
+            },
+            "svg": { "diagram_id": "bindings host override" }
+        }"##;
+        let svg =
+            String::from_utf8(render_svg(b"flowchart TD\nA[Host]", options).unwrap()).unwrap();
+
+        assert!(svg.contains("#abcdef"), "{svg}");
+        assert!(svg.contains("#eeeeee"), "{svg}");
+    }
+
+    #[test]
+    fn empty_host_theme_profile_is_noop_for_theme_config() {
+        let plain = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[Host]",
+                br##"{ "svg": { "diagram_id": "bindings empty host theme" } }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let themed = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[Host]",
+                br##"{
+                    "host_theme": {},
+                    "svg": { "diagram_id": "bindings empty host theme" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            themed, plain,
+            "empty host_theme should not force theme=base or mutate SVG output"
+        );
+    }
+
+    #[test]
+    fn svg_css_override_policy_can_preserve_after_host_theme_strip_default() {
+        let options = parse_options(
+            br##"{
+                "host_theme": {
+                    "appearance": "dark",
+                    "output": {
+                        "pipeline": "resvg-safe",
+                        "css_override_policy": "strip-existing-important"
+                    }
+                },
+                "svg": {
+                    "css_override_policy": "preserve"
+                }
+            }"##,
+        )
+        .unwrap();
+        let pipeline = request::pipeline_for_options(&options).unwrap();
+        let out = pipeline
+            .process_to_string(r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#)
+            .unwrap();
+
+        assert!(
+            out.contains("!important"),
+            "explicit svg.css_override_policy=preserve should override host output stripping: {out}"
+        );
+    }
+
+    #[test]
+    fn invalid_host_theme_color_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Host]",
+            br##"{ "host_theme": { "roles": { "canvas": "white; color: red" } } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("host_theme.roles.canvas"));
+    }
+
+    #[test]
+    fn invalid_host_theme_success_color_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Host]",
+            br##"{ "host_theme": { "roles": { "success": "#00ff00; color: red" } } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("host_theme.roles.success"));
+    }
+
+    #[test]
     fn non_object_site_config_returns_invalid_argument() {
         let err =
             render_svg(b"flowchart TD\nA[Hello]", br#"{ "site_config": "dark" }"#).unwrap_err();

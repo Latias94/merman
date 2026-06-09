@@ -127,3 +127,7 @@ required-features = ["egui-example"]
 [[example]]
 name = "example_11_custom_output_environment"
 required-features = ["render"]
+
+[[example]]
+name = "example_12_host_theme_profile"
+required-features = ["render"]

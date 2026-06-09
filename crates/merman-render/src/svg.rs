@@ -11,6 +11,7 @@ mod fallback;
 mod icon_registry;
 mod parity;
 mod pipeline;
+mod theme_profile;
 
 pub(crate) use parity::theme as render_theme;
 
@@ -23,4 +24,9 @@ pub use pipeline::{
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
     SvgPostprocessor, resvg_safe_svg,
+};
+pub use theme_profile::{
+    CompiledHostTheme, CompiledHostThemeOutput, HostThemeAppearance, HostThemeOutput,
+    HostThemePipelinePreset, HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles,
+    HostThemeRootBackground,
 };

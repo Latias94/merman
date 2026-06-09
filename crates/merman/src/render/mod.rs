@@ -3,12 +3,14 @@ pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
 pub use merman_render::model::LayoutedDiagram;
 pub use merman_render::svg::{
-    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, IconRegistry, IconRegistryError, IconSvg,
-    RootBackgroundPostprocessor, SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor,
-    ScopedCssPostprocessor, StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset,
-    SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
-    foreign_object_label_fallback_svg_text, resvg_safe_svg,
+    CompiledHostTheme, CompiledHostThemeOutput, CssOverridePolicy, CssOverridePostprocessor,
+    DropNativeDuplicateFallbacksPostprocessor, ForeignObjectFallbackPostprocessor,
+    HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset, HostThemeProfile,
+    HostThemeProfileBuilder, HostThemeRoles, HostThemeRootBackground, IconRegistry,
+    IconRegistryError, IconSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
+    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
+    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
+    SvgPostprocessor, SvgRenderOptions, foreign_object_label_fallback_svg_text, resvg_safe_svg,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
@@ -539,6 +541,55 @@ flowchart TD
     }
 
     #[test]
+    fn host_theme_profile_applies_editor_roles_and_pipeline() {
+        let profile = HostThemeProfile::editor_dark();
+        let compiled = profile.compile();
+        let renderer = HeadlessRenderer::new()
+            .with_compiled_host_theme(&compiled)
+            .with_diagram_id("host-theme-profile");
+
+        let svg = renderer
+            .render_svg_with_pipeline_sync(
+                r##"%%{init: {"themeCSS": ".node rect { stroke-width: 3px !important; }"}}%%
+flowchart TD
+  A[Host] --> B[Theme]
+"##,
+                &compiled.pipeline(),
+            )
+            .unwrap()
+            .unwrap();
+
+        assert!(svg.contains("#111827"), "{svg}");
+        assert!(svg.contains("#e5e7eb"), "{svg}");
+        assert!(svg.contains("#94a3b8"), "{svg}");
+        assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(!svg.contains("!important"), "{svg}");
+    }
+
+    #[test]
+    fn host_theme_profile_raw_theme_variables_win_over_roles() {
+        let profile = HostThemeProfile::builder()
+            .roles(HostThemeRoles {
+                border: Some("#111111".to_string()),
+                text: Some("#eeeeee".to_string()),
+                ..HostThemeRoles::default()
+            })
+            .theme_variable("nodeBorder", "#abcdef")
+            .build();
+        let renderer = HeadlessRenderer::new()
+            .with_host_theme(&profile)
+            .with_diagram_id("host-theme-override");
+
+        let svg = renderer
+            .render_svg_sync("flowchart TD\n  A[Host]")
+            .unwrap()
+            .unwrap();
+
+        assert!(svg.contains("#abcdef"), "{svg}");
+        assert!(svg.contains("#eeeeee"), "{svg}");
+    }
+
+    #[test]
     fn headless_renderer_fixed_time_controls_semantic_parse() {
         let renderer = HeadlessRenderer::new()
             .with_fixed_today(Some(
@@ -598,6 +649,17 @@ impl HeadlessRenderer {
 
     pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
         self.engine = self.engine.with_site_config(site_config);
+        self
+    }
+
+    pub fn with_host_theme(mut self, profile: &HostThemeProfile) -> Self {
+        let compiled = profile.compile();
+        self.engine = self.engine.with_site_config(compiled.site_config);
+        self
+    }
+
+    pub fn with_compiled_host_theme(mut self, theme: &CompiledHostTheme) -> Self {
+        self.engine = self.engine.with_site_config(theme.site_config.clone());
         self
     }
 

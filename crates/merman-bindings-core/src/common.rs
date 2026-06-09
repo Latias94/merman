@@ -85,6 +85,8 @@ pub(crate) struct BindingOptions {
     pub(crate) version: Option<u32>,
     pub(crate) fixed_today: Option<String>,
     pub(crate) fixed_local_offset_minutes: Option<i32>,
+    #[cfg(feature = "render")]
+    pub(crate) host_theme: Option<HostThemeOptionsJson>,
     pub(crate) site_config: Option<serde_json::Value>,
     pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "render")]
@@ -117,6 +119,57 @@ pub(crate) struct SvgOptionsJson {
     pub(crate) css_override_policy: Option<String>,
     pub(crate) root_background_color: Option<String>,
     pub(crate) drop_native_duplicate_fallbacks: Option<bool>,
+}
+
+#[cfg(feature = "render")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct HostThemeOptionsJson {
+    pub(crate) appearance: Option<String>,
+    pub(crate) font_family: Option<String>,
+    pub(crate) font_size: Option<String>,
+    pub(crate) roles: Option<HostThemeRolesJson>,
+    pub(crate) series_palette: Option<Vec<String>>,
+    pub(crate) output: Option<HostThemeOutputJson>,
+    #[serde(default, alias = "themeVariables")]
+    pub(crate) theme_variables: Option<serde_json::Map<String, serde_json::Value>>,
+    pub(crate) site_config: Option<serde_json::Value>,
+}
+
+#[cfg(feature = "render")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct HostThemeRolesJson {
+    pub(crate) canvas: Option<String>,
+    pub(crate) surface: Option<String>,
+    pub(crate) surface_alt: Option<String>,
+    pub(crate) surface_muted: Option<String>,
+    pub(crate) text: Option<String>,
+    pub(crate) subtle_text: Option<String>,
+    pub(crate) border: Option<String>,
+    pub(crate) line: Option<String>,
+    pub(crate) edge_label_background: Option<String>,
+    pub(crate) cluster_background: Option<String>,
+    pub(crate) cluster_border: Option<String>,
+    pub(crate) note_background: Option<String>,
+    pub(crate) note_border: Option<String>,
+    pub(crate) note_text: Option<String>,
+    pub(crate) actor_background: Option<String>,
+    pub(crate) actor_border: Option<String>,
+    pub(crate) actor_text: Option<String>,
+    pub(crate) activation_background: Option<String>,
+    pub(crate) activation_border: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) warning: Option<String>,
+    pub(crate) success: Option<String>,
+}
+
+#[cfg(feature = "render")]
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct HostThemeOutputJson {
+    pub(crate) pipeline: Option<String>,
+    pub(crate) css_override_policy: Option<String>,
+    pub(crate) root_background: Option<String>,
+    pub(crate) drop_native_duplicate_fallbacks: Option<bool>,
+    pub(crate) scoped_css: Option<String>,
 }
 
 pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8> {
