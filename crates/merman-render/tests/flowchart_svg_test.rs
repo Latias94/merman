@@ -270,6 +270,22 @@ fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
 }
 
 #[test]
+fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+    Security[Import / WebSurface / Data Egress Gates] --> PDF
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
+        ),
+        "expected long flowchart HTML node label to wrap at Mermaid's default 200px width: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_svg_honors_mermaid_11_15_numeric_stroke_width_theme() {
     let svg = render_flowchart_svg_from_text(
         r##"%%{init: {"themeVariables": {"strokeWidth": 4, "lineColor": "#112233", "nodeBorder": "#445566"}}}%%
