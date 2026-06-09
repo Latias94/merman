@@ -281,6 +281,10 @@ fn extract_css_text_fill_for_class(svg: &str, class_name: &str) -> Option<String
 }
 
 fn extract_css_root_text_fill(svg: &str) -> Option<String> {
+    extract_css_root_style_property(svg, &["fill", "color"])
+}
+
+fn extract_css_root_style_property(svg: &str, properties: &[&str]) -> Option<String> {
     let svg_start = svg.find("<svg")?;
     let svg_end = svg[svg_start..].find('>').map(|rel| svg_start + rel + 1)?;
     let root_id = parse_attr_str(&svg[svg_start..svg_end], "id")?;
@@ -288,15 +292,42 @@ fn extract_css_root_text_fill(svg: &str) -> Option<String> {
     let i = svg.find(&needle)? + needle.len();
     let end_rel = svg[i..].find('}')?;
     let declarations = &svg[i..i + end_rel];
-    extract_style_property(declarations, "fill")
-        .or_else(|| extract_style_property(declarations, "color"))
+    properties
+        .iter()
+        .find_map(|property| extract_style_property(declarations, property))
+}
+
+fn extract_css_style_property_for_class(
+    svg: &str,
+    class_name: &str,
+    property: &str,
+) -> Option<String> {
+    let mut search = 0usize;
+    while let Some(open_rel) = svg[search..].find('{') {
+        let open = search + open_rel;
+        let Some(close_rel) = svg[open + 1..].find('}') else {
+            break;
+        };
+        let close = open + 1 + close_rel;
+        let selector_start = svg[..open].rfind('}').map_or(0, |idx| idx + 1);
+        let selector = svg[selector_start..open].trim();
+        let declarations = &svg[open + 1..close];
+
+        if selector_rule_applies_inherited_color_to_class(selector, class_name) {
+            if let Some(value) = extract_style_property(declarations, property) {
+                return Some(value);
+            }
+        }
+
+        search = close + 1;
+    }
+
+    None
 }
 
 fn selector_rule_applies_to_text_class(selector_list: &str, class_name: &str) -> bool {
     selector_list.split(',').map(str::trim).any(|selector| {
-        selector_has_class(selector, class_name)
-            && (selector_targets_text_like(selector)
-                || selector_targets_class_directly(selector, class_name))
+        selector_has_class(selector, class_name) && selector_targets_text_like(selector)
     })
 }
 
@@ -357,32 +388,6 @@ fn selector_targets_element(selector: &str, element: &str) -> bool {
             return true;
         }
         search = start + element.len();
-    }
-    false
-}
-
-fn selector_targets_class_directly(selector: &str, class_name: &str) -> bool {
-    let needle = format!(".{class_name}");
-    let mut search = 0usize;
-    while let Some(rel) = selector[search..].find(&needle) {
-        let start = search + rel;
-        let after_start = start + needle.len();
-        let Some(after_ch) = selector[after_start..].chars().next() else {
-            return true;
-        };
-        if is_css_identifier_char(after_ch) {
-            search = after_start;
-            continue;
-        }
-        let after = selector[after_start..].trim_start();
-        if after.is_empty()
-            || after.starts_with(':')
-            || after.starts_with('[')
-            || after.starts_with('.')
-        {
-            return true;
-        }
-        search = after_start;
     }
     false
 }
@@ -456,6 +461,23 @@ fn extract_svg_font_style_from_ancestors(g_stack: &[GFrame], property: &str) -> 
     None
 }
 
+fn extract_svg_font_style_from_context(
+    svg: &str,
+    g_stack: &[GFrame],
+    property: &str,
+) -> Option<String> {
+    extract_svg_font_style_from_ancestors(g_stack, property).or_else(|| {
+        for frame in g_stack.iter().rev() {
+            for token in frame.class_tokens.iter().rev() {
+                if let Some(value) = extract_css_style_property_for_class(svg, token, property) {
+                    return Some(value);
+                }
+            }
+        }
+        extract_css_root_style_property(svg, &[property])
+    })
+}
+
 fn class_attr_tokens(g_stack: &[GFrame], inner: &str, base_class: &str) -> String {
     let mut tokens = vec![base_class.to_string()];
     for frame in g_stack {
@@ -471,6 +493,30 @@ fn class_attr_tokens(g_stack: &[GFrame], inner: &str, base_class: &str) -> Strin
         }
     }
     escape_xml_attr(&tokens.join(" "))
+}
+
+fn fallback_text_class_attr_tokens(g_stack: &[GFrame], inner: &str) -> String {
+    let mut tokens = vec!["merman-foreignobject-fallback-text".to_string()];
+    for frame in g_stack {
+        for token in &frame.class_tokens {
+            if is_fallback_text_safe_class(token)
+                && !tokens.iter().any(|existing| existing == token)
+            {
+                tokens.push(token.clone());
+            }
+        }
+    }
+    for token in parse_class_tokens(inner) {
+        if is_fallback_text_safe_class(&token) && !tokens.iter().any(|existing| existing == &token)
+        {
+            tokens.push(token);
+        }
+    }
+    escape_xml_attr(&tokens.join(" "))
+}
+
+fn is_fallback_text_safe_class(class_name: &str) -> bool {
+    !matches!(class_name, "label")
 }
 
 fn parse_css_px(value: &str, fallback: f64) -> f64 {
@@ -611,7 +657,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                     }
 
                     let font_size_value = extract_inline_html_style_property(inner, "font-size")
-                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-size"))
+                        .or_else(|| extract_svg_font_style_from_context(svg, &g_stack, "font-size"))
                         .unwrap_or_else(|| "16px".to_string());
                     let font_size = parse_css_px(&font_size_value, 16.0);
                     let line_height = font_size * 1.5;
@@ -621,12 +667,18 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                         .or_else(|| extract_svg_text_fill_from_ancestors(svg, &g_stack))
                         .unwrap_or_else(|| "#333".to_string());
                     let font_family = extract_inline_html_style_property(inner, "font-family")
-                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-family"))
+                        .or_else(|| {
+                            extract_svg_font_style_from_context(svg, &g_stack, "font-family")
+                        })
                         .unwrap_or_else(|| "trebuchet ms,verdana,arial,sans-serif".to_string());
                     let font_weight = extract_inline_html_style_property(inner, "font-weight")
-                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-weight"));
+                        .or_else(|| {
+                            extract_svg_font_style_from_context(svg, &g_stack, "font-weight")
+                        });
                     let font_style = extract_inline_html_style_property(inner, "font-style")
-                        .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-style"));
+                        .or_else(|| {
+                            extract_svg_font_style_from_context(svg, &g_stack, "font-style")
+                        });
                     let mut text_style = format!(
                         "text-anchor: {anchor}; font-size: {font_size_value}; font-family: {font_family};"
                     );
@@ -640,8 +692,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                         text_style.push_str(&font_style);
                         text_style.push(';');
                     }
-                    let text_class =
-                        class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback-text");
+                    let text_class = fallback_text_class_attr_tokens(&g_stack, inner);
 
                     for (idx, line) in lines.iter().enumerate() {
                         let y_line = y0 + (idx as f64) * line_height;
@@ -789,6 +840,37 @@ mod tests {
         assert!(
             out.contains(r##"fill="#ddeeff""##),
             "expected root fill to be the final readable fallback: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_uses_root_font_context() {
+        let svg = r##"<svg id="host-theme-root-font" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-root-font{font-family:Inter,system-ui;font-size:14px;fill:#ddeeff;}</style><g><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(out.contains(r##"fill="#ddeeff""##), "got: {out}");
+        assert!(out.contains("font-size: 14px"), "got: {out}");
+        assert!(out.contains("font-family: Inter,system-ui"), "got: {out}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_does_not_put_structural_label_class_on_text() {
+        let svg = r##"<svg id="host-theme-edge-label" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-edge-label .edgeLabel .label{fill:#665c54;font-size:14px;}#host-theme-edge-label .edgeLabel .label text{fill:#ebdbb2;}</style><g class="edgeLabel"><g class="label"><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="edgeLabel">places</span></div></foreignObject></g></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let text_tag_start = out
+            .find(r#"<text "#)
+            .unwrap_or_else(|| panic!("expected fallback text: {out}"));
+        let text_tag_end = out[text_tag_start..]
+            .find('>')
+            .map(|offset| text_tag_start + offset)
+            .unwrap_or_else(|| panic!("expected fallback text tag end: {out}"));
+        let text_tag = &out[text_tag_start..=text_tag_end];
+
+        assert!(text_tag.contains(r##"fill="#ebdbb2""##), "got: {out}");
+        assert!(
+            !text_tag.contains(r#"class="merman-foreignobject-fallback-text edgeLabel label "#)
+                && !text_tag.contains(r#" label""#),
+            "fallback text should not keep the structural label class: {out}"
         );
     }
 

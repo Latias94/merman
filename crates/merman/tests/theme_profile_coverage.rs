@@ -19,6 +19,32 @@ const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     merge feature
 "#;
 
+const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
+    USER ||--o{ ORDER : places
+    USER {
+        int id PK
+        string name
+        string email
+    }
+    ORDER ||--|{ ORDER_ITEM : contains
+    ORDER {
+        int id PK
+        date created_at
+        string status
+    }
+    ORDER_ITEM {
+        int id PK
+        int quantity
+        float price
+    }
+    PRODUCT ||--o{ ORDER_ITEM : "ordered in"
+    PRODUCT {
+        int id PK
+        string name
+        float price
+    }
+"#;
+
 fn render_with_dark_profile(name: &str, source: &str) -> String {
     let profile = HostThemeProfile::editor_dark();
     let compiled = profile.compile();
@@ -153,6 +179,43 @@ fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &
     );
 }
 
+fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[&str]) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+
+    for label in labels {
+        let Some(text) = document.descendants().find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "text"
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "merman-foreignobject-fallback-text")
+                })
+                && node.text() == Some(*label)
+        }) else {
+            panic!("{name}: missing fallback text for ER label {label:?}: {svg}");
+        };
+
+        assert_eq!(
+            text.attribute("fill"),
+            Some("#ebdbb2"),
+            "{name}: gruvbox ER fallback label should use readable text color: {svg}"
+        );
+        assert!(
+            text.attribute("style").is_some_and(
+                |style| style.contains("font-size:14px") || style.contains("font-size: 14px")
+            ),
+            "{name}: ER fallback label should inherit host theme font size: {svg}"
+        );
+        assert!(
+            text.attribute("class")
+                .is_some_and(|classes| !classes.split_whitespace().any(|class| class == "label")),
+            "{name}: fallback text should not carry structural Mermaid label class: {svg}"
+        );
+    }
+}
+
 #[test]
 fn host_theme_profile_covers_core_diagram_roles() {
     let cases: &[(&str, &str, &[&str])] = &[
@@ -233,6 +296,35 @@ fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
         let svg = render_with_dark_profile(name, source);
         assert_contains_all(name, &svg, expected);
     }
+}
+
+#[test]
+fn gruvbox_host_theme_keeps_er_relationship_label_fallbacks_readable() {
+    let profile = HostThemeProfile::gruvbox_dark();
+    let svg = HeadlessRenderer::new()
+        .with_host_theme(&profile)
+        .with_vendored_text_measurer()
+        .with_diagram_id("gruvbox-er-labels")
+        .render_svg_sync(USER_ER_GRUVBOX_LABEL_REGRESSION)
+        .unwrap_or_else(|err| panic!("gruvbox ER render failed: {err}"))
+        .unwrap_or_else(|| panic!("gruvbox ER render produced no diagram"));
+
+    assert_contains_all(
+        "gruvbox-er-labels",
+        &svg,
+        &[
+            "#ebdbb2",
+            "font-size:14px",
+            "places",
+            "contains",
+            "ordered in",
+        ],
+    );
+    assert_er_edge_label_fallbacks_are_readable(
+        "gruvbox-er-labels",
+        &svg,
+        &["places", "contains", "ordered in"],
+    );
 }
 
 #[test]
