@@ -382,6 +382,80 @@ xychart
                 "#facc15", "#f97316", "#fb923c", "#22c55e", "#e879f9",
             ],
         ),
+        (
+            "theme-venn",
+            r##"%%{init: {"themeVariables": {"vennTitleTextColor": "#fde68a", "vennSetTextColor": "#f8fafc", "venn1": "#22c55e", "venn2": "#38bdf8"}}}%%
+venn-beta
+  title "Theme Venn"
+  set A["Core"]:10
+  set B["Editor"]:8
+  union A,B["Shared"]:3
+"##,
+            &["Theme Venn", "Core", "Editor", "Shared"],
+            &["#fde68a", "#f8fafc", "#22c55e", "#38bdf8"],
+        ),
+        (
+            "theme-tree-view",
+            r##"%%{init: {"themeVariables": {"treeView": {"labelFontSize": "20px", "labelColor": "#f8fafc", "lineColor": "#38bdf8"}}}}%%
+treeView-beta
+  "packages"
+    "mermaid"
+      "src"
+    "parser"
+"##,
+            &["packages", "mermaid", "src", "parser"],
+            &["font-size: 20px", "#f8fafc", "#38bdf8"],
+        ),
+        (
+            "theme-ishikawa",
+            r##"%%{init: {"fontFamily": "Inter, sans-serif", "themeVariables": {"lineColor": "#38bdf8", "mainBkg": "#111827", "textColor": "#f8fafc"}}}%%
+ishikawa-beta
+  Blurry Photo
+    Process
+      Out of focus
+    User
+      Shaky hands
+"##,
+            &[
+                "Blurry",
+                "Photo",
+                "Process",
+                "Out of focus",
+                "User",
+                "Shaky hands",
+            ],
+            &["#38bdf8", "#111827", "#f8fafc", "Inter, sans-serif"],
+        ),
+        (
+            "theme-eventmodeling",
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "emUiFill": "#111827", "emUiStroke": "#475569", "emEventFill": "#f59e0b", "emEventStroke": "#fbbf24", "emSwimlaneBackgroundOdd": "#0f172a", "emSwimlaneBackgroundStroke": "#334155", "emRelationStroke": "#22c55e", "emArrowhead": "#22c55e"}}}%%
+eventmodeling
+tf 01 ui Shop.Cart
+tf 02 cmd Ordering.AddItem ->> 01 { sku: "SKU-1" }
+tf 03 evt Cart.ItemAdded ->> 02 [[ItemAddedData]]
+rf 04 rmo Read.CartSummary
+tf 05 evt Checkout.CheckedOut
+
+data ItemAddedData {
+  sku: "SKU-1"
+  quantity: 1
+}
+"##,
+            &[
+                "UI/A: Shop",
+                "C/RM: Ordering",
+                "Stream: Cart",
+                "Stream: Checkout",
+                "Cart",
+                "AddItem",
+                "ItemAdded",
+                "CheckedOut",
+            ],
+            &[
+                "#f8fafc", "#111827", "#475569", "#f59e0b", "#fbbf24", "#0f172a", "#334155",
+                "#22c55e",
+            ],
+        ),
     ];
 
     for (name, source, expected_labels, expected_colors) in cases {
