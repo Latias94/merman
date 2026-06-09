@@ -44,6 +44,10 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("themes smoke failed")
         }
 
+        guard try engine.supportedHostThemePresets().contains("one-dark") else {
+            throw SmokeError.failed("host theme presets smoke failed")
+        }
+
         print("merman Apple Swift smoke passed (\(engine.packageVersion))")
     }
 }

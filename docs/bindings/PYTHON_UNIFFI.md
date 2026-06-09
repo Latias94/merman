@@ -58,6 +58,7 @@ layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
 validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
 themes = engine.supported_themes()
+host_presets = engine.supported_host_theme_presets()
 ```
 
 Errors are exposed through the generated `MermanError` type. The underlying status code, status

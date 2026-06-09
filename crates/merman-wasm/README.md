@@ -6,6 +6,8 @@ WebAssembly bindings for Merman browser use.
 [`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) package. It
 exposes SVG rendering, semantic JSON, layout JSON, ASCII/Unicode rendering, validation, and metadata
 helpers with the same options JSON contract used by the native bindings.
+Metadata helpers include Mermaid core themes and separate host/editor theme presets for
+`host_theme.preset`.
 
 Most browser and TypeScript applications should install `@mermanjs/web` rather than depending on this
 crate directly:

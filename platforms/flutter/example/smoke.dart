@@ -40,6 +40,9 @@ void main(List<String> args) {
   if (!merman.supportedThemes().contains('default')) {
     throw StateError('themes smoke failed');
   }
+  if (!merman.supportedHostThemePresets().contains('one-dark')) {
+    throw StateError('host theme presets smoke failed');
+  }
 
   try {
     merman.renderSvg(source, optionsJson: '{');

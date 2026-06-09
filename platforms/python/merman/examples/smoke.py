@@ -40,6 +40,8 @@ def main() -> None:
         raise RuntimeError("ASCII supported diagrams smoke failed")
     if "default" not in engine.supported_themes():
         raise RuntimeError("themes smoke failed")
+    if "one-dark" not in engine.supported_host_theme_presets():
+        raise RuntimeError("host theme presets smoke failed")
 
     print("merman Python UniFFI smoke passed")
 

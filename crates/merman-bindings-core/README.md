@@ -5,6 +5,7 @@ Safe shared binding facade for Merman native bindings.
 `merman-bindings-core` is an implementation crate used by the C ABI and UniFFI binding crates. It
 keeps the JSON options contract, error mapping, and feature-gated render entry points in one place
 so platform bindings expose the same behavior.
+It also owns metadata discovery for Mermaid core themes separately from host/editor theme presets.
 
 Most applications should use one of the public packages instead:
 

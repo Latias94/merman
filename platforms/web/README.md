@@ -28,6 +28,19 @@ const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
 The options object is serialized to the shared merman binding options JSON contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 
+Host/editor theme presets are separate from Mermaid's native `theme` names:
+
+```ts
+import { initMerman, renderSvg, supportedHostThemePresets } from "@mermanjs/web";
+
+await initMerman();
+
+const presets = supportedHostThemePresets();
+const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
+  host_theme: { preset: "one-dark" },
+});
+```
+
 ## Browser DOM helper
 
 For non-framework browser integrations, render directly into a host element:
@@ -141,12 +154,13 @@ initialization is usually simpler.
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutObject()`
 - `validate()`
-- `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`
+- `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.
-`supportedDiagrams()`, `asciiSupportedDiagrams()`, and `supportedThemes()` return typed metadata and fail
-fast if the generated WebAssembly metadata drifts from the TypeScript surface.
+`supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
+`supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
+metadata drifts from the TypeScript surface.
 
 ## Benchmarking against Mermaid JS
 

@@ -18,6 +18,54 @@ export interface SvgOptions {
   drop_native_duplicate_fallbacks?: boolean;
 }
 
+export type HostThemeAppearance = "light" | "dark";
+
+export interface HostThemeRolesOptions {
+  canvas?: string;
+  surface?: string;
+  surface_alt?: string;
+  surface_muted?: string;
+  text?: string;
+  subtle_text?: string;
+  border?: string;
+  line?: string;
+  edge_label_background?: string;
+  cluster_background?: string;
+  cluster_border?: string;
+  note_background?: string;
+  note_border?: string;
+  note_text?: string;
+  actor_background?: string;
+  actor_border?: string;
+  actor_text?: string;
+  activation_background?: string;
+  activation_border?: string;
+  error?: string;
+  warning?: string;
+  success?: string;
+}
+
+export interface HostThemeOutputOptions {
+  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
+  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  root_background?: "none" | "canvas" | string;
+  drop_native_duplicate_fallbacks?: boolean;
+  scoped_css?: string;
+}
+
+export interface HostThemeOptions {
+  preset?: HostThemePresetName;
+  appearance?: HostThemeAppearance;
+  font_family?: string;
+  font_size?: string;
+  roles?: HostThemeRolesOptions;
+  series_palette?: string[];
+  output?: HostThemeOutputOptions;
+  themeVariables?: Record<string, unknown>;
+  theme_variables?: Record<string, unknown>;
+  site_config?: MermaidSiteConfig;
+}
+
 export type MermaidSiteConfig = Record<string, unknown>;
 
 export interface CommonBindingOptions {
@@ -31,6 +79,7 @@ export interface CommonBindingOptions {
 export type AsciiBindingOptions = CommonBindingOptions;
 
 export interface SvgBindingOptions extends CommonBindingOptions {
+  host_theme?: HostThemeOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
@@ -52,6 +101,18 @@ export const SUPPORTED_THEMES = [
 ] as const;
 
 export type ThemeName = (typeof SUPPORTED_THEMES)[number];
+
+export const SUPPORTED_HOST_THEME_PRESETS = [
+  "editor-light",
+  "editor-dark",
+  "one-dark",
+  "gruvbox-light",
+  "gruvbox-dark",
+  "ayu-light",
+  "ayu-dark",
+] as const;
+
+export type HostThemePresetName = (typeof SUPPORTED_HOST_THEME_PRESETS)[number];
 
 export const SUPPORTED_DIAGRAMS = [
   "architecture",
@@ -76,6 +137,7 @@ export const SUPPORTED_DIAGRAMS = [
   "state",
   "timeline",
   "treemap",
+  "venn",
   "xychart",
   "zenuml",
 ] as const;
@@ -109,6 +171,12 @@ export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
 
+export function isHostThemePresetName(
+  preset: string
+): preset is HostThemePresetName {
+  return (SUPPORTED_HOST_THEME_PRESETS as readonly string[]).includes(preset);
+}
+
 export function isDiagramType(diagram: string): diagram is DiagramType {
   return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
 }
@@ -137,6 +205,12 @@ export function normalizeThemeName(theme: string | null | undefined): ThemeName 
   return theme && isThemeName(theme) ? theme : "default";
 }
 
+export function normalizeHostThemePresetName(
+  preset: string | null | undefined
+): HostThemePresetName | null {
+  return preset && isHostThemePresetName(preset) ? preset : null;
+}
+
 export interface ValidationResult {
   valid: boolean;
   error?: string;
@@ -155,6 +229,7 @@ export interface MermanWasmModule {
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   supportedDiagrams: () => string[];
+  supportedHostThemePresets?: () => string[];
   supportedThemes: () => string[];
 }
 
@@ -171,6 +246,7 @@ let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
 let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
 let supportedThemesCache: ThemeName[] | null = null;
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
@@ -288,6 +364,13 @@ export function supportedThemes(): ThemeName[] {
   return [...supportedThemesCache];
 }
 
+export function supportedHostThemePresets(): HostThemePresetName[] {
+  supportedHostThemePresetsCache ??= (
+    getMerman().supportedHostThemePresets?.() ?? SUPPORTED_HOST_THEME_PRESETS
+  ).map(assertHostThemePresetName);
+  return [...supportedHostThemePresetsCache];
+}
+
 export function abiVersion(): number {
   return getMerman().abiVersion();
 }
@@ -317,4 +400,11 @@ function assertThemeName(theme: string): ThemeName {
     return theme;
   }
   throw new Error(`Merman WASM returned unknown theme: ${theme}`);
+}
+
+function assertHostThemePresetName(preset: string): HostThemePresetName {
+  if (isHostThemePresetName(preset)) {
+    return preset;
+  }
+  throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }

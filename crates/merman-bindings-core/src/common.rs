@@ -124,6 +124,7 @@ pub(crate) struct SvgOptionsJson {
 #[cfg(feature = "render")]
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct HostThemeOptionsJson {
+    pub(crate) preset: Option<String>,
     pub(crate) appearance: Option<String>,
     pub(crate) font_family: Option<String>,
     pub(crate) font_size: Option<String>,

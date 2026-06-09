@@ -6,7 +6,7 @@ use crate::common::{
 };
 use merman::render::{
     DeterministicTextMeasurer, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
-    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
+    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
     VendoredFontMetricsTextMeasurer,
 };
 use std::sync::Arc;
@@ -304,7 +304,11 @@ fn build_renderer(
 fn binding_host_theme(
     host_theme: &HostThemeOptionsJson,
 ) -> Result<merman::render::CompiledHostTheme, BindingError> {
-    let mut profile = HostThemeProfile::default();
+    let mut profile = if let Some(preset) = host_theme.preset.as_deref() {
+        HostThemeProfile::from_preset(binding_host_theme_preset(preset)?)
+    } else {
+        HostThemeProfile::default()
+    };
 
     if let Some(appearance) = host_theme.appearance.as_deref() {
         profile.appearance = match normalize_option(appearance).as_str() {
@@ -337,66 +341,7 @@ fn binding_host_theme(
     }
 
     if let Some(roles) = host_theme.roles.as_ref() {
-        profile.roles = HostThemeRoles {
-            canvas: css_role_value(roles.canvas.as_deref(), "host_theme.roles.canvas")?,
-            surface: css_role_value(roles.surface.as_deref(), "host_theme.roles.surface")?,
-            surface_alt: css_role_value(
-                roles.surface_alt.as_deref(),
-                "host_theme.roles.surface_alt",
-            )?,
-            surface_muted: css_role_value(
-                roles.surface_muted.as_deref(),
-                "host_theme.roles.surface_muted",
-            )?,
-            text: css_role_value(roles.text.as_deref(), "host_theme.roles.text")?,
-            subtle_text: css_role_value(
-                roles.subtle_text.as_deref(),
-                "host_theme.roles.subtle_text",
-            )?,
-            border: css_role_value(roles.border.as_deref(), "host_theme.roles.border")?,
-            line: css_role_value(roles.line.as_deref(), "host_theme.roles.line")?,
-            edge_label_background: css_role_value(
-                roles.edge_label_background.as_deref(),
-                "host_theme.roles.edge_label_background",
-            )?,
-            cluster_background: css_role_value(
-                roles.cluster_background.as_deref(),
-                "host_theme.roles.cluster_background",
-            )?,
-            cluster_border: css_role_value(
-                roles.cluster_border.as_deref(),
-                "host_theme.roles.cluster_border",
-            )?,
-            note_background: css_role_value(
-                roles.note_background.as_deref(),
-                "host_theme.roles.note_background",
-            )?,
-            note_border: css_role_value(
-                roles.note_border.as_deref(),
-                "host_theme.roles.note_border",
-            )?,
-            note_text: css_role_value(roles.note_text.as_deref(), "host_theme.roles.note_text")?,
-            actor_background: css_role_value(
-                roles.actor_background.as_deref(),
-                "host_theme.roles.actor_background",
-            )?,
-            actor_border: css_role_value(
-                roles.actor_border.as_deref(),
-                "host_theme.roles.actor_border",
-            )?,
-            actor_text: css_role_value(roles.actor_text.as_deref(), "host_theme.roles.actor_text")?,
-            activation_background: css_role_value(
-                roles.activation_background.as_deref(),
-                "host_theme.roles.activation_background",
-            )?,
-            activation_border: css_role_value(
-                roles.activation_border.as_deref(),
-                "host_theme.roles.activation_border",
-            )?,
-            error: css_role_value(roles.error.as_deref(), "host_theme.roles.error")?,
-            warning: css_role_value(roles.warning.as_deref(), "host_theme.roles.warning")?,
-            success: css_role_value(roles.success.as_deref(), "host_theme.roles.success")?,
-        };
+        apply_host_theme_roles(&mut profile.roles, roles)?;
     }
 
     if let Some(palette) = host_theme.series_palette.as_ref() {
@@ -471,6 +416,150 @@ fn binding_host_theme(
     }
 
     Ok(profile.compile())
+}
+
+fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingError> {
+    match normalize_option(value).as_str() {
+        "editor-light" | "editor_light" => Ok(HostThemePreset::EditorLight),
+        "editor-dark" | "editor_dark" => Ok(HostThemePreset::EditorDark),
+        "one-dark" | "one_dark" | "onedark" => Ok(HostThemePreset::OneDark),
+        "gruvbox-light" | "gruvbox_light" => Ok(HostThemePreset::GruvboxLight),
+        "gruvbox-dark" | "gruvbox_dark" => Ok(HostThemePreset::GruvboxDark),
+        "ayu-light" | "ayu_light" => Ok(HostThemePreset::AyuLight),
+        "ayu-dark" | "ayu_dark" => Ok(HostThemePreset::AyuDark),
+        other => Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            format!("unsupported host_theme.preset: {other}"),
+        )),
+    }
+}
+
+fn apply_host_theme_roles(
+    target: &mut HostThemeRoles,
+    roles: &crate::common::HostThemeRolesJson,
+) -> Result<(), BindingError> {
+    set_role(
+        &mut target.canvas,
+        roles.canvas.as_deref(),
+        "host_theme.roles.canvas",
+    )?;
+    set_role(
+        &mut target.surface,
+        roles.surface.as_deref(),
+        "host_theme.roles.surface",
+    )?;
+    set_role(
+        &mut target.surface_alt,
+        roles.surface_alt.as_deref(),
+        "host_theme.roles.surface_alt",
+    )?;
+    set_role(
+        &mut target.surface_muted,
+        roles.surface_muted.as_deref(),
+        "host_theme.roles.surface_muted",
+    )?;
+    set_role(
+        &mut target.text,
+        roles.text.as_deref(),
+        "host_theme.roles.text",
+    )?;
+    set_role(
+        &mut target.subtle_text,
+        roles.subtle_text.as_deref(),
+        "host_theme.roles.subtle_text",
+    )?;
+    set_role(
+        &mut target.border,
+        roles.border.as_deref(),
+        "host_theme.roles.border",
+    )?;
+    set_role(
+        &mut target.line,
+        roles.line.as_deref(),
+        "host_theme.roles.line",
+    )?;
+    set_role(
+        &mut target.edge_label_background,
+        roles.edge_label_background.as_deref(),
+        "host_theme.roles.edge_label_background",
+    )?;
+    set_role(
+        &mut target.cluster_background,
+        roles.cluster_background.as_deref(),
+        "host_theme.roles.cluster_background",
+    )?;
+    set_role(
+        &mut target.cluster_border,
+        roles.cluster_border.as_deref(),
+        "host_theme.roles.cluster_border",
+    )?;
+    set_role(
+        &mut target.note_background,
+        roles.note_background.as_deref(),
+        "host_theme.roles.note_background",
+    )?;
+    set_role(
+        &mut target.note_border,
+        roles.note_border.as_deref(),
+        "host_theme.roles.note_border",
+    )?;
+    set_role(
+        &mut target.note_text,
+        roles.note_text.as_deref(),
+        "host_theme.roles.note_text",
+    )?;
+    set_role(
+        &mut target.actor_background,
+        roles.actor_background.as_deref(),
+        "host_theme.roles.actor_background",
+    )?;
+    set_role(
+        &mut target.actor_border,
+        roles.actor_border.as_deref(),
+        "host_theme.roles.actor_border",
+    )?;
+    set_role(
+        &mut target.actor_text,
+        roles.actor_text.as_deref(),
+        "host_theme.roles.actor_text",
+    )?;
+    set_role(
+        &mut target.activation_background,
+        roles.activation_background.as_deref(),
+        "host_theme.roles.activation_background",
+    )?;
+    set_role(
+        &mut target.activation_border,
+        roles.activation_border.as_deref(),
+        "host_theme.roles.activation_border",
+    )?;
+    set_role(
+        &mut target.error,
+        roles.error.as_deref(),
+        "host_theme.roles.error",
+    )?;
+    set_role(
+        &mut target.warning,
+        roles.warning.as_deref(),
+        "host_theme.roles.warning",
+    )?;
+    set_role(
+        &mut target.success,
+        roles.success.as_deref(),
+        "host_theme.roles.success",
+    )?;
+    Ok(())
+}
+
+fn set_role(
+    target: &mut Option<String>,
+    value: Option<&str>,
+    name: &str,
+) -> Result<(), BindingError> {
+    if value.is_some() {
+        *target = css_role_value(value, name)?;
+    }
+    Ok(())
 }
 
 fn css_role_value(value: Option<&str>, name: &str) -> Result<Option<String>, BindingError> {

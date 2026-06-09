@@ -14,6 +14,7 @@ pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 1;
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
+static SUPPORTED_HOST_THEME_PRESETS: OnceLock<Vec<String>> = OnceLock::new();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum MermanError {
@@ -142,6 +143,13 @@ impl MermanEngine {
 
     pub fn supported_themes(&self) -> Vec<String> {
         cached_string_vec(&SUPPORTED_THEMES, merman_bindings_core::supported_themes)
+    }
+
+    pub fn supported_host_theme_presets(&self) -> Vec<String> {
+        cached_string_vec(
+            &SUPPORTED_HOST_THEME_PRESETS,
+            merman_bindings_core::supported_host_theme_presets,
+        )
     }
 }
 
@@ -317,6 +325,11 @@ mod tests {
                 .contains(&"sequence".to_string())
         );
         assert!(engine.supported_themes().contains(&"default".to_string()));
+        assert!(
+            engine
+                .supported_host_theme_presets()
+                .contains(&"one-dark".to_string())
+        );
     }
 
     #[test]

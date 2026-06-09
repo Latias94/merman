@@ -140,6 +140,17 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedThemesJson(
     call_metadata(&mut env, merman_bindings_core::supported_themes_json)
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedHostThemePresetsJson(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    call_metadata(
+        &mut env,
+        merman_bindings_core::supported_host_theme_presets_json,
+    )
+}
+
 fn call_binding<F>(
     env: &mut JNIEnv<'_>,
     source: JString<'_>,

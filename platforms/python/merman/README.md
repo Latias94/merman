@@ -26,6 +26,7 @@ layout_json = engine.layout_json(source, None)
 validation = engine.validate(source, None)
 diagrams = engine.supported_diagrams()
 themes = engine.supported_themes()
+host_presets = engine.supported_host_theme_presets()
 
 try:
     engine.render_svg(source, "{")

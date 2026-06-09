@@ -75,6 +75,10 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose supported_diagrams"
     );
     assert!(
+        generated.contains("def supported_host_theme_presets"),
+        "generated binding should expose supported_host_theme_presets"
+    );
+    assert!(
         generated.contains("def abi_version"),
         "generated binding should expose abi_version"
     );
@@ -170,6 +174,7 @@ assert "no Mermaid diagram" in invalid.error
 assert "flowchart" in engine.supported_diagrams()
 assert "sequence" in engine.ascii_supported_diagrams()
 assert "default" in engine.supported_themes()
+assert "one-dark" in engine.supported_host_theme_presets()
 
 try:
     engine.render_svg(source, "{")

@@ -33,6 +33,7 @@ struct MermanApi {
     supported_diagrams_json: extern "C" fn() -> MermanResult,
     ascii_supported_diagrams_json: extern "C" fn() -> MermanResult,
     supported_themes_json: extern "C" fn() -> MermanResult,
+    supported_host_theme_presets_json: extern "C" fn() -> MermanResult,
     buffer_free: unsafe extern "C" fn(MermanBuffer),
 }
 
@@ -74,6 +75,7 @@ fn c_consumer_smoke() {
             supported_diagrams_json: merman_ffi::merman_supported_diagrams_json,
             ascii_supported_diagrams_json: merman_ffi::merman_ascii_supported_diagrams_json,
             supported_themes_json: merman_ffi::merman_supported_themes_json,
+            supported_host_theme_presets_json: merman_ffi::merman_supported_host_theme_presets_json,
             buffer_free: merman_ffi::merman_buffer_free,
         });
         assert_eq!(rc, 0, "C consumer smoke returned {rc}");

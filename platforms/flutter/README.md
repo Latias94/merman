@@ -43,6 +43,7 @@ final ascii = merman.renderAscii(source);
 final validation = merman.validate(source);
 final diagrams = merman.supportedDiagrams();
 final themes = merman.supportedThemes();
+final hostThemePresets = merman.supportedHostThemePresets();
 
 try {
   merman.renderSvg(source, optionsJson: '{');

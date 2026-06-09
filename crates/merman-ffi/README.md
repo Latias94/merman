@@ -128,6 +128,7 @@ same command.
 - `merman_supported_diagrams_json`
 - `merman_ascii_supported_diagrams_json`
 - `merman_supported_themes_json`
+- `merman_supported_host_theme_presets_json`
 - `merman_buffer_free`
 
 See

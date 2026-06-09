@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 
 export function StatusBar() {
   const { t } = useTranslation();
-  const { code, lastRenderTime, diagramTheme, diagramType } = useAppStore();
+  const { code, lastRenderTime, diagramTheme, hostThemePreset, diagramType } =
+    useAppStore();
 
   const lineCount = code.split("\n").length;
   const charCount = code.length;
@@ -34,7 +35,12 @@ export function StatusBar() {
         {lastRenderTime > 0 && (
           <span>{t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms</span>
         )}
-        <span className="capitalize">{t("status.theme")}: {t(`themes.${diagramTheme}`)}</span>
+        <span>
+          {t("status.theme")}:{" "}
+          {hostThemePreset === "none"
+            ? t(`themes.${diagramTheme}`)
+            : t(`hostThemes.${hostThemePreset}`)}
+        </span>
         <span className="hidden lg:inline">{t("app.title")}</span>
       </div>
     </footer>

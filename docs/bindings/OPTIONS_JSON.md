@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-06-06
+Last updated: 2026-06-09
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -18,6 +18,7 @@ numeric values return binding errors instead of panicking.
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
   "host_theme": {
+    "preset": "one-dark",
     "appearance": "dark",
     "font_family": "Inter, system-ui, sans-serif",
     "roles": {
@@ -123,6 +124,7 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
 ```json
 {
   "host_theme": {
+    "preset": "one-dark",
     "appearance": "dark",
     "font_family": "Inter, system-ui, sans-serif",
     "font_size": "14px",
@@ -156,6 +158,13 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
 `readable`, `resvg-safe`, or `resvg_safe`. `host_theme.output.root_background` accepts `none`,
 `canvas`, or a single CSS declaration value. An empty `{ "host_theme": {} }` is a no-op and does
 not force Mermaid `theme=base`.
+
+`host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
+`gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`,
+`themeVariables`, `site_config`, and `output` fields override the preset. Host theme presets are
+separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the
+stable preset list through `supported_host_theme_presets` / `supportedHostThemePresets`-style
+metadata helpers.
 
 Merge precedence is Mermaid defaults, then `host_theme` derived config, then explicit
 `host_theme.themeVariables` / `host_theme.site_config`, then top-level `site_config`, then diagram

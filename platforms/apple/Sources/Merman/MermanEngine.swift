@@ -46,6 +46,7 @@ public final class MermanEngine {
     private var supportedDiagramsCache: [String]?
     private var asciiSupportedDiagramsCache: [String]?
     private var themesCache: [String]?
+    private var hostThemePresetsCache: [String]?
 
     public init() throws {
         try Self.checkAbi()
@@ -101,6 +102,15 @@ public final class MermanEngine {
         }
         let values = try metadata(merman_supported_themes_json)
         themesCache = values
+        return values
+    }
+
+    public func supportedHostThemePresets() throws -> [String] {
+        if let hostThemePresetsCache {
+            return hostThemePresetsCache
+        }
+        let values = try metadata(merman_supported_host_theme_presets_json)
+        hostThemePresetsCache = values
         return values
     }
 

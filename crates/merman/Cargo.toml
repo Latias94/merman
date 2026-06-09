@@ -131,3 +131,7 @@ required-features = ["render"]
 [[example]]
 name = "example_12_host_theme_profile"
 required-features = ["render"]
+
+[[example]]
+name = "example_13_stylized_theme_showcase"
+required-features = ["render"]

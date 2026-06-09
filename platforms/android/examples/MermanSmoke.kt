@@ -39,4 +39,7 @@ fun runMermanSmoke() {
     check(MermanEngine.supportedThemesJson().contains("default")) {
         "themes smoke failed"
     }
+    check(MermanEngine.supportedHostThemePresetsJson().contains("one-dark")) {
+        "host theme presets smoke failed"
+    }
 }

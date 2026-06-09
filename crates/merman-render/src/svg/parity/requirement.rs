@@ -276,7 +276,7 @@ pub(super) fn render_requirement_diagram_svg_model(
     let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
     let theme = SvgTheme::new(effective_config);
     let default_fill_color = theme.color("requirementBackground", "#ECECFF");
-    let default_stroke_color = theme.color("requirementBorderColor", "#9370DB");
+    let default_stroke_color = theme.color("nodeBorder", "#9370DB");
     let hand_drawn_seed = effective_config
         .get("handDrawnSeed")
         .and_then(|v| v.as_u64())

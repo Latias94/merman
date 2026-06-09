@@ -287,9 +287,12 @@ If the native library is built without the `render` feature, this function still
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_supported_diagrams_json(void);
 MermanResult merman_supported_themes_json(void);
+MermanResult merman_supported_host_theme_presets_json(void);
 ```
 
-Each function returns a UTF-8 JSON string array. The same buffer ownership rules apply.
+Each function returns a UTF-8 JSON string array. `merman_supported_themes_json` reports Mermaid core
+theme names, while `merman_supported_host_theme_presets_json` reports host/editor presets accepted
+by `options_json.host_theme.preset`. The same buffer ownership rules apply.
 
 ## Threading
 

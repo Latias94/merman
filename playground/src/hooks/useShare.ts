@@ -4,6 +4,7 @@ interface ShareData {
   code: string;
   theme: string;
   config?: string;
+  hostThemePreset?: string;
 }
 
 /**
@@ -47,16 +48,22 @@ export function useShare() {
   const createShareUrl = useCallback((
     code: string,
     theme: string,
-    config?: string
+    config?: string,
+    hostThemePreset?: string
   ): string => {
-    const encoded = encode({ code, theme, config });
+    const encoded = encode({ code, theme, config, hostThemePreset });
     const baseUrl = `${window.location.origin}${window.location.pathname}`;
     return `${baseUrl}#${encoded}`;
   }, []);
 
   const copyShareUrl = useCallback(
-    async (code: string, theme: string, config?: string): Promise<void> => {
-      const url = createShareUrl(code, theme, config);
+    async (
+      code: string,
+      theme: string,
+      config?: string,
+      hostThemePreset?: string
+    ): Promise<void> => {
+      const url = createShareUrl(code, theme, config, hostThemePreset);
       await navigator.clipboard.writeText(url);
       // 更新 URL 但不刷新页面
       window.history.replaceState(null, "", url);

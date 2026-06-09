@@ -58,6 +58,9 @@ assert.match(api.encodeOptions(options), /deterministic/);
 assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
+assert.deepEqual(api.supportedHostThemePresets(), [
+  ...api.SUPPORTED_HOST_THEME_PRESETS,
+]);
 assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
 
 const asciiDiagrams = api.asciiSupportedDiagrams();
@@ -88,6 +91,7 @@ const fixtureNames = {
   state: "state_medium",
   timeline: "timeline_medium",
   treemap: "treemap_medium",
+  venn: "venn_medium",
   xychart: "xychart_medium",
   zenuml: "zenuml_medium",
 };
