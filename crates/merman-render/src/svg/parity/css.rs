@@ -659,40 +659,31 @@ pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {
 pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let theme = PresentationTheme::new(effective_config).gantt();
     let mut out = parts.css_prefix;
-    let font = parts.font_family;
-    let text_color = parts.text_color;
-
-    let option = |key: &str, default_value: &str| -> String {
-        config_string(effective_config, &["themeVariables", key])
-            .unwrap_or_else(|| default_value.to_string())
-    };
-
-    let exclude_bkg_color = option("excludeBkgColor", "#eeeeee");
-    let section_bkg_color = option("sectionBkgColor", "rgba(102, 102, 255, 0.49)");
-    let section_bkg_color2 = option("sectionBkgColor2", "#fff400");
-    let alt_section_bkg_color = option("altSectionBkgColor", "white");
-    let title_color = option("titleColor", "#333");
-    let grid_color = option("gridColor", "lightgrey");
-    let today_line_color = option("todayLineColor", "red");
-    let task_text_dark_color = option("taskTextDarkColor", "black");
-    let task_text_clickable_color = option("taskTextClickableColor", "#003163");
-    let task_text_color = option("taskTextColor", "white");
-    let task_bkg_color = option("taskBkgColor", "#8a90dd");
-    let task_border_color = option("taskBorderColor", "#534fbc");
-    let task_text_outside_color = option("taskTextOutsideColor", "black");
-    let active_task_bkg_color = option("activeTaskBkgColor", "#bfc7ff");
-    let active_task_border_color = option("activeTaskBorderColor", "#534fbc");
-    let done_task_border_color = option("doneTaskBorderColor", "grey");
-    let done_task_bkg_color = option("doneTaskBkgColor", "lightgrey");
-    let crit_border_color = option("critBorderColor", "#ff8888");
-    let crit_bkg_color = option("critBkgColor", "red");
-    let vert_line_color = option("vertLineColor", "navy");
-    let title_text_color = if title_color.trim().is_empty() {
-        text_color.clone()
-    } else {
-        title_color.clone()
-    };
+    let font = &theme.font_family;
+    let text_color = &theme.text_color;
+    let exclude_bkg_color = &theme.exclude_bkg_color;
+    let section_bkg_color = &theme.section_bkg_color;
+    let section_bkg_color2 = &theme.section_bkg_color2;
+    let alt_section_bkg_color = &theme.alt_section_bkg_color;
+    let title_color = &theme.title_color;
+    let grid_color = &theme.grid_color;
+    let today_line_color = &theme.today_line_color;
+    let task_text_dark_color = &theme.task_text_dark_color;
+    let task_text_clickable_color = &theme.task_text_clickable_color;
+    let task_text_color = &theme.task_text_color;
+    let task_bkg_color = &theme.task_bkg_color;
+    let task_border_color = &theme.task_border_color;
+    let task_text_outside_color = &theme.task_text_outside_color;
+    let active_task_bkg_color = &theme.active_task_bkg_color;
+    let active_task_border_color = &theme.active_task_border_color;
+    let done_task_border_color = &theme.done_task_border_color;
+    let done_task_bkg_color = &theme.done_task_bkg_color;
+    let crit_border_color = &theme.crit_border_color;
+    let crit_bkg_color = &theme.crit_bkg_color;
+    let vert_line_color = &theme.vert_line_color;
+    let title_text_color = &theme.title_text_color;
 
     fn push_outside_done_text_rules(out: &mut String, id: &str, class_prefix: &str, color: &str) {
         let mut first = true;

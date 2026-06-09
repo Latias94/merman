@@ -172,6 +172,33 @@ pub(crate) struct TreemapTheme {
     text_color: String,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct GanttTheme {
+    pub(crate) font_family: String,
+    pub(crate) text_color: String,
+    pub(crate) exclude_bkg_color: String,
+    pub(crate) section_bkg_color: String,
+    pub(crate) section_bkg_color2: String,
+    pub(crate) alt_section_bkg_color: String,
+    pub(crate) title_color: String,
+    pub(crate) title_text_color: String,
+    pub(crate) grid_color: String,
+    pub(crate) today_line_color: String,
+    pub(crate) task_text_dark_color: String,
+    pub(crate) task_text_clickable_color: String,
+    pub(crate) task_text_color: String,
+    pub(crate) task_bkg_color: String,
+    pub(crate) task_border_color: String,
+    pub(crate) task_text_outside_color: String,
+    pub(crate) active_task_bkg_color: String,
+    pub(crate) active_task_border_color: String,
+    pub(crate) done_task_border_color: String,
+    pub(crate) done_task_bkg_color: String,
+    pub(crate) crit_border_color: String,
+    pub(crate) crit_bkg_color: String,
+    pub(crate) vert_line_color: String,
+}
+
 impl TreemapTheme {
     pub(crate) fn readable_leaf_label_fill(
         &self,
@@ -601,6 +628,48 @@ impl<'a> PresentationTheme<'a> {
             color_scale_peer,
             color_scale_label,
             text_color,
+        }
+    }
+
+    pub(crate) fn gantt(&self) -> GanttTheme {
+        let option = |key: &str, default_value: &str| -> String {
+            self.raw
+                .optional_color(key)
+                .unwrap_or_else(|| default_value.to_string())
+        };
+
+        let text_color = self.common.text_color.clone();
+        let title_color = option("titleColor", "#333");
+        let title_text_color = if title_color.trim().is_empty() {
+            text_color.clone()
+        } else {
+            title_color.clone()
+        };
+
+        GanttTheme {
+            font_family: self.common.font_family_css.clone(),
+            text_color,
+            exclude_bkg_color: option("excludeBkgColor", "#eeeeee"),
+            section_bkg_color: option("sectionBkgColor", "rgba(102, 102, 255, 0.49)"),
+            section_bkg_color2: option("sectionBkgColor2", "#fff400"),
+            alt_section_bkg_color: option("altSectionBkgColor", "white"),
+            title_color,
+            title_text_color,
+            grid_color: option("gridColor", "lightgrey"),
+            today_line_color: option("todayLineColor", "red"),
+            task_text_dark_color: option("taskTextDarkColor", "black"),
+            task_text_clickable_color: option("taskTextClickableColor", "#003163"),
+            task_text_color: option("taskTextColor", "white"),
+            task_bkg_color: option("taskBkgColor", "#8a90dd"),
+            task_border_color: option("taskBorderColor", "#534fbc"),
+            task_text_outside_color: option("taskTextOutsideColor", "black"),
+            active_task_bkg_color: option("activeTaskBkgColor", "#bfc7ff"),
+            active_task_border_color: option("activeTaskBorderColor", "#534fbc"),
+            done_task_border_color: option("doneTaskBorderColor", "grey"),
+            done_task_bkg_color: option("doneTaskBkgColor", "lightgrey"),
+            crit_border_color: option("critBorderColor", "#ff8888"),
+            crit_bkg_color: option("critBkgColor", "red"),
+            vert_line_color: option("vertLineColor", "navy"),
         }
     }
 
@@ -1636,6 +1705,77 @@ mod tests {
             treemap.readable_leaf_label_fill("transparent", "", "#ffffff".to_string()),
             "#333"
         );
+    }
+
+    #[test]
+    fn presentation_theme_gantt_resolves_gantt_roles() {
+        let cfg = json!({
+            "themeVariables": {
+                "fontFamily": "\"ibm plex sans\", arial, sans-serif",
+                "textColor": "#707070",
+                "excludeBkgColor": "#101010",
+                "sectionBkgColor": "#202020",
+                "sectionBkgColor2": "#303030",
+                "altSectionBkgColor": "#404040",
+                "titleColor": "#505050",
+                "gridColor": "#606060",
+                "todayLineColor": "#808080",
+                "taskTextDarkColor": "#909090",
+                "taskTextClickableColor": "#a0a0a0",
+                "taskTextColor": "#b0b0b0",
+                "taskBkgColor": "#c0c0c0",
+                "taskBorderColor": "#d0d0d0",
+                "taskTextOutsideColor": "#e0e0e0",
+                "activeTaskBkgColor": "#111111",
+                "activeTaskBorderColor": "#222222",
+                "doneTaskBorderColor": "#333333",
+                "doneTaskBkgColor": "#444444",
+                "critBorderColor": "#555555",
+                "critBkgColor": "#666666",
+                "vertLineColor": "#777777"
+            }
+        });
+
+        let gantt = PresentationTheme::new(&cfg).gantt();
+
+        assert_eq!(gantt.font_family, r#""ibm plex sans",arial,sans-serif"#);
+        assert_eq!(gantt.text_color, "#707070");
+        assert_eq!(gantt.exclude_bkg_color, "#101010");
+        assert_eq!(gantt.section_bkg_color, "#202020");
+        assert_eq!(gantt.section_bkg_color2, "#303030");
+        assert_eq!(gantt.alt_section_bkg_color, "#404040");
+        assert_eq!(gantt.title_color, "#505050");
+        assert_eq!(gantt.title_text_color, "#505050");
+        assert_eq!(gantt.grid_color, "#606060");
+        assert_eq!(gantt.today_line_color, "#808080");
+        assert_eq!(gantt.task_text_dark_color, "#909090");
+        assert_eq!(gantt.task_text_clickable_color, "#a0a0a0");
+        assert_eq!(gantt.task_text_color, "#b0b0b0");
+        assert_eq!(gantt.task_bkg_color, "#c0c0c0");
+        assert_eq!(gantt.task_border_color, "#d0d0d0");
+        assert_eq!(gantt.task_text_outside_color, "#e0e0e0");
+        assert_eq!(gantt.active_task_bkg_color, "#111111");
+        assert_eq!(gantt.active_task_border_color, "#222222");
+        assert_eq!(gantt.done_task_border_color, "#333333");
+        assert_eq!(gantt.done_task_bkg_color, "#444444");
+        assert_eq!(gantt.crit_border_color, "#555555");
+        assert_eq!(gantt.crit_bkg_color, "#666666");
+        assert_eq!(gantt.vert_line_color, "#777777");
+    }
+
+    #[test]
+    fn presentation_theme_gantt_uses_text_color_for_empty_title_color() {
+        let cfg = json!({
+            "themeVariables": {
+                "textColor": "#707070",
+                "titleColor": "   "
+            }
+        });
+
+        let gantt = PresentationTheme::new(&cfg).gantt();
+
+        assert_eq!(gantt.title_color, "   ");
+        assert_eq!(gantt.title_text_color, "#707070");
     }
 
     #[test]
