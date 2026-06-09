@@ -839,6 +839,34 @@ gitGraph
 }
 
 #[test]
+fn requirement_default_visible_rough_stroke_uses_node_border() {
+    let svg = render_svg(
+        "requirement-default-stroke",
+        r##"requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Default stroke
+    risk: high
+    verifymethod: analysis
+  }
+"##,
+    );
+
+    assert!(
+        svg.contains(
+            r#"#requirement-default-stroke .reqBox{fill:#ECECFF;fill-opacity:1.0;stroke:hsl(240, 60%, 86.2745098039%);"#
+        ),
+        "Requirement legacy CSS should keep Mermaid's requirementBorderColor rule: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r##"stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0""##,
+        ),
+        "Requirement visible rough shape/divider strokes should use nodeBorder by default: {svg}"
+    );
+}
+
+#[test]
 fn requirement_theme_smoke_counts_dom_consumed_neo_and_edge_signals() {
     let svg = render_svg(
         "requirement-visible-audit",
