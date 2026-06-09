@@ -4,6 +4,11 @@
 // It is a best-effort readability fallback for SVG consumers that do not fully
 // support HTML inside `<foreignObject>` (e.g. many rasterizers).
 
+use crate::text::{
+    DeterministicTextMeasurer, TextMeasurer, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+};
+use std::collections::VecDeque;
+
 #[derive(Clone, Copy, Debug, Default)]
 struct Translate {
     x: f64,
@@ -202,6 +207,84 @@ fn htmlish_to_text_lines(html: &str) -> Vec<String> {
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .map(|l| l.to_string())
+        .collect()
+}
+
+fn line_width_html_px(measurer: &dyn TextMeasurer, style: &TextStyle, text: &str) -> f64 {
+    measurer
+        .measure_wrapped_raw(text, style, None, WrapMode::HtmlLike)
+        .width
+}
+
+fn wrap_html_line_to_width(
+    line: &str,
+    max_width_px: f64,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> Vec<String> {
+    const EPS_PX: f64 = 0.125;
+    if !max_width_px.is_finite()
+        || max_width_px <= 0.0
+        || line_width_html_px(measurer, style, line) <= max_width_px + EPS_PX
+    {
+        return vec![line.to_string()];
+    }
+
+    let mut tokens = VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
+    let mut out = Vec::new();
+    let mut cur = String::new();
+
+    while let Some(tok) = tokens.pop_front() {
+        if cur.is_empty() && tok == " " {
+            continue;
+        }
+
+        let candidate = format!("{cur}{tok}");
+        let candidate_trimmed = candidate.trim_end();
+        if line_width_html_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
+            cur = candidate;
+            continue;
+        }
+
+        if !cur.trim().is_empty() {
+            out.push(cur.trim_end().to_string());
+            cur.clear();
+            tokens.push_front(tok);
+            continue;
+        }
+
+        if tok == " " {
+            continue;
+        }
+
+        // HTML labels do not use `word-break: break-all`; preserve long tokens as readable units.
+        out.push(tok);
+    }
+
+    if !cur.trim().is_empty() {
+        out.push(cur.trim_end().to_string());
+    }
+
+    if out.is_empty() {
+        vec![line.to_string()]
+    } else {
+        out
+    }
+}
+
+fn wrap_html_lines_to_width(
+    lines: Vec<String>,
+    max_width_px: Option<f64>,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> Vec<String> {
+    let Some(max_width_px) = max_width_px.filter(|w| w.is_finite() && *w > 0.0) else {
+        return lines;
+    };
+
+    lines
+        .into_iter()
+        .flat_map(|line| wrap_html_line_to_width(&line, max_width_px, measurer, style))
         .collect()
 }
 
@@ -474,13 +557,45 @@ fn class_attr_tokens(g_stack: &[GFrame], inner: &str, base_class: &str) -> Strin
 }
 
 fn parse_css_px(value: &str, fallback: f64) -> f64 {
+    parse_css_px_value(value).unwrap_or(fallback)
+}
+
+fn parse_css_px_value(value: &str) -> Option<f64> {
     let trimmed = value.trim();
-    let number = trimmed.strip_suffix("px").unwrap_or(trimmed).trim();
+    let trimmed = strip_important(trimmed);
+    let number = trimmed.strip_suffix("px").unwrap_or(&trimmed).trim();
     number
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(fallback)
+}
+
+fn foreign_object_html_soft_wrap_width(tag: &str, inner: &str) -> Option<f64> {
+    let white_space = extract_inline_html_style_property(inner, "white-space")
+        .map(|value| value.trim().to_ascii_lowercase());
+    if matches!(white_space.as_deref(), Some("nowrap" | "pre")) {
+        return None;
+    }
+
+    let wrap_is_explicit = matches!(
+        white_space.as_deref(),
+        Some("break-spaces" | "normal" | "pre-wrap" | "pre-line")
+    );
+    if white_space.is_some() && !wrap_is_explicit {
+        return None;
+    }
+
+    let css_width = extract_inline_html_style_property(inner, "width")
+        .and_then(|value| parse_css_px_value(&value));
+    let max_width = extract_inline_html_style_property(inner, "max-width")
+        .and_then(|value| parse_css_px_value(&value));
+
+    css_width
+        .or(max_width)
+        .or_else(|| parse_attr_f64(tag, "width"))
+        .filter(|width| {
+            *width > 0.0 && (wrap_is_explicit || css_width.is_some() || max_width.is_some())
+        })
 }
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
@@ -504,6 +619,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
     let label_bkg =
         extract_css_background_color_for_class(svg, "labelBkg").unwrap_or(label_bkg_default);
+    let fallback_measurer = VendoredFontMetricsTextMeasurer::default();
 
     let mut i = 0usize;
     while let Some(lt_rel) = svg[i..].find('<') {
@@ -591,8 +707,8 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                 };
                 let text_y = abs_y + height / 2.0;
 
-                let lines = htmlish_to_text_lines(inner);
-                if !lines.is_empty() {
+                let raw_lines = htmlish_to_text_lines(inner);
+                if !raw_lines.is_empty() {
                     overlays.push_str(&format!(
                         r#"<g data-merman-foreignobject="fallback" class="{}">"#,
                         class_attr_tokens(&g_stack, inner, "merman-foreignobject-fallback")
@@ -614,9 +730,6 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                         .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-size"))
                         .unwrap_or_else(|| "16px".to_string());
                     let font_size = parse_css_px(&font_size_value, 16.0);
-                    let line_height = font_size * 1.5;
-                    let n = lines.len() as f64;
-                    let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
                     let fill = extract_inline_html_color(inner)
                         .or_else(|| extract_svg_text_fill_from_ancestors(svg, &g_stack))
                         .unwrap_or_else(|| "#333".to_string());
@@ -627,6 +740,21 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                         .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-weight"));
                     let font_style = extract_inline_html_style_property(inner, "font-style")
                         .or_else(|| extract_svg_font_style_from_ancestors(&g_stack, "font-style"));
+                    let measure_style = TextStyle {
+                        font_family: Some(font_family.clone()),
+                        font_size,
+                        font_weight: font_weight.clone(),
+                    };
+                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
+                    let lines = wrap_html_lines_to_width(
+                        raw_lines,
+                        wrap_width,
+                        &fallback_measurer,
+                        &measure_style,
+                    );
+                    let line_height = font_size * 1.5;
+                    let n = lines.len() as f64;
+                    let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
                     let mut text_style = format!(
                         "text-anchor: {anchor}; font-size: {font_size_value}; font-family: {font_family};"
                     );
@@ -806,5 +934,31 @@ mod tests {
             .expect("fallback group")..];
         assert!(!fallback.contains("&amp;lt;"), "got: {fallback}");
         assert!(!fallback.contains("&amp;gt;"), "got: {fallback}");
+    }
+
+    #[test]
+    fn foreign_object_overlay_wraps_break_spaces_labels_to_foreign_object_width() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(20, 30)"><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="nodeLabel">Import / WebSurface / Data Egress Gates</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            !out.contains(">Import / WebSurface / Data Egress Gates</text>"),
+            "fallback text should inherit Mermaid HTML soft wrapping instead of flattening into one SVG text line: {out}"
+        );
+        assert!(
+            out.contains(">Import / WebSurface /<") && out.contains(">Data Egress Gates<"),
+            "expected fallback text to wrap into readable SVG lines: {out}"
+        );
+    }
+
+    #[test]
+    fn foreign_object_overlay_keeps_nowrap_labels_as_single_fallback_line() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="200" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">Import / WebSurface / Data Egress Gates</span></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+
+        assert!(
+            out.contains(">Import / WebSurface / Data Egress Gates</text>"),
+            "explicit nowrap labels should keep the existing single-line fallback behavior: {out}"
+        );
     }
 }

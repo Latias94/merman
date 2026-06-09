@@ -77,7 +77,8 @@ fn zed_issue_fixtures_render_headless_resvg_safe() {
             &[
                 "Stage 1: MVP",
                 "Stage 2: Production",
-                "Versioned market definitions",
+                "Versioned market",
+                "definitions",
             ],
         ),
         (
@@ -158,6 +159,43 @@ fn zed_flowchart_foreign_object_labels_have_text_fallbacks() {
     assert!(
         svg.contains(">Prepare change</text>") || svg.contains(">Prepare change</tspan>"),
         "expected a readable SVG text fallback for a flowchart node label"
+    );
+}
+
+#[test]
+fn zed_resvg_safe_flowchart_fallback_soft_wraps_html_node_labels() {
+    let svg = render_resvg_safe(
+        "zed-flowchart-html-wrap-fallback",
+        r#"flowchart LR
+    PDF[PDF Adapter<br/>PDFium first] --> Anchor[Anchor]
+    EPUB[Future EPUB Adapter<br/>WebSurface + CFI] --> Anchor
+    MOBI[Future MOBI/AZW Adapter<br/>extract/convert to HTML-like] --> EPUB
+
+    Anchor --> Note[Note]
+    Note --> Edge[Edge]
+    Edge --> Graph[NoteGraph]
+
+    Graph --> Reader[Reader Overlay]
+    Graph --> Digest[Digest / Outline]
+    Graph --> Map[Mindmap Projection]
+    Graph --> Review[Review Cards]
+    Graph --> Export[Markdown / HTML / Anki / XMind]
+
+    Storage[(SQLite + FTS + Oplog)] <--> Graph
+    Corpus[Corpus Benchmarks] --> PDF
+    Security[Import / WebSurface / Data Egress Gates] --> PDF
+    Security --> EPUB
+"#,
+    );
+
+    assert!(!svg.contains("<foreignObject"));
+    assert!(
+        !svg.contains(">Import / WebSurface / Data Egress Gates</text>"),
+        "resvg-safe fallback should preserve Mermaid's soft-wrapped HTML label shape: {svg}"
+    );
+    assert!(
+        svg.contains(">Import / WebSurface /<") && svg.contains(">Data Egress Gates<"),
+        "expected the Security node fallback to render as multiple SVG text lines: {svg}"
     );
 }
 
