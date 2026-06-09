@@ -1167,6 +1167,43 @@ fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
 mod tests {
     use super::*;
 
+    fn sentinel_roles() -> HostThemeRoles {
+        HostThemeRoles {
+            canvas: Some("#010101".to_string()),
+            surface: Some("#020202".to_string()),
+            surface_alt: Some("#030303".to_string()),
+            surface_muted: Some("#040404".to_string()),
+            text: Some("#050505".to_string()),
+            subtle_text: Some("#060606".to_string()),
+            border: Some("#070707".to_string()),
+            line: Some("#080808".to_string()),
+            edge_label_background: Some("#090909".to_string()),
+            cluster_background: Some("#0a0a0a".to_string()),
+            cluster_border: Some("#0b0b0b".to_string()),
+            note_background: Some("#0c0c0c".to_string()),
+            note_border: Some("#0d0d0d".to_string()),
+            note_text: Some("#0e0e0e".to_string()),
+            actor_background: Some("#0f0f0f".to_string()),
+            actor_border: Some("#101010".to_string()),
+            actor_text: Some("#111111".to_string()),
+            activation_background: Some("#121212".to_string()),
+            activation_border: Some("#131313".to_string()),
+            error: Some("#141414".to_string()),
+            warning: Some("#151515".to_string()),
+            success: Some("#161616".to_string()),
+        }
+    }
+
+    fn compiled_sentinel_config() -> Value {
+        HostThemeProfile::builder()
+            .roles(sentinel_roles())
+            .build()
+            .compile()
+            .site_config
+            .as_value()
+            .clone()
+    }
+
     #[test]
     fn dark_editor_profile_compiles_common_theme_variables() {
         let compiled = HostThemeProfile::editor_dark().compile();
@@ -1188,6 +1225,82 @@ mod tests {
         assert_eq!(vars["pie1"], "#60a5fa");
         assert_eq!(vars["git0"], "#60a5fa");
         assert_eq!(vars["gitBranchLabel0"], "#ffffff");
+    }
+
+    #[test]
+    fn host_theme_roles_compile_to_theme_variable_sentinels() {
+        let cfg = compiled_sentinel_config();
+        let vars = cfg["themeVariables"].as_object().unwrap();
+
+        assert_eq!(cfg["theme"], "base");
+        assert_eq!(vars["background"], "#010101");
+        assert_eq!(vars["primaryColor"], "#020202");
+        assert_eq!(vars["mainBkg"], "#020202");
+        assert_eq!(vars["secondaryColor"], "#030303");
+        assert_eq!(vars["tertiaryColor"], "#040404");
+        assert_eq!(vars["primaryTextColor"], "#050505");
+        assert_eq!(vars["nodeTextColor"], "#050505");
+        assert_eq!(vars["textColor"], "#050505");
+        assert_eq!(vars["titleColor"], "#050505");
+        assert_eq!(vars["secondaryTextColor"], "#060606");
+        assert_eq!(vars["tertiaryTextColor"], "#060606");
+        assert_eq!(vars["primaryBorderColor"], "#070707");
+        assert_eq!(vars["nodeBorder"], "#070707");
+        assert_eq!(vars["lineColor"], "#080808");
+        assert_eq!(vars["arrowheadColor"], "#080808");
+        assert_eq!(vars["edgeLabelBackground"], "#090909");
+        assert_eq!(vars["clusterBkg"], "#0a0a0a");
+        assert_eq!(vars["clusterBorder"], "#0b0b0b");
+        assert_eq!(vars["noteBkgColor"], "#0c0c0c");
+        assert_eq!(vars["noteBorderColor"], "#0d0d0d");
+        assert_eq!(vars["noteTextColor"], "#0e0e0e");
+        assert_eq!(vars["actorBkg"], "#0f0f0f");
+        assert_eq!(vars["actorBorder"], "#101010");
+        assert_eq!(vars["actorTextColor"], "#111111");
+        assert_eq!(vars["activationBkgColor"], "#121212");
+        assert_eq!(vars["activationBorderColor"], "#131313");
+        assert_eq!(vars["critBkgColor"], "#141414");
+        assert_eq!(vars["vertLineColor"], "#151515");
+        assert_eq!(vars["doneTaskBkgColor"], "#161616");
+
+        assert_eq!(vars["relationLabelBackground"], "#090909");
+        assert_eq!(vars["requirementEdgeLabelBackground"], "#090909");
+        assert_eq!(vars["archGroupBorderColor"], "#0b0b0b");
+        assert_eq!(vars["emSwimlaneBackgroundOdd"], "#0a0a0a");
+        assert_eq!(vars["emSwimlaneBackgroundStroke"], "#0b0b0b");
+        assert_eq!(vars["treeView"]["labelColor"], "#050505");
+        assert_eq!(vars["treeView"]["lineColor"], "#080808");
+    }
+
+    #[test]
+    fn host_theme_roles_compile_to_diagram_config_sentinels() {
+        let cfg = compiled_sentinel_config();
+
+        assert_eq!(cfg["packet"]["startByteColor"], "#080808");
+        assert_eq!(cfg["packet"]["endByteColor"], "#070707");
+        assert_eq!(cfg["packet"]["labelColor"], "#050505");
+        assert_eq!(cfg["packet"]["titleColor"], "#050505");
+        assert_eq!(cfg["packet"]["blockStrokeColor"], "#070707");
+        assert_eq!(cfg["packet"]["blockFillColor"], "#020202");
+
+        assert_eq!(cfg["treemap"]["titleColor"], "#050505");
+        assert_eq!(cfg["treemap"]["labelColor"], "#050505");
+        assert_eq!(cfg["treemap"]["valueColor"], "#060606");
+        assert_eq!(cfg["treemap"]["sectionStrokeColor"], "#070707");
+        assert_eq!(cfg["treemap"]["sectionFillColor"], "#030303");
+        assert_eq!(cfg["treemap"]["leafStrokeColor"], "#070707");
+        assert_eq!(cfg["treemap"]["leafFillColor"], "#020202");
+
+        assert_eq!(cfg["radar"]["axisColor"], "#080808");
+        assert_eq!(cfg["radar"]["graticuleColor"], "#070707");
+
+        assert_eq!(cfg["c4"]["person_bg_color"], "#020202");
+        assert_eq!(cfg["c4"]["person_border_color"], "#070707");
+        assert_eq!(cfg["c4"]["external_component_queue_bg_color"], "#020202");
+        assert_eq!(
+            cfg["c4"]["external_component_queue_border_color"],
+            "#070707"
+        );
     }
 
     #[test]
