@@ -19,6 +19,42 @@ const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     merge feature
 "#;
 
+const USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION: &str = r#"gitGraph
+    commit id: "base"
+    branch feature
+    checkout feature
+    commit id: "parser-fix"
+    checkout main
+    commit id: "release" tag: "v1.0"
+    cherry-pick id: "parser-fix" tag: "backport"
+"#;
+
+const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
+    USER ||--o{ ORDER : places
+    USER {
+        int id PK
+        string name
+        string email
+    }
+    ORDER ||--|{ ORDER_ITEM : contains
+    ORDER {
+        int id PK
+        date created_at
+        string status
+    }
+    ORDER_ITEM {
+        int id PK
+        int quantity
+        float price
+    }
+    PRODUCT ||--o{ ORDER_ITEM : "ordered in"
+    PRODUCT {
+        int id PK
+        string name
+        float price
+    }
+"#;
+
 fn render_with_dark_profile(name: &str, source: &str) -> String {
     let profile = HostThemeProfile::editor_dark();
     let compiled = profile.compile();
@@ -55,10 +91,10 @@ fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
-fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
+fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str, expected: &[&str]) {
     let document =
         roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
-    let mut checked = 0usize;
+    let mut seen = Vec::new();
 
     for label_group in document.descendants().filter(|node| {
         node.is_element()
@@ -78,13 +114,13 @@ fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
         };
         assert_eq!(
             text.attribute("dominant-baseline"),
-            Some("middle"),
-            "{name}: branch label text should use a stable middle baseline: {svg}"
+            Some("central"),
+            "{name}: branch label text should use a stable central baseline: {svg}"
         );
         assert_eq!(
             text.attribute("alignment-baseline"),
-            Some("middle"),
-            "{name}: branch label text should use a stable middle alignment: {svg}"
+            Some("central"),
+            "{name}: branch label text should use a stable central alignment: {svg}"
         );
         assert!(
             text.attribute("y").is_some(),
@@ -102,13 +138,17 @@ fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
             Some("0"),
             "{name}: branch label tspan should not rely on font-sensitive dy=1em: {svg}"
         );
-        checked += 1;
+        if let Some(label) = tspan.text() {
+            seen.push(label.to_string());
+        }
     }
 
-    assert!(
-        checked >= 3,
-        "{name}: expected main/develop/feature branch labels, checked {checked}: {svg}"
-    );
+    for expected_label in expected {
+        assert!(
+            seen.iter().any(|label| label == expected_label),
+            "{name}: expected branch label {expected_label:?}, saw {seen:?}: {svg}"
+        );
+    }
 }
 
 fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &str) {
@@ -151,6 +191,43 @@ fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &
         checked >= 3,
         "{name}: expected main/develop/feature branch labels, checked {checked}: {svg}"
     );
+}
+
+fn assert_er_edge_label_fallbacks_are_readable(name: &str, svg: &str, labels: &[&str]) {
+    let document =
+        roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
+
+    for label in labels {
+        let Some(text) = document.descendants().find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "text"
+                && node.attribute("class").is_some_and(|classes| {
+                    classes
+                        .split_whitespace()
+                        .any(|class| class == "merman-foreignobject-fallback-text")
+                })
+                && node.text() == Some(*label)
+        }) else {
+            panic!("{name}: missing fallback text for ER label {label:?}: {svg}");
+        };
+
+        assert_eq!(
+            text.attribute("fill"),
+            Some("#ebdbb2"),
+            "{name}: gruvbox ER fallback label should use readable text color: {svg}"
+        );
+        assert!(
+            text.attribute("style").is_some_and(
+                |style| style.contains("font-size:14px") || style.contains("font-size: 14px")
+            ),
+            "{name}: ER fallback label should inherit host theme font size: {svg}"
+        );
+        assert!(
+            text.attribute("class")
+                .is_some_and(|classes| !classes.split_whitespace().any(|class| class == "label")),
+            "{name}: fallback text should not carry structural Mermaid label class: {svg}"
+        );
+    }
 }
 
 #[test]
@@ -236,6 +313,35 @@ fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
 }
 
 #[test]
+fn gruvbox_host_theme_keeps_er_relationship_label_fallbacks_readable() {
+    let profile = HostThemeProfile::gruvbox_dark();
+    let svg = HeadlessRenderer::new()
+        .with_host_theme(&profile)
+        .with_vendored_text_measurer()
+        .with_diagram_id("gruvbox-er-labels")
+        .render_svg_sync(USER_ER_GRUVBOX_LABEL_REGRESSION)
+        .unwrap_or_else(|err| panic!("gruvbox ER render failed: {err}"))
+        .unwrap_or_else(|| panic!("gruvbox ER render produced no diagram"));
+
+    assert_contains_all(
+        "gruvbox-er-labels",
+        &svg,
+        &[
+            "#ebdbb2",
+            "font-size:14px",
+            "places",
+            "contains",
+            "ordered in",
+        ],
+    );
+    assert_er_edge_label_fallbacks_are_readable(
+        "gruvbox-er-labels",
+        &svg,
+        &["places", "contains", "ordered in"],
+    );
+}
+
+#[test]
 fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
     let plain = HeadlessRenderer::new()
         .with_vendored_text_measurer()
@@ -253,7 +359,24 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
         .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
-    assert_gitgraph_branch_label_baselines_centered("one-dark-gitgraph", &themed);
+    assert_gitgraph_branch_label_baselines_centered(
+        "one-dark-gitgraph",
+        &themed,
+        &["main", "develop", "feature"],
+    );
+
+    let cherry_pick = HeadlessRenderer::new()
+        .with_host_theme(&profile)
+        .with_vendored_text_measurer()
+        .with_diagram_id("gitgraph-one-dark-cherry-pick")
+        .render_svg_sync(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
+        .unwrap_or_else(|err| panic!("one-dark cherry-pick gitGraph render failed: {err}"))
+        .unwrap_or_else(|| panic!("one-dark cherry-pick gitGraph render produced no diagram"));
+    assert_gitgraph_branch_label_baselines_centered(
+        "one-dark-cherry-pick-gitgraph",
+        &cherry_pick,
+        &["main", "feature"],
+    );
 }
 
 #[test]
