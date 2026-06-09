@@ -11,7 +11,7 @@ pub use merman_render::svg::{
     SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
     StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
     SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
-    foreign_object_label_fallback_svg_text, resvg_safe_svg,
+    foreign_object_label_fallback_svg_text, resvg_safe_svg, supported_host_theme_presets,
 };
 pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
@@ -542,6 +542,52 @@ flowchart TD
     }
 
     #[test]
+    fn supported_host_theme_presets_are_separate_from_mermaid_themes() {
+        assert_eq!(
+            supported_host_theme_presets(),
+            &[
+                "editor-light",
+                "editor-dark",
+                "one-dark",
+                "gruvbox-light",
+                "gruvbox-dark",
+                "ayu-light",
+                "ayu-dark"
+            ]
+        );
+        assert!(merman_core::supported_themes().contains(&"default"));
+        assert!(!merman_core::supported_themes().contains(&"one-dark"));
+    }
+
+    #[test]
+    fn render_svg_with_site_config_is_request_scoped() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("request-site-theme");
+        let source = "flowchart TD\n  A[Plain source] --> B[Request theme]";
+
+        let themed = renderer
+            .render_svg_with_site_config_sync(
+                source,
+                merman_core::MermaidConfig::from_value(json!({
+                    "theme": "neutral"
+                })),
+            )
+            .unwrap()
+            .unwrap();
+        let plain = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(
+            themed.contains(
+                "#request-site-theme .labelBkg{background-color:rgba(255, 255, 255, 0.5);}"
+            )
+        );
+        assert!(
+            plain.contains(
+                "#request-site-theme .labelBkg{background-color:rgba(232, 232, 232, 0.5);}"
+            )
+        );
+    }
+
+    #[test]
     fn host_theme_profile_applies_editor_roles_and_pipeline() {
         let profile = HostThemeProfile::editor_dark();
         let compiled = profile.compile();
@@ -588,6 +634,41 @@ flowchart TD
 
         assert!(svg.contains("#abcdef"), "{svg}");
         assert!(svg.contains("#eeeeee"), "{svg}");
+    }
+
+    #[test]
+    fn render_svg_with_host_theme_is_request_scoped() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("request-host-theme");
+        let profile = HostThemeProfile::editor_dark();
+        let source = "flowchart TD\n  A[Host] --> B[Theme]";
+
+        let themed = renderer
+            .render_svg_with_host_theme_sync(source, &profile)
+            .unwrap()
+            .unwrap();
+        let plain = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert!(themed.contains("#111827"), "{themed}");
+        assert!(themed.contains("background-color: #0f172a;"), "{themed}");
+        assert!(!themed.contains("<foreignObject"), "{themed}");
+        assert!(!plain.contains("background-color: #0f172a;"), "{plain}");
+        assert!(plain.contains("<foreignObject"), "{plain}");
+    }
+
+    #[test]
+    fn render_svg_with_compiled_host_theme_reuses_compiled_profile() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("request-compiled-theme");
+        let compiled = HostThemeProfile::one_dark().compile();
+        let source = "flowchart TD\n  A[Compiled] --> B[Theme]";
+
+        let svg = renderer
+            .render_svg_with_compiled_host_theme_sync(source, &compiled)
+            .unwrap()
+            .unwrap();
+
+        assert!(svg.contains("#21252b"), "{svg}");
+        assert!(svg.contains("background-color: #282c34;"), "{svg}");
+        assert!(!svg.contains("<foreignObject"), "{svg}");
     }
 
     #[test]
@@ -779,6 +860,47 @@ impl HeadlessRenderer {
             return self.render_svg_with_pipeline_sync(text, pipeline);
         }
         render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+    }
+
+    /// Renders one diagram with additional Mermaid site config defaults.
+    ///
+    /// The override applies only to this call. Diagram frontmatter and `%%{init}%%` directives
+    /// still merge on top of the supplied site config, matching Mermaid's per-diagram config
+    /// precedence.
+    pub fn render_svg_with_site_config_sync(
+        &self,
+        text: &str,
+        site_config: merman_core::MermaidConfig,
+    ) -> Result<Option<String>> {
+        self.clone()
+            .with_site_config(site_config)
+            .render_svg_sync(text)
+    }
+
+    /// Renders one diagram with a host/editor theme profile.
+    ///
+    /// This is the request-level counterpart to [`HeadlessRenderer::with_host_theme`]: it does not
+    /// mutate this renderer, and it applies the profile's compiled SVG output pipeline only to this
+    /// render call.
+    pub fn render_svg_with_host_theme_sync(
+        &self,
+        text: &str,
+        profile: &HostThemeProfile,
+    ) -> Result<Option<String>> {
+        self.clone().with_host_theme(profile).render_svg_sync(text)
+    }
+
+    /// Renders one diagram with a precompiled host/editor theme.
+    ///
+    /// Prefer this in hot editor paths when the same profile is reused for many diagrams.
+    pub fn render_svg_with_compiled_host_theme_sync(
+        &self,
+        text: &str,
+        theme: &CompiledHostTheme,
+    ) -> Result<Option<String>> {
+        self.clone()
+            .with_compiled_host_theme(theme)
+            .render_svg_sync(text)
     }
 
     pub fn render_svg_with_pipeline_sync(

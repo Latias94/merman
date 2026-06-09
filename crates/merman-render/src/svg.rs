@@ -28,5 +28,5 @@ pub use pipeline::{
 pub use theme_profile::{
     CompiledHostTheme, CompiledHostThemeOutput, HostThemeAppearance, HostThemeOutput,
     HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeProfileBuilder,
-    HostThemeRoles, HostThemeRootBackground,
+    HostThemeRoles, HostThemeRootBackground, supported_host_theme_presets,
 };

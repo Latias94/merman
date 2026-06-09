@@ -162,7 +162,9 @@ not force Mermaid `theme=base`.
 `host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`,
 `themeVariables`, `site_config`, and `output` fields override the preset. Host theme presets are
-separate from Mermaid core theme names returned by `supported_themes`.
+separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the
+stable preset list through `supported_host_theme_presets` / `supportedHostThemePresets`-style
+metadata helpers.
 
 Merge precedence is Mermaid defaults, then `host_theme` derived config, then explicit
 `host_theme.themeVariables` / `host_theme.site_config`, then top-level `site_config`, then diagram

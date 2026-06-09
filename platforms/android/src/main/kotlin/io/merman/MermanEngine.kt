@@ -23,6 +23,10 @@ object MermanEngine {
         nativeSupportedThemesJson()
     }
 
+    private val supportedHostThemePresetsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeSupportedHostThemePresetsJson()
+    }
+
     @JvmStatic
     fun renderSvg(source: String, optionsJson: String? = null): String =
         nativeRenderSvg(source, optionsJson)
@@ -54,6 +58,10 @@ object MermanEngine {
     @JvmStatic
     fun supportedThemesJson(): String =
         supportedThemesJsonCache
+
+    @JvmStatic
+    fun supportedHostThemePresetsJson(): String =
+        supportedHostThemePresetsJsonCache
 
     private fun checkNativeAbi() {
         val nativeAbi = nativeAbiVersion()
@@ -100,4 +108,7 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeSupportedThemesJson(): String
+
+    @JvmStatic
+    private external fun nativeSupportedHostThemePresetsJson(): String
 }

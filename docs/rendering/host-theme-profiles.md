@@ -16,7 +16,23 @@ let renderer = HeadlessRenderer::new()
 let svg = renderer.render_svg_sync(source)?;
 ```
 
-`HostThemePreset::ALL` exposes the built-in host presets for Rust UIs, and
+Use request-scoped helpers when only one diagram render should use a host theme:
+
+```rust
+use merman::render::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
+
+let renderer = HeadlessRenderer::new().with_diagram_id("preview");
+let profile = HostThemeProfile::from_preset(HostThemePreset::GruvboxDark);
+let svg = renderer.render_svg_with_host_theme_sync(source, &profile)?;
+```
+
+`render_svg_with_site_config_sync(...)`, `render_svg_with_host_theme_sync(...)`, and
+`render_svg_with_compiled_host_theme_sync(...)` do not mutate the renderer. They apply extra
+Mermaid defaults and host output settings only for the current render call; diagram frontmatter
+and `%%{init}%%` directives still merge on top of those defaults.
+
+`HostThemePreset::ALL` exposes the built-in host presets for Rust UIs, `supported_host_theme_presets()`
+returns their stable string names, and
 `HostThemePreset::as_str()` returns the canonical `host_theme.preset` string used by bindings.
 These names are not Mermaid core theme names.
 

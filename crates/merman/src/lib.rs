@@ -107,3 +107,5 @@ pub mod ascii;
 
 #[cfg(feature = "render")]
 pub mod render;
+#[cfg(feature = "render")]
+pub use render::supported_host_theme_presets;

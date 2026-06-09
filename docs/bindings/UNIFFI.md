@@ -15,6 +15,7 @@ Status: experimental generated-binding surface.
 - `MermanEngine::supported_diagrams()`
 - `MermanEngine::ascii_supported_diagrams()`
 - `MermanEngine::supported_themes()`
+- `MermanEngine::supported_host_theme_presets()`
 - `MermanError::Binding { code, code_name, message }`
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for

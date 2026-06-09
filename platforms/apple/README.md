@@ -40,6 +40,7 @@ let ascii = try engine.renderAscii(source)
 let validation = try engine.validate(source)
 let diagrams = try engine.supportedDiagrams()
 let themes = try engine.supportedThemes()
+let hostThemePresets = try engine.supportedHostThemePresets()
 
 do {
     _ = try engine.renderSvg(source, optionsJson: "{")

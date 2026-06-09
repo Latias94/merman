@@ -137,6 +137,7 @@ export const SUPPORTED_DIAGRAMS = [
   "state",
   "timeline",
   "treemap",
+  "venn",
   "xychart",
   "zenuml",
 ] as const;
@@ -228,6 +229,7 @@ export interface MermanWasmModule {
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
   supportedDiagrams: () => string[];
+  supportedHostThemePresets?: () => string[];
   supportedThemes: () => string[];
 }
 
@@ -244,6 +246,7 @@ let wasmModule: MermanWasmModule | null = null;
 let initPromise: Promise<MermanWasmModule> | null = null;
 let supportedDiagramsCache: DiagramType[] | null = null;
 let asciiSupportedDiagramsCache: DiagramType[] | null = null;
+let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
 let supportedThemesCache: ThemeName[] | null = null;
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
@@ -361,6 +364,13 @@ export function supportedThemes(): ThemeName[] {
   return [...supportedThemesCache];
 }
 
+export function supportedHostThemePresets(): HostThemePresetName[] {
+  supportedHostThemePresetsCache ??= (
+    getMerman().supportedHostThemePresets?.() ?? SUPPORTED_HOST_THEME_PRESETS
+  ).map(assertHostThemePresetName);
+  return [...supportedHostThemePresetsCache];
+}
+
 export function abiVersion(): number {
   return getMerman().abiVersion();
 }
@@ -390,4 +400,11 @@ function assertThemeName(theme: string): ThemeName {
     return theme;
   }
   throw new Error(`Merman WASM returned unknown theme: ${theme}`);
+}
+
+function assertHostThemePresetName(preset: string): HostThemePresetName {
+  if (isHostThemePresetName(preset)) {
+    return preset;
+  }
+  throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }

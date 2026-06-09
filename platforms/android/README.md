@@ -25,6 +25,7 @@ val ascii = MermanEngine.renderAscii(source)
 val validationJson = MermanEngine.validateJson(source)
 val diagramsJson = MermanEngine.supportedDiagramsJson()
 val supportedThemesJson = MermanEngine.supportedThemesJson()
+val hostThemePresetsJson = MermanEngine.supportedHostThemePresetsJson()
 
 try {
     MermanEngine.renderSvg(source, optionsJson = "{")

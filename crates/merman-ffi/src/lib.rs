@@ -346,6 +346,12 @@ pub extern "C" fn merman_supported_themes_json() -> MermanResult {
     ffi_result(merman_bindings_core::supported_themes_json)
 }
 
+/// Return supported host/editor theme preset metadata as a JSON string array.
+#[unsafe(no_mangle)]
+pub extern "C" fn merman_supported_host_theme_presets_json() -> MermanResult {
+    ffi_result(merman_bindings_core::supported_host_theme_presets_json)
+}
+
 /// Free a buffer returned by this crate.
 ///
 /// Passing a null buffer is a no-op.
@@ -753,14 +759,18 @@ mod tests {
         let diagrams = merman_supported_diagrams_json();
         let ascii_diagrams = merman_ascii_supported_diagrams_json();
         let themes = merman_supported_themes_json();
+        let host_theme_presets = merman_supported_host_theme_presets_json();
 
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
         assert_eq!(ascii_diagrams.code, BindingStatus::Ok.code());
         assert_eq!(themes.code, BindingStatus::Ok.code());
+        assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
         let diagrams: Value = serde_json::from_str(&take_text(diagrams.data)).unwrap();
         let ascii_diagrams: Value = serde_json::from_str(&take_text(ascii_diagrams.data)).unwrap();
         let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
+        let host_theme_presets: Value =
+            serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
 
         assert!(
             diagrams
@@ -775,6 +785,15 @@ mod tests {
                 .unwrap()
                 .contains(&Value::String("default".to_string()))
         );
+        assert!(host_theme_presets.is_array());
+        if cfg!(feature = "render") {
+            assert!(
+                host_theme_presets
+                    .as_array()
+                    .unwrap()
+                    .contains(&Value::String("one-dark".to_string()))
+            );
+        }
     }
 
     #[test]

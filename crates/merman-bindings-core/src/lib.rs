@@ -19,7 +19,8 @@ pub use common::{BindingError, BindingStatus, error_payload_json_bytes};
 pub use engine::BindingEngine;
 pub use metadata::{
     ascii_supported_diagrams, ascii_supported_diagrams_json, supported_diagrams,
-    supported_diagrams_json, supported_themes, supported_themes_json,
+    supported_diagrams_json, supported_host_theme_presets, supported_host_theme_presets_json,
+    supported_themes, supported_themes_json,
 };
 
 #[cfg(feature = "ascii")]

@@ -1,5 +1,6 @@
 use merman_core::MermaidConfig;
 use serde_json::{Map, Value};
+use std::sync::OnceLock;
 
 use super::pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
@@ -63,6 +64,23 @@ impl HostThemePreset {
             Self::AyuDark => "ayu-dark",
         }
     }
+}
+
+/// Returns built-in host/editor theme preset names.
+///
+/// These are semantic host presets such as `one-dark` and are intentionally separate from Mermaid
+/// core theme names returned by `merman_core::supported_themes()`.
+pub fn supported_host_theme_presets() -> &'static [&'static str] {
+    static NAMES: OnceLock<Vec<&'static str>> = OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            HostThemePreset::ALL
+                .iter()
+                .copied()
+                .map(HostThemePreset::as_str)
+                .collect()
+        })
+        .as_slice()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

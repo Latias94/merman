@@ -221,6 +221,7 @@ class Merman {
   List<String>? _supportedDiagramsCache;
   List<String>? _asciiSupportedDiagramsCache;
   List<String>? _themesCache;
+  List<String>? _hostThemePresetsCache;
 
   /// Native `merman-ffi` package version.
   String get packageVersion => _bindings.packageVersion();
@@ -306,6 +307,17 @@ class Merman {
     );
   }
 
+  /// Returns built-in host/editor theme preset names.
+  List<String> supportedHostThemePresets() {
+    return _hostThemePresetsCache ??= List.unmodifiable(
+      _decodeJsonStringList(
+        _decodeText(
+          _bindings.metadata(_bindings.supportedHostThemePresetsJson),
+        ),
+      ),
+    );
+  }
+
   static String _decodeText(Uint8List bytes) => utf8.decode(bytes);
 
   static Map<String, Object?> _decodeJsonMap(String text) {
@@ -377,6 +389,10 @@ class _MermanBindings {
             library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
           'merman_supported_themes_json',
         ),
+        supportedHostThemePresetsJson =
+            library.lookupFunction<_MermanMetadataC, _MermanMetadataDart>(
+          'merman_supported_host_theme_presets_json',
+        ),
         _bufferFree = library.lookupFunction<_BufferFreeC, _BufferFreeDart>(
           'merman_buffer_free',
         );
@@ -394,6 +410,7 @@ class _MermanBindings {
   final _MermanMetadataDart supportedDiagramsJson;
   final _MermanMetadataDart asciiSupportedDiagramsJson;
   final _MermanMetadataDart supportedThemesJson;
+  final _MermanMetadataDart supportedHostThemePresetsJson;
 
   void checkAbi() {
     final abiVersion = _abiVersion();
