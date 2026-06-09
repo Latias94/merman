@@ -660,7 +660,6 @@ fn write_flowchart_svg_text_impl(
     open_flowchart_svg_text(out, include_style, center_text);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
-    let allow_simple_markdown = !text.contains('`');
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_flowchart_tspan(out, center_text, include_row_class);
         out.push_str("</text>");
@@ -698,30 +697,6 @@ fn write_flowchart_svg_text_impl(
         ])
     }
 
-    fn strip_simple_markdown_word(word: &str) -> (std::borrow::Cow<'_, str>, bool, bool) {
-        // Mermaid flowchart-v2 SVG labels apply a small subset of Markdown styling even when the
-        // FlowDB label type is `text` (not `markdown`), e.g. `**bold**`.
-        if word.len() >= 4 && word.starts_with("**") && word.ends_with("**") {
-            let inner = &word[2..word.len() - 2];
-            if !inner.is_empty() {
-                return (std::borrow::Cow::Borrowed(inner), true, false);
-            }
-        }
-        if word.len() >= 2 && word.starts_with('*') && word.ends_with('*') {
-            let inner = &word[1..word.len() - 1];
-            if !inner.is_empty() {
-                return (std::borrow::Cow::Borrowed(inner), false, true);
-            }
-        }
-        if word.len() >= 2 && word.starts_with('_') && word.ends_with('_') {
-            let inner = &word[1..word.len() - 1];
-            if !inner.is_empty() {
-                return (std::borrow::Cow::Borrowed(inner), false, true);
-            }
-        }
-        (std::borrow::Cow::Borrowed(word), false, false)
-    }
-
     for (idx, line) in lines.iter().enumerate() {
         open_flowchart_tspan(out, idx, center_text, include_row_class);
         let words: Vec<String> = split_mermaid_escaped_tag_tokens(line).unwrap_or_else(|| {
@@ -731,23 +706,15 @@ fn write_flowchart_svg_text_impl(
                 .collect()
         });
         for (word_idx, word) in words.iter().enumerate() {
-            let (word, is_strong, is_em) = if allow_simple_markdown {
-                strip_simple_markdown_word(word)
-            } else {
-                (std::borrow::Cow::Borrowed(word.as_str()), false, false)
-            };
-            let font_style = if is_em { "italic" } else { "normal" };
-            let font_weight = if is_strong { "bold" } else { "normal" };
             let _ = write!(
                 out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
-                font_style, font_weight
+                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#
             );
             if word_idx == 0 {
-                escape_xml_into(out, word.as_ref());
+                escape_xml_into(out, word);
             } else {
                 out.push(' ');
-                escape_xml_into(out, word.as_ref());
+                escape_xml_into(out, word);
             }
             out.push_str("</tspan>");
         }

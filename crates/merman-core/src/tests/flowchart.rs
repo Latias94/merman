@@ -979,6 +979,34 @@ fn parse_diagram_flowchart_markdown_strings_in_nodes_and_edges() {
 }
 
 #[test]
+fn parse_diagram_flowchart_plain_node_labels_can_span_indented_lines() {
+    let engine = Engine::new();
+    let text = "     flowchart TB
+     foo[**Bold Foo**] --> bar
+     bar[Multiline
+     bar]";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.meta.diagram_type, "flowchart-v2");
+    assert_eq!(res.model["keyword"], json!("flowchart"));
+    assert_eq!(res.model["direction"], json!("TB"));
+
+    let nodes = res.model["nodes"].as_array().unwrap();
+    let find_node = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
+    assert_eq!(find_node("foo")["label"], json!("**Bold Foo**"));
+    assert_eq!(find_node("foo")["labelType"], json!("text"));
+    assert_eq!(find_node("bar")["label"], json!("Multiline\n     bar"));
+    assert_eq!(find_node("bar")["labelType"], json!("text"));
+
+    let edges = res.model["edges"].as_array().unwrap();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0]["from"], json!("foo"));
+    assert_eq!(edges[0]["to"], json!("bar"));
+}
+
+#[test]
 fn parse_diagram_flowchart_markdown_strings_in_subgraphs() {
     let engine = Engine::new();
     let text = r#"flowchart LR

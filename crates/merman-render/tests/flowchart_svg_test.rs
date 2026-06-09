@@ -858,6 +858,70 @@ fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
 }
 
 #[test]
+fn flowchart_html_plain_node_labels_can_span_indented_lines() {
+    let svg = render_flowchart_svg_from_text(
+        "     flowchart TB
+     foo[**Bold Foo**] --> bar
+     bar[Multiline
+     bar]",
+    );
+
+    assert!(
+        svg.contains("<p>Multiline<br />bar</p>"),
+        "expected indented multiline node label to render as an HTML line break: {svg}"
+    );
+    assert!(
+        svg.contains("<p>**Bold Foo**</p>"),
+        "expected plain flowchart labels to keep Markdown delimiters literal like Mermaid's nonMarkdownToHTML: {svg}"
+    );
+    assert!(
+        !svg.contains("<strong>Bold Foo</strong>"),
+        "plain flowchart text labels must not be treated as Markdown strings: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_plain_text_labels_do_not_apply_markdown_weight() {
+    let text = r#"%%{init: {"htmlLabels": false}}%%
+flowchart TB
+foo[**Bold Foo**]
+"#;
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(">**Bold</tspan>"),
+        "expected plain SVG text label to keep leading Markdown delimiter literal: {svg}"
+    );
+    assert!(
+        svg.contains("> Foo**</tspan>"),
+        "expected plain SVG text label to keep trailing Markdown delimiter literal: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"font-weight="bold""#),
+        "plain SVG text labels must not apply Markdown strong styling: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
     let text =
         "flowchart TB\nA[\"Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')\"]\n";
