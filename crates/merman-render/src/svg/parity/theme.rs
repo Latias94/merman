@@ -153,6 +153,44 @@ pub(crate) struct TreeViewTheme {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct TreemapTheme {
+    pub(crate) title_color: String,
+    pub(crate) label_color: String,
+    pub(crate) value_color: String,
+    pub(crate) section_stroke_color: String,
+    pub(crate) section_stroke_width: String,
+    pub(crate) section_fill_color: String,
+    pub(crate) leaf_stroke_color: String,
+    pub(crate) leaf_stroke_width: String,
+    pub(crate) leaf_fill_color: String,
+    pub(crate) label_font_size: String,
+    pub(crate) value_font_size: String,
+    pub(crate) title_font_size: String,
+    pub(crate) color_scale: Vec<String>,
+    pub(crate) color_scale_peer: Vec<String>,
+    pub(crate) color_scale_label: Vec<String>,
+    text_color: String,
+}
+
+impl TreemapTheme {
+    pub(crate) fn readable_leaf_label_fill(
+        &self,
+        leaf_fill: &str,
+        leaf_rect_style: &str,
+        leaf_label_fill: String,
+    ) -> String {
+        if css_color_is_transparent(leaf_fill)
+            && !style_has_non_empty_decl(leaf_rect_style, "fill")
+            && css_color_is_white_like(&leaf_label_fill)
+        {
+            self.text_color.clone()
+        } else {
+            leaf_label_fill
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct EventModelingTheme {
     pub(crate) font_family_css: String,
     pub(crate) text_color: String,
@@ -479,6 +517,93 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
+    pub(crate) fn treemap(&self) -> TreemapTheme {
+        let text_color = self.raw.color("textColor", "#333");
+        let title_color = self
+            .raw
+            .optional_root_scoped_string("treemap", "titleColor")
+            .or_else(|| self.raw.optional_color("titleColor"))
+            .unwrap_or_else(|| text_color.clone());
+        let raw_theme_name = self.common.theme_name.clone();
+        let default_theme = raw_theme_name == "default";
+        let theme_name = raw_theme_name.trim().to_ascii_lowercase();
+        let label_text_color = self.raw.color("labelTextColor", "black");
+        let label_text_is_calculated = label_text_color.trim() == "calculated";
+        let scale_label_color = self.raw.color("scaleLabelColor", &label_text_color);
+        let neutral_special_label_color = self.raw.color("cScale1", default_c_scale(1));
+
+        let color_scale = (0..12)
+            .map(|i| {
+                if default_theme {
+                    default_c_scale(i).to_string()
+                } else {
+                    self.raw.color(&format!("cScale{i}"), default_c_scale(i))
+                }
+            })
+            .collect();
+        let color_scale_peer = (0..12)
+            .map(|i| {
+                if default_theme {
+                    default_c_scale_peer(i).to_string()
+                } else {
+                    self.raw
+                        .color(&format!("cScalePeer{i}"), default_c_scale_peer(i))
+                }
+            })
+            .collect();
+        let color_scale_label = (0..12)
+            .map(|i| {
+                self.raw
+                    .optional_color(&format!("cScaleLabel{i}"))
+                    .unwrap_or_else(|| match theme_name.as_str() {
+                        "dark" | "forest" => scale_label_color.clone(),
+                        "neutral" => {
+                            if i == 0 || i == 2 {
+                                neutral_special_label_color.clone()
+                            } else {
+                                scale_label_color.clone()
+                            }
+                        }
+                        _ => {
+                            if label_text_is_calculated {
+                                scale_label_color.clone()
+                            } else if i == 0 || i == 3 {
+                                invert_treemap_label_color_to_hex(&label_text_color)
+                                    .unwrap_or_else(|| label_text_color.clone())
+                            } else {
+                                label_text_color.clone()
+                            }
+                        }
+                    })
+            })
+            .collect();
+
+        TreemapTheme {
+            title_color,
+            label_color: self
+                .raw
+                .optional_root_scoped_string("treemap", "labelColor")
+                .unwrap_or_else(|| text_color.clone()),
+            value_color: self
+                .raw
+                .optional_root_scoped_string("treemap", "valueColor")
+                .unwrap_or_else(|| text_color.clone()),
+            section_stroke_color: self.treemap_style_option("sectionStrokeColor", "black"),
+            section_stroke_width: self.treemap_style_option("sectionStrokeWidth", "1"),
+            section_fill_color: self.treemap_style_option("sectionFillColor", "#efefef"),
+            leaf_stroke_color: self.treemap_style_option("leafStrokeColor", "black"),
+            leaf_stroke_width: self.treemap_style_option("leafStrokeWidth", "1"),
+            leaf_fill_color: self.treemap_style_option("leafFillColor", "#efefef"),
+            label_font_size: self.treemap_style_option("labelFontSize", "12px"),
+            value_font_size: self.treemap_style_option("valueFontSize", "10px"),
+            title_font_size: self.treemap_style_option("titleFontSize", "14px"),
+            color_scale,
+            color_scale_peer,
+            color_scale_label,
+            text_color,
+        }
+    }
+
     pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
         EventModelingTheme {
             font_family_css: self.raw.font_family_css_root_first(),
@@ -688,6 +813,12 @@ impl<'a> PresentationTheme<'a> {
 
     pub(super) fn common(&self) -> &CommonCssTheme {
         &self.common
+    }
+
+    fn treemap_style_option(&self, key: &str, default_value: &str) -> String {
+        self.raw
+            .optional_root_scoped_css_value("treemap", key)
+            .unwrap_or_else(|| default_value.to_string())
     }
 
     pub(super) fn node_diagram(&self) -> NodeDiagramTheme {
@@ -1009,6 +1140,23 @@ fn default_c_scale(i: usize) -> &'static str {
     }
 }
 
+fn default_c_scale_peer(i: usize) -> &'static str {
+    match i {
+        0 => "hsl(240, 100%, 61.2745098039%)",
+        1 => "hsl(60, 100%, 48.5294117647%)",
+        2 => "hsl(80, 100%, 56.2745098039%)",
+        3 => "hsl(270, 100%, 61.2745098039%)",
+        4 => "hsl(300, 100%, 61.2745098039%)",
+        5 => "hsl(330, 100%, 61.2745098039%)",
+        6 => "hsl(0, 100%, 61.2745098039%)",
+        7 => "hsl(30, 100%, 61.2745098039%)",
+        8 => "hsl(90, 100%, 61.2745098039%)",
+        9 => "hsl(150, 100%, 61.2745098039%)",
+        10 => "hsl(180, 100%, 61.2745098039%)",
+        _ => "hsl(210, 100%, 61.2745098039%)",
+    }
+}
+
 fn journey_default_fill_type(i: usize) -> &'static str {
     match i {
         0 => "#ECECFF",
@@ -1126,6 +1274,78 @@ fn css_color_to_rgb(s: &str) -> Option<(u8, u8, u8)> {
 fn css_color_to_rgb_string(s: &str) -> Option<String> {
     let (r, g, b) = css_color_to_rgb(s)?;
     Some(fmt_rgb(r, g, b))
+}
+
+fn parse_treemap_css_rgb(color: &str) -> Option<(u8, u8, u8)> {
+    let color = color.trim();
+    if color.eq_ignore_ascii_case("black") {
+        return Some((0, 0, 0));
+    }
+    if color.eq_ignore_ascii_case("white") {
+        return Some((255, 255, 255));
+    }
+    if let Some(hex) = color.strip_prefix('#') {
+        let hex = hex.trim();
+        if hex.len() == 3 {
+            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+            return Some((r, g, b));
+        }
+        if hex.len() == 6 {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            return Some((r, g, b));
+        }
+    }
+    let lower = color.to_ascii_lowercase();
+    if let Some(args) = lower
+        .strip_prefix("rgb(")
+        .and_then(|value| value.strip_suffix(')'))
+    {
+        let parts = args
+            .split(',')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>();
+        if parts.len() >= 3 {
+            let r = parts[0].parse::<u16>().ok()?;
+            let g = parts[1].parse::<u16>().ok()?;
+            let b = parts[2].parse::<u16>().ok()?;
+            if r <= 255 && g <= 255 && b <= 255 {
+                return Some((r as u8, g as u8, b as u8));
+            }
+        }
+    }
+    None
+}
+
+fn invert_treemap_label_color_to_hex(color: &str) -> Option<String> {
+    let (r, g, b) = parse_treemap_css_rgb(color)?;
+    Some(format!(
+        "#{:02x}{:02x}{:02x}",
+        255u8.saturating_sub(r),
+        255u8.saturating_sub(g),
+        255u8.saturating_sub(b)
+    ))
+}
+
+fn css_color_is_transparent(color: &str) -> bool {
+    color.trim().eq_ignore_ascii_case("transparent")
+}
+
+fn css_color_is_white_like(color: &str) -> bool {
+    parse_treemap_css_rgb(color).is_some_and(|(r, g, b)| r >= 250 && g >= 250 && b >= 250)
+}
+
+fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
+    style.split(';').any(|decl| {
+        let Some((key, value)) = decl.split_once(':') else {
+            return false;
+        };
+        key.trim().eq_ignore_ascii_case(property) && !value.trim().is_empty()
+    })
 }
 
 fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
@@ -1329,6 +1549,93 @@ mod tests {
         assert_eq!(tree_view.label_font_size_css, "16px");
         assert_eq!(tree_view.label_color, "black");
         assert_eq!(tree_view.line_color, "black");
+    }
+
+    #[test]
+    fn presentation_theme_treemap_resolves_top_level_treemap_roles() {
+        let cfg = json!({
+            "theme": "custom",
+            "themeVariables": {
+                "textColor": "#101010",
+                "titleColor": "#202020",
+                "labelTextColor": "rgb(10, 20, 30)",
+                "cScale0": "#010203",
+                "cScalePeer0": "#040506",
+                "cScaleLabel0": "#070809"
+            },
+            "treemap": {
+                "titleColor": "#777777",
+                "labelColor": "#555555",
+                "valueColor": "#666666",
+                "sectionStrokeColor": "#111111",
+                "sectionStrokeWidth": 2,
+                "sectionFillColor": "#222222",
+                "leafStrokeColor": "#333333",
+                "leafStrokeWidth": "3px",
+                "leafFillColor": "#444444",
+                "labelFontSize": "13px",
+                "valueFontSize": "11px",
+                "titleFontSize": "15px"
+            }
+        });
+
+        let treemap = PresentationTheme::new(&cfg).treemap();
+
+        assert_eq!(treemap.title_color, "#777777");
+        assert_eq!(treemap.label_color, "#555555");
+        assert_eq!(treemap.value_color, "#666666");
+        assert_eq!(treemap.section_stroke_color, "#111111");
+        assert_eq!(treemap.section_stroke_width, "2");
+        assert_eq!(treemap.section_fill_color, "#222222");
+        assert_eq!(treemap.leaf_stroke_color, "#333333");
+        assert_eq!(treemap.leaf_stroke_width, "3px");
+        assert_eq!(treemap.leaf_fill_color, "#444444");
+        assert_eq!(treemap.label_font_size, "13px");
+        assert_eq!(treemap.value_font_size, "11px");
+        assert_eq!(treemap.title_font_size, "15px");
+        assert_eq!(treemap.color_scale[0], "#010203");
+        assert_eq!(treemap.color_scale_peer[0], "#040506");
+        assert_eq!(treemap.color_scale_label[0], "#070809");
+    }
+
+    #[test]
+    fn presentation_theme_treemap_uses_text_and_title_fallbacks() {
+        let cfg = json!({
+            "themeVariables": {
+                "textColor": "#101010",
+                "titleColor": "#202020"
+            }
+        });
+
+        let treemap = PresentationTheme::new(&cfg).treemap();
+
+        assert_eq!(treemap.title_color, "#202020");
+        assert_eq!(treemap.label_color, "#101010");
+        assert_eq!(treemap.value_color, "#101010");
+    }
+
+    #[test]
+    fn presentation_theme_treemap_uses_default_scales_and_label_inversion() {
+        let cfg = json!({
+            "themeVariables": {
+                "labelTextColor": "rgb(10, 20, 30)"
+            }
+        });
+
+        let treemap = PresentationTheme::new(&cfg).treemap();
+
+        assert_eq!(treemap.color_scale[0], "hsl(240, 100%, 76.2745098039%)");
+        assert_eq!(
+            treemap.color_scale_peer[0],
+            "hsl(240, 100%, 61.2745098039%)"
+        );
+        assert_eq!(treemap.color_scale_label[0], "#f5ebe1");
+        assert_eq!(treemap.color_scale_label[1], "rgb(10, 20, 30)");
+        assert_eq!(treemap.color_scale_label[3], "#f5ebe1");
+        assert_eq!(
+            treemap.readable_leaf_label_fill("transparent", "", "#ffffff".to_string()),
+            "#333"
+        );
     }
 
     #[test]

@@ -204,47 +204,6 @@ pub(super) fn render_treemap_diagram_svg(
         None
     }
 
-    fn css_color_is_transparent(color: &str) -> bool {
-        color.trim().eq_ignore_ascii_case("transparent")
-    }
-
-    fn css_color_is_white_like(color: &str) -> bool {
-        parse_css_rgb(color).is_some_and(|(r, g, b)| r >= 250 && g >= 250 && b >= 250)
-    }
-
-    fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
-        style.split(';').any(|decl| {
-            let Some((key, value)) = decl.split_once(':') else {
-                return false;
-            };
-            key.trim().eq_ignore_ascii_case(property) && !value.trim().is_empty()
-        })
-    }
-
-    fn readable_leaf_label_fill(
-        effective_config: &serde_json::Value,
-        leaf_fill: &str,
-        leaf_rect_style: &str,
-        leaf_label_fill: String,
-    ) -> String {
-        if css_color_is_transparent(leaf_fill)
-            && !style_has_non_empty_decl(leaf_rect_style, "fill")
-            && css_color_is_white_like(&leaf_label_fill)
-        {
-            theme_color(effective_config, "textColor", "#333")
-        } else {
-            leaf_label_fill
-        }
-    }
-
-    fn invert_css_color_to_hex(color: &str) -> Option<String> {
-        let (r, g, b) = parse_css_rgb(color)?;
-        let ir = 255u8.saturating_sub(r);
-        let ig = 255u8.saturating_sub(g);
-        let ib = 255u8.saturating_sub(b);
-        Some(format!("#{:02x}{:02x}{:02x}", ir, ig, ib))
-    }
-
     fn normalize_dom_style_color(color: &str) -> String {
         // jsdom serialization tends to normalize hex colors to `rgb(r, g, b)` when the style
         // attribute has been mutated (e.g. via `.style(...)` in upstream Mermaid).
@@ -255,40 +214,6 @@ pub(super) fn render_treemap_diagram_svg(
             }
         }
         c.to_string()
-    }
-
-    fn default_c_scale(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 76.2745098039%)",
-            1 => "hsl(60, 100%, 73.5294117647%)",
-            2 => "hsl(80, 100%, 76.2745098039%)",
-            3 => "hsl(270, 100%, 76.2745098039%)",
-            4 => "hsl(300, 100%, 76.2745098039%)",
-            5 => "hsl(330, 100%, 76.2745098039%)",
-            6 => "hsl(0, 100%, 76.2745098039%)",
-            7 => "hsl(30, 100%, 76.2745098039%)",
-            8 => "hsl(90, 100%, 76.2745098039%)",
-            9 => "hsl(150, 100%, 76.2745098039%)",
-            10 => "hsl(180, 100%, 76.2745098039%)",
-            _ => "hsl(210, 100%, 76.2745098039%)",
-        }
-    }
-
-    fn default_c_scale_peer(i: usize) -> &'static str {
-        match i {
-            0 => "hsl(240, 100%, 61.2745098039%)",
-            1 => "hsl(60, 100%, 48.5294117647%)",
-            2 => "hsl(80, 100%, 56.2745098039%)",
-            3 => "hsl(270, 100%, 61.2745098039%)",
-            4 => "hsl(300, 100%, 61.2745098039%)",
-            5 => "hsl(330, 100%, 61.2745098039%)",
-            6 => "hsl(0, 100%, 61.2745098039%)",
-            7 => "hsl(30, 100%, 61.2745098039%)",
-            8 => "hsl(90, 100%, 61.2745098039%)",
-            9 => "hsl(150, 100%, 61.2745098039%)",
-            10 => "hsl(180, 100%, 61.2745098039%)",
-            _ => "hsl(210, 100%, 61.2745098039%)",
-        }
     }
 
     fn format_int_with_commas(n: i64) -> String {
@@ -347,74 +272,22 @@ pub(super) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
     let diagram_id_esc = escape_xml(diagram_id);
 
-    let theme_name =
-        config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string());
+    let theme = PresentationTheme::new(effective_config).treemap();
 
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());
-    for i in 0..12 {
-        let key = format!("cScale{i}");
-        let v = if theme_name == "default" {
-            default_c_scale(i).to_string()
-        } else {
-            theme_color(effective_config, &key, default_c_scale(i))
-        };
-        color_scale.range.push(v);
-    }
+    color_scale.range.extend(theme.color_scale.iter().cloned());
+
     let mut color_scale_peer = OrdinalScale::default();
     color_scale_peer.range.push("transparent".to_string());
-    for i in 0..12 {
-        let key = format!("cScalePeer{i}");
-        let v = if theme_name == "default" {
-            default_c_scale_peer(i).to_string()
-        } else {
-            theme_color(effective_config, &key, default_c_scale_peer(i))
-        };
-        color_scale_peer.range.push(v);
-    }
+    color_scale_peer
+        .range
+        .extend(theme.color_scale_peer.iter().cloned());
 
-    // Mermaid treemap label colors come from theme-derived `cScaleLabel*` values, but some of our
-    // effective configs do not materialize those derived fields. Mirror the relevant Mermaid
-    // theme defaults as a fallback so strict SVG baselines stay aligned:
-    // - `default`/custom: `cScaleLabel0` and `cScaleLabel3` use `invert(labelTextColor)`
-    // - `dark` and `forest`: all labels use `scaleLabelColor`
-    // - `neutral`: `cScaleLabel0` and `cScaleLabel2` use `cScale1`, the rest use
-    //   `scaleLabelColor`
-    let theme_name = config_string(effective_config, &["theme"])
-        .unwrap_or_else(|| "default".to_string())
-        .trim()
-        .to_ascii_lowercase();
-    let label_text_color = theme_color(effective_config, "labelTextColor", "black");
-    let label_text_is_calculated = label_text_color.trim() == "calculated";
-    let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
-    let neutral_special_label_color = theme_color(effective_config, "cScale1", default_c_scale(1));
     let mut color_scale_label = OrdinalScale::default();
-    for i in 0..12 {
-        let key = format!("cScaleLabel{i}");
-        let v = config_string(effective_config, &["themeVariables", key.as_str()]).unwrap_or_else(
-            || match theme_name.as_str() {
-                "dark" | "forest" => scale_label_color.clone(),
-                "neutral" => {
-                    if i == 0 || i == 2 {
-                        neutral_special_label_color.clone()
-                    } else {
-                        scale_label_color.clone()
-                    }
-                }
-                _ => {
-                    if label_text_is_calculated {
-                        scale_label_color.clone()
-                    } else if i == 0 || i == 3 {
-                        invert_css_color_to_hex(&label_text_color)
-                            .unwrap_or_else(|| label_text_color.clone())
-                    } else {
-                        label_text_color.clone()
-                    }
-                }
-            },
-        );
-        color_scale_label.range.push(v);
-    }
+    color_scale_label
+        .range
+        .extend(theme.color_scale_label.iter().cloned());
 
     let has_acc_title = layout
         .acc_title
@@ -829,8 +702,7 @@ pub(super) fn render_treemap_diagram_svg(
         let compiled = treemap_styles2_string(leaf_css);
         let leaf_rect_style = compiled.node_styles.clone();
         let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
-        let leaf_label_fill = readable_leaf_label_fill(
-            effective_config,
+        let leaf_label_fill = theme.readable_leaf_label_fill(
             &fill,
             &leaf_rect_style,
             color_scale_label.get(&leaf.name),

@@ -616,59 +616,34 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
     out
 }
 
-fn treemap_style_option(
-    effective_config: &serde_json::Value,
-    key: &str,
-    default_value: &str,
-) -> String {
-    crate::config::config_css_number_or_string(effective_config, &["treemap", key])
-        .unwrap_or_else(|| default_value.to_string())
-}
-
 pub(super) fn treemap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let theme = PresentationTheme::new(effective_config).treemap();
     let mut out = parts.css_prefix;
-    let title_color = config_string(effective_config, &["treemap", "titleColor"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "titleColor"]))
-        .unwrap_or_else(|| parts.text_color.clone());
-    let label_color = config_string(effective_config, &["treemap", "labelColor"])
-        .unwrap_or_else(|| parts.text_color.clone());
-    let value_color = config_string(effective_config, &["treemap", "valueColor"])
-        .unwrap_or_else(|| parts.text_color.clone());
-    let section_stroke_color =
-        treemap_style_option(effective_config, "sectionStrokeColor", "black");
-    let section_stroke_width = treemap_style_option(effective_config, "sectionStrokeWidth", "1");
-    let section_fill_color = treemap_style_option(effective_config, "sectionFillColor", "#efefef");
-    let leaf_stroke_color = treemap_style_option(effective_config, "leafStrokeColor", "black");
-    let leaf_stroke_width = treemap_style_option(effective_config, "leafStrokeWidth", "1");
-    let leaf_fill_color = treemap_style_option(effective_config, "leafFillColor", "#efefef");
-    let label_font_size = treemap_style_option(effective_config, "labelFontSize", "12px");
-    let value_font_size = treemap_style_option(effective_config, "valueFontSize", "10px");
-    let title_font_size = treemap_style_option(effective_config, "titleFontSize", "14px");
 
     let _ = write!(
         &mut out,
         r#"#{} .treemapNode.section{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapNode.leaf{{stroke:{};stroke-width:{};fill:{};}}#{} .treemapLabel{{fill:{};font-size:{};}}#{} .treemapValue{{fill:{};font-size:{};}}#{} .treemapTitle{{fill:{};font-size:{};}}"#,
         id,
-        section_stroke_color,
-        section_stroke_width,
-        section_fill_color,
+        theme.section_stroke_color,
+        theme.section_stroke_width,
+        theme.section_fill_color,
         id,
-        leaf_stroke_color,
-        leaf_stroke_width,
-        leaf_fill_color,
+        theme.leaf_stroke_color,
+        theme.leaf_stroke_width,
+        theme.leaf_fill_color,
         id,
-        label_color,
-        label_font_size,
+        theme.label_color,
+        theme.label_font_size,
         id,
-        value_color,
-        value_font_size,
+        theme.value_color,
+        theme.value_font_size,
         id,
-        title_color,
-        title_font_size
+        theme.title_color,
+        theme.title_font_size
     );
     out.push_str(&parts.root_rule);
     out
