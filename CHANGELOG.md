@@ -11,6 +11,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Corrected web package documentation to use the published `@mermanjs/web` npm package name.
 - Limited CSS override cleanup to `<style>` blocks and `style` attributes so ordinary SVG text and metadata containing `!important` stay intact.
 - Scoped embedded icon IDs so repeated Flowchart and Architecture icons do not collide inside one SVG.
+- Scoped Sankey gradient IDs for safer inline SVG embedding.
 
 ## [0.7.0-alpha.2] - 2026-06-08
 

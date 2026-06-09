@@ -78,6 +78,7 @@ pub(super) fn render_sankey_diagram_svg(
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
+    let scope_resource_ids = options.diagram_id.is_some();
 
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
@@ -327,12 +328,17 @@ pub(super) fn render_sankey_diagram_svg(
             "target" => color_for(&target.id),
             "gradient" => {
                 let gradient_id = next_uid("linearGradient-");
+                let gradient_id = if scope_resource_ids {
+                    scoped_svg_id(diagram_id, &gradient_id)
+                } else {
+                    gradient_id
+                };
                 let source_color = color_for(&source.id);
                 let target_color = color_for(&target.id);
                 let _ = write!(
                     &mut out,
                     r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="{x1}" x2="{x2}"><stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></linearGradient>"#,
-                    id = escape_xml(&gradient_id),
+                    id = escape_attr(&gradient_id),
                     x1 = fmt(sx),
                     x2 = fmt(tx),
                     c1 = escape_attr(&source_color),
@@ -348,7 +354,7 @@ pub(super) fn render_sankey_diagram_svg(
             &mut out,
             r#"<path d="{d}" stroke="{stroke}" stroke-width="{sw}"/></g>"#,
             d = escape_xml(&path_d),
-            stroke = escape_xml(&stroke),
+            stroke = escape_attr(&stroke),
             sw = fmt(stroke_width),
         );
     }
