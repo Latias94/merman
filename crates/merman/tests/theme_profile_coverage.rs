@@ -19,6 +19,16 @@ const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     merge feature
 "#;
 
+const USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION: &str = r#"gitGraph
+    commit id: "base"
+    branch feature
+    checkout feature
+    commit id: "parser-fix"
+    checkout main
+    commit id: "release" tag: "v1.0"
+    cherry-pick id: "parser-fix" tag: "backport"
+"#;
+
 const USER_ER_GRUVBOX_LABEL_REGRESSION: &str = r#"erDiagram
     USER ||--o{ ORDER : places
     USER {
@@ -81,10 +91,10 @@ fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
-fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
+fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str, expected: &[&str]) {
     let document =
         roxmltree::Document::parse(svg).unwrap_or_else(|err| panic!("{name}: invalid SVG: {err}"));
-    let mut checked = 0usize;
+    let mut seen = Vec::new();
 
     for label_group in document.descendants().filter(|node| {
         node.is_element()
@@ -104,13 +114,13 @@ fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
         };
         assert_eq!(
             text.attribute("dominant-baseline"),
-            Some("middle"),
-            "{name}: branch label text should use a stable middle baseline: {svg}"
+            Some("central"),
+            "{name}: branch label text should use a stable central baseline: {svg}"
         );
         assert_eq!(
             text.attribute("alignment-baseline"),
-            Some("middle"),
-            "{name}: branch label text should use a stable middle alignment: {svg}"
+            Some("central"),
+            "{name}: branch label text should use a stable central alignment: {svg}"
         );
         assert!(
             text.attribute("y").is_some(),
@@ -128,13 +138,17 @@ fn assert_gitgraph_branch_label_baselines_centered(name: &str, svg: &str) {
             Some("0"),
             "{name}: branch label tspan should not rely on font-sensitive dy=1em: {svg}"
         );
-        checked += 1;
+        if let Some(label) = tspan.text() {
+            seen.push(label.to_string());
+        }
     }
 
-    assert!(
-        checked >= 3,
-        "{name}: expected main/develop/feature branch labels, checked {checked}: {svg}"
-    );
+    for expected_label in expected {
+        assert!(
+            seen.iter().any(|label| label == expected_label),
+            "{name}: expected branch label {expected_label:?}, saw {seen:?}: {svg}"
+        );
+    }
 }
 
 fn assert_gitgraph_branch_labels_keep_mermaid_parity_baseline(name: &str, svg: &str) {
@@ -345,7 +359,24 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
         .render_svg_sync(USER_GITGRAPH_THEME_REGRESSION)
         .unwrap_or_else(|err| panic!("one-dark gitGraph render failed: {err}"))
         .unwrap_or_else(|| panic!("one-dark gitGraph render produced no diagram"));
-    assert_gitgraph_branch_label_baselines_centered("one-dark-gitgraph", &themed);
+    assert_gitgraph_branch_label_baselines_centered(
+        "one-dark-gitgraph",
+        &themed,
+        &["main", "develop", "feature"],
+    );
+
+    let cherry_pick = HeadlessRenderer::new()
+        .with_host_theme(&profile)
+        .with_vendored_text_measurer()
+        .with_diagram_id("gitgraph-one-dark-cherry-pick")
+        .render_svg_sync(USER_GITGRAPH_CHERRYPICK_TAG_THEME_REGRESSION)
+        .unwrap_or_else(|err| panic!("one-dark cherry-pick gitGraph render failed: {err}"))
+        .unwrap_or_else(|| panic!("one-dark cherry-pick gitGraph render produced no diagram"));
+    assert_gitgraph_branch_label_baselines_centered(
+        "one-dark-cherry-pick-gitgraph",
+        &cherry_pick,
+        &["main", "feature"],
+    );
 }
 
 #[test]

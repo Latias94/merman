@@ -178,8 +178,8 @@ fn rewrite_text_block_for_centered_baseline(text_block: &str, text_y: f64) -> St
     let close = &text_block[close_start..];
 
     let open_tag = set_or_insert_attr(open_tag, "y", &fmt_number(text_y));
-    let open_tag = set_or_insert_attr(&open_tag, "dominant-baseline", "middle");
-    let open_tag = set_or_insert_attr(&open_tag, "alignment-baseline", "middle");
+    let open_tag = set_or_insert_attr(&open_tag, "dominant-baseline", "central");
+    let open_tag = set_or_insert_attr(&open_tag, "alignment-baseline", "central");
     let content = rewrite_first_tspan_dy_zero(content);
 
     format!("{open_tag}{content}{close}")
@@ -294,8 +294,8 @@ mod tests {
 
         assert!(out.contains(r#"<text"#), "{out}");
         assert!(out.contains(r#"y="10""#), "{out}");
-        assert!(out.contains(r#"dominant-baseline="middle""#), "{out}");
-        assert!(out.contains(r#"alignment-baseline="middle""#), "{out}");
+        assert!(out.contains(r#"dominant-baseline="central""#), "{out}");
+        assert!(out.contains(r#"alignment-baseline="central""#), "{out}");
         assert!(
             out.contains(r#"<tspan xml:space="preserve" dy="0" x="0" class="row">main</tspan>"#)
         );
