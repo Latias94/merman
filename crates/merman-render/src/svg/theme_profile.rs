@@ -4,8 +4,8 @@ use std::sync::OnceLock;
 
 use super::pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    RootBackgroundPostprocessor, SanitizeCssPostprocessor, ScopedCssPostprocessor, SvgPipeline,
-    SvgPipelinePreset,
+    GitGraphBranchLabelBaselinePostprocessor, RootBackgroundPostprocessor,
+    SanitizeCssPostprocessor, ScopedCssPostprocessor, SvgPipeline, SvgPipelinePreset,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -709,6 +709,10 @@ impl CompiledHostThemeOutput {
 
         if self.drop_native_duplicate_fallbacks {
             pipeline.push_postprocessor(DropNativeDuplicateFallbacksPostprocessor);
+        }
+
+        if matches!(self.preset, SvgPipelinePreset::ResvgSafe) {
+            pipeline.push_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
         }
 
         if let Some(color) = self
