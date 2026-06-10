@@ -76,10 +76,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             let Some(href) = url.as_str() else {
                 continue;
             };
-            let href = url::Url::parse(href)
-                .map(|u| u.to_string())
-                .unwrap_or_else(|_| href.to_string());
-            let href = merman_core::utils::format_url(&href, sanitize_config)
+            let href = merman_core::utils::format_url(href, sanitize_config)
                 .filter(|u| u.trim() != merman_core::utils::BLANK_URL);
             let text_x = x + 10.0;
             let text_y = actor_height + link_y + 10.0;

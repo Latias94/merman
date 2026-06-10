@@ -1093,7 +1093,6 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
- "web-time",
 ]
 
 [[package]]
@@ -2608,7 +2607,6 @@ dependencies = [
  "nalgebra",
  "rustc-hash 2.1.1",
  "thiserror 2.0.18",
- "web-time",
 ]
 
 [[package]]
@@ -2766,8 +2764,6 @@ dependencies = [
  "svgtypes 0.11.0",
  "thiserror 2.0.18",
  "unicode-width",
- "url",
- "web-time",
 ]
 
 [[package]]
@@ -2780,6 +2776,14 @@ dependencies = [
  "roxmltree 0.20.0",
  "serde_json",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "merman-typst-plugin"
+version = "0.7.0"
+dependencies = [
+ "merman-bindings-core",
+ "wasm-minimal-protocol",
 ]
 
 [[package]]
@@ -4381,7 +4385,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5709,6 +5713,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "venial"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61584a325b16f97b5b25fcc852eb9550843a251057a5e3e5992d2376f3df4bb2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5845,6 +5859,17 @@ dependencies = [
  "indexmap",
  "wasm-encoder",
  "wasmparser",
+]
+
+[[package]]
+name = "wasm-minimal-protocol"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae17f1dd65ee737caf73ea45f517c09578ab60970c28e5e96b7900fe2e245633"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "venial",
 ]
 
 [[package]]

@@ -10,6 +10,9 @@
 This is a fork of `roughr` (Rough.js port) vendored for the `merman` workspace to keep Mermaid SVG
 parity stable and deterministic across platforms.
 
+The `host-random` feature keeps the upstream-style host randomness fallback. Disable default
+features for pure-wasm or Typst-oriented builds that need deterministic, host-free output.
+
 ## Differences from upstream `roughr`
 
 - PRNG / seeding semantics are aligned with Rough.js (used by Mermaid) to keep generated ops stable.

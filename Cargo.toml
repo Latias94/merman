@@ -9,6 +9,7 @@ members = [
   "crates/merman-ffi",
   "crates/merman-rustdoc",
   "crates/merman-render",
+  "crates/merman-typst-plugin",
   "crates/merman-uniffi",
   "crates/merman-wasm",
   "crates/dugong",
@@ -51,7 +52,7 @@ rayon = "1.10.0"
 roxmltree = "0.20.0"
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
-roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.0" }
+roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.0", default-features = false }
 serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = { version = "1.0.138", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
@@ -80,6 +81,7 @@ svg2pdf = "0.13.0"
 unicode-width = "0.2.2"
 wasm-bindgen = "0.2"
 web-time = "1.1.0"
+wasm-minimal-protocol = "0.2.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
@@ -89,7 +91,8 @@ merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.7.0"
 merman-core = { path = "crates/merman-core", version = "0.7.0", default-features = false }
 merman-ffi = { path = "crates/merman-ffi", version = "0.7.0" }
 merman-rustdoc = { path = "crates/merman-rustdoc", version = "0.7.0" }
-merman-render = { path = "crates/merman-render", version = "0.7.0" }
+merman-render = { path = "crates/merman-render", version = "0.7.0", default-features = false }
+merman-typst-plugin = { path = "crates/merman-typst-plugin", version = "0.7.0" }
 merman-uniffi = { path = "crates/merman-uniffi", version = "0.7.0" }
 merman-wasm = { path = "crates/merman-wasm", version = "0.7.0" }
 merman-cli = { path = "crates/merman-cli", version = "0.7.0" }

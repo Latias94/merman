@@ -450,9 +450,7 @@ pub(super) fn render_gantt_diagram_svg_model(
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
-            let now_ms = options
-                .now_ms_override
-                .unwrap_or_else(|| chrono::Local::now().timestamp_millis());
+            let now_ms = options.now_ms_override.unwrap_or_else(default_now_ms);
             gantt_scale_time_round(now_ms, min_ms, max_ms, range) + layout.left_padding
         };
         let y1 = layout.title_top_margin;
@@ -491,4 +489,16 @@ pub(super) fn render_gantt_diagram_svg_model(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+fn default_now_ms() -> i64 {
+    #[cfg(feature = "host")]
+    {
+        chrono::Local::now().timestamp_millis()
+    }
+
+    #[cfg(not(feature = "host"))]
+    {
+        0
+    }
 }

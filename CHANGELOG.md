@@ -6,6 +6,40 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### WASM Footprint & Typst Compatibility
+
+- Slimmed the pure/Typst-oriented core profile significantly. A Typst-compatible
+  `wasm32-unknown-unknown` semantic probe built on `merman-core --no-default-features`
+  measured **1,737,728 bytes raw** (**570,804 bytes gzip**), while the metadata probe
+  measured **1,736,363 bytes raw** (**570,150 bytes gzip**).
+- A core-only no-import probe measured **1,729,398 bytes raw** (**567,208 bytes gzip**).
+- The Typst-oriented probe imports only Typst's two `wasm-minimal-protocol` host
+  callbacks and no longer pulls `wasm-bindgen`, `js-sys`, `serde_yaml`, `json5`,
+  `lol_html`, `url`, `uuid`, or `web-time` through the pure/no-default core path.
+- Added an experimental `merman-typst-plugin` SVG-rendering probe. The default
+  minimal Typst build (`render`, no `core-full`, no host) now measures
+  **7,016,170 bytes raw** (**1,931,282 bytes gzip**) and passes the Typst wasm ABI
+  gate with only the two `wasm-minimal-protocol` imports.
+- The opt-in full no-host Typst render build (`render + core-full`) measures
+  **8,073,841 bytes raw** (**2,349,176 bytes gzip**) with the same Typst-only
+  import surface.
+- Turned the Typst probe wrapper into a local-package surface with `typst.toml`,
+  `@local` installation docs, raw-block rendering, raw SVG export, validation
+  helpers, Typst-oriented `resvg-safe` defaults, examples, and an
+  `xtask build-typst-package` dist builder.
+
+### Feature Surface Simplification
+
+- Consolidated `merman-core`'s public feature surface into coarse-grained profiles:
+  `full`, `full-config`, `full-sanitization`, and `host`.
+- Kept default builds Mermaid-compatible with `full + host`, while making
+  `--no-default-features` a meaningful pure-WASM/Typst starting point.
+- Split `merman-render`'s `core-full` forwarding from its host feature so Typst
+  render builds can keep parser/layout/SVG support without pulling full config and
+  sanitizer dependencies.
+- Made render/layout timing and RoughJS seed-zero randomness deterministic in no-host
+  wasm profiles, while preserving host behavior behind explicit host features.
+
 ## [0.7.0] - 2026-06-09
 
 Merman 0.7.0 is the first non-prerelease 0.7 line. It stabilizes the Mermaid 11.15-compatible headless rendering surface for broader editor, web, CLI, rustdoc, and native-binding use, while keeping parity and quality gates explicit.

@@ -35,6 +35,10 @@ categories = ["graphics"]
 license = "MIT"
 repository = "https://github.com/Latias94/merman"
 
+[features]
+default = ["host-random"]
+host-random = ["dep:rand", "getrandom?/js"]
+
 [lib]
 name = "roughr"
 path = "src/lib.rs"
@@ -56,10 +60,12 @@ version = "0.7.0"
 
 [dependencies.rand]
 version = "0.8"
+optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
 version = "0.2"
 features = ["js"]
+optional = true
 
 [dependencies.svg_path_ops]
 version = "0.11.0"

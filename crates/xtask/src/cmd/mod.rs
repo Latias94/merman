@@ -11,6 +11,7 @@ pub(crate) mod paths;
 pub(crate) mod profile_budget;
 pub(crate) mod root_override_audit;
 pub(crate) mod snapshots;
+pub(crate) mod typst_package;
 pub(crate) mod upstream_svg_policy;
 pub(crate) mod verify;
 
@@ -27,5 +28,6 @@ pub(crate) use paths::*;
 pub(crate) use profile_budget::*;
 pub(crate) use root_override_audit::*;
 pub(crate) use snapshots::*;
+pub(crate) use typst_package::*;
 pub(crate) use upstream_svg_policy::*;
 pub(crate) use verify::*;

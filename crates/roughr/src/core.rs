@@ -2,6 +2,7 @@ use euclid::default::Point2D;
 use euclid::Trig;
 use num_traits::{Float, FromPrimitive};
 use palette::Srgba;
+#[cfg(feature = "host-random")]
 use rand::random;
 use std::fmt;
 
@@ -186,7 +187,20 @@ impl Options {
             return (out as f64) / 2147483648.0;
         }
 
-        random::<f64>()
+        #[cfg(feature = "host-random")]
+        {
+            return random::<f64>();
+        }
+
+        #[cfg(not(feature = "host-random"))]
+        {
+            let mut next = 0x6d2b_79f5_u32 as i32;
+            self.randomizer = Some(next);
+            next = next.wrapping_mul(48271);
+            self.randomizer = Some(next);
+            let out = next & 0x7fffffff;
+            (out as f64) / 2147483648.0
+        }
     }
 
     pub fn set_hachure_angle(&mut self, angle: Option<f32>) -> &mut Self {

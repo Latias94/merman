@@ -19,7 +19,9 @@ exclude = [
 ]
 
 [features]
-default = []
+default = ["core-full"]
+core-full = ["merman-core/full"]
+host = ["chrono/clock", "merman-core/host", "roughr/host-random"]
 ratex-math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
@@ -31,11 +33,11 @@ ratex-math = [
 
 [dependencies]
 base64.workspace = true
-chrono = { workspace = true, features = ["clock"] }
+chrono.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
 manatee.workspace = true
-merman-core = { workspace = true, features = ["full", "host"] }
+merman-core.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }
@@ -45,12 +47,10 @@ rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-roughr.workspace = true
+roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 svgtypes = "0.11"
-url.workspace = true
 unicode-width.workspace = true
-web-time.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
