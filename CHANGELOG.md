@@ -6,6 +6,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Changed
+
+- Unified headless SVG-to-raster output through the renderer-owned operation pipeline, so library and CLI raster exports now share the same sanitization, sizing, and encoding path.
+- Tightened the admission inventory gate so parser, layout, and SVG coverage claims are checked against `merman-core` diagram family capability facts before alignment reports pass.
+
 ## [0.8.0-alpha.1] - 2026-06-10
 
 This alpha starts the 0.8 line with a smaller, clearer feature surface and a real Typst package path. The default Rust crate behavior remains Mermaid-compatible, while no-default and Typst-oriented builds can now avoid host-only and full-config dependencies.
