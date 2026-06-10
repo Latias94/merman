@@ -78,7 +78,7 @@ pub(super) fn render_sankey_diagram_svg(
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
-    let scope_resource_ids = options.diagram_id.is_some();
+    let scope_generated_ids = options.diagram_id.is_some();
 
     const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
     const DEFAULT_DESCENT_EM: f64 = 0.262;
@@ -193,24 +193,32 @@ pub(super) fn render_sankey_diagram_svg(
     };
 
     let mut uid_count: usize = 0;
-    let mut next_uid = |prefix: &str| -> String {
+    let mut next_generated_id = |prefix: &str| -> String {
         uid_count += 1;
-        format!("{prefix}{uid_count}")
+        let local_id = format!("{prefix}{uid_count}");
+        if scope_generated_ids {
+            scoped_svg_id(diagram_id, &local_id)
+        } else {
+            local_id
+        }
     };
 
     let mut node_uid_by_id: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
     for n in &layout.nodes {
-        node_uid_by_id.insert(n.id.clone(), next_uid("node-"));
+        node_uid_by_id.insert(n.id.clone(), next_generated_id("node-"));
         let _ = color_for(&n.id);
     }
 
     out.push_str(r#"<g class="nodes">"#);
     for n in &layout.nodes {
-        let node_uid = node_uid_by_id
-            .get(&n.id)
-            .cloned()
-            .unwrap_or_else(|| "node-0".to_string());
+        let node_uid = node_uid_by_id.get(&n.id).cloned().unwrap_or_else(|| {
+            if scope_generated_ids {
+                scoped_svg_id(diagram_id, "node-0")
+            } else {
+                "node-0".to_string()
+            }
+        });
         let x = n.x0;
         let y = n.y0;
         let w = n.x1 - n.x0;
@@ -327,12 +335,7 @@ pub(super) fn render_sankey_diagram_svg(
             "source" => color_for(&source.id),
             "target" => color_for(&target.id),
             "gradient" => {
-                let gradient_id = next_uid("linearGradient-");
-                let gradient_id = if scope_resource_ids {
-                    scoped_svg_id(diagram_id, &gradient_id)
-                } else {
-                    gradient_id
-                };
+                let gradient_id = next_generated_id("linearGradient-");
                 let source_color = color_for(&source.id);
                 let target_color = color_for(&target.id);
                 let _ = write!(

@@ -398,6 +398,59 @@ fn sequence_debug_svg_renders_generic_polyline_points() {
 }
 
 #[test]
+fn sequence_debug_svg_marker_ids_are_prefixed_when_diagram_id_is_provided() {
+    let layout = SequenceDiagramLayout {
+        nodes: Vec::new(),
+        clusters: Vec::new(),
+        bounds: None,
+        edges: vec![LayoutEdge {
+            id: "msg-1".to_string(),
+            from: "a".to_string(),
+            to: "b".to_string(),
+            from_cluster: None,
+            to_cluster: None,
+            points: vec![
+                LayoutPoint { x: 10.0, y: 20.0 },
+                LayoutPoint { x: 100.0, y: 20.0 },
+            ],
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }],
+    };
+
+    let svg = render_sequence_diagram_debug_svg(
+        &layout,
+        &SvgRenderOptions {
+            diagram_id: Some("sequence-debug-inline".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    );
+
+    assert!(
+        svg.contains(r#"id="sequence-debug-inline-arrowhead""#),
+        "expected scoped sequence debug marker id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"marker-end="url(#sequence-debug-inline-arrowhead)""#),
+        "expected scoped sequence debug marker reference: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="arrowhead""#),
+        "expected no bare sequence debug marker id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"marker-end="url(#arrowhead)""#),
+        "expected no bare sequence debug marker reference: {svg}"
+    );
+}
+
+#[test]
 fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
     let path = workspace_root()
         .join("fixtures")
