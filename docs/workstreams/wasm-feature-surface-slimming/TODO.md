@@ -102,7 +102,11 @@ Last updated: 2026-06-10
   Validation: `cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown`
   for each preset; npm TypeScript build/smoke if package wrappers change.
   Review: Browser package may keep wasm-bindgen; the API must label it as browser/JS WASM.
-  Evidence: size/import table in package-surface docs.
+  Evidence: initial `xtask wasm-size-matrix` landed to build and report raw/stripped sizes for
+  browser and Typst presets separately. `docs/release/PACKAGE_SURFACES.md` and
+  `crates/merman-wasm/README.md` now label `merman-wasm` as the browser/wasm-bindgen surface.
+  Remaining work: use the matrix to decide public browser package variants and wire the
+  TypeScript/npm wrapper changes.
 
 - [ ] WFS-100 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-typst,docs/release,docs/bindings]
   Goal: Add an experimental Typst/wasm-minimal-protocol transport or probe crate with no

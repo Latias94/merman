@@ -390,6 +390,33 @@ cargo nextest run -p merman-core --no-default-features registry
 cargo nextest run -p merman-bindings-core metadata
 ```
 
+### WFS-090 WASM Size Matrix
+
+Change:
+
+- added `cargo run -p xtask -- wasm-size-matrix` to build and measure named browser and Typst
+  feature presets;
+- browser presets are `browser-core`, `browser-render`, `browser-ascii`, `browser-full`, and
+  `browser-ratex-math`;
+- Typst presets are `typst-bridge`, `typst-render`, `typst-core-full`, and `typst-ratex-math`;
+- each row reports raw artifact bytes and stripped bytes from a stripped copy under
+  `target/wasm-size-matrix/`, leaving the build artifact in place;
+- `docs/release/PACKAGE_SURFACES.md` and `crates/merman-wasm/README.md` now explicitly label
+  `merman-wasm` as the browser/wasm-bindgen surface, separate from Typst/pure wasm.
+
+Validation:
+
+```bash
+cargo nextest run -p xtask wasm_size_matrix
+cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge --no-strip
+cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge
+```
+
+Observed `typst-bridge` result:
+
+- raw bytes: 47,287;
+- stripped bytes: 33,412.
+
 ## Gates
 
 ### Always-Preserve Gates

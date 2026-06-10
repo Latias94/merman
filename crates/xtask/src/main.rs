@@ -39,6 +39,8 @@ enum XtaskError {
     VerifyFailed(String),
     #[error("profile budget check failed:\n{0}")]
     ProfileBudgetFailed(String),
+    #[error("WASM size matrix failed:\n{0}")]
+    WasmSizeMatrixFailed(String),
     #[error("Typst package build failed:\n{0}")]
     TypstPackageFailed(String),
     #[error("snapshot update failed: {0}")]
@@ -74,6 +76,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-dompurify-defaults");
     println!("  check-alignment");
     println!("  profile-budget");
+    println!("  wasm-size-matrix");
     println!("  build-typst-package");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
@@ -167,6 +170,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
+        "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
         "build-typst-package" => cmd::build_typst_package(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),

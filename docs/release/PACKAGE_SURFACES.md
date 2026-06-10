@@ -1,7 +1,7 @@
 # Package Surfaces
 
 Status: draft release planning notes.
-Last updated: 2026-06-06
+Last updated: 2026-06-10
 
 This document records merman package surfaces, current readiness, and the CI gates that should
 protect them before any registry publication is enabled.
@@ -16,7 +16,8 @@ protect them before any registry publication is enabled.
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
-| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Package metadata and release workflow are present. The npm package exists; subsequent releases use npm Trusted Publishing/provenance once the trusted publisher is configured. |
+| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. This is not the Typst/pure-wasm surface. Package metadata and release workflow are present. The npm package exists; subsequent releases use npm Trusted Publishing/provenance once the trusted publisher is configured. |
+| Typst WASM | `merman` Typst package | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. Initial package publication is tracked outside npm/crates release automation. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
 
@@ -46,3 +47,16 @@ Release preflight is manual and publish-free. Crates and cargo-dist remain tag-d
 preflight passes. Platform publishing is manual so a fixed workflow on `main` can build and upload
 assets for an existing release tag without moving that tag. Registry credentials still need to be
 configured per surface before the corresponding workflow can publish.
+
+## WASM Size Matrix
+
+Use the xtask size matrix before changing WASM feature presets:
+
+```bash
+cargo run -p xtask -- wasm-size-matrix --surface browser
+cargo run -p xtask -- wasm-size-matrix --surface typst
+```
+
+The command builds `wasm-size` artifacts and prints raw and stripped bytes for named presets. It
+keeps browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes
+do not accidentally compare unlike surfaces.

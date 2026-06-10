@@ -9,6 +9,9 @@ helpers with the same options JSON contract used by the native bindings.
 Metadata helpers include Mermaid core themes and separate host/editor theme presets for
 `host_theme.preset`.
 
+This crate is intentionally a browser/JS WebAssembly surface. It uses wasm-bindgen and browser
+imports; it is not the Typst or pure `wasm32-unknown-unknown` package surface.
+
 Most browser and TypeScript applications should install `@mermanjs/web` rather than depending on this
 crate directly:
 
@@ -30,6 +33,12 @@ The checked-in TypeScript wrapper builds this crate into `platforms/web/pkg`:
 ```sh
 npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
+```
+
+For feature-preset size measurements, use:
+
+```sh
+cargo run -p xtask -- wasm-size-matrix --surface browser
 ```
 
 For product scope, diagram coverage, and compatibility policy, see the

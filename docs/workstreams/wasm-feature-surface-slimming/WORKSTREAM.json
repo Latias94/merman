@@ -66,6 +66,11 @@
       "kind": "registry_evidence",
       "path": "crates/merman-core/src/family.rs",
       "note": "WFS-080 made detector, semantic parser, typed render parser, and supported metadata projections profile-aware from BaselineRegistryProfile; tiny/no-default excludes mindmap, architecture, and flowchart-elk parser/render registrations."
+    },
+    {
+      "kind": "size_evidence",
+      "path": "crates/xtask/src/cmd/wasm_size_matrix.rs",
+      "note": "WFS-090 started with `xtask wasm-size-matrix`, which builds browser and Typst feature presets separately and reports raw plus stripped wasm bytes without conflating wasm-bindgen browser packages with Typst/pure-wasm packages."
     }
   ]
 }

@@ -14,6 +14,7 @@ pub(crate) mod snapshots;
 pub(crate) mod typst_package;
 pub(crate) mod upstream_svg_policy;
 pub(crate) mod verify;
+pub(crate) mod wasm_size_matrix;
 
 pub(crate) use admission::*;
 pub(crate) use audit::*;
@@ -31,3 +32,4 @@ pub(crate) use snapshots::*;
 pub(crate) use typst_package::*;
 pub(crate) use upstream_svg_policy::*;
 pub(crate) use verify::*;
+pub(crate) use wasm_size_matrix::*;
