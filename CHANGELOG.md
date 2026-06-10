@@ -6,7 +6,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-- Slimmed the default Typst render WASM by gating architecture and mindmap parity code behind `core-full`; the current `typst-render` artifact measures 6,445,189 bytes raw, 4,990,451 stripped, 1,486,500 gzip, and 1,078,513 brotli.
+- Added an opt-in `cytoscape-layout` seam for Architecture and Mindmap. Use it when you need those families; leave it off for size-sensitive browser or Typst builds that do not need them and want a lighter dependency graph. On the current wasm-size matrix, `browser-render` is about 5.0 MiB stripped / 1.1 MiB brotli, `typst-render` is about 4.8 MiB stripped / 1.0 MiB brotli, `browser-full` is about 6.4 MiB stripped / 1.4 MiB brotli, and `typst-core-full` is about 6.0 MiB stripped / 1.4 MiB brotli.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

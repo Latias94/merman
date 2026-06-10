@@ -173,7 +173,7 @@ pub(super) fn info_css_with_config(
     out
 }
 
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub(super) fn architecture_css_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -831,18 +831,21 @@ mod tests {
             r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
         ));
 
-        let architecture = architecture_css_with_config("diag", &cfg);
-        assert_fragments_in_order(
-            &architecture,
-            &[
-                &base_fragments[..],
-                &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
-            ]
-            .concat(),
-        );
-        assert!(architecture.ends_with(
-            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
-        ));
+        #[cfg(feature = "cytoscape-layout")]
+        {
+            let architecture = architecture_css_with_config("diag", &cfg);
+            assert_fragments_in_order(
+                &architecture,
+                &[
+                    &base_fragments[..],
+                    &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
+                ]
+                .concat(),
+            );
+            assert!(architecture.ends_with(
+                r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+            ));
+        }
 
         let er = er_css("diag", &cfg);
         assert_fragments_in_order(
@@ -858,6 +861,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "cytoscape-layout")]
     #[test]
     fn architecture_css_with_config_honors_font_and_theme_colors() {
         let cfg = serde_json::json!({
@@ -890,6 +894,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "cytoscape-layout")]
     #[test]
     fn architecture_css_prefers_theme_font_family_over_legacy_root() {
         let cfg = serde_json::json!({

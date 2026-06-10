@@ -20,8 +20,9 @@ exclude = [
 
 [features]
 default = ["core-full"]
-core-full = ["merman-core/full"]
+core-full = ["merman-core/full", "cytoscape-layout"]
 host = ["chrono/clock", "merman-core/host", "roughr/host-random"]
+cytoscape-layout = ["dep:manatee"]
 ratex-math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
@@ -36,7 +37,7 @@ base64.workspace = true
 chrono.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
-manatee.workspace = true
+manatee = { workspace = true, optional = true }
 merman-core.workspace = true
 pulldown-cmark.workspace = true
 ratex-layout = { workspace = true, optional = true }

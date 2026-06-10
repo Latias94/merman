@@ -14,7 +14,7 @@ use base64::Engine as _;
 use indexmap::IndexMap;
 use std::fmt::Write as _;
 
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 mod architecture;
 mod block;
 mod c4;
@@ -33,7 +33,7 @@ mod ishikawa;
 mod journey;
 mod kanban;
 mod layout_debug;
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 mod mindmap;
 mod packet;
 mod path_bounds;
@@ -61,7 +61,7 @@ use css::{
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::svg_path_bounds_from_d;
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
@@ -186,19 +186,19 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::RequirementDiagram(layout) => {
             render_requirement_diagram_svg(layout, semantic, effective_config, title, options)
         }
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             render_architecture_diagram_svg(layout, semantic, effective_config, options)
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
             diagram_type: "architecture".to_string(),
         }),
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::MindmapDiagram(layout) => {
             render_mindmap_diagram_svg(layout, semantic, effective_config, options)
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
             diagram_type: "mindmap".to_string(),
         }),
@@ -340,7 +340,7 @@ fn render_layout_svg_parts_with_config_raw(
         LayoutDiagram::RequirementDiagram(layout) => {
             render_requirement_diagram_svg(layout, semantic, effective_config_value, title, options)
         }
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             architecture::render_architecture_diagram_svg_with_config(
                 layout,
@@ -349,15 +349,15 @@ fn render_layout_svg_parts_with_config_raw(
                 options,
             )
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
             diagram_type: "architecture".to_string(),
         }),
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::MindmapDiagram(layout) => {
             render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
             diagram_type: "mindmap".to_string(),
         }),
@@ -514,7 +514,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
                 layout,
@@ -523,7 +523,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         (LayoutDiagram::ArchitectureDiagram(_), RenderSemanticModel::Architecture(_)) => {
             Err(Error::UnsupportedDiagram {
                 diagram_type: "architecture".to_string(),
@@ -539,7 +539,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
                 layout,
@@ -548,7 +548,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         (LayoutDiagram::MindmapDiagram(_), RenderSemanticModel::Mindmap(_)) => {
             Err(Error::UnsupportedDiagram {
                 diagram_type: "mindmap".to_string(),
@@ -1065,11 +1065,11 @@ pub fn render_mindmap_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[cfg(feature = "core-full")]
+    #[cfg(feature = "cytoscape-layout")]
     {
         return mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options);
     }
-    #[cfg(not(feature = "core-full"))]
+    #[cfg(not(feature = "cytoscape-layout"))]
     {
         let _ = (layout, semantic, _effective_config, options);
         Err(Error::UnsupportedDiagram {
@@ -1084,7 +1084,7 @@ pub fn render_mindmap_diagram_svg_with_config(
     effective_config: &merman_core::MermaidConfig,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[cfg(feature = "core-full")]
+    #[cfg(feature = "cytoscape-layout")]
     {
         return mindmap::render_mindmap_diagram_svg_with_config(
             layout,
@@ -1093,7 +1093,7 @@ pub fn render_mindmap_diagram_svg_with_config(
             options,
         );
     }
-    #[cfg(not(feature = "core-full"))]
+    #[cfg(not(feature = "cytoscape-layout"))]
     {
         let _ = (layout, semantic, effective_config, options);
         Err(Error::UnsupportedDiagram {
@@ -1108,7 +1108,7 @@ pub fn render_architecture_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[cfg(feature = "core-full")]
+    #[cfg(feature = "cytoscape-layout")]
     {
         return architecture::render_architecture_diagram_svg(
             layout,
@@ -1117,7 +1117,7 @@ pub fn render_architecture_diagram_svg(
             options,
         );
     }
-    #[cfg(not(feature = "core-full"))]
+    #[cfg(not(feature = "cytoscape-layout"))]
     {
         let _ = (layout, semantic, effective_config, options);
         Err(Error::UnsupportedDiagram {

@@ -11,8 +11,10 @@
 `merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes `merman-core` parse results and produces layout JSON or Mermaid-like SVG.
 
 The default build stays host-agnostic while keeping Mermaid-compatible full configuration and
-sanitizer behavior through `core-full`. Disable default features for Typst and other size-sensitive
-pure-wasm consumers. Enable the `host` feature when you want host clock access, host-seeded timing,
+sanitizer behavior through `core-full`. `core-full` also enables `cytoscape-layout`, the shared
+Architecture and Mindmap layout seam backed by `manatee`. Disable default features for Typst and
+other size-sensitive pure-wasm consumers, then opt into `cytoscape-layout` only when those diagram
+families are needed. Enable the `host` feature when you want host clock access, host-seeded timing,
 and host randomness for diagnostic or browser-oriented builds.
 
 Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use `merman-render` directly when you need lower-level control over layout, text measurement, SVG options, or SVG postprocessing.

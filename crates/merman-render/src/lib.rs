@@ -8,9 +8,9 @@
 
 extern crate self as web_time;
 
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub mod architecture;
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub(crate) mod architecture_metrics;
 pub mod block;
 pub mod c4;
@@ -33,7 +33,7 @@ mod json;
 pub mod kanban;
 pub mod math;
 mod mermaid_style;
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub mod mindmap;
 pub mod model;
 pub mod packet;
@@ -180,7 +180,7 @@ pub fn layout_parsed_render_layout_only(
     }
 
     match &parsed.model {
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         RenderSemanticModel::Mindmap(model) => Ok(LayoutDiagram::MindmapDiagram(Box::new(
             mindmap::layout_mindmap_diagram_typed(
                 model,
@@ -189,11 +189,11 @@ pub fn layout_parsed_render_layout_only(
                 options.use_manatee_layout,
             )?,
         ))),
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         RenderSemanticModel::Mindmap(_) => Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }),
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         RenderSemanticModel::Architecture(model) => Ok(LayoutDiagram::ArchitectureDiagram(
             Box::new(architecture::layout_architecture_diagram_typed(
                 model,
@@ -202,7 +202,7 @@ pub fn layout_parsed_render_layout_only(
                 options.use_manatee_layout,
             )?),
         )),
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         RenderSemanticModel::Architecture(_) => Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }),
@@ -409,7 +409,7 @@ fn layout_json_by_type(
                 options.text_measurer.as_ref(),
             )?,
         ))),
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         "architecture" => Ok(LayoutDiagram::ArchitectureDiagram(Box::new(
             architecture::layout_architecture_diagram(
                 semantic,
@@ -418,7 +418,7 @@ fn layout_json_by_type(
                 options.use_manatee_layout,
             )?,
         ))),
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         "architecture" => Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }),
@@ -560,7 +560,7 @@ fn layout_json_by_type(
                 options.text_measurer.as_ref(),
             )?,
         ))),
-        #[cfg(feature = "core-full")]
+        #[cfg(feature = "cytoscape-layout")]
         "mindmap" => Ok(LayoutDiagram::MindmapDiagram(Box::new(
             mindmap::layout_mindmap_diagram(
                 semantic,
@@ -569,7 +569,7 @@ fn layout_json_by_type(
                 options.use_manatee_layout,
             )?,
         ))),
-        #[cfg(not(feature = "core-full"))]
+        #[cfg(not(feature = "cytoscape-layout"))]
         "mindmap" => Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         }),
@@ -612,6 +612,7 @@ mod tests {
     use super::*;
     use merman_core::{Engine, ParseOptions};
 
+    #[cfg(feature = "core-full")]
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
         let parsed = Engine::new()

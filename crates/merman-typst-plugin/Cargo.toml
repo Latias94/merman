@@ -21,6 +21,7 @@ default = ["render"]
 core-full = ["merman-bindings-core/core-full"]
 core-host = ["merman-bindings-core/core-host"]
 render = ["merman-bindings-core/render"]
+cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
 ratex-math = ["render", "merman-bindings-core/ratex-math"]
 
 [dependencies]

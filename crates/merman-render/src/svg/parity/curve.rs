@@ -482,7 +482,7 @@ fn curve_basis_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBui
     out
 }
 
-#[cfg(feature = "core-full")]
+#[cfg(feature = "cytoscape-layout")]
 pub(super) fn curve_linear_path_d(points: &[LayoutPoint]) -> String {
     curve_linear_path_d_impl(points, None)
 }

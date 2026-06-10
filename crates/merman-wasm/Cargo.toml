@@ -22,6 +22,7 @@ core-full = ["merman-bindings-core/core-full"]
 core-host = ["merman-bindings-core/core-host"]
 ascii = ["merman-bindings-core/ascii"]
 render = ["merman-bindings-core/render"]
+cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
 ratex-math = ["render", "merman-bindings-core/ratex-math"]
 
 [dependencies]
