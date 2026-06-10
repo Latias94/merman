@@ -37,7 +37,7 @@ repository = "https://github.com/Latias94/merman"
 
 [features]
 default = ["host-random"]
-host-random = ["dep:rand", "getrandom?/js"]
+host-random = ["dep:rand", "dep:getrandom", "getrandom/js"]
 
 [lib]
 name = "roughr"
