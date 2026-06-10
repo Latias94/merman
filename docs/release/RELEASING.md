@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -127,12 +127,28 @@ cd platforms/web
 npm ci
 npm run build
 npm run smoke
+npm run prepack
 npm pack --dry-run
 npm publish --access public
 ```
 
 Normal web releases should use `release-web.yml` instead of local `npm publish` once npm Trusted
 Publishing is configured for `@mermanjs/web`.
+
+Before changing browser WASM presets or Typst package artifacts, also run the surface-specific
+gates:
+
+```bash
+cargo run -p xtask -- wasm-size-matrix --surface browser
+cargo run -p xtask -- wasm-size-matrix --surface typst
+cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
+cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+```
+
+`@mermanjs/web` publishes the `browser-full` artifact under the default import path. The slim
+browser presets are source-build presets, not public npm package variants. `merman-typst-plugin` is
+the Typst-compatible transport and must remain separate from browser/wasm-bindgen artifacts.
 
 ## Tag And Push
 

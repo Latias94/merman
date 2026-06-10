@@ -20,7 +20,7 @@
       "path": "docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md"
     }
   ],
-  "current_task": "WFS-110",
+  "current_task": "WFS-120",
   "gates": [
     "cargo tree -p merman-core --target wasm32-unknown-unknown -e normal",
     "cargo tree -p merman-wasm --target wasm32-unknown-unknown -e features",
@@ -82,6 +82,11 @@
       "kind": "task_evidence",
       "path": "crates/merman-typst-plugin",
       "note": "WFS-100 validated the existing wasm-minimal-protocol Typst plugin transport. The default render artifact imports only the two `typst_env` protocol functions, exports `memory` plus plugin functions, and passes `xtask typst-plugin-smoke` through a wasmi host call returning SVG JSON."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "docs/adr/0069-wasm-package-surface-semantics.md",
+      "note": "WFS-110 recorded release semantics: `@mermanjs/web` remains one npm package publishing `browser-full`; browser slim artifacts remain source-build presets; `merman-wasm` is browser/wasm-bindgen only; `merman-typst-plugin` owns Typst-compatible wasm-minimal-protocol builds and gates."
     }
   ]
 }

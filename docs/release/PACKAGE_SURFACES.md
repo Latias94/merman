@@ -68,6 +68,34 @@ capabilities after initialization.
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package. This protects
 the public npm package from accidentally publishing a slim artifact under the default import path.
 
+## Compatibility And Migration Notes
+
+Current release semantics are intentionally conservative:
+
+- Rust, CLI, native bindings, and browser package defaults remain compatibility-oriented. No default
+  feature behavior changed for normal Rust or browser consumers.
+- `@mermanjs/web` keeps the existing default import path and publishes `browser-full`. Slim browser
+  presets are source-build presets only; they are not npm subpackages or package export paths.
+- `bindingCapabilities()` reports the active browser artifact's compiled capabilities. Consumers
+  that load an older artifact without this export should treat it as the historical full browser
+  artifact.
+- `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
+  artifact is Typst-compatible or pure-WASM compatible.
+- `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render;
+  `--no-default-features` builds the protocol bridge only. Typst package builds should keep
+  `core-host` disabled.
+- A future public slim browser package, npm export path, or changed default artifact needs a new
+  migration note and release decision.
+
+## Release Gates By Surface
+
+| Surface | Required local gate before release changes |
+| --- | --- |
+| Browser full npm default | `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
+| Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
+| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --surface browser`; `cargo run -p xtask -- wasm-size-matrix --surface typst` |
+| Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm` |
+
 ## WASM Size Matrix
 
 Use the xtask size matrix before changing WASM feature presets:

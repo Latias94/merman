@@ -473,6 +473,33 @@ Observed default render artifact:
 - smoke: `render_svg_json` returned 10,442 JSON bytes with a 9,875-byte SVG payload for a flowchart
   fixture.
 
+### WFS-110 Release And Compatibility Semantics
+
+Change:
+
+- added ADR-0069 to freeze WASM package surface semantics and alternatives;
+- updated package-surface release notes with compatibility/migration rules and surface-specific
+  gates;
+- updated the release operator guide with browser preset and Typst transport checks;
+- updated README entry points, feature-surface summary, workspace crate table, and links.
+
+Decision summary:
+
+- `@mermanjs/web` stays one npm package and publishes `browser-full` by default.
+- Browser slim presets remain source-build presets, not public npm package variants.
+- `merman-wasm` is browser/wasm-bindgen only.
+- `merman-typst-plugin` owns Typst-compatible wasm-minimal-protocol transport.
+- Rust/native defaults remain compatibility-oriented; constrained hosts opt into no-default
+  profiles intentionally.
+
+Validation:
+
+```bash
+jq . docs/workstreams/wasm-feature-surface-slimming/WORKSTREAM.json
+cargo fmt --all --check
+git diff --check
+```
+
 ## Gates
 
 ### Always-Preserve Gates

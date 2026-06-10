@@ -134,12 +134,16 @@ Last updated: 2026-06-10
 
 ## M4 -- Release And Compatibility
 
-- [ ] WFS-110 [owner=planner] [deps=WFS-090,WFS-100] [scope=docs/adr,docs/release,README.md]
+- [x] WFS-110 [owner=planner] [deps=WFS-090,WFS-100] [scope=docs/adr,docs/release,README.md]
   Goal: Record public package semantics, feature defaults, migration notes, and release gating.
   Validation: docs diff check; package surface docs include browser and Typst/pure wasm as distinct
   entries.
   Review: Any changed default feature behavior must have an ADR.
-  Evidence: release docs and ADR updates.
+  Evidence: ADR-0069 records the browser/Typst WASM surface decision, alternatives, risks, and
+  success metrics. `docs/release/PACKAGE_SURFACES.md` now includes compatibility/migration notes
+  and surface-specific release gates. `docs/release/RELEASING.md` records web preset and Typst
+  transport release checks. README lists `merman-typst-plugin` and clarifies that `@mermanjs/web`
+  publishes `browser-full` while slim browser presets are source-build presets.
 
 - [ ] WFS-120 [owner=codex] [deps=WFS-110] [scope=workspace]
   Goal: Final verification and closeout.
