@@ -22,11 +22,6 @@ fn parse_indented_headers_across_common_diagrams() {
         ("     flowchart TB\n     A-->B\n", "flowchart-v2"),
         ("     sequenceDiagram\n     Alice->>Bob: hi\n", "sequence"),
         ("     stateDiagram-v2\n     [*] --> A\n", "stateDiagram"),
-        ("     mindmap\n       root\n", "mindmap"),
-        (
-            "     architecture-beta\n       service db\n",
-            "architecture",
-        ),
         (
             "     requirementDiagram\n\n     requirement test_req {\n       id: test_id\n       text: the test text.\n       risk: high\n       verifymethod: analysis\n     }\n",
             "requirement",
@@ -53,6 +48,21 @@ fn parse_indented_headers_across_common_diagrams() {
     ];
 
     for (text, expected_type) in cases {
+        let meta = engine
+            .parse_metadata_sync(text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
+    }
+
+    #[cfg(feature = "full")]
+    for (text, expected_type) in [
+        ("     mindmap\n       root\n", "mindmap"),
+        (
+            "     architecture-beta\n       service db\n",
+            "architecture",
+        ),
+    ] {
         let meta = engine
             .parse_metadata_sync(text, ParseOptions::strict())
             .unwrap()
@@ -288,6 +298,7 @@ graph TD;A-->B;
 }
 
 #[test]
+#[cfg(feature = "full")]
 fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata(
@@ -376,12 +387,29 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
                 ("treemap", "treemap", "treemap\n\"A\": 1\n"),
                 ("sankey", "sankey", "sankey\nA,B,1\n"),
                 ("c4", "c4", "C4Context\nPerson(a, \"A\")\n"),
-                (
-                    "architecture",
-                    "architecture",
-                    "architecture-beta\n  service a(server)[A]\n",
-                ),
             ] {
+                let parsed = engine
+                    .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
+                    .expect("parse succeeds")
+                    .expect("diagram detected");
+                let ParsedDiagram { model, .. } = parsed;
+
+                assert_eq!(
+                    deep_config_leaf(&model["config"], "retainedConfig", DEPTH)
+                        .and_then(Value::as_str),
+                    Some("#556677"),
+                    "retained config for {label}"
+                );
+
+                crate::config::drop_value_nonrecursive(model);
+            }
+
+            #[cfg(feature = "full")]
+            for (label, diagram_type, source) in [(
+                "architecture",
+                "architecture",
+                "architecture-beta\n  service a(server)[A]\n",
+            )] {
                 let parsed = engine
                     .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
                     .expect("parse succeeds")
@@ -433,6 +461,25 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
                     "requirement",
                     "requirementDiagram\nrequirement r {\n  id: R\n  text: \"T\"\n  risk: low\n  verifymethod: test\n}\n",
                 ),
+            ] {
+                let parsed = engine
+                    .parse_diagram_with_type_sync(diagram_type, source, ParseOptions::strict())
+                    .expect("parse succeeds")
+                    .expect("diagram detected");
+                let ParsedDiagram { model, .. } = parsed;
+
+                assert_eq!(
+                    deep_config_leaf(&model["config"], "retainedConfig", DEPTH)
+                        .and_then(Value::as_str),
+                    Some("#778899"),
+                    "retained config for {label}"
+                );
+
+                crate::config::drop_value_nonrecursive(model);
+            }
+
+            #[cfg(feature = "full")]
+            for (label, diagram_type, source) in [
                 ("mindmap", "mindmap", "mindmap\nroot\n child\n"),
                 ("mindmap-empty", "mindmap", "mindmap\n"),
             ] {
@@ -719,6 +766,7 @@ fn render_semantic_model_supports_diagram_type_aliases() {
 }
 
 #[test]
+#[cfg(feature = "full")]
 fn render_parser_registry_drives_typed_alias_parse() {
     let engine = Engine::new();
     assert!(

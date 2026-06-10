@@ -1,7 +1,7 @@
 # WASM Feature Surface Slimming -- TODO
 
 Status: Open
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 ## M0 -- Evidence And Contract Freeze
 
@@ -78,12 +78,21 @@ Last updated: 2026-06-09
   pure-wasm and typst-wasm dependency budget gates reject `serde_yaml`, `json5`, `lol_html`, `url`,
   and JS/host crates.
 
-- [ ] WFS-080 [owner=codex] [deps=WFS-030,WFS-040,WFS-060] [scope=crates/merman-core/src/family.rs,crates/merman-core/src/diagram]
+- [x] WFS-080 [owner=codex] [deps=WFS-030,WFS-040,WFS-060] [scope=crates/merman-core/src/family.rs,crates/merman-core/src/diagram]
   Goal: Make diagram family facts project profile-specific detector/parser/render registrations.
   Validation: default/full registry tests; tiny/minimal registry tests; supported diagram metadata
   tests through bindings.
   Review: Keep feature decisions centralized; avoid scattering `cfg` checks in adapters.
-  Evidence: family profile tests and supported diagram projections.
+  Evidence: `family.rs` now projects semantic parser facts, typed render parser facts, and
+  supported diagram metadata from `BaselineRegistryProfile`. Tiny/no-default excludes the
+  full-only large-feature registrations (`mindmap`, `architecture`, `flowchart-elk`) while keeping
+  common flowchart/parser aliases. Validation:
+  `cargo fmt --check -p merman-core`;
+  `cargo check -p merman-core`;
+  `cargo check -p merman-core --no-default-features --target wasm32-unknown-unknown`;
+  `cargo nextest run -p merman-core registry`;
+  `cargo nextest run -p merman-core --no-default-features registry`;
+  `cargo nextest run -p merman-bindings-core metadata`.
 
 ## M3 -- WASM Package Surfaces
 

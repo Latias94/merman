@@ -74,44 +74,131 @@ pub(crate) fn fast_detect_by_leading_keyword(
     })
 }
 
-pub(crate) fn semantic_parser_facts() -> &'static [SemanticParserFact] {
-    SEMANTIC_PARSER_FACTS
+pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
+    #[cfg(feature = "full")]
+    {
+        BaselineRegistryProfile::Full
+    }
+    #[cfg(not(feature = "full"))]
+    {
+        BaselineRegistryProfile::Tiny
+    }
 }
 
-pub(crate) fn render_parser_facts() -> &'static [RenderParserFact] {
-    RENDER_PARSER_FACTS
+pub(crate) fn semantic_parser_facts(
+    profile: BaselineRegistryProfile,
+) -> &'static [SemanticParserFact] {
+    match profile {
+        BaselineRegistryProfile::Tiny => semantic_parser_facts_tiny(),
+        BaselineRegistryProfile::Full => SEMANTIC_PARSER_FACTS,
+    }
 }
 
-pub(crate) fn supported_diagram_facts() -> &'static [SupportedDiagramFact] {
-    static FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
+pub(crate) fn render_parser_facts(profile: BaselineRegistryProfile) -> &'static [RenderParserFact] {
+    match profile {
+        BaselineRegistryProfile::Tiny => render_parser_facts_tiny(),
+        BaselineRegistryProfile::Full => RENDER_PARSER_FACTS,
+    }
+}
+
+pub(crate) fn supported_diagram_facts(
+    profile: BaselineRegistryProfile,
+) -> &'static [SupportedDiagramFact] {
+    fn build(profile: BaselineRegistryProfile) -> Vec<SupportedDiagramFact> {
+        let render_facts = render_parser_facts(profile);
+        SUPPORTED_DIAGRAM_METADATA_IDS
+            .iter()
+            .filter_map(|metadata_id| {
+                let render_parser_ids: Vec<_> = render_facts
+                    .iter()
+                    .filter_map(|fact| (fact.metadata_id == Some(*metadata_id)).then_some(fact.id))
+                    .collect();
+
+                (!render_parser_ids.is_empty()).then_some(SupportedDiagramFact {
+                    metadata_id,
+                    render_parser_ids,
+                })
+            })
+            .collect()
+    }
+
+    static TINY_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
+    static FULL_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
+
+    match profile {
+        BaselineRegistryProfile::Tiny => TINY_FACTS
+            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
+            .as_slice(),
+        BaselineRegistryProfile::Full => FULL_FACTS
+            .get_or_init(|| build(BaselineRegistryProfile::Full))
+            .as_slice(),
+    }
+}
+
+pub(crate) fn supported_diagram_metadata_ids(
+    profile: BaselineRegistryProfile,
+) -> &'static [&'static str] {
+    fn build(profile: BaselineRegistryProfile) -> Vec<&'static str> {
+        supported_diagram_facts(profile)
+            .iter()
+            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
+            .map(|fact| fact.metadata_id)
+            .collect()
+    }
+
+    static TINY_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
+    static FULL_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
+
+    match profile {
+        BaselineRegistryProfile::Tiny => TINY_IDS
+            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
+            .as_slice(),
+        BaselineRegistryProfile::Full => FULL_IDS
+            .get_or_init(|| build(BaselineRegistryProfile::Full))
+            .as_slice(),
+    }
+}
+
+fn semantic_parser_facts_tiny() -> &'static [SemanticParserFact] {
+    static FACTS: OnceLock<Vec<SemanticParserFact>> = OnceLock::new();
     FACTS
         .get_or_init(|| {
-            SUPPORTED_DIAGRAM_METADATA_IDS
+            SEMANTIC_PARSER_FACTS
                 .iter()
-                .map(|metadata_id| SupportedDiagramFact {
-                    metadata_id,
-                    render_parser_ids: RENDER_PARSER_FACTS
-                        .iter()
-                        .filter_map(|fact| {
-                            (fact.metadata_id == Some(*metadata_id)).then_some(fact.id)
-                        })
-                        .collect(),
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
                 })
                 .collect()
         })
         .as_slice()
 }
 
-pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
-    static IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-    IDS.get_or_init(|| {
-        supported_diagram_facts()
-            .iter()
-            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
-            .map(|fact| fact.metadata_id)
-            .collect()
-    })
-    .as_slice()
+fn render_parser_facts_tiny() -> &'static [RenderParserFact] {
+    static FACTS: OnceLock<Vec<RenderParserFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            RENDER_PARSER_FACTS
+                .iter()
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+fn diagram_type_supported_in_profile(
+    profile: BaselineRegistryProfile,
+    diagram_type: &'static str,
+) -> bool {
+    match profile {
+        BaselineRegistryProfile::Full => true,
+        BaselineRegistryProfile::Tiny => {
+            !matches!(diagram_type, "architecture" | "flowchart-elk" | "mindmap")
+        }
+    }
 }
 
 pub(crate) fn render_model_kind_supports_diagram_type(
@@ -123,9 +210,12 @@ pub(crate) fn render_model_kind_supports_diagram_type(
         .any(|fact| fact.model_kind == model_kind && fact.id == diagram_type)
 }
 
-pub(crate) fn permits_json_render_fallback(diagram_type: &str) -> bool {
+pub(crate) fn permits_json_render_fallback(
+    profile: BaselineRegistryProfile,
+    diagram_type: &str,
+) -> bool {
     diagram_type == "error"
-        || !SEMANTIC_PARSER_FACTS
+        || !semantic_parser_facts(profile)
             .iter()
             .any(|fact| fact.id == diagram_type)
 }

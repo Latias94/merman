@@ -43,29 +43,60 @@ fn fast_detector_respects_family_feature_profile() {
 
 #[test]
 fn parser_registries_follow_family_fact_projection() {
-    let semantic = DiagramRegistry::for_pinned_mermaid_baseline();
-    let semantic_actual = sorted_set(semantic.parser_ids());
-    let semantic_expected = sorted_set(
-        crate::family::semantic_parser_facts()
-            .iter()
-            .map(|fact| fact.id),
-    );
-    assert_eq!(semantic_actual, semantic_expected);
+    for (profile, semantic, render) in [
+        (
+            BaselineRegistryProfile::Full,
+            DiagramRegistry::pinned_mermaid_baseline_full(),
+            RenderDiagramRegistry::pinned_mermaid_baseline_full(),
+        ),
+        (
+            BaselineRegistryProfile::Tiny,
+            DiagramRegistry::pinned_mermaid_baseline_tiny(),
+            RenderDiagramRegistry::pinned_mermaid_baseline_tiny(),
+        ),
+    ] {
+        let semantic_actual = sorted_set(semantic.parser_ids());
+        let semantic_expected = sorted_set(
+            crate::family::semantic_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        assert_eq!(semantic_actual, semantic_expected, "{profile:?}");
 
-    let render = RenderDiagramRegistry::for_pinned_mermaid_baseline();
-    let render_actual = sorted_set(render.parser_ids());
-    let render_expected = sorted_set(
-        crate::family::render_parser_facts()
-            .iter()
-            .map(|fact| fact.id),
+        let render_actual = sorted_set(render.parser_ids());
+        let render_expected = sorted_set(
+            crate::family::render_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        assert_eq!(render_actual, render_expected, "{profile:?}");
+    }
+}
+
+#[test]
+fn selected_supported_diagrams_follow_feature_profile() {
+    assert_eq!(
+        crate::supported_diagrams(),
+        crate::supported_diagrams_for_profile(crate::selected_baseline_registry_profile())
     );
-    assert_eq!(render_actual, render_expected);
+
+    #[cfg(feature = "full")]
+    assert_eq!(
+        crate::supported_diagrams(),
+        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full)
+    );
+
+    #[cfg(not(feature = "full"))]
+    assert_eq!(
+        crate::supported_diagrams(),
+        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny)
+    );
 }
 
 #[test]
 fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
     assert_eq!(
-        crate::supported_diagrams(),
+        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Full),
         &[
             "architecture",
             "block",
@@ -95,40 +126,125 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
         ]
     );
 
-    let render_ids = sorted_set(
-        crate::family::render_parser_facts()
-            .iter()
-            .map(|fact| fact.id),
+    assert_eq!(
+        crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny),
+        &[
+            "block",
+            "c4",
+            "class",
+            "er",
+            "flowchart",
+            "gantt",
+            "gitgraph",
+            "info",
+            "journey",
+            "kanban",
+            "packet",
+            "pie",
+            "quadrantchart",
+            "radar",
+            "requirement",
+            "sankey",
+            "sequence",
+            "state",
+            "timeline",
+            "treemap",
+            "venn",
+            "xychart",
+            "zenuml",
+        ]
     );
-    for fact in crate::family::supported_diagram_facts() {
-        for parser_id in &fact.render_parser_ids {
-            assert!(
-                render_ids.contains(parser_id),
-                "{} metadata points to missing render parser {parser_id}",
-                fact.metadata_id
-            );
+
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let render_ids = sorted_set(
+            crate::family::render_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        for fact in crate::family::supported_diagram_facts(profile) {
+            for parser_id in &fact.render_parser_ids {
+                assert!(
+                    render_ids.contains(parser_id),
+                    "{} metadata points to missing render parser {parser_id}",
+                    fact.metadata_id
+                );
+            }
         }
     }
 }
 
 #[test]
+fn tiny_parser_projection_excludes_full_only_large_features() {
+    let tiny_semantic = DiagramRegistry::pinned_mermaid_baseline_tiny();
+    assert!(tiny_semantic.get("mindmap").is_none());
+    assert!(tiny_semantic.get("architecture").is_none());
+    assert!(tiny_semantic.get("flowchart-elk").is_none());
+    assert!(tiny_semantic.get("flowchart-v2").is_some());
+    assert!(tiny_semantic.get("flowchart").is_some());
+
+    let tiny_render = RenderDiagramRegistry::pinned_mermaid_baseline_tiny();
+    assert!(tiny_render.get("mindmap").is_none());
+    assert!(tiny_render.get("architecture").is_none());
+    assert!(tiny_render.get("flowchart-elk").is_none());
+    assert!(tiny_render.get("flowchart-v2").is_some());
+    assert!(tiny_render.get("flowchart").is_some());
+}
+
+#[cfg(not(feature = "full"))]
+#[test]
+fn tiny_engine_rejects_full_only_known_type_parsers() {
+    let engine = crate::Engine::new();
+
+    for (expected_type, source) in [
+        ("mindmap", "mindmap\nroot\n"),
+        (
+            "architecture",
+            "architecture-beta\n  service a(server)[A]\n",
+        ),
+        ("flowchart-elk", "flowchart-elk TD\nA-->B;\n"),
+    ] {
+        let err = engine
+            .parse_diagram_with_type_sync(expected_type, source, crate::ParseOptions::strict())
+            .unwrap_err();
+        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
+            panic!("unexpected error for {expected_type}: {err}");
+        };
+        assert_eq!(diagram_type, expected_type);
+
+        let err = engine
+            .parse_diagram_for_render_model_with_type_sync(
+                expected_type,
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap_err();
+        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
+            panic!("unexpected render error for {expected_type}: {err}");
+        };
+        assert_eq!(diagram_type, expected_type);
+    }
+}
+
+#[test]
 fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
-    let render_ids = sorted_set(
-        crate::family::render_parser_facts()
-            .iter()
-            .map(|fact| fact.id),
-    );
-
-    for fact in crate::family::semantic_parser_facts() {
-        if fact.id == "error" {
-            continue;
-        }
-
-        assert!(
-            render_ids.contains(fact.id),
-            "built-in semantic parser {} must not rely on JSON render fallback",
-            fact.id
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let render_ids = sorted_set(
+            crate::family::render_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
         );
+
+        for fact in crate::family::semantic_parser_facts(profile) {
+            if fact.id == "error" {
+                continue;
+            }
+
+            assert!(
+                render_ids.contains(fact.id),
+                "built-in semantic parser {} must not rely on JSON render fallback in {profile:?}",
+                fact.id
+            );
+        }
     }
 }
 

@@ -46,7 +46,19 @@ pub fn supported_themes() -> &'static [&'static str] {
 
 /// Returns supported diagram metadata names for binding and host capability discovery.
 pub fn supported_diagrams() -> &'static [&'static str] {
-    family::supported_diagram_metadata_ids()
+    supported_diagrams_for_profile(selected_baseline_registry_profile())
+}
+
+/// Returns supported diagram metadata names for an explicit Mermaid registry profile.
+pub fn supported_diagrams_for_profile(
+    profile: baseline::BaselineRegistryProfile,
+) -> &'static [&'static str] {
+    family::supported_diagram_metadata_ids(profile)
+}
+
+/// Returns the Mermaid registry profile selected by this crate's enabled feature set.
+pub fn selected_baseline_registry_profile() -> baseline::BaselineRegistryProfile {
+    family::selected_registry_profile()
 }
 
 /// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
@@ -489,7 +501,9 @@ impl Engine {
             return parser(code, meta);
         }
 
-        if !family::permits_json_render_fallback(&meta.diagram_type) {
+        let registry_profile = self.render_diagram_registry.profile();
+        debug_assert_eq!(self.diagram_registry.profile(), registry_profile);
+        if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
             return Err(Error::DiagramParse {
                 diagram_type: meta.diagram_type.clone(),
                 message: format!(

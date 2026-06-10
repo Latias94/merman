@@ -1,7 +1,7 @@
 # WASM Feature Surface Slimming -- Evidence And Gates
 
 Status: Open
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 ## Current Evidence
 
@@ -296,6 +296,99 @@ Observed result:
   host-random, host-timing, or wasm-bindgen/browser crates;
 - default `merman-wasm` still builds for `wasm32-unknown-unknown`, preserving the browser
   wasm-bindgen package surface.
+
+### Typst Render WASM Size Baseline
+
+The Typst package size is dominated by `merman_typst_plugin.wasm`; non-wasm package files are only
+on the order of tens of kilobytes. Treat stripped wasm size and real code/data size as separate
+signals because custom metadata can dominate unstripped deltas.
+
+Observed stripped wasm sizes:
+
+| Typst feature profile | Stripped wasm bytes | Notes |
+| --- | ---: | --- |
+| `--no-default-features` | 33,412 | Bridge-only surface; proves wasm-minimal-protocol glue is small. |
+| default `render` | 5,414,863 | Current package default. |
+| `core-full` | 6,262,880 | About 848 KB above default render. |
+| `ratex-math` | 8,238,005 | About 2.82 MB above default render. |
+
+Default render section ownership snapshot:
+
+- `code`: about 4.50 MB;
+- `data`: about 0.89 MB;
+- custom `name`: about 1.61 MB before strip.
+
+Conclusion:
+
+- previous `wasm-tools strip --all` work mainly removed about 1.6 MB of metadata;
+- further meaningful reductions must target real `code`/`data` ownership, not only custom sections.
+
+### Typst Default Render Dependency Audit
+
+Confirmed outside the default Typst render wasm path:
+
+- `core-full`: `serde_yaml`, `json5`, `lol_html`, `url`;
+- `core-host`: `uuid`, `web-time`, `getrandom/js`, `chrono/clock`;
+- browser wrapper crates: `wasm-bindgen`, `serde-wasm-bindgen`, `console_error_panic_hook`,
+  `js-sys`;
+- raster/CLI crates: `image`, `resvg`, `usvg`, `tiny-skia`, `svg2pdf`, `png`, `clap`,
+  `reqwest`, `rayon`;
+- optional math and ASCII surfaces: `ratex-*`, `merman-ascii`;
+- `roughr-merman/host-random`.
+
+The real default render weight is concentrated in the render path:
+
+- `merman-core`;
+- `merman-render`;
+- `dugong`;
+- `manatee` and `nalgebra`;
+- `roughr-merman`;
+- `pulldown-cmark`;
+- `logos`, `lalrpop-util`, `regex`;
+- `chrono`, `serde_json`, `htmlize`, `base64`, `unicode-width`.
+
+Priority slimming candidates:
+
+1. `manatee -> nalgebra`: likely high reward, high risk. It backs architecture/mindmap COSE/FCoSE
+   layout and needs family/profile strategy, not a blind dependency deletion.
+2. `roughr-merman`: medium-risk candidate for making hand-drawn rendering opt-in.
+3. `pulldown-cmark`: potentially meaningful, but affects markdown/html labels and needs family
+   evidence before gating.
+4. generated static data: inspect generated font metric tables such as
+   `crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` because the default
+   stripped wasm still carries nearly 0.9 MB of data.
+
+`repo-ref/mermaid-rs-renderer` is useful as a module-boundary reference, not as a byte-size target.
+It has a different product scope and does not carry the same `dugong`/`manatee`/`roughr` parity
+chain.
+
+### WFS-080 Family Profile Projection
+
+Change:
+
+- `family.rs` now projects semantic parser facts, typed render parser facts, supported diagram
+  facts, and supported diagram metadata from `BaselineRegistryProfile`;
+- `DiagramRegistry` and `RenderDiagramRegistry` now expose full and tiny pinned-baseline
+  constructors and their feature-selected constructor follows the crate's `full` feature;
+- public `supported_diagrams()` now reports the current feature-selected profile, and
+  `supported_diagrams_for_profile(profile)` exposes explicit profile queries for tests and future
+  bindings;
+- tiny/no-default excludes the full-only large-feature registrations `mindmap`, `architecture`,
+  and `flowchart-elk`, while keeping ordinary flowchart aliases such as `flowchart-v2` and
+  `flowchart`;
+- tests that exercise full-only known-type parsing are now gated to the full profile, and
+  no-default tests assert those known-type parsers are unsupported.
+
+Validation:
+
+```bash
+cargo fmt --check -p merman-core
+cargo check -p merman-core
+cargo check -p merman-core --no-default-features --target wasm32-unknown-unknown
+cargo nextest run -p merman-core registry
+cargo nextest run -p merman-core --no-default-features registry
+cargo nextest run -p merman-bindings-core metadata
+```
 
 ## Gates
 

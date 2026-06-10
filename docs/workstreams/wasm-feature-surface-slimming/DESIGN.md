@@ -1,7 +1,7 @@
 # WASM Feature Surface Slimming
 
 Status: Open
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 ## Why This Lane Exists
 
@@ -29,6 +29,16 @@ browser/Node JS imports, and requires plugin functions to be pure and determinis
 - `cargo tree -p merman-core --target wasm32-unknown-unknown -e normal` shows direct core ownership
   of `chrono`, `uuid`, `web-time`, `lol_html`, `url`, `serde_yaml`, `json5`, and related transitive
   dependencies.
+- After the host/config/sanitization splits, the Typst bridge-only profile strips to 33,412 bytes,
+  while the default Typst render profile strips to 5,414,863 bytes. The remaining render weight is
+  real code/data, not only custom metadata.
+- The default Typst render path does not include browser, raster, host-random, math, ASCII, YAML,
+  JSON5, DOM sanitization, or URL canonicalization dependencies. The next high-impact candidates
+  are layout/render dependencies (`manatee`/`nalgebra`, `roughr-merman`, `pulldown-cmark`) and
+  generated static data such as font metrics.
+- `repo-ref/mermaid-rs-renderer` is a useful reference for package boundaries and feature slicing,
+  but it is not a byte-size target because it has a smaller product/parity scope and does not carry
+  this repository's `dugong`/`manatee`/`roughr` parity chain.
 
 ## Problem
 
@@ -94,6 +104,12 @@ Use existing domain structure where possible. The diagram family facts module is
 profile-specific registration because it already projects detector, parser, typed render parser,
 metadata, and fallback policy. It should learn profiles rather than forcing each adapter to know
 which families are safe.
+
+WFS-080 made this boundary concrete: detector, semantic parser, typed render parser, supported
+diagram facts, and supported metadata now project from the same `BaselineRegistryProfile`. The
+tiny/no-default profile excludes Mermaid's current full-only large-feature registrations
+(`mindmap`, `architecture`, `flowchart-elk`) from parser/render registries and metadata, while
+preserving normal flowchart aliases.
 
 Do not create a generic trait forest before the second adapter exists. Time and randomness already
 have multiple real adapters: native system, browser JS, deterministic test/probe, and Typst/pure

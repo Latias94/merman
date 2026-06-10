@@ -3,7 +3,7 @@
   "slug": "wasm-feature-surface-slimming",
   "title": "WASM Feature Surface Slimming",
   "status": "open",
-  "updated": "2026-06-09",
+  "updated": "2026-06-10",
   "scope_kind": "architecture_lane",
   "problem": "Merman's current core and browser-WASM dependency surfaces are too broad for non-JS WebAssembly hosts such as Typst plugins.",
   "authoritative_docs": [
@@ -20,7 +20,7 @@
       "path": "docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md"
     }
   ],
-  "current_task": "WFS-080",
+  "current_task": "WFS-090",
   "gates": [
     "cargo tree -p merman-core --target wasm32-unknown-unknown -e normal",
     "cargo tree -p merman-wasm --target wasm32-unknown-unknown -e features",
@@ -56,6 +56,16 @@
       "kind": "dependency_evidence",
       "path": "crates/merman-core/Cargo.toml",
       "note": "WFS-070 split DOMPurify-like HTML rewriting and URL canonicalization into full-sanitization; no-default core no longer links lol_html, url, ICU/idna URL dependencies, or browser/host crates."
+    },
+    {
+      "kind": "size_evidence",
+      "path": "crates/merman-typst-plugin",
+      "note": "Typst bridge-only stripped wasm is 33,412 bytes; default render stripped wasm is 5,414,863 bytes; core-full is 6,262,880 bytes; ratex-math is 8,238,005 bytes. Default render size is now dominated by real code/data, not custom metadata."
+    },
+    {
+      "kind": "registry_evidence",
+      "path": "crates/merman-core/src/family.rs",
+      "note": "WFS-080 made detector, semantic parser, typed render parser, and supported metadata projections profile-aware from BaselineRegistryProfile; tiny/no-default excludes mindmap, architecture, and flowchart-elk parser/render registrations."
     }
   ]
 }

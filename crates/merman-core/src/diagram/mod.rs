@@ -1,4 +1,4 @@
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{Error, MermaidConfig, ParseMetadata, Result, baseline::BaselineRegistryProfile};
 use serde_json::Value;
 
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
@@ -8,15 +8,29 @@ pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<
 pub type RenderSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
 
 /// Registry for semantic JSON parsers keyed by Mermaid diagram type id.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DiagramRegistry {
     parsers: std::collections::HashMap<&'static str, DiagramSemanticParser>,
+    profile: BaselineRegistryProfile,
+}
+
+impl Default for DiagramRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DiagramRegistry {
     /// Creates an empty registry.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_profile(BaselineRegistryProfile::Full)
+    }
+
+    fn with_profile(profile: BaselineRegistryProfile) -> Self {
+        Self {
+            parsers: std::collections::HashMap::new(),
+            profile,
+        }
     }
 
     /// Registers or replaces the parser for a Mermaid diagram type id.
@@ -29,14 +43,40 @@ impl DiagramRegistry {
         self.parsers.get(diagram_type).copied()
     }
 
-    /// Builds the semantic parser registry for the repository's pinned Mermaid baseline.
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
-        for fact in crate::family::semantic_parser_facts() {
+    /// Builds the full semantic parser registry for the repository's pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline_full() -> Self {
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
+        for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Full) {
             reg.insert(fact.id, fact.parser);
         }
 
         reg
+    }
+
+    /// Builds the tiny semantic parser registry for the repository's pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline_tiny() -> Self {
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
+        for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Tiny) {
+            reg.insert(fact.id, fact.parser);
+        }
+
+        reg
+    }
+
+    /// Builds the semantic parser registry selected by this crate's feature flags.
+    #[cfg(feature = "full")]
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_full()
+    }
+
+    /// Builds the semantic parser registry selected by this crate's feature flags.
+    #[cfg(not(feature = "full"))]
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_tiny()
+    }
+
+    pub(crate) fn profile(&self) -> BaselineRegistryProfile {
+        self.profile
     }
 
     #[cfg(test)]
@@ -171,15 +211,29 @@ impl RenderSemanticModel {
 }
 
 /// Registry for typed render-model parsers keyed by Mermaid diagram type id.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RenderDiagramRegistry {
     parsers: std::collections::HashMap<&'static str, RenderSemanticParser>,
+    profile: BaselineRegistryProfile,
+}
+
+impl Default for RenderDiagramRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RenderDiagramRegistry {
     /// Creates an empty registry.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_profile(BaselineRegistryProfile::Full)
+    }
+
+    fn with_profile(profile: BaselineRegistryProfile) -> Self {
+        Self {
+            parsers: std::collections::HashMap::new(),
+            profile,
+        }
     }
 
     /// Registers or replaces the typed render parser for a Mermaid diagram type id.
@@ -197,14 +251,40 @@ impl RenderDiagramRegistry {
         self.parsers.remove(diagram_type)
     }
 
-    /// Builds the typed render parser registry for the repository's pinned Mermaid baseline.
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
-        for fact in crate::family::render_parser_facts() {
+    /// Builds the full typed render parser registry for the repository's pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline_full() -> Self {
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
+        for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Full) {
             reg.insert(fact.id, fact.parser);
         }
 
         reg
+    }
+
+    /// Builds the tiny typed render parser registry for the repository's pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline_tiny() -> Self {
+        let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
+        for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Tiny) {
+            reg.insert(fact.id, fact.parser);
+        }
+
+        reg
+    }
+
+    /// Builds the typed render parser registry selected by this crate's feature flags.
+    #[cfg(feature = "full")]
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_full()
+    }
+
+    /// Builds the typed render parser registry selected by this crate's feature flags.
+    #[cfg(not(feature = "full"))]
+    pub fn for_pinned_mermaid_baseline() -> Self {
+        Self::pinned_mermaid_baseline_tiny()
+    }
+
+    pub(crate) fn profile(&self) -> BaselineRegistryProfile {
+        self.profile
     }
 
     #[cfg(test)]
