@@ -10,7 +10,6 @@ Current exported functions:
 
 - `abi_version() -> bytes`
 - `package_version() -> bytes`
-- `render_svg(source: bytes, options_json: bytes) -> bytes`
 - `render_svg_json(source: bytes, options_json: bytes) -> bytes`
 - `validate_json(source: bytes, options_json: bytes) -> bytes`
 

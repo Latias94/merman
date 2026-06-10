@@ -28,6 +28,16 @@ typst compile --root dist/typst/merman/0.7.0 \
   target/typst-smoke/options.pdf
 ```
 
+Example documents:
+
+- `basic.typ`: minimal `#mermaid(...)` usage.
+- `raw-block.typ`: document-wide Mermaid fences with `show-mermaid-blocks`.
+- `options.typ`: themes, stable ids, `mermaid-result`, SVG export, and
+  placeholder errors.
+- `print.typ`: print-friendly white-background output.
+- `presentation.typ`: dark slide-sized output.
+- `svg-export.typ`: raw SVG and structured render payloads.
+
 For a Typst `@local` install, copy that directory to your Typst package path:
 
 ```sh
@@ -151,6 +161,18 @@ Build the larger full-config/full-sanitization artifact with:
 ```sh
 cargo run -p xtask -- build-typst-package --profile full
 ```
+
+## Release Checklist
+
+- Build the package with `cargo run -p xtask -- build-typst-package`.
+- Run `cargo test -p merman-typst-plugin`.
+- Run the Typst wasm ABI and size gate:
+  `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`.
+- Compile every file in `dist/typst/merman/0.7.0/examples`.
+- Smoke-test an `@local/merman:0.7.0` import with `--package-path` or the
+  system Typst package path.
+- Confirm `typst.toml` metadata, license files, and README examples are ready
+  before submitting to Typst Universe.
 
 ## Current Limits
 

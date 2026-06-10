@@ -203,7 +203,12 @@
     fixed-local-offset-minutes: fixed-local-offset-minutes,
   )
 
-  _merman-plugin.render_svg(bytes(source-text), _options-bytes(binding-options))
+  let result = json(_merman-plugin.render_svg_json(bytes(source-text), _options-bytes(binding-options)))
+  if result.ok {
+    bytes(result.svg)
+  } else {
+    panic(_error-message(result))
+  }
 }
 
 #let _render-svg-result(

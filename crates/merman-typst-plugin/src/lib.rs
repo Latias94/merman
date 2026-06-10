@@ -54,11 +54,6 @@ pub fn package_version() -> Vec<u8> {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
-pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, TypstPluginError> {
-    merman_bindings_core::render_svg(source, options_json).map_err(TypstPluginError::from)
-}
-
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     match merman_bindings_core::render_svg(source, options_json) {
         Ok(svg) => match std::str::from_utf8(&svg) {
@@ -102,25 +97,6 @@ mod tests {
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION").as_bytes());
-    }
-
-    #[test]
-    fn render_svg_returns_svg_bytes() {
-        let svg = String::from_utf8(
-            render_svg(b"flowchart TD\nA[Hello] --> B[World]", b"").expect("render svg"),
-        )
-        .expect("valid UTF-8 SVG");
-
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
-    }
-
-    #[test]
-    fn render_svg_errors_are_displayable_for_typst() {
-        let error = render_svg(b"", b"").expect_err("empty input should fail");
-
-        assert!(error.to_string().contains("MERMAN_NO_DIAGRAM"));
     }
 
     #[test]

@@ -2,9 +2,10 @@
 name = "merman"
 version = "0.7.0"
 entrypoint = "lib.typ"
+compiler = "0.14.0"
 authors = ["Mingzhen Zhuang <@Latias94>"]
 license = "MIT OR Apache-2.0"
-description = "Render Mermaid diagrams with merman."
+description = "Render Mermaid diagrams as SVG in Typst with merman."
 repository = "https://github.com/Latias94/merman"
 homepage = "https://github.com/Latias94/merman"
 keywords = ["mermaid", "diagrams", "svg", "wasm"]
