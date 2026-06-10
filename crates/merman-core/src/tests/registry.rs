@@ -174,6 +174,32 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
 }
 
 #[test]
+fn diagram_family_capabilities_follow_parser_fact_projection() {
+    let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
+    let tiny = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny);
+
+    let gitgraph = family_capability(full, "gitGraph");
+    assert_eq!(gitgraph.metadata_id, Some("gitgraph"));
+    assert!(gitgraph.has_semantic_parser);
+    assert!(gitgraph.has_render_parser);
+
+    let tree_view = family_capability(full, "treeView");
+    assert_eq!(tree_view.metadata_id, None);
+    assert!(tree_view.has_semantic_parser);
+    assert!(tree_view.has_render_parser);
+
+    let error = family_capability(full, "error");
+    assert_eq!(error.metadata_id, None);
+    assert!(error.has_semantic_parser);
+    assert!(!error.has_render_parser);
+
+    assert!(full.iter().any(|fact| fact.diagram_type == "mindmap"));
+    assert!(!tiny.iter().any(|fact| fact.diagram_type == "mindmap"));
+    assert!(!tiny.iter().any(|fact| fact.diagram_type == "architecture"));
+    assert!(!tiny.iter().any(|fact| fact.diagram_type == "flowchart-elk"));
+}
+
+#[test]
 fn tiny_parser_projection_excludes_full_only_large_features() {
     let tiny_semantic = DiagramRegistry::pinned_mermaid_baseline_tiny();
     assert!(tiny_semantic.get("mindmap").is_none());
@@ -250,4 +276,14 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
 
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     ids.into_iter().collect()
+}
+
+fn family_capability(
+    capabilities: &'static [crate::DiagramFamilyCapability],
+    diagram_type: &str,
+) -> &'static crate::DiagramFamilyCapability {
+    capabilities
+        .iter()
+        .find(|fact| fact.diagram_type == diagram_type)
+        .unwrap_or_else(|| panic!("missing family capability for {diagram_type}"))
 }

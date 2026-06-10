@@ -42,6 +42,18 @@ pub(crate) struct SupportedDiagramFact {
     pub(crate) render_parser_ids: Vec<&'static str>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagramFamilyCapability {
+    /// Mermaid diagram type id used by detector and parser registries.
+    pub diagram_type: &'static str,
+    /// Public supported-diagram metadata id, when this family contributes one.
+    pub metadata_id: Option<&'static str>,
+    /// Whether the selected registry profile has a semantic parser for this diagram type.
+    pub has_semantic_parser: bool,
+    /// Whether the selected registry profile has a typed render-model parser for this diagram type.
+    pub has_render_parser: bool,
+}
+
 pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
     match profile {
         BaselineRegistryProfile::Tiny => DETECTOR_FACTS_TINY,
@@ -154,6 +166,55 @@ pub(crate) fn supported_diagram_metadata_ids(
             .get_or_init(|| build(BaselineRegistryProfile::Tiny))
             .as_slice(),
         BaselineRegistryProfile::Full => FULL_IDS
+            .get_or_init(|| build(BaselineRegistryProfile::Full))
+            .as_slice(),
+    }
+}
+
+pub(crate) fn diagram_family_capabilities(
+    profile: BaselineRegistryProfile,
+) -> &'static [DiagramFamilyCapability] {
+    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramFamilyCapability> {
+        let render_facts = render_parser_facts(profile);
+        let mut capabilities: Vec<_> = semantic_parser_facts(profile)
+            .iter()
+            .map(|semantic| {
+                let render = render_facts.iter().find(|render| render.id == semantic.id);
+                DiagramFamilyCapability {
+                    diagram_type: semantic.id,
+                    metadata_id: render.and_then(|render| render.metadata_id),
+                    has_semantic_parser: true,
+                    has_render_parser: render.is_some(),
+                }
+            })
+            .collect();
+
+        for render in render_facts {
+            if capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == render.id)
+            {
+                continue;
+            }
+            capabilities.push(DiagramFamilyCapability {
+                diagram_type: render.id,
+                metadata_id: render.metadata_id,
+                has_semantic_parser: false,
+                has_render_parser: true,
+            });
+        }
+
+        capabilities
+    }
+
+    static TINY_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
+    static FULL_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
+
+    match profile {
+        BaselineRegistryProfile::Tiny => TINY_CAPABILITIES
+            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
+            .as_slice(),
+        BaselineRegistryProfile::Full => FULL_CAPABILITIES
             .get_or_init(|| build(BaselineRegistryProfile::Full))
             .as_slice(),
     }

@@ -119,9 +119,14 @@ pub(crate) fn root_viewport_deferred_diagrams() -> impl Iterator<Item = &'static
 
 pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Vec<String> {
     let workspace_root = crate::cmd::workspace_root();
+    let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
+        merman_core::baseline::BaselineRegistryProfile::Full,
+    );
     let mut failures = Vec::new();
 
     for record in admission_inventory() {
+        let core_capability = core_family_capability(core_capabilities, record.diagram);
+
         if !record.has_consistent_fixture_dirs() {
             failures.push(format!(
                 "admission inventory: `{}` fixture status {:?} has inconsistent dirs",
@@ -139,6 +144,31 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
         if record.requires_defer_reason() && record.defer_reason.is_none() {
             failures.push(format!(
                 "admission inventory: diagram `{}` needs a defer reason",
+                record.diagram
+            ));
+        }
+
+        if record.semantic_requires_golden()
+            && !core_capability.is_some_and(|capability| capability.has_semantic_parser)
+        {
+            failures.push(format!(
+                "admission inventory: `{}` is semantic-covered but has no core semantic parser fact",
+                record.diagram
+            ));
+        }
+
+        if (record.layout_requires_golden() || record.svg_requires_upstream_baseline())
+            && !core_capability.is_some_and(|capability| capability.has_render_parser)
+        {
+            failures.push(format!(
+                "admission inventory: `{}` is layout/SVG-covered but has no core render parser fact",
+                record.diagram
+            ));
+        }
+
+        if record.admission == AdmissionStatus::NotInPinnedBaseline && core_capability.is_some() {
+            failures.push(format!(
+                "admission inventory: `{}` is marked outside pinned baseline but exists in core family facts",
                 record.diagram
             ));
         }
@@ -199,6 +229,15 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
     }
 
     failures
+}
+
+fn core_family_capability<'a>(
+    capabilities: &'a [merman_core::DiagramFamilyCapability],
+    diagram: &str,
+) -> Option<&'a merman_core::DiagramFamilyCapability> {
+    capabilities.iter().find(|capability| {
+        capability.diagram_type == diagram || capability.metadata_id == Some(diagram)
+    })
 }
 
 fn count_files_with_suffix(dir: &Path, suffix: &str) -> usize {
@@ -580,6 +619,41 @@ mod tests {
                 assert!(
                     record.defer_reason.is_some(),
                     "{} should explain its defer reason",
+                    record.diagram
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn admission_inventory_covered_records_are_backed_by_core_family_facts() {
+        let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
+            merman_core::baseline::BaselineRegistryProfile::Full,
+        );
+
+        for record in admission_inventory() {
+            let capability = core_family_capability(core_capabilities, record.diagram);
+
+            if record.semantic_requires_golden() {
+                assert!(
+                    capability.is_some_and(|capability| capability.has_semantic_parser),
+                    "{} semantic coverage should be backed by a core semantic parser fact",
+                    record.diagram
+                );
+            }
+
+            if record.layout_requires_golden() || record.svg_requires_upstream_baseline() {
+                assert!(
+                    capability.is_some_and(|capability| capability.has_render_parser),
+                    "{} layout/SVG coverage should be backed by a core render parser fact",
+                    record.diagram
+                );
+            }
+
+            if record.admission == AdmissionStatus::NotInPinnedBaseline {
+                assert!(
+                    capability.is_none(),
+                    "{} should not exist in core family facts",
                     record.diagram
                 );
             }
