@@ -14,6 +14,7 @@ use base64::Engine as _;
 use indexmap::IndexMap;
 use std::fmt::Write as _;
 
+#[cfg(feature = "core-full")]
 mod architecture;
 mod block;
 mod c4;
@@ -32,6 +33,7 @@ mod ishikawa;
 mod journey;
 mod kanban;
 mod layout_debug;
+#[cfg(feature = "core-full")]
 mod mindmap;
 mod packet;
 mod path_bounds;
@@ -59,9 +61,11 @@ use css::{
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
 use path_bounds::svg_path_bounds_from_d;
+#[cfg(feature = "core-full")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
 }
+
 pub use emitted_bounds::{
     SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds,
 };
@@ -182,12 +186,22 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::RequirementDiagram(layout) => {
             render_requirement_diagram_svg(layout, semantic, effective_config, title, options)
         }
+        #[cfg(feature = "core-full")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             render_architecture_diagram_svg(layout, semantic, effective_config, options)
         }
+        #[cfg(not(feature = "core-full"))]
+        LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "architecture".to_string(),
+        }),
+        #[cfg(feature = "core-full")]
         LayoutDiagram::MindmapDiagram(layout) => {
             render_mindmap_diagram_svg(layout, semantic, effective_config, options)
         }
+        #[cfg(not(feature = "core-full"))]
+        LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "mindmap".to_string(),
+        }),
         LayoutDiagram::SankeyDiagram(layout) => {
             render_sankey_diagram_svg(layout, semantic, effective_config, options)
         }
@@ -326,6 +340,7 @@ fn render_layout_svg_parts_with_config_raw(
         LayoutDiagram::RequirementDiagram(layout) => {
             render_requirement_diagram_svg(layout, semantic, effective_config_value, title, options)
         }
+        #[cfg(feature = "core-full")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             architecture::render_architecture_diagram_svg_with_config(
                 layout,
@@ -334,9 +349,18 @@ fn render_layout_svg_parts_with_config_raw(
                 options,
             )
         }
+        #[cfg(not(feature = "core-full"))]
+        LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "architecture".to_string(),
+        }),
+        #[cfg(feature = "core-full")]
         LayoutDiagram::MindmapDiagram(layout) => {
             render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
         }
+        #[cfg(not(feature = "core-full"))]
+        LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "mindmap".to_string(),
+        }),
         LayoutDiagram::SankeyDiagram(layout) => {
             render_sankey_diagram_svg(layout, semantic, effective_config_value, options)
         }
@@ -490,6 +514,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
+        #[cfg(feature = "core-full")]
         (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
                 layout,
@@ -497,6 +522,12 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 effective_config,
                 options,
             )
+        }
+        #[cfg(not(feature = "core-full"))]
+        (LayoutDiagram::ArchitectureDiagram(_), RenderSemanticModel::Architecture(_)) => {
+            Err(Error::UnsupportedDiagram {
+                diagram_type: "architecture".to_string(),
+            })
         }
         (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
             render_flowchart_v2_svg_model_with_config(
@@ -508,6 +539,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 options,
             )
         }
+        #[cfg(feature = "core-full")]
         (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
             mindmap::render_mindmap_diagram_svg_model_with_config(
                 layout,
@@ -515,6 +547,12 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 effective_config,
                 options,
             )
+        }
+        #[cfg(not(feature = "core-full"))]
+        (LayoutDiagram::MindmapDiagram(_), RenderSemanticModel::Mindmap(_)) => {
+            Err(Error::UnsupportedDiagram {
+                diagram_type: "mindmap".to_string(),
+            })
         }
         (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
             state::render_state_diagram_v2_svg_model(
@@ -1027,7 +1065,17 @@ pub fn render_mindmap_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options)
+    #[cfg(feature = "core-full")]
+    {
+        return mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options);
+    }
+    #[cfg(not(feature = "core-full"))]
+    {
+        let _ = (layout, semantic, _effective_config, options);
+        Err(Error::UnsupportedDiagram {
+            diagram_type: "mindmap".to_string(),
+        })
+    }
 }
 
 pub fn render_mindmap_diagram_svg_with_config(
@@ -1036,7 +1084,22 @@ pub fn render_mindmap_diagram_svg_with_config(
     effective_config: &merman_core::MermaidConfig,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    mindmap::render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
+    #[cfg(feature = "core-full")]
+    {
+        return mindmap::render_mindmap_diagram_svg_with_config(
+            layout,
+            semantic,
+            effective_config,
+            options,
+        );
+    }
+    #[cfg(not(feature = "core-full"))]
+    {
+        let _ = (layout, semantic, effective_config, options);
+        Err(Error::UnsupportedDiagram {
+            diagram_type: "mindmap".to_string(),
+        })
+    }
 }
 
 pub fn render_architecture_diagram_svg(
@@ -1045,7 +1108,22 @@ pub fn render_architecture_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    architecture::render_architecture_diagram_svg(layout, semantic, effective_config, options)
+    #[cfg(feature = "core-full")]
+    {
+        return architecture::render_architecture_diagram_svg(
+            layout,
+            semantic,
+            effective_config,
+            options,
+        );
+    }
+    #[cfg(not(feature = "core-full"))]
+    {
+        let _ = (layout, semantic, effective_config, options);
+        Err(Error::UnsupportedDiagram {
+            diagram_type: "architecture".to_string(),
+        })
+    }
 }
 
 pub fn render_c4_diagram_svg(

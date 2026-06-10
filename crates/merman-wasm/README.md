@@ -25,8 +25,11 @@ the generated wasm artifacts into a custom packaging flow.
 ## Build
 
 ```sh
-wasm-pack build crates/merman-wasm --target web --out-dir ../../target/merman-wasm-pkg
+wasm-pack build crates/merman-wasm --target web --profile wasm-size --out-dir ../../target/merman-wasm-pkg
 ```
+
+The web wrapper requires `wasm-pack` 0.15.0 or newer because it builds with the workspace
+`wasm-size` Cargo profile.
 
 The checked-in TypeScript wrapper builds this crate into `platforms/web/pkg`:
 
@@ -55,7 +58,11 @@ For feature-preset size measurements, use:
 
 ```sh
 cargo run -p xtask -- wasm-size-matrix --surface browser
+cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
+
+The matrix reports raw, stripped, gzip, and brotli bytes. gzip and brotli are measured from the
+stripped artifact unless `--no-strip` is used.
 
 For product scope, diagram coverage, and compatibility policy, see the
 [project README](https://github.com/Latias94/merman#readme) and

@@ -93,7 +93,7 @@ Current release semantics are intentionally conservative:
 | --- | --- |
 | Browser full npm default | `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
 | Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
-| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --surface browser`; `cargo run -p xtask -- wasm-size-matrix --surface typst` |
+| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm` |
 
 ## WASM Size Matrix
@@ -103,11 +103,21 @@ Use the xtask size matrix before changing WASM feature presets:
 ```bash
 cargo run -p xtask -- wasm-size-matrix --surface browser
 cargo run -p xtask -- wasm-size-matrix --surface typst
+cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
-The command builds `wasm-size` artifacts and prints raw and stripped bytes for named presets. It
-keeps browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes
-do not accidentally compare unlike surfaces.
+The command builds `wasm-size` artifacts and prints raw, stripped, gzip, and brotli bytes for named
+presets. gzip and brotli are measured from the stripped artifact unless `--no-strip` is used. The
+budget file is intentionally a regression guard with headroom, not a product target. It keeps
+browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes do
+not accidentally compare unlike surfaces.
+
+The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. The
+current default `browser-full` package artifact is:
+
+| Package artifact | Raw bytes | gzip bytes | brotli bytes | Budget source |
+| --- | ---: | ---: | ---: | --- |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | 5,580,151 | 2,135,543 | 1,589,052 | `docs/release/WASM_SIZE_BUDGETS.json` |
 
 For the current Typst render artifact, also run:
 
@@ -119,14 +129,14 @@ cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wa
 
 Observed on 2026-06-10:
 
-| Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes |
-| --- | --- | --- | --- | ---: | ---: |
-| Browser | `browser-core` | no | none | 1,862,617 | 1,345,196 |
-| Browser | `browser-render` | no | `render` | 7,412,346 | 5,610,023 |
-| Browser | `browser-ascii` | no | `ascii` | 3,874,343 | 2,929,536 |
-| Browser | `browser-full` | yes | none | 8,866,039 | 6,718,352 |
-| Browser | `browser-ratex-math` | yes | `ratex-math` | 12,145,965 | 9,446,738 |
-| Typst | `typst-bridge` | no | none | 47,287 | 33,412 |
-| Typst | `typst-render` | yes | none | 7,025,842 | 5,417,005 |
-| Typst | `typst-core-full` | yes | `core-full` | 8,090,998 | 6,263,908 |
-| Typst | `typst-ratex-math` | yes | `ratex-math` | 10,544,347 | 8,240,147 |
+| Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| Browser | `browser-core` | no | none | 1,863,948 | 1,346,079 | 433,339 | 332,192 |
+| Browser | `browser-render` | no | `render` | 7,413,955 | 5,611,115 | 1,653,063 | 1,196,259 |
+| Browser | `browser-ascii` | no | `ascii` | 3,875,744 | 2,930,489 | 994,799 | 736,899 |
+| Browser | `browser-full` | yes | none | 8,867,749 | 6,719,540 | 2,107,768 | 1,512,064 |
+| Browser | `browser-ratex-math` | yes | `ratex-math` | 12,147,547 | 9,447,798 | 3,052,089 | 2,188,356 |
+| Typst | `typst-bridge` | no | none | 47,287 | 33,412 | 13,388 | 11,361 |
+| Typst | `typst-render` | yes | none | 6,445,189 | 4,990,451 | 1,486,500 | 1,078,513 |
+| Typst | `typst-core-full` | yes | `core-full` | 8,091,296 | 6,264,136 | 1,973,465 | 1,422,134 |
+| Typst | `typst-ratex-math` | yes | `ratex-math` | 10,544,626 | 8,240,356 | 2,575,773 | 1,857,459 |

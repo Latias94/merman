@@ -16,6 +16,9 @@ npm run smoke --prefix platforms/web
 `npm run build` produces the default `browser-full` artifact used for npm publication. Source and
 CI builds can choose a browser WASM preset when a smaller local artifact is useful:
 
+The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
+wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
+
 | Preset | Command | Capability |
 | --- | --- | --- |
 | `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |

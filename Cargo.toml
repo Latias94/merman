@@ -34,7 +34,9 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 base64 = "0.22.1"
+brotli = "8.0.3"
 euclid = "0.22"
+flate2 = "1.1.9"
 htmlize = { version = "1.0.6", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"

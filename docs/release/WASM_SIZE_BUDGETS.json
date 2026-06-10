@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "updated": "2026-06-10",
+  "compression_source": "stripped",
+  "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
+  "web_package": {
+    "browser-full": {
+      "max_raw_bytes": 6200000,
+      "max_gzip_bytes": 2400000,
+      "max_brotli_bytes": 1800000
+    }
+  },
+  "presets": {
+    "browser-core": {
+      "max_raw_bytes": 2100000,
+      "max_stripped_bytes": 1500000,
+      "max_gzip_bytes": 500000,
+      "max_brotli_bytes": 400000
+    },
+    "browser-render": {
+      "max_raw_bytes": 8200000,
+      "max_stripped_bytes": 6200000,
+      "max_gzip_bytes": 1850000,
+      "max_brotli_bytes": 1350000
+    },
+    "browser-ascii": {
+      "max_raw_bytes": 4300000,
+      "max_stripped_bytes": 3250000,
+      "max_gzip_bytes": 1100000,
+      "max_brotli_bytes": 830000
+    },
+    "browser-full": {
+      "max_raw_bytes": 9800000,
+      "max_stripped_bytes": 7400000,
+      "max_gzip_bytes": 2350000,
+      "max_brotli_bytes": 1700000
+    },
+    "browser-ratex-math": {
+      "max_raw_bytes": 13400000,
+      "max_stripped_bytes": 10400000,
+      "max_gzip_bytes": 3400000,
+      "max_brotli_bytes": 2450000
+    },
+    "typst-bridge": {
+      "max_raw_bytes": 60000,
+      "max_stripped_bytes": 45000,
+      "max_gzip_bytes": 18000,
+      "max_brotli_bytes": 15000
+    },
+    "typst-render": {
+      "max_raw_bytes": 7800000,
+      "max_stripped_bytes": 6000000,
+      "max_gzip_bytes": 1800000,
+      "max_brotli_bytes": 1320000
+    },
+    "typst-core-full": {
+      "max_raw_bytes": 9000000,
+      "max_stripped_bytes": 6950000,
+      "max_gzip_bytes": 2200000,
+      "max_brotli_bytes": 1600000
+    },
+    "typst-ratex-math": {
+      "max_raw_bytes": 11700000,
+      "max_stripped_bytes": 9100000,
+      "max_gzip_bytes": 2900000,
+      "max_brotli_bytes": 2100000
+    }
+  }
+}

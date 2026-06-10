@@ -96,7 +96,8 @@ const wasmPackArgs = [
   "../../crates/merman-wasm",
   "--target",
   "web",
-  "--release",
+  "--profile",
+  "wasm-size",
   "--out-dir",
   "../../platforms/web/pkg",
 ];

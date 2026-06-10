@@ -141,10 +141,15 @@ gates:
 ```bash
 cargo run -p xtask -- wasm-size-matrix --surface browser
 cargo run -p xtask -- wasm-size-matrix --surface typst
+cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
 cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 ```
+
+The web package build uses `wasm-pack --profile wasm-size`, so CI and local release machines need
+`wasm-pack` 0.15.0 or newer. `npm run prepack --prefix platforms/web` also checks the generated
+default `browser-full` wasm against `docs/release/WASM_SIZE_BUDGETS.json`.
 
 `@mermanjs/web` publishes the `browser-full` artifact under the default import path. The slim
 browser presets are source-build presets, not public npm package variants. `merman-typst-plugin` is

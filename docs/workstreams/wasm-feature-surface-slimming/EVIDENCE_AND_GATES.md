@@ -1,6 +1,6 @@
 # WASM Feature Surface Slimming -- Evidence And Gates
 
-Status: Open
+Status: Closed
 Last updated: 2026-06-10
 
 ## Current Evidence
@@ -399,8 +399,10 @@ Change:
 - browser presets are `browser-core`, `browser-render`, `browser-ascii`, `browser-full`, and
   `browser-ratex-math`;
 - Typst presets are `typst-bridge`, `typst-render`, `typst-core-full`, and `typst-ratex-math`;
-- each row reports raw artifact bytes and stripped bytes from a stripped copy under
-  `target/wasm-size-matrix/`, leaving the build artifact in place;
+- each row reports raw artifact bytes plus stripped, gzip, and brotli bytes from a stripped copy
+  under `target/wasm-size-matrix/`, leaving the build artifact in place;
+- `docs/release/WASM_SIZE_BUDGETS.json` now provides CI size regression budgets for every browser
+  and Typst preset;
 - `docs/release/PACKAGE_SURFACES.md` and `crates/merman-wasm/README.md` now explicitly label
   `merman-wasm` as the browser/wasm-bindgen surface, separate from Typst/pure wasm.
 
@@ -410,34 +412,36 @@ Validation:
 cargo nextest run -p xtask wasm_size_matrix
 cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge --no-strip
 cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge
+cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
 Observed browser matrix:
 
-| Preset | Default features | Extra features | Raw bytes | Stripped bytes |
-| --- | --- | --- | ---: | ---: |
-| `browser-core` | no | none | 1,862,617 | 1,345,196 |
-| `browser-render` | no | `render` | 7,412,346 | 5,610,023 |
-| `browser-ascii` | no | `ascii` | 3,874,343 | 2,929,536 |
-| `browser-full` | yes | none | 8,866,039 | 6,718,352 |
-| `browser-ratex-math` | yes | `ratex-math` | 12,145,965 | 9,446,738 |
+| Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `browser-core` | no | none | 1,863,948 | 1,346,079 | 433,339 | 332,192 |
+| `browser-render` | no | `render` | 7,413,955 | 5,611,115 | 1,653,063 | 1,196,259 |
+| `browser-ascii` | no | `ascii` | 3,875,744 | 2,930,489 | 994,799 | 736,899 |
+| `browser-full` | yes | none | 8,867,749 | 6,719,540 | 2,107,768 | 1,512,064 |
+| `browser-ratex-math` | yes | `ratex-math` | 12,147,547 | 9,447,798 | 3,052,089 | 2,188,356 |
 
 Observed Typst matrix:
 
-| Preset | Default features | Extra features | Raw bytes | Stripped bytes |
-| --- | --- | --- | ---: | ---: |
-| `typst-bridge` | no | none | 47,287 | 33,412 |
-| `typst-render` | yes | none | 7,025,842 | 5,417,005 |
-| `typst-core-full` | yes | `core-full` | 8,090,998 | 6,263,908 |
-| `typst-ratex-math` | yes | `ratex-math` | 10,544,347 | 8,240,147 |
+| Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `typst-bridge` | no | none | 47,287 | 33,412 | 13,388 | 11,361 |
+| `typst-render` | yes | none | 6,445,189 | 4,990,451 | 1,486,500 | 1,078,513 |
+| `typst-core-full` | yes | `core-full` | 8,091,296 | 6,264,136 | 1,973,465 | 1,422,134 |
+| `typst-ratex-math` | yes | `ratex-math` | 10,544,626 | 8,240,356 | 2,575,773 | 1,857,459 |
 
 Immediate reading:
 
-- browser transport-only still costs about 1.35 MB stripped because it includes wasm-bindgen,
-  serde-wasm-bindgen, panic hook, and metadata helpers;
+- browser transport-only still costs about 1.35 MB stripped, 433 KB gzip, and 332 KB brotli because
+  it includes wasm-bindgen, serde-wasm-bindgen, panic hook, and metadata helpers;
 - browser `render` adds about 4.26 MB stripped over browser core;
 - browser `ascii` adds about 1.58 MB stripped over browser core;
-- Typst bridge-only remains tiny at 33,412 bytes stripped;
+- Typst bridge-only remains tiny at 33,412 bytes stripped, 13,388 bytes gzip, and 11,361 bytes
+  brotli;
 - Typst render and browser render are close in render-code size once transport overhead is
   separated.
 
@@ -499,6 +503,107 @@ jq . docs/workstreams/wasm-feature-surface-slimming/WORKSTREAM.json
 cargo fmt --all --check
 git diff --check
 ```
+
+### WFS-120 Final Verification And Closeout
+
+Final verification passed on 2026-06-10.
+
+Rust/core gates:
+
+```bash
+cargo fmt --all --check
+cargo nextest run -p merman-core -p merman-render -p merman-bindings-core
+```
+
+Observed result:
+
+- `cargo fmt --all --check`: passed;
+- nextest: 1,253 tests run, 1,253 passed, 2 skipped.
+
+Pure/Typst dependency and import gates:
+
+```bash
+cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
+cargo run -p xtask -- profile-budget check-deps --profile typst-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
+cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
+target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+```
+
+Observed result:
+
+- pure-wasm dependency gate: 0 failures;
+- typst-wasm dependency gate: 0 failures;
+- Typst render wasm imports: exactly the two `typst_env` wasm-minimal-protocol functions;
+- Typst render wasm exports: `memory`, `abi_version`, `package_version`, `render_svg_json`,
+  `validate_json`, `__data_end`, and `__heap_base`;
+- Typst render wasm raw size: 7,026,184 bytes;
+- wasmi smoke: 10,442 JSON output bytes with a 9,875-byte SVG payload.
+
+WASM size budget gate:
+
+```bash
+cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+```
+
+Observed result:
+
+- all browser and Typst preset rows reported raw, stripped, gzip, and brotli bytes;
+- `docs/release/WASM_SIZE_BUDGETS.json` passed for every selected preset.
+
+Browser package gates:
+
+```bash
+npm run build:ts --prefix platforms/web
+npm run build:wasm:core --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run build:wasm:render --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run build:wasm:ascii --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run build:wasm:ratex-math --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run build:wasm:full --prefix platforms/web
+npm run smoke --prefix platforms/web
+npm run prepack --prefix platforms/web
+```
+
+Observed smoke results:
+
+| Preset | Diagrams | Render | ASCII | Core full | RaTeX math |
+| --- | ---: | --- | --- | --- | --- |
+| `browser-core` | 23 | false | false | false | false |
+| `browser-render` | 23 | true | false | false | false |
+| `browser-ascii` | 25 | false | true | true | false |
+| `browser-ratex-math` | 25 | true | true | true | true |
+| `browser-full` | 25 | true | true | true | false |
+
+`browser-full` was rebuilt last and `npm run prepack --prefix platforms/web` passed, so the local
+generated package state is back on the default publication preset.
+
+Follow-up browser package size reduction on 2026-06-10:
+
+- `platforms/web/scripts/build-wasm.mjs` now calls `wasm-pack --profile wasm-size` instead of
+  `wasm-pack --release`;
+- CI/release workflows now install `wasm-pack` 0.15.0 because 0.12.1 does not support
+  `--profile`;
+- generated default `browser-full` package wasm changed from 8,648,002 raw bytes to 5,580,151 raw
+  bytes;
+- compressed default package wasm is 2,135,543 bytes gzip and 1,589,052 bytes brotli;
+- `npm run prepack --prefix platforms/web` enforces the generated web package budget from
+  `docs/release/WASM_SIZE_BUDGETS.json`.
+
+Residual follow-ons:
+
+- public npm export paths or separate slim browser packages remain future migration work;
+- `browser-ascii` is an ASCII output surface but still carries the full core registry through
+  `merman-ascii`;
+- Typst registry packaging and idiomatic `.typ` wrapper publication remain separate from transport
+  validation;
+- further WASM size wins must target render/layout dependencies and static data, not only custom
+  section stripping;
+- browser-dependent SVG residuals such as text measurement and `foreignObject` remain bounded
+  parity residuals, not WFS blockers.
 
 ## Gates
 

@@ -58,7 +58,7 @@ jobs:
       - name: Install WASM tools
         run: |
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
-          cargo install wasm-pack --version 0.12.1 --locked
+          cargo install wasm-pack --version 0.15.0 --locked
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web

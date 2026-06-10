@@ -1,6 +1,6 @@
 # WASM Feature Surface Slimming -- TODO
 
-Status: Open
+Status: Closed
 Last updated: 2026-06-10
 
 ## M0 -- Evidence And Contract Freeze
@@ -102,8 +102,9 @@ Last updated: 2026-06-10
   Validation: `cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown`
   for each preset; npm TypeScript build/smoke if package wrappers change.
   Review: Browser package may keep wasm-bindgen; the API must label it as browser/JS WASM.
-  Evidence: initial `xtask wasm-size-matrix` landed and recorded raw/stripped size tables for
-  browser and Typst presets separately. `docs/release/PACKAGE_SURFACES.md` and
+  Evidence: `xtask wasm-size-matrix` landed and recorded raw/stripped/gzip/brotli size tables for
+  browser and Typst presets separately, with CI budgets in `docs/release/WASM_SIZE_BUDGETS.json`.
+  `docs/release/PACKAGE_SURFACES.md` and
   `crates/merman-wasm/README.md` now label `merman-wasm` as the browser/wasm-bindgen surface.
   The browser package now ships explicit `browser-core`, `browser-render`, `browser-ascii`,
   `browser-full`, and `browser-ratex-math` source-build presets. `bindingCapabilities()` reports
@@ -145,8 +146,15 @@ Last updated: 2026-06-10
   transport release checks. README lists `merman-typst-plugin` and clarifies that `@mermanjs/web`
   publishes `browser-full` while slim browser presets are source-build presets.
 
-- [ ] WFS-120 [owner=codex] [deps=WFS-110] [scope=workspace]
+- [x] WFS-120 [owner=codex] [deps=WFS-110] [scope=workspace]
   Goal: Final verification and closeout.
   Validation: `cargo fmt --all --check`; `cargo nextest run -p merman-core -p merman-render -p merman-bindings-core`; browser wasm preset builds; Typst/pure wasm import allowlist gate.
   Review: Summarize residual unsupported families and split follow-on work if needed.
-  Evidence: closeout journal and updated `WORKSTREAM.json`.
+  Evidence: Final verification passed on 2026-06-10. Core/render/bindings nextest ran 1,253 tests
+  with 1,253 passed and 2 skipped. Pure-wasm and typst-wasm dependency gates passed for
+  `merman-core --no-default-features`. Typst render wasm passed import/export gate and wasmi smoke.
+  Browser `core`, `render`, `ascii`, `ratex-math`, and `full` presets built and passed
+  capability-aware smoke; full WASM size budget gate passed; default web package now builds with
+  the workspace `wasm-size` profile and dropped the generated `browser-full` wasm from 8,648,002 to
+  5,580,151 raw bytes; final `browser-full` prepack passed. Residual follow-ons are public slim npm
+  exports/packages, full Typst registry packaging, and deeper render/data size reductions.

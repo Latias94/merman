@@ -21,6 +21,12 @@ enum XtaskError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to compress file {path}: {source}")]
+    CompressFile {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
     #[error("failed to parse YAML schema: {0}")]
     ParseYaml(#[from] serde_yaml::Error),
     #[error("failed to process JSON: {0}")]
