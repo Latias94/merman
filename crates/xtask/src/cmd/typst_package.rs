@@ -33,6 +33,16 @@ struct Options {
     skip_wasm_build: bool,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct TypstManifest {
+    package: TypstManifestPackage,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TypstManifestPackage {
+    version: String,
+}
+
 impl Default for Options {
     fn default() -> Self {
         Self {
@@ -47,6 +57,8 @@ pub(crate) fn build_typst_package(args: Vec<String>) -> Result<(), XtaskError> {
     let options = parse_options(args)?;
     let root = paths::workspace_root();
     let package_source = root.join("packages").join("typst").join("merman");
+    let manifest_path = package_source.join("typst.toml");
+    let package_version = read_typst_package_version(&manifest_path)?;
     let wasm_path = root
         .join("target")
         .join("wasm32-unknown-unknown")
@@ -64,19 +76,13 @@ pub(crate) fn build_typst_package(args: Vec<String>) -> Result<(), XtaskError> {
         )));
     }
 
-    let package_dir = options
-        .out_dir
-        .join("merman")
-        .join(env!("CARGO_PKG_VERSION"));
+    let package_dir = options.out_dir.join("merman").join(&package_version);
     fs::create_dir_all(&package_dir).map_err(|source| XtaskError::WriteFile {
         path: package_dir.display().to_string(),
         source,
     })?;
 
-    copy_file(
-        &package_source.join("typst.toml"),
-        &package_dir.join("typst.toml"),
-    )?;
+    copy_file(&manifest_path, &package_dir.join("typst.toml"))?;
     copy_file(
         &package_source.join("lib.typ"),
         &package_dir.join("lib.typ"),
@@ -110,11 +116,58 @@ pub(crate) fn build_typst_package(args: Vec<String>) -> Result<(), XtaskError> {
     );
     println!(
         "Local install target: <typst package path>/local/merman/{}",
-        env!("CARGO_PKG_VERSION")
+        package_version
+    );
+    println!(
+        "Preview smoke target: <typst package path>/preview/merman/{}",
+        package_version
     );
     println!("Tip: run `typst info` to find your Typst package path.");
 
     Ok(())
+}
+
+fn read_typst_package_version(manifest_path: &Path) -> Result<String, XtaskError> {
+    let manifest_text =
+        fs::read_to_string(manifest_path).map_err(|source| XtaskError::ReadFile {
+            path: manifest_path.display().to_string(),
+            source,
+        })?;
+    let manifest: TypstManifest = toml::from_str(&manifest_text).map_err(|source| {
+        XtaskError::TypstPackageFailed(format!(
+            "failed to parse {}: {source}",
+            manifest_path.display()
+        ))
+    })?;
+    let version = manifest.package.version.trim();
+    if !is_typst_package_version(version) {
+        return Err(XtaskError::TypstPackageFailed(format!(
+            "{} has unsupported Typst package version `{}`; Typst imports require an x.y.z numeric version",
+            manifest_path.display(),
+            manifest.package.version
+        )));
+    }
+    Ok(version.to_string())
+}
+
+fn is_typst_package_version(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let Some(major) = parts.next() else {
+        return false;
+    };
+    let Some(minor) = parts.next() else {
+        return false;
+    };
+    let Some(patch) = parts.next() else {
+        return false;
+    };
+    if parts.next().is_some() {
+        return false;
+    }
+
+    [major, minor, patch]
+        .into_iter()
+        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
@@ -216,4 +269,23 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), XtaskErro
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_typst_package_version;
+
+    #[test]
+    fn typst_package_version_accepts_numeric_triplets() {
+        assert!(is_typst_package_version("0.8.0"));
+        assert!(is_typst_package_version("10.20.30"));
+    }
+
+    #[test]
+    fn typst_package_version_rejects_prerelease_forms() {
+        assert!(!is_typst_package_version("0.8.0-alpha.1"));
+        assert!(!is_typst_package_version("0.8.0a1"));
+        assert!(!is_typst_package_version("0.8"));
+        assert!(!is_typst_package_version("0.8.0.1"));
+    }
 }

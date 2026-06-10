@@ -1,4 +1,4 @@
-#import "../lib.typ": mermaid
+#import "@preview/merman:0.1.0": mermaid
 
 #set page(paper: "a4", margin: 20mm)
 

@@ -1,4 +1,4 @@
-#import "../lib.typ": mermaid, mermaid-result, mermaid-svg, validate-mermaid
+#import "@preview/merman:0.1.0": mermaid, mermaid-result, mermaid-svg, validate-mermaid
 
 = merman Typst Options Example
 

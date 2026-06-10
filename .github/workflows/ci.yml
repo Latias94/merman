@@ -119,24 +119,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
+          typst_package_root="dist/typst/merman/${typst_package_version}"
+          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
+          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
           mkdir -p target/typst-smoke
-          for example in dist/typst/merman/0.7.0/examples/*.typ; do
+          for example in "${typst_package_root}"/examples/*.typ; do
             name="$(basename "$example" .typ)"
-            typst compile --root dist/typst/merman/0.7.0 "$example" "target/typst-smoke/${name}.pdf"
+            typst compile --package-path target/typst-preview "$example" "target/typst-smoke/${name}.pdf"
           done
 
-      - name: Smoke local Typst package import
+      - name: Smoke preview Typst package import
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p target/typst-local/local/merman/0.7.0
-          cp -R dist/typst/merman/0.7.0/. target/typst-local/local/merman/0.7.0/
-          typst compile --package-path target/typst-local - target/typst-smoke/local-package.pdf <<'EOF'
-          #import "@local/merman:0.7.0": mermaid, mermaid-result, show-mermaid-blocks
+          typst_package_version="$(grep '^version = ' packages/typst/merman/typst.toml | sed 's/version = "\(.*\)"/\1/')"
+          typst_package_root="dist/typst/merman/${typst_package_version}"
+          mkdir -p "target/typst-preview/preview/merman/${typst_package_version}"
+          cp -R "${typst_package_root}"/. "target/typst-preview/preview/merman/${typst_package_version}/"
+          sed "s/@VERSION@/${typst_package_version}/g" > target/typst-smoke/preview-package.typ <<'EOF'
+          #import "@preview/merman:@VERSION@": mermaid, mermaid-result, show-mermaid-blocks
 
           #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 80%)
 
-          = Local package smoke
+          = Preview package smoke
 
           #let result = mermaid-result("flowchart LR\n  A[Typst] --> B[merman]\n")
           Render result: `#result.code_name`
@@ -147,9 +153,10 @@ jobs:
           sequenceDiagram
             participant A
             participant B
-            A->>B: local import works
+            A->>B: preview import works
           ```
           EOF
+          typst compile --package-path target/typst-preview target/typst-smoke/preview-package.typ target/typst-smoke/preview-package.pdf
 
   platform-script-syntax:
     name: platform-script-syntax

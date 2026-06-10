@@ -1,4 +1,4 @@
-#import "../lib.typ": mermaid, show-mermaid-blocks
+#import "@preview/merman:0.1.0": mermaid, show-mermaid-blocks
 
 #set page(width: 16cm, height: 9cm, margin: 12mm, fill: rgb("#111827"))
 #set text(fill: rgb("#e5e7eb"))

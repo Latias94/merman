@@ -1085,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "dugong"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "criterion",
  "dugong-graphlib",
@@ -1097,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "dugong-graphlib"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "hashbrown 0.16.1",
  "rustc-hash 2.1.1",
@@ -2601,7 +2601,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "manatee"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "indexmap",
  "nalgebra",
@@ -2645,7 +2645,7 @@ dependencies = [
 
 [[package]]
 name = "merman"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -2666,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ascii"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "merman-core",
  "thiserror 2.0.18",
@@ -2675,7 +2675,7 @@ dependencies = [
 
 [[package]]
 name = "merman-bindings-core"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "chrono",
  "merman",
@@ -2686,7 +2686,7 @@ dependencies = [
 
 [[package]]
 name = "merman-cli"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "assert_cmd",
  "chrono",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "merman-core"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "chrono",
  "euclid",
@@ -2730,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "merman-ffi"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "cc",
  "jni 0.21.1",
@@ -2741,7 +2741,7 @@ dependencies = [
 
 [[package]]
 name = "merman-render"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "base64",
  "chrono",
@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "merman-rustdoc"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "merman",
  "proc-macro2",
@@ -2780,7 +2780,7 @@ dependencies = [
 
 [[package]]
 name = "merman-typst-plugin"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "merman-bindings-core",
  "serde_json",
@@ -2789,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "merman-uniffi"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "merman-bindings-core",
  "serde_json",
@@ -2800,7 +2800,7 @@ dependencies = [
 
 [[package]]
 name = "merman-wasm"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "console_error_panic_hook",
  "merman-bindings-core",
@@ -6755,7 +6755,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.7.0"
+version = "0.8.0-alpha.1"
 dependencies = [
  "base64",
  "chrono",
@@ -6770,6 +6770,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror 2.0.18",
+ "toml",
 ]
 
 [[package]]

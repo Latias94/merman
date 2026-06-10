@@ -1,4 +1,4 @@
-#import "../lib.typ": show-mermaid-blocks
+#import "@preview/merman:0.1.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   width: 100%,

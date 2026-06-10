@@ -6,39 +6,41 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+## [0.8.0-alpha.1] - 2026-06-10
+
+This alpha starts the 0.8 line with a smaller, clearer feature surface and a real Typst package path. The default Rust crate behavior remains Mermaid-compatible, while no-default and Typst-oriented builds can now avoid host-only and full-config dependencies.
+
+### Added
+
+- Added an experimental `merman-typst-plugin` WebAssembly bridge and local Typst package surface. The package supports `#mermaid(...)` for embedded SVG images, `#show raw.where(lang: "mermaid"): show-mermaid-blocks(...)` for Mermaid fenced code blocks, `mermaid-svg(...)` for raw SVG export, `mermaid-result(...)` for structured render payloads, `validate-mermaid(...)` for validation-only workflows, and `error-mode: "panic" | "placeholder" | "text"` for draft-friendly error handling.
+- Added `xtask build-typst-package`, which builds the Typst-compatible wasm and assembles `dist/typst/merman/<version>` with `typst.toml`, `lib.typ`, README, examples, licenses, and the wasm plugin.
+- Started the Typst package on an independent `0.1.x` version track instead of locking it to Cargo prerelease versions, because Typst imports require numeric package versions.
+- Added CI smoke coverage for the Typst package: package build, wasm ABI/size gate, example compilation, and `@preview` import smoke.
+- Added Typst examples for basic usage, raw blocks, options, print-friendly output, slide-sized dark output, SVG export, and structured render results.
+
+### Changed
+
+- Consolidated `merman-core`'s public feature surface into coarse-grained profiles: `full`, `full-config`, `full-sanitization`, and `host`.
+- Kept default builds Mermaid-compatible with `full + host`, while making `--no-default-features` a meaningful pure-WASM/Typst starting point.
+- Split `merman-render`'s `core-full` forwarding from its host feature so Typst render builds can keep parser/layout/SVG support without pulling full config and sanitizer dependencies.
+- Made render/layout timing and RoughJS seed-zero randomness deterministic in no-host wasm profiles, while preserving host behavior behind explicit host features.
+- Collapsed the Typst wasm rendering surface to `render_svg_json` plus `validate_json`; the older direct `render_svg` export was removed before the Typst package was published so all Typst rendering uses one structured result path.
+
+Feature guidance:
+
+- Most Rust applications should keep defaults. That means `merman` still enables Mermaid-compatible full config/sanitization and host behavior.
+- Use `default-features = false` when embedding the parser/core in a pure wasm environment that cannot import host time, random, URL, YAML, JSON5, or sanitizer dependencies.
+- Enable `render` without `core-full` for Typst-like SVG rendering where the source and options are trusted or already normalized and package size matters.
+- Enable `core-full` when you need Mermaid's broad config/frontmatter surface, YAML/JSON5 parsing, or full sanitizer parity.
+- Enable `host` when the renderer should use local wall-clock behavior or host randomness. Leave it off for deterministic wasm output.
+
 ### WASM Footprint & Typst Compatibility
 
-- Slimmed the pure/Typst-oriented core profile significantly. A Typst-compatible
-  `wasm32-unknown-unknown` semantic probe built on `merman-core --no-default-features`
-  measured **1,737,728 bytes raw** (**570,804 bytes gzip**), while the metadata probe
-  measured **1,736,363 bytes raw** (**570,150 bytes gzip**).
+- Slimmed the pure/Typst-oriented core profile significantly. A Typst-compatible `wasm32-unknown-unknown` semantic probe built on `merman-core --no-default-features` measured **1,737,728 bytes raw** (**570,804 bytes gzip**), while the metadata probe measured **1,736,363 bytes raw** (**570,150 bytes gzip**).
 - A core-only no-import probe measured **1,729,398 bytes raw** (**567,208 bytes gzip**).
-- The Typst-oriented probe imports only Typst's two `wasm-minimal-protocol` host
-  callbacks and no longer pulls `wasm-bindgen`, `js-sys`, `serde_yaml`, `json5`,
-  `lol_html`, `url`, `uuid`, or `web-time` through the pure/no-default core path.
-- Added an experimental `merman-typst-plugin` SVG-rendering probe. The default
-  minimal Typst build (`render`, no `core-full`, no host) now measures
-  **7,016,170 bytes raw** (**1,931,282 bytes gzip**) and passes the Typst wasm ABI
-  gate with only the two `wasm-minimal-protocol` imports.
-- The opt-in full no-host Typst render build (`render + core-full`) measures
-  **8,073,841 bytes raw** (**2,349,176 bytes gzip**) with the same Typst-only
-  import surface.
-- Turned the Typst probe wrapper into a local-package surface with `typst.toml`,
-  `@local` installation docs, raw-block rendering, raw SVG export, validation
-  helpers, Typst-oriented `resvg-safe` defaults, examples, and an
-  `xtask build-typst-package` dist builder.
-
-### Feature Surface Simplification
-
-- Consolidated `merman-core`'s public feature surface into coarse-grained profiles:
-  `full`, `full-config`, `full-sanitization`, and `host`.
-- Kept default builds Mermaid-compatible with `full + host`, while making
-  `--no-default-features` a meaningful pure-WASM/Typst starting point.
-- Split `merman-render`'s `core-full` forwarding from its host feature so Typst
-  render builds can keep parser/layout/SVG support without pulling full config and
-  sanitizer dependencies.
-- Made render/layout timing and RoughJS seed-zero randomness deterministic in no-host
-  wasm profiles, while preserving host behavior behind explicit host features.
+- The Typst-oriented probe imports only Typst's two `wasm-minimal-protocol` host callbacks and no longer pulls `wasm-bindgen`, `js-sys`, `serde_yaml`, `json5`, `lol_html`, `url`, `uuid`, or `web-time` through the pure/no-default core path.
+- The default minimal Typst package build (`render`, no `core-full`, no host`) now measures about **7.02 MB raw** and **1.93 MB gzip** and passes the Typst wasm ABI gate with only the two `wasm-minimal-protocol` imports.
+- The opt-in full no-host Typst render build (`render + core-full`) measures **8,073,841 bytes raw** (**2,349,176 bytes gzip**) with the same Typst-only import surface.
 
 ### Fixed
 

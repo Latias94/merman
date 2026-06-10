@@ -92,9 +92,9 @@ EOF
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.7.0</string>
+  <string>0.8.0</string>
   <key>CFBundleVersion</key>
-  <string>0.7.0</string>
+  <string>0.8.0</string>
   <key>MinimumOSVersion</key>
   <string>13.0</string>
 </dict>
