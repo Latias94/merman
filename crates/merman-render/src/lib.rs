@@ -6,6 +6,8 @@
 //! - a layout JSON (geometry + routes)
 //! - Mermaid-like SVG output with DOM parity checks against upstream baselines
 
+extern crate self as web_time;
+
 pub mod architecture;
 pub(crate) mod architecture_metrics;
 pub mod block;
@@ -21,6 +23,7 @@ pub mod flowchart;
 pub mod gantt;
 mod generated;
 pub mod gitgraph;
+mod host_time;
 pub mod info;
 pub mod ishikawa;
 pub mod journey;
@@ -47,6 +50,8 @@ pub mod treemap;
 mod trig_tables;
 pub mod venn;
 pub mod xychart;
+
+pub(crate) use host_time::{Duration, Instant};
 
 use crate::math::MathRenderer;
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};

@@ -23,7 +23,9 @@ exclude = [
 features = ["render", "ascii", "raster", "ratex-math"]
 
 [features]
-default = []
+default = ["core-full", "core-host"]
+core-full = ["merman-core/full", "merman-render?/core-full"]
+core-host = ["merman-core/host", "merman-render?/host"]
 render = ["dep:merman-render", "dep:thiserror"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
 ratex-math = ["render", "merman-render/ratex-math"]

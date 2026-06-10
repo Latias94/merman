@@ -1,6 +1,6 @@
 use super::*;
 use crate::{Engine, ParseOptions, RenderSemanticModel};
-use chrono::{Local, NaiveDate, TimeZone};
+use chrono::NaiveDate;
 use futures::executor::block_on;
 
 fn parse(text: &str) -> Value {
@@ -13,12 +13,11 @@ fn parse(text: &str) -> Value {
 
 fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
     let m = m0 + 1;
-    let local = Local
-        .with_ymd_and_hms(y, m, d, h, min, s)
-        .single()
-        .or_else(|| Local.with_ymd_and_hms(y, m, d, h, min, s).earliest())
+    let naive = NaiveDate::from_ymd_opt(y, m, d)
+        .unwrap()
+        .and_hms_opt(h, min, s)
         .unwrap();
-    local.fixed_offset().timestamp_millis()
+    crate::time::datetime_from_naive_local(naive).timestamp_millis()
 }
 
 #[test]

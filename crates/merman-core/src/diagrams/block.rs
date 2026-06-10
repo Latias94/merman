@@ -931,8 +931,7 @@ impl<'a> Parser<'a> {
 
     fn generate_id(&mut self) -> String {
         self.gen_counter += 1;
-        let rand = uuid::Uuid::new_v4().simple().to_string();
-        let rand = &rand[..12.min(rand.len())];
+        let rand = crate::runtime::generated_id_hex(12, self.gen_counter as u64, 0x626C_6F63_6B);
         format!("id-{rand}-{}", self.gen_counter)
     }
 
@@ -1946,6 +1945,29 @@ mod tests {
         assert_eq!(blocks[0]["type"].as_str().unwrap(), "space");
         assert_eq!(blocks[2]["type"].as_str().unwrap(), "space");
         assert_eq!(blocks[1]["label"].as_str().unwrap(), "In the middle");
+    }
+
+    #[cfg(not(feature = "host-random"))]
+    #[test]
+    fn generated_block_ids_are_deterministic_without_host_random() {
+        fn generated_ids(model: &Value) -> Vec<String> {
+            model["blocksFlat"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|block| block["id"].as_str())
+                .filter(|id| id.starts_with("id-"))
+                .map(ToString::to_string)
+                .collect()
+        }
+
+        let first = generated_ids(&parse("block\n  columns 2\n  space\n  space\n"));
+        let second = generated_ids(&parse("block\n  columns 2\n  space\n  space\n"));
+
+        assert_eq!(first, second);
+        assert!(first.len() >= 2);
+        let unique = first.iter().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), first.len());
     }
 
     #[test]

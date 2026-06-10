@@ -120,13 +120,13 @@ impl SequenceDb {
     ) -> std::result::Result<(), String> {
         let mut actor_type = actor_type.to_string();
         if let Some(config) = config.as_deref() {
-            let meta = parse_participant_meta_yaml(config)?;
-            if let serde_yaml::Value::Mapping(m) = meta {
-                let key = serde_yaml::Value::String("type".to_string());
-                if let Some(v) = m.get(&key) {
-                    if let Some(t) = yaml_to_string(v) {
-                        actor_type = t;
-                    }
+            let meta = parse_participant_meta(config)?;
+            if let Some(obj) = meta.as_object() {
+                if let Some(t) = obj
+                    .get("type")
+                    .and_then(crate::inline_config::value_to_string)
+                {
+                    actor_type = t;
                 }
             }
         }
@@ -970,22 +970,8 @@ fn split_color_and_title(input: &str) -> (&str, &str) {
     (&input[..end], &input[end..])
 }
 
-fn parse_participant_meta_yaml(yaml_body: &str) -> std::result::Result<serde_yaml::Value, String> {
-    let yaml_data = if yaml_body.contains('\n') {
-        format!("{yaml_body}\n")
-    } else {
-        format!("{{\n{yaml_body}\n}}")
-    };
-    serde_yaml::from_str(&yaml_data).map_err(|e| format!("{e}"))
-}
-
-fn yaml_to_string(v: &serde_yaml::Value) -> Option<String> {
-    match v {
-        serde_yaml::Value::String(s) => Some(s.clone()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
+fn parse_participant_meta(input: &str) -> std::result::Result<Value, String> {
+    crate::inline_config::parse_mermaid_inline_object(input)
 }
 
 fn is_css_color_value(input: &str) -> bool {

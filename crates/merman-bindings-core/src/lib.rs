@@ -15,7 +15,9 @@ mod ascii;
 #[cfg(feature = "render")]
 mod render;
 
-pub use common::{BindingError, BindingStatus, error_payload_json_bytes};
+pub use common::{
+    BindingError, BindingStatus, error_payload_json_bytes, render_payload_json_bytes,
+};
 pub use engine::BindingEngine;
 pub use metadata::{
     ascii_supported_diagrams, ascii_supported_diagrams_json, supported_diagrams,

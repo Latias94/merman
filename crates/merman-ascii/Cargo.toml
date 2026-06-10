@@ -14,6 +14,6 @@ keywords = ["mermaid", "diagrams", "ascii", "unicode", "headless"]
 categories = ["visualization", "command-line-utilities"]
 
 [dependencies]
-merman-core.workspace = true
+merman-core = { workspace = true, features = ["full", "host"] }
 thiserror.workspace = true
 unicode-width.workspace = true

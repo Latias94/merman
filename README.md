@@ -81,19 +81,19 @@ for methodology and commands.
 
 ```sh
 # Command-line tool
-cargo install merman-cli --version 0.7.0
+cargo install merman-cli --version 0.8.0-alpha.1
 
 # Rust library: SVG rendering
-cargo add merman@0.7.0 --features render
+cargo add merman@0.8.0-alpha.1 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman@0.7.0 --features ascii
+cargo add merman@0.8.0-alpha.1 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman@0.7.0 --features raster
+cargo add merman@0.8.0-alpha.1 --features raster
 
 # Rustdoc integration
-cargo add merman-rustdoc@0.7.0 --optional
+cargo add merman-rustdoc@0.8.0-alpha.1 --optional
 
 # Browser / TypeScript package
 npm install @mermanjs/web
@@ -139,6 +139,7 @@ MSRV is `rust-version = 1.95`.
 - [Parity and coverage](#parity-and-coverage)
 - [Quality gates](#quality-gates)
 - [Limitations](#limitations)
+- [Feature surfaces](#feature-surfaces)
 - [Architecture notes](#architecture-notes)
 - [Workspace crates](#workspace-crates)
 - [Star History](#star-history)
@@ -701,6 +702,35 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
   choose a target fit box or explicitly opt into unbounded raster output.
 - Architecture compound layout and root viewport parity are still geometry-normalized against upstream Cytoscape/FCoSE output; dense compound graphs can still have layout-level differences (see [`docs/alignment/STATUS.md`](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)).
 - Determinism is a goal: output is stabilized via goldens, DOM canonicalization, and vendored/forked dependencies where needed (see `roughr-merman`).
+
+## Feature surfaces
+
+Cargo feature meanings and host profile expectations are documented in
+[`docs/FEATURES.md`](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md). In short:
+`merman-wasm` is the browser/wasm-bindgen package, while pure-WASM and Typst-style hosts start from
+`merman-core --no-default-features` or `merman --no-default-features` and must avoid full core
+config/sanitization, host-clock, host-random, host-timing, JS, and WASI imports.
+
+Use the defaults for normal Rust applications. Defaults keep Mermaid-compatible full
+configuration/sanitization and host behavior enabled, which is what you want for CLIs, servers,
+desktop apps, and tests that should accept Mermaid-style frontmatter, JSON5/YAML config, and broad
+HTML sanitization.
+
+Disable defaults for constrained hosts. For example, a Typst package, plugin sandbox, or no-import
+WASM runtime usually does not want local wall-clock time, host randomness, `wasm-bindgen`, WASI, URL
+parsing, YAML/JSON5 parsing, or DOMPurify-like sanitizer dependencies. In those cases, start from
+`default-features = false`, then opt into only the output family you need.
+
+Enable `render` when you need layout and SVG output. Add `raster` only when you also need PNG/JPG/PDF
+conversion. Add `ascii` only for terminal text output. Enable `core-full` when you need Mermaid's
+full config/frontmatter behavior or full sanitizer parity; leave it off for size-oriented Typst-like
+rendering where inputs and options are already controlled. Enable `host` when local clock/randomness
+is a feature, such as live previews that should use today’s date; leave it off for deterministic
+WASM output.
+
+The pure core profile keeps common inline metadata such as `@{ shape: rounded }`, but does not apply
+YAML frontmatter title/config and uses conservative HTML escaping instead of DOMPurify-like
+sanitization.
 
 ## Architecture notes
 

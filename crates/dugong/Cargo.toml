@@ -23,7 +23,6 @@ dugong-graphlib.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-web-time.workspace = true
 
 [dev-dependencies]
 criterion = "0.5.1"

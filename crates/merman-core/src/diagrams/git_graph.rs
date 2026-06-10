@@ -2,7 +2,6 @@ use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 const COMMIT_TYPE_NORMAL: i64 = 0;
 const COMMIT_TYPE_REVERSE: i64 = 1;
@@ -215,8 +214,7 @@ impl GitGraphDb {
         if let Some(prng) = self.prng.as_mut() {
             prng.make_random_hex(7)
         } else {
-            let hex = Uuid::new_v4().simple().to_string();
-            hex.chars().take(7).collect()
+            crate::runtime::generated_id_hex(7, self.seq as u64, 0x6769_7467_7261_7068)
         }
     }
 
@@ -1196,6 +1194,19 @@ merge feature id:"M1"
         assert_eq!(base, tb);
         assert_eq!(base, bt);
         assert_eq!(base, vec!["0-5b722bd".to_string()]);
+    }
+
+    #[cfg(not(feature = "host-random"))]
+    #[test]
+    fn auto_commit_ids_are_deterministic_without_host_random() {
+        let first = commit_ids(&parse("gitGraph:\ncommit\ncommit\n"));
+        let second = commit_ids(&parse("gitGraph:\ncommit\ncommit\n"));
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 2);
+        assert_ne!(first[0], first[1]);
+        assert!(first[0].starts_with("0-"));
+        assert!(first[1].starts_with("1-"));
     }
 
     #[test]

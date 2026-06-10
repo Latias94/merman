@@ -7,7 +7,7 @@ use chrono::{DateTime, FixedOffset, NaiveDateTime, Offset};
 ///
 /// This helper provides a minimally invasive mechanism: during the closure, treat "local time" as
 /// a fixed `FixedOffset` for deterministic, reproducible snapshots. `None` uses the system
-/// `chrono::Local` timezone.
+/// `chrono::Local` timezone when the `host-clock` feature is enabled, and UTC otherwise.
 pub fn with_fixed_local_offset_minutes<R>(offset_minutes: Option<i32>, f: impl FnOnce() -> R) -> R {
     crate::runtime::with_fixed_local_offset_minutes(offset_minutes, f)
 }
@@ -15,7 +15,7 @@ pub fn with_fixed_local_offset_minutes<R>(offset_minutes: Option<i32>, f: impl F
 /// Interprets a local `NaiveDateTime` as an absolute instant in the active local timezone.
 ///
 /// When `with_fixed_local_offset_minutes(Some(x))` is active, the fixed offset is used. Otherwise,
-/// the system local timezone is used.
+/// the system local timezone is used when `host-clock` is enabled, and UTC otherwise.
 pub fn datetime_from_naive_local(naive: NaiveDateTime) -> DateTime<FixedOffset> {
     crate::runtime::datetime_from_naive_local(naive)
 }
@@ -23,7 +23,7 @@ pub fn datetime_from_naive_local(naive: NaiveDateTime) -> DateTime<FixedOffset> 
 /// Maps an absolute instant to the active local timezone (as a `FixedOffset`).
 ///
 /// When `with_fixed_local_offset_minutes(Some(x))` is active, the fixed offset is used. Otherwise,
-/// the system local timezone is used.
+/// the system local timezone is used when `host-clock` is enabled, and UTC otherwise.
 pub fn datetime_to_local_fixed(dt: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
     crate::runtime::datetime_to_local_fixed(dt)
 }

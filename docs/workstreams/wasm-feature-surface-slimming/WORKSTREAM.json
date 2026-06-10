@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "slug": "wasm-feature-surface-slimming",
+  "title": "WASM Feature Surface Slimming",
+  "status": "open",
+  "updated": "2026-06-09",
+  "scope_kind": "architecture_lane",
+  "problem": "Merman's current core and browser-WASM dependency surfaces are too broad for non-JS WebAssembly hosts such as Typst plugins.",
+  "authoritative_docs": [
+    {
+      "role": "design",
+      "path": "docs/workstreams/wasm-feature-surface-slimming/DESIGN.md"
+    },
+    {
+      "role": "execution",
+      "path": "docs/workstreams/wasm-feature-surface-slimming/TODO.md"
+    },
+    {
+      "role": "gates",
+      "path": "docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md"
+    }
+  ],
+  "current_task": "WFS-080",
+  "gates": [
+    "cargo tree -p merman-core --target wasm32-unknown-unknown -e normal",
+    "cargo tree -p merman-wasm --target wasm32-unknown-unknown -e features",
+    "cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown",
+    "cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3",
+    "cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <typst-probe.wasm>",
+    "wasm-tools print <typst-probe.wasm>",
+    "cargo fmt --all --check",
+    "cargo nextest run -p merman-core -p merman-render -p merman-bindings-core"
+  ],
+  "evidence": [
+    {
+      "kind": "source_evidence",
+      "path": "repo-ref/typst/crates/typst-library/src/foundations/plugin.rs",
+      "note": "Typst plugins use wasmi and the wasm-minimal-protocol import surface, not wasm-bindgen browser glue."
+    },
+    {
+      "kind": "probe_evidence",
+      "path": "/tmp/merman-typst-probe",
+      "note": "Parser-only local probe produced a 4.3 MB wasm with 12 wasm-bindgen/js-sys imports, including WebCrypto and JS Date."
+    },
+    {
+      "kind": "probe_evidence",
+      "path": "target/wasm32-unknown-unknown/wasm-size/merman_wasm.wasm",
+      "note": "Current browser wasm-size default produced an 8.5 MB wasm with 49 wasm-bindgen/js imports; no-default produced 2.7 MB with 25 imports."
+    },
+    {
+      "kind": "dependency_evidence",
+      "path": "crates/merman-core/Cargo.toml",
+      "note": "WFS-060 split full YAML frontmatter and JSON5 directives into full-config; merman-core --no-default-features no longer links serde_yaml, unsafe-libyaml, json5, or pest while preserving common inline metadata parsing."
+    },
+    {
+      "kind": "dependency_evidence",
+      "path": "crates/merman-core/Cargo.toml",
+      "note": "WFS-070 split DOMPurify-like HTML rewriting and URL canonicalization into full-sanitization; no-default core no longer links lol_html, url, ICU/idna URL dependencies, or browser/host crates."
+    }
+  ]
+}

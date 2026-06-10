@@ -37,6 +37,10 @@ enum XtaskError {
     MissingReference(String),
     #[error("verification failed:\n{0}")]
     VerifyFailed(String),
+    #[error("profile budget check failed:\n{0}")]
+    ProfileBudgetFailed(String),
+    #[error("Typst package build failed:\n{0}")]
+    TypstPackageFailed(String),
     #[error("snapshot update failed: {0}")]
     SnapshotUpdateFailed(String),
     #[error("layout snapshot update failed: {0}")]
@@ -69,6 +73,8 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
     println!("  check-alignment");
+    println!("  profile-budget");
+    println!("  build-typst-package");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
     println!("  import-upstream-examples");
@@ -160,6 +166,8 @@ fn main() -> Result<(), XtaskError> {
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
+        "profile-budget" => cmd::profile_budget(args.collect()),
+        "build-typst-package" => cmd::build_typst_package(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),

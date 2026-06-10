@@ -285,19 +285,12 @@ impl KanbanDb {
 }
 
 fn apply_shape_data(node: &mut KanbanNode, shape_data: &str) -> Result<()> {
-    let yaml_data = if !shape_data.contains('\n') {
-        format!("{{\n{shape_data}\n}}")
-    } else {
-        format!("{shape_data}\n")
-    };
-
-    let doc: serde_yaml::Value =
-        serde_yaml::from_str(&yaml_data).map_err(|e| Error::DiagramParse {
+    let doc = crate::inline_config::parse_mermaid_inline_object(shape_data).map_err(|e| {
+        Error::DiagramParse {
             diagram_type: "kanban".to_string(),
-            message: e.to_string(),
-        })?;
-
-    let doc = serde_json::to_value(doc).unwrap_or(Value::Null);
+            message: e,
+        }
+    })?;
     let Some(obj) = doc.as_object() else {
         return Ok(());
     };

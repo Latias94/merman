@@ -1,0 +1,31 @@
+[package]
+name = "merman-typst-plugin"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Typst WebAssembly plugin bridge for merman SVG rendering."
+documentation = "https://docs.rs/merman-typst-plugin"
+readme = "README.md"
+keywords = ["mermaid", "typst", "wasm", "svg", "plugin"]
+categories = ["wasm", "visualization"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["render"]
+core-full = ["merman-bindings-core/core-full"]
+core-host = ["merman-bindings-core/core-host"]
+render = ["merman-bindings-core/render"]
+ratex-math = ["render", "merman-bindings-core/ratex-math"]
+
+[dependencies]
+merman-bindings-core.workspace = true
+wasm-minimal-protocol.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

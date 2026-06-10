@@ -2,13 +2,17 @@
 //!
 //! Baseline: `repo-ref/dagre` (see `tools/upstreams/REPOS.lock.json`).
 
+extern crate self as web_time;
+
 pub use dugong_graphlib as graphlib;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod data;
 
+mod host_time;
 mod model;
+pub(crate) use host_time::{Duration, Instant};
 pub use model::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, SelfEdge};
 
 pub mod acyclic;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0-alpha.1
+
+- Updated package metadata for the merman workspace `0.8.0-alpha.1` release.
+
 ## 0.7.0
 
 - Updated package metadata for the merman workspace `0.7.0` release.
