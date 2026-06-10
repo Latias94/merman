@@ -14,6 +14,34 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Scoped embedded icon IDs so repeated Flowchart and Architecture icons do not collide inside one SVG.
 - Scoped Sankey generated IDs and Sequence debug markers for safer inline SVG embedding.
 
+## [0.7.0] - 2026-06-09
+
+Merman 0.7.0 is the first non-prerelease 0.7 line. It stabilizes the Mermaid 11.15-compatible headless rendering surface for broader editor, web, CLI, rustdoc, and native-binding use, while keeping parity and quality gates explicit.
+
+### Breaking Changes
+
+- Carries forward the 0.7 alpha API changes: detector construction uses `for_pinned_mermaid_baseline()`, known-type parser methods use `*_with_type*`, raster sizing uses the new target-aware `RasterOptions`, and theme metadata APIs use the supported-theme naming.
+
+### Added
+
+- Added Venn diagram parsing, layout, and SVG rendering as beta coverage with upstream-backed fixtures and targeted SVG gates.
+- Added host theme profiles and built-in editor-oriented theme presets so embedders can adapt diagrams to dark and themed host surfaces without rewriting per-diagram SVG output.
+- Added theme discovery through Rust, WASM, FFI, UniFFI, and platform binding surfaces.
+- Added copyable host-theme and stylized-theme Rust examples, plus broader theme smoke coverage across diagram families.
+- Added a corpus-driven benchmark harness that compares native `merman`, `mermaid-rs-renderer`, and upstream Mermaid JS v11.15.0 with separate performance, coverage, missing, skipped, and error reporting.
+
+### Changed
+
+- Deepened render request planning, family metadata, headless operations, xtask comparison/admission flow, and theme role ownership so release-facing APIs rely on fewer implementation-era seams.
+- Expanded playground theme preset support, share-state handling, preview status, and web package documentation around the published `@mermanjs/web` package.
+- Updated release workflow examples and release documentation for the final `0.7.0` tag.
+
+### Fixed
+
+- Improved host-theme readability for labels, fallback text, ER relationship labels, requirement strokes, GitGraph branch/tag labels, and `resvg`-safe SVG output.
+- Fixed GitGraph label vertical centering under non-default host themes.
+- Fixed release-facing web package documentation that still referenced the unpublished `@merman/web` name.
+
 ## [0.7.0-alpha.2] - 2026-06-08
 
 This alpha prepares the native, web, and editor-preview surfaces for external testing. It focuses on safer host integrations, clearer package APIs, and a smaller set of release-ready examples.

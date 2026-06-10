@@ -1,0 +1,484 @@
+{
+  "schema_version": 1,
+  "default_group": "end_to_end",
+  "suites": {
+    "quick": "Small smoke set for local iteration; mirrors the historical comparison filter.",
+    "standard": "Balanced cross-family set for routine comparison reports.",
+    "cross_family": "One representative medium fixture per supported diagram family.",
+    "flowchart": "Flowchart-focused routing and layout stress coverage.",
+    "stress": "Known heavier fixtures used when validating optimization work.",
+    "full": "All fixtures in corpus order."
+  },
+  "fixtures": [
+    {
+      "name": "flowchart_tiny",
+      "family": "flowchart",
+      "size": "tiny",
+      "category": "canary",
+      "source": "crates/merman/benches/fixtures/flowchart_tiny.mmd",
+      "suites": ["quick", "standard", "flowchart"],
+      "features": ["basic_nodes", "basic_edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_small",
+      "family": "flowchart",
+      "size": "small",
+      "category": "canary",
+      "source": "crates/merman/benches/fixtures/flowchart_small.mmd",
+      "suites": ["standard", "flowchart"],
+      "features": ["basic_nodes", "basic_edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_medium",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/flowchart_medium.mmd",
+      "suites": ["quick", "standard", "cross_family", "flowchart"],
+      "features": ["nodes", "edges", "labels"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "flowchart_large",
+      "family": "flowchart",
+      "size": "large",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_large.mmd",
+      "suites": ["quick", "standard", "flowchart", "stress"],
+      "features": ["nodes", "edges", "routing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_ports_heavy",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_ports_heavy.mmd",
+      "suites": ["standard", "flowchart", "stress"],
+      "features": ["ports", "edge_routing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_weave",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_weave.mmd",
+      "suites": ["standard", "flowchart", "stress"],
+      "features": ["dense_edges", "routing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_backedges_subgraphs",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_backedges_subgraphs.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["subgraphs", "backedges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_sparse_components",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_sparse_components.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["components", "packing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_lanes_crossfeed",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_lanes_crossfeed.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["lanes", "cross_edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_grid_feedback",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_grid_feedback.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["feedback_edges", "routing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_fanout_returns",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_fanout_returns.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["fanout", "return_edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_label_collision",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_label_collision.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["edge_labels", "collision"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "flowchart_nested_clusters",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_nested_clusters.mmd",
+      "suites": ["standard", "flowchart", "stress"],
+      "features": ["subgraphs", "nested_clusters"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "flowchart_asymmetric_components",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_asymmetric_components.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["components", "packing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_parallel_merges",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_parallel_merges.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["parallel_edges", "merges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_long_edge_labels",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_long_edge_labels.mmd",
+      "suites": ["standard", "flowchart", "stress"],
+      "features": ["long_labels", "edge_labels"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "flowchart_selfloop_bidi",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_selfloop_bidi.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["self_loops", "bidirectional_edges"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_component_packing",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_component_packing.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["components", "packing"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_direction_conflict",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_direction_conflict.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["directions", "subgraphs"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "flowchart_parallel_label_stack",
+      "family": "flowchart",
+      "size": "medium",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/flowchart_parallel_label_stack.mmd",
+      "suites": ["flowchart", "stress"],
+      "features": ["parallel_edges", "edge_labels"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "class_tiny",
+      "family": "class",
+      "size": "tiny",
+      "category": "canary",
+      "source": "crates/merman/benches/fixtures/class_tiny.mmd",
+      "suites": ["quick", "standard"],
+      "features": ["classes"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "class_medium",
+      "family": "class",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/class_medium.mmd",
+      "suites": ["quick", "standard", "cross_family"],
+      "features": ["classes", "relations", "members"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "class_namespace_dense",
+      "family": "class",
+      "size": "large",
+      "category": "stress",
+      "source": "crates/merman/benches/fixtures/stress_class_dense_namespaces_generics_001.mmd",
+      "suites": ["stress"],
+      "features": ["namespaces", "generics", "dense_relations"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "state_tiny",
+      "family": "state",
+      "size": "tiny",
+      "category": "canary",
+      "source": "crates/merman/benches/fixtures/state_tiny.mmd",
+      "suites": ["quick", "standard"],
+      "features": ["states", "transitions"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "state_medium",
+      "family": "state",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/state_medium.mmd",
+      "suites": ["quick", "standard", "cross_family"],
+      "features": ["states", "transitions", "labels"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "sequence_tiny",
+      "family": "sequence",
+      "size": "tiny",
+      "category": "canary",
+      "source": "crates/merman/benches/fixtures/sequence_tiny.mmd",
+      "suites": ["quick", "standard"],
+      "features": ["actors", "messages"],
+      "quality": ["svg_sanity", "dom_compare"]
+    },
+    {
+      "name": "sequence_medium",
+      "family": "sequence",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/sequence_medium.mmd",
+      "suites": ["quick", "standard", "cross_family"],
+      "features": ["actors", "messages", "notes"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "er_medium",
+      "family": "er",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/er_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["entities", "relationships", "attributes"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "info_medium",
+      "family": "info",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/info_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["info"],
+      "quality": ["svg_sanity"]
+    },
+    {
+      "name": "pie_medium",
+      "family": "pie",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/pie_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["slices", "legend"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "mindmap_medium",
+      "family": "mindmap",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/mindmap_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["tree", "markdown_labels"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "journey_medium",
+      "family": "journey",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/journey_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["sections", "tasks", "scores"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "timeline_medium",
+      "family": "timeline",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/timeline_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["sections", "events"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "gantt_medium",
+      "family": "gantt",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/gantt_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["tasks", "dates", "sections"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "requirement_medium",
+      "family": "requirement",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/requirement_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["requirements", "relationships"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "gitgraph_medium",
+      "family": "gitgraph",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/gitgraph_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["branches", "commits", "merge"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "c4_medium",
+      "family": "c4",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/c4_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["containers", "relationships"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "sankey_medium",
+      "family": "sankey",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/sankey_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["links", "weights"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "quadrant_medium",
+      "family": "quadrant",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/quadrant_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["points", "quadrants"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "zenuml_medium",
+      "family": "zenuml",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/zenuml_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["participants", "messages"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "block_medium",
+      "family": "block",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/block_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["blocks", "columns"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "packet_medium",
+      "family": "packet",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/packet_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["fields", "bit_ranges"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "kanban_medium",
+      "family": "kanban",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/kanban_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["columns", "cards"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "architecture_medium",
+      "family": "architecture",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/architecture_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["groups", "services", "edges"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "radar_medium",
+      "family": "radar",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/radar_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["axes", "curves"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "treemap_medium",
+      "family": "treemap",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/treemap_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["hierarchy", "rectangles"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    },
+    {
+      "name": "xychart_medium",
+      "family": "xychart",
+      "size": "medium",
+      "category": "standard",
+      "source": "crates/merman/benches/fixtures/xychart_medium.mmd",
+      "suites": ["standard", "cross_family"],
+      "features": ["axes", "series", "ticks"],
+      "quality": ["svg_sanity", "dom_compare", "raster_compare"]
+    }
+  ]
+}

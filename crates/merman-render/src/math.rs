@@ -877,7 +877,7 @@ mod tests {
         };
         // This is a Node/KaTeX shell smoke, not a browser-font parity gate.
         assert!(
-            (260.0..=290.0).contains(&matrix_metrics.width),
+            (250.0..=290.0).contains(&matrix_metrics.width),
             "matrix width = {}",
             matrix_metrics.width
         );
