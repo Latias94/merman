@@ -190,18 +190,8 @@ pub fn render_png_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) = super::render_svg_with_pipeline_sync(
-        engine,
-        text,
-        parse_options,
-        layout_options,
-        svg_options,
-        &SvgPipeline::resvg_safe(),
-    )?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(svg_to_png(&svg, raster)?))
+    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .render_png(svg_options, &SvgPipeline::resvg_safe(), raster)
 }
 
 pub fn render_jpeg_sync(
@@ -212,18 +202,8 @@ pub fn render_jpeg_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) = super::render_svg_with_pipeline_sync(
-        engine,
-        text,
-        parse_options,
-        layout_options,
-        svg_options,
-        &SvgPipeline::resvg_safe(),
-    )?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(svg_to_jpeg(&svg, raster)?))
+    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .render_jpeg(svg_options, &SvgPipeline::resvg_safe(), raster)
 }
 
 pub fn render_pdf_sync(
@@ -233,18 +213,8 @@ pub fn render_pdf_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<Vec<u8>>> {
-    let Some(svg) = super::render_svg_with_pipeline_sync(
-        engine,
-        text,
-        parse_options,
-        layout_options,
-        svg_options,
-        &SvgPipeline::resvg_safe(),
-    )?
-    else {
-        return Ok(None);
-    };
-    Ok(Some(svg_to_pdf(&svg)?))
+    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .render_pdf(svg_options, &SvgPipeline::resvg_safe())
 }
 
 pub fn svg_to_png(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {

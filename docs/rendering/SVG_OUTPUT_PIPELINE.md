@@ -15,6 +15,7 @@ Typical choices:
 - Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
 - Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
 - Use `render_svg_resvg_safe_sync` or `SvgPipeline::resvg_safe()` before PNG/JPG/PDF export through `resvg` / `usvg`.
+- Use `HeadlessRenderer::render_png_sync`, `render_jpeg_sync`, or `render_pdf_sync` when the input is Mermaid source and the caller wants the standard render-and-raster path; those helpers select the raster-safe pipeline through the Headless Render Operation.
 - Add `SvgPostprocessor` passes when a host application needs product-specific styling, metadata, or cleanup after a built-in preset.
 
 ## Presets

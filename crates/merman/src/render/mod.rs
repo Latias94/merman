@@ -455,6 +455,26 @@ mod svg_pipeline_tests {
         }
     }
 
+    #[cfg(feature = "raster")]
+    struct FailingRasterPass;
+
+    #[cfg(feature = "raster")]
+    impl SvgPostprocessor for FailingRasterPass {
+        fn name(&self) -> &'static str {
+            "failing-raster-pass"
+        }
+
+        fn process<'a>(
+            &self,
+            _svg: Cow<'a, str>,
+            _ctx: &SvgPostprocessContext<'_>,
+        ) -> RenderResult<Cow<'a, str>> {
+            Err(RenderError::InvalidModel {
+                message: "raster pipeline marker".to_string(),
+            })
+        }
+    }
+
     #[test]
     fn render_svg_with_pipeline_passes_parsed_metadata() {
         let renderer = HeadlessRenderer::new().with_diagram_id("host-style");
@@ -469,6 +489,24 @@ mod svg_pipeline_tests {
         assert!(svg.contains("type=flowchart"));
         assert!(svg.contains("title=Host Pipeline"));
         assert!(svg.contains("id=host-style"));
+    }
+
+    #[cfg(feature = "raster")]
+    #[test]
+    fn render_png_sync_uses_renderer_owned_pipeline_before_encoding() {
+        let renderer = HeadlessRenderer::new()
+            .with_svg_pipeline(SvgPipeline::parity().with_postprocessor(FailingRasterPass));
+
+        let err = renderer
+            .render_png_sync(
+                "flowchart TD\n  A[Pipeline] --> B[Raster]",
+                &raster::RasterOptions::default(),
+            )
+            .unwrap_err();
+
+        let message = err.to_string();
+        assert!(message.contains("failing-raster-pass"), "{message}");
+        assert!(message.contains("raster pipeline marker"), "{message}");
     }
 
     #[test]
@@ -946,19 +984,21 @@ impl HeadlessRenderer {
     }
 
     #[cfg(feature = "raster")]
+    fn raster_pipeline(&self) -> SvgPipeline {
+        self.svg_pipeline
+            .clone()
+            .unwrap_or_else(SvgPipeline::resvg_safe)
+    }
+
+    #[cfg(feature = "raster")]
     pub fn render_png_sync(
         &self,
         text: &str,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        let pipeline = self
-            .svg_pipeline
-            .clone()
-            .unwrap_or_else(SvgPipeline::resvg_safe);
-        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
-            return Ok(None);
-        };
-        Ok(Some(raster::svg_to_png(&svg, raster)?))
+        let pipeline = self.raster_pipeline();
+        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
+            .render_png(&self.svg, &pipeline, raster)
     }
 
     #[cfg(feature = "raster")]
@@ -967,25 +1007,15 @@ impl HeadlessRenderer {
         text: &str,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        let pipeline = self
-            .svg_pipeline
-            .clone()
-            .unwrap_or_else(SvgPipeline::resvg_safe);
-        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
-            return Ok(None);
-        };
-        Ok(Some(raster::svg_to_jpeg(&svg, raster)?))
+        let pipeline = self.raster_pipeline();
+        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
+            .render_jpeg(&self.svg, &pipeline, raster)
     }
 
     #[cfg(feature = "raster")]
     pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
-        let pipeline = self
-            .svg_pipeline
-            .clone()
-            .unwrap_or_else(SvgPipeline::resvg_safe);
-        let Some(svg) = self.render_svg_with_pipeline_sync(text, &pipeline)? else {
-            return Ok(None);
-        };
-        Ok(Some(raster::svg_to_pdf(&svg)?))
+        let pipeline = self.raster_pipeline();
+        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
+            .render_pdf(&self.svg, &pipeline)
     }
 }

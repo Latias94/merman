@@ -20,8 +20,8 @@ many diagrams would rasterize as “geometry only” (boxes/lines) or even look 
 ## Current approach
 
 To keep SVG parity strictness focused on `merman-render` while still producing useful raster
-outputs, `merman-cli` and the `merman::render::raster::render_*_sync` helpers apply the explicit
-`SvgPipeline::resvg_safe()` preset:
+outputs, Mermaid-source raster helpers render through the Headless Render Operation with the
+explicit `SvgPipeline::resvg_safe()` preset:
 
 - For raster formats (PNG/JPG/PDF), convert common `<foreignObject>` label patterns into SVG
   `<text>` elements (approximate alignment + line breaks).
@@ -35,6 +35,11 @@ outputs, `merman-cli` and the `merman::render::raster::render_*_sync` helpers ap
 
 This makes `tools/preview/export-fixtures-png.ps1` produce readable previews across most diagrams
 without bundling a browser engine.
+
+`merman-cli` follows the same boundary for Mermaid source: it selects the SVG/raster output
+pipeline once, appends CLI-owned background and CSS passes, then rasterizes the prepared SVG. Raw
+SVG input is the exception because it has no Mermaid parse/render model; the CLI applies the
+raw-SVG raster pipeline before calling the lower-level raster encoders.
 
 Note on sizing:
 

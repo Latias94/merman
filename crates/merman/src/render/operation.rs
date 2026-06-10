@@ -3,11 +3,21 @@ use super::{
     apply_svg_pipeline_with_metadata,
 };
 
+#[cfg(feature = "raster")]
+use super::raster;
+
 pub(super) struct HeadlessOperation<'a> {
     engine: &'a merman_core::Engine,
     text: &'a str,
     parse_options: merman_core::ParseOptions,
     layout_options: &'a LayoutOptions,
+}
+
+#[cfg(feature = "raster")]
+enum HeadlessRasterOutput<'a> {
+    Png(&'a raster::RasterOptions),
+    Jpeg(&'a raster::RasterOptions),
+    Pdf,
 }
 
 impl<'a> HeadlessOperation<'a> {
@@ -55,6 +65,54 @@ impl<'a> HeadlessOperation<'a> {
         };
 
         Ok(Some(parts.into_pipeline_svg(pipeline)?))
+    }
+
+    #[cfg(feature = "raster")]
+    pub(super) fn render_png(
+        &self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+        raster: &raster::RasterOptions,
+    ) -> raster::Result<Option<Vec<u8>>> {
+        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Png(raster))
+    }
+
+    #[cfg(feature = "raster")]
+    pub(super) fn render_jpeg(
+        &self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+        raster: &raster::RasterOptions,
+    ) -> raster::Result<Option<Vec<u8>>> {
+        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Jpeg(raster))
+    }
+
+    #[cfg(feature = "raster")]
+    pub(super) fn render_pdf(
+        &self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> raster::Result<Option<Vec<u8>>> {
+        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Pdf)
+    }
+
+    #[cfg(feature = "raster")]
+    fn render_raster(
+        &self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+        output: HeadlessRasterOutput<'_>,
+    ) -> raster::Result<Option<Vec<u8>>> {
+        let Some(svg) = self.render_svg_with_pipeline(svg_options, pipeline)? else {
+            return Ok(None);
+        };
+
+        let bytes = match output {
+            HeadlessRasterOutput::Png(raster) => raster::svg_to_png(&svg, raster)?,
+            HeadlessRasterOutput::Jpeg(raster) => raster::svg_to_jpeg(&svg, raster)?,
+            HeadlessRasterOutput::Pdf => raster::svg_to_pdf(&svg)?,
+        };
+        Ok(Some(bytes))
     }
 
     fn render_svg_parts(&self, svg_options: &SvgRenderOptions) -> Result<Option<RenderedSvgParts>> {

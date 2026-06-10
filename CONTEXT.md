@@ -49,6 +49,8 @@ Current direction:
   typed render model construction, layout, SVG emission, postprocess metadata, and pipeline
   ordering behind one behavior-bearing module. Public adapters choose input/output shape; they do
   not rebuild that flow independently.
+- SVG and raster outputs from Mermaid source should route through the Headless Render Operation.
+  Raw SVG input may stay adapter-local because it does not have a Mermaid parse/render model.
 - **Diagram Family Facts** are the pinned-baseline facts for one Mermaid family: ids, aliases,
   feature profile, detector order, parser adapters, typed render adapters, known-type side effects,
   public metadata, and admission status. Call sites should consume projections from those facts

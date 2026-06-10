@@ -316,7 +316,7 @@ impl<'a> RenderRequest<'a> {
 
         if text.trim_start().starts_with("<svg") && self.plan.format.is_raster() {
             let svg = self.postprocess_raw_svg_for_raster(text)?;
-            return self.rasterize_svg(&svg);
+            return self.rasterize_prepared_svg(&svg);
         }
 
         let pipeline = self.postprocess_pipeline();
@@ -335,13 +335,20 @@ impl<'a> RenderRequest<'a> {
         match self.plan.format {
             RenderFormat::Svg => Ok(RenderedArtifact::from_svg(svg)),
             RenderFormat::Ascii | RenderFormat::Unicode => unreachable!("handled above"),
-            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => self.rasterize_svg(&svg),
+            RenderFormat::Png | RenderFormat::Jpeg | RenderFormat::Pdf => {
+                self.rasterize_prepared_svg(&svg)
+            }
         }
     }
 
     fn postprocess_pipeline(&self) -> SvgPipeline {
+        let pipeline = if self.plan.format.is_raster() {
+            SvgPipeline::resvg_safe()
+        } else {
+            SvgPipeline::parity()
+        };
         svg_postprocess_pipeline(
-            SvgPipeline::parity(),
+            pipeline,
             self.plan.background.as_deref(),
             self.plan.css.as_deref(),
         )
@@ -360,9 +367,8 @@ impl<'a> RenderRequest<'a> {
         Ok(merman::render::apply_svg_pipeline(svg, &pipeline)?)
     }
 
-    fn rasterize_svg(&self, svg: &str) -> Result<RenderedArtifact, CliError> {
+    fn rasterize_prepared_svg(&self, svg: &str) -> Result<RenderedArtifact, CliError> {
         let metadata = svg_metadata(svg);
-        let svg = merman::render::svg_resvg_safe(svg)?;
         let options = self.plan.raster_options();
         let bytes = match self.plan.format {
             RenderFormat::Svg | RenderFormat::Ascii | RenderFormat::Unicode => {
@@ -370,11 +376,11 @@ impl<'a> RenderRequest<'a> {
                     "raster output requested for a non-raster format".to_string(),
                 ));
             }
-            RenderFormat::Png => merman::render::raster::svg_to_png(&svg, &options)?,
-            RenderFormat::Jpeg => merman::render::raster::svg_to_jpeg(&svg, &options)?,
+            RenderFormat::Png => merman::render::raster::svg_to_png(svg, &options)?,
+            RenderFormat::Jpeg => merman::render::raster::svg_to_jpeg(svg, &options)?,
             RenderFormat::Pdf => {
-                merman::render::raster::validate_svg_pdf_size(&svg, &options)?;
-                let pdf_svg = self.pdf_svg_source(&svg);
+                merman::render::raster::validate_svg_pdf_size(svg, &options)?;
+                let pdf_svg = self.pdf_svg_source(svg);
                 merman::render::raster::svg_to_pdf_with_options(pdf_svg.as_ref(), &options)?
             }
         };
@@ -908,6 +914,81 @@ fn warn_for_accepted_compat_options(plan: &RenderPlan) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_plan(format: RenderFormat) -> RenderPlan {
+        RenderPlan {
+            input: None,
+            output: None,
+            format,
+            parse: ParseCliArgs::default(),
+            render: RenderCliArgs::default(),
+            scale: 1.0,
+            raster: RasterCliOptions::default(),
+            background: Some("#f8fafc".to_string()),
+            css: Some(".node { fill: red; }".to_string()),
+            icon_registry: None,
+            artefacts: None,
+            jobs: 1,
+            pdf_fit: true,
+            quiet: true,
+            sequence_mirror_actors: false,
+            mode: RenderMode::Subcommand,
+        }
+    }
+
+    #[test]
+    fn diagram_raster_pipeline_uses_resvg_safe_before_cli_postprocessors() {
+        let plan = test_plan(RenderFormat::Png);
+        let engine = Engine::new();
+        let request = RenderRequest {
+            plan: &plan,
+            engine: &engine,
+            parse_options: ParseOptions::default(),
+            math_renderer: None,
+        };
+        let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
+
+        let out = request
+            .postprocess_pipeline()
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(!out.contains("<foreignObject"));
+        assert!(!out.contains("@keyframes bad"));
+        assert!(!out.contains("animation: bad"));
+        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_eq!(
+            out.matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn diagram_svg_pipeline_keeps_parity_base_before_cli_postprocessors() {
+        let plan = test_plan(RenderFormat::Svg);
+        let engine = Engine::new();
+        let request = RenderRequest {
+            plan: &plan,
+            engine: &engine,
+            parse_options: ParseOptions::default(),
+            math_renderer: None,
+        };
+        let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
+
+        let out = request
+            .postprocess_pipeline()
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(out.contains("<foreignObject"));
+        assert!(out.contains(r#"style="background-color: #f8fafc;""#));
+        assert_eq!(
+            out.matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+    }
 
     #[test]
     fn raw_svg_raster_pipeline_sanitizes_before_cli_postprocessors() {
