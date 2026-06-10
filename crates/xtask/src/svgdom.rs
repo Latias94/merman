@@ -473,6 +473,40 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         val.to_string()
     }
 
+    fn is_sankey_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+        for a in n.ancestors() {
+            if a.is_element() && a.tag_name().name() == "svg" {
+                return a
+                    .attribute("aria-roledescription")
+                    .is_some_and(|v| v == "sankey");
+            }
+        }
+        false
+    }
+
+    fn sankey_diagram_id(n: roxmltree::Node<'_, '_>) -> Option<String> {
+        for a in n.ancestors() {
+            if a.is_element()
+                && a.tag_name().name() == "svg"
+                && a.attribute("aria-roledescription")
+                    .is_some_and(|v| v == "sankey")
+            {
+                return a.attribute("id").map(str::to_string);
+            }
+        }
+        None
+    }
+
+    fn normalize_sankey_scoped_dom_value(n: roxmltree::Node<'_, '_>, val: &str) -> String {
+        let Some(diagram_id) = sankey_diagram_id(n) else {
+            return val.to_string();
+        };
+        let node_prefix = format!("{diagram_id}-node-");
+        let gradient_prefix = format!("{diagram_id}-linearGradient-");
+        val.replace(&node_prefix, "node-")
+            .replace(&gradient_prefix, "linearGradient-")
+    }
+
     if n.is_element() {
         fn is_mindmap_diagram(n: roxmltree::Node<'_, '_>) -> bool {
             for a in n.ancestors() {
@@ -780,6 +814,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 && !is_architecture_icon_content(n)
             {
                 val = normalize_architecture_scoped_dom_id(n, &val);
+            }
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && is_sankey_diagram(n)
+            {
+                val = normalize_sankey_scoped_dom_value(n, &val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
@@ -1587,6 +1628,17 @@ mod tests {
     fn parity_normalizes_architecture_diagram_scoped_dom_ids() {
         let prefixed = r#"<svg id="diag" aria-roledescription="architecture"><g class="architecture-services"><g id="diag-service-api"><g><path id="diag-node-api" class="node-bkg" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g><g class="architecture-groups"><rect id="diag-group-core" class="node-bkg" x="0" y="0" width="80" height="80"/></g></svg>"#;
         let bare = r#"<svg id="diag" aria-roledescription="architecture"><g class="architecture-services"><g id="service-api"><g><path id="node-api" class="node-bkg" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g><g class="architecture-groups"><rect id="group-core" class="node-bkg" x="0" y="0" width="80" height="80"/></g></svg>"#;
+
+        let prefixed_dom = dom_signature(prefixed, DomMode::Parity, 3).unwrap();
+        let bare_dom = dom_signature(bare, DomMode::Parity, 3).unwrap();
+
+        assert_eq!(prefixed_dom, bare_dom);
+    }
+
+    #[test]
+    fn parity_normalizes_sankey_diagram_scoped_dom_ids() {
+        let prefixed = r##"<svg id="diag" aria-roledescription="sankey"><defs><linearGradient id="diag-linearGradient-5"><stop offset="0%" stop-color="#000"/></linearGradient></defs><g class="nodes"><g class="node" id="diag-node-1"/></g><g class="links"><path stroke="url(#diag-linearGradient-5)"/></g></svg>"##;
+        let bare = r##"<svg id="diag" aria-roledescription="sankey"><defs><linearGradient id="linearGradient-5"><stop offset="0%" stop-color="#000"/></linearGradient></defs><g class="nodes"><g class="node" id="node-1"/></g><g class="links"><path stroke="url(#linearGradient-5)"/></g></svg>"##;
 
         let prefixed_dom = dom_signature(prefixed, DomMode::Parity, 3).unwrap();
         let bare_dom = dom_signature(bare, DomMode::Parity, 3).unwrap();
