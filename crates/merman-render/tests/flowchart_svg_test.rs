@@ -80,6 +80,23 @@ fn flowchart_svg_viewbox_values(svg: &str) -> [f64; 4] {
     [values[0], values[1], values[2], values[3]]
 }
 
+fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
+    let data_marker = format!(r#"<g class="label" data-id="{data_id}""#);
+    let data_start = svg.find(&data_marker).expect("data-id marker");
+    let width_marker = r#"<foreignObject width=""#;
+    let width_start = svg[data_start..]
+        .find(width_marker)
+        .map(|idx| data_start + idx + width_marker.len())
+        .expect("foreignObject width");
+    let width_end = svg[width_start..]
+        .find('"')
+        .map(|idx| width_start + idx)
+        .expect("foreignObject width end");
+    svg[width_start..width_end]
+        .parse::<f64>()
+        .expect("foreignObject width number")
+}
+
 #[test]
 fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
     const DEPTH: usize = 1200;
@@ -1027,6 +1044,61 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
     assert!(
         svg.contains(r#"<span class="edgeLabel"><p>plain edge label</p></span>"#),
         "expected plain HTML edge labels to use Mermaid nonMarkdownToHTML paragraph wrapper: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
+    let text = "flowchart TD\n    A[Start] --> B{Condition ?}\n    B -->|Yes| C[Execute]\n    B -->|No| D[End]\n    C --> D\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+        ..Default::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let yes_label = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "L_B_C_0")
+        .and_then(|edge| edge.label.as_ref())
+        .expect("Yes edge label");
+    let no_label = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "L_B_D_0")
+        .and_then(|edge| edge.label.as_ref())
+        .expect("No edge label");
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(
+        svg.contains(r#"<span class="edgeLabel"><p>Yes</p></span>"#)
+            && svg.contains(r#"<span class="edgeLabel"><p>No</p></span>"#),
+        "expected issue #2 edge labels to render as HTML labels: {svg}"
+    );
+    assert_eq!(
+        foreign_object_width_for_data_id(&svg, "L_B_C_0"),
+        yes_label.width + 4.0
+    );
+    assert_eq!(
+        foreign_object_width_for_data_id(&svg, "L_B_D_0"),
+        no_label.width + 4.0
     );
 }
 

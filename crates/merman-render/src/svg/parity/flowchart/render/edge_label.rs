@@ -3,11 +3,6 @@
 use super::super::*;
 use super::root::flowchart_wrap_svg_text_lines;
 
-// Mermaid's `createText(...)` defaults its `width` argument to 200. Flowchart edge labels call
-// `createText(...)` without overriding that width, so keep edge label wrapping/max-width fixed at
-// 200px (independent of `flowchart.wrappingWidth`).
-const FLOWCHART_EDGE_LABEL_WRAP_WIDTH: f64 = 200.0;
-
 pub(in crate::svg::parity) fn render_flowchart_edge_label(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -451,9 +446,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 }
             }
 
-            let w = lbl.width.max(0.0);
+            let layout_w = lbl.width.max(0.0);
+            let render_w = flowchart_html_edge_label_render_width(layout_w);
             let h = lbl.height.max(0.0);
-            let wrapped_style = if w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
+            let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(FLOWCHART_EDGE_LABEL_WRAP_WIDTH)
@@ -472,9 +468,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
-                fmt_display(-w / 2.0),
+                fmt_display(-render_w / 2.0),
                 fmt_display(-h / 2.0),
-                fmt_display(w),
+                fmt_display(render_w),
                 fmt_display(h),
                 escape_xml_display(&div_style),
                 span_style_attr,
@@ -516,9 +512,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                     ctx.edge_wrap_mode,
                 )
             };
-            let w = metrics.width.max(1.0);
+            let layout_w = metrics.width.max(1.0);
+            let render_w = flowchart_html_edge_label_render_width(layout_w);
             let h = metrics.height.max(1.0);
-            let wrapped_style = if w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
+            let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
                     mw = fmt_display(FLOWCHART_EDGE_LABEL_WRAP_WIDTH)
@@ -537,9 +534,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
-                fmt_display(-w / 2.0),
+                fmt_display(-render_w / 2.0),
                 fmt_display(-h / 2.0),
-                fmt_display(w.max(0.0)),
+                fmt_display(render_w),
                 fmt_display(h.max(0.0)),
                 escape_xml_display(&div_style),
                 span_style_attr,
