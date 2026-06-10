@@ -441,6 +441,38 @@ Immediate reading:
 - Typst render and browser render are close in render-code size once transport overhead is
   separated.
 
+### WFS-100 Typst Plugin Transport Smoke
+
+Change:
+
+- confirmed that the existing `merman-typst-plugin` crate is the experimental Typst transport;
+- added `cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>`, which loads the plugin
+  with `wasmi`, links the two wasm-minimal-protocol `typst_env` functions, calls
+  `render_svg_json`, and verifies the returned JSON contains a successful SVG payload;
+- corrected Typst plugin docs so the default artifact is described as the render artifact and the
+  bridge-only artifact is explicitly `--no-default-features`.
+
+Validation:
+
+```bash
+cargo check -p xtask
+cargo build -p xtask
+cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
+target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+```
+
+Observed default render artifact:
+
+- imports: exactly
+  `typst_env::wasm_minimal_protocol_send_result_to_host` and
+  `typst_env::wasm_minimal_protocol_write_args_to_buffer`;
+- exports: `memory`, `abi_version`, `package_version`, `render_svg_json`, `validate_json`,
+  `__data_end`, and `__heap_base`;
+- size: 7,026,184 raw bytes;
+- smoke: `render_svg_json` returned 10,442 JSON bytes with a 9,875-byte SVG payload for a flowchart
+  fixture.
+
 ## Gates
 
 ### Always-Preserve Gates
@@ -516,10 +548,13 @@ The repository now has an initial checked gate for this:
 ```bash
 cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>
 cargo run -p xtask -- profile-budget check-imports --profile pure-wasm --wat-file <wasm-tools-print.wat>
+cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>
 ```
 
 `typst-wasm` allows only the two wasm-minimal-protocol `typst_env` imports and requires exported
-`memory` when using `check-wasm` or `check-exports`. `pure-wasm` currently allows no imports.
+`memory` when using `check-wasm` or `check-exports`. `typst-plugin-smoke` additionally proves that
+the artifact can be instantiated by a Typst-compatible `wasmi` host and can return SVG JSON bytes.
+`pure-wasm` currently allows no imports.
 
 ### Export Gate
 

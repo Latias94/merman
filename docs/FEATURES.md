@@ -49,10 +49,18 @@ crate.
 | `merman` | `core-full` | Forwards to `merman-core/full`; enabled by default. |
 | `merman` | `core-host` | Forwards to `merman-core/host`; enabled by default. |
 | `merman-wasm` | `render` | Browser wasm-bindgen rendering surface for `@mermanjs/web`. |
-| `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`. |
+| `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`. The current browser ASCII preset still pulls the full core registry through `merman-ascii`. |
+| `merman-wasm` | `core-full` | Browser package full core profile; enabled by default. |
+| `merman-wasm` | `core-host` | Browser package host capability profile; enabled by default. |
+| `merman-wasm` | `ratex-math` | Browser package RaTeX math rendering support; implies `render`. |
+| `merman-typst-plugin` | `render` | Typst wasm-minimal-protocol SVG render surface; enabled by default. |
+| `merman-typst-plugin` | `core-full` | Typst no-host artifact with full config and sanitization support. |
+| `merman-typst-plugin` | `core-host` | Opt-in host capability profile; do not enable for Typst package builds. |
+| `merman-typst-plugin` | `ratex-math` | Typst plugin artifact plus RaTeX math rendering support; implies `render`. |
 
 The current `merman-wasm` crate is a browser/JavaScript WebAssembly package. It is not the
-pure-WASM or Typst plugin surface.
+pure-WASM or Typst plugin surface. The Typst surface is `merman-typst-plugin`, which uses
+wasm-minimal-protocol and must keep browser/wasm-bindgen imports out of package builds.
 
 ## Host Profiles
 

@@ -17,10 +17,16 @@ Current exported functions:
 `code_name`, `message`, and `svg` fields so the Typst package can render
 placeholder or text errors without failing compilation.
 
-Build the default minimal Typst probe artifact with:
+Build the default Typst render artifact with:
 
 ```bash
 cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
+```
+
+Build the bridge-only protocol artifact with:
+
+```bash
+cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --no-default-features
 ```
 
 Build the larger full-config/full-sanitization no-host artifact with:
@@ -33,4 +39,10 @@ Then check the Typst wasm surface with:
 
 ```bash
 cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+```
+
+Smoke the plugin through a Typst-compatible `wasmi` host call with:
+
+```bash
+cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 ```

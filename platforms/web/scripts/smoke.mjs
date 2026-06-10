@@ -26,7 +26,12 @@ await api.initMerman({
 });
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
+const deterministicTime = {
+  fixed_today: "2026-06-10",
+  fixed_local_offset_minutes: 0,
+};
 const options = {
+  ...deterministicTime,
   svg: { pipeline: "readable" },
   layout: { text_measurer: "deterministic" },
 };
@@ -35,33 +40,61 @@ assert.equal(api.isMermanInitialized(), true);
 assert.equal(Number.isInteger(api.abiVersion()), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 
-const svg = api.renderSvg(source, options);
-assert.match(svg, /<svg/);
-assert.match(svg, /Hello/);
+const capabilities = api.bindingCapabilities();
+assert.equal(typeof capabilities.render, "boolean");
+assert.equal(typeof capabilities.ascii, "boolean");
+assert.equal(typeof capabilities.core_full, "boolean");
+assert.equal(typeof capabilities.core_host, "boolean");
+assert.equal(typeof capabilities.ratex_math, "boolean");
 
-const ascii = api.renderAscii(source);
-assert.match(ascii, /Hello/);
-assert.match(ascii, /World/);
+if (capabilities.render) {
+  const svg = api.renderSvg(source, options);
+  assert.match(svg, /<svg/);
+  assert.match(svg, /Hello/);
 
-assert.equal(typeof api.parseObject(source), "object");
-assert.equal(typeof api.layoutObject(source), "object");
+  assert.equal(typeof api.parseObject(source, deterministicTime), "object");
+  assert.equal(typeof api.layoutObject(source, options), "object");
 
-const valid = api.validate(source);
-assert.equal(valid.valid, true);
-assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+  const valid = api.validate(source, deterministicTime);
+  assert.equal(valid.valid, true);
+  assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
 
-const invalid = api.validate("not a diagram");
-assert.equal(invalid.valid, false);
-assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
+  const invalid = api.validate("not a diagram", deterministicTime);
+  assert.equal(invalid.valid, false);
+  assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
+} else {
+  const unsupported = api.validate(source, deterministicTime);
+  assert.equal(unsupported.valid, false);
+  assert.equal(unsupported.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+}
+
+if (capabilities.ascii) {
+  const ascii = api.renderAscii(source, deterministicTime);
+  assert.match(ascii, /Hello/);
+  assert.match(ascii, /World/);
+} else {
+  assert.deepEqual(api.asciiSupportedDiagrams(), []);
+}
 
 assert.match(api.encodeOptions(options), /deterministic/);
 assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
-assert.deepEqual(api.supportedHostThemePresets(), [
-  ...api.SUPPORTED_HOST_THEME_PRESETS,
-]);
-assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
+if (capabilities.render) {
+  assert.deepEqual(api.supportedHostThemePresets(), [
+    ...api.SUPPORTED_HOST_THEME_PRESETS,
+  ]);
+} else {
+  assert.deepEqual(api.supportedHostThemePresets(), []);
+}
+
+if (capabilities.core_full) {
+  assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
+} else {
+  for (const diagram of api.supportedDiagrams()) {
+    assert.equal(api.isDiagramType(diagram), true);
+  }
+}
 
 const asciiDiagrams = api.asciiSupportedDiagrams();
 for (const diagram of asciiDiagrams) {
@@ -96,16 +129,32 @@ const fixtureNames = {
   zenuml: "zenuml_medium",
 };
 
-for (const diagram of api.supportedDiagrams()) {
-  const fixtureName = fixtureNames[diagram];
-  assert.ok(fixtureName, `missing fixture for ${diagram}`);
-  const fixture = await readFile(
-    path.join(repoRoot, "crates", "merman", "benches", "fixtures", `${fixtureName}.mmd`),
-    "utf8"
-  );
-  assert.match(api.renderSvg(fixture), /<svg/);
+if (capabilities.render) {
+  for (const diagram of api.supportedDiagrams()) {
+    const fixtureName = fixtureNames[diagram];
+    assert.ok(fixtureName, `missing fixture for ${diagram}`);
+    const fixture = await readFile(
+      path.join(
+        repoRoot,
+        "crates",
+        "merman",
+        "benches",
+        "fixtures",
+        `${fixtureName}.mmd`
+      ),
+      "utf8"
+    );
+    assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+  }
 }
 
 console.log(
-  `@mermanjs/web smoke passed (${api.supportedDiagrams().length} diagram fixtures)`
+  [
+    "@mermanjs/web smoke passed",
+    `diagrams=${api.supportedDiagrams().length}`,
+    `render=${capabilities.render}`,
+    `ascii=${capabilities.ascii}`,
+    `core_full=${capabilities.core_full}`,
+    `ratex_math=${capabilities.ratex_math}`,
+  ].join(" ")
 );

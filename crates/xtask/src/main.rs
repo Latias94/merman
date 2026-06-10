@@ -43,6 +43,8 @@ enum XtaskError {
     WasmSizeMatrixFailed(String),
     #[error("Typst package build failed:\n{0}")]
     TypstPackageFailed(String),
+    #[error("Typst plugin smoke failed:\n{0}")]
+    TypstPluginSmokeFailed(String),
     #[error("snapshot update failed: {0}")]
     SnapshotUpdateFailed(String),
     #[error("layout snapshot update failed: {0}")]
@@ -78,6 +80,7 @@ fn print_help(topic: Option<&str>) {
     println!("  profile-budget");
     println!("  wasm-size-matrix");
     println!("  build-typst-package");
+    println!("  typst-plugin-smoke");
     println!("  audit-gaps");
     println!("  import-upstream-docs");
     println!("  import-upstream-examples");
@@ -172,6 +175,7 @@ fn main() -> Result<(), XtaskError> {
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
         "build-typst-package" => cmd::build_typst_package(args.collect()),
+        "typst-plugin-smoke" => cmd::typst_plugin_smoke(args.collect()),
         "import-upstream-docs" => cmd::import_upstream_docs(args.collect()),
         "import-upstream-examples" => cmd::import_upstream_examples(args.collect()),
         "import-upstream-html" => cmd::import_upstream_html(args.collect()),

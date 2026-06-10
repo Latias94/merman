@@ -96,7 +96,7 @@ Last updated: 2026-06-10
 
 ## M3 -- WASM Package Surfaces
 
-- [ ] WFS-090 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-wasm,platforms/web,docs/release]
+- [x] WFS-090 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-wasm,platforms/web,docs/release]
   Goal: Split browser WASM package variants or feature presets so consumers can choose core-only,
   render, ascii, and full browser bundles.
   Validation: `cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown`
@@ -105,17 +105,32 @@ Last updated: 2026-06-10
   Evidence: initial `xtask wasm-size-matrix` landed and recorded raw/stripped size tables for
   browser and Typst presets separately. `docs/release/PACKAGE_SURFACES.md` and
   `crates/merman-wasm/README.md` now label `merman-wasm` as the browser/wasm-bindgen surface.
-  Remaining work: use the matrix to decide public browser package variants and wire the
-  TypeScript/npm wrapper changes.
+  The browser package now ships explicit `browser-core`, `browser-render`, `browser-ascii`,
+  `browser-full`, and `browser-ratex-math` source-build presets. `bindingCapabilities()` reports
+  the active artifact surface, and the npm package defaults to `browser-full` for publishing.
+  Validation: `cargo fmt --check -p merman-bindings-core -p merman-wasm`;
+  `cargo nextest run -p merman-bindings-core -p merman-wasm`;
+  `cargo nextest run -p merman-bindings-core -p merman-wasm --no-default-features`;
+  `npm run build --prefix platforms/web`;
+  `npm run smoke --prefix platforms/web`;
+  `npm run prepack --prefix platforms/web`;
+  `npm run build:wasm:core --prefix platforms/web`;
+  `npm run build:wasm:render --prefix platforms/web`;
+  `npm run build:wasm:ascii --prefix platforms/web`;
+  `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web`.
 
-- [ ] WFS-100 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-typst,docs/release,docs/bindings]
-  Goal: Add an experimental Typst/wasm-minimal-protocol transport or probe crate with no
-  wasm-bindgen dependency.
+- [x] WFS-100 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-typst-plugin,crates/xtask,docs/release]
+  Goal: Validate and document the existing experimental Typst/wasm-minimal-protocol transport with
+  no wasm-bindgen dependency.
   Validation: wasm import allowlist contains only `typst_env` protocol imports; exported `memory`
-  exists; a wasmi or Typst smoke call returns SVG/JSON bytes for the admitted subset.
-  Review: Start with a small admitted subset instead of pretending full Mermaid parity is already
-  Typst-ready.
-  Evidence: `wasm-tools print` import/export snapshot and smoke output.
+  exists; a wasmi smoke call returns SVG/JSON bytes for the admitted flowchart subset.
+  Review: Keep Typst package builds separate from browser/wasm-bindgen artifacts; do not claim full
+  Typst package publication readiness from the transport smoke alone.
+  Evidence: `crates/merman-typst-plugin` exports `abi_version`, `package_version`,
+  `render_svg_json`, and `validate_json` through wasm-minimal-protocol. Validation:
+  `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`;
+  `target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`;
+  `target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`.
 
 ## M4 -- Release And Compatibility
 
