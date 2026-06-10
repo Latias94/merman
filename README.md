@@ -1,6 +1,6 @@
 # merman
 
-Mermaid, but headless, in Rust.
+[Mermaid.js](https://mermaid.js.org/), but headless, in Rust.
 
 [![CI](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman)
@@ -11,20 +11,26 @@ Mermaid, but headless, in Rust.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Merman is a parity-focused, headless Rust implementation of Mermaid for parsing, layout, and
+[Mermaid.js](https://mermaid.js.org/) is a JavaScript diagramming tool that turns text such as
+`flowchart TD; A-->B;` into diagrams for Markdown, docs, and web apps.
+
+Merman is a parity-focused, headless Rust implementation of Mermaid.js for parsing, layout, and
 browserless rendering. It targets `mermaid@11.15.0`, produces semantic JSON, layout JSON, SVG,
-raster formats, and ASCII/Unicode output, and does not launch a browser to render diagrams.
+raster formats, and ASCII/Unicode output, and does not launch a browser or JavaScript runtime to
+render diagrams.
+
+Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
 Parity is enforced with golden semantic/layout snapshots and upstream SVG DOM baselines, so changes
 that affect semantics, layout, or rendering are caught and reviewed.
-Disclaimer: Merman is not affiliated with, endorsed by, or sponsored by the Mermaid project or its
-maintainers. It is an independent compatibility implementation by Mermaid users. Many examples and
-fixtures in this repository are extracted from Mermaid documentation or tests, either verbatim or
-with small updates for local context; see
+
+Project note: Merman is not affiliated with, endorsed by, or sponsored by the
+[Mermaid project](https://github.com/mermaid-js/mermaid) or its maintainers. It is an independent
+compatibility implementation by Mermaid users. Many examples and fixtures in this repository are
+extracted from Mermaid documentation or tests, either verbatim or with small updates for local
+context; see
 [`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for
 Mermaid license and provenance notes.
-
-Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
 ## Choose Your Entry Point
 
@@ -48,6 +54,15 @@ Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 - PNG, JPG, and PDF via SVG rasterization/conversion.
 
 Diagram coverage and current parity status live in [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
+
+## Sample output
+
+| Architecture | Mindmap | Sankey |
+| --- | --- | --- |
+| <a href="#architecture-many-groups--sparse-services"><img width="250" alt="Merman-rendered Architecture diagram" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/architecture.png" /></a> | <a href="#mindmap-line-breaks-in-labels"><img width="250" alt="Merman-rendered Mindmap diagram" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/mindmap.png" /></a> | <a href="#sankey-dense-shared-nodes"><img width="250" alt="Merman-rendered Sankey diagram" src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/showcase/sankey.png" /></a> |
+
+These images were rendered headlessly by `merman-cli` from Mermaid fixtures. See
+[Showcase](#showcase) for source diagrams and more rendered examples.
 
 ## Install
 
@@ -96,6 +111,7 @@ MSRV is `rust-version = 1.95`.
 
 - [Choose Your Entry Point](#choose-your-entry-point)
 - [What Merman Outputs](#what-merman-outputs)
+- [Sample output](#sample-output)
 - [Install](#install)
 - [Quickstart (library)](#quickstart-library)
 - [Rust examples](#rust-examples)
@@ -111,6 +127,7 @@ MSRV is `rust-version = 1.95`.
 - [Limitations](#limitations)
 - [Architecture notes](#architecture-notes)
 - [Workspace crates](#workspace-crates)
+- [Star History](#star-history)
 - [Links](#links)
 
 ## Quickstart (library)
@@ -334,9 +351,9 @@ cargo run -p merman --features render --example example_11_custom_output_environ
 
 ## Quickstart (FFI and native hosts)
 
-The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The first
-release candidate supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON,
-validation JSON, binding metadata, and explicit Rust-owned buffer release.
+The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C ABI for non-Rust hosts. The current
+FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON, validation
+JSON, binding metadata, and explicit Rust-owned buffer release.
 
 ```c
 #include "merman.h"
@@ -625,7 +642,7 @@ gantt
   and SVG parity.
 - Alignment is enforced via upstream SVG DOM baselines plus semantic/layout golden snapshots.
 - DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM, not byte-identical SVG text.
-- Corpus size: 3400+ upstream SVG baselines across 23 diagrams.
+- Corpus size: 3500+ upstream SVG baselines across 23 diagrams.
 - Mermaid diagram families that are present upstream but not implemented here are listed in
   [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
 - Current coverage and gates: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).
@@ -703,6 +720,16 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 | [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |
 | [`roughr-merman`](https://crates.io/crates/roughr-merman) | Forked Rough.js-style renderer dependency stabilized for Mermaid parity. |
 
+## Star History
+
+<a href="https://www.star-history.com/#Latias94/merman&amp;Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Latias94/merman&amp;type=Date&amp;theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Latias94/merman&amp;type=Date" />
+    <img alt="Star history chart for Latias94/merman" src="https://api.star-history.com/svg?repos=Latias94/merman&amp;type=Date" />
+  </picture>
+</a>
+
 ## Links
 
 - Alignment status: [docs/alignment/STATUS.md](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
@@ -718,4 +745,3 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - Changelog: [CHANGELOG.md](https://github.com/Latias94/merman/blob/main/CHANGELOG.md)
 - License: dual MIT or Apache-2.0; see `LICENSE`, `LICENSE-MIT`, and `LICENSE-APACHE`
 - Upstream attribution: [THIRD_PARTY_NOTICES.md](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md)
-- Star history: [star-history.com/#Latias94/merman](https://star-history.com/#Latias94/merman&Date)
