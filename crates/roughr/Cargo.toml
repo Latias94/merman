@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "roughr-merman"
-version = "0.12.0"
+version = "0.12.1"
 authors = ["orhanbalci@gmail.com <orhanbalci@gmail.com>"]
 build = false
 publish = true

@@ -45,6 +45,7 @@ jobs:
           set -euo pipefail
           mkdir -p target/package-lists
           crates=(
+            roughr-merman
             dugong-graphlib
             dugong
             manatee
@@ -64,6 +65,7 @@ jobs:
 
       - name: Verify root publishable crates
         run: |
+          cargo package -p roughr-merman
           cargo package -p dugong-graphlib
           cargo package -p manatee
           cargo package -p merman-core

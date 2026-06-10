@@ -22,7 +22,7 @@ If you want to use it under the crate name `roughr`, depend on it like this:
 
 ```toml
 [dependencies]
-roughr = { package = "roughr-merman", version = "0.12.0" }
+roughr = { package = "roughr-merman", version = "0.12.1" }
 ```
 
 <!-- cargo-sync-readme start -->
@@ -45,7 +45,7 @@ output of [rough_piet](https://github.com/orhanbalci/rough-rs/tree/main/rough_pi
 
 ```toml
 [dependencies]
-roughr = { package = "roughr-merman", version = "0.12.0" }
+roughr = { package = "roughr-merman", version = "0.12.1" }
 ```
 
 ## Example
