@@ -70,7 +70,7 @@
     {
       "kind": "size_evidence",
       "path": "crates/xtask/src/cmd/wasm_size_matrix.rs",
-      "note": "WFS-090 started with `xtask wasm-size-matrix`, which builds browser and Typst feature presets separately and reports raw plus stripped wasm bytes without conflating wasm-bindgen browser packages with Typst/pure-wasm packages."
+      "note": "WFS-090 started with `xtask wasm-size-matrix`, which builds browser and Typst feature presets separately and reports raw plus stripped wasm bytes. Full matrices are recorded in PACKAGE_SURFACES.md and EVIDENCE_AND_GATES.md without conflating wasm-bindgen browser packages with Typst/pure-wasm packages."
     }
   ]
 }

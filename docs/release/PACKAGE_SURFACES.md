@@ -60,3 +60,17 @@ cargo run -p xtask -- wasm-size-matrix --surface typst
 The command builds `wasm-size` artifacts and prints raw and stripped bytes for named presets. It
 keeps browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes
 do not accidentally compare unlike surfaces.
+
+Observed on 2026-06-10:
+
+| Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes |
+| --- | --- | --- | --- | ---: | ---: |
+| Browser | `browser-core` | no | none | 1,862,617 | 1,345,196 |
+| Browser | `browser-render` | no | `render` | 7,412,346 | 5,610,023 |
+| Browser | `browser-ascii` | no | `ascii` | 3,874,343 | 2,929,536 |
+| Browser | `browser-full` | yes | none | 8,866,039 | 6,718,352 |
+| Browser | `browser-ratex-math` | yes | `ratex-math` | 12,145,965 | 9,446,738 |
+| Typst | `typst-bridge` | no | none | 47,287 | 33,412 |
+| Typst | `typst-render` | yes | none | 7,025,842 | 5,417,005 |
+| Typst | `typst-core-full` | yes | `core-full` | 8,090,998 | 6,263,908 |
+| Typst | `typst-ratex-math` | yes | `ratex-math` | 10,544,347 | 8,240,147 |

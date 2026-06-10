@@ -412,10 +412,34 @@ cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge --n
 cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge
 ```
 
-Observed `typst-bridge` result:
+Observed browser matrix:
 
-- raw bytes: 47,287;
-- stripped bytes: 33,412.
+| Preset | Default features | Extra features | Raw bytes | Stripped bytes |
+| --- | --- | --- | ---: | ---: |
+| `browser-core` | no | none | 1,862,617 | 1,345,196 |
+| `browser-render` | no | `render` | 7,412,346 | 5,610,023 |
+| `browser-ascii` | no | `ascii` | 3,874,343 | 2,929,536 |
+| `browser-full` | yes | none | 8,866,039 | 6,718,352 |
+| `browser-ratex-math` | yes | `ratex-math` | 12,145,965 | 9,446,738 |
+
+Observed Typst matrix:
+
+| Preset | Default features | Extra features | Raw bytes | Stripped bytes |
+| --- | --- | --- | ---: | ---: |
+| `typst-bridge` | no | none | 47,287 | 33,412 |
+| `typst-render` | yes | none | 7,025,842 | 5,417,005 |
+| `typst-core-full` | yes | `core-full` | 8,090,998 | 6,263,908 |
+| `typst-ratex-math` | yes | `ratex-math` | 10,544,347 | 8,240,147 |
+
+Immediate reading:
+
+- browser transport-only still costs about 1.35 MB stripped because it includes wasm-bindgen,
+  serde-wasm-bindgen, panic hook, and metadata helpers;
+- browser `render` adds about 4.26 MB stripped over browser core;
+- browser `ascii` adds about 1.58 MB stripped over browser core;
+- Typst bridge-only remains tiny at 33,412 bytes stripped;
+- Typst render and browser render are close in render-code size once transport overhead is
+  separated.
 
 ## Gates
 
