@@ -26,3 +26,6 @@ ratex-math = ["render", "merman-bindings-core/ratex-math"]
 [dependencies]
 merman-bindings-core.workspace = true
 wasm-minimal-protocol.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,10 +1,8 @@
-#import "../lib.typ": mermaid-raw
+#import "../lib.typ": show-mermaid-blocks
 
-#show raw.where(lang: "mermaid"): block => mermaid-raw(
-  block,
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(
   width: 100%,
   pipeline: "readable",
-  error-mode: "placeholder",
   alt: "A Mermaid diagram rendered from a raw block",
 )
 

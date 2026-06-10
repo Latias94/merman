@@ -1,4 +1,4 @@
-#import "../lib.typ": mermaid, mermaid-svg, validate-mermaid
+#import "../lib.typ": mermaid, mermaid-result, mermaid-svg, validate-mermaid
 
 = merman Typst Options Example
 
@@ -9,8 +9,14 @@
 "
 
 #let validation = validate-mermaid(source)
+#let render-result = mermaid-result(source, pipeline: "readable")
+#let failed-result = mermaid-result("flowchart TD\n  A -->")
 
 Validation result: `#validation.code_name`
+
+Render result: `#render-result.code_name`
+
+Failed render result: `#failed-result.code_name`
 
 #mermaid(
   source,
@@ -35,7 +41,7 @@ SVG starts with:
 #svg.slice(0, 80)
 ```
 
-Validation failures can stay visible in drafts:
+Diagram errors can stay visible in drafts:
 
 #mermaid(
   "flowchart TD\n  A -->",

@@ -74,8 +74,19 @@ struct ErrorPayload<'a> {
 struct ValidationPayload<'a> {
     valid: bool,
     error: Option<String>,
+    message: Option<String>,
     code: i32,
     code_name: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct RenderPayload<'a> {
+    version: u32,
+    ok: bool,
+    code: i32,
+    code_name: &'a str,
+    message: Option<&'a str>,
+    svg: Option<&'a str>,
 }
 
 #[cfg(any(feature = "render", feature = "ascii"))]
@@ -191,6 +202,27 @@ pub fn error_payload_json_bytes(status: BindingStatus, message: &str) -> Vec<u8>
     })
 }
 
+pub fn render_payload_json_bytes(
+    status: BindingStatus,
+    message: Option<&str>,
+    svg: Option<&str>,
+) -> Vec<u8> {
+    let payload = RenderPayload {
+        version: 1,
+        ok: status == BindingStatus::Ok,
+        code: status.code(),
+        code_name: status.code_name(),
+        message,
+        svg,
+    };
+    serde_json::to_vec(&payload).unwrap_or_else(|_| {
+        error_payload_json_bytes(
+            BindingStatus::InternalError,
+            "render payload serialization failed",
+        )
+    })
+}
+
 pub(crate) fn validation_payload_json(
     result: Result<(), BindingError>,
 ) -> Result<Vec<u8>, BindingError> {
@@ -198,12 +230,14 @@ pub(crate) fn validation_payload_json(
         Ok(()) => ValidationPayload {
             valid: true,
             error: None,
+            message: None,
             code: BindingStatus::Ok.code(),
             code_name: BindingStatus::Ok.code_name(),
         },
         Err(error) => ValidationPayload {
             valid: false,
             error: Some(error.message().to_string()),
+            message: Some(error.message().to_string()),
             code: error.status().code(),
             code_name: error.status().code_name(),
         },
@@ -370,5 +404,44 @@ mod tests {
         assert_eq!(json["code"], BindingStatus::RenderError.code());
         assert_eq!(json["code_name"], BindingStatus::RenderError.code_name());
         assert_eq!(json["message"], "failed");
+    }
+
+    #[test]
+    fn render_payload_json_returns_svg_or_error_shape() {
+        let payload = render_payload_json_bytes(BindingStatus::Ok, None, Some("<svg/>"));
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["code"], BindingStatus::Ok.code());
+        assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+        assert!(json["message"].is_null());
+        assert_eq!(json["svg"], "<svg/>");
+
+        let payload =
+            render_payload_json_bytes(BindingStatus::RenderError, Some("render failed"), None);
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+
+        assert_eq!(json["version"], 1);
+        assert_eq!(json["ok"], false);
+        assert_eq!(json["code"], BindingStatus::RenderError.code());
+        assert_eq!(json["code_name"], BindingStatus::RenderError.code_name());
+        assert_eq!(json["message"], "render failed");
+        assert!(json["svg"].is_null());
+    }
+
+    #[test]
+    fn validation_payload_includes_message_alias() {
+        let payload = validation_payload_json(Err(BindingError::new(
+            BindingStatus::ParseError,
+            "parse failed",
+        )))
+        .unwrap();
+        let json: Value = serde_json::from_slice(&payload).unwrap();
+
+        assert_eq!(json["valid"], false);
+        assert_eq!(json["error"], "parse failed");
+        assert_eq!(json["message"], "parse failed");
+        assert_eq!(json["code_name"], BindingStatus::ParseError.code_name());
     }
 }

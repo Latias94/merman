@@ -20,6 +20,14 @@ The package is written to:
 dist/typst/merman/0.7.0
 ```
 
+Compile an example from the built package:
+
+```sh
+typst compile --root dist/typst/merman/0.7.0 \
+  dist/typst/merman/0.7.0/examples/options.typ \
+  target/typst-smoke/options.pdf
+```
+
 For a Typst `@local` install, copy that directory to your Typst package path:
 
 ```sh
@@ -40,16 +48,12 @@ flowchart TD
 
 ## Raw Blocks
 
-Use `mermaid-raw` with Typst's `raw.where` selector:
+Use `show-mermaid-blocks` with Typst's `raw.where` selector:
 
 ~~~typst
-#import "@local/merman:0.7.0": mermaid-raw
+#import "@local/merman:0.7.0": show-mermaid-blocks
 
-#show raw.where(lang: "mermaid"): block => mermaid-raw(
-  block,
-  width: 100%,
-  error-mode: "placeholder",
-)
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 100%)
 
 ```mermaid
 flowchart LR
@@ -57,6 +61,10 @@ flowchart LR
   Typst --> SVG
 ```
 ~~~
+
+Avoid setting a fixed `id` in a document-wide raw-block show rule unless the
+document has only one Mermaid block; otherwise multiple diagrams will share the
+same SVG id.
 
 ## API
 
@@ -88,13 +96,29 @@ Common parameters:
   advanced SVG post-processing shorthands.
 - `fixed-today`: `YYYY-MM-DD` for date-sensitive diagrams.
 - `error-mode`: `"panic"` by default. Use `"placeholder"` or `"text"` to
-  show validation errors in the document instead of failing the Typst compile.
+  show diagram errors in the document instead of failing the Typst compile.
+  These modes handle structured errors returned by `merman`; missing wasm files,
+  Typst plugin loading failures, invalid `error-mode` values, and SVG image
+  decoding failures still fail the Typst compile.
 - `options`: escape hatch; when present, it is passed through directly to the
   Rust binding options and overrides shorthand parameters.
 
 ### `mermaid-svg(source, ..)`
 
 Returns the rendered SVG as a string instead of embedding it as an image.
+
+### `mermaid-result(source, ..)`
+
+Returns a structured render payload:
+
+```typst
+#let result = mermaid-result("flowchart TD\nA --> B")
+#if result.ok {
+  result.svg
+} else {
+  result.message
+}
+```
 
 ### `validate-mermaid(source, ..)`
 
@@ -109,6 +133,15 @@ Returns the validation payload produced by the Rust bindings:
 
 Convenience wrapper for raw blocks. This is intended for `#show raw.where(...)`
 rules.
+
+### `show-mermaid-blocks(..)`
+
+Returns a raw block show handler. This is the shortest way to enable Mermaid
+fences across a Typst document:
+
+```typst
+#show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 100%)
+```
 
 ## Full Config/Sanitizer Build
 

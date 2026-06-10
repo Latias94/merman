@@ -2783,6 +2783,7 @@ name = "merman-typst-plugin"
 version = "0.7.0"
 dependencies = [
  "merman-bindings-core",
+ "serde_json",
  "wasm-minimal-protocol",
 ]
 

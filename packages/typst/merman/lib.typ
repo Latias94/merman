@@ -59,17 +59,17 @@
   }
 }
 
-#let _error-message(validation) = {
-  if validation.error == none {
-    validation.code_name
+#let _error-message(result) = {
+  if result.message == none {
+    result.code_name
   } else {
-    validation.error
+    result.message
   }
 }
 
-#let _validation-error(validation, error-mode, width) = {
+#let _diagram-error(result, error-mode, width) = {
   if error-mode == "text" {
-    text(fill: rgb("#b91c1c"))[merman: #_error-message(validation)]
+    text(fill: rgb("#b91c1c"))[merman: #_error-message(result)]
   } else if error-mode == "placeholder" {
     block(
       width: width,
@@ -77,9 +77,9 @@
       fill: rgb("#fff7f7"),
       stroke: rgb("#ef4444"),
     )[
-      #strong[merman render error]
+      #strong[merman diagram error]
       #linebreak()
-      #_error-message(validation)
+      #_error-message(result)
     ]
   } else {
     panic("unknown merman error-mode: " + str(error-mode))
@@ -204,6 +204,56 @@
   )
 
   _merman-plugin.render_svg(bytes(source-text), _options-bytes(binding-options))
+}
+
+#let _render-svg-result(
+  source,
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+) = {
+  let source-text = _source-text(source)
+  let binding-options = _binding-options(
+    options: options,
+    site-config: site-config,
+    host-theme: host-theme,
+    theme: theme,
+    theme-name: theme-name,
+    base-theme: base-theme,
+    pipeline: pipeline,
+    id: id,
+    diagram-id: diagram-id,
+    background: background,
+    layout: layout,
+    scoped-css: scoped-css,
+    css-override-policy: css-override-policy,
+    drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+    text-measurer: text-measurer,
+    math-renderer: math-renderer,
+    viewport-width: viewport-width,
+    viewport-height: viewport-height,
+    fixed-today: fixed-today,
+    fixed-local-offset-minutes: fixed-local-offset-minutes,
+  )
+
+  json(_merman-plugin.render_svg_json(bytes(source-text), _options-bytes(binding-options)))
 }
 
 #let _validate-payload(
@@ -363,6 +413,54 @@
   ))
 }
 
+#let mermaid-result(
+  source,
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+) = {
+  _render-svg-result(
+    source,
+    options: options,
+    site-config: site-config,
+    host-theme: host-theme,
+    theme: theme,
+    theme-name: theme-name,
+    base-theme: base-theme,
+    pipeline: pipeline,
+    id: id,
+    diagram-id: diagram-id,
+    background: background,
+    layout: layout,
+    scoped-css: scoped-css,
+    css-override-policy: css-override-policy,
+    drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+    text-measurer: text-measurer,
+    math-renderer: math-renderer,
+    viewport-width: viewport-width,
+    viewport-height: viewport-height,
+    fixed-today: fixed-today,
+    fixed-local-offset-minutes: fixed-local-offset-minutes,
+  )
+}
+
 #let validate-mermaid(
   source,
   options: none,
@@ -469,7 +567,7 @@
       alt: alt,
     ), scale)
   } else {
-    let validation = _validate-payload(
+    let result = _render-svg-result(
       source,
       options: options,
       site-config: site-config,
@@ -493,36 +591,17 @@
       fixed-local-offset-minutes: fixed-local-offset-minutes,
     )
 
-    if validation.valid {
-      _scaled(_mermaid-image(
-        source,
-        options: options,
-        site-config: site-config,
-        host-theme: host-theme,
-        theme: theme,
-        theme-name: theme-name,
-        base-theme: base-theme,
-        pipeline: pipeline,
-        id: id,
-        diagram-id: diagram-id,
-        background: background,
-        layout: layout,
-        scoped-css: scoped-css,
-        css-override-policy: css-override-policy,
-        drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
-        text-measurer: text-measurer,
-        math-renderer: math-renderer,
-        viewport-width: viewport-width,
-        viewport-height: viewport-height,
-        fixed-today: fixed-today,
-        fixed-local-offset-minutes: fixed-local-offset-minutes,
+    if result.ok {
+      _scaled(image(
+        bytes(result.svg),
+        format: "svg",
         width: width,
         height: height,
         fit: fit,
         alt: alt,
       ), scale)
     } else {
-      _validation-error(validation, error-mode, width)
+      _diagram-error(result, error-mode, width)
     }
   }
 }
@@ -586,3 +665,60 @@
     error-mode: error-mode,
   )
 }
+
+#let show-mermaid-blocks(
+  options: none,
+  site-config: none,
+  host-theme: none,
+  theme: none,
+  theme-name: none,
+  base-theme: none,
+  pipeline: "resvg-safe",
+  id: none,
+  diagram-id: none,
+  background: none,
+  layout: none,
+  scoped-css: none,
+  css-override-policy: none,
+  drop-native-duplicate-fallbacks: none,
+  text-measurer: none,
+  math-renderer: none,
+  viewport-width: none,
+  viewport-height: none,
+  fixed-today: none,
+  fixed-local-offset-minutes: none,
+  width: 100%,
+  height: auto,
+  fit: "contain",
+  scale: none,
+  alt: none,
+  error-mode: "placeholder",
+) = block => mermaid-raw(
+  block,
+  options: options,
+  site-config: site-config,
+  host-theme: host-theme,
+  theme: theme,
+  theme-name: theme-name,
+  base-theme: base-theme,
+  pipeline: pipeline,
+  id: id,
+  diagram-id: diagram-id,
+  background: background,
+  layout: layout,
+  scoped-css: scoped-css,
+  css-override-policy: css-override-policy,
+  drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
+  text-measurer: text-measurer,
+  math-renderer: math-renderer,
+  viewport-width: viewport-width,
+  viewport-height: viewport-height,
+  fixed-today: fixed-today,
+  fixed-local-offset-minutes: fixed-local-offset-minutes,
+  width: width,
+  height: height,
+  fit: fit,
+  scale: scale,
+  alt: alt,
+  error-mode: error-mode,
+)
