@@ -56,7 +56,8 @@ Current direction:
   public metadata, and admission status. Call sites should consume projections from those facts
   instead of duplicating hand-maintained lists.
 - **Admission Inventory** records which fixture/family surfaces are parser-only, layout-covered,
-  SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why.
+  SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why. Parser
+  and typed-render capability evidence should be checked against Diagram Family Facts projections.
 - Diagram detection and parser registration should derive from pinned-baseline
   registry facts instead of scattering diagram ids across call sites.
 - Each diagram family should own semantic construction, compatibility JSON

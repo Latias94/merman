@@ -34,6 +34,7 @@ pub use diagram::{
     RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
 };
 pub use error::{Error, Result};
+pub use family::DiagramFamilyCapability;
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
@@ -54,6 +55,18 @@ pub fn supported_diagrams_for_profile(
     profile: baseline::BaselineRegistryProfile,
 ) -> &'static [&'static str] {
     family::supported_diagram_metadata_ids(profile)
+}
+
+/// Returns parser/render capability facts for Mermaid diagram ids in the selected pinned profile.
+pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
+    diagram_family_capabilities_for_profile(selected_baseline_registry_profile())
+}
+
+/// Returns parser/render capability facts for Mermaid diagram ids in an explicit registry profile.
+pub fn diagram_family_capabilities_for_profile(
+    profile: baseline::BaselineRegistryProfile,
+) -> &'static [DiagramFamilyCapability] {
+    family::diagram_family_capabilities(profile)
 }
 
 /// Returns the Mermaid registry profile selected by this crate's enabled feature set.
