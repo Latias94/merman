@@ -23,18 +23,80 @@ pub enum SvgPipelinePreset {
     ResvgSafe,
 }
 
-pub(crate) fn apply_preset(preset: SvgPipelinePreset, svg: &str) -> Cow<'_, str> {
-    match preset {
-        SvgPipelinePreset::Parity => Cow::Borrowed(svg),
-        SvgPipelinePreset::Readable => Cow::Owned(foreign_object_fallback_svg(svg)),
-        SvgPipelinePreset::ResvgSafe => Cow::Owned(resvg_safe_svg(svg)),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuiltinSvgStage {
+    ForeignObjectFallback,
+    StripForeignObject,
+    SanitizeCss,
+    SanitizeAttributes,
+}
+
+impl BuiltinSvgStage {
+    fn apply<'a>(self, svg: Cow<'a, str>) -> Cow<'a, str> {
+        match self {
+            Self::ForeignObjectFallback => Cow::Owned(foreign_object_fallback_svg(&svg)),
+            Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
+            Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
+            Self::SanitizeAttributes => Cow::Owned(sanitize_element_attributes(&svg)),
+        }
     }
+}
+
+pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [BuiltinSvgStage] {
+    match preset {
+        SvgPipelinePreset::Parity => &[],
+        SvgPipelinePreset::Readable => &[BuiltinSvgStage::ForeignObjectFallback],
+        SvgPipelinePreset::ResvgSafe => &[
+            BuiltinSvgStage::ForeignObjectFallback,
+            BuiltinSvgStage::StripForeignObject,
+            BuiltinSvgStage::SanitizeCss,
+            BuiltinSvgStage::SanitizeAttributes,
+        ],
+    }
+}
+
+pub(crate) fn apply_preset(preset: SvgPipelinePreset, svg: &str) -> Cow<'_, str> {
+    let mut current = Cow::Borrowed(svg);
+    for stage in builtin_stages_for_preset(preset) {
+        current = stage.apply(current);
+    }
+    current
 }
 
 /// Converts Mermaid-like SVG into a best-effort resvg/usvg compatible SVG string.
 pub fn resvg_safe_svg(svg: &str) -> String {
-    let svg = foreign_object_fallback_svg(svg);
-    let svg = strip_foreign_objects(&svg);
-    let svg = sanitize_style_elements(&svg);
-    sanitize_element_attributes(&svg)
+    apply_preset(SvgPipelinePreset::ResvgSafe, svg).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_stage_order_is_explicit_for_presets() {
+        assert_eq!(builtin_stages_for_preset(SvgPipelinePreset::Parity), &[]);
+        assert_eq!(
+            builtin_stages_for_preset(SvgPipelinePreset::Readable),
+            &[BuiltinSvgStage::ForeignObjectFallback]
+        );
+        assert_eq!(
+            builtin_stages_for_preset(SvgPipelinePreset::ResvgSafe),
+            &[
+                BuiltinSvgStage::ForeignObjectFallback,
+                BuiltinSvgStage::StripForeignObject,
+                BuiltinSvgStage::SanitizeCss,
+                BuiltinSvgStage::SanitizeAttributes
+            ]
+        );
+    }
+
+    #[test]
+    fn resvg_safe_function_uses_preset_stage_runner() {
+        let svg = r#"<svg><style>@keyframes a{to{opacity:1}}</style><foreignObject width="10" height="10"><div><p>Hello</p></div></foreignObject><rect width="10px" height="NaN"/></svg>"#;
+
+        assert_eq!(
+            resvg_safe_svg(svg),
+            apply_preset(SvgPipelinePreset::ResvgSafe, svg).into_owned()
+        );
+    }
 }

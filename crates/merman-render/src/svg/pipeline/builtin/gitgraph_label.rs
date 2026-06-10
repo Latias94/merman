@@ -2,7 +2,7 @@ use crate::Result;
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 
-use super::util::find_tag_end;
+use super::util::{extract_quoted_attr, find_tag_end, set_or_insert_quoted_attr};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -177,9 +177,9 @@ fn rewrite_text_block_for_centered_baseline(text_block: &str, text_y: f64) -> St
     let content = &text_block[open_end + 1..close_start];
     let close = &text_block[close_start..];
 
-    let open_tag = set_or_insert_attr(open_tag, "y", &fmt_number(text_y));
-    let open_tag = set_or_insert_attr(&open_tag, "dominant-baseline", "central");
-    let open_tag = set_or_insert_attr(&open_tag, "alignment-baseline", "central");
+    let open_tag = set_or_insert_quoted_attr(open_tag, "y", &fmt_number(text_y));
+    let open_tag = set_or_insert_quoted_attr(&open_tag, "dominant-baseline", "central");
+    let open_tag = set_or_insert_quoted_attr(&open_tag, "alignment-baseline", "central");
     let content = rewrite_first_tspan_dy_zero(content);
 
     format!("{open_tag}{content}{close}")
@@ -193,7 +193,7 @@ fn rewrite_first_tspan_dy_zero(content: &str) -> String {
         return content.to_string();
     };
     let tag = &content[rel_tspan..=tspan_end];
-    let rewritten_tag = set_or_insert_attr(tag, "dy", "0");
+    let rewritten_tag = set_or_insert_quoted_attr(tag, "dy", "0");
     if rewritten_tag == tag {
         return content.to_string();
     }
@@ -205,41 +205,8 @@ fn rewrite_first_tspan_dy_zero(content: &str) -> String {
     out
 }
 
-fn set_or_insert_attr(tag: &str, name: &str, value: &str) -> String {
-    if let Some((value_start, value_end)) = find_attr_value_span(tag, name) {
-        let mut out = String::with_capacity(tag.len() + value.len());
-        out.push_str(&tag[..value_start]);
-        out.push_str(value);
-        out.push_str(&tag[value_end..]);
-        return out;
-    }
-
-    let insert_at = tag
-        .trim_end()
-        .strip_suffix("/>")
-        .map(|prefix| prefix.len())
-        .unwrap_or_else(|| tag.rfind('>').unwrap_or(tag.len()));
-    let mut out = String::with_capacity(tag.len() + name.len() + value.len() + 4);
-    out.push_str(&tag[..insert_at]);
-    out.push(' ');
-    out.push_str(name);
-    out.push_str(r#"=""#);
-    out.push_str(value);
-    out.push('"');
-    out.push_str(&tag[insert_at..]);
-    out
-}
-
 fn extract_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
-    let (start, end) = find_attr_value_span(tag, name)?;
-    Some(&tag[start..end])
-}
-
-fn find_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
-    let needle = format!(r#" {name}=""#);
-    let start = tag.find(&needle)? + needle.len();
-    let end = tag[start..].find('"')?;
-    Some((start, start + end))
+    extract_quoted_attr(tag, name)
 }
 
 fn parse_translate_y(transform: &str) -> Option<f64> {
@@ -312,5 +279,20 @@ mod tests {
             .unwrap();
 
         assert_eq!(out, svg);
+    }
+
+    #[test]
+    fn gitgraph_branch_label_uses_shared_quoted_attr_scanner() {
+        let svg = r#"<svg id="g"><g><rect class = 'branchLabelBkg label0' rx="4" ry="4" x="-69" y='-1.5' width="53" height='21' transform = 'translate(-19, -8.5)'/><g class="branchLabel"><g class = 'label branch-label0' transform = 'translate(-79, -9.5)'><text y='0'><tspan xml:space="preserve" dy='1em' x="0" class="row">main</tspan></text></g></g></g></svg>"#;
+        let metadata = SvgPostprocessMetadata::from_svg(svg).with_diagram_type("gitGraph");
+
+        let out = SvgPipeline::parity()
+            .with_postprocessor(GitGraphBranchLabelBaselinePostprocessor)
+            .process_to_string_with_metadata(svg, &metadata)
+            .unwrap();
+
+        assert!(out.contains(r#"<text y='10'"#), "{out}");
+        assert!(out.contains(r#"dy='0'"#), "{out}");
+        assert!(out.contains(r#"dominant-baseline="central""#), "{out}");
     }
 }

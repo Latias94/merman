@@ -58,3 +58,95 @@ fn sankey_svg_uses_configured_node_colors_and_outlined_labels() {
         "expected outlined label CSS: {svg}"
     );
 }
+
+#[test]
+fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
+    let semantic = json!({
+        "graph": {
+            "nodes": [{"id": "A"}, {"id": "B"}],
+            "links": [{"source": "A", "target": "B", "value": 10.0}]
+        }
+    });
+    let config = json!({});
+    let measurer = DeterministicTextMeasurer {
+        char_width_factor: 8.0,
+        line_height_factor: 16.0,
+    };
+
+    let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
+    let svg = render_sankey_diagram_svg(
+        &layout,
+        &semantic,
+        &config,
+        &SvgRenderOptions {
+            diagram_id: Some("sankey-inline".to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .unwrap();
+
+    assert!(
+        svg.contains(r#"id="sankey-inline-node-1""#),
+        "expected scoped Sankey node id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="sankey-inline-linearGradient-3""#),
+        "expected scoped Sankey gradient id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"stroke="url(#sankey-inline-linearGradient-3)""#),
+        "expected scoped Sankey gradient reference: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="node-1""#),
+        "expected no bare Sankey node id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="linearGradient-3""#),
+        "expected no bare Sankey gradient id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"stroke="url(#linearGradient-3)""#),
+        "expected no bare Sankey gradient reference: {svg}"
+    );
+}
+
+#[test]
+fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
+    let semantic = json!({
+        "graph": {
+            "nodes": [{"id": "A"}, {"id": "B"}],
+            "links": [{"source": "A", "target": "B", "value": 10.0}]
+        }
+    });
+    let config = json!({});
+    let measurer = DeterministicTextMeasurer {
+        char_width_factor: 8.0,
+        line_height_factor: 16.0,
+    };
+
+    let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
+    let svg = render_sankey_diagram_svg(&layout, &semantic, &config, &SvgRenderOptions::default())
+        .unwrap();
+
+    assert!(
+        svg.contains(r#"id="node-1""#),
+        "expected Mermaid-style Sankey node id without explicit diagram_id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="linearGradient-3""#),
+        "expected Mermaid-style Sankey gradient id without explicit diagram_id: {svg}"
+    );
+    assert!(
+        svg.contains(r#"stroke="url(#linearGradient-3)""#),
+        "expected Mermaid-style Sankey gradient reference without explicit diagram_id: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="sankey-node-1""#),
+        "expected default rendering to avoid implicit node id scoping: {svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="sankey-linearGradient-3""#),
+        "expected default rendering to avoid implicit resource id scoping: {svg}"
+    );
+}

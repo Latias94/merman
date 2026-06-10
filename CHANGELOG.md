@@ -40,6 +40,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Made render/layout timing and RoughJS seed-zero randomness deterministic in no-host
   wasm profiles, while preserving host behavior behind explicit host features.
 
+### Fixed
+
+- Corrected web package documentation to use the published `@mermanjs/web` npm package name.
+- Avoided clipped Flowchart edge labels in Linux/Firefox browser previews. Thanks @aurabindo for reporting [#2](https://github.com/Latias94/merman/issues/2).
+- Limited CSS override cleanup to `<style>` blocks and `style` attributes so ordinary SVG text and metadata containing `!important` stay intact.
+- Scoped embedded icon IDs so repeated Flowchart and Architecture icons do not collide inside one SVG.
+- Scoped Sankey generated IDs and Sequence debug markers for safer inline SVG embedding.
+
 ## [0.7.0] - 2026-06-09
 
 Merman 0.7.0 is the first non-prerelease 0.7 line. It stabilizes the Mermaid 11.15-compatible headless rendering surface for broader editor, web, CLI, rustdoc, and native-binding use, while keeping parity and quality gates explicit.

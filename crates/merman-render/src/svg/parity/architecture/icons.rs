@@ -1,3 +1,5 @@
+use crate::svg::icon_registry::scope_svg_internal_ids;
+
 use super::super::fmt;
 
 pub(super) fn arch_icon_body(name: &str) -> &'static str {
@@ -31,8 +33,9 @@ pub(super) fn arch_icon_body(name: &str) -> &'static str {
     }
 }
 
-pub(super) fn arch_icon_svg(icon_name: &str, icon_size_px: f64) -> String {
+pub(super) fn arch_icon_svg(icon_name: &str, icon_size_px: f64, id_scope: &str) -> String {
     let body = arch_icon_body(icon_name);
+    let body = scope_svg_internal_ids(body, id_scope);
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 80 80">{body}</svg>"#,
         w = fmt(icon_size_px),
@@ -45,16 +48,18 @@ pub(super) fn arch_icon_svg_with_registry(
     icon_name: &str,
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,
+    id_scope: &str,
 ) -> String {
     icon_registry
         .and_then(|registry| {
-            registry.svg_for(
+            registry.svg_for_scoped(
                 icon_name,
                 icon_size_px,
                 icon_size_px,
                 Some("architecture"),
                 None,
+                id_scope,
             )
         })
-        .unwrap_or_else(|| arch_icon_svg(icon_name, icon_size_px))
+        .unwrap_or_else(|| arch_icon_svg(icon_name, icon_size_px, id_scope))
 }

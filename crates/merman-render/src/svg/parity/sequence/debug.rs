@@ -24,6 +24,16 @@ pub(super) fn render_sequence_diagram_debug_svg(
     let vb_min_y = bounds.min_y - pad;
     let vb_w = (bounds.max_x - bounds.min_x) + pad * 2.0;
     let vb_h = (bounds.max_y - bounds.min_y) + pad * 2.0;
+    let arrowhead_id = options
+        .diagram_id
+        .as_deref()
+        .map(|diagram_id| scoped_svg_id(diagram_id, "arrowhead"))
+        .unwrap_or_else(|| "arrowhead".to_string());
+    let arrowhead_url = options
+        .diagram_id
+        .as_deref()
+        .map(|diagram_id| scoped_svg_url(diagram_id, "arrowhead"))
+        .unwrap_or_else(|| "url(#arrowhead)".to_string());
 
     let mut out = String::new();
     let _ = writeln!(
@@ -48,9 +58,10 @@ pub(super) fn render_sequence_diagram_debug_svg(
 </style>
 "#,
     );
-    out.push_str(
-        r#"<defs><marker id="arrowhead" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M -1 0 L 10 5 L 0 10 z"/></marker></defs>
-"#,
+    let _ = writeln!(
+        &mut out,
+        r#"<defs><marker id="{}" refX="7.9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M -1 0 L 10 5 L 0 10 z"/></marker></defs>"#,
+        escape_attr(&arrowhead_id)
     );
 
     if options.include_clusters {
@@ -86,11 +97,12 @@ pub(super) fn render_sequence_diagram_debug_svg(
                     let x2 = p1.x + sign * 4.0;
                     let _ = write!(
                         &mut out,
-                        r#"<line class="edge message" x1="{}" y1="{}" x2="{}" y2="{}" marker-end="url(#arrowhead)" />"#,
+                        r#"<line class="edge message" x1="{}" y1="{}" x2="{}" y2="{}" marker-end="{}" />"#,
                         fmt(x1),
                         fmt(p0.y),
                         fmt(x2),
-                        fmt(p1.y)
+                        fmt(p1.y),
+                        escape_attr(&arrowhead_url)
                     );
                 } else {
                     out.push_str(r#"<polyline class="edge" points=""#);

@@ -96,11 +96,8 @@ pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Opt
             return Some(pos);
         }
 
-        // Do not scan across statements.
-        if bytes[pos] == b';' || bytes[pos] == b'\n' {
-            return None;
-        }
-
+        // Mermaid's flowchart lexer stays in a label-specific text state until the shape closer,
+        // so newlines and semicolons inside node labels are label text rather than statement ends.
         match bytes[pos] {
             b'"' | b'\'' | b'`' => {
                 let quote = bytes[pos];

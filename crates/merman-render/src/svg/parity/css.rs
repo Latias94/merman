@@ -4,13 +4,24 @@ use super::*;
 //
 // Keep Mermaid@11.12.2 ordering quirks to preserve DOM parity.
 
-pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
-    let id = escape_xml(diagram_id);
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+#[derive(Clone, Copy)]
+struct MermaidBaseCss<'a> {
+    font_family: &'a str,
+    font_size: f64,
+    text_color: &'a str,
+    line_color: &'a str,
+    error_bkg: &'a str,
+    error_text: &'a str,
+}
+
+fn write_mermaid_base_css_prefix(out: &mut String, id: &str, css: MermaidBaseCss<'_>) {
     let _ = write!(
         out,
-        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
-        id, font
+        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
+        id,
+        css.font_family,
+        fmt(css.font_size),
+        css.text_color
     );
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
@@ -22,8 +33,8 @@ pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
     );
     let _ = write!(
         out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
-        id, id
+        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
+        id, css.error_bkg, id, css.error_text, css.error_text
     );
     let _ = write!(
         out,
@@ -32,14 +43,39 @@ pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
     );
     let _ = write!(
         out,
-        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
-        id, id
+        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
+        id, css.line_color, css.line_color, id, css.line_color
     );
     let _ = write!(
         out,
-        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font, id, id, font
+        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
+        id,
+        css.font_family,
+        fmt(css.font_size),
+        id
     );
+}
+
+fn mermaid_base_css_root_rule(id: &str, font_family: &str) -> String {
+    format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family)
+}
+
+pub(super) fn info_css_into(out: &mut String, diagram_id: &str) {
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    write_mermaid_base_css_prefix(
+        out,
+        &id,
+        MermaidBaseCss {
+            font_family: font,
+            font_size: 16.0,
+            text_color: "#333",
+            line_color: "#333333",
+            error_bkg: "#552222",
+            error_text: "#552222",
+        },
+    );
+    out.push_str(&mermaid_base_css_root_rule(&id, font));
 }
 
 pub(super) struct InfoCssParts {
@@ -102,49 +138,21 @@ fn info_css_parts_with_font_size_source(
     let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
     let error_text = theme_color(effective_config, "errorTextColor", "#552222");
 
-    // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family);
-
     let mut out = String::new();
-    let _ = write!(
+    write_mermaid_base_css_prefix(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        text_color
+        &id,
+        MermaidBaseCss {
+            font_family: &font_family,
+            font_size,
+            text_color: &text_color,
+            line_color: &line_color,
+            error_bkg: &error_bkg,
+            error_text: &error_text,
+        },
     );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, error_bkg, id, error_text, error_text
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, line_color, line_color, id, line_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        id
-    );
+    // Keep `:root` last (matches upstream Mermaid SVG baselines).
+    let root_rule = mermaid_base_css_root_rule(&id, &font_family);
 
     InfoCssParts {
         css_prefix: out,
@@ -203,48 +211,18 @@ pub(super) fn architecture_css_with_config(
     )
     .unwrap_or_else(|| "2px".to_string());
 
-    // Keep `:root` last (matches upstream Mermaid SVG baselines).
-    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font_family);
-
     let mut out = String::new();
-    let _ = write!(
+    write_mermaid_base_css_prefix(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        text_color
-    );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, error_bkg, id, error_text, error_text
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, line_color, line_color, id, line_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font_family,
-        fmt(font_size),
-        id
+        &id,
+        MermaidBaseCss {
+            font_family: &font_family,
+            font_size,
+            text_color: &text_color,
+            line_color: &line_color,
+            error_bkg: &error_bkg,
+            error_text: &error_text,
+        },
     );
 
     let _ = write!(
@@ -273,7 +251,8 @@ pub(super) fn architecture_css_with_config(
         id
     );
 
-    out.push_str(&root_rule);
+    // Keep `:root` last (matches upstream Mermaid SVG baselines).
+    out.push_str(&mermaid_base_css_root_rule(&id, &font_family));
     out
 }
 
@@ -435,44 +414,17 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         "1px".to_string()
     };
     let mut out = String::new();
-    let _ = write!(
+    write_mermaid_base_css_prefix(
         &mut out,
-        r#"#{}{{font-family:{};font-size:{}px;fill:{};}}"#,
-        id,
-        font,
-        fmt(font_size),
-        text_color
-    );
-    out.push_str(
-        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
-        id, error_bkg, id, error_text, error_text
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, id, id, id, id, id
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
-        id, line_color, line_color, id, line_color
-    );
-    let _ = write!(
-        &mut out,
-        r#"#{} svg{{font-family:{};font-size:{}px;}}#{} p{{margin:0;}}"#,
-        id,
-        font,
-        fmt(font_size),
-        id
+        &id,
+        MermaidBaseCss {
+            font_family: &font,
+            font_size,
+            text_color: &text_color,
+            line_color: &line_color,
+            error_bkg: &error_bkg,
+            error_text: &error_text,
+        },
     );
     let _ = write!(
         &mut out,
@@ -526,11 +478,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         r#"#{} .marker{{fill:none!important;stroke:{}!important;stroke-width:1;}}"#,
         id, line_color
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} :root{{--mermaid-font-family:{};}}"#,
-        id, font
-    );
+    out.push_str(&mermaid_base_css_root_rule(&id, &font));
     out
 }
 
@@ -852,6 +800,62 @@ pub(super) fn gantt_css(diagram_id: &str, effective_config: &serde_json::Value) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_fragments_in_order(css: &str, fragments: &[&str]) {
+        let mut cursor = 0;
+        for fragment in fragments {
+            let offset = css[cursor..]
+                .find(fragment)
+                .unwrap_or_else(|| panic!("missing CSS fragment: {fragment}"));
+            cursor += offset + fragment.len();
+        }
+    }
+
+    #[test]
+    fn mermaid_base_css_fragments_keep_parity_order() {
+        let cfg = serde_json::json!({});
+        let base_fragments = [
+            r#"#diag{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}"#,
+            r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+            r#"#diag .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#diag .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}"#,
+            r#"#diag .error-icon{fill:#552222;}#diag .error-text{fill:#552222;stroke:#552222;}"#,
+            r#"#diag .edge-thickness-normal{stroke-width:1px;}#diag .edge-thickness-thick{stroke-width:3.5px;}#diag .edge-pattern-solid{stroke-dasharray:0;}#diag .edge-thickness-invisible{stroke-width:0;fill:none;}#diag .edge-pattern-dashed{stroke-dasharray:3;}#diag .edge-pattern-dotted{stroke-dasharray:2;}"#,
+            r#"#diag .marker{fill:#333333;stroke:#333333;}#diag .marker.cross{stroke:#333333;}"#,
+            r#"#diag svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#diag p{margin:0;}"#,
+        ];
+
+        let info = info_css_with_config("diag", &cfg);
+        assert_fragments_in_order(&info, &base_fragments);
+        assert!(info.ends_with(
+            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+        ));
+
+        let architecture = architecture_css_with_config("diag", &cfg);
+        assert_fragments_in_order(
+            &architecture,
+            &[
+                &base_fragments[..],
+                &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
+            ]
+            .concat(),
+        );
+        assert!(architecture.ends_with(
+            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+        ));
+
+        let er = er_css("diag", &cfg);
+        assert_fragments_in_order(
+            &er,
+            &[
+                &base_fragments[..],
+                &[r#"#diag .entityBox{fill:#ECECFF;stroke:#9370DB;}"#],
+            ]
+            .concat(),
+        );
+        assert!(er.ends_with(
+            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+        ));
+    }
 
     #[test]
     fn architecture_css_with_config_honors_font_and_theme_colors() {

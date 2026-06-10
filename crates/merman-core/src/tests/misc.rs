@@ -15,6 +15,53 @@ fn parse_graph_defaults_to_flowchart_v2() {
 }
 
 #[test]
+fn parse_indented_headers_across_common_diagrams() {
+    let engine = Engine::new();
+
+    let cases = [
+        ("     flowchart TB\n     A-->B\n", "flowchart-v2"),
+        ("     sequenceDiagram\n     Alice->>Bob: hi\n", "sequence"),
+        ("     stateDiagram-v2\n     [*] --> A\n", "stateDiagram"),
+        ("     mindmap\n       root\n", "mindmap"),
+        (
+            "     architecture-beta\n       service db\n",
+            "architecture",
+        ),
+        (
+            "     requirementDiagram\n\n     requirement test_req {\n       id: test_id\n       text: the test text.\n       risk: high\n       verifymethod: analysis\n     }\n",
+            "requirement",
+        ),
+        ("     packet\n     0-10: \"test\"\n", "packet"),
+        (
+            "     timeline\n     section abc-123\n     task1\n",
+            "timeline",
+        ),
+        (
+            "     gantt\n     section Demo\n     task1: 03-01,1d\n",
+            "gantt",
+        ),
+        (
+            "     classDiagram\n     class C1[\"Class 1 with text label\"]\n",
+            "classDiagram",
+        ),
+        ("     erDiagram\n     PERSON ||--o{ ORDER : places\n", "er"),
+        (
+            "     xychart horizontal\n     title \"Basic xychart\"\n",
+            "xychart",
+        ),
+        ("     C4Context\n     title System Context\n", "c4"),
+    ];
+
+    for (text, expected_type) in cases {
+        let meta = engine
+            .parse_metadata_sync(text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.diagram_type, expected_type, "input was: {text:?}");
+    }
+}
+
+#[test]
 #[cfg(feature = "full-config")]
 fn parse_merges_frontmatter_and_directive_config() {
     let engine = Engine::new();

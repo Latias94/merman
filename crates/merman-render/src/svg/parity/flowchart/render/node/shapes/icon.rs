@@ -136,7 +136,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon(
 
         let icon_tx = -icon_size / 2.0;
         let icon_ty = icon_dy - icon_size / 2.0;
-        let icon_svg = super::super::helpers::icon_svg_or_placeholder(ctx, icon_name, icon_size);
+        let icon_svg = super::super::helpers::icon_svg_or_placeholder(
+            ctx,
+            common.node_id,
+            icon_name,
+            icon_size,
+        );
         let _ = write!(
             out,
             r#"<g transform="translate({},{})" style="color: {};"><g>{}</g></g>"#,
