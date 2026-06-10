@@ -66,7 +66,7 @@ pub(crate) fn build_typst_package(args: Vec<String>) -> Result<(), XtaskError> {
         .join("merman_typst_plugin.wasm");
 
     if !options.skip_wasm_build {
-        build_wasm(options.profile)?;
+        build_wasm(options.profile, &wasm_path)?;
     }
 
     if !wasm_path.exists() {
@@ -209,7 +209,7 @@ fn print_usage() {
     );
 }
 
-fn build_wasm(profile: TypstBuildProfile) -> Result<(), XtaskError> {
+fn build_wasm(profile: TypstBuildProfile, wasm_path: &Path) -> Result<(), XtaskError> {
     let mut command = Command::new("cargo");
     command.args([
         "build",
@@ -233,6 +233,34 @@ fn build_wasm(profile: TypstBuildProfile) -> Result<(), XtaskError> {
             "cargo build failed with status {status}"
         )));
     }
+
+    strip_wasm(wasm_path)?;
+    Ok(())
+}
+
+fn strip_wasm(wasm_path: &Path) -> Result<(), XtaskError> {
+    let stripped_path = wasm_path.with_file_name("merman_typst_plugin.stripped.wasm");
+    let status = Command::new("wasm-tools")
+        .args(["strip", "--all"])
+        .arg(wasm_path)
+        .arg("-o")
+        .arg(&stripped_path)
+        .status()
+        .map_err(|source| XtaskError::ReadFile {
+            path: "wasm-tools".to_string(),
+            source,
+        })?;
+
+    if !status.success() {
+        return Err(XtaskError::TypstPackageFailed(format!(
+            "wasm-tools strip failed with status {status}"
+        )));
+    }
+
+    fs::rename(&stripped_path, wasm_path).map_err(|source| XtaskError::WriteFile {
+        path: wasm_path.display().to_string(),
+        source,
+    })?;
     Ok(())
 }
 
