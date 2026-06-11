@@ -1,7 +1,5 @@
-use crate::config::{config_bool, config_f64};
 use crate::model::{Bounds, TreeViewDiagramLayout, TreeViewLineLayout, TreeViewNodeLayout};
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use merman_core::diagrams::tree_view::{
@@ -10,15 +8,9 @@ use merman_core::diagrams::tree_view::{
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-struct TreeViewConfig {
-    row_indent: f64,
-    padding_x: f64,
-    padding_y: f64,
-    line_thickness: f64,
-    use_max_width: bool,
-    label_font_size: f64,
-}
+mod config;
+
+use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
 pub fn layout_tree_view_diagram(
     semantic: &Value,
@@ -34,7 +26,7 @@ pub fn layout_tree_view_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
-    let cfg = tree_view_config(effective_config);
+    let cfg = TreeViewConfigView::new(effective_config).layout_settings();
     validate_tree_view_render_depth(&model.root)?;
     let style = TextStyle {
         font_size: cfg.label_font_size,
@@ -91,7 +83,7 @@ fn validate_tree_view_render_depth(root: &TreeViewNode) -> Result<()> {
 }
 
 struct LayoutCtx<'a> {
-    cfg: TreeViewConfig,
+    cfg: TreeViewLayoutSettings,
     measurer: &'a dyn TextMeasurer,
     style: TextStyle,
     total_height: f64,
@@ -203,26 +195,6 @@ fn push_vertical_line(ctx: &mut LayoutCtx<'_>, node_index: usize, last_child_idx
         stroke_width: ctx.cfg.line_thickness,
         kind: "vertical".to_string(),
     });
-}
-
-fn tree_view_config(effective_config: &Value) -> TreeViewConfig {
-    let theme = PresentationTheme::new(effective_config).tree_view();
-    TreeViewConfig {
-        row_indent: config_f64(effective_config, &["treeView", "rowIndent"])
-            .unwrap_or(10.0)
-            .max(0.0),
-        padding_x: config_f64(effective_config, &["treeView", "paddingX"])
-            .unwrap_or(5.0)
-            .max(0.0),
-        padding_y: config_f64(effective_config, &["treeView", "paddingY"])
-            .unwrap_or(5.0)
-            .max(0.0),
-        line_thickness: config_f64(effective_config, &["treeView", "lineThickness"])
-            .unwrap_or(1.0)
-            .max(0.0),
-        use_max_width: config_bool(effective_config, &["treeView", "useMaxWidth"]).unwrap_or(true),
-        label_font_size: theme.label_font_size,
-    }
 }
 
 fn tree_view_label_bbox_height_px(font_size: f64) -> f64 {

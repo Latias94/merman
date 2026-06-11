@@ -696,6 +696,11 @@ Event Modeling now consumes a family-owned config view from
 diagram padding and max-width behavior before bounds computation and SVG root
 emission consume the layout.
 
+TreeView now consumes a family-owned config view from
+`crates/merman-render/src/tree_view/config.rs`. Its layout settings project row
+indentation, padding, line thickness, max-width behavior, and theme-provided
+label font size before tree layout and measurement consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

@@ -19,6 +19,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Block layout configuration through a family-owned config view, centralizing padding and text-style settings before sizing and grid layout consume them.
 - Projected Sankey layout and SVG render configuration through a family-owned config view, centralizing geometry, label/value display, label styling, link color, node color, max-width, and `$ref` default semantics.
 - Projected Event Modeling layout configuration through a family-owned config view, centralizing diagram padding and max-width behavior before layout bounds and SVG root emission consume them.
+- Projected TreeView layout configuration through a family-owned config view, centralizing row geometry, max-width behavior, and theme-provided label font size before tree layout consumes them.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
