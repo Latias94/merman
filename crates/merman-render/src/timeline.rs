@@ -1,8 +1,4 @@
 use crate::Result;
-use crate::config::{
-    config_bool as cfg_bool, config_f64 as cfg_f64, config_f64_css_px as cfg_f64_css_px,
-    config_string as cfg_string,
-};
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
@@ -10,6 +6,10 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle, normalize_font_key};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use std::borrow::Cow;
+
+mod config;
+
+pub(crate) use config::TimelineConfigView;
 
 const MAX_SECTIONS: i64 = 12;
 
@@ -21,20 +21,9 @@ const EVENT_VERTICAL_OFFSET_FROM_TASK_Y: f64 = 200.0;
 const EVENT_GAP_Y: f64 = 10.0;
 
 const TITLE_Y: f64 = 20.0;
-const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 
-fn timeline_text_style(effective_config: &serde_json::Value) -> TextStyle {
-    let font_family = cfg_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| cfg_string(effective_config, &["fontFamily"]))
-        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
-        .filter(|s| !s.is_empty());
-    let font_size =
-        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
-    }
+pub(crate) fn default_use_max_width() -> bool {
+    false
 }
 
 fn timeline_font_key(style: &TextStyle) -> String {
@@ -398,24 +387,19 @@ pub fn layout_timeline_diagram_typed(
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
-    let text_style = timeline_text_style(effective_config);
+    let cfg = TimelineConfigView::new(effective_config).layout_settings();
+    let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
-    let layout_font_size = cfg_f64_css_px(effective_config, &["fontSize"])
-        .unwrap_or(render_font_size)
-        .max(1.0);
+    let layout_font_size = cfg.layout_font_size;
 
-    let left_margin = cfg_f64(effective_config, &["timeline", "leftMargin"])
-        .unwrap_or(150.0)
-        .max(0.0);
-    let disable_multicolor =
-        cfg_bool(effective_config, &["timeline", "disableMulticolor"]).unwrap_or(false);
+    let left_margin = cfg.left_margin;
+    let disable_multicolor = cfg.disable_multicolor;
     // Mermaid's Timeline renderer hardcodes the text-wrap width to `150` (see upstream
     // `drawTasks`/`drawEvents`: node objects use `width: 150` and `wrap(..., node.width)`),
     // even though the config schema exposes a `timeline.width` field.
     //
     // For upstream parity, treat `timeline.width` as a no-op and keep the wrap width constant.
     let task_content_width = TASK_CONTENT_WIDTH_DEFAULT;
-    let _ = cfg_f64(effective_config, &["timeline", "width"]);
 
     let mut max_section_height: f64 = 0.0;
     for section in &model.sections {
@@ -726,8 +710,7 @@ pub fn layout_timeline_diagram_typed(
         measurer,
     );
 
-    let viewbox_padding =
-        cfg_f64(effective_config, &["timeline", "padding"]).unwrap_or(DEFAULT_VIEWBOX_PADDING);
+    let viewbox_padding = cfg.viewbox_padding;
     let vb_min_x = full_min_x - viewbox_padding;
     let vb_min_y = full_min_y - viewbox_padding;
     let vb_max_x = full_max_x + viewbox_padding;
@@ -750,6 +733,7 @@ pub fn layout_timeline_diagram_typed(
         title,
         title_x,
         title_y: TITLE_Y,
+        use_max_width: cfg.use_max_width,
     })
 }
 

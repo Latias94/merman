@@ -104,3 +104,22 @@ timeline
         "redux Timeline event labels should use the Mermaid 11.15 event vertical offset: {svg}"
     );
 }
+
+#[test]
+fn timeline_svg_honors_disabled_max_width() {
+    let svg = render_timeline_svg_from_text(
+        r##"%%{init: {"timeline": {"useMaxWidth": false, "padding": 12}}}%%
+timeline
+    section Release
+        2026 : Ship
+"##,
+    );
+    let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+    assert!(root_open.contains(r#"height=""#), "{root_open}");
+    assert!(
+        root_open.contains(r#"style="background-color: white;""#),
+        "{root_open}"
+    );
+    assert!(!root_open.contains("max-width"), "{root_open}");
+}

@@ -771,6 +771,8 @@ pub struct TimelineDiagramLayout {
     pub title: Option<String>,
     pub title_x: f64,
     pub title_y: f64,
+    #[serde(default = "crate::timeline::default_use_max_width")]
+    pub use_max_width: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

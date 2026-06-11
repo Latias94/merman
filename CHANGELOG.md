@@ -29,6 +29,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Pie layout and SVG render configuration through a family-owned config view, centralizing text position, donut-hole normalization, legend placement, and max-width behavior.
 - Projected Requirement layout and SVG render configuration through a family-owned config view, centralizing spacing precedence, font settings, look, seed, viewport padding, and max-width behavior.
 - Projected Kanban layout and SVG render configuration through a family-owned config view, centralizing section sizing, Mermaid-compatible viewport padding/max-width precedence, label font settings, look, and ticket URL behavior.
+- Projected Timeline layout and SVG render configuration through a family-owned config view, centralizing left margin, font/style fallback, multicolor, padding, and max-width behavior while preserving the layout vs render font-size split.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

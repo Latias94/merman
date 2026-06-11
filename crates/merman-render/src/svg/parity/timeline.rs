@@ -292,17 +292,33 @@ fn render_timeline_diagram_svg_inner(
     );
 
     let mut out = String::new();
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(&viewbox_attr),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
-        },
-    );
+    if layout.use_max_width {
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(&viewbox_attr),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
+            },
+        );
+    } else {
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&w_attr),
+                height_attr: Some(&h_attr),
+                viewbox_attr: Some(&viewbox_attr),
+                tail_attrs: &tail_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
+            },
+        );
+    }
     let css = timeline_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
@@ -451,4 +467,65 @@ fn render_timeline_diagram_svg_inner(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Bounds, TimelineDiagramLayout, TimelineLineLayout};
+
+    #[test]
+    fn timeline_root_honors_disabled_max_width() {
+        let layout = TimelineDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 320.0,
+                max_y: 180.0,
+            }),
+            left_margin: 150.0,
+            base_x: 50.0,
+            base_y: 50.0,
+            pre_title_box_width: 0.0,
+            sections: Vec::new(),
+            orphan_tasks: Vec::new(),
+            activity_line: TimelineLineLayout {
+                kind: "activity".to_string(),
+                x1: 50.0,
+                y1: 0.0,
+                x2: 320.0,
+                y2: 0.0,
+            },
+            title: None,
+            title_x: 0.0,
+            title_y: 20.0,
+            use_max_width: false,
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("timelineFixed".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_timeline_diagram_svg_inner(
+            &layout,
+            &serde_json::json!({}),
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"width="320""#), "{root_open}");
+        assert!(root_open.contains(r#"height="180""#), "{root_open}");
+        assert!(
+            root_open.contains(r#"viewBox="0 0 320 180""#),
+            "{root_open}"
+        );
+        assert!(
+            root_open.contains(r#"style="background-color: white;""#),
+            "{root_open}"
+        );
+        assert!(!root_open.contains("max-width"), "{root_open}");
+    }
 }

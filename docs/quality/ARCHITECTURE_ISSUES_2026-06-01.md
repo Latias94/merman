@@ -752,6 +752,13 @@ max-width precedence, label font settings, look, and ticket URL projection
 before layout and SVG root emission consume them. Kanban CSS theme rules and
 per-item styling remain in the SVG parity theme layer.
 
+Timeline now consumes a family-owned config view from
+`crates/merman-render/src/timeline/config.rs`. Its layout settings project left
+margin, text-style fallback, layout font size, multicolor switching, viewport
+padding, and max-width behavior before layout and SVG root emission consume
+them. Timeline CSS/theme rendering remains in the SVG parity theme layer, and
+the no-op `timeline.width` config stays intentionally ignored.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
