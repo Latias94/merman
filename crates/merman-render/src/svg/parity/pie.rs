@@ -202,8 +202,7 @@ pub(super) fn render_pie_diagram_svg_model(
             crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
         );
     }
-
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    let render_settings = crate::pie::PieConfigView::new(effective_config).render_settings();
 
     let mut out = String::new();
     let aria_labelledby = model
@@ -214,19 +213,39 @@ pub(super) fn render_pie_diagram_svg_model(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
-        },
-    );
+    if render_settings.use_max_width {
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
+            },
+        );
+    } else {
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&w_attr),
+                height_attr: Some(&h_attr),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                tail_attrs: &tail_attrs,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
+            },
+        );
+    }
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -256,7 +275,7 @@ pub(super) fn render_pie_diagram_svg_model(
         y = super::fmt(layout.center_y)
     );
 
-    let legend_position = crate::pie::pie_legend_position(effective_config);
+    let legend_position = render_settings.legend_position;
     let pie_offset_x = if legend_position == crate::pie::PieLegendPosition::Left {
         (vb_w - 490.0).max(0.0)
     } else {
@@ -283,7 +302,7 @@ pub(super) fn render_pie_diagram_svg_model(
         r = super::fmt(layout.outer_radius)
     );
 
-    let inner_radius = crate::pie::pie_donut_hole(effective_config) * layout.radius;
+    let inner_radius = render_settings.donut_hole * layout.radius;
     for slice in &layout.slices {
         let r = layout.radius;
         let slice_class = pie_slice_class(effective_config, &slice.label);
@@ -465,5 +484,52 @@ mod tests {
         ));
         assert_eq!(viewbox, "0 0 292.400390625 450");
         assert_eq!(max_width, "292.4");
+    }
+
+    #[test]
+    fn pie_root_honors_disabled_max_width() {
+        let layout = PieDiagramLayout {
+            bounds: Some(crate::model::Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 490.0,
+                max_y: 450.0,
+            }),
+            center_x: 225.0,
+            center_y: 225.0,
+            radius: 185.0,
+            outer_radius: 186.0,
+            legend_x: 216.0,
+            legend_start_y: 0.0,
+            legend_step_y: 22.0,
+            slices: Vec::new(),
+            legend_items: Vec::new(),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("pieFixed".to_string()),
+            apply_root_overrides: false,
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_pie_diagram_svg_model(
+            &layout,
+            &PieDiagramRenderModel::default(),
+            &serde_json::json!({"pie": {"useMaxWidth": false}}),
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"width="490""#), "{root_open}");
+        assert!(root_open.contains(r#"height="450""#), "{root_open}");
+        assert!(
+            root_open.contains(r#"viewBox="0 0 490 450""#),
+            "{root_open}"
+        );
+        assert!(
+            root_open.contains(r#"style="background-color: white;""#),
+            "{root_open}"
+        );
+        assert!(!root_open.contains("max-width"), "{root_open}");
     }
 }

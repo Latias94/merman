@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64, config_string, value_at};
+use crate::config::config_string;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
@@ -8,14 +8,9 @@ use ryu_js::Buffer;
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PieLegendPosition {
-    Top,
-    Bottom,
-    Left,
-    Right,
-    Center,
-}
+mod config;
+
+pub(crate) use config::{PieConfigView, PieLegendPosition};
 
 #[derive(Debug, Clone)]
 struct ColorScale {
@@ -263,29 +258,6 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-pub(crate) fn pie_text_position(effective_config: &serde_json::Value) -> f64 {
-    config_f64(effective_config, &["pie", "textPosition"]).unwrap_or(0.75)
-}
-
-pub(crate) fn pie_donut_hole(effective_config: &serde_json::Value) -> f64 {
-    let donut_hole = config_f64(effective_config, &["pie", "donutHole"]).unwrap_or(0.0);
-    if donut_hole > 0.0 && donut_hole <= 0.9 {
-        donut_hole
-    } else {
-        0.0
-    }
-}
-
-pub(crate) fn pie_legend_position(effective_config: &serde_json::Value) -> PieLegendPosition {
-    match value_at(effective_config, &["pie", "legendPosition"]).and_then(|v| v.as_str()) {
-        Some("top") => PieLegendPosition::Top,
-        Some("bottom") => PieLegendPosition::Bottom,
-        Some("left") => PieLegendPosition::Left,
-        Some("center") => PieLegendPosition::Center,
-        _ => PieLegendPosition::Right,
-    }
-}
-
 pub fn layout_pie_diagram(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
@@ -314,9 +286,10 @@ pub fn layout_pie_diagram_typed(
     let center: f64 = 225.0;
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
-    let label_radius = radius.max(0.0) * pie_text_position(effective_config);
+    let cfg = PieConfigView::new(effective_config).layout_settings();
+    let label_radius = radius.max(0.0) * cfg.text_position;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
-    let legend_position = pie_legend_position(effective_config);
+    let legend_position = cfg.legend_position;
     let total_legend_height = (model.sections.len() as f64) * legend_step_y;
     let centered_legend_start_y = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
     let legend_start_y = match legend_position {

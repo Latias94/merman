@@ -733,6 +733,11 @@ Radar now consumes a family-owned config view from
 project chart geometry, margins, axis scale/label factors, curve tension, and
 max-width behavior before layout and SVG root emission consume them.
 
+Pie now consumes a family-owned config view from
+`crates/merman-render/src/pie/config.rs`. Its layout and SVG render settings
+project text position, donut-hole normalization, legend placement, and max-width
+behavior before layout and SVG emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
