@@ -1,7 +1,6 @@
 use crate::Result;
-use crate::config::{config_f64 as cfg_f64, config_string as cfg_string};
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
@@ -10,18 +9,9 @@ pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
 
-fn kanban_text_style(effective_config: &serde_json::Value) -> TextStyle {
-    let font_family = cfg_string(effective_config, &["fontFamily"])
-        .or_else(|| cfg_string(effective_config, &["themeVariables", "fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size =
-        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
-    }
-}
+mod config;
+
+pub(crate) use config::{KanbanConfigView, default_use_max_width};
 
 pub fn layout_kanban_diagram(
     semantic: &serde_json::Value,
@@ -37,21 +27,13 @@ pub fn layout_kanban_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let section_width = cfg_f64(effective_config, &["kanban", "sectionWidth"])
-        .unwrap_or(200.0)
-        .max(1.0);
-
-    // Mermaid 11.12.2 has a bug: `kanbanRenderer` uses `conf.mindmap.padding`/`useMaxWidth` when
-    // calling `setupGraphViewbox`. Mirror that behavior for parity.
-    let viewbox_padding = cfg_f64(effective_config, &["mindmap", "padding"])
-        .or_else(|| cfg_f64(effective_config, &["kanban", "padding"]))
-        .unwrap_or(8.0)
-        .max(0.0);
-
+    let cfg = KanbanConfigView::new(effective_config).layout_settings();
+    let section_width = cfg.section_width;
+    let viewbox_padding = cfg.viewbox_padding;
     let padding = KANBAN_SECTION_PADDING_PX;
     let section_rect_y = -(section_width * 3.0) / 2.0;
 
-    let legend_style = kanban_text_style(effective_config);
+    let legend_style = cfg.text_style;
     let font_scale = legend_style.font_size / 16.0;
     let section_label_height_baseline = KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX * font_scale;
     let label_foreign_object_height = KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * font_scale;
@@ -205,6 +187,7 @@ pub fn layout_kanban_diagram_typed(
         padding,
         max_label_height,
         viewbox_padding,
+        use_max_width: cfg.use_max_width,
         sections,
         items,
     })
@@ -243,9 +226,43 @@ mod tests {
         let layout = layout_kanban_diagram(&semantic, &json!({}), &measurer).unwrap();
 
         assert_eq!(layout.padding, super::KANBAN_SECTION_PADDING_PX);
+        assert!(layout.use_max_width);
         assert_eq!(
             layout.items[0].width,
             layout.section_width - 1.5 * super::KANBAN_SECTION_PADDING_PX
         );
+    }
+
+    #[test]
+    fn kanban_layout_uses_mermaid_mindmap_viewport_config_precedence() {
+        let semantic = json!({
+            "type": "kanban",
+            "nodes": [
+                {"id": "todo", "label": "Todo", "isGroup": true}
+            ]
+        });
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 8.0,
+            line_height_factor: 16.0,
+        };
+
+        let layout = layout_kanban_diagram(
+            &semantic,
+            &json!({
+                "mindmap": {
+                    "padding": 3,
+                    "useMaxWidth": false
+                },
+                "kanban": {
+                    "padding": 12,
+                    "useMaxWidth": true
+                }
+            }),
+            &measurer,
+        )
+        .unwrap();
+
+        assert_eq!(layout.viewbox_padding, 3.0);
+        assert!(!layout.use_max_width);
     }
 }

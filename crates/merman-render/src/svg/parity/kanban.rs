@@ -168,6 +168,8 @@ pub(super) fn render_kanban_diagram_svg(
 
     let mut out = String::new();
     let max_w_attr = fmt_max_width_px(vb_w);
+    let w_attr = fmt_string(vb_w);
+    let h_attr = fmt_string(vb_h);
     let viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
@@ -175,21 +177,38 @@ pub(super) fn render_kanban_diagram_svg(
         fmt(vb_w),
         fmt(vb_h)
     );
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(&viewbox_attr),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
-        },
-    );
+    if layout.use_max_width {
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(&viewbox_attr),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
+            },
+        );
+    } else {
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&w_attr),
+                height_attr: Some(&h_attr),
+                viewbox_attr: Some(&viewbox_attr),
+                tail_attrs: &tail_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
+            },
+        );
+    }
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    let data_look = config_diagram_look(effective_config);
+    let render_settings = crate::kanban::KanbanConfigView::new(effective_config).render_settings();
+    let data_look = render_settings.look;
     let data_look_attr = escape_attr(data_look.as_str());
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
@@ -233,15 +252,8 @@ pub(super) fn render_kanban_diagram_svg(
         measurer.measure_wrapped(text, &style, max_width, crate::text::WrapMode::HtmlLike)
     }
 
-    fn kanban_ticket_url(effective_config: &serde_json::Value, ticket: &str) -> Option<String> {
-        let base = effective_config
-            .get("kanban")
-            .and_then(|v| v.get("ticketBaseUrl"))
-            .and_then(|v| v.as_str())?;
-        if base.trim().is_empty() {
-            return None;
-        }
-        Some(base.replace("#TICKET#", ticket))
+    fn kanban_ticket_url(ticket_base_url: Option<&str>, ticket: &str) -> Option<String> {
+        Some(ticket_base_url?.replace("#TICKET#", ticket))
     }
 
     fn kanban_priority_stroke(priority: &str) -> Option<&'static str> {
@@ -413,7 +425,7 @@ pub(super) fn render_kanban_diagram_svg(
         // Ticket label: wrap in <a> when ticketBaseUrl is configured (upstream behavior).
         let ticket_text = n.ticket.as_deref();
         if let Some(t) = ticket_text.filter(|t| !t.is_empty()) {
-            if let Some(url) = kanban_ticket_url(effective_config, t) {
+            if let Some(url) = kanban_ticket_url(render_settings.ticket_base_url.as_deref(), t) {
                 let _ = write!(
                     &mut out,
                     r#"<a class="kanban-ticket-link" xlink:href="{}">"#,
@@ -512,6 +524,7 @@ mod tests {
             padding: KANBAN_SECTION_PADDING_PX,
             max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
             viewbox_padding: 8.0,
+            use_max_width: true,
             sections: vec![KanbanSectionLayout {
                 id: "constructor".to_string(),
                 label: "Todo".to_string(),
@@ -596,6 +609,7 @@ mod tests {
             padding: KANBAN_SECTION_PADDING_PX,
             max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
             viewbox_padding: 8.0,
+            use_max_width: true,
             sections: vec![KanbanSectionLayout {
                 id: "todo".to_string(),
                 label: "Todo".to_string(),
@@ -636,6 +650,50 @@ mod tests {
     }
 
     #[test]
+    fn kanban_root_honors_disabled_max_width() {
+        let layout = KanbanDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -300.0,
+                max_x: 220.0,
+                max_y: 80.0,
+            }),
+            section_width: 200.0,
+            padding: KANBAN_SECTION_PADDING_PX,
+            max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
+            viewbox_padding: 8.0,
+            use_max_width: false,
+            sections: Vec::new(),
+            items: Vec::new(),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("kanbanFixed".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_kanban_diagram_svg(
+            &layout,
+            &serde_json::Value::Null,
+            &serde_json::json!({}),
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"width="220""#), "{root_open}");
+        assert!(root_open.contains(r#"height="380""#), "{root_open}");
+        assert!(
+            root_open.contains(r#"viewBox="0 -300 220 380""#),
+            "{root_open}"
+        );
+        assert!(
+            root_open.contains(r#"style="background-color: white;""#),
+            "{root_open}"
+        );
+        assert!(!root_open.contains("max-width"), "{root_open}");
+    }
+
+    #[test]
     fn kanban_item_title_foreign_object_uses_card_content_width() {
         let layout = KanbanDiagramLayout {
             bounds: Some(Bounds {
@@ -648,6 +706,7 @@ mod tests {
             padding: KANBAN_SECTION_PADDING_PX,
             max_label_height: KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
             viewbox_padding: 8.0,
+            use_max_width: true,
             sections: vec![KanbanSectionLayout {
                 id: "todo".to_string(),
                 label: "Todo".to_string(),

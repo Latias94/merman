@@ -72,9 +72,10 @@ Current direction:
 - Effective config and presentation theme should be projected into narrow views
   before diagram renderers consume them. Sequence, Class, Flowchart, State, ER,
   Block, Sankey, Event Modeling, TreeView, Packet, Venn, Ishikawa, Treemap,
-  QuadrantChart, Radar, Pie, and Requirement are the first renderer-side family
-  pilots for this: layout and SVG parity settings now flow through family-owned
-  config views instead of scattered raw diagram namespace lookups.
+  QuadrantChart, Radar, Pie, Requirement, and Kanban are the first renderer-
+  side family pilots for this: layout and SVG parity settings now flow through
+  family-owned config views instead of scattered raw diagram namespace
+  lookups.
 - Root viewport and emitted SVG bounds logic belongs under the SVG parity layer,
   not under one diagram family.
 - Override data is a last resort for pinned-baseline parity and must have

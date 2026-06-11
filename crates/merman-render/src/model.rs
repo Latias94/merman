@@ -916,6 +916,8 @@ pub struct KanbanDiagramLayout {
     pub padding: f64,
     pub max_label_height: f64,
     pub viewbox_padding: f64,
+    #[serde(default = "crate::kanban::default_use_max_width")]
+    pub use_max_width: bool,
     pub sections: Vec<KanbanSectionLayout>,
     pub items: Vec<KanbanItemLayout>,
 }

@@ -745,6 +745,13 @@ hand-drawn seed, viewport padding, and max-width behavior before layout and SVG
 root emission consume them. Requirement CSS theme variables intentionally remain
 in the SVG parity theme layer.
 
+Kanban now consumes a family-owned config view from
+`crates/merman-render/src/kanban/config.rs`. Its layout and SVG render settings
+project section width, Mermaid-compatible mindmap/kanban viewport padding and
+max-width precedence, label font settings, look, and ticket URL projection
+before layout and SVG root emission consume them. Kanban CSS theme rules and
+per-item styling remain in the SVG parity theme layer.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
