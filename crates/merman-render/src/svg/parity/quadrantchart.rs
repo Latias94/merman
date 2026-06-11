@@ -34,15 +34,9 @@ pub(super) fn render_quadrantchart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
-
-    let qc_cfg = effective_config.get("quadrantChart");
-    let qc_cfg_missing = qc_cfg.is_none()
-        || qc_cfg.is_some_and(|v| v.as_object().is_some_and(|m| m.contains_key("$ref")));
-    let use_max_width = if qc_cfg_missing {
-        true
-    } else {
-        config_bool(effective_config, &["quadrantChart", "useMaxWidth"]).unwrap_or(true)
-    };
+    let use_max_width = crate::quadrantchart::QuadrantChartConfigView::new(effective_config)
+        .render_settings()
+        .use_max_width;
 
     let mut out = String::new();
     let w = layout.width.max(1.0);

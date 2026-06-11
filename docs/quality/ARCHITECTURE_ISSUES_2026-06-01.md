@@ -722,6 +722,12 @@ padding, value display, max-width behavior, and value-format settings before
 treemap layout consumes them; SVG theme/style projection remains in the parity
 theme layer.
 
+QuadrantChart now consumes a family-owned config view from
+`crates/merman-render/src/quadrantchart/config.rs`. Its layout and SVG render
+settings project chart geometry, title/axis/quadrant/point text sizing, axis
+positions, border widths, max-width behavior, and `$ref` render fallback
+semantics before layout and SVG root emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::config::{config_f64, config_string};
 use crate::json::from_value_ref;
 use crate::model::{
     QuadrantChartAxisLabelData, QuadrantChartBorderLineData, QuadrantChartDiagramLayout,
@@ -10,89 +9,9 @@ use crate::theme::PresentationTheme;
 use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 use serde_json::Value;
 
-#[derive(Debug, Clone)]
-struct QuadrantChartConfig {
-    chart_width: f64,
-    chart_height: f64,
-    title_padding: f64,
-    title_font_size: f64,
-    quadrant_padding: f64,
-    x_axis_label_padding: f64,
-    y_axis_label_padding: f64,
-    x_axis_label_font_size: f64,
-    y_axis_label_font_size: f64,
-    quadrant_label_font_size: f64,
-    quadrant_text_top_padding: f64,
-    point_text_padding: f64,
-    point_label_font_size: f64,
-    point_radius: f64,
-    x_axis_position: String,
-    y_axis_position: String,
-    quadrant_internal_border_stroke_width: f64,
-    quadrant_external_border_stroke_width: f64,
-}
+mod config;
 
-fn default_quadrant_config(effective_config: &Value) -> QuadrantChartConfig {
-    QuadrantChartConfig {
-        chart_width: config_f64(effective_config, &["quadrantChart", "chartWidth"])
-            .unwrap_or(500.0),
-        chart_height: config_f64(effective_config, &["quadrantChart", "chartHeight"])
-            .unwrap_or(500.0),
-        title_padding: config_f64(effective_config, &["quadrantChart", "titlePadding"])
-            .unwrap_or(10.0),
-        title_font_size: config_f64(effective_config, &["quadrantChart", "titleFontSize"])
-            .unwrap_or(20.0),
-        quadrant_padding: config_f64(effective_config, &["quadrantChart", "quadrantPadding"])
-            .unwrap_or(5.0),
-        x_axis_label_padding: config_f64(effective_config, &["quadrantChart", "xAxisLabelPadding"])
-            .unwrap_or(5.0),
-        y_axis_label_padding: config_f64(effective_config, &["quadrantChart", "yAxisLabelPadding"])
-            .unwrap_or(5.0),
-        x_axis_label_font_size: config_f64(
-            effective_config,
-            &["quadrantChart", "xAxisLabelFontSize"],
-        )
-        .unwrap_or(16.0),
-        y_axis_label_font_size: config_f64(
-            effective_config,
-            &["quadrantChart", "yAxisLabelFontSize"],
-        )
-        .unwrap_or(16.0),
-        quadrant_label_font_size: config_f64(
-            effective_config,
-            &["quadrantChart", "quadrantLabelFontSize"],
-        )
-        .unwrap_or(16.0),
-        quadrant_text_top_padding: config_f64(
-            effective_config,
-            &["quadrantChart", "quadrantTextTopPadding"],
-        )
-        .unwrap_or(5.0),
-        point_text_padding: config_f64(effective_config, &["quadrantChart", "pointTextPadding"])
-            .unwrap_or(5.0),
-        point_label_font_size: config_f64(
-            effective_config,
-            &["quadrantChart", "pointLabelFontSize"],
-        )
-        .unwrap_or(12.0),
-        point_radius: config_f64(effective_config, &["quadrantChart", "pointRadius"])
-            .unwrap_or(5.0),
-        x_axis_position: config_string(effective_config, &["quadrantChart", "xAxisPosition"])
-            .unwrap_or_else(|| "top".to_string()),
-        y_axis_position: config_string(effective_config, &["quadrantChart", "yAxisPosition"])
-            .unwrap_or_else(|| "left".to_string()),
-        quadrant_internal_border_stroke_width: config_f64(
-            effective_config,
-            &["quadrantChart", "quadrantInternalBorderStrokeWidth"],
-        )
-        .unwrap_or(1.0),
-        quadrant_external_border_stroke_width: config_f64(
-            effective_config,
-            &["quadrantChart", "quadrantExternalBorderStrokeWidth"],
-        )
-        .unwrap_or(2.0),
-    }
-}
+pub(crate) use config::QuadrantChartConfigView;
 
 fn default_quadrant_theme(effective_config: &Value) -> crate::theme::QuadrantChartTheme {
     PresentationTheme::new(effective_config).quadrantchart()
@@ -122,7 +41,7 @@ pub fn layout_quadrantchart_diagram_typed(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
-    let cfg = default_quadrant_config(effective_config);
+    let cfg = QuadrantChartConfigView::new(effective_config).layout_settings();
     let theme = default_quadrant_theme(effective_config);
 
     let title_text = model.title.as_deref().unwrap_or("").trim();
