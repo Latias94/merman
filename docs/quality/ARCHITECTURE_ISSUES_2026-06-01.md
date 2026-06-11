@@ -701,6 +701,11 @@ TreeView now consumes a family-owned config view from
 indentation, padding, line thickness, max-width behavior, and theme-provided
 label font size before tree layout and measurement consume them.
 
+Packet now consumes a family-owned config view from
+`crates/merman-render/src/packet/config.rs`. Its layout and SVG style settings
+project show-bits behavior, row and bit geometry, packet row wrapping, and packet
+CSS role defaults before layout and SVG emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

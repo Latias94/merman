@@ -1,29 +1,11 @@
 use super::*;
 use merman_core::diagrams::packet::PacketDiagramRenderModel;
 
-fn packet_style_option(
-    effective_config: &serde_json::Value,
-    key: &str,
-    default_value: &str,
-) -> String {
-    crate::config::config_css_number_or_string(effective_config, &["packet", key])
-        .unwrap_or_else(|| default_value.to_string())
-}
-
 fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    let byte_font_size = packet_style_option(effective_config, "byteFontSize", "10px");
-    let start_byte_color = packet_style_option(effective_config, "startByteColor", "black");
-    let end_byte_color = packet_style_option(effective_config, "endByteColor", "black");
-    let label_color = packet_style_option(effective_config, "labelColor", "black");
-    let label_font_size = packet_style_option(effective_config, "labelFontSize", "12px");
-    let title_color = packet_style_option(effective_config, "titleColor", "black");
-    let title_font_size = packet_style_option(effective_config, "titleFontSize", "14px");
-    let block_stroke_color = packet_style_option(effective_config, "blockStrokeColor", "black");
-    let block_stroke_width = packet_style_option(effective_config, "blockStrokeWidth", "1");
-    let block_fill_color = packet_style_option(effective_config, "blockFillColor", "#efefef");
+    let style = crate::packet::PacketConfigView::new(effective_config).style_settings();
     let mut out = String::new();
     let _ = write!(
         &mut out,
@@ -62,21 +44,21 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
         &mut out,
         r#"#{} .packetByte{{font-size:{};}}#{} .packetByte.start{{fill:{};}}#{} .packetByte.end{{fill:{};}}#{} .packetLabel{{fill:{};font-size:{};}}#{} .packetTitle{{fill:{};font-size:{};}}#{} .packetBlock{{stroke:{};stroke-width:{};fill:{};}}"#,
         id,
-        byte_font_size,
+        style.byte_font_size,
         id,
-        start_byte_color,
+        style.start_byte_color,
         id,
-        end_byte_color,
+        style.end_byte_color,
         id,
-        label_color,
-        label_font_size,
+        style.label_color,
+        style.label_font_size,
         id,
-        title_color,
-        title_font_size,
+        style.title_color,
+        style.title_font_size,
         id,
-        block_stroke_color,
-        block_stroke_width,
-        block_fill_color
+        style.block_stroke_color,
+        style.block_stroke_width,
+        style.block_fill_color
     );
     let _ = write!(
         &mut out,
