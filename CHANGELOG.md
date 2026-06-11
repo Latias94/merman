@@ -23,6 +23,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Packet layout and SVG style configuration through a family-owned config view, centralizing bit geometry, show-bits padding semantics, row sizing, and packet CSS role defaults.
 - Projected Venn layout configuration through a family-owned config view, centralizing canvas size, padding, max-width behavior, and debug-layout switching before the Venn layout kernel consumes them.
 - Projected Ishikawa layout and SVG render configuration through a family-owned config view, centralizing diagram padding, max-width behavior, layout font size, and CSS font-size spelling.
+- Projected Treemap layout configuration through a family-owned config view, centralizing sizing, padding, value display, max-width behavior, and value-format settings before treemap layout consumes them.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

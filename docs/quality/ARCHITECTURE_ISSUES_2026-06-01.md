@@ -716,6 +716,12 @@ Ishikawa now consumes a family-owned config view from
 project diagram padding, max-width behavior, numeric layout font size, and SVG
 CSS font-size spelling before layout and SVG emission consume them.
 
+Treemap now consumes a family-owned config view from
+`crates/merman-render/src/treemap/config.rs`. Its layout settings project sizing,
+padding, value display, max-width behavior, and value-format settings before
+treemap layout consumes them; SVG theme/style projection remains in the parity
+theme layer.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string, json_f64};
+use crate::config::json_f64;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::{Error, Result};
 use merman_core::diagrams::treemap::{
@@ -9,6 +9,10 @@ use std::collections::HashMap;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
 pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
+
+mod config;
+
+use config::TreemapConfigView;
 
 #[derive(Debug, Clone)]
 struct HierNode {
@@ -24,43 +28,6 @@ struct HierNode {
     y0: f64,
     x1: f64,
     y1: f64,
-}
-
-#[derive(Debug, Clone)]
-struct TreemapConfig {
-    use_max_width: bool,
-    padding: f64,
-    diagram_padding: f64,
-    show_values: bool,
-    node_width: f64,
-    node_height: f64,
-    value_format: String,
-}
-
-fn treemap_config(effective_config: &Value) -> TreemapConfig {
-    // Mermaid 11.12.2 treemap defaults live in `defaultConfig.ts`, not in the YAML schema.
-    // Keep these in sync with:
-    // - `repo-ref/mermaid/packages/mermaid/src/defaultConfig.ts`
-    // - `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/renderer.ts`
-    let use_max_width = config_bool(effective_config, &["treemap", "useMaxWidth"]).unwrap_or(true);
-    let padding = config_f64(effective_config, &["treemap", "padding"]).unwrap_or(10.0);
-    let diagram_padding =
-        config_f64(effective_config, &["treemap", "diagramPadding"]).unwrap_or(8.0);
-    let show_values = config_bool(effective_config, &["treemap", "showValues"]).unwrap_or(true);
-    let node_width = config_f64(effective_config, &["treemap", "nodeWidth"]).unwrap_or(100.0);
-    let node_height = config_f64(effective_config, &["treemap", "nodeHeight"]).unwrap_or(40.0);
-    let value_format = config_string(effective_config, &["treemap", "valueFormat"])
-        .unwrap_or_else(|| ",".to_string());
-
-    TreemapConfig {
-        use_max_width,
-        padding,
-        diagram_padding,
-        show_values,
-        node_width,
-        node_height,
-        value_format,
-    }
 }
 
 fn push_node(nodes: &mut Vec<HierNode>, node: &TreemapNode, parent: Option<usize>, depth: usize) {
@@ -522,7 +489,7 @@ pub fn layout_treemap_diagram_typed(
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
-    let cfg = treemap_config(effective_config);
+    let cfg = TreemapConfigView::new(effective_config).layout_settings();
 
     let title_height = if model.title.as_deref().is_some_and(|t| !t.trim().is_empty()) {
         30.0
