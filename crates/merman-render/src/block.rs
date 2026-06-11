@@ -1,9 +1,12 @@
-use crate::config::config_f64;
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+
+mod config;
+
+use config::{BlockConfigView, BlockLayoutSettings};
 
 pub(crate) type BlockDiagramModel = merman_core::diagrams::block::BlockDiagramRenderModel;
 pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
@@ -1058,15 +1061,10 @@ pub fn layout_block_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
-    let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
-    let text_style = crate::text::TextStyle {
-        font_family: Some(crate::config::config_font_family_or_first_array_css(
-            effective_config,
-        )),
-        font_size: crate::config::config_theme_or_root_font_size_px(effective_config, 16.0)
-            .max(1.0),
-        font_weight: None,
-    };
+    let BlockLayoutSettings {
+        padding,
+        text_style,
+    } = BlockConfigView::new(effective_config).layout_settings();
 
     let root = model
         .blocks_flat

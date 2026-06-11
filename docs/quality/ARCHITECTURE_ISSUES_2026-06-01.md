@@ -678,6 +678,12 @@ code uses them. ER theme color and gradient generation still intentionally
 remain in the SVG parity layer with the broader shared theme/style config
 surface.
 
+Block now also consumes a family-owned config view from
+`crates/merman-render/src/block/config.rs`. Block layout settings project
+padding and text style before node sizing, grid sizing, and edge-label
+measurement consume them. Block SVG theme CSS still belongs to the shared SVG
+parity theme layer rather than the layout config view.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
