@@ -635,6 +635,16 @@ still keep diagram-specific font precedence rules. The remaining ARCH-013 work
 is broader: replace scattered raw JSON config lookups with narrow per-family
 presentation/config views.
 
+Status note 2026-06-11:
+
+Sequence now has the first renderer-side family config view under
+`crates/merman-render/src/sequence/config.rs`. Sequence layout settings and SVG
+parity render settings are projected from `effective_config` before the layout
+and SVG renderers consume them, removing the previous local
+`effective_config["sequence"]` lookups from those call sites. This narrows
+ARCH-013 for Sequence only. The distinction between layout numeric-string
+compatibility and SVG numeric-only settings is preserved with focused tests.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

@@ -114,10 +114,7 @@ fn render_sequence_diagram_svg_inner(
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
-    let seq_cfg = effective_config
-        .get("sequence")
-        .unwrap_or(&serde_json::Value::Null);
-    let settings = SequenceRenderSettings::from_config(effective_config, seq_cfg);
+    let settings = SequenceRenderSettings::from_effective_config(effective_config);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
