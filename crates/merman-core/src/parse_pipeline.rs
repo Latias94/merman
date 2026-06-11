@@ -1,0 +1,336 @@
+use crate::{
+    Engine, Error, MermaidConfig, ParseMetadata, ParseOptions, Result, common_db, diagram,
+    diagrams::error_diagram, family, preprocess_diagram, preprocess_diagram_with_known_type,
+    runtime, sanitize, theme,
+};
+use diagram::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ParseSource<'a> {
+    Detect,
+    KnownType(&'a str),
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ParseTiming {
+    None,
+    Json,
+    Render,
+}
+
+pub(crate) struct ParsePipeline<'a> {
+    engine: &'a Engine,
+    text: &'a str,
+    options: ParseOptions,
+    source: ParseSource<'a>,
+}
+
+impl<'a> ParsePipeline<'a> {
+    pub(crate) fn detect(engine: &'a Engine, text: &'a str, options: ParseOptions) -> Self {
+        Self {
+            engine,
+            text,
+            options,
+            source: ParseSource::Detect,
+        }
+    }
+
+    pub(crate) fn known_type(
+        engine: &'a Engine,
+        diagram_type: &'a str,
+        text: &'a str,
+        options: ParseOptions,
+    ) -> Self {
+        Self {
+            engine,
+            text,
+            options,
+            source: ParseSource::KnownType(diagram_type),
+        }
+    }
+
+    pub(crate) fn metadata(&self) -> Result<Option<ParseMetadata>> {
+        Ok(self.preprocess()?.map(|(_, meta)| meta))
+    }
+
+    pub(crate) fn parse_json(&self, timing: ParseTiming) -> Result<Option<ParsedDiagram>> {
+        self.parse_model(
+            timing,
+            |pipeline, code, meta| {
+                diagram::parse_or_unsupported(
+                    &pipeline.engine.diagram_registry,
+                    &meta.diagram_type,
+                    code,
+                    meta,
+                )
+            },
+            common_db::apply_common_db_sanitization,
+            error_diagram::suppressed_error_diagram,
+            |meta, model| ParsedDiagram { meta, model },
+            |_| None,
+        )
+    }
+
+    pub(crate) fn parse_render_model(&self) -> Result<Option<ParsedDiagramRender>> {
+        self.parse_model(
+            ParseTiming::Render,
+            Self::parse_render_semantic_model,
+            RenderSemanticModel::sanitize_common_db_fields,
+            error_diagram::suppressed_error_render_diagram,
+            |meta, model| ParsedDiagramRender { meta, model },
+            |model| Some(model.kind()),
+        )
+    }
+
+    fn parse_model<T, O>(
+        &self,
+        timing: ParseTiming,
+        parse: impl FnOnce(&Self, &str, &ParseMetadata) -> Result<T>,
+        sanitize: impl FnOnce(&mut T, &MermaidConfig),
+        suppressed: impl FnOnce(&ParseMetadata) -> O,
+        finish: impl FnOnce(ParseMetadata, T) -> O,
+        model_kind: impl FnOnce(&T) -> Option<&'static str>,
+    ) -> Result<Option<O>> {
+        let timing_enabled = timing.is_enabled();
+        let total_start = runtime::timing_start(timing_enabled);
+
+        let preprocess_start = runtime::timing_start(timing_enabled);
+        let Some((code, meta)) = self.preprocess()? else {
+            return Ok(None);
+        };
+        let preprocess = preprocess_start.map(runtime::timing_elapsed);
+
+        let parse_start = runtime::timing_start(timing_enabled);
+        let parse_res = self.with_fixed_time(|| parse(self, &code, &meta));
+        let parse = parse_start.map(runtime::timing_elapsed);
+
+        let mut model = match parse_res {
+            Ok(model) => model,
+            Err(err) => {
+                if !self.options.suppress_errors {
+                    return Err(err);
+                }
+
+                timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
+                return Ok(Some(suppressed(&meta)));
+            }
+        };
+
+        let sanitize_start = runtime::timing_start(timing_enabled);
+        sanitize(&mut model, &meta.effective_config);
+        let sanitize = sanitize_start.map(runtime::timing_elapsed);
+
+        timing.log_success(
+            total_start,
+            &meta,
+            model_kind(&model),
+            preprocess,
+            parse,
+            sanitize,
+            self.text.len(),
+        );
+
+        Ok(Some(finish(meta, model)))
+    }
+
+    fn parse_render_semantic_model(
+        &self,
+        code: &str,
+        meta: &ParseMetadata,
+    ) -> Result<RenderSemanticModel> {
+        if let Some(parser) = self.engine.render_diagram_registry.get(&meta.diagram_type) {
+            return parser(code, meta);
+        }
+
+        let registry_profile = self.engine.render_diagram_registry.profile();
+        debug_assert_eq!(self.engine.diagram_registry.profile(), registry_profile);
+        if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
+            return Err(Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: format!(
+                    "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
+                    meta.diagram_type
+                ),
+            });
+        }
+
+        diagram::parse_or_unsupported(
+            &self.engine.diagram_registry,
+            &meta.diagram_type,
+            code,
+            meta,
+        )
+        .map(RenderSemanticModel::Json)
+    }
+
+    fn preprocess(&self) -> Result<Option<(String, ParseMetadata)>> {
+        match self.source {
+            ParseSource::Detect => self.preprocess_and_detect(),
+            ParseSource::KnownType(diagram_type) => self.preprocess_and_assume_type(diagram_type),
+        }
+    }
+
+    fn preprocess_and_detect(&self) -> Result<Option<(String, ParseMetadata)>> {
+        let pre = preprocess_diagram(self.text, &self.engine.registry)?;
+        if pre.code.trim_start().starts_with("---") {
+            return Err(Error::MalformedFrontMatter);
+        }
+
+        let mut effective_config = self.engine.site_config.clone();
+        effective_config.deep_merge(pre.config.as_value());
+
+        let diagram_type = match self
+            .engine
+            .registry
+            .detect_type_precleaned(&pre.code, &mut effective_config)
+        {
+            Ok(diagram_type) => diagram_type.to_string(),
+            Err(err) => {
+                if self.options.suppress_errors {
+                    return Ok(None);
+                }
+                return Err(err);
+            }
+        };
+        theme::apply_theme_defaults(&mut effective_config);
+
+        let title = sanitized_title(pre.title.as_deref(), &effective_config);
+
+        Ok(Some((
+            pre.code,
+            ParseMetadata {
+                diagram_type,
+                config: pre.config,
+                effective_config,
+                title,
+            },
+        )))
+    }
+
+    fn preprocess_and_assume_type(
+        &self,
+        diagram_type: &str,
+    ) -> Result<Option<(String, ParseMetadata)>> {
+        let pre = preprocess_diagram_with_known_type(
+            self.text,
+            &self.engine.registry,
+            Some(diagram_type),
+        )?;
+        if pre.code.trim_start().starts_with("---") {
+            return Err(Error::MalformedFrontMatter);
+        }
+
+        let mut effective_config = self.engine.site_config.clone();
+        effective_config.deep_merge(pre.config.as_value());
+        family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
+        theme::apply_theme_defaults(&mut effective_config);
+
+        let title = sanitized_title(pre.title.as_deref(), &effective_config);
+
+        Ok(Some((
+            pre.code,
+            ParseMetadata {
+                diagram_type: diagram_type.to_string(),
+                config: pre.config,
+                effective_config,
+                title,
+            },
+        )))
+    }
+
+    fn with_fixed_time<R>(&self, f: impl FnOnce() -> R) -> R {
+        runtime::with_fixed_today_local(self.engine.fixed_today_local, || {
+            runtime::with_fixed_local_offset_minutes(self.engine.fixed_local_offset_minutes, f)
+        })
+    }
+}
+
+impl ParseTiming {
+    fn is_enabled(self) -> bool {
+        self != Self::None && Engine::parse_timing_enabled()
+    }
+
+    fn log_suppressed_error(
+        self,
+        total_start: Option<runtime::TimingInstant>,
+        preprocess: Option<runtime::TimingDuration>,
+        parse: Option<runtime::TimingDuration>,
+        input_bytes: usize,
+    ) {
+        let Some(start) = total_start else {
+            return;
+        };
+
+        match self {
+            Self::None => {}
+            Self::Json => {
+                eprintln!(
+                    "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                    runtime::timing_elapsed(start),
+                    preprocess.unwrap_or_default(),
+                    parse.unwrap_or_default(),
+                    runtime::timing_zero_duration(),
+                    input_bytes,
+                );
+            }
+            Self::Render => {
+                eprintln!(
+                    "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                    runtime::timing_elapsed(start),
+                    preprocess.unwrap_or_default(),
+                    parse.unwrap_or_default(),
+                    runtime::timing_zero_duration(),
+                    input_bytes,
+                );
+            }
+        }
+    }
+
+    fn log_success(
+        self,
+        total_start: Option<runtime::TimingInstant>,
+        meta: &ParseMetadata,
+        model_kind: Option<&str>,
+        preprocess: Option<runtime::TimingDuration>,
+        parse: Option<runtime::TimingDuration>,
+        sanitize: Option<runtime::TimingDuration>,
+        input_bytes: usize,
+    ) {
+        let Some(start) = total_start else {
+            return;
+        };
+
+        match self {
+            Self::None => {}
+            Self::Json => {
+                eprintln!(
+                    "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                    meta.diagram_type,
+                    runtime::timing_elapsed(start),
+                    preprocess.unwrap_or_default(),
+                    parse.unwrap_or_default(),
+                    sanitize.unwrap_or_default(),
+                    input_bytes,
+                );
+            }
+            Self::Render => {
+                eprintln!(
+                    "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                    meta.diagram_type,
+                    model_kind.unwrap_or("unknown"),
+                    runtime::timing_elapsed(start),
+                    preprocess.unwrap_or_default(),
+                    parse.unwrap_or_default(),
+                    sanitize.unwrap_or_default(),
+                    input_bytes,
+                );
+            }
+        }
+    }
+}
+
+fn sanitized_title(title: Option<&str>, effective_config: &MermaidConfig) -> Option<String> {
+    title
+        .map(|title| sanitize::sanitize_text(title, effective_config))
+        .filter(|title| !title.is_empty())
+}

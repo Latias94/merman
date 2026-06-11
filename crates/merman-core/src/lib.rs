@@ -20,6 +20,7 @@ pub mod generated;
 pub mod geom;
 mod inline_config;
 pub mod models;
+mod parse_pipeline;
 pub mod preprocess;
 mod runtime;
 pub mod sanitize;
@@ -141,7 +142,7 @@ impl Default for Engine {
 }
 
 impl Engine {
-    fn parse_timing_enabled() -> bool {
+    pub(crate) fn parse_timing_enabled() -> bool {
         #[cfg(feature = "host-timing")]
         {
             return Self::parse_timing_enabled_from_env();
@@ -234,10 +235,7 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParseMetadata>> {
-        let Some((_, meta)) = self.preprocess_and_detect(text, options)? else {
-            return Ok(None);
-        };
-        Ok(Some(meta))
+        parse_pipeline::ParsePipeline::detect(self, text, options).metadata()
     }
 
     /// Parses metadata for an already-known diagram type (skips type detection).
@@ -277,10 +275,7 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParseMetadata>> {
-        let Some((_, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)? else {
-            return Ok(None);
-        };
-        Ok(Some(meta))
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options).metadata()
     }
 
     /// Async facade for [`Engine::parse_metadata_sync`].
@@ -316,70 +311,8 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
-        let timing_enabled = Self::parse_timing_enabled();
-        let total_start = crate::runtime::timing_start(timing_enabled);
-
-        let preprocess_start = crate::runtime::timing_start(timing_enabled);
-        let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
-            return Ok(None);
-        };
-        let preprocess = preprocess_start.map(crate::runtime::timing_elapsed);
-
-        let parse_start = crate::runtime::timing_start(timing_enabled);
-        let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
-            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
-                diagram::parse_or_unsupported(
-                    &self.diagram_registry,
-                    &meta.diagram_type,
-                    &code,
-                    &meta,
-                )
-            })
-        });
-
-        let mut model = match parse {
-            Ok(v) => v,
-            Err(err) => {
-                if !options.suppress_errors {
-                    return Err(err);
-                }
-
-                if let Some(start) = total_start {
-                    let parse = parse_start
-                        .map(crate::runtime::timing_elapsed)
-                        .unwrap_or_default();
-                    eprintln!(
-                        "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                        crate::runtime::timing_elapsed(start),
-                        preprocess.unwrap_or_default(),
-                        parse,
-                        crate::runtime::timing_zero_duration(),
-                        text.len(),
-                    );
-                }
-                return Ok(Some(
-                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
-                ));
-            }
-        };
-        let parse = parse_start.map(crate::runtime::timing_elapsed);
-
-        let sanitize_start = crate::runtime::timing_start(timing_enabled);
-        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-        let sanitize = sanitize_start.map(crate::runtime::timing_elapsed);
-
-        if let Some(start) = total_start {
-            eprintln!(
-                "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                meta.diagram_type,
-                crate::runtime::timing_elapsed(start),
-                preprocess.unwrap_or_default(),
-                parse.unwrap_or_default(),
-                sanitize.unwrap_or_default(),
-                text.len(),
-            );
-        }
-        Ok(Some(ParsedDiagram { meta, model }))
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .parse_json(parse_pipeline::ParseTiming::Json)
     }
 
     /// Async facade for [`Engine::parse_diagram_sync`].
@@ -406,9 +339,7 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
-        self.parse_diagram_for_render_model_inner(text, options, |engine| {
-            engine.preprocess_and_detect(text, options)
-        })
+        parse_pipeline::ParsePipeline::detect(self, text, options).parse_render_model()
     }
 
     /// Async facade for [`Engine::parse_diagram_for_render_model_sync`].
@@ -434,100 +365,8 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
-        self.parse_diagram_for_render_model_inner(text, options, |engine| {
-            engine.preprocess_and_assume_type(diagram_type, text, options)
-        })
-    }
-
-    fn parse_diagram_for_render_model_inner(
-        &self,
-        text: &str,
-        options: ParseOptions,
-        preprocess: impl FnOnce(&Self) -> Result<Option<(String, ParseMetadata)>>,
-    ) -> Result<Option<ParsedDiagramRender>> {
-        let timing_enabled = Self::parse_timing_enabled();
-        let total_start = crate::runtime::timing_start(timing_enabled);
-
-        let preprocess_start = crate::runtime::timing_start(timing_enabled);
-        let Some((code, meta)) = preprocess(self)? else {
-            return Ok(None);
-        };
-        let preprocess = preprocess_start.map(crate::runtime::timing_elapsed);
-
-        let parse_start = crate::runtime::timing_start(timing_enabled);
-        let parse_res = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
-            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
-                self.parse_render_semantic_model(&code, &meta)
-            })
-        });
-        let parse = parse_start.map(crate::runtime::timing_elapsed);
-
-        let mut model = match parse_res {
-            Ok(v) => v,
-            Err(err) => {
-                if !options.suppress_errors {
-                    return Err(err);
-                }
-
-                if let Some(start) = total_start {
-                    eprintln!(
-                        "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                        crate::runtime::timing_elapsed(start),
-                        preprocess.unwrap_or_default(),
-                        parse.unwrap_or_default(),
-                        crate::runtime::timing_zero_duration(),
-                        text.len(),
-                    );
-                }
-                return Ok(Some(
-                    crate::diagrams::error_diagram::suppressed_error_render_diagram(&meta),
-                ));
-            }
-        };
-
-        let sanitize_start = crate::runtime::timing_start(timing_enabled);
-        model.sanitize_common_db_fields(&meta.effective_config);
-        let sanitize = sanitize_start.map(crate::runtime::timing_elapsed);
-
-        if let Some(start) = total_start {
-            eprintln!(
-                "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
-                meta.diagram_type,
-                model.kind(),
-                crate::runtime::timing_elapsed(start),
-                preprocess.unwrap_or_default(),
-                parse.unwrap_or_default(),
-                sanitize.unwrap_or_default(),
-                text.len(),
-            );
-        }
-
-        Ok(Some(ParsedDiagramRender { meta, model }))
-    }
-
-    fn parse_render_semantic_model(
-        &self,
-        code: &str,
-        meta: &ParseMetadata,
-    ) -> Result<RenderSemanticModel> {
-        if let Some(parser) = self.render_diagram_registry.get(&meta.diagram_type) {
-            return parser(code, meta);
-        }
-
-        let registry_profile = self.render_diagram_registry.profile();
-        debug_assert_eq!(self.diagram_registry.profile(), registry_profile);
-        if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
-            return Err(Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message: format!(
-                    "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
-                    meta.diagram_type
-                ),
-            });
-        }
-
-        diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, code, meta)
-            .map(RenderSemanticModel::Json)
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_render_model()
     }
 
     /// Async facade for [`Engine::parse_diagram_for_render_model_with_type_sync`].
@@ -569,36 +408,8 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
-        let Some((code, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)?
-        else {
-            return Ok(None);
-        };
-
-        let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
-            crate::runtime::with_fixed_local_offset_minutes(self.fixed_local_offset_minutes, || {
-                diagram::parse_or_unsupported(
-                    &self.diagram_registry,
-                    &meta.diagram_type,
-                    &code,
-                    &meta,
-                )
-            })
-        });
-
-        let mut model = match parse {
-            Ok(v) => v,
-            Err(err) => {
-                if !options.suppress_errors {
-                    return Err(err);
-                }
-
-                return Ok(Some(
-                    crate::diagrams::error_diagram::suppressed_error_diagram(&meta),
-                ));
-            }
-        };
-        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-        Ok(Some(ParsedDiagram { meta, model }))
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_json(parse_pipeline::ParseTiming::None)
     }
 
     /// Async facade for [`Engine::parse_diagram_with_type_sync`].
@@ -616,83 +427,6 @@ impl Engine {
     /// Backward-compatible shorthand for [`Engine::parse_metadata`].
     pub async fn parse(&self, text: &str, options: ParseOptions) -> Result<Option<ParseMetadata>> {
         self.parse_metadata(text, options).await
-    }
-
-    fn preprocess_and_detect(
-        &self,
-        text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<(String, ParseMetadata)>> {
-        let pre = preprocess_diagram(text, &self.registry)?;
-        if pre.code.trim_start().starts_with("---") {
-            return Err(Error::MalformedFrontMatter);
-        }
-
-        let mut effective_config = self.site_config.clone();
-        effective_config.deep_merge(pre.config.as_value());
-
-        let diagram_type = match self
-            .registry
-            .detect_type_precleaned(&pre.code, &mut effective_config)
-        {
-            Ok(t) => t.to_string(),
-            Err(err) => {
-                if options.suppress_errors {
-                    return Ok(None);
-                }
-                return Err(err);
-            }
-        };
-        theme::apply_theme_defaults(&mut effective_config);
-
-        let title = pre
-            .title
-            .as_ref()
-            .map(|t| crate::sanitize::sanitize_text(t, &effective_config))
-            .filter(|t| !t.is_empty());
-
-        Ok(Some((
-            pre.code,
-            ParseMetadata {
-                diagram_type,
-                config: pre.config,
-                effective_config,
-                title,
-            },
-        )))
-    }
-
-    fn preprocess_and_assume_type(
-        &self,
-        diagram_type: &str,
-        text: &str,
-        _options: ParseOptions,
-    ) -> Result<Option<(String, ParseMetadata)>> {
-        let pre = preprocess_diagram_with_known_type(text, &self.registry, Some(diagram_type))?;
-        if pre.code.trim_start().starts_with("---") {
-            return Err(Error::MalformedFrontMatter);
-        }
-
-        let mut effective_config = self.site_config.clone();
-        effective_config.deep_merge(pre.config.as_value());
-        family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
-        theme::apply_theme_defaults(&mut effective_config);
-
-        let title = pre
-            .title
-            .as_ref()
-            .map(|t| crate::sanitize::sanitize_text(t, &effective_config))
-            .filter(|t| !t.is_empty());
-
-        Ok(Some((
-            pre.code,
-            ParseMetadata {
-                diagram_type: diagram_type.to_string(),
-                config: pre.config,
-                effective_config,
-                title,
-            },
-        )))
     }
 }
 

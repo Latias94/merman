@@ -49,6 +49,10 @@ Current direction:
   typed render model construction, layout, SVG emission, postprocess metadata, and pipeline
   ordering behind one behavior-bearing module. Public adapters choose input/output shape; they do
   not rebuild that flow independently.
+- The core parser flow should be named the **Parse Pipeline**: preprocessing, detection or
+  known-type metadata projection, runtime date hooks, parser dispatch, lenient error behavior,
+  timing diagnostics, and common DB sanitization behind one internal module. `Engine` remains the
+  public facade for metadata, semantic JSON, and typed render-model entrypoints.
 - SVG and raster outputs from Mermaid source should route through the Headless Render Operation.
   Raw SVG input may stay adapter-local because it does not have a Mermaid parse/render model.
 - **Diagram Family Facts** are the pinned-baseline facts for one Mermaid family: ids, aliases,

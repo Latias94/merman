@@ -315,6 +315,18 @@ Suggested direction:
 Make the parsing pipeline stages explicit in an internal module. Keep `Engine` as
 a facade over a deeper pipeline implementation.
 
+Status note 2026-06-11:
+
+The first Parse Pipeline extraction has landed. `Engine` metadata, semantic JSON,
+known-type semantic JSON, and typed render-model entrypoints now delegate to
+`crates/merman-core/src/parse_pipeline.rs`, which owns preprocessing,
+detection/known-type metadata projection, runtime date hooks, lenient parse
+failure handling, timing diagnostics, and common DB sanitization. ARCH-006 is
+narrowed but not fully closed: the public `ParseOptions::suppress_errors` name
+and documented lenient/strict semantics remain unchanged for compatibility and
+can be reassessed separately if the public Interface is revised before a stable
+release.
+
 Related decisions:
 
 - ADR-0004 public API and headless output

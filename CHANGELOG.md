@@ -10,6 +10,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Unified headless SVG-to-raster output through the renderer-owned operation pipeline, so library and CLI raster exports now share the same sanitization, sizing, and encoding path.
 - Tightened the admission inventory gate so parser, layout, and SVG coverage claims are checked against `merman-core` diagram family capability facts before alignment reports pass.
+- Deepened `merman-core` parsing by moving metadata, semantic JSON, and typed render-model stage ordering into one internal Parse Pipeline behind the existing `Engine` facade.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

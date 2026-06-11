@@ -688,6 +688,27 @@ fn parse_can_suppress_unknown_diagram_errors() {
 }
 
 #[test]
+fn parse_lenient_unknown_diagram_returns_none_across_auto_detect_entrypoints() {
+    let engine = Engine::new();
+    let input = "this is not a mermaid diagram definition";
+    let options = ParseOptions::lenient();
+
+    assert!(
+        engine
+            .parse_metadata_sync(input, options)
+            .unwrap()
+            .is_none()
+    );
+    assert!(engine.parse_diagram_sync(input, options).unwrap().is_none());
+    assert!(
+        engine
+            .parse_diagram_for_render_model_sync(input, options)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
 fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     let engine = Engine::new();
     let input = "flowchart TD\nA -->";
