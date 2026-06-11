@@ -1,6 +1,3 @@
-use crate::config::{
-    config_bool, config_f64, config_f64_css_px, config_f64_explicit_css_px, config_string,
-};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -15,6 +12,9 @@ use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+
+pub(crate) mod config;
+use self::config::{ClassConfigView, ClassLayoutSettings};
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
@@ -814,51 +814,6 @@ fn layout_prepared(
         .unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
 
     Ok((fragments, bounds))
-}
-
-fn class_text_style(effective_config: &Value, wrap_mode: WrapMode) -> TextStyle {
-    // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Class diagram labels are
-    // rendered via HTML `<foreignObject>` and inherit the global font family.
-    let font_family = config_string(effective_config, &["fontFamily"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    let font_size = match wrap_mode {
-        WrapMode::HtmlLike => {
-            // Mermaid's class diagram renderer emits labels via HTML `<foreignObject>` (see
-            // upstream SVG baselines under `fixtures/upstream-svgs/class/*`). In Mermaid CLI
-            // (Puppeteer headless), those HTML labels do **not** reliably inherit `font-size`
-            // from the surrounding SVG/CSS (`#id{font-size:...}`), so the effective font size
-            // for measurement is the browser default (16px) even when `themeVariables.fontSize`
-            // is overridden.
-            //
-            // Keep 16px here so our deterministic layout sizing matches Mermaid CLI baselines.
-            16.0
-        }
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-            // Mermaid injects `themeVariables.fontSize` into CSS as `font-size: ${fontSize};`
-            // without forcing a unit. Unitless values are emitted into upstream SVGs but do not
-            // affect browser text sizing; a value like `"24px"` does. `calculateTextWidth(...)`
-            // separately keeps using the top-level `config.fontSize` as the wrapping probe.
-            config_f64_explicit_css_px(effective_config, &["themeVariables", "fontSize"])
-                .unwrap_or(16.0)
-        }
-    };
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
-    }
-}
-
-pub(crate) fn class_html_calculate_text_style(effective_config: &Value) -> TextStyle {
-    TextStyle {
-        font_family: config_string(effective_config, &["fontFamily"])
-            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string())),
-        font_size: config_f64_css_px(effective_config, &["fontSize"])
-            .unwrap_or(16.0)
-            .max(1.0),
-        font_weight: None,
-    }
 }
 
 struct ClassBoxMeasureCtx<'a> {
@@ -1889,40 +1844,21 @@ fn layout_class_diagram_v2_typed_inner(
 ) -> Result<ClassDiagramV2Layout> {
     validate_class_namespace_parent_cycles(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
-    let conf = effective_config
-        .get("flowchart")
-        .or_else(|| effective_config.get("class"))
-        .unwrap_or(effective_config);
-    let nodesep = config_f64(conf, &["nodeSpacing"]).unwrap_or(50.0);
-    let ranksep = config_f64(conf, &["rankSpacing"]).unwrap_or(50.0);
-
-    let global_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
-    let flowchart_html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"])
-        .or_else(|| config_bool(effective_config, &["htmlLabels"]))
-        .unwrap_or(true);
-    let wrap_mode_node = if global_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let wrap_mode_label = if flowchart_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let wrap_mode_note = wrap_mode_node;
-
-    // Mermaid defaults `config.class.padding` to 12.
-    let class_padding = config_f64(effective_config, &["class", "padding"]).unwrap_or(12.0);
-    let namespace_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
-    let hide_empty_members_box =
-        config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
-
-    let text_style = class_text_style(effective_config, wrap_mode_node);
-    let html_calc_text_style = class_html_calculate_text_style(effective_config);
-    let wrap_probe_font_size = config_f64(effective_config, &["fontSize"])
-        .unwrap_or(16.0)
-        .max(1.0);
+    let ClassLayoutSettings {
+        nodesep,
+        ranksep,
+        wrap_mode_node,
+        wrap_mode_label,
+        wrap_mode_note,
+        class_padding,
+        namespace_padding,
+        hide_empty_members_box,
+        text_style,
+        html_calc_text_style,
+        wrap_probe_font_size,
+        title_margin_top,
+        title_margin_bottom,
+    } = ClassConfigView::new(effective_config).layout_settings();
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
     let capture_note_label_metrics = matches!(wrap_mode_note, WrapMode::HtmlLike);
@@ -2345,17 +2281,6 @@ fn layout_class_diagram_v2_typed_inner(
             }
         }
     }
-
-    let title_margin_top = config_f64(
-        effective_config,
-        &["flowchart", "subGraphTitleMargin", "top"],
-    )
-    .unwrap_or(0.0);
-    let title_margin_bottom = config_f64(
-        effective_config,
-        &["flowchart", "subGraphTitleMargin", "bottom"],
-    )
-    .unwrap_or(0.0);
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
     // Mermaid renders namespaces as Dagre clusters. The cluster geometry comes from the Dagre

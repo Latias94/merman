@@ -645,6 +645,14 @@ and SVG renderers consume them, removing the previous local
 ARCH-013 for Sequence only. The distinction between layout numeric-string
 compatibility and SVG numeric-only settings is preserved with focused tests.
 
+Class now follows the same direction with
+`crates/merman-render/src/class/config.rs`. The Class layout path and SVG parity
+settings consume a family-owned config view, which localizes the `flowchart ??
+class` namespace precedence, HTML-label wrap-mode rules, and the intentional
+difference between layout numeric-string compatibility and SVG render numeric
+boundaries. ARCH-013 remains open for the other diagram families and shared
+theme/config surfaces.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

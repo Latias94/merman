@@ -70,9 +70,9 @@ Current direction:
 - Public adapters should choose input/output shape; they should not rebuild the
   parse/layout/SVG/postprocess pipeline independently.
 - Effective config and presentation theme should be projected into narrow views
-  before diagram renderers consume them. Sequence is the first renderer-side
-  family pilot for this: layout and SVG parity settings now flow through its
-  family-owned config view instead of scattered raw `effective_config["sequence"]`
+  before diagram renderers consume them. Sequence and Class are the first
+  renderer-side family pilots for this: layout and SVG parity settings now flow
+  through family-owned config views instead of scattered raw diagram namespace
   lookups.
 - Root viewport and emitted SVG bounds logic belongs under the SVG parity layer,
   not under one diagram family.

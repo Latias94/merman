@@ -12,6 +12,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Tightened the admission inventory gate so parser, layout, and SVG coverage claims are checked against `merman-core` diagram family capability facts before alignment reports pass.
 - Deepened `merman-core` parsing by moving metadata, semantic JSON, and typed render-model stage ordering into one internal Parse Pipeline behind the existing `Engine` facade.
 - Projected Sequence layout and SVG render configuration through a family-owned config view, reducing raw `effective_config["sequence"]` lookups while preserving layout and SVG numeric parsing behavior.
+- Projected Class layout and SVG render configuration through a family-owned config view, centralizing class/flowchart namespace precedence and preserving the existing layout-versus-SVG numeric parsing boundaries.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
