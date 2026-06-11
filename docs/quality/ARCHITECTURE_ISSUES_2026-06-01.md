@@ -669,6 +669,15 @@ width, state padding, title margin, look, hand-drawn seed, text style, and
 security-level flags before layout/render code uses them. ARCH-013 remains open
 for the remaining diagram families and shared theme/style config surfaces.
 
+ER now also consumes a family-owned config view from
+`crates/merman-render/src/er/config.rs`. ER layout settings and SVG render
+settings project Dagre spacing, entity measurement padding, min width, label
+wrapping width, relationship HTML-label precedence, font, title-margin
+semantics, look, max-width, and hand-drawn seed settings before layout/render
+code uses them. ER theme color and gradient generation still intentionally
+remain in the SVG parity layer with the broader shared theme/style config
+surface.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

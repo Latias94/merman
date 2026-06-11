@@ -1,36 +1,20 @@
-use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 use serde_json::Value;
 use std::collections::HashMap;
+
+mod config;
+
+use config::ErLayoutSettings;
+pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 
 pub(crate) type ErModel = merman_core::diagrams::er::ErDiagramRenderModel;
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
-
-fn normalize_dir(direction: &str) -> String {
-    match direction.trim().to_uppercase().as_str() {
-        "TB" | "TD" => "TB".to_string(),
-        "BT" => "BT".to_string(),
-        "LR" => "LR".to_string(),
-        "RL" => "RL".to_string(),
-        other => other.to_string(),
-    }
-}
-
-fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
-}
 
 pub(crate) fn er_generic_markdown_plain_text(text: &str) -> Option<String> {
     if !(text.contains('<') || text.contains('>')) {
@@ -181,20 +165,6 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     (w + (1.0 / 512.0)).round() as i64
 }
 
-fn er_text_style(effective_config: &Value) -> TextStyle {
-    let font_family = Some(crate::config::config_font_family_css(effective_config));
-    // Mermaid ER unified renderer inherits the root SVG font-size, so `themeVariables.fontSize`
-    // wins when present (including Mermaid's common `"NNpx"` form).
-    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
-        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
-        .unwrap_or(16.0);
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct ErEntityMeasureRow {
     pub type_text: String,
@@ -227,7 +197,7 @@ pub(crate) fn measure_entity_box(
     measurer: &dyn TextMeasurer,
     label_style: &TextStyle,
     attr_style: &TextStyle,
-    effective_config: &Value,
+    settings: ErEntityMeasurementSettings,
 ) -> ErEntityMeasure {
     // Mermaid measures ER attribute table text via HTML labels (`foreignObject`) and browser font
     // metrics. Our headless measurer is an approximation; keep the math as close as possible to
@@ -243,18 +213,15 @@ pub(crate) fn measure_entity_box(
     // Upstream SVG fixtures at Mermaid@11.12.2 reflect this quirk. The padding multiplier still
     // keys off the raw truthiness (`undefined` behaves like `false`) even though the rendered labels
     // use HTML `<foreignObject>` output by default.
-    let html_labels_raw = config_bool(effective_config, &["htmlLabels"]).unwrap_or(false);
+    let html_labels_raw = settings.html_labels_raw;
 
     // Mermaid ER unified shape (`erBox.ts`) uses:
     // - PADDING = config.er.diagramPadding (default 20 in Mermaid 11.12.2 schema defaults)
     // - TEXT_PADDING = config.er.entityPadding (default 15)
-    let mut padding = config_f64(effective_config, &["er", "diagramPadding"]).unwrap_or(20.0);
-    let mut text_padding = config_f64(effective_config, &["er", "entityPadding"]).unwrap_or(15.0);
-    let min_w = config_f64(effective_config, &["er", "minEntityWidth"]).unwrap_or(100.0);
-    let wrapping_width_px = config_f64(effective_config, &["flowchart", "wrappingWidth"])
-        .unwrap_or(200.0)
-        .round()
-        .max(0.0) as i64;
+    let mut padding = settings.diagram_padding;
+    let mut text_padding = settings.entity_padding;
+    let min_w = settings.min_entity_width;
+    let wrapping_width_px = settings.wrapping_width_px;
 
     let label_text = if entity.alias.trim().is_empty() {
         entity.label.as_str()
@@ -456,9 +423,9 @@ fn entity_box_dimensions(
     measurer: &dyn TextMeasurer,
     label_style: &TextStyle,
     attr_style: &TextStyle,
-    effective_config: &Value,
+    settings: ErEntityMeasurementSettings,
 ) -> (f64, f64) {
-    let m = measure_entity_box(entity, measurer, label_style, attr_style, effective_config);
+    let m = measure_entity_box(entity, measurer, label_style, attr_style, settings);
     (m.width, m.height)
 }
 
@@ -523,20 +490,6 @@ fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
 fn is_er_self_loop_dummy_node_id(id: &str) -> bool {
     // Mermaid's dagre renderer creates self-loop helper nodes using `${nodeId}---${nodeId}---{1|2}`.
     id.contains("---")
-}
-
-pub(crate) fn er_relationship_html_labels(effective_config: &Value) -> bool {
-    // Mermaid ER relationship labels follow `getEffectiveHtmlLabels(config)` from
-    // `rendering-elements/edges.js`:
-    // - root `htmlLabels` wins when explicitly set
-    // - otherwise `flowchart.htmlLabels` is used
-    // - otherwise the default is `true`
-    //
-    // This intentionally differs from the entity padding quirk, which keys off raw
-    // `!config.htmlLabels` in `erBox.ts`.
-    config_bool(effective_config, &["htmlLabels"])
-        .or_else(|| config_bool(effective_config, &["flowchart", "htmlLabels"]))
-        .unwrap_or(true)
 }
 
 #[derive(Debug, Clone)]
@@ -681,23 +634,14 @@ pub fn layout_er_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<ErDiagramLayout> {
-    let nodesep = config_f64(effective_config, &["er", "nodeSpacing"]).unwrap_or(140.0);
-    let ranksep = config_f64(effective_config, &["er", "rankSpacing"]).unwrap_or(80.0);
-    let dir = rank_dir_from(&model.direction);
-
-    let label_style = er_text_style(effective_config);
-    let attr_style = TextStyle {
-        font_family: label_style.font_family.clone(),
-        font_size: label_style.font_size.max(1.0),
-        font_weight: None,
-    };
-    let rel_label_style = TextStyle {
-        font_family: label_style.font_family.clone(),
-        // Mermaid ER relationship labels stay at a fixed 14px in the emitted stylesheet.
-        font_size: 14.0,
-        font_weight: None,
-    };
-    let rel_html_labels = er_relationship_html_labels(effective_config);
+    let ErLayoutSettings {
+        graph: graph_label,
+        label_style,
+        attr_style,
+        relationship_label_style,
+        relationship_html_labels,
+        entity_measurement,
+    } = ErConfigView::new(effective_config).layout_settings(&model.direction);
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -706,14 +650,7 @@ pub fn layout_er_diagram_typed(
         // This also makes the ranker behavior match upstream for disconnected ER graphs.
         compound: true,
     });
-    g.set_graph(GraphLabel {
-        rankdir: dir,
-        nodesep,
-        ranksep,
-        // Dagre's default `acyclicer` is "greedy" (Mermaid relies on this default).
-        acyclicer: Some("greedy".to_string()),
-        ..Default::default()
-    });
+    g.set_graph(graph_label);
 
     fn parse_entity_counter_from_id(id: &str) -> Option<usize> {
         let (_prefix, tail) = id.rsplit_once('-')?;
@@ -730,7 +667,7 @@ pub fn layout_er_diagram_typed(
 
     for e in entities_in_layout_order {
         let (w, h) =
-            entity_box_dimensions(e, measurer, &label_style, &attr_style, effective_config);
+            entity_box_dimensions(e, measurer, &label_style, &attr_style, entity_measurement);
         g.set_node(
             e.id.clone(),
             NodeLabel {
@@ -787,7 +724,12 @@ pub fn layout_er_diagram_typed(
             let (label_w, label_h) = if r.role_a.trim().is_empty() {
                 (0.0, 0.0)
             } else {
-                edge_label_metrics(&r.role_a, measurer, &rel_label_style, rel_html_labels)
+                edge_label_metrics(
+                    &r.role_a,
+                    measurer,
+                    &relationship_label_style,
+                    relationship_html_labels,
+                )
             };
 
             // First segment: keep start marker, no label.
@@ -845,7 +787,12 @@ pub fn layout_er_diagram_typed(
         let (label_w, label_h) = if r.role_a.trim().is_empty() {
             (0.0, 0.0)
         } else {
-            edge_label_metrics(&r.role_a, measurer, &rel_label_style, rel_html_labels)
+            edge_label_metrics(
+                &r.role_a,
+                measurer,
+                &relationship_label_style,
+                relationship_html_labels,
+            )
         };
         g.set_edge_named(
             r.entity_a.clone(),
@@ -953,7 +900,12 @@ pub fn layout_er_diagram_typed(
             if role.trim().is_empty() || id.ends_with("-cyclic-0") || id.ends_with("-cyclic-2") {
                 None
             } else {
-                let (w, h) = edge_label_metrics(&role, measurer, &rel_label_style, rel_html_labels);
+                let (w, h) = edge_label_metrics(
+                    &role,
+                    measurer,
+                    &relationship_label_style,
+                    relationship_html_labels,
+                );
                 // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
                 // polyline midpoint. Prefer those coordinates when present.
                 let (x, y) =
@@ -1033,7 +985,6 @@ pub fn layout_er_diagram_typed(
 #[cfg(test)]
 mod tests {
     use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
-    use serde_json::json;
 
     fn default_style() -> TextStyle {
         TextStyle {
@@ -1070,40 +1021,6 @@ mod tests {
         assert_eq!(
             super::er_generic_markdown_plain_text("string(99)<T<<~>>>"),
             None
-        );
-    }
-
-    #[test]
-    fn er_relationship_htmllabels_follow_root_then_flowchart_config() {
-        assert!(super::er_relationship_html_labels(&json!({})));
-        assert!(super::er_relationship_html_labels(&json!({
-            "flowchart": { "htmlLabels": true }
-        })));
-        assert!(!super::er_relationship_html_labels(&json!({
-            "flowchart": { "htmlLabels": false }
-        })));
-        assert!(super::er_relationship_html_labels(&json!({
-            "htmlLabels": true,
-            "flowchart": { "htmlLabels": false }
-        })));
-        assert!(!super::er_relationship_html_labels(&json!({
-            "htmlLabels": false,
-            "flowchart": { "htmlLabels": true }
-        })));
-    }
-
-    #[test]
-    fn er_text_style_uses_theme_font_family_css() {
-        let style = super::er_text_style(&json!({
-            "fontFamily": "Courier, monospace",
-            "themeVariables": {
-                "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
-            }
-        }));
-
-        assert_eq!(
-            style.font_family.as_deref(),
-            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
         );
     }
 }

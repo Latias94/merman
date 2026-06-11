@@ -15,6 +15,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Class layout and SVG render configuration through a family-owned config view, centralizing class/flowchart namespace precedence and preserving the existing layout-versus-SVG numeric parsing boundaries.
 - Projected Flowchart layout and SVG render configuration through a family-owned config view, centralizing spacing, padding, font, wrap-mode, and HTML-label precedence while preserving Mermaid-compatible edge cases.
 - Projected State layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, padding, label wrapping, look, seed, and security-level settings.
+- Projected ER layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, entity measurement padding, HTML-label precedence, title margins, look, font, width, and seed settings.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

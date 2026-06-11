@@ -436,10 +436,6 @@ pub(super) fn render_er_diagram_svg(
     )
 }
 
-fn er_font_family_css(effective_config: &serde_json::Value) -> String {
-    crate::config::config_font_family_css(effective_config)
-}
-
 pub(super) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
@@ -452,12 +448,9 @@ pub(super) fn render_er_diagram_svg_model(
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
-    let is_elk_layout = effective_config
-        .get("layout")
-        .and_then(|v| v.as_str())
-        .is_some_and(|s| s.eq_ignore_ascii_case("elk"));
-    let data_look = config_diagram_look(effective_config);
-    let data_look = data_look.as_str();
+    let er_render_settings = crate::er::ErConfigView::new(effective_config).render_settings();
+    let is_elk_layout = er_render_settings.is_elk_layout;
+    let data_look = er_render_settings.diagram_look.as_str();
 
     // Mermaid's computed theme variables are not currently present in `effective_config`.
     // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
@@ -471,40 +464,17 @@ pub(super) fn render_er_diagram_svg_model(
     );
     let text_color = theme_color(effective_config, "textColor", "#333333");
     let _node_text_color = theme_color(effective_config, "nodeTextColor", &text_color);
-    let font_family = er_font_family_css(effective_config);
-    // Mermaid ER unified output inherits the root SVG font-size, so `themeVariables.fontSize`
-    // wins when present (including Mermaid's common `"NNpx"` form).
-    let font_size = crate::config::config_theme_or_root_font_size_px_opt(effective_config)
-        .or_else(|| config_f64_css_px(effective_config, &["er", "fontSize"]))
-        .unwrap_or(16.0)
-        .max(1.0);
-    let title_top_margin = effective_config
-        .get("er")
-        .and_then(|v| v.get("titleTopMargin"))
-        .and_then(|v| v.as_f64())
-        .or_else(|| {
-            effective_config
-                .get("titleTopMargin")
-                .and_then(|v| v.as_f64())
-        })
-        .unwrap_or(25.0)
-        .max(0.0);
-    let use_max_width = effective_config
-        .get("er")
-        .and_then(|v| v.get("useMaxWidth"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-
-    let label_style = crate::text::TextStyle {
-        font_family: Some(font_family.clone()),
-        font_size,
-        font_weight: None,
-    };
-    let attr_style = crate::text::TextStyle {
-        font_family: Some(font_family.clone()),
-        font_size: font_size.max(1.0),
-        font_weight: None,
-    };
+    let font_family = er_render_settings.font_family.clone();
+    let font_size = er_render_settings.font_size;
+    let title_top_margin = er_render_settings.title_top_margin;
+    let use_max_width = er_render_settings.use_max_width;
+    let label_style = er_render_settings.label_style.clone();
+    let attr_style = er_render_settings.attr_style.clone();
+    let edge_html_labels = er_render_settings.relationship_html_labels;
+    let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
+    let entity_measurement = er_render_settings.entity_measurement;
+    let hand_drawn_seed = er_render_settings.hand_drawn_seed;
+    let insert_title_top_margin = er_render_settings.insert_title_top_margin;
     fn parse_trailing_index(id: &str) -> Option<i64> {
         let (_, tail) = id.rsplit_once('-')?;
         tail.parse::<i64>().ok()
@@ -951,8 +921,6 @@ pub(super) fn render_er_diagram_svg_model(
                 // resolution: root `htmlLabels`, then `flowchart.htmlLabels`, then default
                 // `true`. When both are unset, upstream still emits HTML `<foreignObject>`
                 // labels through `createText(...)`.
-                let edge_html_labels = crate::er::er_relationship_html_labels(effective_config);
-
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeLabel" transform="translate({}, {})">"#,
@@ -996,7 +964,6 @@ pub(super) fn render_er_diagram_svg_model(
                     out.push_str("</g></g></g>");
                 }
             } else {
-                let edge_html_labels = crate::er::er_relationship_html_labels(effective_config);
                 if edge_html_labels {
                     // Mermaid emits a `translate(undefined,NaN)` transform for relationship labels
                     // that are whitespace-only (but not for fully empty strings). Preserve that
@@ -1078,7 +1045,7 @@ pub(super) fn render_er_diagram_svg_model(
             measurer,
             &label_style,
             &attr_style,
-            effective_config,
+            entity_measurement,
         );
         let w = n.width.max(1.0);
         let h = n.height.max(1.0);
@@ -1122,15 +1089,7 @@ pub(super) fn render_er_diagram_svg_model(
                 fmt(w),
                 fmt(h)
             );
-            let html_labels = effective_config
-                .get("htmlLabels")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(true);
-            let wrap_mode = if html_labels {
-                crate::text::WrapMode::HtmlLike
-            } else {
-                crate::text::WrapMode::SvgLike
-            };
+            let wrap_mode = entity_wrap_mode;
             let label_metrics =
                 measurer.measure_wrapped(&measure.label_text, &label_style, None, wrap_mode);
             let lw = if wrap_mode == crate::text::WrapMode::HtmlLike {
@@ -1344,11 +1303,6 @@ pub(super) fn render_er_diagram_svg_model(
             .map(|s| format!(r#" style="{}""#, escape_xml(s)))
             .unwrap_or_default();
 
-        let hand_drawn_seed = effective_config
-            .get("handDrawnSeed")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
         // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
         //
         // Even with roughness=0, Rough.js still depends on seeded randomness via `divergePoint`.
@@ -1544,14 +1498,10 @@ pub(super) fn render_er_diagram_svg_model(
 
         // HTML labels
         let line_h = (font_size * 1.5).max(1.0);
-        let mut pad = config_f64(effective_config, &["er", "diagramPadding"]).unwrap_or(20.0);
+        let mut pad = entity_measurement.diagram_padding;
         // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
         // when `htmlLabels` is unset (undefined), upstream still applies the 1.25 multiplier.
-        let html_labels_raw = effective_config
-            .get("htmlLabels")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if !html_labels_raw {
+        if !entity_measurement.html_labels_raw {
             pad *= 1.25;
         }
 
@@ -1795,12 +1745,6 @@ pub(super) fn render_er_diagram_svg_model(
         // - `text-anchor="middle"`
         // - `x = bounds.x + bounds.width / 2`
         // - `y = -titleTopMargin` (default: 25)
-        let title_top_margin = effective_config
-            .get("er")
-            .and_then(|v| v.get("titleTopMargin"))
-            .and_then(|v| v.as_f64())
-            .unwrap_or(25.0);
-
         let (vb_min_x, vb_w) = viewbox_attr
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -1812,7 +1756,7 @@ pub(super) fn render_er_diagram_svg_model(
             &mut out,
             r#"<text text-anchor="middle" x="{}" y="{}" class="erDiagramTitleText">{}"#,
             fmt(vb_min_x + vb_w / 2.0),
-            fmt(-title_top_margin),
+            fmt(-insert_title_top_margin),
             escape_xml(title)
         );
         out.push_str("</text>\n");
@@ -1914,21 +1858,27 @@ mod tests {
     #[test]
     fn er_font_family_css_uses_mermaid_default_fallback_for_raw_config() {
         assert_eq!(
-            super::er_font_family_css(&json!({})),
-            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+            crate::er::ErConfigView::new(&json!({}))
+                .text_style()
+                .font_family
+                .as_deref(),
+            Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS)
         );
     }
 
     #[test]
     fn er_font_family_css_prefers_theme_variables() {
         assert_eq!(
-            super::er_font_family_css(&json!({
+            crate::er::ErConfigView::new(&json!({
                 "fontFamily": "Courier, monospace",
                 "themeVariables": {
                     "fontFamily": "\"IBM Plex Sans\", Arial, sans-serif"
                 }
-            })),
-            r#""IBM Plex Sans",Arial,sans-serif"#
+            }))
+            .text_style()
+            .font_family
+            .as_deref(),
+            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
         );
     }
 
