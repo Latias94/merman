@@ -17,6 +17,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected State layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, padding, label wrapping, look, seed, and security-level settings.
 - Projected ER layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, entity measurement padding, HTML-label precedence, title margins, look, font, width, and seed settings.
 - Projected Block layout configuration through a family-owned config view, centralizing padding and text-style settings before sizing and grid layout consume them.
+- Projected Sankey layout and SVG render configuration through a family-owned config view, centralizing geometry, label/value display, label styling, link color, node color, max-width, and `$ref` default semantics.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

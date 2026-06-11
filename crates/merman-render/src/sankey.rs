@@ -1,4 +1,3 @@
-use crate::config::{config_bool, config_f64, config_string};
 use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
@@ -8,9 +7,10 @@ use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-const SANKEY_NODE_WIDTH_PX: f64 = 10.0;
-const SANKEY_NODE_PADDING_BASE_PX: f64 = 12.0;
-const SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX: f64 = 15.0;
+mod config;
+
+pub(crate) use config::SankeyConfigView;
+use config::{NodeAlign, SankeyLayoutSettings};
 
 #[derive(Debug, Clone)]
 struct Node {
@@ -39,37 +39,8 @@ struct Link {
     y1: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NodeAlign {
-    Left,
-    Right,
-    Justify,
-    Center,
-}
-
-fn has_ref_object(v: &Value) -> bool {
-    v.as_object().is_some_and(|m| m.contains_key("$ref"))
-}
-
-fn parse_align(cfg: &Value) -> NodeAlign {
-    match config_string(cfg, &["sankey", "nodeAlignment"]).as_deref() {
-        Some("left") => NodeAlign::Left,
-        Some("right") => NodeAlign::Right,
-        Some("center") => NodeAlign::Center,
-        _ => NodeAlign::Justify,
-    }
-}
-
 fn f64_cmp(a: f64, b: f64) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Equal)
-}
-
-fn sankey_node_padding_px_with_base(base: f64, show_values: bool) -> f64 {
-    base + if show_values {
-        SANKEY_NODE_PADDING_SHOW_VALUES_EXTRA_PX
-    } else {
-        0.0
-    }
 }
 
 pub fn layout_sankey_diagram(
@@ -86,30 +57,13 @@ pub fn layout_sankey_diagram_typed(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<SankeyDiagramLayout> {
-    let width = config_f64(effective_config, &["sankey", "width"]).unwrap_or(600.0);
-    let height = config_f64(effective_config, &["sankey", "height"]).unwrap_or(400.0);
-
-    let sankey_cfg = effective_config.get("sankey");
-    let sankey_cfg_missing = sankey_cfg.is_none() || sankey_cfg.is_some_and(has_ref_object);
-    let show_values = if sankey_cfg_missing {
-        true
-    } else {
-        config_bool(effective_config, &["sankey", "showValues"]).unwrap_or(true)
-    };
-    let align = parse_align(effective_config);
-
-    let dx = if sankey_cfg_missing {
-        SANKEY_NODE_WIDTH_PX
-    } else {
-        config_f64(effective_config, &["sankey", "nodeWidth"]).unwrap_or(SANKEY_NODE_WIDTH_PX)
-    };
-    let node_padding_base = if sankey_cfg_missing {
-        SANKEY_NODE_PADDING_BASE_PX
-    } else {
-        config_f64(effective_config, &["sankey", "nodePadding"])
-            .unwrap_or(SANKEY_NODE_PADDING_BASE_PX)
-    };
-    let dy = sankey_node_padding_px_with_base(node_padding_base, show_values);
+    let SankeyLayoutSettings {
+        width,
+        height,
+        node_align: align,
+        node_width: dx,
+        node_padding: dy,
+    } = SankeyConfigView::new(effective_config).layout_settings();
     let iterations = 6usize;
 
     let mut nodes: Vec<Node> = model
@@ -648,19 +602,22 @@ pub fn layout_sankey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use super::config::{
+        DEFAULT_NODE_PADDING_BASE_PX, DEFAULT_NODE_WIDTH_PX, sankey_node_padding_px_with_base,
+    };
     use super::layout_sankey_diagram;
     use crate::text::DeterministicTextMeasurer;
     use serde_json::json;
 
     #[test]
     fn sankey_node_geometry_constants_match_mermaid() {
-        assert_eq!(super::SANKEY_NODE_WIDTH_PX, 10.0);
+        assert_eq!(DEFAULT_NODE_WIDTH_PX, 10.0);
         assert_eq!(
-            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, true),
+            sankey_node_padding_px_with_base(DEFAULT_NODE_PADDING_BASE_PX, true),
             27.0
         );
         assert_eq!(
-            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, false),
+            sankey_node_padding_px_with_base(DEFAULT_NODE_PADDING_BASE_PX, false),
             12.0
         );
     }
@@ -679,10 +636,10 @@ mod tests {
         };
 
         let default_layout = layout_sankey_diagram(&semantic, &json!({}), &measurer).unwrap();
-        assert_eq!(default_layout.node_width, super::SANKEY_NODE_WIDTH_PX);
+        assert_eq!(default_layout.node_width, DEFAULT_NODE_WIDTH_PX);
         assert_eq!(
             default_layout.node_padding,
-            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, true)
+            sankey_node_padding_px_with_base(DEFAULT_NODE_PADDING_BASE_PX, true)
         );
 
         let hidden_values_layout = layout_sankey_diagram(
@@ -693,7 +650,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             hidden_values_layout.node_padding,
-            super::sankey_node_padding_px_with_base(super::SANKEY_NODE_PADDING_BASE_PX, false)
+            sankey_node_padding_px_with_base(DEFAULT_NODE_PADDING_BASE_PX, false)
         );
     }
 

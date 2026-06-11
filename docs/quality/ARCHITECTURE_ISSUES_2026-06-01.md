@@ -684,6 +684,13 @@ padding and text style before node sizing, grid sizing, and edge-label
 measurement consume them. Block SVG theme CSS still belongs to the shared SVG
 parity theme layer rather than the layout config view.
 
+Sankey now also consumes a family-owned config view from
+`crates/merman-render/src/sankey/config.rs`. Sankey layout settings and SVG
+render settings project dimensions, node geometry, node alignment, value-label
+visibility, max-width behavior, label prefix/suffix, link color, outlined-label
+mode, node color overrides, and `$ref` fallback semantics before layout/render
+code uses them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

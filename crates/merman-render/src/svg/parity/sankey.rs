@@ -6,74 +6,14 @@ pub(super) fn render_sankey_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
-        let mut cur = cfg;
-        for key in path {
-            cur = cur.get(*key)?;
-        }
-        cur.as_bool()
-    }
-
-    fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-        let mut cur = cfg;
-        for key in path {
-            cur = cur.get(*key)?;
-        }
-        cur.as_str().map(|s| s.to_string())
-    }
-
-    fn config_object<'a>(
-        cfg: &'a serde_json::Value,
-        path: &[&str],
-    ) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
-        let mut cur = cfg;
-        for key in path {
-            cur = cur.get(*key)?;
-        }
-        cur.as_object()
-    }
-
-    let sankey_cfg = effective_config.get("sankey");
-    let sankey_cfg_missing = sankey_cfg.is_none()
-        || sankey_cfg.is_some_and(|v| v.as_object().is_some_and(|m| m.contains_key("$ref")));
-    let use_max_width = if sankey_cfg_missing {
-        true
-    } else {
-        config_bool(effective_config, &["sankey", "useMaxWidth"]).unwrap_or(true)
-    };
-    let show_values = if sankey_cfg_missing {
-        true
-    } else {
-        config_bool(effective_config, &["sankey", "showValues"]).unwrap_or(true)
-    };
-    let prefix = if sankey_cfg_missing {
-        "".to_string()
-    } else {
-        config_string(effective_config, &["sankey", "prefix"]).unwrap_or_default()
-    };
-    let suffix = if sankey_cfg_missing {
-        "".to_string()
-    } else {
-        config_string(effective_config, &["sankey", "suffix"]).unwrap_or_default()
-    };
-    let link_color = if sankey_cfg_missing {
-        "gradient".to_string()
-    } else {
-        config_string(effective_config, &["sankey", "linkColor"])
-            .unwrap_or_else(|| "gradient".to_string())
-    };
-    let label_style = if sankey_cfg_missing {
-        "legacy".to_string()
-    } else {
-        config_string(effective_config, &["sankey", "labelStyle"])
-            .unwrap_or_else(|| "legacy".to_string())
-    };
-    let outlined_labels = label_style == "outlined";
-    let node_colors = if sankey_cfg_missing {
-        None
-    } else {
-        config_object(effective_config, &["sankey", "nodeColors"])
-    };
+    let render_settings = crate::sankey::SankeyConfigView::new(effective_config).render_settings();
+    let use_max_width = render_settings.use_max_width;
+    let show_values = render_settings.show_values;
+    let prefix = render_settings.prefix;
+    let suffix = render_settings.suffix;
+    let link_color = render_settings.link_color;
+    let outlined_labels = render_settings.outlined_labels;
+    let node_colors = render_settings.node_colors;
 
     let layout_width = layout.width.max(1.0);
     let layout_height = layout.height.max(1.0);
