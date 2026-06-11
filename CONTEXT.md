@@ -71,7 +71,7 @@ Current direction:
   parse/layout/SVG/postprocess pipeline independently.
 - Effective config and presentation theme should be projected into narrow views
   before diagram renderers consume them. Sequence, Class, Flowchart, State, ER,
-  Block, Sankey, Event Modeling, TreeView, and Packet are the first
+  Block, Sankey, Event Modeling, TreeView, Packet, and Venn are the first
   renderer-side family pilots for this: layout and SVG parity settings now flow
   through family-owned config views instead of scattered raw diagram namespace
   lookups.

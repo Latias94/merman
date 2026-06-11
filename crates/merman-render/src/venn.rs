@@ -5,7 +5,6 @@
 //! projects the core render model into the same helper layout surface that Mermaid consumes before
 //! SVG emission.
 
-use crate::config::{config_bool, config_f64};
 use crate::model::{
     Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
     VennTextAreaLayout, VennTextDebugCellLayout, VennTextNodeLayout,
@@ -18,10 +17,11 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::{PI, TAU};
 
 const SMALL: f64 = 1e-10;
-const DEFAULT_SVG_WIDTH: f64 = 800.0;
-const DEFAULT_SVG_HEIGHT: f64 = 450.0;
-const DEFAULT_PADDING: f64 = 15.0;
 const REFERENCE_WIDTH: f64 = 1600.0;
+
+mod config;
+
+use config::VennConfigView;
 
 pub fn layout_venn_diagram(
     semantic: &serde_json::Value,
@@ -37,18 +37,7 @@ pub fn layout_venn_diagram_typed(
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
 ) -> Result<VennDiagramLayout> {
-    let width = config_f64(effective_config, &["venn", "width"])
-        .unwrap_or(DEFAULT_SVG_WIDTH)
-        .max(1.0);
-    let height = config_f64(effective_config, &["venn", "height"])
-        .unwrap_or(DEFAULT_SVG_HEIGHT)
-        .max(1.0);
-    let padding = config_f64(effective_config, &["venn", "padding"])
-        .unwrap_or(DEFAULT_PADDING)
-        .max(0.0);
-    let use_max_width = config_bool(effective_config, &["venn", "useMaxWidth"]).unwrap_or(true);
-    let use_debug_layout =
-        config_bool(effective_config, &["venn", "useDebugLayout"]).unwrap_or(false);
+    let cfg = VennConfigView::new(effective_config).layout_settings();
     let title = model
         .title
         .as_deref()
@@ -59,9 +48,9 @@ pub fn layout_venn_diagram_typed(
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
         });
-    let scale = width / REFERENCE_WIDTH;
+    let scale = cfg.width / REFERENCE_WIDTH;
     let title_height = if title.is_some() { 48.0 * scale } else { 0.0 };
-    let diagram_height = (height - title_height).max(1.0);
+    let diagram_height = (cfg.height - title_height).max(1.0);
 
     let areas = model
         .subsets
@@ -79,9 +68,9 @@ pub fn layout_venn_diagram_typed(
         compute_venn_layout(
             &areas,
             &VennLayoutOptions {
-                width,
+                width: cfg.width,
                 height: diagram_height,
-                padding,
+                padding: cfg.padding,
                 ..Default::default()
             },
         )
@@ -118,23 +107,23 @@ pub fn layout_venn_diagram_typed(
         .map(|area| (stable_sets_key(&area.data.sets), area))
         .collect::<HashMap<_, _>>();
     let (text_areas, text_nodes) =
-        layout_text_nodes(model, &layout_by_key, scale, use_debug_layout);
+        layout_text_nodes(model, &layout_by_key, scale, cfg.use_debug_layout);
 
     Ok(VennDiagramLayout {
         bounds: Some(LayoutBounds {
             min_x: 0.0,
             min_y: 0.0,
-            max_x: width,
-            max_y: height,
+            max_x: cfg.width,
+            max_y: cfg.height,
         }),
-        width,
-        height,
+        width: cfg.width,
+        height: cfg.height,
         diagram_height,
         title_height,
         scale,
-        padding,
-        use_max_width,
-        use_debug_layout,
+        padding: cfg.padding,
+        use_max_width: cfg.use_max_width,
+        use_debug_layout: cfg.use_debug_layout,
         areas,
         text_areas,
         text_nodes,

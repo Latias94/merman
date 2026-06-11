@@ -706,6 +706,11 @@ Packet now consumes a family-owned config view from
 project show-bits behavior, row and bit geometry, packet row wrapping, and packet
 CSS role defaults before layout and SVG emission consume them.
 
+Venn now consumes a family-owned config view from
+`crates/merman-render/src/venn/config.rs`. Its layout settings project canvas
+size, padding, max-width behavior, and debug-layout switching before the Venn
+layout kernel and SVG emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

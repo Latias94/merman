@@ -21,6 +21,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Event Modeling layout configuration through a family-owned config view, centralizing diagram padding and max-width behavior before layout bounds and SVG root emission consume them.
 - Projected TreeView layout configuration through a family-owned config view, centralizing row geometry, max-width behavior, and theme-provided label font size before tree layout consumes them.
 - Projected Packet layout and SVG style configuration through a family-owned config view, centralizing bit geometry, show-bits padding semantics, row sizing, and packet CSS role defaults.
+- Projected Venn layout configuration through a family-owned config view, centralizing canvas size, padding, max-width behavior, and debug-layout switching before the Venn layout kernel consumes them.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
