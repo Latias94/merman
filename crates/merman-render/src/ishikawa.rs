@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::config::{config_bool, config_f64, config_f64_css_px};
 use crate::model::{
     Bounds, IshikawaDiagramLayout, IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout,
     IshikawaTextLayout,
@@ -11,7 +10,6 @@ use merman_core::diagrams::ishikawa::{
 use serde_json::Value;
 use std::collections::HashMap;
 
-const FONT_SIZE_DEFAULT: f64 = 14.0;
 const SPINE_BASE_LENGTH: f64 = 250.0;
 const BONE_STUB: f64 = 30.0;
 const BONE_BASE: f64 = 60.0;
@@ -19,12 +17,10 @@ const BONE_PER_CHILD: f64 = 5.0;
 const COS_A: f64 = 0.139_173_100_960_065_47;
 const SIN_A: f64 = 0.990_268_068_741_570_4;
 
-#[derive(Debug, Clone)]
-struct IshikawaConfig {
-    padding: f64,
-    use_max_width: bool,
-    font_size: f64,
-}
+mod config;
+
+pub(crate) use config::IshikawaConfigView;
+use config::IshikawaLayoutSettings;
 
 pub fn layout_ishikawa_diagram(
     semantic: &Value,
@@ -40,7 +36,7 @@ pub fn layout_ishikawa_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<IshikawaDiagramLayout> {
-    let cfg = ishikawa_config(effective_config);
+    let cfg = IshikawaConfigView::new(effective_config).layout_settings();
     let Some(root) = model.root.as_ref() else {
         return Ok(IshikawaDiagramLayout {
             bounds: Some(Bounds {
@@ -180,7 +176,7 @@ fn count_descendants(node: &IshikawaNode) -> usize {
 }
 
 struct LayoutCtx<'a> {
-    cfg: IshikawaConfig,
+    cfg: IshikawaLayoutSettings,
     measurer: &'a dyn TextMeasurer,
     bounds: BoundsAcc,
     head: Option<IshikawaHeadLayout>,
@@ -766,18 +762,6 @@ fn split_lines(text: &str) -> Vec<String> {
         .lines()
         .map(str::to_string)
         .collect()
-}
-
-fn ishikawa_config(effective_config: &Value) -> IshikawaConfig {
-    IshikawaConfig {
-        padding: config_f64(effective_config, &["ishikawa", "diagramPadding"])
-            .unwrap_or(20.0)
-            .max(0.0),
-        use_max_width: config_bool(effective_config, &["ishikawa", "useMaxWidth"]).unwrap_or(true),
-        font_size: config_f64_css_px(effective_config, &["fontSize"])
-            .unwrap_or(FONT_SIZE_DEFAULT)
-            .max(1.0),
-    }
 }
 
 fn lerp(a: f64, b: f64, t: f64) -> f64 {

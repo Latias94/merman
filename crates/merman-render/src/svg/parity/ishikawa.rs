@@ -178,7 +178,9 @@ fn push_text_with_offset(out: &mut String, text: &IshikawaTextLayout, dx: f64, d
 
 fn ishikawa_css(layout: &IshikawaDiagramLayout, effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).ishikawa();
-    let font_size = crate::config::config_css_number_or_string(effective_config, &["fontSize"])
+    let font_size = crate::ishikawa::IshikawaConfigView::new(effective_config)
+        .render_settings()
+        .font_size_css
         .unwrap_or_else(|| format!("{}px", fmt_string(layout.font_size)));
 
     format!(

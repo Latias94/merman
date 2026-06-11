@@ -711,6 +711,11 @@ Venn now consumes a family-owned config view from
 size, padding, max-width behavior, and debug-layout switching before the Venn
 layout kernel and SVG emission consume them.
 
+Ishikawa now consumes a family-owned config view from
+`crates/merman-render/src/ishikawa/config.rs`. Its layout and SVG render settings
+project diagram padding, max-width behavior, numeric layout font size, and SVG
+CSS font-size spelling before layout and SVG emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
