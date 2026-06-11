@@ -1119,34 +1119,24 @@ fn build_state_diagram_v2_dagre_input(
         dir_by_dagre_id.insert(dagre_id, n.dir.as_ref().map(|s| normalize_dir(s)));
     }
 
-    let diagram_dir = rank_dir_from(&model.direction);
-    let nodesep = config_f64(effective_config, &["state", "nodeSpacing"]).unwrap_or(50.0);
-    let ranksep = config_f64(effective_config, &["state", "rankSpacing"]).unwrap_or(50.0);
-    let html_labels = config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
-    let wrap_mode = if html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let wrapping_width = crate::state::state_html_label_wrapping_width(effective_config);
-    let state_padding = config_f64(effective_config, &["state", "padding"]).unwrap_or(8.0);
-    let text_style = state_text_style(effective_config);
+    let StateLayoutSettings {
+        graph: graph_label,
+        html_labels,
+        wrap_mode,
+        wrapping_width,
+        state_padding,
+        text_style,
+    } = StateConfigView::new(effective_config).layout_settings(&model.direction);
+    let diagram_dir = graph_label.rankdir;
 
     let mut graph = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
         compound: true,
     });
-    graph.set_graph(GraphLabel {
-        rankdir: diagram_dir,
-        nodesep,
-        ranksep,
-        marginx: 8.0,
-        marginy: 8.0,
-        // Mermaid `@11.12.2` dagre-wrapper renderer does not set `ranker`, so Dagre defaults to
-        // `network-simplex`.
-        ..Default::default()
-    });
+    // Mermaid `@11.12.2` dagre-wrapper renderer does not set `ranker`, so Dagre defaults to
+    // `network-simplex`.
+    graph.set_graph(graph_label);
 
     // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
     for n in &model.nodes {

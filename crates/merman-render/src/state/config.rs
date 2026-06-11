@@ -2,10 +2,20 @@
 
 use super::StateNode;
 pub(super) use crate::config::{config_bool, config_f64};
-use crate::config::{config_f64_css_px, config_string_or_first_array};
+use crate::config::{
+    config_diagram_look, config_f64_css_px, config_string, config_string_or_first_array,
+};
 use crate::text::TextStyle;
-use dugong::RankDir;
+use crate::text::WrapMode;
+use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
+
+const DEFAULT_STATE_NODE_SPACING: f64 = 50.0;
+const DEFAULT_STATE_RANK_SPACING: f64 = 50.0;
+const DEFAULT_STATE_PADDING: f64 = 8.0;
+const DEFAULT_STATE_TITLE_TOP_MARGIN: f64 = 25.0;
+const DEFAULT_HTML_LABEL_WRAPPING_WIDTH: f64 = 200.0;
+const DEFAULT_STATE_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
 
 pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
@@ -41,12 +51,6 @@ pub(super) fn value_to_label_text(v: &Value) -> String {
             .to_string(),
         _ => "".to_string(),
     }
-}
-
-pub(crate) fn state_html_label_wrapping_width(cfg: &Value) -> f64 {
-    config_f64_css_px(cfg, &["flowchart", "wrappingWidth"])
-        .unwrap_or(200.0)
-        .max(0.0)
 }
 
 pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
@@ -109,45 +113,238 @@ pub(super) fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str>
 }
 
 pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
-    // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
-    // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
-    // rule applies to SVG `<text>` elements, not HTML labels.
-    let font_family = config_string_or_first_array(effective_config, &["fontFamily"])
-        .or_else(|| {
-            config_string_or_first_array(effective_config, &["themeVariables", "fontFamily"])
-        })
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
-    // (`themeVariables.fontSize`, typically a `"NNpx"` string).
-    let font_size =
-        crate::config::config_theme_or_root_font_size_px(effective_config, 16.0).max(1.0);
-    TextStyle {
-        font_family,
-        font_size,
-        font_weight: None,
+    StateConfigView::new(effective_config).text_style()
+}
+
+pub(crate) struct StateConfigView<'a> {
+    effective_config: &'a Value,
+    flowchart_config: &'a Value,
+    state_config: &'a Value,
+}
+
+impl<'a> StateConfigView<'a> {
+    pub(crate) fn new(effective_config: &'a Value) -> Self {
+        Self {
+            effective_config,
+            flowchart_config: effective_config.get("flowchart").unwrap_or(&Value::Null),
+            state_config: effective_config.get("state").unwrap_or(&Value::Null),
+        }
+    }
+
+    pub(super) fn layout_settings(&self, direction: &str) -> StateLayoutSettings {
+        let html_labels = self.flowchart_bool("htmlLabels").unwrap_or(true);
+        StateLayoutSettings {
+            graph: GraphLabel {
+                rankdir: rank_dir_from(direction),
+                nodesep: self
+                    .state_compat_f64("nodeSpacing")
+                    .unwrap_or(DEFAULT_STATE_NODE_SPACING),
+                ranksep: self
+                    .state_compat_f64("rankSpacing")
+                    .unwrap_or(DEFAULT_STATE_RANK_SPACING),
+                marginx: 8.0,
+                marginy: 8.0,
+                ..Default::default()
+            },
+            html_labels,
+            wrap_mode: state_wrap_mode(html_labels),
+            wrapping_width: self.html_label_wrapping_width(),
+            state_padding: self.state_padding(),
+            text_style: self.text_style(),
+        }
+    }
+
+    pub(crate) fn render_settings(&self) -> StateRenderSettings {
+        StateRenderSettings {
+            title_top_margin: self.title_top_margin(),
+            diagram_look: config_diagram_look(self.effective_config)
+                .as_str()
+                .to_string(),
+            hand_drawn_seed: self
+                .effective_config
+                .get("handDrawnSeed")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            html_label_wrapping_width: self.html_label_wrapping_width(),
+            state_padding: self.state_padding(),
+            security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
+            text_style: self.text_style(),
+        }
+    }
+
+    pub(crate) fn title_top_margin(&self) -> f64 {
+        self.state_compat_f64("titleTopMargin")
+            .unwrap_or(DEFAULT_STATE_TITLE_TOP_MARGIN)
+            .max(0.0)
+    }
+
+    pub(crate) fn text_style(&self) -> TextStyle {
+        // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the
+        // global `#id{font-size: ...}` rule (defaults to 16px). The 10px
+        // `g.stateGroup text{font-size:10px}` rule applies to SVG `<text>` elements, not HTML
+        // labels.
+        let font_family = config_string_or_first_array(self.effective_config, &["fontFamily"])
+            .or_else(|| {
+                config_string_or_first_array(
+                    self.effective_config,
+                    &["themeVariables", "fontFamily"],
+                )
+            })
+            .or_else(|| Some(DEFAULT_STATE_FONT_FAMILY.to_string()));
+        // Mermaid CLI baselines show state labels inheriting the SVG root font-size rule
+        // (`themeVariables.fontSize`, typically a `"NNpx"` string).
+        let font_size =
+            crate::config::config_theme_or_root_font_size_px(self.effective_config, 16.0).max(1.0);
+        TextStyle {
+            font_family,
+            font_size,
+            font_weight: None,
+        }
+    }
+
+    pub(crate) fn html_label_wrapping_width(&self) -> f64 {
+        config_f64_css_px(self.flowchart_config, &["wrappingWidth"])
+            .unwrap_or(DEFAULT_HTML_LABEL_WRAPPING_WIDTH)
+            .max(0.0)
+    }
+
+    pub(crate) fn state_padding(&self) -> f64 {
+        self.state_compat_f64("padding")
+            .unwrap_or(DEFAULT_STATE_PADDING)
+            .max(0.0)
+    }
+
+    fn root_string(&self, key: &str) -> Option<String> {
+        config_string(self.effective_config, &[key])
+    }
+
+    fn flowchart_bool(&self, key: &str) -> Option<bool> {
+        config_bool(self.flowchart_config, &[key])
+    }
+
+    fn state_compat_f64(&self, key: &str) -> Option<f64> {
+        config_f64(self.state_config, &[key])
+    }
+}
+
+pub(super) struct StateLayoutSettings {
+    pub(super) graph: GraphLabel,
+    pub(super) html_labels: bool,
+    pub(super) wrap_mode: WrapMode,
+    pub(super) wrapping_width: f64,
+    pub(super) state_padding: f64,
+    pub(super) text_style: TextStyle,
+}
+
+pub(crate) struct StateRenderSettings {
+    pub(crate) title_top_margin: f64,
+    pub(crate) diagram_look: String,
+    pub(crate) hand_drawn_seed: u64,
+    pub(crate) html_label_wrapping_width: f64,
+    pub(crate) state_padding: f64,
+    pub(crate) security_level_loose: bool,
+    pub(crate) text_style: TextStyle,
+}
+
+fn state_wrap_mode(html_labels: bool) -> WrapMode {
+    if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use serde_json::json;
+
     #[test]
     fn state_html_label_wrapping_width_honors_number_and_px_string() {
-        let numeric = serde_json::json!({
+        let numeric = json!({
             "flowchart": {
                 "wrappingWidth": 320
             }
         });
-        assert_eq!(super::state_html_label_wrapping_width(&numeric), 320.0);
+        assert_eq!(
+            StateConfigView::new(&numeric).html_label_wrapping_width(),
+            320.0
+        );
 
-        let px_string = serde_json::json!({
+        let px_string = json!({
             "flowchart": {
                 "wrappingWidth": "280px"
             }
         });
-        assert_eq!(super::state_html_label_wrapping_width(&px_string), 280.0);
+        assert_eq!(
+            StateConfigView::new(&px_string).html_label_wrapping_width(),
+            280.0
+        );
 
-        let fallback = serde_json::json!({});
-        assert_eq!(super::state_html_label_wrapping_width(&fallback), 200.0);
+        let fallback = json!({});
+        assert_eq!(
+            StateConfigView::new(&fallback).html_label_wrapping_width(),
+            200.0
+        );
+    }
+
+    #[test]
+    fn state_layout_settings_project_dagre_wrap_padding_and_text_style() {
+        let cfg = json!({
+            "fontFamily": "Root Sans",
+            "themeVariables": {
+                "fontFamily": "Theme Sans",
+                "fontSize": "24px"
+            },
+            "flowchart": {
+                "htmlLabels": false,
+                "wrappingWidth": "260px"
+            },
+            "state": {
+                "nodeSpacing": "70",
+                "rankSpacing": 80,
+                "padding": "9"
+            }
+        });
+
+        let settings = StateConfigView::new(&cfg).layout_settings("LR");
+
+        assert_eq!(settings.graph.rankdir, RankDir::LR);
+        assert_eq!(settings.graph.nodesep, 70.0);
+        assert_eq!(settings.graph.ranksep, 80.0);
+        assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
+        assert_eq!(settings.wrapping_width, 260.0);
+        assert_eq!(settings.state_padding, 9.0);
+        assert_eq!(
+            settings.text_style.font_family.as_deref(),
+            Some("Root Sans")
+        );
+        assert_eq!(settings.text_style.font_size, 24.0);
+    }
+
+    #[test]
+    fn state_render_settings_project_svg_only_config() {
+        let cfg = json!({
+            "look": "neo",
+            "handDrawnSeed": 42,
+            "securityLevel": "loose",
+            "flowchart": {
+                "wrappingWidth": 0
+            },
+            "state": {
+                "padding": "-4",
+                "titleTopMargin": "-8"
+            }
+        });
+
+        let settings = StateConfigView::new(&cfg).render_settings();
+
+        assert_eq!(settings.diagram_look, "neo");
+        assert_eq!(settings.hand_drawn_seed, 42);
+        assert!(settings.security_level_loose);
+        assert_eq!(settings.html_label_wrapping_width, 0.0);
+        assert_eq!(settings.state_padding, 0.0);
+        assert_eq!(settings.title_top_margin, 0.0);
     }
 
     #[test]

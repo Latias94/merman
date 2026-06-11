@@ -69,9 +69,9 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    let title_top_margin = config_f64(effective_config, &["state", "titleTopMargin"])
-        .unwrap_or(25.0)
-        .max(0.0);
+    let state_render_settings =
+        crate::state::StateConfigView::new(effective_config).render_settings();
+    let title_top_margin = state_render_settings.title_top_margin;
 
     let has_acc_title = model
         .acc_title
@@ -82,7 +82,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
-    let text_style = crate::state::state_text_style(effective_config);
+    let text_style = state_render_settings.text_style.clone();
 
     let mut nodes_by_id: FxHashMap<&str, &StateSvgNode> =
         FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
@@ -121,18 +121,12 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     // `nodes` already preserves that first-seen insertion order, so use it directly.
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
-    let diagram_look = config_diagram_look(effective_config).as_str().to_string();
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
-        diagram_look,
-        hand_drawn_seed: effective_config
-            .get("handDrawnSeed")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0),
-        html_label_wrapping_width: crate::state::state_html_label_wrapping_width(effective_config),
-        state_padding: config_f64(effective_config, &["state", "padding"])
-            .unwrap_or(8.0)
-            .max(0.0),
+        diagram_look: state_render_settings.diagram_look,
+        hand_drawn_seed: state_render_settings.hand_drawn_seed,
+        html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
+        state_padding: state_render_settings.state_padding,
         node_order,
         nodes_by_id,
         layout_nodes_by_id,
@@ -141,8 +135,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         parent,
         nested_roots: std::collections::BTreeSet::new(),
         hidden_prefixes,
-        security_level_loose: config_string(effective_config, &["securityLevel"]).as_deref()
-            == Some("loose"),
+        security_level_loose: state_render_settings.security_level_loose,
         links: &model.links,
         states: &model.states,
         edges: &model.edges,

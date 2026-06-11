@@ -662,6 +662,13 @@ The fixed 200px edge/subgraph-title wrap behavior and legacy leading-integer
 font-size parsing are covered by focused tests. ARCH-013 remains open for the
 remaining diagram families and broader shared theme/config surfaces.
 
+State now also consumes a family-owned config view from
+`crates/merman-render/src/state/config.rs`. State layout settings and SVG render
+settings project Dagre spacing, flowchart HTML-label wrap mode, label wrapping
+width, state padding, title margin, look, hand-drawn seed, text style, and
+security-level flags before layout/render code uses them. ARCH-013 remains open
+for the remaining diagram families and shared theme/style config surfaces.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
