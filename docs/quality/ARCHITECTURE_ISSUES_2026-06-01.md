@@ -728,6 +728,11 @@ settings project chart geometry, title/axis/quadrant/point text sizing, axis
 positions, border widths, max-width behavior, and `$ref` render fallback
 semantics before layout and SVG root emission consume them.
 
+Radar now consumes a family-owned config view from
+`crates/merman-render/src/radar/config.rs`. Its layout and SVG render settings
+project chart geometry, margins, axis scale/label factors, curve tension, and
+max-width behavior before layout and SVG root emission consume them.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

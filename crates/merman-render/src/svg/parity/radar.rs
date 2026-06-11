@@ -136,24 +136,45 @@ pub(super) fn render_radar_diagram_svg_model(
 
     let viewbox_attr = format!("0 0 {} {}", fmt(layout.svg_width), fmt(layout.svg_height));
     let max_w_attr = fmt_max_width_px(layout.svg_width);
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    let render_settings = crate::radar::RadarConfigView::new(effective_config).render_settings();
 
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
 
     let mut out = String::new();
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
-        },
-    );
+    if render_settings.use_max_width {
+        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
+            },
+        );
+    } else {
+        let width_attr = fmt_string(layout.svg_width.max(1.0));
+        let height_attr = fmt_string(layout.svg_height.max(1.0));
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                width: root_svg::SvgRootWidth::Fixed(&width_attr),
+                height_attr: Some(&height_attr),
+                viewbox_attr: Some(viewbox_attr.as_str()),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                tail_attrs: &tail_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                trailing_newline: false,
+                ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
+            },
+        );
+    }
 
     if has_acc_title {
         let _ = write!(
@@ -433,5 +454,48 @@ mod tests {
             !root_open.contains(r#"height=""#),
             "radar root should not emit fixed height: {root_open}"
         );
+    }
+
+    #[test]
+    fn radar_root_honors_disabled_max_width() {
+        let layout = RadarDiagramLayout {
+            bounds: None,
+            svg_width: 700.0,
+            svg_height: 700.0,
+            center_x: 350.0,
+            center_y: 350.0,
+            radius: 300.0,
+            axis_label_factor: 1.05,
+            title_y: -350.0,
+            axes: Vec::new(),
+            graticules: Vec::new(),
+            curves: Vec::new(),
+            legend_items: Vec::new(),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("radarFixed".to_string()),
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_radar_diagram_svg_model(
+            &layout,
+            &RadarDiagramRenderModel::default(),
+            &serde_json::json!({"radar": {"useMaxWidth": false}}),
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"width="700""#), "{root_open}");
+        assert!(root_open.contains(r#"height="700""#), "{root_open}");
+        assert!(
+            root_open.contains(r#"viewBox="0 0 700 700""#),
+            "{root_open}"
+        );
+        assert!(
+            root_open.contains(r#"style="background-color: white;""#),
+            "{root_open}"
+        );
+        assert!(!root_open.contains("max-width"), "{root_open}");
     }
 }

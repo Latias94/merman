@@ -25,6 +25,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Ishikawa layout and SVG render configuration through a family-owned config view, centralizing diagram padding, max-width behavior, layout font size, and CSS font-size spelling.
 - Projected Treemap layout configuration through a family-owned config view, centralizing sizing, padding, value display, max-width behavior, and value-format settings before treemap layout consumes them.
 - Projected QuadrantChart layout and SVG render configuration through a family-owned config view, centralizing chart geometry, axis/point text sizing, border widths, max-width behavior, and `$ref` render fallback semantics.
+- Projected Radar layout and SVG render configuration through a family-owned config view, centralizing chart geometry, margins, axis factors, curve tension, and max-width behavior.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

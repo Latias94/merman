@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_f64_or as config_f64, json_f64};
+use crate::config::json_f64;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
@@ -7,6 +7,10 @@ use crate::model::{
 use crate::text::TextMeasurer;
 use merman_core::diagrams::radar::RadarDiagramRenderModel;
 use serde_json::Value;
+
+mod config;
+
+pub(crate) use config::RadarConfigView;
 
 fn json_i64(v: &Value) -> Option<i64> {
     v.as_i64().or_else(|| v.as_u64().map(|n| n as i64))
@@ -105,16 +109,16 @@ pub fn layout_radar_diagram_typed(
         model.title.as_deref(),
     );
 
-    let cfg = effective_config;
-    let width = config_f64(cfg, &["radar", "width"], 600.0);
-    let height = config_f64(cfg, &["radar", "height"], 600.0);
-    let margin_left = config_f64(cfg, &["radar", "marginLeft"], 50.0);
-    let margin_right = config_f64(cfg, &["radar", "marginRight"], 50.0);
-    let margin_top = config_f64(cfg, &["radar", "marginTop"], 50.0);
-    let margin_bottom = config_f64(cfg, &["radar", "marginBottom"], 50.0);
-    let axis_scale_factor = config_f64(cfg, &["radar", "axisScaleFactor"], 1.0);
-    let axis_label_factor = config_f64(cfg, &["radar", "axisLabelFactor"], 1.05);
-    let curve_tension = config_f64(cfg, &["radar", "curveTension"], 0.17);
+    let cfg = RadarConfigView::new(effective_config).layout_settings();
+    let width = cfg.width;
+    let height = cfg.height;
+    let margin_left = cfg.margin_left;
+    let margin_right = cfg.margin_right;
+    let margin_top = cfg.margin_top;
+    let margin_bottom = cfg.margin_bottom;
+    let axis_scale_factor = cfg.axis_scale_factor;
+    let axis_label_factor = cfg.axis_label_factor;
+    let curve_tension = cfg.curve_tension;
 
     let svg_width = width + margin_left + margin_right;
     let svg_height = height + margin_top + margin_bottom;
