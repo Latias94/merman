@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::config::{config_bool, config_f64};
 use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
@@ -13,6 +12,10 @@ use merman_core::diagrams::eventmodeling::{
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
+
+mod config;
+
+use config::EventModelingConfigView;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;
 const SWIMLANE_PADDING: f64 = 15.0;
@@ -31,12 +34,6 @@ const HTML_LABEL_TEXT_WIDTH_OFFSET: f64 = 6.0;
 const HTML_LABEL_DATA_WIDTH_SCALE: f64 = 1.047;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-#[derive(Debug, Clone)]
-struct EventModelingConfig {
-    padding: f64,
-    use_max_width: bool,
-}
-
 pub fn layout_eventmodeling_diagram(
     semantic: &Value,
     effective_config: &Value,
@@ -51,7 +48,7 @@ pub fn layout_eventmodeling_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<EventModelingDiagramLayout> {
-    let cfg = eventmodeling_config(effective_config);
+    let cfg = EventModelingConfigView::new(effective_config).layout_settings();
     let theme = PresentationTheme::new(effective_config).eventmodeling();
     let data_entities: HashMap<&str, &EventModelingDataEntityRenderModel> = model
         .data_entities
@@ -621,16 +618,6 @@ fn entity_visual_props(theme: &EventModelingTheme, entity_type: &str) -> VisualP
             fill: "red".to_string(),
             stroke: "black".to_string(),
         },
-    }
-}
-
-fn eventmodeling_config(effective_config: &Value) -> EventModelingConfig {
-    EventModelingConfig {
-        padding: config_f64(effective_config, &["eventmodeling", "padding"])
-            .unwrap_or(30.0)
-            .max(0.0),
-        use_max_width: config_bool(effective_config, &["eventmodeling", "useMaxWidth"])
-            .unwrap_or(true),
     }
 }
 

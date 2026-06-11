@@ -691,6 +691,11 @@ visibility, max-width behavior, label prefix/suffix, link color, outlined-label
 mode, node color overrides, and `$ref` fallback semantics before layout/render
 code uses them.
 
+Event Modeling now consumes a family-owned config view from
+`crates/merman-render/src/eventmodeling/config.rs`. Its layout settings project
+diagram padding and max-width behavior before bounds computation and SVG root
+emission consume the layout.
+
 Related decisions:
 
 - ADR-0005 configuration strategy
