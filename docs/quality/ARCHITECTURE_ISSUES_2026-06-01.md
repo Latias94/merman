@@ -653,6 +653,15 @@ difference between layout numeric-string compatibility and SVG render numeric
 boundaries. ARCH-013 remains open for the other diagram families and shared
 theme/config surfaces.
 
+Flowchart now joins that renderer-side config-view lane under
+`crates/merman-render/src/flowchart/config.rs`. Flowchart layout and SVG parity
+render settings consume `FlowchartConfigView`, centralizing Dagre spacing
+fallbacks, node/state padding, wrapping widths, subgraph title margins,
+font-family/font-size precedence, and asymmetric node-vs-edge HTML-label rules.
+The fixed 200px edge/subgraph-title wrap behavior and legacy leading-integer
+font-size parsing are covered by focused tests. ARCH-013 remains open for the
+remaining diagram families and broader shared theme/config surfaces.
+
 Related decisions:
 
 - ADR-0005 configuration strategy

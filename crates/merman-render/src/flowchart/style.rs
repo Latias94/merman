@@ -1,29 +1,6 @@
 use crate::text::TextStyle;
 use indexmap::IndexMap;
 
-pub(crate) fn flowchart_effective_node_html_labels(effective_config: &serde_json::Value) -> bool {
-    // Mermaid 11.15 node shapes use `evaluate(getConfig()?.htmlLabels)` in labelHelper, while
-    // edge and cluster labels use `getEffectiveHtmlLabels(...)` and still honor the deprecated
-    // `flowchart.htmlLabels` fallback.
-    effective_config
-        .get("htmlLabels")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true)
-}
-
-pub(crate) fn flowchart_effective_html_labels(effective_config: &serde_json::Value) -> bool {
-    effective_config
-        .get("htmlLabels")
-        .and_then(serde_json::Value::as_bool)
-        .or_else(|| {
-            effective_config
-                .get("flowchart")
-                .and_then(|v| v.get("htmlLabels"))
-                .and_then(serde_json::Value::as_bool)
-        })
-        .unwrap_or(true)
-}
-
 fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
     let s = s.trim().trim_end_matches(';').trim();
     if s.is_empty() {
@@ -226,29 +203,6 @@ pub(crate) fn flowchart_effective_font_style_for_node_classes<'a>(
         return None;
     }
     flowchart_effective_font_style_for_class_names(class_defs, effective_classes, inline_styles)
-}
-
-pub(crate) fn flowchart_html_label_measurement_base_style(
-    render_style: &TextStyle,
-    effective_config: &serde_json::Value,
-) -> TextStyle {
-    let mut style = render_style.clone();
-    // Mermaid serializes numeric themeVariables.fontSize into CSS without a unit
-    // (`font-size:24`), which does not affect foreignObject HTML labels in Chromium. A CSS px
-    // string (`"20px"`) is valid and does affect those labels.
-    style.font_size = effective_config
-        .get("themeVariables")
-        .and_then(|tv| tv.get("fontSize"))
-        .and_then(serde_json::Value::as_str)
-        .and_then(|raw| {
-            let raw = raw.trim();
-            if !raw.to_ascii_lowercase().ends_with("px") {
-                return None;
-            }
-            crate::mermaid_style::parse_css_font_size_px(raw, render_style.font_size)
-        })
-        .unwrap_or(16.0);
-    style
 }
 
 pub(crate) fn flowchart_effective_text_style_for_classes<'a>(

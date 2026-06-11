@@ -1,4 +1,3 @@
-use crate::config::{config_f64, config_string};
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -11,16 +10,16 @@ use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
 use super::{
     FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
-    flowchart_effective_font_style_for_node_classes, flowchart_effective_html_labels,
-    flowchart_effective_node_html_labels, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_html_label_measurement_base_style,
-    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
-    flowchart_node_has_span_css_height_parity, flowchart_whole_label_font_style_requests_italic,
+    flowchart_effective_font_style_for_node_classes, flowchart_effective_text_style_for_classes,
+    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
+    flowchart_label_plain_text_for_layout, flowchart_node_has_span_css_height_parity,
+    flowchart_whole_label_font_style_requests_italic,
 };
 
 fn flowchart_svg_plain_computed_width_px(
@@ -46,26 +45,6 @@ fn rank_dir_from_flow(direction: &str) -> RankDir {
         "RL" => RankDir::RL,
         _ => RankDir::TB,
     }
-}
-
-fn flowchart_dagre_spacing_or_default(config: &Value, key: &str, default: f64) -> f64 {
-    let Some(raw) = config
-        .get("flowchart")
-        .and_then(|flowchart| flowchart.get(key))
-    else {
-        return default;
-    };
-
-    // Mermaid Flowchart assigns `conf?.nodeSpacing || 50` and `conf?.rankSpacing || 50`,
-    // so numeric zero falls back to the default instead of becoming a real Dagre separation.
-    if raw.is_number() {
-        return raw
-            .as_f64()
-            .filter(|value| *value != 0.0)
-            .unwrap_or(default);
-    }
-
-    config_f64(config, &["flowchart", key]).unwrap_or(default)
 }
 
 fn normalize_dir(s: &str) -> String {
@@ -831,162 +810,28 @@ fn layout_flowchart_v2_with_model(
 
     let build_graph_start = timing_enabled.then(web_time::Instant::now);
 
-    let nodesep = flowchart_dagre_spacing_or_default(effective_config_value, "nodeSpacing", 50.0);
-    let ranksep = flowchart_dagre_spacing_or_default(effective_config_value, "rankSpacing", 50.0);
-    // Mermaid's default config sets `flowchart.padding` to 15.
-    let node_padding =
-        config_f64(effective_config_value, &["flowchart", "padding"]).unwrap_or(15.0);
-    // Used by a few flowchart-v2 shapes (notably `forkJoin.ts`) to inflate Dagre node dimensions.
-    // Mermaid default config sets `state.padding` to 8.
-    let state_padding = config_f64(effective_config_value, &["state", "padding"]).unwrap_or(8.0);
-    let wrapping_width =
-        config_f64(effective_config_value, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
-    // Mermaid measures edge labels via `createText(...)` without overriding the default
-    // wrapping width (200px), independent of `flowchart.wrappingWidth`.
-    let edge_label_wrapping_width = 200.0;
-    // Mermaid 11.15 wraps markdown subgraph titles through `createText(...)` but renders
-    // non-markdown titles through deprecated `createLabel(... width=Infinity)`.
-    let cluster_title_wrapping_width = 200.0;
-    // Mermaid 11.15 has asymmetric Flowchart html-label semantics:
-    // node shapes use root `htmlLabels` directly, while edge and cluster labels use
-    // `getEffectiveHtmlLabels(...)` and still honor deprecated `flowchart.htmlLabels`.
-    let node_html_labels = flowchart_effective_node_html_labels(effective_config_value);
-    let flowchart_html_labels = flowchart_effective_html_labels(effective_config_value);
-    let edge_html_labels = flowchart_html_labels;
-    let cluster_html_labels = edge_html_labels;
-    let node_html_label_css_parity = node_html_labels && flowchart_html_labels;
-    let node_wrap_mode = if node_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let cluster_wrap_mode = if cluster_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    let edge_wrap_mode = if edge_html_labels {
-        WrapMode::HtmlLike
-    } else {
-        WrapMode::SvgLike
-    };
-    // Mermaid FlowDB encodes subgraph nodes with a fixed `padding: 8` in `data4Layout.nodes`.
-    // That value is separate from `flowchart.padding` (node padding) and `nodeSpacing`/`rankSpacing`.
-    let cluster_padding = 8.0;
-    let title_margin_top = config_f64(
-        effective_config_value,
-        &["flowchart", "subGraphTitleMargin", "top"],
-    )
-    .unwrap_or(0.0);
-    let title_margin_bottom = config_f64(
-        effective_config_value,
-        &["flowchart", "subGraphTitleMargin", "bottom"],
-    )
-    .unwrap_or(0.0);
-    let title_total_margin = title_margin_top + title_margin_bottom;
-    let y_shift = title_total_margin / 2.0;
-    let inherit_dir = effective_config_value
-        .get("flowchart")
-        .and_then(|v| v.get("inheritDir"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    fn normalize_css_font_family(font_family: &str) -> String {
-        let s = font_family.trim().trim_end_matches(';').trim();
-        if s.is_empty() {
-            return String::new();
-        }
-
-        let mut parts: Vec<String> = Vec::new();
-        let mut cur = String::new();
-        let mut in_single = false;
-        let mut in_double = false;
-
-        for ch in s.chars() {
-            match ch {
-                '\'' if !in_double => {
-                    in_single = !in_single;
-                    cur.push(ch);
-                }
-                '"' if !in_single => {
-                    in_double = !in_double;
-                    cur.push(ch);
-                }
-                ',' if !in_single && !in_double => {
-                    let p = cur.trim();
-                    if !p.is_empty() {
-                        parts.push(p.to_string());
-                    }
-                    cur.clear();
-                }
-                _ => cur.push(ch),
-            }
-        }
-
-        let p = cur.trim();
-        if !p.is_empty() {
-            parts.push(p.to_string());
-        }
-        parts.join(",")
-    }
-
-    fn parse_font_size_px(v: &serde_json::Value) -> Option<f64> {
-        if let Some(n) = v.as_f64() {
-            return Some(n);
-        }
-        if let Some(n) = v.as_i64() {
-            return Some(n as f64);
-        }
-        if let Some(n) = v.as_u64() {
-            return Some(n as f64);
-        }
-        let s = v.as_str()?.trim();
-        if s.is_empty() {
-            return None;
-        }
-        let mut num = String::new();
-        for (idx, ch) in s.chars().enumerate() {
-            if ch.is_ascii_digit() {
-                num.push(ch);
-                continue;
-            }
-            if idx == 0 && (ch == '-' || ch == '+') {
-                num.push(ch);
-                continue;
-            }
-            break;
-        }
-        if num.trim().is_empty() {
-            return None;
-        }
-        num.parse::<f64>().ok()
-    }
-
-    let default_theme_font_family = "\"trebuchet ms\",verdana,arial,sans-serif".to_string();
-    let theme_font_family =
-        config_string(effective_config_value, &["themeVariables", "fontFamily"])
-            .map(|s| normalize_css_font_family(&s));
-    let top_font_family = config_string(effective_config_value, &["fontFamily"])
-        .map(|s| normalize_css_font_family(&s));
-    let font_family = Some(match (top_font_family, theme_font_family) {
-        (Some(top), Some(theme)) if theme == default_theme_font_family => top,
-        (_, Some(theme)) => theme,
-        (Some(top), None) => top,
-        (None, None) => default_theme_font_family,
-    });
-    let font_size = effective_config_value
-        .get("themeVariables")
-        .and_then(|tv| tv.get("fontSize"))
-        .and_then(parse_font_size_px)
-        .unwrap_or(16.0);
-    let font_weight = config_string(effective_config_value, &["fontWeight"]);
-    let text_style = TextStyle {
-        font_family,
-        font_size,
-        font_weight,
-    };
-    let html_label_text_style =
-        flowchart_html_label_measurement_base_style(&text_style, effective_config_value);
+    let FlowchartLayoutSettings {
+        nodesep,
+        ranksep,
+        node_padding,
+        state_padding,
+        wrapping_width,
+        edge_label_wrapping_width,
+        cluster_title_wrapping_width,
+        edge_html_labels,
+        node_html_label_css_parity,
+        node_wrap_mode,
+        edge_wrap_mode,
+        cluster_wrap_mode,
+        cluster_padding,
+        title_margin_top,
+        title_margin_bottom,
+        title_total_margin,
+        y_shift,
+        inherit_dir,
+        text_style,
+        html_label_text_style,
+    } = FlowchartConfigView::new(effective_config_value).layout_settings();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {

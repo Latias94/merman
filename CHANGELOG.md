@@ -13,6 +13,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Deepened `merman-core` parsing by moving metadata, semantic JSON, and typed render-model stage ordering into one internal Parse Pipeline behind the existing `Engine` facade.
 - Projected Sequence layout and SVG render configuration through a family-owned config view, reducing raw `effective_config["sequence"]` lookups while preserving layout and SVG numeric parsing behavior.
 - Projected Class layout and SVG render configuration through a family-owned config view, centralizing class/flowchart namespace precedence and preserving the existing layout-versus-SVG numeric parsing boundaries.
+- Projected Flowchart layout and SVG render configuration through a family-owned config view, centralizing spacing, padding, font, wrap-mode, and HTML-label precedence while preserving Mermaid-compatible edge cases.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

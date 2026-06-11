@@ -275,21 +275,8 @@ fn render_flowchart_v2_svg_with_config_inner(
     let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =
         FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
 
-    let subgraph_title_y_shift = {
-        let top = config_f64(
-            effective_config_value,
-            &["flowchart", "subGraphTitleMargin", "top"],
-        )
-        .unwrap_or(0.0)
-        .max(0.0);
-        let bottom = config_f64(
-            effective_config_value,
-            &["flowchart", "subGraphTitleMargin", "bottom"],
-        )
-        .unwrap_or(0.0)
-        .max(0.0);
-        (top + bottom) / 2.0
-    };
+    let subgraph_title_y_shift = crate::flowchart::FlowchartConfigView::new(effective_config_value)
+        .render_subgraph_title_y_shift();
 
     fn self_loop_label_base_node_id(id: &str) -> Option<&str> {
         let mut parts = id.split("---");
