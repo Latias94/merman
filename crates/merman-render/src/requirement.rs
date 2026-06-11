@@ -1,4 +1,3 @@
-use crate::config::config_f64;
 use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
@@ -9,6 +8,10 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 use serde_json::Value;
+
+mod config;
+
+pub(crate) use config::RequirementConfigView;
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
@@ -210,25 +213,16 @@ pub fn layout_requirement_diagram_typed(
         normalize_dir(&model.direction)
     };
 
-    let nodesep = config_f64(effective_config, &["nodeSpacing"])
-        .or_else(|| config_f64(effective_config, &["flowchart", "nodeSpacing"]))
-        .unwrap_or(50.0);
-    let ranksep = config_f64(effective_config, &["rankSpacing"])
-        .or_else(|| config_f64(effective_config, &["flowchart", "rankSpacing"]))
-        .unwrap_or(50.0);
-
-    let font_family = Some(crate::config::config_font_family_or_first_array_css(
-        effective_config,
-    ));
-    let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
+    let cfg = RequirementConfigView::new(effective_config).layout_settings();
+    let font_family = Some(cfg.font_family);
     let html_style_regular = TextStyle {
         font_family: font_family.clone(),
-        font_size,
+        font_size: cfg.font_size,
         font_weight: None,
     };
     let html_style_bold = TextStyle {
         font_family,
-        font_size,
+        font_size: cfg.font_size,
         font_weight: Some("bold".to_string()),
     };
 
@@ -242,8 +236,8 @@ pub fn layout_requirement_diagram_typed(
     });
     g.set_graph(GraphLabel {
         rankdir: rank_dir_from(&direction),
-        nodesep,
-        ranksep,
+        nodesep: cfg.nodesep,
+        ranksep: cfg.ranksep,
         marginx: 8.0,
         marginy: 8.0,
         ..Default::default()

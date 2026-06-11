@@ -248,7 +248,9 @@ pub(super) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
-    let look = config_diagram_look(effective_config);
+    let render_settings =
+        crate::requirement::RequirementConfigView::new(effective_config).render_settings();
+    let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
     let node_id_prefix = if diagram_id.is_empty() {
@@ -270,17 +272,12 @@ pub(super) fn render_requirement_diagram_svg_model(
         .collect();
 
     let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-    let font_family = Some(crate::config::config_font_family_or_first_array_css(
-        effective_config,
-    ));
-    let font_size = crate::config::config_theme_or_root_font_size_px(effective_config, 16.0);
+    let font_family = Some(render_settings.font_family);
+    let font_size = render_settings.font_size;
     let theme = SvgTheme::new(effective_config);
     let default_fill_color = theme.color("requirementBackground", "#ECECFF");
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
-    let hand_drawn_seed = effective_config
-        .get("handDrawnSeed")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
+    let hand_drawn_seed = render_settings.hand_drawn_seed;
     let calc_style = TextStyle {
         font_family: font_family.clone(),
         font_size,
@@ -427,7 +424,7 @@ pub(super) fn render_requirement_diagram_svg_model(
             })
         }
     });
-    let viewport_padding = 8.0;
+    let viewport_padding = render_settings.viewport_padding;
     let vb_x = bounds.min_x - viewport_padding;
     let vb_y = bounds.min_y - viewport_padding;
     let vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
@@ -501,20 +498,37 @@ pub(super) fn render_requirement_diagram_svg_model(
         );
     }
 
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("requirementDiagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(&format!(
-                "max-width: {max_width_style_attr}px; background-color: white;"
-            )),
-            viewbox_attr: Some(&viewbox_attr),
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
-        },
-    );
+    if render_settings.use_max_width {
+        let style_attr = format!("max-width: {max_width_style_attr}px; background-color: white;");
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                class: Some("requirementDiagram"),
+                width: root_svg::SvgRootWidth::Percent100,
+                style_attr: Some(style_attr.as_str()),
+                viewbox_attr: Some(&viewbox_attr),
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
+            },
+        );
+    } else {
+        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
+        root_svg::push_svg_root_open(
+            &mut out,
+            root_svg::SvgRootAttrs {
+                class: Some("requirementDiagram"),
+                width: root_svg::SvgRootWidth::Fixed(&vb_w_attr),
+                height_attr: Some(&vb_h_attr),
+                viewbox_attr: Some(&viewbox_attr),
+                tail_attrs: &tail_attrs,
+                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
+            },
+        );
+    }
 
     out.push_str(&a11y_nodes);
 
@@ -1172,4 +1186,63 @@ fn push_requirement_shadow_defs(
         diagram_id.as_str(),
         flood_color
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+    use std::collections::BTreeMap;
+
+    fn empty_requirement_model() -> RequirementDiagramRenderModel {
+        RequirementDiagramRenderModel {
+            acc_title: None,
+            acc_descr: None,
+            direction: String::new(),
+            requirements: Vec::new(),
+            elements: Vec::new(),
+            relationships: Vec::new(),
+            classes: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn requirement_root_honors_disabled_max_width() {
+        let layout = RequirementDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 10.0,
+                min_y: 20.0,
+                max_x: 210.0,
+                max_y: 120.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("requirementFixed".to_string()),
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_requirement_diagram_svg_model(
+            &layout,
+            &empty_requirement_model(),
+            &serde_json::json!({"requirement": {"useMaxWidth": false}}),
+            None,
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"width="216""#), "{root_open}");
+        assert!(root_open.contains(r#"height="116""#), "{root_open}");
+        assert!(
+            root_open.contains(r#"viewBox="2 12 216 116""#),
+            "{root_open}"
+        );
+        assert!(
+            root_open.contains(r#"style="background-color: white;""#),
+            "{root_open}"
+        );
+        assert!(!root_open.contains("max-width"), "{root_open}");
+    }
 }
