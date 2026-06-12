@@ -16,6 +16,9 @@ predictably across diagram families.
 - Added an opt-in `cytoscape-layout` feature for Architecture and Mindmap, so size-sensitive
   browser and Typst builds can leave those heavier layout dependencies out. The wasm-size matrix
   now reports browser, Typst, full, stripped, gzip, and brotli presets for repeatable release gates.
+- Added Homebrew install guidance for `merman-cli` on macOS and Linux. Thanks
+  [@colindean](https://github.com/colindean) for the contribution in
+  [#4](https://github.com/Latias94/merman/pull/4).
 
 ### Changed
 

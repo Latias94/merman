@@ -12,6 +12,7 @@ protect them before any registry publication is enabled.
 | --- | --- | --- | --- | --- |
 | Rust crates | workspace crates listed in `PUBLISH_ORDER.md` | `release-crates.yml` | crates.io | Publishes in dependency order. `xtask` remains private. |
 | CLI | `merman-cli` binary archives | `release.yml` | GitHub Release | Existing cargo-dist workflow. |
+| CLI (Homebrew) | `merman-cli` formula | `homebrew.yml` | Homebrew/core | Homebrew/core owns the formula and autobump flow; this repo only checks formula metadata, livecheck, install, and smoke behavior. |
 | Apple | Swift wrapper plus `Merman.xcframework` | `release-apple.yml` | GitHub Release asset | Builds, zips, computes checksum, and uploads assets without moving the release tag. Direct remote SwiftPM consumption still needs a release manifest strategy with URL + checksum committed before tagging. |
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
@@ -42,6 +43,8 @@ Merman CI keeps publication separate from validation:
 - `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.
 - `apple-ffi-smoke` builds `Merman.xcframework` and validates the root Swift package.
 - `web-npm-dry-run` builds the TypeScript/WASM package and runs `npm pack --dry-run`.
+- `homebrew.yml` checks the published Homebrew formula, runs `brew livecheck`, installs
+  `merman-cli`, and renders a smoke diagram from the installed binary.
 
 Release preflight is manual and publish-free. Crates and cargo-dist remain tag-driven after
 preflight passes. Platform publishing is manual so a fixed workflow on `main` can build and upload

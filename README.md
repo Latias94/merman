@@ -38,12 +38,13 @@ Mermaid license and provenance notes.
 | --- | --- | --- |
 | Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Static live editor powered by the wasm web package. |
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
-| Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
+| Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) / [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
-| Embed in a browser or TypeScript app | [`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
+| Embed in a browser or TypeScript app | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. Source: [`platforms/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme). |
 | Build a Typst plugin/package | [`merman-typst-plugin`](https://github.com/Latias94/merman/tree/main/crates/merman-typst-plugin#readme) | Experimental wasm-minimal-protocol transport for Typst-compatible WASM hosts. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
-| Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
+| Embed from C or C++ | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI, header, and dynamic/static library artifacts. Source: [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi). |
+| Embed from Swift, Kotlin, Dart, Python, or another native host | [Native packages and bindings](#quickstart-ffi-and-native-hosts) | Published packages for Python, Flutter, and web; repository packages for Android and Apple/SwiftPM. |
 | Work on layout/rendering internals | [`merman-render`](https://crates.io/crates/merman-render) | Low-level layout and SVG stack used by the public `merman` facade. |
 
 ## What Merman Outputs
@@ -81,8 +82,11 @@ for methodology and commands.
 ## Install
 
 ```sh
-# Command-line tool
+# Command-line tool (Cargo)
 cargo install merman-cli --version 0.8.0-alpha.1
+
+# Command-line tool (Homebrew, macOS and Linux)
+brew install merman-cli
 
 # Rust library: SVG rendering
 cargo add merman@0.8.0-alpha.1 --features render
@@ -104,10 +108,12 @@ flutter pub add merman
 
 # Python package (experimental UniFFI wheels)
 pip install merman
-
-# Homebrew, merman-cli for macOS and Linux
-brew install merman-cli
 ```
+
+Package pages: [Homebrew `merman-cli`](https://formulae.brew.sh/formula/merman-cli),
+[npm `@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web),
+[pub.dev `merman`](https://pub.dev/packages/merman), and
+[PyPI `merman`](https://pypi.org/project/merman/).
 
 For rustdoc feature setup and examples, see
 [`crates/merman-rustdoc/README.md`](crates/merman-rustdoc/README.md).
@@ -374,6 +380,16 @@ The [`merman-ffi`](https://crates.io/crates/merman-ffi) crate exposes a stable C
 FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout JSON, validation
 JSON, binding metadata, and explicit Rust-owned buffer release.
 
+Start with the surface that matches your host:
+
+| Host | Package or source | Notes |
+| --- | --- | --- |
+| C / C++ / other native FFI | [`merman-ffi`](https://crates.io/crates/merman-ffi), [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [`merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) | Stable C ABI used by the higher-level wrappers. |
+| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. |
+| Flutter / Dart | [`merman` on pub.dev](https://pub.dev/packages/merman), [`platforms/flutter`](https://github.com/Latias94/merman/tree/main/platforms/flutter) | Flutter package backed by Dart FFI and bundled native libraries. |
+| Android / Kotlin | [`platforms/android`](https://github.com/Latias94/merman/tree/main/platforms/android) | AAR/JNI package source for Android hosts. |
+| Apple / SwiftPM | [`Package.swift`](https://github.com/Latias94/merman/blob/main/Package.swift), [`platforms/apple`](https://github.com/Latias94/merman/tree/main/platforms/apple) | Swift wrapper and binary XCFramework package layout. |
+
 ```c
 #include "merman.h"
 
@@ -390,7 +406,7 @@ Every non-empty `MermanResult.data` buffer must be released with `merman_buffer_
 [`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md) for result codes, options JSON,
 threading, and compatibility rules.
 
-Higher-level wrappers build on the same ABI:
+Detailed platform notes:
 
 - Android/Kotlin: [`docs/bindings/ANDROID_JNI.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
 - Apple Swift Package: [`docs/bindings/APPLE_SWIFT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)

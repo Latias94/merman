@@ -1,0 +1,55 @@
+name: Homebrew
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 9 * * 1"
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  formula-health:
+    name: formula-health
+    if: ${{ github.event_name != 'push' || !contains(github.ref_name, '-') }}
+    runs-on: macos-15
+    steps:
+      - name: Update Homebrew metadata
+        shell: bash
+        run: brew update
+
+      - name: Check Homebrew formula metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          formula_json="$(brew info --json=v2 merman-cli)"
+          version="$(jq -r '.formulae[0].versions.stable' <<<"$formula_json")"
+          homepage="$(jq -r '.formulae[0].homepage' <<<"$formula_json")"
+          desc="$(jq -r '.formulae[0].desc' <<<"$formula_json")"
+
+          test "$version" != "null"
+          test "$homepage" = "https://frankorz.com/merman/"
+          test "$desc" = "Mermaid.js, but headless, in Rust"
+          echo "Homebrew merman-cli stable version: $version"
+          echo "Homebrew homepage: $homepage"
+
+      - name: Check Homebrew livecheck
+        shell: bash
+        run: brew livecheck merman-cli --json
+
+      - name: Install merman-cli from Homebrew
+        shell: bash
+        run: brew install merman-cli
+
+      - name: Smoke installed merman-cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          merman-cli --version
+          printf 'flowchart TD\nA[Homebrew] --> B[merman-cli]\n' > homebrew-smoke.mmd
+          merman-cli render homebrew-smoke.mmd --out homebrew-smoke.svg
+          grep -q '<svg' homebrew-smoke.svg
+          grep -q 'Homebrew' homebrew-smoke.svg

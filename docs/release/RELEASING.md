@@ -19,6 +19,7 @@ push a `v*` tag whose version matches every package manifest that will publish i
 | `release-flutter.yml` | `merman` with injected Android, iOS, macOS, Windows, and Linux native artifacts | pub.dev |
 | `release-android.yml` | `merman-android-<tag>.aar` | GitHub Release |
 | `release-web.yml` | `@mermanjs/web` TypeScript/WASM package | npm |
+| `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
 Most platform publish workflows are manual `workflow_dispatch` workflows that accept `release_tag`
 and `source_ref` inputs. This lets a fixed workflow on `main` build assets for an existing release
@@ -57,6 +58,12 @@ The Apple workflow currently publishes a zipped `Merman.xcframework` and checksu
 assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a
 `.binaryTarget(url:checksum:)`, because that checksum must be known and committed before the release
 tag. Treat direct remote SwiftPM support as a separate release-manifest design task.
+
+Homebrew installs `merman-cli` from the formula in `homebrew/core`; it is not published directly by
+this repository. After a stable release, Homebrew's autobump flow should pick up the new GitHub tag.
+Use `homebrew.yml` or `brew livecheck merman-cli` to verify formula freshness and run a smoke test
+against the installed Homebrew package. Pre-release tags are intentionally ignored by that workflow
+because Homebrew/core tracks stable versions.
 
 ## Version Checklist
 
@@ -176,6 +183,7 @@ gh workflow run release-python.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0 -f
 gh workflow run release-android.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0
 gh workflow run release-apple.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0
 gh workflow run release-web.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0 -f publish_to_npm=true
+gh workflow run homebrew.yml
 ```
 
 Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
