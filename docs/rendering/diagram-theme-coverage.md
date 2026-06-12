@@ -4,6 +4,10 @@ This ledger tracks how supported SVG diagram families consume Mermaid theme vari
 
 Default parity output remains unchanged. Host profile behavior is opt-in.
 
+Field-level config merge and parser-entry evidence live in `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`.
+This ledger only records the SVG/theme consumption layer and the visible residuals for admitted
+families.
+
 | Diagram family | Current theme path | Host profile status | Residual / follow-up |
 | --- | --- | --- | --- |
 | Flowchart | `PresentationTheme::node_diagram()` via `crates/merman-render/src/svg/parity/flowchart/css.rs` | Covered for node, text, border, line, cluster, edge label roles. | KaTeX and some special-shape details still have local hard-coded defaults. |

@@ -1,38 +1,58 @@
 # Config and Frontmatter Support Matrix
 
 This document tracks Mermaid config/frontmatter behavior that is intentionally supported by
-`merman`, plus known gaps where config is preserved but not fully consumed by renderers.
+`merman`. It separates input plumbing from rendered behavior so support claims do not imply more
+than the local evidence proves.
 
-## Merge Semantics
+Capability levels:
 
-| Input source | Status | Notes |
-| --- | --- | --- |
-| Engine site config | Supported | Loaded from generated upstream defaults, then user site config is deep-merged. |
-| Frontmatter `config` | Supported | Parsed as Mermaid config overrides. |
-| Frontmatter `title` | Supported | Sanitized with the effective config before metadata is returned. |
-| Frontmatter `displayMode` | Supported | Mermaid special case mapped to `gantt.displayMode`. |
-| Frontmatter top-level diagram namespaces | Supported compatibility layer | Known diagram namespaces such as `gantt`, `flowchart`, `class`, `er`, `state`, and `xyChart` are mapped into `config.<diagram>`. Explicit `config` values take priority. |
-| Frontmatter arbitrary top-level YAML fields | Not supported | Unknown keys are ignored, matching the narrow upstream frontmatter surface. |
-| `%%{init: ...}%%` directives | Supported | Directive config is merged after frontmatter, so directive values win. |
-| Directive top-level `config` field | Supported | Mirrors Mermaid's behavior by moving directive `config` into the detected diagram-specific namespace. |
+- **Accepted**: an API, CLI flag, frontmatter block, or directive can receive the value without
+  rejecting it.
+- **Merged**: the value reaches `ParseMetadata.config` / `effective_config` or the render engine's
+  site config with Mermaid-compatible precedence.
+- **Consumed**: parser, detector, layout, sanitizer, theme, or SVG code reads the value and changes
+  local behavior.
+- **Rendered**: semantic/layout/SVG tests or upstream goldens prove an observable result for the
+  field.
 
-## Config Feature Matrix
+## Entry-Point Merge Semantics
 
-| Config area | Parse/preprocess status | Render/behavior status | Notes |
-| --- | --- | --- | --- |
-| `theme` | Supported | Supported | Theme defaults are applied to the effective config before parsing/rendering. |
-| `themeVariables` | Supported | Supported | Includes legacy `fontFamily` mirroring into `themeVariables.fontFamily`. |
-| `themeCSS` | Supported | Supported | SVG output scopes injected CSS through the parity CSS postprocessor. |
-| `look` | Supported | Partial by diagram | Flowchart, state, mindmap, requirement, class, ER, and Kanban section clusters consume `look` in SVG DOM/style paths. Sequence consumes `look` in presentation CSS/theme paths, but does not currently expose a diagram-wide `data-look` DOM contract. Kanban item groups do not currently expose a broader `data-look` DOM contract. |
-| `layout` | Supported | Partial by diagram | Detection preserves `flowchart-elk` / `flowchart.defaultRenderer=elk` side effects, but the local flowchart layout path is not a full ELK implementation. |
-| `flowchart.defaultRenderer` | Supported | Partial | Detection can select `flowchart-elk` semantics and set root `layout=elk`; layout parity remains incomplete. |
-| `class.defaultRenderer` | Supported | Supported for detector branching | Used to select class renderer variants like Mermaid's detector order. |
-| `state.defaultRenderer` | Supported | Supported for detector branching | Used to select state renderer variants like Mermaid's detector order. |
-| `gantt.displayMode` | Supported | Supported | Frontmatter `displayMode` and `config.gantt.displayMode` both reach Gantt parse/render paths. |
-| `gantt.useWidth` | Supported | Supported | Consumed by Gantt SVG layout. |
-| `gantt.rightPadding` | Supported | Supported | Consumed by Gantt SVG layout. |
-| `gantt.topAxis` | Supported | Supported | Consumed by Gantt SVG layout. |
-| `gantt.numberSectionStyles` | Supported | Supported | Consumed by Gantt SVG layout. |
+| Input source | Accepted | Merged | Evidence | Notes |
+| --- | --- | --- | --- | --- |
+| Engine site config | Yes | Yes | `Engine::with_site_config`, `crates/merman-core/src/parse_pipeline.rs`, `site_config_deep_merge_handles_deep_public_config_with_small_stack` | Generated Mermaid defaults load first; caller site config is deep-merged on top. |
+| Bindings `options_json.site_config` | Yes | Yes | `crates/merman-bindings-core/src/common.rs`, `render_svg_accepts_external_site_config`, `explicit_site_config_overrides_host_theme_profile_variables` | Non-object values are rejected. Explicit site config overrides host-theme-generated values. |
+| CLI `--configFile` / `--config-file` | Yes | Yes | `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/config.rs`, `config_file_theme_overrides_cli_theme` | CLI `--theme` is applied first; JSON config file values are deep-merged after it. U6 should add a shared fixture proving CLI/API/bindings parity for the same config. |
+| CLI `--handDrawnSeed` | Yes | Yes | `crates/merman-cli/src/config.rs` | Stored as root `handDrawnSeed` in site config. SVG-family proof is field-specific below. |
+| Frontmatter `config` | Yes | Yes | `parse_merges_frontmatter_and_directive_config`, `site_config_deep_merge_handles_deep_frontmatter_config_with_small_stack` | Parsed as Mermaid config overrides. Directives merge after frontmatter. |
+| Frontmatter `title` | Yes | Metadata only | `parse_metadata` title tests in `crates/merman-core/src/tests/misc.rs` | Sanitized with the effective config before metadata is returned. It is not a general config field. |
+| Frontmatter `displayMode` | Yes | Yes | `crates/merman-core/src/preprocess/mod.rs`, `parse_maps_top_level_frontmatter_diagram_config` | Mermaid special case mapped to `gantt.displayMode`. |
+| Frontmatter top-level diagram namespaces | Compatibility layer | Yes | `parse_maps_top_level_frontmatter_diagram_config`, `parse_frontmatter_config_takes_priority_over_diagram_compat` | Known diagram namespaces such as `gantt`, `flowchart`, `class`, `er`, `state`, and `xyChart` are mapped into `config.<diagram>`. Explicit `config` values take priority. |
+| Frontmatter arbitrary top-level YAML fields | No | No | `parse_maps_top_level_frontmatter_diagram_config` | Unknown keys are ignored, matching the narrow upstream frontmatter surface. |
+| `%%{init: ...}%%` directives | Yes | Yes | `parse_merges_frontmatter_and_directive_config`, deep directive stack tests | Directive config is merged after frontmatter, so directive values win. |
+| Directive top-level `config` field | Yes | Yes | `parse_metadata_with_type_sync_moves_init_config_without_detection` | Mirrors Mermaid's behavior by moving directive `config` into the detected diagram-specific namespace. |
+
+## Field Capability Matrix
+
+| Config field | Accepted | Merged | Consumed | Rendered | Evidence / residual |
+| --- | --- | --- | --- | --- | --- |
+| `theme` | Yes | Yes | Yes | Yes | `render_svg_accepts_external_site_config`, `config_file_theme_overrides_cli_theme`, `theme_renderability_smoke.rs`; family-specific coverage is tracked in `docs/rendering/diagram-theme-coverage.md`. |
+| `themeVariables` | Yes | Yes | Yes | Yes | Shared render config helpers, `crates/merman-render/src/svg/parity/theme/*`, family CSS/style modules, `theme_renderability_smoke.rs`, and family SVG tests. Tests should assert the visible DOM role that consumes a variable. |
+| `themeCSS` | Yes | Yes | Yes | Yes | Scoped CSS postprocessor in `crates/merman-render/src/svg/parity.rs`; `render_svg_accepts_external_site_config` asserts scoped CSS and `data-merman-postprocess="scoped-css"`. Coverage proves scoping/injection, not arbitrary CSS cascade parity for every selector. |
+| `look` | Yes | Yes | Partial by diagram | Partial by diagram | `crates/merman-render/src/config.rs`, `look_svg_test.rs`, `theme_renderability_smoke.rs`. Do not claim universal `look` behavior until the family has a focused SVG assertion. |
+| `layout` | Yes | Yes | Partial | Metadata only | Detector/family selection paths preserve flowchart layout side effects; `parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect`, `full_build_detects_flowchart_elk_and_sets_layout`. `layout: elk` is config plumbing, not full local ELK layout parity yet. |
+| `flowchart.defaultRenderer` | Yes | Yes | Detector/family selection | Metadata only | `crates/merman-core/src/detect/mod.rs`, `crates/merman-core/src/family.rs`, flowchart detector tests, and flowchart-elk metadata tests. `elk` selection is preserved; the local flowchart layout engine remains Dagre-oriented. |
+| `class.defaultRenderer` | Yes | Yes | Detector branching | Detector only | `crates/merman-core/src/detect/mod.rs`, `engine_with_site_config_preserves_default_renderer_for_detection`, class detector coverage. Renderer-specific DOM deltas need targeted tests when behavior diverges. |
+| `state.defaultRenderer` | Yes | Yes | Detector branching | Detector only | `crates/merman-core/src/detect/mod.rs` and state detector coverage. Renderer-specific DOM deltas need targeted tests when behavior diverges. |
+| Root `htmlLabels` | Yes | Yes | Partial by family | Partial by family | Flowchart, class, and ER label config read root `htmlLabels`; `class_svg_test.rs`, `er_svg_test.rs`, and flowchart layout/SVG tests cover visible behavior. State currently uses the deprecated `flowchart.htmlLabels` compatibility path; U3 should add explicit root-over-flowchart precedence fixtures by family. |
+| Deprecated `flowchart.htmlLabels` | Yes | Yes | Yes | Partial by family | Flowchart-compatible fallback in flowchart/class/ER label config and state layout settings; `flowchart_layout_test.rs`, `flowchart_svg_test.rs`, `class_layout_test.rs`, `er_svg_test.rs`. Kept for upstream compatibility. |
+| `fontFamily` | Yes | Yes | Yes | Partial by family | Mirrored into `themeVariables.fontFamily`; render helpers and family settings read root/theme values. Covered by `parse_init_font_family_mirrors_legacy_theme_variable_like_upstream`, `parse_init_theme_variable_font_family_overrides_legacy_root`, and theme/font SVG tests. Browser font metrics remain a bounded residual. |
+| `fontSize` | Yes | Yes | Yes | Partial by family | Shared render helpers, class layout, sequence settings, Gantt layout, `class_svg_test.rs`, `crates/merman-render/src/svg/parity/theme/tests.rs`, and sequence settings tests. Root `fontSize` and `themeVariables.fontSize` have Mermaid-specific precedence per family. |
+| `handDrawnSeed` | Yes | Yes | Partial by family | Not broadly proven | CLI stores root seed; flowchart, ER, requirement, and state rough-path config read it (`crates/merman-render/src/er/config.rs`, `requirement/config.rs`, `state/config.rs`, `svg/parity/flowchart/render/node.rs`). Add focused SVG tests before claiming broad RoughJS determinism. |
+| `gantt.displayMode` | Yes | Yes | Yes | No focused fixture | Frontmatter special case and Gantt layout consumption are covered by `parse_maps_top_level_frontmatter_diagram_config` and `crates/merman-render/src/gantt.rs`; add a visual fixture if compact mode geometry changes. |
+| `gantt.topAxis` | Yes | Yes | Yes | No focused fixture | Gantt layout reads `topAxis`; merge evidence is `parse_maps_top_level_frontmatter_diagram_config`. Needs a focused SVG/layout fixture if axis placement changes. |
+| `gantt.rightPadding` | Yes | Yes | Yes | No focused fixture | Gantt layout reads `rightPadding`; merge evidence is `parse_frontmatter_config_takes_priority_over_diagram_compat`. Needs a focused layout delta fixture for padding-sensitive regressions. |
+| `gantt.useWidth` | Yes | Yes | Yes | No focused fixture | Gantt layout reads `useWidth`; merge evidence is `parse_maps_top_level_frontmatter_diagram_config` and `parse_frontmatter_config_takes_priority_over_diagram_compat`. Needs a focused layout/SVG fixture for width-sensitive regressions. |
+| `gantt.numberSectionStyles` | Yes | Yes | Yes | No focused fixture | Gantt layout reads `numberSectionStyles`; merge evidence is `parse_maps_top_level_frontmatter_diagram_config`. Needs a focused SVG fixture if section style cycling is changed. |
 
 ## Known Gaps
 
@@ -40,5 +60,9 @@ This document tracks Mermaid config/frontmatter behavior that is intentionally s
   support as detection/config plumbing, not layout parity.
 - `look` is not a universal all-diagram contract. Renderers should only claim support after tests
   verify both effective config propagation and rendered SVG/CSS consumption.
+- `handDrawnSeed` is accepted and consumed by several rough-path renderers, but broad deterministic
+  SVG parity still needs focused fixtures.
+- Gantt frontmatter/config merge semantics are covered, and layout code consumes the key fields,
+  but several fields still deserve small layout/SVG fixtures that prove observable geometry.
 - Top-level frontmatter compatibility is intentionally narrow. Global Mermaid config keys such as
   `theme`, `look`, and `layout` should still be written under `config`.

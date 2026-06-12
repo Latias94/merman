@@ -35,6 +35,9 @@ Current consumers:
 - Admission unit tests also cross-check `crates/xtask/default_config_overrides.json` so primary
   SVG matrix diagrams with matching pinned-schema config keys are not removed from generated
   defaults.
+- `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md` uses this inventory as the admission boundary for
+  rendered config claims: accepted/merged config can be broader than primary SVG support, but
+  rendered support should point at an admitted family test, golden, or an explicit residual.
 
 This inventory does not move fixtures or admit unsupported families by itself. Promotion still
 requires the gates in `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.

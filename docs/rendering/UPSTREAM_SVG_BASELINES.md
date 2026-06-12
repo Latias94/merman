@@ -40,6 +40,11 @@ If we need tighter 1:1 parity coverage beyond ER, extend the golden strategy in 
 - **Theme/style snapshots** that lock the generated CSS blocks for a small set of themes and config
   overrides (prevents silent selector drift).
 
+Config/frontmatter fixtures should also update
+`docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md` with the field's accepted/merged/consumed/rendered
+evidence. This keeps parser-entry support, layout consumption, and SVG golden coverage from being
+collapsed into a single "supported" claim.
+
 ## Tooling
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
