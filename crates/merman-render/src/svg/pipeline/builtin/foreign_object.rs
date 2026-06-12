@@ -77,6 +77,54 @@ pub(crate) fn strip_foreign_objects(svg: &str) -> String {
 
     while let Some(rel_start) = svg[cursor..].find("<foreignObject") {
         let start = cursor + rel_start;
+
+        // Check if this <foreignObject> is inside a <switch> element.
+        // If so, unwrap the <switch>: remove <switch>, remove <foreignObject>, keep remaining
+        // children (the <text> fallback).
+        let before = &svg[cursor..start];
+        let switch_handled = if let Some(switch_rel) = before.rfind("<switch>") {
+            let switch_start = cursor + switch_rel;
+            // Verify there's nothing meaningful between <switch> and <foreignObject>
+            let between = svg[switch_start + "<switch>".len()..start].trim();
+            if between.is_empty() {
+                // Find the closing </switch>
+                if let Some(switch_close_rel) = svg[start..].find("</switch>") {
+                    let switch_close_end = start + switch_close_rel + "</switch>".len();
+                    // Output everything before <switch>
+                    out.push_str(&svg[cursor..switch_start]);
+                    // Find end of </foreignObject> inside the switch
+                    let fo_open_end = find_tag_end(svg, start);
+                    if let Some(fo_open_end) = fo_open_end {
+                        if !svg[start..=fo_open_end].trim_end().ends_with("/>") {
+                            let fo_close_start = fo_open_end + 1;
+                            if let Some(fo_close_rel) =
+                                svg[fo_close_start..].find("</foreignObject>")
+                            {
+                                let after_fo =
+                                    fo_close_start + fo_close_rel + "</foreignObject>".len();
+                                // Keep everything between </foreignObject> and </switch>
+                                let inner_content =
+                                    &svg[after_fo..start + switch_close_rel];
+                                out.push_str(inner_content);
+                            }
+                        }
+                    }
+                    cursor = switch_close_end;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if switch_handled {
+            continue;
+        }
+
         out.push_str(&svg[cursor..start]);
 
         let Some(open_end) = find_tag_end(svg, start) else {
@@ -279,6 +327,76 @@ mod tests {
             r#"<text class = 'label merman-foreignobject-fallback-text'>"#
         ));
         assert!(!text_tag_is_fallback(r#"<text class = 'label task'>"#));
+    }
+
+    #[test]
+    fn strip_foreign_objects_unwraps_switch_keeping_text_fallback() {
+        let svg = r##"<svg><switch><foreignObject x="10" y="20" width="100" height="50"><div xmlns="http://www.w3.org/1999/xhtml">Make tea</div></foreignObject><text x="60" y="45">Make tea</text></switch></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "foreignObject should be stripped: {out}");
+        assert!(!out.contains("<switch>"), "switch wrapper should be removed: {out}");
+        assert!(!out.contains("</switch>"), "switch closing tag should be removed: {out}");
+        assert!(
+            out.contains(r#"<text x="60" y="45">Make tea</text>"#),
+            "text fallback should be preserved: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_handles_switch_with_multiple_text_elements() {
+        let svg = r##"<svg><switch><foreignObject x="0" y="0" width="80" height="40"><div xmlns="http://www.w3.org/1999/xhtml">Line 1</div></foreignObject><text x="40" y="15">Line 1</text><text x="40" y="30">Line 2</text></switch></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(!out.contains("<switch>"), "{out}");
+        assert!(out.contains(r#"<text x="40" y="15">Line 1</text>"#), "{out}");
+        assert!(out.contains(r#"<text x="40" y="30">Line 2</text>"#), "{out}");
+    }
+
+    #[test]
+    fn resvg_safe_pipeline_preserves_switch_text_fallback() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
+        let out = SvgPipeline::resvg_safe().process_to_string(svg).unwrap();
+
+        assert!(
+            !out.contains("<foreignObject"),
+            "foreignObject should be stripped: {out}"
+        );
+        assert!(
+            !out.contains("<switch>"),
+            "switch should be removed: {out}"
+        );
+        assert!(
+            out.contains("Go to work"),
+            "text fallback should survive full pipeline: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_handles_journey_switch_pattern() {
+        let svg = r##"<svg><g><rect class="section-type-0"/><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section section-type-0" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333" class="journey-section section-type-0" style="text-anchor: middle;"><tspan x="425" dy="0">Go to work</tspan></text></switch></g></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "foreignObject should be stripped: {out}");
+        assert!(!out.contains("<switch>"), "switch should be removed: {out}");
+        assert!(
+            out.contains("Go to work"),
+            "section text should be preserved: {out}"
+        );
+        assert!(
+            out.contains(r#"<text x="425" y="75""#),
+            "text element should be preserved: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_still_works_without_switch() {
+        let svg = r#"<svg><foreignObject width="80" height="24"><div>Hello</div></foreignObject><text>World</text></svg>"#;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(out.contains("<text>World</text>"), "{out}");
     }
 
     #[test]

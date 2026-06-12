@@ -98,9 +98,13 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
 
             out.push_str(&svg[lt..i_next]);
 
+            // Skip generating overlay fallbacks for foreignObjects inside <switch> elements,
+            // as those already contain their own <text> fallback siblings.
+            let inside_switch = svg[..lt].trim_end().ends_with("<switch>");
+
             let width = parse_attr_f64(tag, "width").unwrap_or(0.0);
             let height = parse_attr_f64(tag, "height").unwrap_or(0.0);
-            if width > 0.0 && height > 0.0 {
+            if width > 0.0 && height > 0.0 && !inside_switch {
                 let x = parse_attr_f64(tag, "x").unwrap_or(0.0);
                 let y = parse_attr_f64(tag, "y").unwrap_or(0.0);
                 let base = sum_translate(&g_stack);
@@ -231,6 +235,21 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::foreign_object_label_fallback_svg_text;
+
+    #[test]
+    fn foreign_object_inside_switch_does_not_generate_overlay() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert_eq!(
+            out.matches("Go to work").count(),
+            2,
+            "should keep exactly 2 occurrences (foreignObject + text fallback), no overlay added: {out}"
+        );
+        assert!(
+            !out.contains(r#"data-merman-foreignobject="fallback""#),
+            "should not generate fallback overlay for switch-wrapped foreignObject: {out}"
+        );
+    }
 
     #[test]
     fn foreign_object_overlay_accounts_for_parent_translate() {
