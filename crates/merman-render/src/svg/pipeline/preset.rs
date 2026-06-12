@@ -1,7 +1,9 @@
 use super::builtin::{
     attr_sanitize::sanitize_element_attributes,
     css_sanitize::sanitize_style_elements,
-    foreign_object::{foreign_object_fallback_svg, strip_foreign_objects},
+    foreign_object::{
+        drop_switch_native_fallbacks, foreign_object_fallback_svg, strip_foreign_objects,
+    },
 };
 use std::borrow::Cow;
 
@@ -27,6 +29,7 @@ pub enum SvgPipelinePreset {
 pub(crate) enum BuiltinSvgStage {
     ForeignObjectFallback,
     StripForeignObject,
+    DropSwitchNativeFallbacks,
     SanitizeCss,
     SanitizeAttributes,
 }
@@ -36,6 +39,9 @@ impl BuiltinSvgStage {
         match self {
             Self::ForeignObjectFallback => Cow::Owned(foreign_object_fallback_svg(&svg)),
             Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
+            Self::DropSwitchNativeFallbacks => {
+                Cow::Owned(drop_switch_native_fallbacks(&svg))
+            }
             Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
             Self::SanitizeAttributes => Cow::Owned(sanitize_element_attributes(&svg)),
         }
@@ -49,6 +55,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
         SvgPipelinePreset::ResvgSafe => &[
             BuiltinSvgStage::ForeignObjectFallback,
             BuiltinSvgStage::StripForeignObject,
+            BuiltinSvgStage::DropSwitchNativeFallbacks,
             BuiltinSvgStage::SanitizeCss,
             BuiltinSvgStage::SanitizeAttributes,
         ],
@@ -84,6 +91,7 @@ mod tests {
             &[
                 BuiltinSvgStage::ForeignObjectFallback,
                 BuiltinSvgStage::StripForeignObject,
+                BuiltinSvgStage::DropSwitchNativeFallbacks,
                 BuiltinSvgStage::SanitizeCss,
                 BuiltinSvgStage::SanitizeAttributes
             ]

@@ -286,7 +286,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         out.push_str("<switch>");
         let _ = write!(
             out,
-            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
+            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}" data-merman-switch="true">"#,
             x = fmt(x),
             y = fmt(y),
             w = fmt(width),
