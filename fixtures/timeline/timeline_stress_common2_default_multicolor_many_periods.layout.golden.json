@@ -609,7 +609,8 @@
       },
       "title": "Default multicolor + many periods (no sections)",
       "title_x": 1345.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

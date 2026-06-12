@@ -141,7 +141,8 @@
       },
       "title": "Section titles with punctuation",
       "title_x": 45.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

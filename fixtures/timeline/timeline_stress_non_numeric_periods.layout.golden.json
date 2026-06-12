@@ -295,7 +295,8 @@
       },
       "title": "Non-numeric periods",
       "title_x": 445.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

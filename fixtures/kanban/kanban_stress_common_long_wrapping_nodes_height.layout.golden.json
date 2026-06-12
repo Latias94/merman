@@ -12,6 +12,7 @@
       "padding": 10.0,
       "max_label_height": 25.0,
       "viewbox_padding": 10.0,
+      "use_max_width": true,
       "sections": [
         {
           "id": "In progress",

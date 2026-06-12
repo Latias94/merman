@@ -137,7 +137,8 @@
       },
       "title": "Left margin = 0",
       "title_x": 195.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

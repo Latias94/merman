@@ -258,7 +258,8 @@
       },
       "title": "Period labels with colons (as entities)",
       "title_x": 345.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

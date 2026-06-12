@@ -303,7 +303,8 @@
       },
       "title": "MermaidChart 2023 Timeline",
       "title_x": 245.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

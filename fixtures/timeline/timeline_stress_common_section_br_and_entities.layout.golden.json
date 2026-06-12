@@ -272,7 +272,8 @@
       },
       "title": "Sections with <br> and HTML entities",
       "title_x": 145.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

@@ -448,7 +448,8 @@
       },
       "title": "Medical Device Lifecycle",
       "title_x": 345.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

@@ -207,7 +207,8 @@
       },
       "title": "Entities & ampersands in event labels",
       "title_x": 152.66,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

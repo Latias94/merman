@@ -34,6 +34,13 @@ predictably across diagram families.
 - Simplified parser and SVG parity internals behind focused modules, including the core parse
   pipeline, family renderers, presentation themes, and CSS regression tests.
 
+### Fixed
+
+- Fixed Journey raster rendering in the resvg pipeline. Thanks
+  [@vlasky](https://github.com/vlasky) for the contribution in
+  [#6](https://github.com/Latias94/merman/pull/6).
+- Refreshed Kanban and Timeline layout snapshots to restore CI.
+
 ## [0.8.0-alpha.1] - 2026-06-10
 
 This alpha starts the 0.8 line with a smaller, clearer feature surface and a real Typst package path. The default Rust crate behavior remains Mermaid-compatible, while no-default and Typst-oriented builds can now avoid host-only and full-config dependencies.

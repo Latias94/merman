@@ -266,7 +266,8 @@
       },
       "title": "Links, brackets, and <br> tokens",
       "title_x": 256.42,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

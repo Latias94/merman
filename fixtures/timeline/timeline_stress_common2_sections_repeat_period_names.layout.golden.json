@@ -237,7 +237,8 @@
       },
       "title": "Repeated period labels across sections",
       "title_x": 145.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

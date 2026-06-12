@@ -378,7 +378,8 @@
       },
       "title": "Textual periods + multi-event forms",
       "title_x": 445.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

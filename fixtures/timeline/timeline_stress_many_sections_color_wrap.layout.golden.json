@@ -881,7 +881,8 @@
       },
       "title": "Many sections (color wrap at 12+)",
       "title_x": 1345.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

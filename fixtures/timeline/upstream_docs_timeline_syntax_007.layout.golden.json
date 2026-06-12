@@ -194,7 +194,8 @@
       },
       "title": "History of Social Media Platform",
       "title_x": 245.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }

@@ -766,7 +766,8 @@
       },
       "title": "ThemeVariables label cycle + section color wrap",
       "title_x": 1145.0,
-      "title_y": 20.0
+      "title_y": 20.0,
+      "use_max_width": true
     }
   }
 }
