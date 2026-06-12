@@ -6,6 +6,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
@@ -35,8 +36,9 @@ fn wrap_actor_label_lines(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> Vec<String> {
-    let full_text_width = measurer.measure(person, style).width;
-    if full_text_width <= max_label_width.max(1.0) {
+    let max_label_width = max_label_width.max(1.0);
+    let full_text_width = journey_actor_legend_text_bbox_width_px(person, measurer, style);
+    if full_text_width <= max_label_width {
         return vec![person.to_string()];
     }
 
@@ -51,21 +53,22 @@ fn wrap_actor_label_lines(
             format!("{current_line} {word}")
         };
 
-        let test_width = measurer.measure(&test_line, style).width;
-        if test_width > max_label_width.max(1.0) {
+        let test_width = journey_actor_legend_text_bbox_width_px(&test_line, measurer, style);
+        if test_width > max_label_width {
             if !current_line.is_empty() {
                 lines.push(std::mem::take(&mut current_line));
             }
             current_line = word.to_string();
 
-            let word_width = measurer.measure(word, style).width;
-            if word_width > max_label_width.max(1.0) {
+            let word_width = journey_actor_legend_text_bbox_width_px(word, measurer, style);
+            if word_width > max_label_width {
                 let mut broken_word = String::new();
                 for ch in word.chars() {
                     broken_word.push(ch);
                     let candidate = format!("{broken_word}-");
-                    let candidate_width = measurer.measure(&candidate, style).width;
-                    if candidate_width > max_label_width.max(1.0) {
+                    let candidate_width =
+                        journey_actor_legend_text_bbox_width_px(&candidate, measurer, style);
+                    if candidate_width > max_label_width {
                         let mut head = broken_word.clone();
                         head.pop();
                         if !head.is_empty() {
@@ -92,12 +95,34 @@ fn wrap_actor_label_lines(
     }
 }
 
+fn journey_actor_legend_text_style(effective_config: &Value) -> TextStyle {
+    TextStyle {
+        font_family: Some(crate::config::config_font_family_css(effective_config)),
+        font_size: crate::config::config_theme_font_size_css_or_root_number_px(
+            effective_config,
+            16.0,
+        )
+        .max(1.0),
+        font_weight: None,
+    }
+}
+
+fn journey_actor_legend_text_bbox_width_px(
+    line: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> f64 {
+    measurer
+        .measure_svg_raw_text_bbox_width_px(line, style)
+        .max(0.0)
+}
+
 fn journey_actor_legend_line_width_px(
     line: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> f64 {
-    let width = measurer.measure_svg_text_computed_length_px(line, style);
+    let width = journey_actor_legend_text_bbox_width_px(line, measurer, style);
     if width.is_finite() && width > 0.0 {
         (width * 32.0).floor() / 32.0
     } else {
@@ -144,7 +169,7 @@ pub fn layout_journey_diagram_typed(
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let legend_style = cfg.task_text_style.clone();
+    let legend_style = journey_actor_legend_text_style(effective_config);
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
@@ -364,7 +389,7 @@ pub fn layout_journey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{DeterministicTextMeasurer, TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{DeterministicTextMeasurer, VendoredFontMetricsTextMeasurer};
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
     use serde_json::json;
 
@@ -393,9 +418,9 @@ mod tests {
     }
 
     #[test]
-    fn journey_actor_legend_width_uses_single_run_computed_length_lattice() {
+    fn journey_actor_legend_width_uses_browser_bbox_lattice() {
         let measurer = VendoredFontMetricsTextMeasurer::default();
-        let style = TextStyle::default();
+        let style = super::journey_actor_legend_text_style(&json!({}));
 
         assert_eq!(
             super::journey_actor_legend_line_width_px(
@@ -403,7 +428,7 @@ mod tests {
                 &measurer,
                 &style
             ),
-            191.6875
+            192.28125
         );
         assert_eq!(
             super::journey_actor_legend_line_width_px(
@@ -411,7 +436,29 @@ mod tests {
                 &measurer,
                 &style
             ),
-            318.5625
+            318.53125
+        );
+    }
+
+    #[test]
+    fn journey_actor_legend_wraps_with_mermaid_legend_text_style_and_config_width() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = super::journey_actor_legend_text_style(&json!({}));
+
+        let lines = super::wrap_actor_label_lines(
+            "This is a long label that will be split into multiple lines to test the wrapping functionality",
+            320.0,
+            &measurer,
+            &style,
+        );
+
+        assert_eq!(
+            lines,
+            vec![
+                "This is a long label that will be split into".to_string(),
+                "multiple lines to test the wrapping".to_string(),
+                "functionality".to_string(),
+            ]
         );
     }
 }

@@ -70,7 +70,6 @@ impl<'a> JourneyConfigView<'a> {
                 .max(1.0),
             actor_colours: self.actor_colours(),
             section_fills: self.section_fills(),
-            task_text_style: self.task_text_style(),
             use_max_width: self.use_max_width(),
         }
     }
@@ -151,7 +150,6 @@ pub(crate) struct JourneyLayoutSettings {
     pub(crate) cell_height: f64,
     pub(crate) actor_colours: Vec<String>,
     pub(crate) section_fills: Vec<String>,
-    pub(crate) task_text_style: TextStyle,
     pub(crate) use_max_width: bool,
 }
 
@@ -186,11 +184,6 @@ mod tests {
         assert_eq!(settings.cell_width, DEFAULT_CELL_WIDTH);
         assert_eq!(settings.cell_height, DEFAULT_CELL_HEIGHT);
         assert!(settings.use_max_width);
-        assert_eq!(
-            settings.task_text_style.font_family.as_deref(),
-            Some(DEFAULT_TASK_FONT_FAMILY)
-        );
-        assert_eq!(settings.task_text_style.font_size, DEFAULT_TASK_FONT_SIZE);
         assert_eq!(settings.actor_colours.len(), DEFAULT_ACTOR_COLOURS.len());
         assert_eq!(settings.section_fills.len(), DEFAULT_SECTION_FILLS.len());
     }
@@ -224,11 +217,6 @@ mod tests {
         assert_eq!(settings.task_margin, 90.0);
         assert_eq!(settings.cell_width, 170.0);
         assert_eq!(settings.cell_height, 70.0);
-        assert_eq!(settings.task_text_style.font_size, 20.0);
-        assert_eq!(
-            settings.task_text_style.font_family.as_deref(),
-            Some("Inter, sans-serif")
-        );
         assert_eq!(settings.actor_colours, vec!["#111", "#222"]);
         assert_eq!(settings.section_fills, vec!["#333", "#444"]);
         assert!(!settings.use_max_width);

@@ -5,17 +5,17 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -25.0,
-        "max_x": 697.625,
+        "max_x": 694.188,
         "max_y": 515.0
       },
-      "left_margin": 248.813,
-      "max_actor_label_width": 98.813,
-      "width": 697.625,
+      "left_margin": 247.094,
+      "max_actor_label_width": 97.094,
+      "width": 694.188,
       "height": 470.0,
       "svg_height": 565.0,
       "use_max_width": true,
       "title": "Long Word Test",
-      "title_x": 248.813,
+      "title_x": 247.094,
       "title_y": 25.0,
       "actor_legend": [
         {
@@ -27,16 +27,23 @@
           "circle_r": 7.0,
           "label_lines": [
             {
-              "text": "Supercalifragilis-",
+              "text": "Supercalifragi-",
               "x": 40.0,
               "y": 67.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             },
             {
-              "text": "ticexpialidocious",
+              "text": "listicexpialido-",
               "x": 40.0,
               "y": 87.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            },
+            {
+              "text": "cious",
+              "x": 40.0,
+              "y": 107.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -47,7 +54,7 @@
         {
           "section": "Test",
           "num": 0.0,
-          "x": 248.813,
+          "x": 247.094,
           "y": 50.0,
           "width": 150.0,
           "height": 50.0,
@@ -61,7 +68,7 @@
           "section": "Test",
           "task": "    VeryLongWord",
           "score": 5.0,
-          "x": 248.813,
+          "x": 247.094,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -75,25 +82,25 @@
               "actor": "Supercalifragilisticexpialidocious",
               "pos": 0.0,
               "color": "#8FBC8F",
-              "cx": 262.813,
+              "cx": 261.094,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task0",
-          "line_x1": 323.813,
+          "line_x1": 322.094,
           "line_y1": 110.0,
-          "line_x2": 323.813,
+          "line_x2": 322.094,
           "line_y2": 450.0,
-          "face_cx": 323.813,
+          "face_cx": 322.094,
           "face_cy": 300.0,
           "mouth": "Smile"
         }
       ],
       "activity_line": {
-        "x1": 248.813,
+        "x1": 247.094,
         "y1": 200.0,
-        "x2": 444.813,
+        "x2": 443.094,
         "y2": 200.0
       }
     }
