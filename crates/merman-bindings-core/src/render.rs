@@ -468,12 +468,43 @@ mod tests {
     }
 
     #[test]
-    fn svg_options_can_drop_native_duplicate_fallbacks() {
+    fn readable_svg_options_can_drop_native_duplicate_fallbacks() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
   <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
 </g>
+<g transform="translate(0,40)">
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
+</g>
+</svg>"##;
+
+        let cleanup_options = parse_options(
+            br#"{"svg":{"pipeline":"readable","drop_native_duplicate_fallbacks":true}}"#,
+        )
+        .unwrap();
+        let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
+        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+
+        assert_eq!(
+            cleanup_out
+                .matches(r#"data-merman-foreignobject="fallback""#)
+                .count(),
+            1,
+            "{cleanup_out}"
+        );
+        assert!(cleanup_out.contains("Only fallback"));
+        assert!(cleanup_out.contains(r#"<text class="task">Make tea</text>"#));
+        assert!(cleanup_out.contains("<foreignObject"));
+    }
+
+    #[test]
+    fn resvg_safe_svg_options_do_not_add_generic_duplicate_cleanup() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
+<switch>
+  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
+  <text class="task">Make tea</text>
+</switch>
 <g transform="translate(0,40)">
   <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
 </g>
@@ -486,7 +517,7 @@ mod tests {
             default_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
                 .count(),
-            2,
+            1,
             "{default_out}"
         );
 
@@ -496,6 +527,8 @@ mod tests {
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
         let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+
+        assert_eq!(cleanup_out, default_out);
 
         assert_eq!(
             cleanup_out

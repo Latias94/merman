@@ -77,7 +77,6 @@ Bindings accept the same profile through `host_theme`:
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "drop_native_duplicate_fallbacks": true,
       "css_override_policy": "strip-existing-important"
     }
   }
@@ -92,7 +91,10 @@ Bindings accept the same profile through `host_theme`:
 
 The profile intentionally avoids editor-specific concepts such as player colors, GPUI color types, or product-owned class names. Hosts can still append custom `SvgPostprocessor` passes for those semantics.
 
-`resvg-safe` output includes a best-effort fallback for HTML labels. When labels do not carry inline color, the fallback text inherits nearby Mermaid CSS or the root SVG fill before using its legacy default, so dark editor previews remain readable.
+`resvg-safe` output includes a best-effort fallback for HTML labels and removes generated fallback
+groups when Mermaid already provides native SVG `<switch>` text fallbacks. When labels do not carry
+inline color, the fallback text inherits nearby Mermaid CSS or the root SVG fill before using its
+legacy default, so dark editor previews remain readable.
 
 Series palette is mapped to Mermaid's existing palette entry points such as `cScale*`, `git*`, `pie*`, `venn*`, `fillType*`, and `xyChart.plotColorPalette`. Diagram families with data-keyed palettes, such as Sankey node ids, still need raw diagram config or a host postprocessor.
 

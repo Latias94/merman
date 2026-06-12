@@ -33,7 +33,6 @@ numeric values return binding errors instead of panicking.
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "drop_native_duplicate_fallbacks": true,
       "css_override_policy": "strip-existing-important"
     }
   },
@@ -147,7 +146,6 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
     "output": {
       "pipeline": "resvg-safe",
       "root_background": "canvas",
-      "drop_native_duplicate_fallbacks": true,
       "css_override_policy": "strip-existing-important"
     }
   }
@@ -197,12 +195,14 @@ font metrics when available.
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
 | `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
-| `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Drops generated fallback label groups only when their text duplicates native SVG `<text>`. Useful with `readable` or `resvg-safe` for hosts that rasterize or restyle SVG output. |
+| `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup for non-`resvg-safe` pipelines. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks. |
 
 `readable` keeps a more inspectable SVG structure. `resvg-safe` rewrites SVG output toward stricter
-renderer compatibility. `drop_native_duplicate_fallbacks` is opt-in so fallback-only labels are not
-lost by default. HTML label fallback text inherits Mermaid label/root fill colors when available, so
-dark host profiles do not fall back to unreadable legacy text colors.
+renderer compatibility, including structural cleanup for labels that already include native SVG
+`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` remains available for hosts composing
+non-`resvg-safe` pipelines, and its generic text matching should be treated as an explicit
+postprocessing choice. HTML label fallback text inherits Mermaid label/root fill colors when
+available, so dark host profiles do not fall back to unreadable legacy text colors.
 
 `svg.scoped_css` is for host-owned styling, not Mermaid parity CSS. Selectors are scoped to the
 root SVG id and injected after Mermaid's styles so host rules have normal cascade priority. When
@@ -245,12 +245,12 @@ External Mermaid theme defaults for plain source:
 }
 ```
 
-Resvg-safe SVG with duplicate native/fallback labels removed:
+Readable SVG with generic duplicate native/fallback labels removed:
 
 ```json
 {
   "svg": {
-    "pipeline": "resvg-safe",
+    "pipeline": "readable",
     "drop_native_duplicate_fallbacks": true
   }
 }

@@ -195,14 +195,14 @@ impl HostThemeOutput {
     /// Returns product-neutral defaults for editor previews and raster-oriented host surfaces.
     ///
     /// The preset selects `resvg-safe` output, strips existing `!important` CSS so host theme rules
-    /// can win predictably, uses the profile canvas as the root SVG background, and enables
-    /// duplicate fallback cleanup. Callers can still add scoped CSS or override individual fields.
+    /// can win predictably, and uses the profile canvas as the root SVG background. Callers can
+    /// still add scoped CSS or override individual fields.
     pub fn resvg_safe_editor() -> Self {
         Self {
             pipeline: HostThemePipelinePreset::ResvgSafe,
             css_override_policy: CssOverridePolicy::StripExistingImportant,
             root_background: HostThemeRootBackground::Canvas,
-            drop_native_duplicate_fallbacks: true,
+            drop_native_duplicate_fallbacks: false,
             scoped_css: None,
         }
     }
@@ -708,7 +708,9 @@ impl CompiledHostThemeOutput {
             pipeline.push_postprocessor(CssOverridePostprocessor::strip_existing_important());
         }
 
-        if self.drop_native_duplicate_fallbacks {
+        if self.drop_native_duplicate_fallbacks
+            && !matches!(self.preset, SvgPipelinePreset::ResvgSafe)
+        {
             pipeline.push_postprocessor(DropNativeDuplicateFallbacksPostprocessor);
         }
 
@@ -1417,6 +1419,10 @@ mod tests {
             assert_eq!(
                 compiled.output.preset,
                 SvgPipelinePreset::ResvgSafe,
+                "{preset:?}"
+            );
+            assert!(
+                !compiled.output.drop_native_duplicate_fallbacks,
                 "{preset:?}"
             );
             assert_eq!(

@@ -181,17 +181,18 @@ compatibility policy for the CSS they provide.
 without relying on CSS cascade over an inline style. Passing `"transparent"` keeps the canvas
 transparent for hosts that composite diagrams over their own background.
 
-Binding consumers can opt into the generic duplicate-fallback cleanup without writing a Rust
-postprocessor:
+Binding consumers can opt into generic duplicate-fallback cleanup for non-`resvg-safe` pipelines
+without writing a Rust postprocessor:
 
 ```json
 {
   "svg": {
-    "pipeline": "resvg-safe",
+    "pipeline": "readable",
     "drop_native_duplicate_fallbacks": true
   }
 }
 ```
 
-This removes fallback groups only when their text duplicates native SVG `<text>` output. It does not
-apply host palette replacement or remove fallback-only labels.
+`resvg-safe` includes structural cleanup for generated fallback groups tied to native SVG
+`<switch>` text fallbacks. This option is still useful when a host intentionally uses `readable`
+plus extra raster or styling passes. It does not apply host palette replacement.
