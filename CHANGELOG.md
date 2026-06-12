@@ -34,6 +34,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected C4 layout and SVG render configuration through a family-owned config view, centralizing diagram margins, shape sizing, font fallback, wrap behavior, and max-width semantics behind `C4ConfigView` and the layout contract.
 - Split the C4 layout kernel into a dedicated `c4/layout.rs` module so the facade stays thin and the layout engine owns its own internal state.
 - Deepened SVG parity internals by moving family render implementations behind thin wrapper modules, splitting presentation-theme family parsers and tests from the theme type definitions, and extracting shared color helpers.
+- Moved SVG parity CSS regression tests into their own module so CSS generation stays easier to scan.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
