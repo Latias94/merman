@@ -1,7 +1,7 @@
 # Flowchart 11.15 SVG Convergence - Handoff
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-12
 
 ## Current State
 
@@ -23,9 +23,9 @@ and trimmed shapeData markdown block trailing newlines. The latest supported-DOM
 aligned non-markdown subgraph title wrapping, empty subgraph node ids, non-markdown edge label
 paragraph wrappers, and literal `\n` handling in `nonMarkdownToHTML`. The supported fresh Flowchart
 comparison now passes with zero canonical XML mismatches and one documented skip for the unsupported
-`flowchart-elk` local layout family. Stored Flowchart upstream SVG baselines have now been refreshed
-to Mermaid 11.15: 1069 SVGs changed and 4 stale parser-only KaTeX SVG baselines were removed.
-Both stored Flowchart gates pass.
+`flowchart-elk` local layout family. Stored Flowchart upstream SVG baselines have been refreshed to
+Mermaid 11.15, and the four former parser-only KaTeX demo fixtures are now active `*_katex`
+semantic/layout/SVG baselines. Both stored Flowchart gates pass.
 
 ## Active Task
 
@@ -68,9 +68,9 @@ Both stored Flowchart gates pass.
   `compare-svg-xml` gate skips only
   `flowchart/upstream_html_demos_flowchart_elk_flowchart_elk_001` with a local-policy reason until a
   dedicated ELK layout lane lands.
-- The four historical stored `*_parser_only_katex.svg` Flowchart baselines are stale under Mermaid
-  11.15 and were removed. The shared `xtask` upstream SVG policy now skips those fixtures, plus the
-  existing ellipse parser-only fixture, for upstream SVG generation/check/compare.
+- The four former `*_parser_only_katex` Flowchart demo fixtures are now active `*_katex` fixtures
+  with upstream SVG baselines and Node/Puppeteer KaTeX measurement. The shared `xtask` upstream SVG
+  policy now only skips the existing Flowchart ellipse parser-only fixture in this family.
 
 ## Blockers
 

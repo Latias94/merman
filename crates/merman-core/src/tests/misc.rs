@@ -336,6 +336,42 @@ architecture-beta
 }
 
 #[test]
+fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
+    let engine = Engine::new();
+    let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B", ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let config = meta.effective_config.as_value();
+
+    let eventmodeling = &config["eventmodeling"];
+    assert_eq!(eventmodeling["padding"], json!(30));
+    assert_eq!(eventmodeling["rowHeight"], json!(32));
+
+    let tree_view = &config["treeView"];
+    assert_eq!(tree_view["rowIndent"], json!(10));
+    assert_eq!(tree_view["paddingX"], json!(5));
+    assert_eq!(tree_view["paddingY"], json!(5));
+    assert_eq!(tree_view["lineThickness"], json!(1));
+
+    let ishikawa = &config["ishikawa"];
+    assert_eq!(ishikawa["diagramPadding"], json!(20));
+    assert_eq!(ishikawa["useMaxWidth"], json!(false));
+
+    let venn = &config["venn"];
+    assert_eq!(venn["width"], json!(800));
+    assert_eq!(venn["height"], json!(450));
+    assert_eq!(venn["padding"], json!(8));
+    assert_eq!(venn["useDebugLayout"], json!(false));
+
+    for unsupported_key in ["wardley-beta", "cynefin", "railroad"] {
+        assert!(
+            config.get(unsupported_key).is_none(),
+            "{unsupported_key} should stay outside generated defaults until admitted"
+        );
+    }
+}
+
+#[test]
 fn site_config_deep_merge_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
     let site_config = MermaidConfig::from_value(deep_config_value(
@@ -1634,6 +1670,7 @@ fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
     assert_eq!(sankey["nodePadding"], json!(12));
     assert_eq!(sankey["labelStyle"], json!("legacy"));
     assert_eq!(sankey["nodeColors"], json!({}));
+    assert_eq!(sankey["useMaxWidth"], json!(false));
 
     let configured = block_on(engine.parse_metadata(
         r##"%%{init: {"sankey": {"nodeWidth": 24, "nodePadding": 18, "labelStyle": "outlined", "nodeColors": {"A": "#112233"}}}}%%

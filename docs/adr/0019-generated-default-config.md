@@ -23,7 +23,7 @@ defaults should be stable across environments and CI.
 - Apply the reviewed local override manifest after schema extraction:
   - `crates/xtask/default_config_overrides.json`
   - The manifest records JSON replacements for upstream non-JSON defaults, empirically required
-    parity overrides, and explicitly deferred/out-of-scope 11.15 config families.
+    parity overrides, and explicitly unsupported or not-admitted config families.
 - Add verification commands for CI/local checks:
   - default config only: `cargo run -p xtask -- verify-default-config`
   - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
@@ -32,6 +32,9 @@ defaults should be stable across environments and CI.
   known to differ from generated schema defaults, when upstream introduces non-JSON defaults, or
   when local support scope intentionally excludes a newly introduced config family/key. Back
   behavior-affecting overrides with parity tests.
+- Do not remove generated config defaults for diagrams admitted to the primary SVG matrix when the
+  pinned Mermaid schema exposes a matching root config key. `admission.rs` owns a regression test
+  that cross-checks the admission inventory against `default_config_overrides.json`.
 
 ## Consequences
 

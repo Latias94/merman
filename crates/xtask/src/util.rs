@@ -183,14 +183,16 @@ pub(crate) fn expand_schema(schema: &YamlValue, root: &YamlValue) -> YamlValue {
         .cloned();
 
     if let Some(all_of) = all_of {
-        let mut merged = schema.clone();
-        if let Some(m) = merged.as_mapping_mut() {
-            m.remove(YamlValue::String("allOf".to_string()));
-        }
+        let mut merged = YamlValue::Mapping(Default::default());
         for s in all_of {
             let s = expand_schema(&s, root);
             merged = merge_yaml(merged, s);
         }
+        let mut overlay = schema.clone();
+        if let Some(m) = overlay.as_mapping_mut() {
+            m.remove(YamlValue::String("allOf".to_string()));
+        }
+        merged = merge_yaml(merged, overlay);
         merged
     } else {
         schema
@@ -258,4 +260,50 @@ pub(crate) fn merge_yaml(mut base: YamlValue, overlay: YamlValue) -> YamlValue {
 
 pub(crate) fn yaml_to_json(v: &YamlValue) -> Result<JsonValue, serde_json::Error> {
     serde_json::to_value(v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extract_defaults_all_of_keeps_local_property_defaults_over_refs() {
+        let schema: YamlValue = serde_yaml::from_str(
+            r#"
+$defs:
+  BaseDiagramConfig:
+    type: object
+    properties:
+      useMaxWidth:
+        type: boolean
+        default: true
+properties:
+  ishikawa:
+    allOf:
+      - $ref: '#/$defs/BaseDiagramConfig'
+    type: object
+    properties:
+      useMaxWidth:
+        type: boolean
+        default: false
+      diagramPadding:
+        type: integer
+        default: 20
+"#,
+        )
+        .expect("schema should parse");
+
+        let defaults = extract_defaults(&schema, &schema).expect("schema should produce defaults");
+
+        assert_eq!(
+            defaults,
+            json!({
+                "ishikawa": {
+                    "diagramPadding": 20,
+                    "useMaxWidth": false
+                }
+            })
+        );
+    }
 }

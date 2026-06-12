@@ -1,4 +1,4 @@
-# Gantt Upstream Test Coverage (Mermaid@11.12.3)
+# Gantt Upstream Test Coverage (Mermaid@11.15.0)
 
 This document tracks which upstream Mermaid gantt tests are covered in `merman` via:
 
@@ -10,7 +10,7 @@ Headless layout coverage for the same fixture set is tracked via layout snapshot
 - layout goldens under `fixtures/gantt/*.layout.golden.json`
 - validator: `cargo nextest run -p merman-render` (layout snapshot test)
 
-Scope: Mermaid tag `@11.12.3`.
+Scope: Mermaid tag `@11.15.0`.
 
 ## External regression cases
 

@@ -1,7 +1,7 @@
 # Mermaid 11.15 Complete Adaptation - Evidence And Gates
 
 Status: Closed
-Last updated: 2026-06-01
+Last updated: 2026-06-12
 
 ## Smallest Current Repro
 
@@ -76,6 +76,13 @@ git diff --check
 ```
 
 ## Evidence Log
+
+- 2026-06-12 post-closeout Flowchart KaTeX coverage correction:
+  - The four Flowchart KaTeX HTML-demo fixtures that were temporarily treated as parser-only during
+    the 11.15 baseline refresh are now active `*_katex` fixtures with semantic snapshots, layout
+    snapshots, and upstream SVG baselines.
+  - The shared upstream SVG skip policy no longer skips KaTeX fixtures; `audit-gaps` with upstream
+    renderability checks now reports 0 actionable parser-only gaps.
 
 - 2026-05-31 lane opening:
   - Goal: close Mermaid 11.15 complete-adaptation campaign by making the implemented diagram matrix
@@ -309,8 +316,8 @@ git diff --check
     passed. `target/compare/xml/xml_report.md` reports `Mismatches (0)` and one documented
     `flowchart-elk` skip.
   - Stored Flowchart baselines were refreshed to Mermaid 11.15: 1069 SVG files changed and 4 stale
-    parser-only KaTeX SVG baselines were removed because upstream Mermaid 11.15 no longer
-    regenerates them.
+    parser-only KaTeX SVG baselines were removed at that point. Those KaTeX fixtures were later
+    promoted to active `*_katex` baselines in the 2026-06-12 post-closeout correction above.
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:
     passed; `target/compare/flowchart_report.md` reports `All fixtures matched` plus the documented
     `flowchart-elk` skip.

@@ -124,14 +124,15 @@ Last updated: 2026-06-01
   Evidence: `EVIDENCE_AND_GATES.md`
   Context: this workstream plus `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
   Handoff: DONE. Stored Flowchart upstream SVG baselines were refreshed to Mermaid 11.15. The
-  refresh updated 1069 SVGs and removed 4 stale parser-only KaTeX SVG baselines that upstream
-  Mermaid 11.15 no longer regenerates. `compare-flowchart-svgs --check-dom --dom-mode parity
-  --dom-decimals 3` and stored `compare-svg-xml --check --diagram flowchart --dom-mode parity
-  --dom-decimals 3` both pass with only the documented `flowchart-elk` skip.
+  refresh updated 1069 SVGs and removed 4 stale parser-only KaTeX SVG baselines at the time; the
+  2026-06-12 cleanup promoted those cases to active `*_katex` semantic/layout/SVG baselines.
+  `compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3` and stored
+  `compare-svg-xml --check --diagram flowchart --dom-mode parity --dom-decimals 3` both pass with
+  only the documented `flowchart-elk` skip.
 
 ## M4 - Closeout And Umbrella Reintegration
 
-- [ ] F115-090 [owner=planner] [deps=F115-080] [scope=docs/workstreams/flowchart-11-15-svg-convergence,docs/workstreams/mermaid-11-15-complete-adaptation]
+- [x] F115-090 [owner=codex] [deps=F115-080] [scope=docs/workstreams/flowchart-11-15-svg-convergence,docs/workstreams/mermaid-11-15-complete-adaptation]
   Goal: Close this child lane or split any remaining Flowchart 11.15 work into narrower lanes, then
   update M15C-060 evidence.
   Validation: `review-workstream`; `verify-rust-workstream`; umbrella full parity gate re-run or
@@ -139,5 +140,8 @@ Last updated: 2026-06-01
   Review: No partial renderer convergence may be reported as complete without fresh gate evidence.
   Evidence: this workstream and `docs/workstreams/mermaid-11-15-complete-adaptation/EVIDENCE_AND_GATES.md`
   Context: this workstream and umbrella workstream.
-  Handoff: READY. Flowchart no longer appears in the umbrella `compare-all-svgs` failure set; the
-  current remaining failures are ER and Class.
+  Handoff: DONE. Flowchart no longer appears in the umbrella `compare-all-svgs` failure set. The
+  2026-06-12 cleanup also removed stale KaTeX parser-only duplicates, updated the shared upstream
+  SVG skip policy, refreshed active coverage/status docs to Mermaid 11.15.0, and left
+  `audit-gaps --check-upstream-render --check-upstream-render-deferred-ok` with 0 actionable
+  parser-only renderability gaps.

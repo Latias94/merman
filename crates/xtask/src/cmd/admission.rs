@@ -531,6 +531,16 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    fn diagram_config_key(diagram: &'static str) -> Option<&'static str> {
+        match diagram {
+            "gitgraph" => Some("gitGraph"),
+            "quadrantchart" => Some("quadrantChart"),
+            "treemap" => None,
+            "xychart" => Some("xyChart"),
+            other => Some(other),
+        }
+    }
+
     fn record(diagram: &str) -> DiagramAdmissionRecord {
         admission_inventory()
             .iter()
@@ -549,6 +559,111 @@ mod tests {
         assert!(diagrams.contains(&"venn"));
         assert!(!diagrams.contains(&"zenuml"));
         assert!(!diagrams.contains(&"error"));
+    }
+
+    #[test]
+    fn default_config_overrides_do_not_remove_primary_svg_config_keys() {
+        let overrides_path = crate::cmd::workspace_root()
+            .join("crates")
+            .join("xtask")
+            .join("default_config_overrides.json");
+        let overrides_text =
+            fs::read_to_string(&overrides_path).expect("default config overrides should read");
+        let overrides: Vec<serde_json::Value> =
+            serde_json::from_str(&overrides_text).expect("default config overrides should parse");
+        let removed_keys: BTreeSet<String> = overrides
+            .iter()
+            .filter(|entry| entry.get("op").and_then(serde_json::Value::as_str) == Some("remove"))
+            .filter_map(|entry| {
+                entry
+                    .get("path")
+                    .and_then(serde_json::Value::as_array)?
+                    .first()
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect();
+
+        let schema_path = crate::cmd::mermaid_repo_root()
+            .join("packages")
+            .join("mermaid")
+            .join("src")
+            .join("schemas")
+            .join("config.schema.yaml");
+        let schema_text =
+            fs::read_to_string(&schema_path).expect("Mermaid config schema should read");
+        let schema: serde_yaml::Value =
+            serde_yaml::from_str(&schema_text).expect("Mermaid config schema should parse");
+        let schema_properties = schema
+            .get("properties")
+            .and_then(serde_yaml::Value::as_mapping)
+            .expect("Mermaid config schema should expose root properties");
+        let schema_keys: BTreeSet<String> = schema_properties
+            .keys()
+            .filter_map(serde_yaml::Value::as_str)
+            .map(str::to_string)
+            .collect();
+
+        let removed_admitted_keys: Vec<String> = admission_inventory()
+            .iter()
+            .copied()
+            .filter(|record| record.is_primary_svg_matrix())
+            .filter_map(|record| {
+                diagram_config_key(record.diagram).map(|key| (record.diagram, key))
+            })
+            .filter(|(_, key)| schema_keys.contains(*key) && removed_keys.contains(*key))
+            .map(|(diagram, key)| format!("{diagram} (`{key}`)"))
+            .collect();
+
+        assert!(
+            removed_admitted_keys.is_empty(),
+            "default config overrides remove admitted primary SVG config keys: {}",
+            removed_admitted_keys.join(", ")
+        );
+    }
+
+    #[test]
+    fn default_config_overrides_keep_runtime_defaults_proven_by_local_tests() {
+        let overrides_path = crate::cmd::workspace_root()
+            .join("crates")
+            .join("xtask")
+            .join("default_config_overrides.json");
+        let overrides_text =
+            fs::read_to_string(&overrides_path).expect("default config overrides should read");
+        let overrides: Vec<serde_json::Value> =
+            serde_json::from_str(&overrides_text).expect("default config overrides should parse");
+
+        let expected = [
+            (["architecture", "seed"].as_slice(), serde_json::json!(1)),
+            (["pie", "donutHole"].as_slice(), serde_json::json!(0)),
+            (["pie", "highlightSlice"].as_slice(), serde_json::json!("")),
+            (
+                ["pie", "legendPosition"].as_slice(),
+                serde_json::json!("right"),
+            ),
+        ];
+
+        for (path, value) in expected {
+            let found = overrides.iter().any(|entry| {
+                entry.get("op").and_then(serde_json::Value::as_str) == Some("set")
+                    && entry
+                        .get("path")
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|actual_path| {
+                            actual_path
+                                .iter()
+                                .filter_map(serde_json::Value::as_str)
+                                .eq(path.iter().copied())
+                        })
+                    && entry.get("value") == Some(&value)
+            });
+            assert!(
+                found,
+                "default config overrides should preserve tested runtime default {} = {}",
+                path.join("."),
+                value
+            );
+        }
     }
 
     #[test]

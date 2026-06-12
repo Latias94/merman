@@ -2,7 +2,7 @@
 
 Status: Active
 Baseline: Mermaid `@11.15.0`
-Last updated: 2026-06-06
+Last updated: 2026-06-12
 
 The structured admission inventory lives in `crates/xtask/src/cmd/admission.rs`.
 
@@ -32,6 +32,9 @@ Current consumers:
 - `xtask check-alignment` also checks that semantic/layout/SVG-covered records are backed by the
   corresponding `merman-core` family capability facts, and that families marked outside the pinned
   baseline are absent from those facts.
+- Admission unit tests also cross-check `crates/xtask/default_config_overrides.json` so primary
+  SVG matrix diagrams with matching pinned-schema config keys are not removed from generated
+  defaults.
 
 This inventory does not move fixtures or admit unsupported families by itself. Promotion still
 requires the gates in `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.

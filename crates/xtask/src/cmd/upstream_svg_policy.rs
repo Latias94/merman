@@ -23,18 +23,6 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
                 "upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture",
             );
         }
-
-        if matches!(
-            stem,
-            "upstream_html_demos_flowchart_flowchart_040_parser_only_katex"
-                | "upstream_html_demos_flowchart_flowchart_042_parser_only_katex"
-                | "upstream_html_demos_flowchart_flowchart_044_parser_only_katex"
-                | "upstream_html_demos_flowchart_graph_039_parser_only_katex"
-        ) {
-            return Some(
-                "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture",
-            );
-        }
     }
 
     None
@@ -53,11 +41,16 @@ mod tests {
         assert_eq!(
             upstream_svg_baseline_skip_reason(
                 "flowchart",
-                "upstream_html_demos_flowchart_flowchart_040_parser_only_katex.svg"
+                "upstream_flow_text_ellipse_vertex_parser_only_spec.svg"
             ),
-            Some(
-                "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture"
-            )
+            Some("upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture")
+        );
+        assert_eq!(
+            upstream_svg_baseline_skip_reason(
+                "flowchart",
+                "upstream_html_demos_flowchart_flowchart_040_katex.svg"
+            ),
+            None
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),

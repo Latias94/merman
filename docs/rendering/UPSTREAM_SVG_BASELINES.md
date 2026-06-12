@@ -212,14 +212,17 @@ Convention:
   - `xtask gen-upstream-svgs`
   - `xtask check-upstream-svgs`
   - diagram compare tasks like `xtask compare-flowchart-svgs`
+- Flowchart KaTeX HTML-demo fixtures are an explicit non-example: the active files use `*_katex`
+  stems and participate in upstream SVG generation/check/compare through the Node/Puppeteer KaTeX
+  measurement backend.
 
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by Mermaid CLI `@11.12.3` (Langium parser), often due to shorthand syntax.
+rejected by the pinned Mermaid CLI (currently `@11.15.0`), often due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
-comparisons, we add `*_normalized` variants that rewrite the input into the Mermaid@11.12.3 grammar.
+comparisons, we add `*_normalized` variants that rewrite the input into the pinned Mermaid grammar.
 
 Rule of thumb:
 
@@ -250,7 +253,7 @@ Notes:
 - Mermaid derives C4 type-line `textLength` values from browser font metrics
   (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
   `merman-render` now owns the observed `textLength` values for built-in C4 shape types directly
-  in `crates/merman-render/src/svg/parity/c4.rs` at Mermaid `11.12.3`.
+  in `crates/merman-render/src/svg/parity/c4.rs` at Mermaid `11.15.0`.
 
 ## Generate (All supported diagrams)
 

@@ -1,7 +1,7 @@
 # Flowchart 11.15 SVG Convergence - Evidence And Gates
 
 Status: Active
-Last updated: 2026-06-01
+Last updated: 2026-06-12
 
 ## Smallest Current Repro
 
@@ -60,6 +60,23 @@ git diff --check
 ```
 
 ## Evidence Log
+
+- 2026-06-12 Flowchart KaTeX fixture promotion cleanup:
+  - Removed the four stale `*_parser_only_katex` Flowchart fixture copies now covered by active
+    `*_katex` semantic, layout, and upstream SVG baselines:
+    `upstream_html_demos_flowchart_flowchart_040_katex`,
+    `upstream_html_demos_flowchart_flowchart_042_katex`,
+    `upstream_html_demos_flowchart_flowchart_044_katex`, and
+    `upstream_html_demos_flowchart_graph_039_katex`.
+  - Updated the shared `xtask` upstream SVG baseline skip policy so KaTeX fixtures are no longer
+    skipped. The Flowchart family skip now only covers
+    `upstream_flow_text_ellipse_vertex_parser_only_spec`, which Mermaid 11.15 rejects with
+    `No such shape: ellipse`.
+  - `cargo run -p xtask -- audit-gaps --out target\audit\gaps-renderability-after-katex.md --limit 80 --check-upstream-render --check-upstream-render-deferred-ok --upstream-timeout-secs 30`:
+    passed; parser-only fixtures dropped to 6 total, Flowchart parser-only dropped to 1, and
+    actionable parser-only renderability gaps dropped to 0.
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3 --filter katex`:
+    passed.
 
 - 2026-06-01 M15C-060 Flowchart triage:
   - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --filter upstream_docs_math_flowcharts_001 --out target/upstream-svgs-11-15-flowchart-probe`:
@@ -347,15 +364,16 @@ git diff --check
   - `cargo run -p xtask -- gen-upstream-svgs --diagram flowchart --out fixtures/upstream-svgs`:
     the shell command timed out after 15 minutes, but the original `xtask` process continued writing
     Flowchart SVG baselines and exited after reaching the `upstream_pkgtests_subgraph_*` fixtures.
-  - The stored Flowchart baseline set now has 1070 SVG files. The refresh changed 1069 SVGs and
-    removed 4 stale parser-only KaTeX SVG baselines that Mermaid 11.15 does not regenerate:
+  - The stored Flowchart baseline set had 1070 SVG files at this point. The refresh changed 1069
+    SVGs and removed 4 stale parser-only KaTeX SVG baselines:
     `upstream_html_demos_flowchart_flowchart_040_parser_only_katex`,
     `upstream_html_demos_flowchart_flowchart_042_parser_only_katex`,
     `upstream_html_demos_flowchart_flowchart_044_parser_only_katex`, and
     `upstream_html_demos_flowchart_graph_039_parser_only_katex`.
-  - Added a shared `xtask` upstream SVG baseline skip policy so generation/check/compare agree on
-    the known upstream-render gaps: the four parser-only KaTeX HTML-demo fixtures, the existing
-    ellipse parser-only fixture, and the existing Sequence `(end)` fixture.
+  - Added a shared `xtask` upstream SVG baseline skip policy so generation/check/compare agreed on
+    the then-known upstream-render gaps: the four parser-only KaTeX HTML-demo fixtures, the existing
+    ellipse parser-only fixture, and the existing Sequence `(end)` fixture. The KaTeX skip was later
+    removed by the 2026-06-12 fixture promotion cleanup above.
   - `cargo nextest run -p xtask upstream_svg_baseline_skip_reason svg_xml_compare_skip_reason`:
     passed, 4 tests.
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`:

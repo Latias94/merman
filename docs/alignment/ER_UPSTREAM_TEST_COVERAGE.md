@@ -1,4 +1,4 @@
-# ER Upstream Test Coverage (Mermaid@11.12.3)
+# ER Upstream Test Coverage (Mermaid@11.15.0)
 
 This document tracks which upstream Mermaid `erDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `erDiagram` tests are covered in `me
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.12.3`.
+Scope: Mermaid tag `@11.15.0`.
 
 ## `parser/erDiagram.spec.js`
 

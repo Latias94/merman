@@ -173,6 +173,11 @@
     "titleTopMargin": 25,
     "useMaxWidth": true
   },
+  "eventmodeling": {
+    "padding": 30,
+    "rowHeight": 32,
+    "useMaxWidth": true
+  },
   "flowchart": {
     "curve": "basis",
     "defaultRenderer": "dagre-wrapper",
@@ -229,6 +234,10 @@
     "useMaxWidth": true
   },
   "handDrawnSeed": 0,
+  "ishikawa": {
+    "diagramPadding": 20,
+    "useMaxWidth": false
+  },
   "journey": {
     "activationWidth": 10,
     "actorColours": [
@@ -364,7 +373,7 @@
     "prefix": "",
     "showValues": true,
     "suffix": "",
-    "useMaxWidth": true,
+    "useMaxWidth": false,
     "width": 600
   },
   "secure": [
@@ -473,6 +482,20 @@
     "textPlacement": "fo",
     "useMaxWidth": true,
     "width": 150
+  },
+  "treeView": {
+    "lineThickness": 1,
+    "paddingX": 5,
+    "paddingY": 5,
+    "rowIndent": 10,
+    "useMaxWidth": true
+  },
+  "venn": {
+    "height": 450,
+    "padding": 8,
+    "useDebugLayout": false,
+    "useMaxWidth": true,
+    "width": 800
   },
   "xyChart": {
     "chartOrientation": "vertical",
