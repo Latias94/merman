@@ -1,6 +1,6 @@
 # WASM Feature Surface Slimming -- TODO
 
-Status: Open
+Status: Closed
 Last updated: 2026-06-10
 
 ## M0 -- Evidence And Contract Freeze
@@ -96,38 +96,65 @@ Last updated: 2026-06-10
 
 ## M3 -- WASM Package Surfaces
 
-- [ ] WFS-090 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-wasm,platforms/web,docs/release]
+- [x] WFS-090 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-wasm,platforms/web,docs/release]
   Goal: Split browser WASM package variants or feature presets so consumers can choose core-only,
   render, ascii, and full browser bundles.
   Validation: `cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown`
   for each preset; npm TypeScript build/smoke if package wrappers change.
   Review: Browser package may keep wasm-bindgen; the API must label it as browser/JS WASM.
-  Evidence: initial `xtask wasm-size-matrix` landed to build and report raw/stripped sizes for
-  browser and Typst presets separately. `docs/release/PACKAGE_SURFACES.md` and
+  Evidence: `xtask wasm-size-matrix` landed and recorded raw/stripped/gzip/brotli size tables for
+  browser and Typst presets separately, with CI budgets in `docs/release/WASM_SIZE_BUDGETS.json`.
+  `docs/release/PACKAGE_SURFACES.md` and
   `crates/merman-wasm/README.md` now label `merman-wasm` as the browser/wasm-bindgen surface.
-  Remaining work: use the matrix to decide public browser package variants and wire the
-  TypeScript/npm wrapper changes.
+  The browser package now ships explicit `browser-core`, `browser-render`, `browser-ascii`,
+  `browser-full`, and `browser-ratex-math` source-build presets. `bindingCapabilities()` reports
+  the active artifact surface, and the npm package defaults to `browser-full` for publishing.
+  Validation: `cargo fmt --check -p merman-bindings-core -p merman-wasm`;
+  `cargo nextest run -p merman-bindings-core -p merman-wasm`;
+  `cargo nextest run -p merman-bindings-core -p merman-wasm --no-default-features`;
+  `npm run build --prefix platforms/web`;
+  `npm run smoke --prefix platforms/web`;
+  `npm run prepack --prefix platforms/web`;
+  `npm run build:wasm:core --prefix platforms/web`;
+  `npm run build:wasm:render --prefix platforms/web`;
+  `npm run build:wasm:ascii --prefix platforms/web`;
+  `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web`.
 
-- [ ] WFS-100 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-typst,docs/release,docs/bindings]
-  Goal: Add an experimental Typst/wasm-minimal-protocol transport or probe crate with no
-  wasm-bindgen dependency.
+- [x] WFS-100 [owner=codex] [deps=WFS-030,WFS-040,WFS-050,WFS-080] [scope=crates/merman-typst-plugin,crates/xtask,docs/release]
+  Goal: Validate and document the existing experimental Typst/wasm-minimal-protocol transport with
+  no wasm-bindgen dependency.
   Validation: wasm import allowlist contains only `typst_env` protocol imports; exported `memory`
-  exists; a wasmi or Typst smoke call returns SVG/JSON bytes for the admitted subset.
-  Review: Start with a small admitted subset instead of pretending full Mermaid parity is already
-  Typst-ready.
-  Evidence: `wasm-tools print` import/export snapshot and smoke output.
+  exists; a wasmi smoke call returns SVG/JSON bytes for the admitted flowchart subset.
+  Review: Keep Typst package builds separate from browser/wasm-bindgen artifacts; do not claim full
+  Typst package publication readiness from the transport smoke alone.
+  Evidence: `crates/merman-typst-plugin` exports `abi_version`, `package_version`,
+  `render_svg_json`, and `validate_json` through wasm-minimal-protocol. Validation:
+  `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`;
+  `target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`;
+  `target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`.
 
 ## M4 -- Release And Compatibility
 
-- [ ] WFS-110 [owner=planner] [deps=WFS-090,WFS-100] [scope=docs/adr,docs/release,README.md]
+- [x] WFS-110 [owner=planner] [deps=WFS-090,WFS-100] [scope=docs/adr,docs/release,README.md]
   Goal: Record public package semantics, feature defaults, migration notes, and release gating.
   Validation: docs diff check; package surface docs include browser and Typst/pure wasm as distinct
   entries.
   Review: Any changed default feature behavior must have an ADR.
-  Evidence: release docs and ADR updates.
+  Evidence: ADR-0069 records the browser/Typst WASM surface decision, alternatives, risks, and
+  success metrics. `docs/release/PACKAGE_SURFACES.md` now includes compatibility/migration notes
+  and surface-specific release gates. `docs/release/RELEASING.md` records web preset and Typst
+  transport release checks. README lists `merman-typst-plugin` and clarifies that `@mermanjs/web`
+  publishes `browser-full` while slim browser presets are source-build presets.
 
-- [ ] WFS-120 [owner=codex] [deps=WFS-110] [scope=workspace]
+- [x] WFS-120 [owner=codex] [deps=WFS-110] [scope=workspace]
   Goal: Final verification and closeout.
   Validation: `cargo fmt --all --check`; `cargo nextest run -p merman-core -p merman-render -p merman-bindings-core`; browser wasm preset builds; Typst/pure wasm import allowlist gate.
   Review: Summarize residual unsupported families and split follow-on work if needed.
-  Evidence: closeout journal and updated `WORKSTREAM.json`.
+  Evidence: Final verification passed on 2026-06-10. Core/render/bindings nextest ran 1,253 tests
+  with 1,253 passed and 2 skipped. Pure-wasm and typst-wasm dependency gates passed for
+  `merman-core --no-default-features`. Typst render wasm passed import/export gate and wasmi smoke.
+  Browser `core`, `render`, `ascii`, `ratex-math`, and `full` presets built and passed
+  capability-aware smoke; full WASM size budget gate passed; default web package now builds with
+  the workspace `wasm-size` profile and dropped the generated `browser-full` wasm from 8,648,002 to
+  5,580,151 raw bytes; final `browser-full` prepack passed. Residual follow-ons are public slim npm
+  exports/packages, full Typst registry packaging, and deeper render/data size reductions.

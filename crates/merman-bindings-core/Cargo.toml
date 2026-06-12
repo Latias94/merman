@@ -19,6 +19,7 @@ core-full = ["merman/core-full"]
 core-host = ["merman/core-host"]
 ascii = ["merman/ascii"]
 render = ["merman/render"]
+cytoscape-layout = ["merman/cytoscape-layout"]
 ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
 raster = ["merman/raster"]
 

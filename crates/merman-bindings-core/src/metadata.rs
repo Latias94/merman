@@ -1,4 +1,5 @@
 use crate::common::{BindingError, internal_json_error};
+use serde::Serialize;
 use std::sync::OnceLock;
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -8,6 +9,25 @@ static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[cfg(feature = "ascii")]
 pub const ASCII_SUPPORTED_DIAGRAMS: &[&str] = &["class", "er", "flowchart", "sequence", "xychart"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BindingCapabilities {
+    pub render: bool,
+    pub ascii: bool,
+    pub core_full: bool,
+    pub core_host: bool,
+    pub ratex_math: bool,
+}
+
+pub const fn binding_capabilities() -> BindingCapabilities {
+    BindingCapabilities {
+        render: cfg!(feature = "render"),
+        ascii: cfg!(feature = "ascii"),
+        core_full: cfg!(feature = "core-full") || cfg!(feature = "ascii"),
+        core_host: cfg!(feature = "core-host") || cfg!(feature = "ascii"),
+        ratex_math: cfg!(feature = "ratex-math"),
+    }
+}
 
 pub fn supported_themes() -> &'static [&'static str] {
     merman::supported_themes()
@@ -94,6 +114,23 @@ mod tests {
                 "redux-dark-color"
             ]
         );
+    }
+
+    #[test]
+    fn binding_capabilities_follow_feature_flags() {
+        let capabilities = binding_capabilities();
+
+        assert_eq!(capabilities.render, cfg!(feature = "render"));
+        assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
+        assert_eq!(
+            capabilities.core_full,
+            cfg!(feature = "core-full") || cfg!(feature = "ascii")
+        );
+        assert_eq!(
+            capabilities.core_host,
+            cfg!(feature = "core-host") || cfg!(feature = "ascii")
+        );
+        assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
     }
 
     #[test]

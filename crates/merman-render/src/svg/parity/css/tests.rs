@@ -29,18 +29,21 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
     ));
 
-    let architecture = architecture_css_with_config("diag", &cfg);
-    assert_fragments_in_order(
-        &architecture,
-        &[
-            &base_fragments[..],
-            &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
-        ]
-        .concat(),
-    );
-    assert!(architecture.ends_with(
-        r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
-    ));
+    #[cfg(feature = "cytoscape-layout")]
+    {
+        let architecture = architecture_css_with_config("diag", &cfg);
+        assert_fragments_in_order(
+            &architecture,
+            &[
+                &base_fragments[..],
+                &[r#"#diag .edge{stroke-width:3;stroke:#333333;fill:none;}"#],
+            ]
+            .concat(),
+        );
+        assert!(architecture.ends_with(
+            r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
+        ));
+    }
 
     let er = er_css("diag", &cfg);
     assert_fragments_in_order(
@@ -56,6 +59,7 @@ fn mermaid_base_css_fragments_keep_parity_order() {
     ));
 }
 
+#[cfg(feature = "cytoscape-layout")]
 #[test]
 fn architecture_css_with_config_honors_font_and_theme_colors() {
     let cfg = serde_json::json!({
@@ -86,6 +90,7 @@ fn architecture_css_with_config_honors_font_and_theme_colors() {
     assert!(css.contains(r#"#diag :root{--mermaid-font-family:"courier new",courier,monospace;}"#));
 }
 
+#[cfg(feature = "cytoscape-layout")]
 #[test]
 fn architecture_css_prefers_theme_font_family_over_legacy_root() {
     let cfg = serde_json::json!({

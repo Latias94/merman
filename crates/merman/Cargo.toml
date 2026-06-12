@@ -28,6 +28,7 @@ core-full = ["merman-core/full", "merman-render?/core-full"]
 core-host = ["merman-core/host", "merman-render?/host"]
 render = ["dep:merman-render", "dep:thiserror"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
+cytoscape-layout = ["render", "merman-render/cytoscape-layout"]
 ratex-math = ["render", "merman-render/ratex-math"]
 egui-example = ["raster", "dep:eframe"]
 raster = [

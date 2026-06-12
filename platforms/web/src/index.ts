@@ -167,6 +167,22 @@ export interface BindingErrorPayload {
   message: string;
 }
 
+export interface BindingCapabilities {
+  render: boolean;
+  ascii: boolean;
+  core_full: boolean;
+  core_host: boolean;
+  ratex_math: boolean;
+}
+
+export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
+  render: true,
+  ascii: true,
+  core_full: true,
+  core_host: true,
+  ratex_math: false,
+};
+
 export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);
 }
@@ -228,6 +244,7 @@ export interface MermanWasmModule {
   layoutJson: (source: string, optionsJson?: string | null) => string;
   validate: (source: string, optionsJson?: string | null) => ValidationResult;
   asciiSupportedDiagrams: () => string[];
+  bindingCapabilities?: () => BindingCapabilities;
   supportedDiagrams: () => string[];
   supportedHostThemePresets?: () => string[];
   supportedThemes: () => string[];
@@ -347,6 +364,13 @@ export function validate(source: string, options?: SvgBindingOptions | string): 
   return getMerman().validate(source, encodeOptions(options));
 }
 
+export function bindingCapabilities(): BindingCapabilities {
+  const capabilities = getMerman().bindingCapabilities?.();
+  return capabilities
+    ? normalizeBindingCapabilities(capabilities)
+    : { ...DEFAULT_BINDING_CAPABILITIES };
+}
+
 export function supportedDiagrams(): DiagramType[] {
   supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
   return [...supportedDiagramsCache];
@@ -407,4 +431,16 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
     return preset;
   }
   throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
+}
+
+function normalizeBindingCapabilities(
+  capabilities: Partial<BindingCapabilities>
+): BindingCapabilities {
+  return {
+    render: Boolean(capabilities.render),
+    ascii: Boolean(capabilities.ascii),
+    core_full: Boolean(capabilities.core_full),
+    core_host: Boolean(capabilities.core_host),
+    ratex_math: Boolean(capabilities.ratex_math),
+  };
 }

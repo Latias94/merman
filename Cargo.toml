@@ -34,7 +34,9 @@ rust-version = "1.95"
 
 [workspace.dependencies]
 base64 = "0.22.1"
+brotli = "8.0.3"
 euclid = "0.22"
+flate2 = "1.1.9"
 htmlize = { version = "1.0.6", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"
@@ -83,6 +85,7 @@ unicode-width = "0.2.2"
 wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
+wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.

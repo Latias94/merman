@@ -11,6 +11,12 @@ consistency, improving Mermaid parity gates, and paying down renderer architectu
 the work is internal, but it should make CLI, library, SVG, and raster output behave more
 predictably across diagram families.
 
+### Added
+
+- Added an opt-in `cytoscape-layout` feature for Architecture and Mindmap, so size-sensitive
+  browser and Typst builds can leave those heavier layout dependencies out. The wasm-size matrix
+  now reports browser, Typst, full, stripped, gzip, and brotli presets for repeatable release gates.
+
 ### Changed
 
 - Unified SVG-to-raster export through the same renderer-owned operation pipeline used by
@@ -60,6 +66,8 @@ Feature guidance:
 - The Typst-oriented probe imports only Typst's two `wasm-minimal-protocol` host callbacks and no longer pulls `wasm-bindgen`, `js-sys`, `serde_yaml`, `json5`, `lol_html`, `url`, `uuid`, or `web-time` through the pure/no-default core path.
 - The default minimal Typst package build (`render`, no `core-full`, no host`) now measures about **7.02 MB raw** and **1.93 MB gzip** and passes the Typst wasm ABI gate with only the two `wasm-minimal-protocol` imports.
 - The opt-in full no-host Typst render build (`render + core-full`) measures **8,073,841 bytes raw** (**2,349,176 bytes gzip**) with the same Typst-only import surface.
+- Added repeatable WASM size budgets for browser and Typst presets. `xtask wasm-size-matrix` now reports raw, stripped, gzip, and brotli bytes, and CI fails if preset budgets regress.
+- Reduced the generated default `@mermanjs/web` `browser-full` package artifact by building with the workspace `wasm-size` profile through `wasm-pack --profile wasm-size`. The generated wasm dropped from **8,648,002 bytes raw** to **5,580,151 bytes raw**; the current compressed sizes are **2,135,543 bytes gzip** and **1,589,052 bytes brotli**.
 
 ### Fixed
 

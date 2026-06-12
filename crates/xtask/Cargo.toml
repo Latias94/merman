@@ -12,6 +12,8 @@ publish = false
 [dependencies]
 chrono = { workspace = true, features = ["clock"] }
 base64.workspace = true
+brotli.workspace = true
+flate2.workspace = true
 futures.workspace = true
 dugong = { path = "../dugong" }
 merman = { path = "../merman" }
@@ -24,3 +26,4 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+wasmi.workspace = true

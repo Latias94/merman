@@ -35,7 +35,12 @@
   "scripts": {
     "build": "npm run build:wasm && npm run build:ts",
     "build:ts": "tsc -p tsconfig.build.json",
-    "build:wasm": "wasm-pack build ../../crates/merman-wasm --target web --release --out-dir ../../platforms/web/pkg && node scripts/clean-pkg.mjs",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:wasm:core": "node scripts/build-wasm.mjs --preset browser-core",
+    "build:wasm:render": "node scripts/build-wasm.mjs --preset browser-render",
+    "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
+    "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
+    "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
     "smoke": "node scripts/smoke.mjs",
     "prepack": "node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"

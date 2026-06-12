@@ -103,6 +103,9 @@ jobs:
       - name: Install wasm-tools
         uses: taiki-e/install-action@wasm-tools
 
+      - name: Check WASM size budgets
+        run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
       - name: Install Typst
         run: cargo install typst-cli --version 0.14.2 --locked
 

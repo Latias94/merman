@@ -2,7 +2,7 @@
   "schema_version": 1,
   "slug": "wasm-feature-surface-slimming",
   "title": "WASM Feature Surface Slimming",
-  "status": "open",
+  "status": "closed",
   "updated": "2026-06-10",
   "scope_kind": "architecture_lane",
   "problem": "Merman's current core and browser-WASM dependency surfaces are too broad for non-JS WebAssembly hosts such as Typst plugins.",
@@ -20,14 +20,15 @@
       "path": "docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md"
     }
   ],
-  "current_task": "WFS-090",
+  "current_task": null,
   "gates": [
     "cargo tree -p merman-core --target wasm32-unknown-unknown -e normal",
     "cargo tree -p merman-wasm --target wasm32-unknown-unknown -e features",
     "cargo build --profile wasm-size -p merman-wasm --target wasm32-unknown-unknown",
     "cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3",
-    "cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <typst-probe.wasm>",
-    "wasm-tools print <typst-probe.wasm>",
+    "cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <typst-plugin.wasm>",
+    "cargo run -p xtask -- typst-plugin-smoke --wasm <typst-plugin.wasm>",
+    "wasm-tools print <typst-plugin.wasm>",
     "cargo fmt --all --check",
     "cargo nextest run -p merman-core -p merman-render -p merman-bindings-core"
   ],
@@ -70,7 +71,32 @@
     {
       "kind": "size_evidence",
       "path": "crates/xtask/src/cmd/wasm_size_matrix.rs",
-      "note": "WFS-090 started with `xtask wasm-size-matrix`, which builds browser and Typst feature presets separately and reports raw plus stripped wasm bytes without conflating wasm-bindgen browser packages with Typst/pure-wasm packages."
+      "note": "WFS-090 started with `xtask wasm-size-matrix`, which builds browser and Typst feature presets separately and reports raw, stripped, gzip, and brotli wasm bytes. CI budgets are recorded in docs/release/WASM_SIZE_BUDGETS.json, and full matrices are recorded in PACKAGE_SURFACES.md and EVIDENCE_AND_GATES.md without conflating wasm-bindgen browser packages with Typst/pure-wasm packages."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "platforms/web",
+      "note": "WFS-090 finished by adding preset-aware browser package builds (`browser-core`, `browser-render`, `browser-ascii`, `browser-full`, `browser-ratex-math`), a `bindingCapabilities()` export, and capability-aware smoke/prepack checks. Default npm publication remains `browser-full`; ASCII retains the full core registry because it depends on the full browser ASCII implementation."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "crates/merman-typst-plugin",
+      "note": "WFS-100 validated the existing wasm-minimal-protocol Typst plugin transport. The default render artifact imports only the two `typst_env` protocol functions, exports `memory` plus plugin functions, and passes `xtask typst-plugin-smoke` through a wasmi host call returning SVG JSON."
+    },
+    {
+      "kind": "task_evidence",
+      "path": "docs/adr/0069-wasm-package-surface-semantics.md",
+      "note": "WFS-110 recorded release semantics: `@mermanjs/web` remains one npm package publishing `browser-full`; browser slim artifacts remain source-build presets; `merman-wasm` is browser/wasm-bindgen only; `merman-typst-plugin` owns Typst-compatible wasm-minimal-protocol builds and gates."
+    },
+    {
+      "kind": "closeout_evidence",
+      "path": "docs/workstreams/wasm-feature-surface-slimming/EVIDENCE_AND_GATES.md",
+      "note": "WFS-120 closed the lane after final verification: rust fmt, core/render/bindings nextest, pure/typst dependency gates, Typst import/smoke gates, WASM size budget gate, and all browser preset build/smoke checks passed. A follow-up web packaging cut moved wasm-pack to the workspace wasm-size profile and reduced generated browser-full wasm from 8,648,002 to 5,580,151 raw bytes. Residual work is split into future slim npm publication, Typst registry packaging, and deeper render/data slimming."
     }
-  ]
+  ],
+  "continue_policy": {
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed after WFS-010 through WFS-120. Continue in separate follow-on lanes for public slim browser package contracts, Typst registry packaging, or deeper render/data size reductions."
+  }
 }

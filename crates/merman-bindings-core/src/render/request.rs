@@ -4,6 +4,7 @@ use crate::common::{
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option,
 };
+use chrono::TimeZone;
 use merman::render::{
     DeterministicTextMeasurer, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
     HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
@@ -167,9 +168,14 @@ impl SvgPipelineOptions {
 fn build_renderer(
     options: &BindingOptions,
 ) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
+    let fixed_today = binding_fixed_today(options)?;
+    let fixed_local_offset_minutes = binding_fixed_local_offset_minutes(options)?;
     let mut renderer = HeadlessRenderer::new()
-        .with_fixed_today(binding_fixed_today(options)?)
-        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?);
+        .with_fixed_today(fixed_today)
+        .with_fixed_local_offset_minutes(fixed_local_offset_minutes);
+    if let Some(now_ms) = fixed_today_marker_ms(fixed_today, fixed_local_offset_minutes) {
+        renderer.svg.now_ms_override = Some(now_ms);
+    }
 
     if options
         .parse
@@ -299,6 +305,23 @@ fn build_renderer(
     }
 
     Ok((renderer, pipeline))
+}
+
+fn fixed_today_marker_ms(
+    today: Option<chrono::NaiveDate>,
+    offset_minutes: Option<i32>,
+) -> Option<i64> {
+    let today = today?;
+    let offset_minutes = offset_minutes?;
+    let offset = chrono::FixedOffset::east_opt(offset_minutes.checked_mul(60)?)?;
+    let midnight = today.and_hms_opt(0, 0, 0)?;
+    let dt = offset
+        .from_local_datetime(&midnight)
+        .single()
+        .unwrap_or_else(|| {
+            chrono::DateTime::<chrono::FixedOffset>::from_naive_utc_and_offset(midnight, offset)
+        });
+    Some(dt.timestamp_millis())
 }
 
 fn binding_host_theme(
@@ -576,5 +599,31 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
         merman::render::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_today_marker_ms_uses_fixed_local_offset() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
+
+        assert_eq!(
+            fixed_today_marker_ms(Some(today), Some(0)),
+            Some(1_781_049_600_000)
+        );
+        assert_eq!(
+            fixed_today_marker_ms(Some(today), Some(60)),
+            Some(1_781_046_000_000)
+        );
+    }
+
+    #[test]
+    fn fixed_today_marker_ms_requires_explicit_offset() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
+
+        assert_eq!(fixed_today_marker_ms(Some(today), None), None);
     }
 }

@@ -81,6 +81,12 @@ pub fn supported_diagrams() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = bindingCapabilities)]
+pub fn binding_capabilities() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&merman_bindings_core::binding_capabilities())
+        .map_err(|err| JsValue::from_str(&err.to_string()))
+}
+
 #[wasm_bindgen(js_name = supportedThemes)]
 pub fn supported_themes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
@@ -148,14 +154,19 @@ mod tests {
 
     #[test]
     fn render_svg_impl_returns_svg() {
-        let svg = string_result(merman_bindings_core::render_svg(
-            b"flowchart TD\nA[Hello] --> B[World]",
-            b"",
-        ))
-        .unwrap();
+        let result = merman_bindings_core::render_svg(b"flowchart TD\nA[Hello] --> B[World]", b"");
 
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
+        if cfg!(feature = "render") {
+            let svg = string_result(result).unwrap();
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("Hello"));
+        } else {
+            let error = result.unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::UnsupportedFormat
+            );
+        }
     }
 
     #[test]
@@ -165,13 +176,17 @@ mod tests {
                 .unwrap();
 
         assert_eq!(json["valid"], false);
-        assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
-        assert!(
-            json["error"]
-                .as_str()
-                .unwrap()
-                .contains("no Mermaid diagram")
-        );
+        if cfg!(feature = "render") {
+            assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
+            assert!(
+                json["error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("no Mermaid diagram")
+            );
+        } else {
+            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
+        }
     }
 
     #[test]
@@ -181,8 +196,29 @@ mod tests {
 
         assert_eq!(json["version"], 1);
         assert_eq!(json["ok"], false);
-        assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
-        assert!(json["message"].as_str().unwrap().contains("options_json"));
+        if cfg!(feature = "render") {
+            assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
+            assert!(json["message"].as_str().unwrap().contains("options_json"));
+        } else {
+            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
+        }
+    }
+
+    #[test]
+    fn binding_capabilities_follow_features() {
+        let capabilities = merman_bindings_core::binding_capabilities();
+
+        assert_eq!(capabilities.render, cfg!(feature = "render"));
+        assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
+        assert_eq!(
+            capabilities.core_full,
+            cfg!(feature = "core-full") || cfg!(feature = "ascii")
+        );
+        assert_eq!(
+            capabilities.core_host,
+            cfg!(feature = "core-host") || cfg!(feature = "ascii")
+        );
+        assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
     }
 
     #[cfg(feature = "ascii")]

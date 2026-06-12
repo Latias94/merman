@@ -41,6 +41,7 @@ Mermaid license and provenance notes.
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
 | Embed in a browser or TypeScript app | [`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, metadata, and DOM rendering. |
+| Build a Typst plugin/package | [`merman-typst-plugin`](https://github.com/Latias94/merman/tree/main/crates/merman-typst-plugin#readme) | Experimental wasm-minimal-protocol transport for Typst-compatible WASM hosts. |
 | Parse Mermaid or produce semantic JSON | [`merman-core`](https://crates.io/crates/merman-core) | Parser, metadata, semantic JSON, and typed render models without layout/render dependencies. |
 | Embed from C, C++, Swift, Kotlin, Dart, Python, or another native host | [`merman-ffi`](https://crates.io/crates/merman-ffi) | Stable C ABI plus platform wrappers. See [FFI protocol](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md), [Android](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md), [Apple](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md), [Flutter/Dart](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md), and [Python UniFFI](https://github.com/Latias94/merman/blob/main/docs/bindings/PYTHON_UNIFFI.md). |
 | Work on layout/rendering internals | [`merman-render`](https://crates.io/crates/merman-render) | Low-level layout and SVG stack used by the public `merman` facade. |
@@ -711,6 +712,15 @@ Cargo feature meanings and host profile expectations are documented in
 `merman-core --no-default-features` or `merman --no-default-features` and must avoid full core
 config/sanitization, host-clock, host-random, host-timing, JS, and WASI imports.
 
+`@mermanjs/web` publishes the full browser artifact by default. The source tree also has browser
+source-build presets for core, render, ASCII, full, and RaTeX math artifacts, but those presets are
+not separate npm entry points. Browser callers can inspect the active artifact with
+`bindingCapabilities()`.
+
+Typst-compatible WASM uses `merman-typst-plugin`, not `merman-wasm`. The plugin crate exports
+wasm-minimal-protocol functions and is gated so package artifacts import only Typst's `typst_env`
+protocol functions.
+
 Use the defaults for normal Rust applications. Defaults keep Mermaid-compatible full
 configuration/sanitization and host behavior enabled, which is what you want for CLIs, servers,
 desktop apps, and tests that should accept Mermaid-style frontmatter, JSON5/YAML config, and broad
@@ -759,6 +769,7 @@ sanitization.
 | [`merman-bindings-core`](https://crates.io/crates/merman-bindings-core) | Shared safe facade behind C ABI and UniFFI bindings. |
 | [`merman-uniffi`](https://crates.io/crates/merman-uniffi) | UniFFI-generated binding surface, currently used for Python packaging. |
 | [`merman-wasm`](https://crates.io/crates/merman-wasm) | wasm-bindgen transport crate behind the `@mermanjs/web` TypeScript package. |
+| [`merman-typst-plugin`](https://crates.io/crates/merman-typst-plugin) | Experimental wasm-minimal-protocol transport crate for Typst-compatible plugin hosts. |
 | [`dugong`](https://crates.io/crates/dugong) | Dagre-compatible layout port. |
 | [`dugong-graphlib`](https://crates.io/crates/dugong-graphlib) | Graph container APIs ported from `dagrejs/graphlib`. |
 | [`manatee`](https://crates.io/crates/manatee) | COSE/FCoSE-style compound graph layout ports. |
@@ -780,6 +791,7 @@ sanitization.
 - Merman Playground: [frankorz.com/merman](https://frankorz.com/merman/)
 - Parity policy: [docs/adr/0014-upstream-parity-policy.md](https://github.com/Latias94/merman/blob/main/docs/adr/0014-upstream-parity-policy.md)
 - Release quality gates: [docs/adr/0050-release-quality-gates.md](https://github.com/Latias94/merman/blob/main/docs/adr/0050-release-quality-gates.md)
+- WASM package surface semantics: [docs/adr/0069-wasm-package-surface-semantics.md](https://github.com/Latias94/merman/blob/main/docs/adr/0069-wasm-package-surface-semantics.md)
 - Upstream Mermaid: [mermaid-js/mermaid](https://github.com/mermaid-js/mermaid) (MIT)
 - Related: [1jehuang/mermaid-rs-renderer](https://github.com/1jehuang/mermaid-rs-renderer/)
 - ASCII reference: [AlexanderGrooff/mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii)

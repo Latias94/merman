@@ -13,6 +13,26 @@ npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
+`npm run build` produces the default `browser-full` artifact used for npm publication. Source and
+CI builds can choose a browser WASM preset when a smaller local artifact is useful:
+
+The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
+wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
+
+| Preset | Command | Capability |
+| --- | --- | --- |
+| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport and metadata only. Render, parse, layout, validation, and ASCII calls report `MERMAN_UNSUPPORTED_FORMAT`. |
+| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, validation, themes, and metadata over the minimal core profile. |
+| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile. |
+| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/validate, ASCII, and host browser capabilities. |
+| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer. |
+
+Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
+package.
+
+Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
+`MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package.
+
 ## Usage
 
 ```ts
@@ -77,9 +97,9 @@ Concurrent calls share the same in-flight initialization promise.
 
 ## WASM loading best practices
 
-`@mermanjs/web` ships one full browser renderer artifact. It is intended for playgrounds, diagram
-editors, documentation previews, and applications that need headless Mermaid rendering in the
-browser. Treat it as a feature module, not as first-paint UI code:
+The published `@mermanjs/web` package currently ships the `browser-full` artifact. It is intended for
+playgrounds, diagram editors, documentation previews, and applications that need headless Mermaid
+rendering in the browser. Treat it as a feature module, not as first-paint UI code:
 
 - Call `initMerman()` lazily when the editor, preview pane, or first diagram render is needed.
 - Preload on route hover, editor open, or `requestIdleCallback` when you know rendering is likely.
@@ -91,8 +111,11 @@ browser. Treat it as a feature module, not as first-paint UI code:
   framework path. Use `renderSvgElement()` / `renderSvgToElement()` only on the main thread because
   they require `DOMParser` and `document`.
 
-The package currently does not publish separate render-only or ASCII-only builds. The default build
-keeps the public API simple and avoids fragmenting cache behavior across package variants.
+The package does not publish separate npm subpaths for render-only or ASCII-only artifacts yet. Use
+the source build presets above when you need to produce a local slim package, and call
+`bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
+`core_full`, `core_host`, or `ratex_math` capability. The ASCII preset currently preserves the
+full core registry for compatibility with the browser ASCII implementation.
 
 ## Web Worker integration
 
@@ -155,6 +178,7 @@ initialization is usually simpler.
 - `layoutJson()`, `layoutObject()`
 - `validate()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
+- `bindingCapabilities()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 All render, parse, layout, validation, and metadata functions require `initMerman()` first.

@@ -1,6 +1,6 @@
 # WASM Feature Surface Slimming
 
-Status: Open
+Status: Closed
 Last updated: 2026-06-10
 
 ## Why This Lane Exists

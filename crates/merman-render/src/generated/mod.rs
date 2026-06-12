@@ -5,6 +5,7 @@
 // modules now back the repository's pinned Mermaid baseline (currently 11.15.0)
 // until each family is regenerated and renamed in a controlled migration.
 
+#[cfg(feature = "cytoscape-layout")]
 pub mod architecture_root_overrides_11_12_2;
 pub mod block_text_overrides_11_12_2;
 pub mod c4_root_overrides_11_12_2;
@@ -17,6 +18,7 @@ pub mod flowchart_root_overrides_11_12_2;
 pub mod flowchart_text_overrides_11_12_2;
 pub mod font_metrics_flowchart_11_12_2;
 pub mod gitgraph_root_overrides_11_12_2;
+#[cfg(feature = "cytoscape-layout")]
 pub mod mindmap_root_overrides_11_12_2;
 pub mod pie_root_overrides_11_12_2;
 pub mod requirement_root_overrides_11_12_2;

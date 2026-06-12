@@ -173,6 +173,7 @@ pub(super) fn info_css_with_config(
     out
 }
 
+#[cfg(feature = "cytoscape-layout")]
 pub(super) fn architecture_css_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
