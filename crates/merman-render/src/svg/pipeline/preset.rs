@@ -39,9 +39,7 @@ impl BuiltinSvgStage {
         match self {
             Self::ForeignObjectFallback => Cow::Owned(foreign_object_fallback_svg(&svg)),
             Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
-            Self::DropSwitchNativeFallbacks => {
-                Cow::Owned(drop_switch_native_fallbacks(&svg))
-            }
+            Self::DropSwitchNativeFallbacks => Cow::Owned(drop_switch_native_fallbacks(&svg)),
             Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
             Self::SanitizeAttributes => Cow::Owned(sanitize_element_attributes(&svg)),
         }
