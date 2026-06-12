@@ -6,35 +6,24 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+This cycle prepares Merman for the next stable release by tightening headless rendering
+consistency, improving Mermaid parity gates, and paying down renderer architecture debt. Most of
+the work is internal, but it should make CLI, library, SVG, and raster output behave more
+predictably across diagram families.
+
 ### Changed
 
-- Unified headless SVG-to-raster output through the renderer-owned operation pipeline, so library and CLI raster exports now share the same sanitization, sizing, and encoding path.
-- Tightened the admission inventory gate so parser, layout, and SVG coverage claims are checked against `merman-core` diagram family capability facts before alignment reports pass.
-- Deepened `merman-core` parsing by moving metadata, semantic JSON, and typed render-model stage ordering into one internal Parse Pipeline behind the existing `Engine` facade.
-- Projected Sequence layout and SVG render configuration through a family-owned config view, reducing raw `effective_config["sequence"]` lookups while preserving layout and SVG numeric parsing behavior.
-- Projected Class layout and SVG render configuration through a family-owned config view, centralizing class/flowchart namespace precedence and preserving the existing layout-versus-SVG numeric parsing boundaries.
-- Projected Flowchart layout and SVG render configuration through a family-owned config view, centralizing spacing, padding, font, wrap-mode, and HTML-label precedence while preserving Mermaid-compatible edge cases.
-- Projected State layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, padding, label wrapping, look, seed, and security-level settings.
-- Projected ER layout and SVG render configuration through a family-owned config view, centralizing Dagre spacing, entity measurement padding, HTML-label precedence, title margins, look, font, width, and seed settings.
-- Projected Block layout configuration through a family-owned config view, centralizing padding and text-style settings before sizing and grid layout consume them.
-- Projected Sankey layout and SVG render configuration through a family-owned config view, centralizing geometry, label/value display, label styling, link color, node color, max-width, and `$ref` default semantics.
-- Projected Event Modeling layout configuration through a family-owned config view, centralizing diagram padding and max-width behavior before layout bounds and SVG root emission consume them.
-- Projected TreeView layout configuration through a family-owned config view, centralizing row geometry, max-width behavior, and theme-provided label font size before tree layout consumes them.
-- Projected Packet layout and SVG style configuration through a family-owned config view, centralizing bit geometry, show-bits padding semantics, row sizing, and packet CSS role defaults.
-- Projected Venn layout configuration through a family-owned config view, centralizing canvas size, padding, max-width behavior, and debug-layout switching before the Venn layout kernel consumes them.
-- Projected Ishikawa layout and SVG render configuration through a family-owned config view, centralizing diagram padding, max-width behavior, layout font size, and CSS font-size spelling.
-- Projected Treemap layout configuration through a family-owned config view, centralizing sizing, padding, value display, max-width behavior, and value-format settings before treemap layout consumes them.
-- Projected QuadrantChart layout and SVG render configuration through a family-owned config view, centralizing chart geometry, axis/point text sizing, border widths, max-width behavior, and `$ref` render fallback semantics.
-- Projected Radar layout and SVG render configuration through a family-owned config view, centralizing chart geometry, margins, axis factors, curve tension, and max-width behavior.
-- Projected Pie layout and SVG render configuration through a family-owned config view, centralizing text position, donut-hole normalization, legend placement, and max-width behavior.
-- Projected Requirement layout and SVG render configuration through a family-owned config view, centralizing spacing precedence, font settings, look, seed, viewport padding, and max-width behavior.
-- Projected Kanban layout and SVG render configuration through a family-owned config view, centralizing section sizing, Mermaid-compatible viewport padding/max-width precedence, label font settings, look, and ticket URL behavior.
-- Projected Timeline layout and SVG render configuration through a family-owned config view, centralizing left margin, font/style fallback, multicolor, padding, and max-width behavior while preserving the layout vs render font-size split.
-- Projected Journey layout and SVG render configuration through a family-owned config view, centralizing actor/section sizing, font fallback, and max-width behavior while keeping the SVG root contract downstream.
-- Projected C4 layout and SVG render configuration through a family-owned config view, centralizing diagram margins, shape sizing, font fallback, wrap behavior, and max-width semantics behind `C4ConfigView` and the layout contract.
-- Split the C4 layout kernel into a dedicated `c4/layout.rs` module so the facade stays thin and the layout engine owns its own internal state.
-- Deepened SVG parity internals by moving family render implementations behind thin wrapper modules, splitting presentation-theme family parsers and tests from the theme type definitions, and extracting shared color helpers.
-- Moved SVG parity CSS regression tests into their own module so CSS generation stays easier to scan.
+- Unified SVG-to-raster export through the same renderer-owned operation pipeline used by
+  library and CLI callers, so sanitization, sizing, and encoding now follow one path.
+- Centralized diagram configuration handling across the renderer. Family-owned config views now
+  preserve Mermaid-compatible defaults while keeping layout and SVG decisions closer to the code
+  that consumes them.
+- Improved C4 and Journey layout parity by separating their configuration/layout internals and
+  refreshing the affected layout baselines.
+- Tightened admission checks so parser, layout, and SVG coverage claims are validated against
+  `merman-core` diagram-family capability facts before alignment reports pass.
+- Simplified parser and SVG parity internals behind focused modules, including the core parse
+  pipeline, family renderers, presentation themes, and CSS regression tests.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 
