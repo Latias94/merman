@@ -286,7 +286,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         out.push_str("<switch>");
         let _ = write!(
             out,
-            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}" data-merman-switch="true">"#,
+            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
             x = fmt(x),
             y = fmt(y),
             w = fmt(width),
@@ -446,17 +446,12 @@ pub(crate) fn render_journey_diagram_svg_model(
                 break;
             };
             let section_class = format!("journey-section section-type-{}", section.num);
-            let section_themed_fill = theme
-                .fill_types
-                .get(section.num as usize)
-                .map(|s| s.as_str())
-                .unwrap_or(&section.fill);
             let _ = write!(
                 &mut out,
                 r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
                 x = fmt(section.x),
                 y = fmt(section.y),
-                fill = escape_attr(section_themed_fill),
+                fill = escape_attr(&section.fill),
                 w = fmt(section.width),
                 h = fmt(section.height),
                 class = escape_attr(&section_class),
@@ -548,17 +543,12 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
 
-        let task_themed_fill = theme
-            .fill_types
-            .get(task.num as usize)
-            .map(|s| s.as_str())
-            .unwrap_or(&task.fill);
         let _ = write!(
             &mut out,
             r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="task task-type-{num}"/>"##,
             x = fmt(task.x),
             y = fmt(task.y),
-            fill = escape_attr(task_themed_fill),
+            fill = escape_attr(&task.fill),
             w = fmt(task.width),
             h = fmt(task.height),
             num = task.num,
@@ -627,7 +617,9 @@ pub(crate) fn render_journey_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Bounds, JourneyLineLayout};
+    use crate::model::{
+        Bounds, JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskLayout,
+    };
     use crate::text::DeterministicTextMeasurer;
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
 
@@ -670,6 +662,91 @@ mod tests {
         assert!(css.contains(r#"#journey .actor-0{fill:#d0d0d0;}"#));
         assert!(css.contains(r#"#journey .actor-1{fill:#e0e0e0;}"#));
         assert!(css.contains(r#"#journey .flowchart-link{stroke:#202020;fill:none;}"#));
+    }
+
+    #[test]
+    fn journey_rect_fills_use_layout_section_fills_not_theme_fill_types() {
+        let cfg = serde_json::json!({
+            "themeVariables": {
+                "fillType0": "#b0b0b0"
+            }
+        });
+        let layout = crate::model::JourneyDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: -25.0,
+                max_x: 500.0,
+                max_y: 515.0,
+            }),
+            left_margin: 150.0,
+            max_actor_label_width: 0.0,
+            width: 500.0,
+            height: 470.0,
+            svg_height: 565.0,
+            use_max_width: true,
+            title: Some("Font size precedence should be deterministic".to_string()),
+            title_x: 150.0,
+            title_y: 25.0,
+            actor_legend: Vec::new(),
+            sections: vec![JourneySectionLayout {
+                section: "A".to_string(),
+                num: 0,
+                x: 150.0,
+                y: 50.0,
+                width: 150.0,
+                height: 50.0,
+                fill: "#191970".to_string(),
+                task_count: 1,
+            }],
+            tasks: vec![JourneyTaskLayout {
+                index: 0,
+                section: "A".to_string(),
+                task: "Hello".to_string(),
+                score: 5,
+                x: 150.0,
+                y: 110.0,
+                width: 150.0,
+                height: 50.0,
+                fill: "#191970".to_string(),
+                num: 0,
+                people: Vec::new(),
+                actor_circles: Vec::new(),
+                line_id: "task0".to_string(),
+                line_x1: 225.0,
+                line_y1: 110.0,
+                line_x2: 225.0,
+                line_y2: 450.0,
+                face_cx: 225.0,
+                face_cy: Some(300.0),
+                mouth: JourneyMouthKind::Smile,
+            }],
+            activity_line: JourneyLineLayout {
+                x1: 150.0,
+                y1: 200.0,
+                x2: 346.0,
+                y2: 200.0,
+            },
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("journey".to_string()),
+            ..Default::default()
+        };
+
+        let svg = render_journey_diagram_svg_model(
+            &layout,
+            &JourneyDiagramRenderModel::default(),
+            &cfg,
+            None,
+            &DeterministicTextMeasurer::default(),
+            &options,
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"#journey .task-type-0,#journey .section-type-0{fill:#b0b0b0;}"#));
+        assert!(svg.contains(r##"<rect x="150" y="50" fill="#191970" stroke="#666" width="150" height="50" rx="3" ry="3" class="journey-section section-type-0"/>"##));
+        assert!(svg.contains(r##"<rect x="150" y="110" fill="#191970" stroke="#666" width="150" height="50" rx="3" ry="3" class="task task-type-0"/>"##));
+        assert!(!svg.contains(r##"<rect x="150" y="50" fill="#b0b0b0""##));
+        assert!(!svg.contains(r##"<rect x="150" y="110" fill="#b0b0b0""##));
     }
 
     #[test]

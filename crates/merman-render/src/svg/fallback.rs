@@ -98,7 +98,7 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
 
             out.push_str(&svg[lt..i_next]);
 
-            let from_switch = tag.contains(r#"data-merman-switch="true""#);
+            let from_switch = is_foreign_object_switch_native_fallback(svg, lt, i_next);
 
             let width = parse_attr_f64(tag, "width").unwrap_or(0.0);
             let height = parse_attr_f64(tag, "height").unwrap_or(0.0);
@@ -236,13 +236,60 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     }
 }
 
+fn is_foreign_object_switch_native_fallback(
+    svg: &str,
+    foreign_object_start: usize,
+    foreign_object_end: usize,
+) -> bool {
+    let Some(switch_start) = find_wrapping_switch_start(svg, foreign_object_start) else {
+        return false;
+    };
+    let Some(switch_close_rel) = svg[foreign_object_end..].find("</switch>") else {
+        return false;
+    };
+
+    svg[switch_start..foreign_object_start]
+        .find("</switch>")
+        .is_none()
+        && svg[foreign_object_end..foreign_object_end + switch_close_rel].contains("<text")
+}
+
+fn find_wrapping_switch_start(svg: &str, before: usize) -> Option<usize> {
+    let mut search_end = before;
+    while search_end > 0 {
+        let start = svg[..search_end].rfind("<switch")?;
+        let open_end = start + svg[start..before].find('>')?;
+        if open_end >= before {
+            search_end = start;
+            continue;
+        }
+
+        let tag = &svg[start..=open_end];
+        if is_start_switch_tag(tag) {
+            return Some(start);
+        }
+
+        search_end = start;
+    }
+    None
+}
+
+fn is_start_switch_tag(tag: &str) -> bool {
+    let bytes = tag.as_bytes();
+    tag.starts_with("<switch")
+        && bytes
+            .get("<switch".len())
+            .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
+        && !tag.trim_end().ends_with("/>")
+}
+
 #[cfg(test)]
 mod tests {
     use super::foreign_object_label_fallback_svg_text;
 
     #[test]
-    fn foreign_object_with_switch_tag_generates_tagged_fallback() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50" data-merman-switch="true"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
+    fn foreign_object_inside_switch_with_native_text_generates_tagged_fallback() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);
         assert!(
             out.contains(r#"data-merman-foreignobject="fallback""#),
