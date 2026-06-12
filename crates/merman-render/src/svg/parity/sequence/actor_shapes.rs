@@ -287,7 +287,7 @@ fn write_actor_label(
             out.push_str("<switch>");
             let _ = write!(
                 out,
-                r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}"><div class="actor actor-box" xmlns="http://www.w3.org/1999/xhtml" style="height: 100%; width: 100%;"><div style="text-align: center; vertical-align: middle;">{html}</div></div></foreignObject>"#,
+                r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}" data-merman-switch="true"><div class="actor actor-box" xmlns="http://www.w3.org/1999/xhtml" style="height: 100%; width: 100%;"><div style="text-align: center; vertical-align: middle;">{html}</div></div></foreignObject>"#,
                 x = fmt(x),
                 y = fmt(y),
                 w = fmt(katex.width),

@@ -67,6 +67,39 @@ impl SvgPostprocessor for DropNativeDuplicateFallbacksPostprocessor {
     }
 }
 
+pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
+    if !svg.contains(r#"data-merman-foreignobject-source="switch-native-fallback""#) {
+        return svg.to_string();
+    }
+    let marker = r#"data-merman-foreignobject-source="switch-native-fallback""#;
+    let mut out = String::with_capacity(svg.len());
+    let mut cursor = 0;
+
+    while let Some(rel_start) = svg[cursor..].find(marker) {
+        let attr_start = cursor + rel_start;
+        let Some(group_start) = svg[..attr_start].rfind("<g") else {
+            out.push_str(&svg[cursor..attr_start]);
+            cursor = attr_start + marker.len();
+            continue;
+        };
+        if group_start < cursor {
+            out.push_str(&svg[cursor..attr_start]);
+            cursor = attr_start + marker.len();
+            continue;
+        }
+        let Some((_, group_end)) = find_matching_g_end(svg, group_start) else {
+            out.push_str(&svg[cursor..attr_start]);
+            cursor = attr_start + marker.len();
+            continue;
+        };
+        out.push_str(&svg[cursor..group_start]);
+        cursor = group_end;
+    }
+
+    out.push_str(&svg[cursor..]);
+    out
+}
+
 pub(crate) fn foreign_object_fallback_svg(svg: &str) -> String {
     foreign_object_label_fallback_svg_text(svg)
 }
@@ -77,14 +110,43 @@ pub(crate) fn strip_foreign_objects(svg: &str) -> String {
 
     while let Some(rel_start) = svg[cursor..].find("<foreignObject") {
         let start = cursor + rel_start;
-        out.push_str(&svg[cursor..start]);
 
         let Some(open_end) = find_tag_end(svg, start) else {
-            out.push_str(&svg[start..]);
+            out.push_str(&svg[cursor..]);
             return out;
         };
+        let fo_tag = &svg[start..=open_end];
+        let is_switch_fo = fo_tag.contains(r#"data-merman-switch="true""#);
 
-        if svg[start..=open_end].trim_end().ends_with("/>") {
+        if is_switch_fo {
+            // This foreignObject is tagged as part of a <switch> element.
+            // Unwrap the <switch>: remove <switch> + <foreignObject>, keep sibling <text>
+            // fallback elements.
+            let before = &svg[cursor..start];
+            if let Some(switch_rel) = before.rfind("<switch>") {
+                let switch_start = cursor + switch_rel;
+                if let Some(switch_close_rel) = svg[start..].find("</switch>") {
+                    let switch_close_end = start + switch_close_rel + "</switch>".len();
+                    out.push_str(&svg[cursor..switch_start]);
+                    if !fo_tag.trim_end().ends_with("/>") {
+                        let fo_close_start = open_end + 1;
+                        if let Some(fo_close_rel) =
+                            svg[fo_close_start..].find("</foreignObject>")
+                        {
+                            let after_fo =
+                                fo_close_start + fo_close_rel + "</foreignObject>".len();
+                            out.push_str(&svg[after_fo..start + switch_close_rel]);
+                        }
+                    }
+                    cursor = switch_close_end;
+                    continue;
+                }
+            }
+        }
+
+        out.push_str(&svg[cursor..start]);
+
+        if fo_tag.trim_end().ends_with("/>") {
             cursor = open_end + 1;
             continue;
         }
@@ -279,6 +341,99 @@ mod tests {
             r#"<text class = 'label merman-foreignobject-fallback-text'>"#
         ));
         assert!(!text_tag_is_fallback(r#"<text class = 'label task'>"#));
+    }
+
+    #[test]
+    fn strip_foreign_objects_unwraps_switch_with_tagged_fo() {
+        let svg = r##"<svg><switch><foreignObject x="10" y="20" width="100" height="50" data-merman-switch="true"><div xmlns="http://www.w3.org/1999/xhtml">Make tea</div></foreignObject><text x="60" y="45">Make tea</text></switch></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "foreignObject should be stripped: {out}");
+        assert!(!out.contains("<switch>"), "switch wrapper should be removed: {out}");
+        assert!(!out.contains("</switch>"), "switch closing tag should be removed: {out}");
+        assert!(
+            out.contains(r#"<text x="60" y="45">Make tea</text>"#),
+            "text fallback should be preserved: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_handles_switch_with_multiple_text_elements() {
+        let svg = r##"<svg><switch><foreignObject x="0" y="0" width="80" height="40" data-merman-switch="true"><div xmlns="http://www.w3.org/1999/xhtml">Line 1</div></foreignObject><text x="40" y="15">Line 1</text><text x="40" y="30">Line 2</text></switch></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(!out.contains("<switch>"), "{out}");
+        assert!(out.contains(r#"<text x="40" y="15">Line 1</text>"#), "{out}");
+        assert!(out.contains(r#"<text x="40" y="30">Line 2</text>"#), "{out}");
+    }
+
+    #[test]
+    fn resvg_safe_pipeline_preserves_switch_text_fallback() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50" data-merman-switch="true"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
+        let out = SvgPipeline::resvg_safe().process_to_string(svg).unwrap();
+
+        assert!(
+            !out.contains("<foreignObject"),
+            "foreignObject should be stripped: {out}"
+        );
+        assert!(
+            !out.contains("<switch>"),
+            "switch should be removed: {out}"
+        );
+        assert!(
+            out.contains("Go to work"),
+            "text fallback should survive full pipeline: {out}"
+        );
+        assert!(
+            !out.contains(r#"data-merman-foreignobject-source"#),
+            "generated fallback should be dropped: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_handles_journey_switch_pattern() {
+        let svg = r##"<svg><g><rect class="section-type-0"/><switch><foreignObject x="150" y="50" width="550" height="50" data-merman-switch="true"><div class="journey-section section-type-0" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333" class="journey-section section-type-0" style="text-anchor: middle;"><tspan x="425" dy="0">Go to work</tspan></text></switch></g></svg>"##;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "foreignObject should be stripped: {out}");
+        assert!(!out.contains("<switch>"), "switch should be removed: {out}");
+        assert!(
+            out.contains("Go to work"),
+            "section text should be preserved: {out}"
+        );
+        assert!(
+            out.contains(r#"<text x="425" y="75""#),
+            "text element should be preserved: {out}"
+        );
+    }
+
+    #[test]
+    fn strip_foreign_objects_still_works_without_switch() {
+        let svg = r#"<svg><foreignObject width="80" height="24"><div>Hello</div></foreignObject><text>World</text></svg>"#;
+        let out = strip_foreign_objects(svg);
+
+        assert!(!out.contains("<foreignObject"), "{out}");
+        assert!(out.contains("<text>World</text>"), "{out}");
+    }
+
+    #[test]
+    fn drop_switch_native_fallbacks_removes_tagged_groups() {
+        let svg = r##"<svg><text x="60" y="45">Make tea</text><g data-merman-foreignobject="fallback" data-merman-foreignobject-source="switch-native-fallback" class="merman-foreignobject-fallback"><text class="merman-foreignobject-fallback-text">Make tea</text></g><g data-merman-foreignobject="fallback" class="merman-foreignobject-fallback"><text class="merman-foreignobject-fallback-text">Other label</text></g></svg>"##;
+        let out = drop_switch_native_fallbacks(svg);
+
+        assert!(
+            !out.contains("switch-native-fallback"),
+            "tagged fallback group should be removed: {out}"
+        );
+        assert!(
+            out.contains("Other label"),
+            "non-switch fallback should be kept: {out}"
+        );
+        assert!(
+            out.contains(r#"<text x="60" y="45">Make tea</text>"#),
+            "native text should remain: {out}"
+        );
     }
 
     #[test]

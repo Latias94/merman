@@ -264,6 +264,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         class: &str,
         text_box: JourneyTextBox,
         style: JourneyTextStyle<'_>,
+        text_fill: &str,
     ) {
         let JourneyTextBox {
             x,
@@ -278,13 +279,14 @@ pub(crate) fn render_journey_diagram_svg_model(
         let content_esc = escape_xml(content);
         let class_esc = escape_attr(class);
         let font_family_esc = escape_attr(task_font_family);
+        let fill_esc = escape_attr(text_fill);
         let cx = x + width / 2.0;
         let cy = y + height / 2.0;
 
         out.push_str("<switch>");
         let _ = write!(
             out,
-            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}">"#,
+            r#"<foreignObject x="{x}" y="{y}" width="{w}" height="{h}" data-merman-switch="true">"#,
             x = fmt(x),
             y = fmt(y),
             w = fmt(width),
@@ -304,9 +306,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
             let _ = write!(
                 out,
-                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="{class}" style="text-anchor: middle; font-size: {fs}px; font-family: {ff}; fill: {fill};"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
                 x = fmt(cx),
                 y = fmt(cy),
+                fill = fill_esc,
                 class = class_esc,
                 fs = fmt(task_font_size),
                 ff = font_family_esc,
@@ -443,12 +446,17 @@ pub(crate) fn render_journey_diagram_svg_model(
                 break;
             };
             let section_class = format!("journey-section section-type-{}", section.num);
+            let section_themed_fill = theme
+                .fill_types
+                .get(section.num as usize)
+                .map(|s| s.as_str())
+                .unwrap_or(&section.fill);
             let _ = write!(
                 &mut out,
                 r##"<g><rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
                 x = fmt(section.x),
                 y = fmt(section.y),
-                fill = escape_attr(&section.fill),
+                fill = escape_attr(section_themed_fill),
                 w = fmt(section.width),
                 h = fmt(section.height),
                 class = escape_attr(&section_class),
@@ -467,6 +475,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     task_font_size,
                     task_font_family,
                 },
+                &theme.text_color,
             );
             out.push_str("</g>");
         }
@@ -539,12 +548,17 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         out.push_str("</g>");
 
+        let task_themed_fill = theme
+            .fill_types
+            .get(task.num as usize)
+            .map(|s| s.as_str())
+            .unwrap_or(&task.fill);
         let _ = write!(
             &mut out,
             r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="task task-type-{num}"/>"##,
             x = fmt(task.x),
             y = fmt(task.y),
-            fill = escape_attr(&task.fill),
+            fill = escape_attr(task_themed_fill),
             w = fmt(task.width),
             h = fmt(task.height),
             num = task.num,
@@ -577,6 +591,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 task_font_size,
                 task_font_family,
             },
+            &theme.text_color,
         );
 
         out.push_str("</g>");
