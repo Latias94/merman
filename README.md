@@ -104,6 +104,9 @@ flutter pub add merman
 
 # Python package (experimental UniFFI wheels)
 pip install merman
+
+# Homebrew, merman-cli for macOS and Linux
+brew install merman-cli
 ```
 
 For rustdoc feature setup and examples, see
