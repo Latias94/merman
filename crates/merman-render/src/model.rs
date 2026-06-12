@@ -864,6 +864,8 @@ pub struct JourneyDiagramLayout {
     pub width: f64,
     pub height: f64,
     pub svg_height: f64,
+    #[serde(default = "crate::journey::default_use_max_width")]
+    pub use_max_width: bool,
     pub title: Option<String>,
     pub title_x: f64,
     pub title_y: f64,
@@ -1320,6 +1322,8 @@ pub struct C4DiagramLayout {
     pub bounds: Option<Bounds>,
     pub width: f64,
     pub height: f64,
+    #[serde(default = "crate::c4::default_use_max_width")]
+    pub use_max_width: bool,
     pub viewport_width: f64,
     pub viewport_height: f64,
     pub c4_type: String,

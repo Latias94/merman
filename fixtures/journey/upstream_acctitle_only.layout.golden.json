@@ -13,6 +13,7 @@
       "width": 400.0,
       "height": 20.0,
       "svg_height": 45.0,
+      "use_max_width": true,
       "title": null,
       "title_x": 150.0,
       "title_y": 25.0,

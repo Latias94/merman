@@ -13,6 +13,7 @@
       "width": 500.0,
       "height": 470.0,
       "svg_height": 565.0,
+      "use_max_width": true,
       "title": "Font size precedence should be deterministic",
       "title_x": 150.0,
       "title_y": 25.0,

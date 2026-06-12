@@ -5,16 +5,17 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -25.0,
-        "max_x": 1938.063,
+        "max_x": 1936.688,
         "max_y": 515.0
       },
-      "left_margin": 469.031,
-      "max_actor_label_width": 319.031,
-      "width": 1938.063,
+      "left_margin": 468.344,
+      "max_actor_label_width": 318.344,
+      "width": 1936.688,
       "height": 470.0,
       "svg_height": 565.0,
+      "use_max_width": true,
       "title": "User Journey Example",
-      "title_x": 469.031,
+      "title_x": 468.344,
       "title_y": 25.0,
       "actor_legend": [
         {
@@ -26,14 +27,14 @@
           "circle_r": 7.0,
           "label_lines": [
             {
-              "text": "This is a long label that will be split into",
+              "text": "This is a long label that will be split into multiple lines",
               "x": 40.0,
               "y": 67.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             },
             {
-              "text": "multiple lines to test the wrapping functionality",
+              "text": "to test the wrapping functionality",
               "x": 40.0,
               "y": 87.0,
               "tspan_x": 50.0,
@@ -74,23 +75,16 @@
           "circle_r": 7.0,
           "label_lines": [
             {
-              "text": "This is yet another long label that will be split",
+              "text": "This is yet another long label that will be split into",
               "x": 40.0,
               "y": 147.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             },
             {
-              "text": "into multiple lines to test the wrapping",
+              "text": "multiple lines to test the wrapping functionality",
               "x": 40.0,
               "y": 167.0,
-              "tspan_x": 50.0,
-              "text_margin": 5.0
-            },
-            {
-              "text": "functionality",
-              "x": 40.0,
-              "y": 187.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -101,7 +95,7 @@
         {
           "section": "Onboarding",
           "num": 0.0,
-          "x": 469.031,
+          "x": 468.344,
           "y": 50.0,
           "width": 550.0,
           "height": 50.0,
@@ -111,7 +105,7 @@
         {
           "section": "Engagement",
           "num": 1.0,
-          "x": 1069.031,
+          "x": 1068.344,
           "y": 50.0,
           "width": 350.0,
           "height": 50.0,
@@ -125,7 +119,7 @@
           "section": "Onboarding",
           "task": "      Sign Up",
           "score": 5.0,
-          "x": 469.031,
+          "x": 468.344,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -139,17 +133,17 @@
               "actor": "This is a long label that will be split into multiple lines to test the wrapping functionality",
               "pos": 0.0,
               "color": "#8FBC8F",
-              "cx": 483.031,
+              "cx": 482.344,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task0",
-          "line_x1": 544.031,
+          "line_x1": 543.344,
           "line_y1": 110.0,
-          "line_x2": 544.031,
+          "line_x2": 543.344,
           "line_y2": 450.0,
-          "face_cx": 544.031,
+          "face_cx": 543.344,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -158,7 +152,7 @@
           "section": "Onboarding",
           "task": "      Browse Features",
           "score": 3.0,
-          "x": 669.031,
+          "x": 668.344,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -172,17 +166,17 @@
               "actor": "This is another long label that will be split into multiple lines to test the wrapping functionality",
               "pos": 1.0,
               "color": "#7CFC00",
-              "cx": 683.031,
+              "cx": 682.344,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task1",
-          "line_x1": 744.031,
+          "line_x1": 743.344,
           "line_y1": 110.0,
-          "line_x2": 744.031,
+          "line_x2": 743.344,
           "line_y2": 450.0,
-          "face_cx": 744.031,
+          "face_cx": 743.344,
           "face_cy": 360.0,
           "mouth": "Ambivalent"
         },
@@ -191,7 +185,7 @@
           "section": "Onboarding",
           "task": "      Use Core Functionality",
           "score": 4.0,
-          "x": 869.031,
+          "x": 868.344,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -205,17 +199,17 @@
               "actor": "This is yet another long label that will be split into multiple lines to test the wrapping functionality",
               "pos": 2.0,
               "color": "#00FFFF",
-              "cx": 883.031,
+              "cx": 882.344,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task2",
-          "line_x1": 944.031,
+          "line_x1": 943.344,
           "line_y1": 110.0,
-          "line_x2": 944.031,
+          "line_x2": 943.344,
           "line_y2": 450.0,
-          "face_cx": 944.031,
+          "face_cx": 943.344,
           "face_cy": 330.0,
           "mouth": "Smile"
         },
@@ -224,7 +218,7 @@
           "section": "Engagement",
           "task": "      Browse Features",
           "score": 3.0,
-          "x": 1069.031,
+          "x": 1068.344,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -233,11 +227,11 @@
           "people": [],
           "actor_circles": [],
           "line_id": "task3",
-          "line_x1": 1144.031,
+          "line_x1": 1143.344,
           "line_y1": 110.0,
-          "line_x2": 1144.031,
+          "line_x2": 1143.344,
           "line_y2": 450.0,
-          "face_cx": 1144.031,
+          "face_cx": 1143.344,
           "face_cy": 360.0,
           "mouth": "Ambivalent"
         },
@@ -246,7 +240,7 @@
           "section": "Engagement",
           "task": "      Use Core Functionality",
           "score": 4.0,
-          "x": 1269.031,
+          "x": 1268.344,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -255,19 +249,19 @@
           "people": [],
           "actor_circles": [],
           "line_id": "task4",
-          "line_x1": 1344.031,
+          "line_x1": 1343.344,
           "line_y1": 110.0,
-          "line_x2": 1344.031,
+          "line_x2": 1343.344,
           "line_y2": 450.0,
-          "face_cx": 1344.031,
+          "face_cx": 1343.344,
           "face_cy": 330.0,
           "mouth": "Smile"
         }
       ],
       "activity_line": {
-        "x1": 469.031,
+        "x1": 468.344,
         "y1": 200.0,
-        "x2": 1465.031,
+        "x2": 1464.344,
         "y2": 200.0
       }
     }

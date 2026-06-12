@@ -1,7 +1,4 @@
 use crate::Result;
-use crate::config::{
-    config_f64 as cfg_f64, config_string as cfg_str, config_string_vec as cfg_string_vec,
-};
 use crate::model::{
     Bounds, JourneyActorLegendItemLayout, JourneyActorLegendLineLayout, JourneyDiagramLayout,
     JourneyLineLayout, JourneyMouthKind, JourneySectionLayout, JourneyTaskActorCircleLayout,
@@ -10,6 +7,10 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::journey::{JourneyDiagramRenderModel, JourneyRenderTask};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod config;
+
+pub(crate) use config::{JourneyConfigView, default_use_max_width};
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
 pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;
@@ -124,34 +125,7 @@ pub fn layout_journey_diagram_typed(
         model.sections.as_slice(),
     );
 
-    let left_margin_base = cfg_f64(effective_config, &["journey", "leftMargin"])
-        .unwrap_or(150.0)
-        .max(0.0);
-    let max_label_width = cfg_f64(effective_config, &["journey", "maxLabelWidth"])
-        .unwrap_or(360.0)
-        .max(1.0);
-    let box_text_margin = cfg_f64(effective_config, &["journey", "boxTextMargin"])
-        .unwrap_or(5.0)
-        .max(0.0);
-
-    let diagram_margin_x = cfg_f64(effective_config, &["journey", "diagramMarginX"])
-        .unwrap_or(50.0)
-        .max(0.0);
-    let diagram_margin_y = cfg_f64(effective_config, &["journey", "diagramMarginY"])
-        .unwrap_or(10.0)
-        .max(0.0);
-    let task_margin = cfg_f64(effective_config, &["journey", "taskMargin"])
-        .unwrap_or(50.0)
-        .max(0.0);
-    let cell_w = cfg_f64(effective_config, &["journey", "width"])
-        .unwrap_or(150.0)
-        .max(1.0);
-    let cell_h = cfg_f64(effective_config, &["journey", "height"])
-        .unwrap_or(50.0)
-        .max(1.0);
-
-    let actor_colours = cfg_string_vec(effective_config, &["journey", "actorColours"]);
-    let section_fills = cfg_string_vec(effective_config, &["journey", "sectionFills"]);
+    let cfg = JourneyConfigView::new(effective_config).layout_settings();
 
     let actors = if model.actors.is_empty() {
         actors_from_tasks(&model.tasks)
@@ -162,14 +136,15 @@ pub fn layout_journey_diagram_typed(
     let mut actor_map: BTreeMap<String, (i64, String)> = BTreeMap::new();
     for (i, actor) in actors.iter().enumerate() {
         let pos = i as i64;
-        let color = actor_colours
-            .get(i % actor_colours.len().max(1))
+        let color = cfg
+            .actor_colours
+            .get(i % cfg.actor_colours.len().max(1))
             .cloned()
             .unwrap_or_else(|| "#8FBC8F".to_string());
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let legend_style = TextStyle::default();
+    let legend_style = cfg.task_text_style.clone();
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
@@ -182,22 +157,23 @@ pub fn layout_journey_diagram_typed(
             .cloned()
             .unwrap_or((0_i64, "#8FBC8F".to_string()));
 
-        let lines = wrap_actor_label_lines(actor, max_label_width, measurer, &legend_style);
+        let lines = wrap_actor_label_lines(actor, cfg.max_label_width, measurer, &legend_style);
         let mut label_lines: Vec<JourneyActorLegendLineLayout> = Vec::new();
         for (index, line) in lines.iter().enumerate() {
             let x = 40.0;
             let y = y_pos + legend_circle_r + (index as f64) * legend_line_step_y;
-            let tspan_x = x + box_text_margin * 2.0;
+            let tspan_x = x + cfg.box_text_margin * 2.0;
             label_lines.push(JourneyActorLegendLineLayout {
                 text: line.to_string(),
                 x,
                 y,
                 tspan_x,
-                text_margin: box_text_margin,
+                text_margin: cfg.box_text_margin,
             });
 
             let line_width = journey_actor_legend_line_width_px(line, measurer, &legend_style);
-            if line_width > max_actor_label_width && line_width > left_margin_base - line_width {
+            if line_width > max_actor_label_width && line_width > cfg.left_margin_base - line_width
+            {
                 max_actor_label_width = line_width;
             }
         }
@@ -215,8 +191,8 @@ pub fn layout_journey_diagram_typed(
         y_pos += legend_line_step_y * (lines.len().max(1) as f64);
     }
 
-    let left_margin = left_margin_base + max_actor_label_width;
-    let section_v_height = cell_h * 2.0 + diagram_margin_y;
+    let left_margin = cfg.left_margin_base + max_actor_label_width;
+    let section_v_height = cfg.cell_height * 2.0 + cfg.diagram_margin_y;
     let task_y = section_v_height;
 
     let mut sections: Vec<JourneySectionLayout> = Vec::new();
@@ -229,13 +205,14 @@ pub fn layout_journey_diagram_typed(
 
     let mut stopx = left_margin;
     for (i, task) in model.tasks.iter().enumerate() {
-        let x = (i as f64) * task_margin + (i as f64) * cell_w + left_margin;
+        let x = (i as f64) * cfg.task_margin + (i as f64) * cfg.cell_width + left_margin;
         let is_new_section = last_section != task.section;
 
         if is_new_section {
-            let fills_len = section_fills.len().max(1) as i64;
+            let fills_len = cfg.section_fills.len().max(1) as i64;
             current_num = section_number % fills_len;
-            current_fill = section_fills
+            current_fill = cfg
+                .section_fills
                 .get(current_num as usize)
                 .cloned()
                 .unwrap_or_else(|| "#CCC".to_string());
@@ -248,7 +225,8 @@ pub fn layout_journey_diagram_typed(
                     break;
                 }
             }
-            let section_width = cell_w * (count as f64) + diagram_margin_x * ((count - 1) as f64);
+            let section_width =
+                cfg.cell_width * (count as f64) + cfg.diagram_margin_x * ((count - 1) as f64);
 
             sections.push(JourneySectionLayout {
                 section: task.section.to_string(),
@@ -256,7 +234,7 @@ pub fn layout_journey_diagram_typed(
                 x,
                 y: 50.0,
                 width: section_width.max(1.0),
-                height: cell_h,
+                height: cfg.cell_height,
                 fill: current_fill.clone(),
                 task_count: count,
             });
@@ -265,7 +243,7 @@ pub fn layout_journey_diagram_typed(
             section_number += 1;
         }
 
-        let center_x = x + cell_w / 2.0;
+        let center_x = x + cfg.cell_width / 2.0;
         let max_height = JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX;
         let face_cy = if task.score_is_nan {
             None
@@ -310,8 +288,8 @@ pub fn layout_journey_diagram_typed(
             score: task.score,
             x,
             y: task_y,
-            width: cell_w,
-            height: cell_h,
+            width: cfg.cell_width,
+            height: cfg.cell_height,
             fill: current_fill.clone(),
             num: current_num,
             people: task.people.clone(),
@@ -326,7 +304,7 @@ pub fn layout_journey_diagram_typed(
             mouth,
         });
 
-        stopx = stopx.max(x + diagram_margin_x + task_margin);
+        stopx = stopx.max(x + cfg.diagram_margin_x + cfg.task_margin);
     }
 
     let stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
@@ -335,8 +313,8 @@ pub fn layout_journey_diagram_typed(
         JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX
     });
 
-    let height = (stopy - 0.0 + 2.0 * diagram_margin_y).max(1.0);
-    let width = (left_margin + stopx + 2.0 * diagram_margin_x).max(1.0);
+    let height = (stopy - 0.0 + 2.0 * cfg.diagram_margin_y).max(1.0);
+    let width = (left_margin + stopx + 2.0 * cfg.diagram_margin_x).max(1.0);
 
     let title = model
         .title
@@ -361,16 +339,10 @@ pub fn layout_journey_diagram_typed(
 
     let activity_line = JourneyLineLayout {
         x1: left_margin,
-        y1: cell_h * 4.0,
+        y1: cfg.cell_height * 4.0,
         x2: width - left_margin - 4.0,
-        y2: cell_h * 4.0,
+        y2: cfg.cell_height * 4.0,
     };
-
-    let _ = (
-        cfg_str(effective_config, &["journey", "taskFontFamily"]),
-        cfg_f64(effective_config, &["journey", "taskFontSize"]),
-        cfg_str(effective_config, &["journey", "textPlacement"]),
-    );
 
     Ok(JourneyDiagramLayout {
         bounds: Some(bounds),
@@ -379,6 +351,7 @@ pub fn layout_journey_diagram_typed(
         width,
         height,
         svg_height,
+        use_max_width: cfg.use_max_width,
         title,
         title_x: left_margin,
         title_y: viewbox_top_pad,
@@ -391,7 +364,23 @@ pub fn layout_journey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{DeterministicTextMeasurer, TextStyle, VendoredFontMetricsTextMeasurer};
+    use merman_core::diagrams::journey::JourneyDiagramRenderModel;
+    use serde_json::json;
+
+    #[test]
+    fn journey_layout_carries_use_max_width_config() {
+        let model = JourneyDiagramRenderModel::default();
+        let measurer = DeterministicTextMeasurer::default();
+        let layout = super::layout_journey_diagram_typed(
+            &model,
+            &json!({"journey": {"useMaxWidth": false}}),
+            &measurer,
+        )
+        .expect("layout");
+
+        assert!(!layout.use_max_width);
+    }
 
     #[test]
     fn journey_geometry_constants_match_mermaid() {

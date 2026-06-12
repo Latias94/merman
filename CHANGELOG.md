@@ -30,6 +30,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Projected Requirement layout and SVG render configuration through a family-owned config view, centralizing spacing precedence, font settings, look, seed, viewport padding, and max-width behavior.
 - Projected Kanban layout and SVG render configuration through a family-owned config view, centralizing section sizing, Mermaid-compatible viewport padding/max-width precedence, label font settings, look, and ticket URL behavior.
 - Projected Timeline layout and SVG render configuration through a family-owned config view, centralizing left margin, font/style fallback, multicolor, padding, and max-width behavior while preserving the layout vs render font-size split.
+- Projected Journey layout and SVG render configuration through a family-owned config view, centralizing actor/section sizing, font fallback, and max-width behavior while keeping the SVG root contract downstream.
+- Projected C4 layout and SVG render configuration through a family-owned config view, centralizing diagram margins, shape sizing, font fallback, wrap behavior, and max-width semantics behind `C4ConfigView` and the layout contract.
+- Split the C4 layout kernel into a dedicated `c4/layout.rs` module so the facade stays thin and the layout engine owns its own internal state.
+- Deepened SVG parity internals by moving family render implementations behind thin wrapper modules, splitting presentation-theme family parsers and tests from the theme type definitions, and extracting shared color helpers.
 
 ## [0.8.0-alpha.1] - 2026-06-10
 

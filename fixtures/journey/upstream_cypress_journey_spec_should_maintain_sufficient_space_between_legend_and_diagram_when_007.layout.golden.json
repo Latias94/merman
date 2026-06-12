@@ -5,16 +5,17 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -25.0,
-        "max_x": 2601.063,
+        "max_x": 2606.938,
         "max_y": 515.0
       },
-      "left_margin": 500.531,
-      "max_actor_label_width": 350.531,
-      "width": 2601.063,
+      "left_margin": 503.469,
+      "max_actor_label_width": 353.469,
+      "width": 2606.938,
       "height": 470.0,
       "svg_height": 565.0,
+      "use_max_width": true,
       "title": "Web hook life cycle",
-      "title_x": 500.531,
+      "title_x": 503.469,
       "title_y": 25.0,
       "actor_legend": [
         {
@@ -43,23 +44,16 @@
           "circle_r": 7.0,
           "label_lines": [
             {
-              "text": "Darkoob userf deliberately increasing the size of this",
+              "text": "Darkoob userf deliberately increasing the size of this label to",
               "x": 40.0,
               "y": 87.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             },
             {
-              "text": "label to check if distance between legend and diagram",
+              "text": "check if distance between legend and diagram is  maintained",
               "x": 40.0,
               "y": 107.0,
-              "tspan_x": 50.0,
-              "text_margin": 5.0
-            },
-            {
-              "text": "is  maintained",
-              "x": 40.0,
-              "y": 127.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -70,13 +64,13 @@
           "pos": 2.0,
           "color": "#00FFFF",
           "circle_cx": 20.0,
-          "circle_cy": 140.0,
+          "circle_cy": 120.0,
           "circle_r": 7.0,
           "label_lines": [
             {
               "text": "DarkoobAPI",
               "x": 40.0,
-              "y": 147.0,
+              "y": 127.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -87,13 +81,13 @@
           "pos": 3.0,
           "color": "#20B2AA",
           "circle_cx": 20.0,
-          "circle_cy": 160.0,
+          "circle_cy": 140.0,
           "circle_r": 7.0,
           "label_lines": [
             {
               "text": "External Service",
               "x": 40.0,
-              "y": 167.0,
+              "y": 147.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -104,13 +98,13 @@
           "pos": 4.0,
           "color": "#B0E0E6",
           "circle_cx": 20.0,
-          "circle_cy": 180.0,
+          "circle_cy": 160.0,
           "circle_r": 7.0,
           "label_lines": [
             {
               "text": "admin Exjjjnjjjj qwerty",
               "x": 40.0,
-              "y": 187.0,
+              "y": 167.0,
               "tspan_x": 50.0,
               "text_margin": 5.0
             }
@@ -121,7 +115,7 @@
         {
           "section": "Darkoob",
           "num": 0.0,
-          "x": 500.531,
+          "x": 503.469,
           "y": 50.0,
           "width": 550.0,
           "height": 50.0,
@@ -131,7 +125,7 @@
         {
           "section": "External Service",
           "num": 1.0,
-          "x": 1100.531,
+          "x": 1103.469,
           "y": 50.0,
           "width": 550.0,
           "height": 50.0,
@@ -141,7 +135,7 @@
         {
           "section": "Darkoob",
           "num": 2.0,
-          "x": 1700.531,
+          "x": 1703.469,
           "y": 50.0,
           "width": 350.0,
           "height": 50.0,
@@ -155,7 +149,7 @@
           "section": "Darkoob",
           "task": "        Make preBuilt",
           "score": 5.0,
-          "x": 500.531,
+          "x": 503.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -169,17 +163,17 @@
               "actor": "Darkoob user",
               "pos": 0.0,
               "color": "#8FBC8F",
-              "cx": 514.531,
+              "cx": 517.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task0",
-          "line_x1": 575.531,
+          "line_x1": 578.469,
           "line_y1": 110.0,
-          "line_x2": 575.531,
+          "line_x2": 578.469,
           "line_y2": 450.0,
-          "face_cx": 575.531,
+          "face_cx": 578.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -188,7 +182,7 @@
           "section": "Darkoob",
           "task": "        register slug ",
           "score": 5.0,
-          "x": 700.531,
+          "x": 703.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -202,17 +196,17 @@
               "actor": "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained",
               "pos": 1.0,
               "color": "#7CFC00",
-              "cx": 714.531,
+              "cx": 717.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task1",
-          "line_x1": 775.531,
+          "line_x1": 778.469,
           "line_y1": 110.0,
-          "line_x2": 775.531,
+          "line_x2": 778.469,
           "line_y2": 450.0,
-          "face_cx": 775.531,
+          "face_cx": 778.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -221,7 +215,7 @@
           "section": "Darkoob",
           "task": "        Map slug to a Prebuilt Job",
           "score": 5.0,
-          "x": 900.531,
+          "x": 903.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -235,17 +229,17 @@
               "actor": "Darkoob user",
               "pos": 0.0,
               "color": "#8FBC8F",
-              "cx": 914.531,
+              "cx": 917.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task2",
-          "line_x1": 975.531,
+          "line_x1": 978.469,
           "line_y1": 110.0,
-          "line_x2": 975.531,
+          "line_x2": 978.469,
           "line_y2": 450.0,
-          "face_cx": 975.531,
+          "face_cx": 978.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -254,7 +248,7 @@
           "section": "External Service",
           "task": "        set Darkoob slug as hook for an Event ",
           "score": 5.0,
-          "x": 1100.531,
+          "x": 1103.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -268,17 +262,17 @@
               "actor": "admin Exjjjnjjjj qwerty",
               "pos": 4.0,
               "color": "#B0E0E6",
-              "cx": 1114.531,
+              "cx": 1117.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task3",
-          "line_x1": 1175.531,
+          "line_x1": 1178.469,
           "line_y1": 110.0,
-          "line_x2": 1175.531,
+          "line_x2": 1178.469,
           "line_y2": 450.0,
-          "face_cx": 1175.531,
+          "face_cx": 1178.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -287,7 +281,7 @@
           "section": "External Service",
           "task": "        listen to the events ",
           "score": 5.0,
-          "x": 1300.531,
+          "x": 1303.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -301,17 +295,17 @@
               "actor": "External Service",
               "pos": 3.0,
               "color": "#20B2AA",
-              "cx": 1314.531,
+              "cx": 1317.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task4",
-          "line_x1": 1375.531,
+          "line_x1": 1378.469,
           "line_y1": 110.0,
-          "line_x2": 1375.531,
+          "line_x2": 1378.469,
           "line_y2": 450.0,
-          "face_cx": 1375.531,
+          "face_cx": 1378.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -320,7 +314,7 @@
           "section": "External Service",
           "task": "        call darkoob endpoint ",
           "score": 5.0,
-          "x": 1500.531,
+          "x": 1503.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -334,17 +328,17 @@
               "actor": "External Service",
               "pos": 3.0,
               "color": "#20B2AA",
-              "cx": 1514.531,
+              "cx": 1517.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task5",
-          "line_x1": 1575.531,
+          "line_x1": 1578.469,
           "line_y1": 110.0,
-          "line_x2": 1575.531,
+          "line_x2": 1578.469,
           "line_y2": 450.0,
-          "face_cx": 1575.531,
+          "face_cx": 1578.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -353,7 +347,7 @@
           "section": "Darkoob",
           "task": "        check for inputs ",
           "score": 5.0,
-          "x": 1700.531,
+          "x": 1703.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -367,17 +361,17 @@
               "actor": "DarkoobAPI",
               "pos": 2.0,
               "color": "#00FFFF",
-              "cx": 1714.531,
+              "cx": 1717.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task6",
-          "line_x1": 1775.531,
+          "line_x1": 1778.469,
           "line_y1": 110.0,
-          "line_x2": 1775.531,
+          "line_x2": 1778.469,
           "line_y2": 450.0,
-          "face_cx": 1775.531,
+          "face_cx": 1778.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         },
@@ -386,7 +380,7 @@
           "section": "Darkoob",
           "task": "        run the prebuilt job ",
           "score": 5.0,
-          "x": 1900.531,
+          "x": 1903.469,
           "y": 110.0,
           "width": 150.0,
           "height": 50.0,
@@ -400,25 +394,25 @@
               "actor": "DarkoobAPI",
               "pos": 2.0,
               "color": "#00FFFF",
-              "cx": 1914.531,
+              "cx": 1917.469,
               "cy": 110.0,
               "r": 7.0
             }
           ],
           "line_id": "task7",
-          "line_x1": 1975.531,
+          "line_x1": 1978.469,
           "line_y1": 110.0,
-          "line_x2": 1975.531,
+          "line_x2": 1978.469,
           "line_y2": 450.0,
-          "face_cx": 1975.531,
+          "face_cx": 1978.469,
           "face_cy": 300.0,
           "mouth": "Smile"
         }
       ],
       "activity_line": {
-        "x1": 500.531,
+        "x1": 503.469,
         "y1": 200.0,
-        "x2": 2096.531,
+        "x2": 2099.469,
         "y2": 200.0
       }
     }
