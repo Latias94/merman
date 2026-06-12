@@ -99,7 +99,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 | `-j, --jobs <jobs>` | Positive integer; default half available CPUs or `1`; limits Markdown render concurrency. | Implemented | Uses a bounded Rayon pool for Markdown chart renders; `jobs=1` keeps serial behavior. |
 | `-e, --outputFormat [format]` | Choices: `svg`, `png`, `pdf`; overrides output extension. | Implemented divergence | Local also supports `jpg`, `ascii`, `unicode` for Rust-specific output; unknown values are rejected by clap. |
 | `-b, --backgroundColor [color]` | Default `white`; applied to SVG/PNG/PDF browser page path. | Implemented | Local applies root background/postprocess and raster background. |
-| `-c, --configFile [configFile]` | JSON Mermaid config file; must exist. | Implemented | JSON parse errors bubble as CLI errors. |
+| `-c, --configFile [configFile]` | JSON Mermaid config file; must exist and contain an object. | Implemented | JSON parse errors bubble as CLI errors; non-object JSON is rejected before rendering. |
 | `-C, --cssFile [cssFile]` | CSS file; must exist; injected into page before rendering. | Implemented | Local injects scoped CSS through SVG postprocessor. |
 | `-I, --svgId [svgId]` | Root SVG id used by `mermaid.render`. | Implemented | Local sanitizes for Rust SVG internals. |
 | `-s, --scale [scale]` | Positive float, default `1`; Puppeteer device scale factor. | Implemented | Local uses raster scale. |
@@ -137,6 +137,8 @@ costs, makes Rust renderers irrelevant for CLI output.
 | Markdown image alt defaults to `diagram`; title/alt escaped. | `markdownImage()` | Implemented | `replaces_charts_with_escaped_markdown_images`. |
 | No Markdown charts logs a message and writes no artefacts. | Markdown branch | Implemented | `markdown_without_charts_logs_and_writes_no_artefacts`. |
 | Config file overrides default/CLI theme when it contains `theme`. | `Object.assign({ theme }, config)` | Implemented | `config_file_theme_overrides_cli_theme`. |
+| Config file `themeVariables` and `themeCSS` reach rendered SVG. | Mermaid config is loaded before render. | Implemented | `config_file_theme_variables_and_theme_css_affect_svg` asserts visible SVG colors plus scoped `themeCSS`. |
+| Config file root must be a JSON object. | Mermaid config object is merged into runtime config. | Implemented | `non_object_config_file_fails_before_rendering`; aligns CLI with bindings `site_config` object semantics. |
 | Missing config/css/puppeteer files fail before rendering. | `checkConfigFile`, css check | Implemented | Config/css/puppeteer paths are validated before render work. |
 
 ## Deliberate Divergence Register

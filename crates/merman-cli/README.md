@@ -186,7 +186,7 @@ terminal text, and `--format png|jpg|pdf` for raster or PDF export.
 - `-t, --theme <theme>` sets the Mermaid theme.
 - `-w, --width <width>` and `-H, --height <height>` configure viewport-sensitive layouts.
 - `-b, --backgroundColor <color>` sets SVG/raster background color.
-- `-c, --configFile <file>` loads Mermaid JSON configuration.
+- `-c, --configFile <file>` loads a Mermaid JSON object configuration file.
 - `-C, --cssFile <file>` injects CSS into SVG output before export.
 - `-I, --svgId <id>` sets the root SVG id and marker id prefix.
 - `-s, --scale <n>` controls PNG/JPG raster scale.

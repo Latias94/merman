@@ -606,6 +606,79 @@ fn config_file_theme_overrides_cli_theme() {
 }
 
 #[test]
+fn config_file_theme_variables_and_theme_css_affect_svg() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("mermaid.json");
+    fs::write(
+        &config,
+        r##"{
+  "theme": "base",
+  "themeVariables": {
+    "mainBkg": "#111827",
+    "nodeTextColor": "#f8fafc",
+    "nodeBorder": "#38bdf8"
+  },
+  "themeCSS": ".node rect { filter: drop-shadow(1px 1px 1px #000); }"
+}"##,
+    )
+    .expect("write config");
+
+    let output = run_with_stdin(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "-I",
+            "cli-theme-config",
+            "-c",
+            config.to_string_lossy().as_ref(),
+        ],
+        "flowchart TD\nA[Plain source]\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let svg = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(svg.contains("#111827"), "unexpected SVG:\n{svg}");
+    assert!(svg.contains("#f8fafc"), "unexpected SVG:\n{svg}");
+    assert!(svg.contains("#38bdf8"), "unexpected SVG:\n{svg}");
+    assert!(
+        svg.contains("#cli-theme-config .node rect { filter: drop-shadow(1px 1px 1px #000); }"),
+        "unexpected SVG:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"data-merman-postprocess="scoped-css""#),
+        "unexpected SVG:\n{svg}"
+    );
+}
+
+#[test]
+fn non_object_config_file_fails_before_rendering() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("mermaid.json");
+    fs::write(&config, r#""dark""#).expect("write config");
+
+    let output = run_with_stdin(
+        &[
+            "-i",
+            "-",
+            "-o",
+            "-",
+            "-c",
+            config.to_string_lossy().as_ref(),
+        ],
+        "flowchart TD\nA[Plain source]\n",
+    );
+
+    assert!(!output.status.success(), "expected config file failure");
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("configuration file") && stderr.contains("JSON object"),
+        "unexpected stderr:\n{stderr}"
+    );
+}
+
+#[test]
 fn markdown_input_writes_numbered_svg_artefacts() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.md");

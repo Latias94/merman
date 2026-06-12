@@ -35,6 +35,11 @@ fn site_config_for(
     if let Some(path) = parse.config_file.as_deref() {
         let text = read_named_text_file(path, "configuration file")?;
         let value: Value = serde_json::from_str(&text)?;
+        if !value.is_object() {
+            return Err(CliError::InvalidInput(
+                "configuration file must contain a JSON object".to_string(),
+            ));
+        }
         cfg.deep_merge(&value);
     }
 
