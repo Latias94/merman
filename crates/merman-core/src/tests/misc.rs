@@ -100,6 +100,101 @@ graph TD;A-->B;"#;
 
 #[test]
 #[cfg(feature = "full-config")]
+fn parse_frontmatter_and_directives_deep_merge_nested_config_like_upstream() {
+    let engine = Engine::new();
+    let text = r#"---
+config:
+  flowchart:
+    nodeSpacing: 50
+    rankSpacing: 100
+  theme: default
+---
+%%{init: {"flowchart": {"nodeSpacing": 75}, "fontSize": 12}}%%
+%%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 100}, "mindmap": {"padding": 15}}}%%
+graph TD;A-->B;"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.config.as_value(),
+        &json!({
+            "flowchart": {
+                "curve": "basis",
+                "nodeSpacing": 100,
+                "rankSpacing": 100
+            },
+            "fontSize": 12,
+            "mindmap": {
+                "padding": 15
+            },
+            "theme": "default"
+        })
+    );
+}
+
+#[test]
+fn parse_init_directives_deep_merge_in_source_order_like_upstream() {
+    let engine = Engine::new();
+    let text = r#"%%{init: {"flowchart": {"nodeSpacing": 50, "rankSpacing": 100}, "theme": "default"}}%%
+%%{init: {"flowchart": {"nodeSpacing": 75}, "fontSize": 12}}%%
+%%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 100}, "mindmap": {"padding": 15}}}%%
+graph TD;A-->B;"#;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.config.as_value(),
+        &json!({
+            "flowchart": {
+                "curve": "basis",
+                "nodeSpacing": 100,
+                "rankSpacing": 100
+            },
+            "fontSize": 12,
+            "mindmap": {
+                "padding": 15
+            },
+            "theme": "default"
+        })
+    );
+}
+
+#[test]
+fn parse_theme_expands_theme_variables_only_in_effective_config() {
+    let engine = Engine::new();
+    let text = r##"%%{init: {"theme": "forest", "themeVariables": {"primaryColor": "#123456"}}}%%
+graph TD;A-->B;"##;
+
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.config.get_str("theme"), Some("forest"));
+    assert_eq!(
+        res.config.get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    assert_eq!(res.config.get_str("themeVariables.mainBkg"), None);
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.primaryColor"),
+        Some("#123456")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#123456")
+    );
+    assert_eq!(
+        res.effective_config.get_str("themeVariables.fontFamily"),
+        Some("\"trebuchet ms\", verdana, arial, sans-serif")
+    );
+}
+
+#[test]
+#[cfg(feature = "full-config")]
 fn parse_maps_top_level_frontmatter_diagram_config() {
     let engine = Engine::new();
     let text = r#"---
