@@ -1,0 +1,180 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 420.0,
+        "max_y": 148.0
+      },
+      "width": 420.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 10.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 2.0,
+      "display_mode": "compact",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%Y-%m-%d",
+      "tick_interval": "1day",
+      "top_axis": true,
+      "today_marker": "",
+      "categories": [
+        "Alpha",
+        "Beta"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 415.0,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 415.0,
+          "height": 24.0,
+          "class": "section section1"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Alpha",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Alpha"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Beta",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Beta"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a1",
+          "task": "Task A ",
+          "section": "Alpha",
+          "task_type": "Alpha",
+          "order": 0.0,
+          "start_ms": 1704067200000.0,
+          "end_ms": 1704153600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 168.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a1-text",
+            "text": "Task A ",
+            "font_size": 11.0,
+            "width": 32.34,
+            "x": 159.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-32.339999999999996"
+          }
+        },
+        {
+          "id": "b1",
+          "task": "Task B ",
+          "section": "Beta",
+          "task_type": "Beta",
+          "order": 1.0,
+          "start_ms": 1704153600000.0,
+          "end_ms": 1704240000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "b1",
+            "x": 243.0,
+            "y": 74.0,
+            "width": 167.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "b1-text",
+            "text": "Task B ",
+            "font_size": 11.0,
+            "width": 32.34,
+            "x": 326.5,
+            "y": 87.5,
+            "class": "taskText taskText1 width-32.339999999999996"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1704067200000.0,
+          "x": 75.0,
+          "label": "2024-01-01"
+        },
+        {
+          "time_ms": 1704153600000.0,
+          "x": 243.0,
+          "label": "2024-01-02"
+        },
+        {
+          "time_ms": 1704240000000.0,
+          "x": 410.0,
+          "label": "2024-01-03"
+        }
+      ],
+      "top_ticks": [
+        {
+          "time_ms": 1704067200000.0,
+          "x": 75.0,
+          "label": "2024-01-01"
+        },
+        {
+          "time_ms": 1704153600000.0,
+          "x": 243.0,
+          "label": "2024-01-02"
+        },
+        {
+          "time_ms": 1704240000000.0,
+          "x": 410.0,
+          "label": "2024-01-03"
+        }
+      ],
+      "title": "Config Frontmatter Layout Fields",
+      "title_x": 210.0,
+      "title_y": 25.0
+    }
+  }
+}

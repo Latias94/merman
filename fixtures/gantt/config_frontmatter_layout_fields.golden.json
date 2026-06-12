@@ -1,0 +1,86 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Config Frontmatter Layout Fields",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%Y-%m-%d",
+    "tickInterval": "1day",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "compact",
+    "sections": [
+      "Alpha",
+      "Beta"
+    ],
+    "tasks": [
+      {
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "Task A ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":a1, 2024-01-01, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-01-01"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2024-01-01T00:00:00.000",
+        "endTime": "2024-01-02T00:00:00.000"
+      },
+      {
+        "section": "Beta",
+        "type": "Beta",
+        "task": "Task B ",
+        "id": "b1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":b1, 2024-01-02, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-01-02"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2024-01-02T00:00:00.000",
+        "endTime": "2024-01-03T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

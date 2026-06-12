@@ -13,7 +13,7 @@
       "viewbox_x": -92.959,
       "viewbox_y": 156.674,
       "padding": 20.0,
-      "use_max_width": true,
+      "use_max_width": false,
       "font_size": 16.0,
       "head": {
         "x": 0.0,
