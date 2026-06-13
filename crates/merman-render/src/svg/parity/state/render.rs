@@ -1077,28 +1077,54 @@ fn render_state_cluster(
         }
     }
 
-    let _ = write!(
-        out,
-        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-        escape_attr(class),
-        escape_attr(cluster_id),
-        escape_attr(cluster_id),
-        escape_attr(data_look),
-        fmt(x),
-        fmt(y),
-        fmt(cluster.width.max(1.0)),
-        fmt(cluster.height.max(1.0)),
-        escape_attr(data_look),
-        link_open,
-        fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-        fmt(y + 1.0),
-        fmt(cluster.title_label.width.max(0.0)),
-        fmt_display(state_text_overrides::state_html_inline_span_padding_right_px()),
-        escape_xml(&title),
-        link_close,
-        fmt(x),
-        fmt(y + 21.0),
-        fmt(cluster.width.max(1.0)),
-        fmt((cluster.height - 29.0).max(1.0))
-    );
+    if ctx.html_labels {
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            escape_attr(class),
+            escape_attr(cluster_id),
+            escape_attr(cluster_id),
+            escape_attr(data_look),
+            fmt(x),
+            fmt(y),
+            fmt(cluster.width.max(1.0)),
+            fmt(cluster.height.max(1.0)),
+            escape_attr(data_look),
+            link_open,
+            fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
+            fmt(y + 1.0),
+            fmt(cluster.title_label.width.max(0.0)),
+            fmt_display(state_text_overrides::state_html_inline_span_padding_right_px()),
+            escape_xml(&title),
+            link_close,
+            fmt(x),
+            fmt(y + 21.0),
+            fmt(cluster.width.max(1.0)),
+            fmt((cluster.height - 29.0).max(1.0))
+        );
+    } else {
+        let title_dom = state_svg_text_label(&title, false, None);
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})">{}</g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            escape_attr(class),
+            escape_attr(cluster_id),
+            escape_attr(cluster_id),
+            escape_attr(data_look),
+            fmt(x),
+            fmt(y),
+            fmt(cluster.width.max(1.0)),
+            fmt(cluster.height.max(1.0)),
+            escape_attr(data_look),
+            link_open,
+            fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
+            fmt(y + 1.0),
+            title_dom,
+            link_close,
+            fmt(x),
+            fmt(y + 21.0),
+            fmt(cluster.width.max(1.0)),
+            fmt((cluster.height - 29.0).max(1.0))
+        );
+    }
 }

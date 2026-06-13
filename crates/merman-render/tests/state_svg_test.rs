@@ -226,6 +226,29 @@ A --> B: owns
 }
 
 #[test]
+fn state_svg_root_html_labels_false_uses_svg_text_for_cluster_titles() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+state Parent {
+  A
+}
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"class="cluster-label""#)
+            && svg.contains(r#"<text y="-10.1""#)
+            && svg.contains(r#"class="text-outer-tspan row""#),
+        "root htmlLabels=false should render State cluster titles as SVG text: {svg}"
+    );
+    assert!(
+        !svg.contains("<foreignObject"),
+        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for simple State cluster DOM: {svg}"
+    );
+}
+
+#[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
     let svg = render_state_svg_from_text(
         r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
