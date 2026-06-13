@@ -98,6 +98,41 @@ fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
 }
 
 #[test]
+fn flowchart_svg_security_level_controls_unsafe_click_href_rendering() {
+    let strict = render_flowchart_svg_from_text(
+        r#"%%{init: {"securityLevel": "strict"}}%%
+flowchart TD
+    A[Alpha] --> B[Beta]
+    click A href "javascript:alert(1)" "tip" _blank
+"#,
+    );
+    assert!(
+        strict.contains(r#"<a transform=""#),
+        "expected strict mode to keep Mermaid's anchor wrapper for a declared link: {strict}"
+    );
+    assert!(
+        !strict.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected strict mode to omit unsafe click href from SVG: {strict}"
+    );
+    assert!(
+        !strict.contains(r#"xlink:href="about:blank""#),
+        "expected Mermaid-compatible strict SVG to omit sanitized about:blank href: {strict}"
+    );
+
+    let loose = render_flowchart_svg_from_text(
+        r#"%%{init: {"securityLevel": "loose"}}%%
+flowchart TD
+    A[Alpha] --> B[Beta]
+    click A href "notes://do-your-thing/id" "tip" _blank
+"#,
+    );
+    assert!(
+        loose.contains(r#"xlink:href="notes://do-your-thing/id""#),
+        "expected loose mode to preserve Mermaid formatUrl-compatible custom protocols: {loose}"
+    );
+}
+
+#[test]
 fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
