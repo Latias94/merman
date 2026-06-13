@@ -557,8 +557,6 @@ fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, Xtas
     let expected_config = PathBuf::from("crates/merman-core/src/generated/default_config.json");
     let actual_config = tmp_dir.join("default_config.actual.json");
     super::gen_default_config(vec![
-        "--schema".to_string(),
-        "repo-ref/mermaid/packages/mermaid/src/schemas/config.schema.yaml".to_string(),
         "--out".to_string(),
         actual_config.display().to_string(),
     ])?;

@@ -22,6 +22,13 @@ pub(crate) fn mermaid_repo_root() -> PathBuf {
     repo_ref_root().join("mermaid")
 }
 
+pub(crate) fn default_config_schema_path() -> PathBuf {
+    workspace_root()
+        .join("crates")
+        .join("xtask")
+        .join("default_config_schema.yaml")
+}
+
 pub(crate) fn dompurify_repo_root() -> PathBuf {
     repo_ref_root().join("dompurify")
 }

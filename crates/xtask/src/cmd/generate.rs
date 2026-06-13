@@ -1653,14 +1653,7 @@ pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
         i += 1;
     }
 
-    let schema_path = schema_path.unwrap_or_else(|| {
-        crate::cmd::mermaid_repo_root()
-            .join("packages")
-            .join("mermaid")
-            .join("src")
-            .join("schemas")
-            .join("config.schema.yaml")
-    });
+    let schema_path = schema_path.unwrap_or_else(|| crate::cmd::default_config_schema_path());
     let out_path = out_path
         .unwrap_or_else(|| PathBuf::from("crates/merman-core/src/generated/default_config.json"));
 
