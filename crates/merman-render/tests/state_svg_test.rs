@@ -28,6 +28,38 @@ fn render_state_svg_from_text(text: &str) -> String {
     .expect("render svg")
 }
 
+fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
+    let init = serde_json::json!({
+        "handDrawnSeed": seed,
+        "themeVariables": {
+            "stateBkg": "#101827",
+            "stateBorder": "#38bdf8",
+            "mainBkg": "#0f172a",
+            "strokeWidth": 4,
+            "specialStateColor": "#f97316",
+            "innerEndBackground": "#22c55e",
+            "background": "#020617",
+            "noteBkgColor": "#fef3c7",
+            "noteBorderColor": "#92400e"
+        }
+    });
+    let source = format!(
+        r#"%%{{init: {init}}}%%
+stateDiagram-v2
+[*] --> Idle
+state Decide <<choice>>
+Idle --> Decide
+Decide --> Fork
+state Fork <<fork>>
+Fork --> Join
+state Join <<join>>
+Join --> [*]
+note right of Idle : seeded note"#
+    );
+
+    render_state_svg_from_text(&source)
+}
+
 #[test]
 fn state_debug_svg_includes_cluster_positioning_metadata() {
     let text = "stateDiagram-v2\n[*] --> Active\nstate Active {\n  direction TB\n  Idle --> Idle: LOG\n}\n";
@@ -131,6 +163,32 @@ state Active {
             r##"[data-look="neo"].statediagram-cluster rect.outer{rx:3px;ry:3px;filter:url(#merman-drop-shadow);}"##
         ),
         "expected neo state cluster outer rect CSS to reference the scoped drop-shadow and radius: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_hand_drawn_seed_controls_visible_rough_paths() {
+    let seed_7 = render_state_svg_with_hand_drawn_seed(7);
+    let seed_7_again = render_state_svg_with_hand_drawn_seed(7);
+    let seed_8 = render_state_svg_with_hand_drawn_seed(8);
+
+    assert_eq!(
+        seed_7, seed_7_again,
+        "same handDrawnSeed should keep State rough SVG deterministic"
+    );
+    assert_ne!(
+        seed_7, seed_8,
+        "different handDrawnSeed should change visible State rough paths"
+    );
+    assert!(
+        seed_7.contains(r##"fill="#101827""##)
+            && seed_7.contains(r##"stroke="#38bdf8" stroke-width="4""##),
+        "seed test should exercise ordinary visible rough paths: {seed_7}"
+    );
+    assert!(
+        seed_7.contains(r##"fill="#fef3c7""##)
+            && seed_7.contains(r##"stroke="#92400e" stroke-width="1.3""##),
+        "seed test should exercise note rough paths as a second visible consumer: {seed_7}"
     );
 }
 
