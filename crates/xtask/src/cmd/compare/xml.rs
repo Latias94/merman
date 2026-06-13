@@ -662,15 +662,20 @@ mod tests {
     }
 
     #[test]
-    fn svg_xml_compare_skip_reason_covers_flowchart_parser_only_svg_baselines() {
+    fn svg_xml_compare_skip_reason_covers_flowchart_parser_only_svg_baseline() {
         assert_eq!(
             svg_xml_compare_skip_reason(
                 "flowchart",
-                "upstream_html_demos_flowchart_flowchart_040_parser_only_katex"
+                "upstream_flow_text_ellipse_vertex_parser_only_spec"
             ),
-            Some(
-                "upstream Mermaid 11.15 cannot regenerate this parser-only KaTeX HTML-demo fixture"
-            )
+            Some("upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture")
+        );
+        assert_eq!(
+            svg_xml_compare_skip_reason(
+                "flowchart",
+                "upstream_html_demos_flowchart_flowchart_040_katex"
+            ),
+            None
         );
     }
 

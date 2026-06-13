@@ -1,5 +1,13 @@
 use super::*;
 
+fn html_fixture_stem_suffix(diagram_dir: &str, body: &str) -> &'static str {
+    if diagram_dir == "flowchart" && body.contains("$$") {
+        "_katex"
+    } else {
+        ""
+    }
+}
+
 pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -516,15 +524,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
 
             let source_slug = clamp_slug(slugify(&format!("demos_{}", b.source_stem)), 48);
             let heading_slug = clamp_slug(slugify(b.heading.as_deref().unwrap_or("example")), 64);
-            let is_flowchart_katex = diagram_dir == "flowchart" && body.contains("$$");
-            let stem_suffix = if is_flowchart_katex {
-                // Mermaid renders `$$...$$` labels via KaTeX, which we currently do not match
-                // in SVG DOM parity. Keep these fixtures for parser/layout coverage, but exclude
-                // them from upstream SVG DOM parity compares.
-                "_parser_only_katex"
-            } else {
-                ""
-            };
+            let stem_suffix = html_fixture_stem_suffix(&diagram_dir, &body);
             let stem = format!(
                 "upstream_html_{source_slug}_{heading_slug}_{idx:03}{stem_suffix}",
                 idx = b.idx_in_file + 1
@@ -789,4 +789,19 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::html_fixture_stem_suffix;
+
+    #[test]
+    fn flowchart_katex_html_blocks_use_active_baseline_suffix() {
+        assert_eq!(
+            html_fixture_stem_suffix("flowchart", "A[$$x^2$$]"),
+            "_katex"
+        );
+        assert_eq!(html_fixture_stem_suffix("sequence", "A->>B: $$x^2$$"), "");
+        assert_eq!(html_fixture_stem_suffix("flowchart", "A-->B"), "");
+    }
 }
