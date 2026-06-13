@@ -47,7 +47,7 @@ Capability levels:
 | Deprecated `flowchart.htmlLabels` | Yes | Yes | Yes | Partial by family | Flowchart-compatible fallback remains supported when root `htmlLabels` is unset. Covered by flowchart/class/ER tests plus State config/layout tests (`state_layout_settings_use_root_html_labels_before_deprecated_flowchart_fallback`, `state_layout_root_html_labels_override_deprecated_flowchart_html_labels`). Kept for upstream compatibility. |
 | `fontFamily` | Yes | Yes | Yes | Partial by family | Mirrored into `themeVariables.fontFamily`; render helpers and family settings read root/theme values. Covered by `parse_init_font_family_mirrors_legacy_theme_variable_like_upstream`, `parse_init_theme_variable_font_family_overrides_legacy_root`, and theme/font SVG tests. Browser font metrics remain a bounded residual. |
 | `fontSize` | Yes | Yes | Yes | Partial by family | Shared render helpers, class layout, sequence settings, Gantt layout, `class_svg_test.rs`, `crates/merman-render/src/svg/parity/theme/tests.rs`, and sequence settings tests. Root `fontSize` and `themeVariables.fontSize` have Mermaid-specific precedence per family. |
-| `handDrawnSeed` | Yes | Yes | Partial by family | Focused State SVG | CLI stores root seed; flowchart, ER, requirement, and state rough-path config read it (`crates/merman-render/src/er/config.rs`, `requirement/config.rs`, `state/config.rs`, `svg/parity/flowchart/render/node.rs`). `state_svg_hand_drawn_seed_controls_visible_rough_paths` locks same-seed determinism and different-seed visible rough path changes for State; Flowchart, ER, and Requirement still need family-local seed proof before claiming broad RoughJS determinism. |
+| `handDrawnSeed` | Yes | Yes | Partial by family | Focused SVG by family | CLI stores root seed; flowchart, ER, requirement, and state rough-path config read it (`crates/merman-render/src/er/config.rs`, `requirement/config.rs`, `state/config.rs`, `svg/parity/flowchart/render/node.rs`). `flowchart_svg_hand_drawn_seed_controls_visible_rough_paths`, `er_svg_hand_drawn_seed_controls_visible_rough_paths`, `requirement_svg_hand_drawn_seed_controls_visible_rough_paths`, and `state_svg_hand_drawn_seed_controls_visible_rough_paths` lock same-seed determinism and different-seed visible rough path changes for current rough-path consumers. This proves local seed plumbing and deterministic SVG emission, not exhaustive RoughJS parity for every shape. |
 | `gantt.displayMode` | Yes | Yes | Yes | Layout golden | Frontmatter special case and layout consumption are covered by `parse_maps_top_level_frontmatter_diagram_config`, `fixtures/gantt/config_frontmatter_layout_fields.golden.json`, and `fixtures/gantt/config_frontmatter_layout_fields.layout.golden.json`. |
 | `gantt.topAxis` | Yes | Yes | Yes | Layout golden | `fixtures/gantt/config_frontmatter_layout_fields.layout.golden.json` locks `top_axis: true` and non-empty top ticks from frontmatter `config.gantt.topAxis`. |
 | `gantt.rightPadding` | Yes | Yes | Yes | Layout golden | `fixtures/gantt/config_frontmatter_layout_fields.layout.golden.json` locks `right_padding: 10.0`. |
@@ -60,9 +60,9 @@ Capability levels:
   support as detection/config plumbing, not layout parity.
 - `look` is not a universal all-diagram contract. Renderers should only claim support after tests
   verify both effective config propagation and rendered SVG/CSS consumption.
-- `handDrawnSeed` has focused State SVG proof for same-seed determinism and different-seed visible
-  rough path changes, but Flowchart, ER, and Requirement still need family-local fixtures before
-  claiming broad RoughJS determinism.
+- `handDrawnSeed` has focused Flowchart, ER, Requirement, and State SVG proof for same-seed
+  determinism and different-seed visible rough path changes. Broad RoughJS parity remains
+  shape/family-specific and should still be admitted with source-backed tests.
 - Gantt frontmatter/config merge semantics are covered, and layout code consumes the key fields,
   but several fields still deserve small layout/SVG fixtures that prove observable geometry.
 - Top-level frontmatter compatibility is intentionally narrow. Global Mermaid config keys such as
