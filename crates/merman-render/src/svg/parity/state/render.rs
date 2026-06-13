@@ -964,13 +964,23 @@ fn render_state_root(
                         (x, y)
                     })
                     .unwrap_or((0.0, 0.0));
-                let _ = write!(
-                    out,
-                    r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-                    escape_xml_display(&id),
-                    fmt_display(cx),
-                    fmt_display(cy),
-                );
+                if ctx.html_labels {
+                    let _ = write!(
+                        out,
+                        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
+                        escape_xml_display(&id),
+                        fmt_display(cx),
+                        fmt_display(cy),
+                    );
+                } else {
+                    let _ = write!(
+                        out,
+                        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/></g></g>"#,
+                        escape_xml_display(&id),
+                        fmt_display(cx),
+                        fmt_display(cy),
+                    );
+                }
             }
         }
         drop(_g_placeholders);

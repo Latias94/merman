@@ -296,6 +296,50 @@ Display : Running
 }
 
 #[test]
+fn state_svg_root_html_labels_false_uses_svg_text_for_empty_edge_labels() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+A --> B
+"#,
+    );
+
+    assert!(
+        svg.contains(r#"class="edgeLabel""#)
+            && svg.contains(r#"<g class="label" data-id="edge0" transform="translate(0, 0)"></g>"#),
+        "root htmlLabels=false should keep the State empty edge label container: {svg}"
+    );
+    assert_eq!(
+        svg.matches("<foreignObject").count(),
+        0,
+        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for empty State edge label DOM: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_root_html_labels_false_uses_svg_text_for_self_loop_edge_labels() {
+    let svg = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+A --> A: again
+"#,
+    );
+
+    assert!(
+        svg.contains("cyclic-special-mid")
+            && svg.contains(
+                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">again</tspan>"#
+            ),
+        "root htmlLabels=false should render State self-loop edge labels as SVG text: {svg}"
+    );
+    assert_eq!(
+        svg.matches("<foreignObject").count(),
+        0,
+        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for State self-loop label DOM: {svg}"
+    );
+}
+
+#[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
     let svg = render_state_svg_from_text(
         r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%

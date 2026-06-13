@@ -461,6 +461,67 @@ pub(super) fn render_state_edge_label(
         }
     }
 
+    fn write_empty_edge_label(out: &mut String, id: &str, html_labels: bool, html_style: &str) {
+        if html_labels {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr(id),
+                html_style
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"></g></g>"#,
+                escape_attr(id)
+            );
+        }
+    }
+
+    fn write_visible_edge_label(
+        out: &mut String,
+        id: &str,
+        label_text: &str,
+        label_pos: crate::model::LayoutPoint,
+        w: f64,
+        h: f64,
+        html_labels: bool,
+    ) {
+        let w = w.max(0.0);
+        let h = h.max(0.0);
+        if html_labels {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                fmt_display(label_pos.x),
+                fmt_display(label_pos.y),
+                escape_attr(id),
+                fmt_display(-w / 2.0),
+                fmt_display(-h / 2.0),
+                fmt_display(w),
+                fmt_display(h),
+                edge_label_div_style(w),
+                state_edge_label_html(label_text)
+            );
+        } else {
+            let label_dom = state_svg_text_label(label_text, true, None);
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
+                fmt_display(label_pos.x),
+                fmt_display(label_pos.y),
+                escape_attr(id),
+                fmt_display(-w / 2.0),
+                fmt_display(-h / 2.0),
+                fmt_display(w),
+                fmt_display(h),
+                fmt_display(w / 2.0),
+                fmt_display(h / 2.0),
+                label_dom
+            );
+        }
+    }
+
     fn mermaid_round_number(num: f64, precision: i32) -> f64 {
         let factor = 10_f64.powi(precision);
         (num * factor).round() / factor
@@ -548,60 +609,40 @@ pub(super) fn render_state_edge_label(
 
         // Mermaid emits self-loop label containers in the order:
         // `*-cyclic-special-1`, `*-cyclic-special-mid` (visible label), `*-cyclic-special-2`.
-        let _ = write!(
-            out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(&id1),
-            empty_edge_label_style.as_str()
-        );
+        write_empty_edge_label(out, &id1, ctx.html_labels, empty_edge_label_style.as_str());
 
         // Mermaid ties the visible self-loop label to the `*-mid` segment.
         if !label_text.is_empty() {
             if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied() {
                 if let Some(lbl) = le.label.as_ref() {
-                    let cx = lbl.x - origin_x;
-                    let cy = lbl.y - origin_y;
-                    let w = lbl.width.max(0.0);
-                    let h = lbl.height.max(0.0);
-                    let _ = write!(
+                    write_visible_edge_label(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                        fmt_display(cx),
-                        fmt_display(cy),
-                        escape_xml_display(&idm),
-                        fmt_display(-w / 2.0),
-                        fmt_display(-h / 2.0),
-                        fmt_display(w),
-                        fmt_display(h),
-                        edge_label_div_style(w),
-                        state_edge_label_html(label_text)
+                        &idm,
+                        label_text,
+                        crate::model::LayoutPoint {
+                            x: lbl.x - origin_x,
+                            y: lbl.y - origin_y,
+                        },
+                        lbl.width,
+                        lbl.height,
+                        ctx.html_labels,
                     );
                 }
             }
         } else {
-            let _ = write!(
-                out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_xml_display(&idm),
-                empty_edge_label_style.as_str()
-            );
+            write_empty_edge_label(out, &idm, ctx.html_labels, empty_edge_label_style.as_str());
         }
 
-        let _ = write!(
-            out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(&id2),
-            empty_edge_label_style.as_str()
-        );
+        write_empty_edge_label(out, &id2, ctx.html_labels, empty_edge_label_style.as_str());
         return;
     }
 
     if label_text.is_empty() {
-        let _ = write!(
+        write_empty_edge_label(
             out,
-            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_xml_display(&edge.id),
-            empty_edge_label_style.as_str()
+            &edge.id,
+            ctx.html_labels,
+            empty_edge_label_style.as_str(),
         );
         return;
     }
@@ -690,37 +731,15 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
-    if ctx.html_labels {
-        let _ = write!(
-            out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-            fmt_display(cx),
-            fmt_display(cy),
-            escape_xml_display(&edge.id),
-            fmt_display(-w / 2.0),
-            fmt_display(-h / 2.0),
-            fmt_display(w),
-            fmt_display(h),
-            edge_label_div_style(w),
-            state_edge_label_html(label_text)
-        );
-    } else {
-        let label_dom = state_svg_text_label(label_text, true, None);
-        let _ = write!(
-            out,
-            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
-            fmt_display(cx),
-            fmt_display(cy),
-            escape_xml_display(&edge.id),
-            fmt_display(-w / 2.0),
-            fmt_display(-h / 2.0),
-            fmt_display(w),
-            fmt_display(h),
-            fmt_display(w / 2.0),
-            fmt_display(h / 2.0),
-            label_dom
-        );
-    }
+    write_visible_edge_label(
+        out,
+        &edge.id,
+        label_text,
+        crate::model::LayoutPoint { x: cx, y: cy },
+        w,
+        h,
+        ctx.html_labels,
+    );
 }
 
 #[cfg(test)]
