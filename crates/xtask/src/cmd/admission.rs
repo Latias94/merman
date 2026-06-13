@@ -636,6 +636,10 @@ mod tests {
                 ["pie", "legendPosition"].as_slice(),
                 serde_json::json!("right"),
             ),
+            (
+                ["sankey", "useMaxWidth"].as_slice(),
+                serde_json::json!(true),
+            ),
         ];
 
         for (path, value) in expected {

@@ -19,6 +19,12 @@
   },
   {
     "op": "set",
+    "path": ["sankey", "useMaxWidth"],
+    "value": true,
+    "reason": "Pinned Mermaid Sankey baselines render the default SVG with width=100% and max-width styling, so the generated default config must keep the runtime max-width default enabled."
+  },
+  {
+    "op": "set",
     "path": ["architecture", "seed"],
     "value": 1,
     "reason": "Local Architecture FCoSE parity keeps the Mermaid 11.15 deterministic seed default proven by architecture specs and local tests."

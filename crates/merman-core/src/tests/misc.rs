@@ -1820,7 +1820,7 @@ fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
     assert_eq!(sankey["nodePadding"], json!(12));
     assert_eq!(sankey["labelStyle"], json!("legacy"));
     assert_eq!(sankey["nodeColors"], json!({}));
-    assert_eq!(sankey["useMaxWidth"], json!(false));
+    assert_eq!(sankey["useMaxWidth"], json!(true));
 
     let configured = block_on(engine.parse_metadata(
         r##"%%{init: {"sankey": {"nodeWidth": 24, "nodePadding": 18, "labelStyle": "outlined", "nodeColors": {"A": "#112233"}}}}%%

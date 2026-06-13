@@ -373,7 +373,7 @@
     "prefix": "",
     "showValues": true,
     "suffix": "",
-    "useMaxWidth": false,
+    "useMaxWidth": true,
     "width": 600
   },
   "secure": [
