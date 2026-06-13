@@ -156,6 +156,7 @@ impl<'a> StateConfigView<'a> {
     }
 
     pub(crate) fn render_settings(&self) -> StateRenderSettings {
+        let html_labels = config_effective_html_labels(self.effective_config);
         StateRenderSettings {
             title_top_margin: self.title_top_margin(),
             diagram_look: config_diagram_look(self.effective_config)
@@ -166,6 +167,7 @@ impl<'a> StateConfigView<'a> {
                 .get("handDrawnSeed")
                 .and_then(Value::as_u64)
                 .unwrap_or(0),
+            html_labels,
             html_label_wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
             security_level_loose: self.root_string("securityLevel").as_deref() == Some("loose"),
@@ -237,6 +239,7 @@ pub(crate) struct StateRenderSettings {
     pub(crate) title_top_margin: f64,
     pub(crate) diagram_look: String,
     pub(crate) hand_drawn_seed: u64,
+    pub(crate) html_labels: bool,
     pub(crate) html_label_wrapping_width: f64,
     pub(crate) state_padding: f64,
     pub(crate) security_level_loose: bool,
@@ -351,6 +354,7 @@ mod tests {
             "look": "neo",
             "handDrawnSeed": 42,
             "securityLevel": "loose",
+            "htmlLabels": false,
             "flowchart": {
                 "wrappingWidth": 0
             },
@@ -364,6 +368,7 @@ mod tests {
 
         assert_eq!(settings.diagram_look, "neo");
         assert_eq!(settings.hand_drawn_seed, 42);
+        assert!(!settings.html_labels);
         assert!(settings.security_level_loose);
         assert_eq!(settings.html_label_wrapping_width, 0.0);
         assert_eq!(settings.state_padding, 0.0);

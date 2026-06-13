@@ -860,3 +860,34 @@ pub(super) fn state_edge_label_html(raw: &str) -> String {
     let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
     crate::text::mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
 }
+
+pub(super) fn state_svg_text_label(
+    raw: &str,
+    center_text: bool,
+    style_attr: Option<&str>,
+) -> String {
+    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
+    let normalized = state_normalize_br_tags(decoded.as_ref());
+    let text_anchor = if center_text {
+        r#" text-anchor="middle""#
+    } else {
+        ""
+    };
+    let style_attr = style_attr
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
+        .unwrap_or_default();
+
+    let mut out = format!(r#"<text y="-10.1"{text_anchor}{style_attr}>"#);
+    for (idx, line) in normalized.split('\n').enumerate() {
+        let y = idx as f64 * 1.1 - 0.1;
+        let _ = write!(
+            &mut out,
+            r#"<tspan class="text-outer-tspan row" x="0" y="{}em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">{}</tspan></tspan>"#,
+            fmt_display(y),
+            escape_xml_display(line)
+        );
+    }
+    out.push_str("</text>");
+    out
+}

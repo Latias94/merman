@@ -690,19 +690,37 @@ pub(super) fn render_state_edge_label(
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
-    let _ = write!(
-        out,
-        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-        fmt_display(cx),
-        fmt_display(cy),
-        escape_xml_display(&edge.id),
-        fmt_display(-w / 2.0),
-        fmt_display(-h / 2.0),
-        fmt_display(w),
-        fmt_display(h),
-        edge_label_div_style(w),
-        state_edge_label_html(label_text)
-    );
+    if ctx.html_labels {
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+            fmt_display(cx),
+            fmt_display(cy),
+            escape_xml_display(&edge.id),
+            fmt_display(-w / 2.0),
+            fmt_display(-h / 2.0),
+            fmt_display(w),
+            fmt_display(h),
+            edge_label_div_style(w),
+            state_edge_label_html(label_text)
+        );
+    } else {
+        let label_dom = state_svg_text_label(label_text, true, None);
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="stroke: none" x="0" y="0" width="{}" height="{}"/><g transform="translate({}, {})">{}</g></g></g></g>"#,
+            fmt_display(cx),
+            fmt_display(cy),
+            escape_xml_display(&edge.id),
+            fmt_display(-w / 2.0),
+            fmt_display(-h / 2.0),
+            fmt_display(w),
+            fmt_display(h),
+            fmt_display(w / 2.0),
+            fmt_display(h / 2.0),
+            label_dom
+        );
+    }
 }
 
 #[cfg(test)]

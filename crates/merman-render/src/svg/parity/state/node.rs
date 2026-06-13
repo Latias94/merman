@@ -557,11 +557,16 @@ pub(super) fn render_state_node_svg(
             }
 
             let measure_start = timing_enabled.then(web_time::Instant::now);
+            let wrap_mode = if ctx.html_labels {
+                WrapMode::HtmlLike
+            } else {
+                WrapMode::SvgLike
+            };
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &measure_style,
                 Some(ctx.html_label_wrapping_width),
-                WrapMode::HtmlLike,
+                wrap_mode,
             );
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
@@ -703,7 +708,11 @@ pub(super) fn render_state_node_svg(
                 Some(text_style_attr.as_str())
             };
             let label_html_start = timing_enabled.then(web_time::Instant::now);
-            let label_html = state_node_label_html_with_style(&label, label_span_style);
+            let label_dom = if ctx.html_labels {
+                state_node_label_html_with_style(&label, label_span_style)
+            } else {
+                state_svg_text_label(&label, false, label_span_style)
+            };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
@@ -724,30 +733,54 @@ pub(super) fn render_state_node_svg(
             };
 
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
-            let _ = write!(
-                out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
-                escape_xml_display(&node_class),
-                escape_xml_display(&node.dom_id),
-                fmt_display(cx),
-                fmt_display(cy),
-                fill_d.as_str(),
-                escape_xml_display(fill_attr),
-                escape_xml_display(&shape_style_attr),
-                stroke_d.as_str(),
-                escape_xml_display(stroke_attr),
-                fmt_display(stroke_width_attr),
-                escape_xml_display(&shape_style_attr),
-                link_open,
-                escape_xml_display(&text_style_attr),
-                fmt_display(-lw / 2.0),
-                fmt_display(-lh / 2.0),
-                fmt_display(lw),
-                fmt_display(lh),
-                div_style,
-                label_html,
-                link_close
-            );
+            if ctx.html_labels {
+                let _ = write!(
+                    out,
+                    r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
+                    escape_xml_display(&node_class),
+                    escape_xml_display(&node.dom_id),
+                    fmt_display(cx),
+                    fmt_display(cy),
+                    fill_d.as_str(),
+                    escape_xml_display(fill_attr),
+                    escape_xml_display(&shape_style_attr),
+                    stroke_d.as_str(),
+                    escape_xml_display(stroke_attr),
+                    fmt_display(stroke_width_attr),
+                    escape_xml_display(&shape_style_attr),
+                    link_open,
+                    escape_xml_display(&text_style_attr),
+                    fmt_display(-lw / 2.0),
+                    fmt_display(-lh / 2.0),
+                    fmt_display(lw),
+                    fmt_display(lh),
+                    div_style,
+                    label_dom,
+                    link_close
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g>{}</g>"##,
+                    escape_xml_display(&node_class),
+                    escape_xml_display(&node.dom_id),
+                    fmt_display(cx),
+                    fmt_display(cy),
+                    fill_d.as_str(),
+                    escape_xml_display(fill_attr),
+                    escape_xml_display(&shape_style_attr),
+                    stroke_d.as_str(),
+                    escape_xml_display(stroke_attr),
+                    fmt_display(stroke_width_attr),
+                    escape_xml_display(&shape_style_attr),
+                    link_open,
+                    escape_xml_display(&text_style_attr),
+                    fmt_display(-lw / 2.0),
+                    fmt_display(-lh / 2.0),
+                    label_dom,
+                    link_close
+                );
+            }
             drop(_g_emit);
         }
     }

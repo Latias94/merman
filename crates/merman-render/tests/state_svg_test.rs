@@ -193,6 +193,39 @@ fn state_svg_hand_drawn_seed_controls_visible_rough_paths() {
 }
 
 #[test]
+fn state_svg_root_html_labels_override_deprecated_flowchart_label_dom() {
+    let root_false = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+A --> B: owns
+"#,
+    );
+    let root_true = render_state_svg_from_text(
+        r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
+stateDiagram-v2
+A --> B: owns
+"#,
+    );
+
+    assert!(
+        root_false.contains(r#"<text y="-10.1""#)
+            && root_false.contains(r#"class="text-outer-tspan row""#)
+            && root_false.contains(r#"class="text-inner-tspan""#),
+        "root htmlLabels=false should render State labels as SVG text: {root_false}"
+    );
+    assert!(
+        !root_false.contains("<foreignObject"),
+        "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for simple State label DOM: {root_false}"
+    );
+    assert!(
+        root_true.contains("<foreignObject")
+            && root_true.contains(r#"class="nodeLabel""#)
+            && root_true.contains(r#"class="edgeLabel""#),
+        "root htmlLabels=true should override deprecated flowchart.htmlLabels=false and keep HTML label DOM: {root_true}"
+    );
+}
+
+#[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
     let svg = render_state_svg_from_text(
         r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%

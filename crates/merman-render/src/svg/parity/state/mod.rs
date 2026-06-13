@@ -44,6 +44,7 @@ struct StateRenderCtx<'a> {
     diagram_id: String,
     diagram_look: String,
     hand_drawn_seed: u64,
+    html_labels: bool,
     html_label_wrapping_width: f64,
     state_padding: f64,
     node_order: Vec<&'a str>,

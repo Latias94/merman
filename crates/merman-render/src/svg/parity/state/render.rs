@@ -125,6 +125,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         diagram_id: diagram_id.to_string(),
         diagram_look: state_render_settings.diagram_look,
         hand_drawn_seed: state_render_settings.hand_drawn_seed,
+        html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
         state_padding: state_render_settings.state_padding,
         node_order,
