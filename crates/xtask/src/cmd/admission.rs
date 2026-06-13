@@ -584,12 +584,7 @@ mod tests {
             })
             .collect();
 
-        let schema_path = crate::cmd::mermaid_repo_root()
-            .join("packages")
-            .join("mermaid")
-            .join("src")
-            .join("schemas")
-            .join("config.schema.yaml");
+        let schema_path = crate::cmd::default_config_schema_path();
         let schema_text =
             fs::read_to_string(&schema_path).expect("Mermaid config schema should read");
         let schema: serde_yaml::Value =
