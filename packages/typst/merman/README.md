@@ -22,7 +22,7 @@ flowchart TD
 
 | Typst package | merman source version | Notes |
 | --- | --- | --- |
-| `0.1.0` | `0.8.0-alpha.1` | Initial Typst package built from the 0.8 alpha line; Typst package versions advance independently. |
+| `0.1.0` | `0.8.0-alpha.2` | Initial Typst package built from the 0.8 alpha line; Typst package versions advance independently. |
 
 ## Examples
 

@@ -83,22 +83,22 @@ for methodology and commands.
 
 ```sh
 # Command-line tool (Cargo)
-cargo install merman-cli --version 0.8.0-alpha.1
+cargo install merman-cli --version 0.8.0-alpha.2
 
 # Command-line tool (Homebrew, macOS and Linux)
 brew install merman-cli
 
 # Rust library: SVG rendering
-cargo add merman@0.8.0-alpha.1 --features render
+cargo add merman@0.8.0-alpha.2 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman@0.8.0-alpha.1 --features ascii
+cargo add merman@0.8.0-alpha.2 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman@0.8.0-alpha.1 --features raster
+cargo add merman@0.8.0-alpha.2 --features raster
 
 # Rustdoc integration
-cargo add merman-rustdoc@0.8.0-alpha.1 --optional
+cargo add merman-rustdoc@0.8.0-alpha.2 --optional
 
 # Browser / TypeScript package
 npm install @mermanjs/web

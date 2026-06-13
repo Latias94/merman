@@ -6,7 +6,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-This cycle prepares Merman for the next stable release by tightening headless rendering
+## [0.8.0-alpha.2] - 2026-06-13
+
+This alpha continues Merman for the next stable release by tightening headless rendering
 consistency, improving Mermaid parity gates, and paying down renderer architecture debt. Most of
 the work is internal, but it should make CLI, library, SVG, and raster output behave more
 predictably across diagram families.

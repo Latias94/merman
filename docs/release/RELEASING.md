@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-06-10
+Last updated: 2026-06-13
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -74,7 +74,7 @@ Before tagging, verify these versions match the intended release:
 - `platforms/web/package.json` `version`
 - `platforms/android/build.gradle.kts` `version`
 - `platforms/python/merman/pyproject.toml` `project.version`; pre-releases should use the PEP 440
-  spelling, for example `0.7.0a2` for workspace release `0.7.0-alpha.2`, while final releases use
+  spelling, for example `0.8.0a2` for workspace release `0.8.0-alpha.2`, while final releases use
   the SemVer spelling, for example `0.7.0`
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
@@ -84,7 +84,7 @@ For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 Before tagging or publishing, run:
 
 ```bash
-gh workflow run release-preflight.yml -f version=0.7.0 -f source_ref=main
+gh workflow run release-preflight.yml -f version=0.8.0-alpha.2 -f source_ref=main
 ```
 
 The preflight workflow verifies release versions, package file lists, Python wheels, Android AAR
@@ -165,8 +165,8 @@ the Typst-compatible transport and must remain separate from browser/wasm-bindge
 ## Tag And Push
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0-alpha.2
+git push origin v0.8.0-alpha.2
 ```
 
 Do not move or force-update release tags after publication. Release tags are the immutable source
@@ -179,10 +179,10 @@ Actions artifacts for manual attachment.
 After the primary release exists, run platform publish workflows manually:
 
 ```bash
-gh workflow run release-python.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0 -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0
-gh workflow run release-apple.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0
-gh workflow run release-web.yml -f release_tag=v0.7.0 -f source_ref=v0.7.0 -f publish_to_npm=true
+gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_pypi=true
+gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
+gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
+gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_npm=true
 gh workflow run homebrew.yml
 ```
 
