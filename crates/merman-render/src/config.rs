@@ -49,6 +49,12 @@ pub(crate) fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     value_at(cfg, path).and_then(Value::as_bool)
 }
 
+pub(crate) fn config_effective_html_labels(cfg: &Value) -> bool {
+    config_bool(cfg, &["htmlLabels"])
+        .or_else(|| config_bool(cfg, &["flowchart", "htmlLabels"]))
+        .unwrap_or(true)
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct DiagramLook<'a> {
     value: &'a str,

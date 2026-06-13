@@ -779,8 +779,15 @@ pub fn remove_script(text: &str) -> String {
     }
 }
 
+fn effective_html_labels(config: &MermaidConfig) -> bool {
+    config
+        .get_bool("htmlLabels")
+        .or_else(|| config.get_bool("flowchart.htmlLabels"))
+        .unwrap_or(true)
+}
+
 fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
-    let html_labels_enabled = config.get_bool("flowchart.htmlLabels") != Some(false);
+    let html_labels_enabled = effective_html_labels(config);
     if !html_labels_enabled {
         return text.to_string();
     }
@@ -870,6 +877,38 @@ mod tests {
         assert_eq!(
             break_to_placeholder("A<br\u{00A0}/>B<br\u{FEFF}>C"),
             "A#br#B#br#C"
+        );
+    }
+
+    #[test]
+    fn sanitize_more_uses_root_html_labels_before_deprecated_flowchart_fallback() {
+        let root_false = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": true }
+        }));
+        assert_eq!(
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_false),
+            r#"<b a=1>ok</b>"#
+        );
+
+        let root_true = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": true,
+            "flowchart": { "htmlLabels": false }
+        }));
+        assert_eq!(
+            sanitize_more(r#"<b a=1>ok</b>"#, &root_true),
+            r#"<b>ok</b>"#
+        );
+
+        let deprecated_false = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "flowchart": { "htmlLabels": false }
+        }));
+        assert_eq!(
+            sanitize_more(r#"<b a=1>ok</b>"#, &deprecated_false),
+            r#"<b a=1>ok</b>"#
         );
     }
 

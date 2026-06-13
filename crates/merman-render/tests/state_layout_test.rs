@@ -41,6 +41,19 @@ fn deep_state_composite_chain(depth: usize) -> String {
     input
 }
 
+fn layout_state_from_text(text: &str) -> merman_render::model::StateDiagramV2Layout {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
+        panic!("expected StateDiagramV2 layout");
+    };
+    *layout
+}
+
 #[test]
 fn state_parse_for_render_model_handles_deep_composite_chain() {
     const DEPTH: usize = 1500;
@@ -147,6 +160,39 @@ fn state_start_and_end_have_fixed_size() {
     assert!(
         (ew - STATE_END_DAGRE_WIDTH_PX_11_12_2).abs() < 1e-6
             && (eh - STATE_START_DIAMETER_PX).abs() < 1e-6
+    );
+}
+
+#[test]
+fn state_layout_root_html_labels_override_deprecated_flowchart_html_labels() {
+    let root_false = layout_state_from_text(
+        r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
+stateDiagram-v2
+A --> B: owns
+"#,
+    );
+    let root_true = layout_state_from_text(
+        r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
+stateDiagram-v2
+A --> B: owns
+"#,
+    );
+
+    let false_label = root_false
+        .edges
+        .iter()
+        .find_map(|edge| edge.label.as_ref())
+        .expect("root=false edge label");
+    let true_label = root_true
+        .edges
+        .iter()
+        .find_map(|edge| edge.label.as_ref())
+        .expect("root=true edge label");
+
+    assert!(
+        false_label.width > true_label.width
+            && (false_label.height - true_label.height).abs() > 1e-6,
+        "root htmlLabels=false should select SVG-like label metrics over deprecated flowchart=true: false={false_label:?}, true={true_label:?}"
     );
 }
 

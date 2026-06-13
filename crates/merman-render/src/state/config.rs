@@ -1,9 +1,10 @@
 //! Shared helpers for state diagram layout.
 
 use super::StateNode;
-pub(super) use crate::config::{config_bool, config_f64};
+pub(super) use crate::config::config_f64;
 use crate::config::{
-    config_diagram_look, config_f64_css_px, config_string, config_string_or_first_array,
+    config_diagram_look, config_effective_html_labels, config_f64_css_px, config_string,
+    config_string_or_first_array,
 };
 use crate::text::TextStyle;
 use crate::text::WrapMode;
@@ -132,7 +133,7 @@ impl<'a> StateConfigView<'a> {
     }
 
     pub(super) fn layout_settings(&self, direction: &str) -> StateLayoutSettings {
-        let html_labels = self.flowchart_bool("htmlLabels").unwrap_or(true);
+        let html_labels = config_effective_html_labels(self.effective_config);
         StateLayoutSettings {
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
@@ -218,10 +219,6 @@ impl<'a> StateConfigView<'a> {
         config_string(self.effective_config, &[key])
     }
 
-    fn flowchart_bool(&self, key: &str) -> Option<bool> {
-        config_bool(self.flowchart_config, &[key])
-    }
-
     fn state_compat_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.state_config, &[key])
     }
@@ -286,6 +283,32 @@ mod tests {
             StateConfigView::new(&fallback).html_label_wrapping_width(),
             200.0
         );
+    }
+
+    #[test]
+    fn state_layout_settings_use_root_html_labels_before_deprecated_flowchart_fallback() {
+        let root_false = json!({
+            "htmlLabels": false,
+            "flowchart": { "htmlLabels": true }
+        });
+        let settings = StateConfigView::new(&root_false).layout_settings("TB");
+        assert!(!settings.html_labels);
+        assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
+
+        let root_true = json!({
+            "htmlLabels": true,
+            "flowchart": { "htmlLabels": false }
+        });
+        let settings = StateConfigView::new(&root_true).layout_settings("TB");
+        assert!(settings.html_labels);
+        assert_eq!(settings.wrap_mode, WrapMode::HtmlLike);
+
+        let deprecated_false = json!({
+            "flowchart": { "htmlLabels": false }
+        });
+        let settings = StateConfigView::new(&deprecated_false).layout_settings("TB");
+        assert!(!settings.html_labels);
+        assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
     }
 
     #[test]
