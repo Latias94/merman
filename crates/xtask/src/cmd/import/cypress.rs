@@ -2899,10 +2899,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        fs::write(&out_path, c.body.as_bytes()).map_err(|source| XtaskError::WriteFile {
-            path: out_path.display().to_string(),
-            source,
-        })?;
+        write_imported_fixture(&c.diagram_dir, &stem, &out_path, &c.body)?;
 
         let f = CreatedFixture {
             diagram_dir: c.diagram_dir,

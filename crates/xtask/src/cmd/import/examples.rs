@@ -472,12 +472,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             continue;
         }
 
-        fs::write(&out_path, &c.body).map_err(|err| {
-            XtaskError::SnapshotUpdateFailed(format!(
-                "failed to write fixture {}: {err}",
-                out_path.display()
-            ))
-        })?;
+        write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body)?;
 
         let f = CreatedFixture {
             diagram_dir: c.diagram_dir,

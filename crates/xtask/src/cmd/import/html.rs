@@ -586,10 +586,7 @@ pub(crate) fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> 
             continue;
         }
 
-        fs::write(&out_path, c.body.as_bytes()).map_err(|source| XtaskError::WriteFile {
-            path: out_path.display().to_string(),
-            source,
-        })?;
+        write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body)?;
         existing.insert(c.body.clone(), out_path.clone());
 
         created.push(CreatedFixture {
