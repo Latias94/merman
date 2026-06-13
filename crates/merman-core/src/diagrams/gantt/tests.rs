@@ -1,10 +1,18 @@
 use super::*;
-use crate::{Engine, ParseOptions, RenderSemanticModel};
+use crate::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
 use chrono::NaiveDate;
 use futures::executor::block_on;
+use serde_json::json;
 
 fn parse(text: &str) -> Value {
-    let engine = Engine::new();
+    parse_with_site_config(text, None)
+}
+
+fn parse_with_site_config(text: &str, site_config: Option<MermaidConfig>) -> Value {
+    let engine = match site_config {
+        Some(site_config) => Engine::new().with_site_config(site_config),
+        None => Engine::new(),
+    };
     block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap()
@@ -553,9 +561,8 @@ click id1 call myFn("a,b", c)
 
 #[test]
 fn gantt_click_call_parses_args_and_defaults_to_id() {
-    let model = parse(
+    let model = parse_with_site_config(
         r#"
-%%{init: {"securityLevel":"loose"}}%%
 gantt
 dateFormat YYYY-MM-DD
 section A
@@ -564,6 +571,9 @@ task2: id2, 2013-01-02, 1d
 click id2 call myFn("a,b", c)
 click id1 call myFn2()
 "#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
     );
     let ev1 = &model["clickEvents"]["id1"];
     assert_eq!(ev1["function_name"].as_str().unwrap(), "myFn2");

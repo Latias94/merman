@@ -2,6 +2,7 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[cfg(test)]
 const DEFAULT_SECURE_KEYS: &[&str] = &[
     "secure",
     "securityLevel",
@@ -100,7 +101,7 @@ impl MermaidConfig {
 
     pub(crate) fn secure_filtered_overrides(&self, overrides: &MermaidConfig) -> MermaidConfig {
         let mut filtered = clone_value_nonrecursive(overrides.as_value());
-        remove_secure_keys_nonrecursive(self.as_value(), &mut filtered);
+        remove_secure_keys_recursive(self.as_value(), &mut filtered);
         MermaidConfig::from_value(filtered)
     }
 
@@ -121,39 +122,37 @@ impl Drop for MermaidConfig {
     }
 }
 
-fn remove_secure_keys_nonrecursive(site_config: &Value, overrides: &mut Value) {
-    let Some(secure_keys) = site_config
+fn remove_secure_keys_recursive(site_config: &Value, overrides: &mut Value) {
+    let secure_keys = site_config
         .get("secure")
         .and_then(Value::as_array)
         .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
-    else {
-        return;
-    };
-    if secure_keys.is_empty() {
-        return;
-    }
-    if secure_keys_match_default(&secure_keys) {
-        // Compatibility bridge: imported upstream fixtures often encode external Cypress render
-        // options as diagram-local config. Enforce custom site `secure` lists now, and migrate
-        // default-list enforcement after those fixtures move to explicit site-config harness input.
-        return;
-    }
+        .unwrap_or_default();
 
-    let Some(map) = overrides.as_object_mut() else {
-        return;
-    };
-    for key in secure_keys {
-        if let Some(old) = map.remove(key) {
-            drop_value_nonrecursive(old);
+    let mut stack = vec![overrides];
+    while let Some(current) = stack.pop() {
+        match current {
+            Value::Object(map) => {
+                if let Some(old) = map.remove("secure") {
+                    drop_value_nonrecursive(old);
+                }
+                for key in &secure_keys {
+                    if let Some(old) = map.remove(*key) {
+                        drop_value_nonrecursive(old);
+                    }
+                }
+                for child in map.values_mut().rev() {
+                    stack.push(child);
+                }
+            }
+            Value::Array(items) => {
+                for child in items.iter_mut().rev() {
+                    stack.push(child);
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
     }
-}
-
-fn secure_keys_match_default(secure_keys: &[&str]) -> bool {
-    secure_keys.len() == DEFAULT_SECURE_KEYS.len()
-        && DEFAULT_SECURE_KEYS
-            .iter()
-            .all(|default_key| secure_keys.contains(default_key))
 }
 
 pub(crate) fn mirror_legacy_font_family_into_theme_variables(config: &mut MermaidConfig) {
@@ -387,6 +386,62 @@ mod tests {
             .map(|value| value.as_str().expect("secure key string"))
             .collect::<Vec<_>>();
 
-        assert!(secure_keys_match_default(&secure));
+        assert_eq!(secure, DEFAULT_SECURE_KEYS);
+    }
+
+    #[test]
+    fn secure_filtered_overrides_removes_default_secure_keys_recursively() {
+        let site_config = crate::generated::default_site_config();
+        let overrides = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "fontFamily": "diagram-font",
+            "flowchart": {
+                "securityLevel": "sandbox",
+                "htmlLabels": false,
+                "nested": [
+                    {
+                        "securityLevel": "loose",
+                        "shape": "rect"
+                    }
+                ]
+            }
+        }));
+
+        let filtered = site_config.secure_filtered_overrides(&overrides);
+
+        assert_eq!(filtered.get_str("fontFamily"), Some("diagram-font"));
+        assert_eq!(filtered.get_bool("flowchart.htmlLabels"), Some(false));
+        assert_eq!(
+            filtered.as_value()["flowchart"]["nested"][0]["shape"],
+            json!("rect")
+        );
+        assert!(filtered.get_str("securityLevel").is_none());
+        assert!(filtered.get_str("flowchart.securityLevel").is_none());
+        assert!(
+            filtered.as_value()["flowchart"]["nested"][0]
+                .get("securityLevel")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn secure_filtered_overrides_always_removes_secure_key() {
+        let mut site_config = crate::generated::default_site_config();
+        site_config.deep_merge(&json!({
+            "secure": ["fontSize"]
+        }));
+        let overrides = MermaidConfig::from_value(json!({
+            "secure": ["theme"],
+            "fontSize": 99,
+            "securityLevel": "loose",
+            "theme": "dark"
+        }));
+
+        let filtered = site_config.secure_filtered_overrides(&overrides);
+
+        assert!(filtered.as_value().get("secure").is_none());
+        assert!(filtered.as_value().get("fontSize").is_none());
+        assert_eq!(filtered.get_str("securityLevel"), Some("loose"));
+        assert_eq!(filtered.get_str("theme"), Some("dark"));
     }
 }

@@ -1,8 +1,9 @@
 use chrono::NaiveDate;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 fn ms_to_local_iso(ms: i64) -> Option<String> {
     let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
@@ -19,6 +20,41 @@ fn workspace_root() -> PathBuf {
 
 fn fixtures_root() -> PathBuf {
     workspace_root().join("fixtures")
+}
+
+fn fixture_site_config_overrides() -> &'static Map<String, Value> {
+    static OVERRIDES: OnceLock<Map<String, Value>> = OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/_config/site_config_overrides.json"
+        ))
+        .expect("valid fixture site config override manifest");
+        match value {
+            Value::Object(map) => map,
+            other => {
+                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
+            }
+        }
+    })
+}
+
+fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
+    let relative_name = path
+        .strip_prefix(fixtures_root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    fixture_site_config_overrides()
+        .get(&relative_name)
+        .cloned()
+        .map(MermaidConfig::from_value)
+}
+
+fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
+    match fixture_site_config_for_path(path) {
+        Some(site_config) => base.clone().with_site_config(site_config),
+        None => base.clone(),
+    }
 }
 
 fn list_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
@@ -199,7 +235,8 @@ fn fixtures_match_golden_snapshots() {
     for mmd_path in fixtures {
         let text = std::fs::read_to_string(&mmd_path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
-        let parsed = futures::executor::block_on(engine.parse_diagram(
+        let fixture_engine = engine_for_fixture(&engine, &mmd_path);
+        let parsed = futures::executor::block_on(fixture_engine.parse_diagram(
             &text,
             ParseOptions {
                 suppress_errors: true,

@@ -531,6 +531,28 @@ flowchart TD
 }
 
 #[test]
+fn default_secure_keys_protect_effective_config_from_diagram_config() {
+    let engine = Engine::new();
+    let text = r#"%%{init: {"theme": "dark", "securityLevel": "loose"}}%%
+flowchart TD
+    A --> B
+"#;
+
+    let meta = engine
+        .parse_metadata_sync(text, ParseOptions::strict())
+        .expect("parse succeeds")
+        .expect("diagram detected");
+
+    assert_eq!(meta.config.get_str("theme"), Some("dark"));
+    assert_eq!(meta.config.get_str("securityLevel"), Some("loose"));
+    assert_eq!(meta.effective_config.get_str("theme"), Some("dark"));
+    assert_eq!(
+        meta.effective_config.get_str("securityLevel"),
+        Some("strict")
+    );
+}
+
+#[test]
 fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
     const DEPTH: usize = 1_024;
     let site_config = MermaidConfig::from_value(deep_config_value(

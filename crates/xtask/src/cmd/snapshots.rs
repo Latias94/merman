@@ -2,9 +2,10 @@ use crate::XtaskError;
 use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram};
 use crate::util::*;
 use regex::Regex;
-use serde_json::Value as JsonValue;
+use serde_json::{Map, Value as JsonValue};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
     // `--diagram <dir>` is a directory selector. Fixtures in that directory can still parse into
@@ -23,6 +24,34 @@ fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
         "quadrantchart" => diagram_type == "quadrantChart",
         _ => false,
     }
+}
+
+fn fixture_site_config_overrides() -> &'static Map<String, JsonValue> {
+    static OVERRIDES: OnceLock<Map<String, JsonValue>> = OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        let value: JsonValue = serde_json::from_str(include_str!(
+            "../../../../fixtures/_config/site_config_overrides.json"
+        ))
+        .expect("valid fixture site config override manifest");
+        match value {
+            JsonValue::Object(map) => map,
+            other => {
+                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
+            }
+        }
+    })
+}
+
+fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
+    let relative_name = path
+        .strip_prefix(crate::cmd::workspace_root().join("fixtures"))
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    fixture_site_config_overrides()
+        .get(&relative_name)
+        .cloned()
+        .map(merman::MermaidConfig::from_value)
 }
 
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
@@ -183,7 +212,12 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
+            let fixture_engine = match fixture_site_config_for_path(&mmd_path) {
+                Some(site_config) => engine.clone().with_site_config(site_config),
+                None => engine.clone(),
+            };
+
+            let parsed = match futures::executor::block_on(fixture_engine.parse_diagram(
                 &text,
                 merman::ParseOptions {
                     suppress_errors: true,
@@ -700,7 +734,12 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(engine.parse_diagram(
+        let fixture_engine = match fixture_site_config_for_path(&mmd_path) {
+            Some(site_config) => engine.clone().with_site_config(site_config),
+            None => engine.clone(),
+        };
+
+        let parsed = match futures::executor::block_on(fixture_engine.parse_diagram(
             &text,
             merman::ParseOptions {
                 suppress_errors: true,
@@ -810,9 +849,9 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures, snapshot_selector_accepts,
-        validate_verify_generated_args, verify_default_config_checks,
-        verify_dompurify_defaults_checks, verify_generated_checks,
+        GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
+        fixture_site_config_overrides, snapshot_selector_accepts, validate_verify_generated_args,
+        verify_default_config_checks, verify_dompurify_defaults_checks, verify_generated_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -922,6 +961,19 @@ mod tests {
         assert!(files[0].file_name().and_then(|n| n.to_str()).is_some_and(
             |name| name == "upstream_sankey_allows_proto_id_sankey_header_parser_only_spec.mmd"
         ));
+    }
+
+    #[test]
+    fn fixture_site_config_manifest_references_existing_fixtures() {
+        let fixtures_root = workspace_root().join("fixtures");
+        for relative_name in fixture_site_config_overrides().keys() {
+            let path = fixtures_root.join(relative_name);
+            assert!(
+                path.exists(),
+                "fixture site config override references missing fixture {}",
+                path.display()
+            );
+        }
     }
 
     #[test]

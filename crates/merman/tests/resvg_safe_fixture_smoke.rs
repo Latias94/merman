@@ -1,8 +1,10 @@
 #![cfg(feature = "render")]
 
 use merman::render::HeadlessRenderer;
+use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 const SUPPORTED_FIXTURE_DIRS: &[&str] = &[
     "architecture",
@@ -54,6 +56,32 @@ fn fixture_paths_for_dirs(family_dirs: &[&str]) -> Vec<PathBuf> {
 
     out.sort();
     out
+}
+
+fn fixture_site_config_overrides() -> &'static Map<String, Value> {
+    static OVERRIDES: OnceLock<Map<String, Value>> = OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        let value: Value = serde_json::from_str(include_str!(
+            "../../../fixtures/_config/site_config_overrides.json"
+        ))
+        .expect("valid fixture site config override manifest");
+        match value {
+            Value::Object(map) => map,
+            other => {
+                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
+            }
+        }
+    })
+}
+
+fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::MermaidConfig> {
+    let key = relative_name
+        .strip_prefix("fixtures/")
+        .unwrap_or(relative_name);
+    fixture_site_config_overrides()
+        .get(key)
+        .cloned()
+        .map(merman::MermaidConfig::from_value)
 }
 
 fn fixture_sample_paths() -> Vec<PathBuf> {
@@ -182,19 +210,38 @@ fn is_representative_fixture_name(name: &str) -> bool {
 }
 
 fn render_resvg_safe(name: &str, source: &str) -> String {
-    render_resvg_safe_with_options(name, source, false)
+    render_resvg_safe_with_options(name, source, false, None)
 }
 
-fn render_resvg_safe_lenient(name: &str, source: &str) -> String {
-    render_resvg_safe_with_options(name, source, true)
+fn render_resvg_safe_for_fixture(
+    name: &str,
+    source: &str,
+    relative_name: &str,
+    lenient: bool,
+) -> String {
+    render_resvg_safe_with_options(
+        name,
+        source,
+        lenient,
+        fixture_site_config_for_relative_name(relative_name),
+    )
 }
 
-fn render_resvg_safe_with_options(name: &str, source: &str, lenient: bool) -> String {
-    let renderer = if lenient {
+fn render_resvg_safe_with_options(
+    name: &str,
+    source: &str,
+    lenient: bool,
+    site_config: Option<merman::MermaidConfig>,
+) -> String {
+    let mut renderer = if lenient {
         HeadlessRenderer::new().with_lenient_parsing()
     } else {
         HeadlessRenderer::new().with_strict_parsing()
     };
+
+    if let Some(site_config) = site_config {
+        renderer = renderer.with_site_config(site_config);
+    }
 
     renderer
         .with_vendored_text_measurer()
@@ -711,7 +758,7 @@ fn representative_fixtures_render_headless_resvg_safe() {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("fixture");
-        let svg = render_resvg_safe(diagram_id, &source);
+        let svg = render_resvg_safe_for_fixture(diagram_id, &source, &relative_name, false);
         assert_resvg_safe_output(&relative_name, &source, &svg);
     }
 }
@@ -738,9 +785,9 @@ fn boundary_fixtures_render_headless_resvg_safe() {
             .unwrap_or("fixture");
         let lenient_error_entrypoint = relative_name.starts_with("fixtures/error/");
         let svg = if lenient_error_entrypoint {
-            render_resvg_safe_lenient(diagram_id, &source)
+            render_resvg_safe_for_fixture(diagram_id, &source, &relative_name, true)
         } else {
-            render_resvg_safe(diagram_id, &source)
+            render_resvg_safe_for_fixture(diagram_id, &source, &relative_name, false)
         };
 
         // The `error` corpus includes suppressed parse-error fixtures whose source may be
@@ -784,7 +831,7 @@ fn all_supported_fixtures_render_headless_resvg_safe_audit() {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("fixture");
-        let svg = render_resvg_safe(diagram_id, &source);
+        let svg = render_resvg_safe_for_fixture(diagram_id, &source, &relative_name, false);
         assert_resvg_safe_output(&relative_name, &source, &svg);
         rendered += 1;
     }

@@ -35,7 +35,7 @@ Capability levels:
 
 | Config field | Accepted | Merged | Consumed | Rendered | Evidence / residual |
 | --- | --- | --- | --- | --- | --- |
-| `secure` | Yes | Partial | Yes | Config contract only | Directive/frontmatter sanitization removes attempted `secure` mutations, and `site_config_secure_keys_protect_effective_config_from_diagram_config` proves a custom site `secure` list prevents matching diagram config keys from changing `effective_config` while preserving `ParseMetadata.config` as user-authored evidence. For compatibility with existing Mermaid fixture imports that encode Cypress render options as diagram config, the default Mermaid secure list currently remains non-blocking; treat full default-secure enforcement as an explicit migration task. |
+| `secure` | Yes | Yes | Yes | Config contract only | Directive/frontmatter sanitization removes attempted `secure` mutations, and `secure_filtered_overrides_removes_default_secure_keys_recursively` proves Mermaid's default secure list prevents diagram config from changing protected keys anywhere in the override object. `site_config_secure_keys_protect_effective_config_from_diagram_config` proves custom site `secure` lists still protect matching keys while preserving `ParseMetadata.config` as user-authored evidence. Imported upstream fixtures that relied on external Cypress render config now use `fixtures/_config/site_config_overrides.json` as harness-level site config instead of depending on diagram-local protected keys. |
 | `theme` | Yes | Yes | Yes | Yes | `render_svg_accepts_external_site_config`, `config_file_theme_overrides_cli_theme`, `config_file_theme_variables_and_theme_css_affect_svg`, `theme_renderability_smoke.rs`; family-specific coverage is tracked in `docs/rendering/diagram-theme-coverage.md`. |
 | `themeVariables` | Yes | Yes | Yes | Yes | Shared render config helpers, `crates/merman-render/src/svg/parity/theme/*`, family CSS/style modules, `theme_renderability_smoke.rs`, family SVG tests, and `config_file_theme_variables_and_theme_css_affect_svg`. Tests assert visible SVG style values that consume variables. |
 | `themeCSS` | Yes | Yes | Yes | Yes | Scoped CSS postprocessor in `crates/merman-render/src/svg/parity.rs`; `render_svg_accepts_external_site_config` and `config_file_theme_variables_and_theme_css_affect_svg` assert scoped CSS plus `data-merman-postprocess="scoped-css"`. Coverage proves scoping/injection, not arbitrary CSS cascade parity for every selector. |
@@ -60,11 +60,10 @@ Capability levels:
 
 - `layout: elk` is not a full local ELK layout implementation for flowcharts yet. Treat current
   support as detection/config plumbing, not layout parity.
-- Custom site `secure` lists are enforced against diagram config when producing
-  `effective_config`, but the default Mermaid secure list is intentionally kept non-blocking for
-  now because many imported upstream fixtures encode external Cypress render options as
-  frontmatter/init config. A full default-secure migration should move those fixtures to explicit
-  site-config test harness inputs first.
+- Mermaid default and custom site `secure` lists are enforced against diagram config when
+  producing `effective_config`. Imported upstream fixtures that need non-default host config use
+  explicit test-harness site config in `fixtures/_config/site_config_overrides.json`; keep new
+  imported render options there rather than reintroducing diagram-local protected-key overrides.
 - `look` is not a universal all-diagram contract. Renderers should only claim support after tests
   verify both effective config propagation and rendered SVG/CSS consumption.
 - `handDrawnSeed` has focused Flowchart, ER, Requirement, and State SVG proof for same-seed
