@@ -142,6 +142,7 @@ pub(super) fn render_class_node_shell_open(
     position: ClassNodeRenderPosition,
     diagram_id: &str,
     look: &str,
+    security_level_loose: bool,
 ) -> bool {
     let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
     let has_tooltip = !tooltip.is_empty();
@@ -151,10 +152,7 @@ pub(super) fn render_class_node_shell_open(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
-    let include_href = link.is_some_and(|s| {
-        let lower = s.to_ascii_lowercase();
-        !lower.starts_with("javascript:") && lower != "about:blank"
-    });
+    let include_href = link.is_some_and(|s| class_href_is_renderable(s, security_level_loose));
     let have_callback = node.have_callback;
 
     if let Some(link) = link {
@@ -205,6 +203,33 @@ pub(super) fn render_class_node_shell_open(
     out.push('>');
 
     link.is_some()
+}
+
+fn class_href_is_renderable(href: &str, security_level_loose: bool) -> bool {
+    let href = href.trim();
+    if href.is_empty() || href == "about:blank" {
+        return false;
+    }
+
+    if security_level_loose {
+        return true;
+    }
+
+    let lower = href.to_ascii_lowercase();
+    if lower.starts_with('#')
+        || lower.starts_with("mailto:")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("//")
+        || lower.starts_with('/')
+        || lower.starts_with("./")
+        || lower.starts_with("../")
+    {
+        return true;
+    }
+
+    let scheme_end = lower.find(['/', '?', '#']).unwrap_or(lower.len());
+    !lower[..scheme_end].contains(':')
 }
 
 pub(super) fn render_class_node_basic_container(

@@ -14,6 +14,7 @@ pub(super) struct ClassRenderSettings {
     pub(super) hide_empty_members_box: bool,
     pub(super) default_node_fill: String,
     pub(super) default_node_stroke: String,
+    pub(super) security_level_loose: bool,
     pub(super) look: String,
 }
 
@@ -34,6 +35,10 @@ impl ClassRenderSettings {
         let hide_empty_members_box = config.hide_empty_members_box();
         let default_node_fill = config.default_node_fill();
         let default_node_stroke = config.default_node_stroke();
+        let security_level_loose = effective_config
+            .get("securityLevel")
+            .and_then(serde_json::Value::as_str)
+            == Some("loose");
         let look = config.diagram_look();
 
         Self {
@@ -50,6 +55,7 @@ impl ClassRenderSettings {
             hide_empty_members_box,
             default_node_fill,
             default_node_stroke,
+            security_level_loose,
             look,
         }
     }

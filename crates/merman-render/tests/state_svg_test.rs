@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
     SvgRenderOptions, render_state_diagram_v2_debug_svg, render_state_diagram_v2_svg,
@@ -6,7 +6,10 @@ use merman_render::svg::{
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_state_svg_from_text(text: &str) -> String {
-    let engine = Engine::new();
+    render_state_svg_from_text_with_engine(Engine::new(), text)
+}
+
+fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -336,6 +339,39 @@ A --> A: again
         svg.matches("<foreignObject").count(),
         0,
         "root htmlLabels=false should override deprecated flowchart.htmlLabels=true for State self-loop label DOM: {svg}"
+    );
+}
+
+#[test]
+fn state_svg_security_level_controls_unsafe_click_href_rendering() {
+    let strict = render_state_svg_from_text(
+        r#"%%{init: {"securityLevel": "strict"}}%%
+stateDiagram-v2
+S1
+click S1 href "javascript:alert(1)"
+"#,
+    );
+    assert!(
+        strict.contains(r#"<a>"#),
+        "expected strict mode to keep Mermaid's anchor wrapper for a declared State link: {strict}"
+    );
+    assert!(
+        !strict.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected strict mode to omit unsafe State click href from SVG: {strict}"
+    );
+
+    let loose = render_state_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        r#"stateDiagram-v2
+S1
+click S1 href "javascript:alert(1)"
+"#,
+    );
+    assert!(
+        loose.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected loose mode to preserve State click hrefs exactly like Mermaid's link injection path: {loose}"
     );
 }
 

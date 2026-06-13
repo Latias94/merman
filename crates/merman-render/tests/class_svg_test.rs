@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
     SvgRenderOptions, render_class_diagram_v2_debug_svg, render_class_diagram_v2_svg,
@@ -13,7 +13,10 @@ fn workspace_root() -> PathBuf {
 }
 
 fn render_class_svg_from_text(text: &str) -> String {
-    let engine = Engine::new();
+    render_class_svg_from_text_with_engine(Engine::new(), text)
+}
+
+fn render_class_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
@@ -184,6 +187,43 @@ Animal --> Keeper
     assert!(
         !svg.contains(r#"data-look="classic""#),
         "configured class look must not leave classic DOM attributes: {svg}"
+    );
+}
+
+#[test]
+fn class_svg_security_level_controls_unsafe_click_href_rendering() {
+    let strict = render_class_svg_from_text(
+        r#"%%{init: {"securityLevel": "strict"}}%%
+classDiagram
+class Class1
+click Class1 href "javascript:alert(1)" "tip" _self
+"#,
+    );
+    assert!(
+        strict.contains(r#"<a data-look=""#),
+        "expected strict mode to keep Mermaid's anchor wrapper for a declared Class link: {strict}"
+    );
+    assert!(
+        !strict.contains(r#"xlink:href="javascript:alert(1)""#),
+        "expected strict mode to omit unsafe Class click href from SVG: {strict}"
+    );
+    assert!(
+        !strict.contains(r#"xlink:href="about:blank""#),
+        "expected Mermaid-compatible strict Class SVG to omit sanitized about:blank href: {strict}"
+    );
+
+    let loose = render_class_svg_from_text_with_engine(
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }))),
+        r#"classDiagram
+class Class1
+click Class1 href "notes://do-your-thing/id" "tip" _self
+"#,
+    );
+    assert!(
+        loose.contains(r#"xlink:href="notes://do-your-thing/id""#),
+        "expected loose mode to preserve Mermaid formatUrl-compatible Class custom protocols: {loose}"
     );
 }
 

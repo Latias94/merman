@@ -719,8 +719,14 @@ fn render_class_node_id(
         .trim();
     let node_stroke_dasharray = node_inline_styles.stroke_dasharray.unwrap_or("0 0");
 
-    let node_link_open =
-        render_class_node_shell_open(out, node, position, ctx.diagram_id, settings.look.as_str());
+    let node_link_open = render_class_node_shell_open(
+        out,
+        node,
+        position,
+        ctx.diagram_id,
+        settings.look.as_str(),
+        settings.security_level_loose,
+    );
     let basic_container = render_class_node_basic_container(
         ClassNodeRenderState {
             out,
